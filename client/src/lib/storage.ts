@@ -59,5 +59,47 @@ export const storage = {
     campaigns.joined = campaigns.joined.filter(c => c.id !== campaignId);
     storage.saveCampaigns(userEmail, campaigns);
     return campaigns;
+  },
+
+  joinCampaignByCode: (userEmail: string, code: string) => {
+    const allData = JSON.parse(localStorage.getItem(CAMPAIGNS_KEY) || "{}");
+    let foundCampaign: Campaign | null = null;
+    let gmName = "Unknown GM";
+
+    // Search for the campaign in all users' created lists
+    for (const email in allData) {
+      const userCampaigns = allData[email] as UserCampaigns;
+      const match = userCampaigns.created.find(c => c.inviteCode === code);
+      if (match) {
+        foundCampaign = match;
+        gmName = email.split('@')[0]; // Simple username from email
+        break;
+      }
+    }
+
+    if (foundCampaign) {
+      const userCampaigns = storage.getCampaigns(userEmail);
+      
+      // Check if already joined
+      if (userCampaigns.joined.some(c => c.id === foundCampaign!.id) || 
+          userCampaigns.created.some(c => c.id === foundCampaign!.id)) {
+        throw new Error("You are already in this campaign.");
+      }
+
+      const joinedCampaign: Campaign = {
+        ...foundCampaign,
+        type: 'joined',
+        gm: gmName,
+        charName: 'New Character', // Default
+        lastPlayed: 'Never',
+        favorite: false
+      };
+
+      userCampaigns.joined.push(joinedCampaign);
+      storage.saveCampaigns(userEmail, userCampaigns);
+      return userCampaigns;
+    } else {
+      throw new Error("Invalid invite code.");
+    }
   }
 };

@@ -3,19 +3,29 @@ import { Link, useLocation, useSearch } from "wouter";
 import { motion } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowLeft, Trash2, LogOut, Play, Plus, Crown, User, Heart } from "lucide-react";
+import { ArrowLeft, Trash2, LogOut, Play, Plus, Crown, User, Heart, Search } from "lucide-react";
 import bgImage from "@assets/generated_images/dark_fantasy_landscape_with_arcane_ruins.png";
 import { storage, UserCampaigns } from "@/lib/storage";
+import { useToast } from "@/hooks/use-toast";
 
 export default function MyCampaigns() {
   const [_, setLocation] = useLocation();
   const search = useSearch();
+  const { toast } = useToast();
   const params = new URLSearchParams(search);
   const defaultTab = params.get("tab") || "all";
   
   const user = JSON.parse(localStorage.getItem("arcana_user") || "{}");
   const [campaigns, setCampaigns] = useState<UserCampaigns>({ created: [], joined: [] });
+  
+  // Join Dialog State
+  const [isJoinOpen, setIsJoinOpen] = useState(false);
+  const [joinCode, setJoinCode] = useState("");
+  const [joinError, setJoinError] = useState("");
 
   // Load user-specific campaigns on mount
   useEffect(() => {
@@ -27,16 +37,36 @@ export default function MyCampaigns() {
   const handleDelete = (id: string) => {
     const updated = storage.deleteCreatedCampaign(user.email, id);
     setCampaigns(updated);
+    toast({ title: "Campaign deleted" });
   };
 
   const handleLeave = (id: string) => {
     const updated = storage.leaveJoinedCampaign(user.email, id);
     setCampaigns(updated);
+    toast({ title: "Left campaign" });
   };
 
   const toggleFavorite = (id: string, type: 'created' | 'joined') => {
     const updated = storage.toggleFavorite(user.email, id, type);
     setCampaigns({...updated}); // Force re-render
+  };
+
+  const handleJoinCampaign = () => {
+    setJoinError("");
+    if (!joinCode.trim()) {
+      setJoinError("Please enter a code.");
+      return;
+    }
+
+    try {
+      const updated = storage.joinCampaignByCode(user.email, joinCode.trim());
+      setCampaigns(updated);
+      setIsJoinOpen(false);
+      setJoinCode("");
+      toast({ title: "Campaign joined successfully!" });
+    } catch (err: any) {
+      setJoinError(err.message || "Failed to join.");
+    }
   };
 
   const renderCampaignCard = (campaign: any, type: 'created' | 'joined') => {
@@ -168,9 +198,37 @@ export default function MyCampaigns() {
                   <h2 className="text-xl font-bold text-stone-300 flex items-center gap-2">
                     <User className="h-5 w-5 text-blue-500" /> Joined
                   </h2>
-                  <Button size="sm" variant="outline" className="bg-stone-900 border-stone-700 hover:bg-stone-800 text-xs">
-                    <Plus className="h-3 w-3 mr-1" /> Join Existing
-                  </Button>
+                  
+                  <Dialog open={isJoinOpen} onOpenChange={setIsJoinOpen}>
+                    <DialogTrigger asChild>
+                      <Button size="sm" variant="outline" className="bg-stone-900 border-stone-700 hover:bg-stone-800 text-xs">
+                        <Plus className="h-3 w-3 mr-1" /> Join Existing
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent className="bg-stone-950 border-stone-800 text-stone-100">
+                      <DialogHeader>
+                        <DialogTitle>Join a Campaign</DialogTitle>
+                      </DialogHeader>
+                      <div className="space-y-4 py-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="code" className="text-stone-400">Invite Code</Label>
+                          <Input 
+                            id="code" 
+                            placeholder="ARCANA-XXXX" 
+                            className="bg-stone-900 border-stone-700 text-stone-100 uppercase font-mono tracking-widest"
+                            value={joinCode}
+                            onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
+                          />
+                          {joinError && <p className="text-xs text-red-500">{joinError}</p>}
+                        </div>
+                      </div>
+                      <DialogFooter>
+                        <Button variant="secondary" onClick={() => setIsJoinOpen(false)}>Cancel</Button>
+                        <Button onClick={handleJoinCampaign} className="bg-amber-700 hover:bg-amber-600">Join Adventure</Button>
+                      </DialogFooter>
+                    </DialogContent>
+                  </Dialog>
+
                 </div>
                 <div className="grid gap-4 md:grid-cols-2">
                   {campaigns.joined.map(c => renderCampaignCard(c, 'joined'))}
