@@ -34,23 +34,37 @@ export default function Campaign() {
     'p1': { name: 'Valerius', class: 'warrior', hp: 80, maxHp: 100, energy: 30, maxEnergy: 50, inventory: ['Rusty Sword', 'Health Potion'] },
   };
 
+  const [gridSize, setGridSize] = useState(50); // Default 50px
+
   // Handle New Campaign Creation
   useEffect(() => {
     if (role === 'gm' && isNew && !hasCreatedRef.current && user.email) {
       const newCampaignId = `c-${Date.now()}`;
+      // Generate unique code
+      const uniqueCode = "ARCANA-" + Math.floor(1000 + Math.random() * 9000);
+      
       const newCampaign = {
         id: newCampaignId,
         name: `Campaign ${new Date().toLocaleDateString()}`,
         players: 0,
         lastPlayed: "Just now",
         favorite: false,
-        type: 'created' as const
+        type: 'created' as const,
+        inviteCode: uniqueCode,
+        gridSize: 50
       };
       
       storage.addCreatedCampaign(user.email, newCampaign);
       hasCreatedRef.current = true;
     }
   }, [role, isNew, user.email]);
+  
+  // Retrieve the current campaign's invite code (simulated lookup)
+  // In a real app, we'd fetch the campaign details by ID from URL
+  // Here we'll just use the one we just created or a mock one
+  const currentCampaignCode = role === 'gm' && isNew 
+    ? (storage.getCampaigns(user.email).created.slice(-1)[0]?.inviteCode || "ARCANA-XXXX")
+    : "ARCANA-LINK"; // Fallback/Mock for joined/existing
 
   // If GM, no character creation needed
   useEffect(() => {
@@ -98,9 +112,11 @@ export default function Campaign() {
         <div className="pointer-events-auto">
           <CampaignMenu 
             role={role} 
-            inviteCode={isNew ? "ARCANA-7729" : "ARCANA-LINK"} 
+            inviteCode={currentCampaignCode}
             inspectedChar={inspectedChar}
             onInspectChar={setInspectedChar}
+            gridSize={gridSize}
+            setGridSize={setGridSize}
           />
         </div>
       </div>
@@ -121,6 +137,7 @@ export default function Campaign() {
                onMoveToken={handleMoveToken} 
                onTokenClick={handleTokenClick}
                role={role} 
+               gridSize={gridSize}
              />
           </div>
           

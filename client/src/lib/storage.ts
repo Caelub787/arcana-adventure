@@ -27,6 +27,10 @@ export const storage = {
 
   addCreatedCampaign: (userEmail: string, campaign: Campaign) => {
     const campaigns = storage.getCampaigns(userEmail);
+    // Generate a random invite code if not provided
+    if (!campaign.inviteCode) {
+      campaign.inviteCode = "ARCANA-" + Math.floor(1000 + Math.random() * 9000);
+    }
     campaigns.created.push(campaign);
     storage.saveCampaigns(userEmail, campaigns);
   },

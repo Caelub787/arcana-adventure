@@ -7,6 +7,8 @@ export interface Campaign {
   lastPlayed: string;
   favorite: boolean;
   type: 'created' | 'joined';
+  inviteCode?: string;
+  gridSize?: number;
 }
 
 export const MOCK_CAMPAIGNS: Campaign[] = [
