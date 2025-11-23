@@ -24,6 +24,12 @@ export default function Campaign() {
 
   const [character, setCharacter] = useState<any>(null);
   const [tokens, setTokens] = useState(INITIAL_TOKENS);
+  const [inspectedChar, setInspectedChar] = useState<any>(null); // For GM
+
+  // Mock Character Registry
+  const CHARACTERS_DB: Record<string, any> = {
+    'p1': { name: 'Valerius', class: 'warrior', hp: 80, maxHp: 100, energy: 30, maxEnergy: 50, inventory: ['Rusty Sword', 'Health Potion'] },
+  };
 
   // If GM, no character creation needed
   useEffect(() => {
@@ -34,18 +40,31 @@ export default function Campaign() {
 
   const handleCharacterCreated = (char: any) => {
     setCharacter(char);
+    const newId = `p-${Date.now()}`;
     // Add new player token to map
     setTokens(prev => [...prev, { 
-      id: `p-${Date.now()}`, 
+      id: newId, 
       x: 150, 
       y: 150, 
       type: 'player', 
       image: warriorToken 
     }]);
+    // Register in DB (mock)
+    CHARACTERS_DB[newId] = char;
   };
 
   const handleMoveToken = (id: string, x: number, y: number) => {
     setTokens(prev => prev.map(t => t.id === id ? { ...t, x, y } : t));
+  };
+
+  const handleTokenClick = (token: any) => {
+    if (role === 'gm' && token.type === 'player') {
+      // Look up character data
+      const charData = CHARACTERS_DB[token.id];
+      if (charData) {
+        setInspectedChar(charData);
+      }
+    }
   };
 
   return (
@@ -77,13 +96,38 @@ export default function Campaign() {
           {/* Main Game Area (Map) */}
           <div className="absolute inset-0 z-0 p-0 md:p-4 md:pb-24">
              <div className="w-full h-full relative">
-                <BattleMap tokens={tokens} onMoveToken={handleMoveToken} role={role} />
+                <BattleMap 
+                  tokens={tokens} 
+                  onMoveToken={handleMoveToken} 
+                  onTokenClick={handleTokenClick}
+                  role={role} 
+                />
              </div>
           </div>
 
           {/* UI Overlays */}
           {role === 'player' && <HUD character={character} />}
-          {role === 'gm' && <GMTools />}
+          
+          {role === 'gm' && (
+            <>
+              <GMTools />
+              {/* GM Inspector HUD */}
+              {inspectedChar && (
+                <div className="absolute bottom-0 left-0 right-0 z-20 pointer-events-none">
+                  <div className="absolute bottom-full mb-2 left-4 bg-black/80 text-amber-400 px-2 py-1 rounded text-xs border border-amber-900/50">
+                    Inspecting: {inspectedChar.name}
+                  </div>
+                  <HUD character={inspectedChar} />
+                  {/* Close Inspector Button */}
+                  <div className="absolute bottom-24 left-4 pointer-events-auto">
+                     <Button size="sm" variant="destructive" onClick={() => setInspectedChar(null)}>
+                       Stop Inspecting
+                     </Button>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
 
         </div>
       )}

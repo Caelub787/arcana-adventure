@@ -133,14 +133,42 @@ export function CharacterCreation({ onComplete }: CharacterCreationProps) {
 interface BattleMapProps {
   tokens: Token[];
   onMoveToken: (id: string, x: number, y: number) => void;
+  onTokenClick?: (token: Token) => void;
   role: Role;
 }
 
-export function BattleMap({ tokens, onMoveToken, role }: BattleMapProps) {
-  // Simple drag simulation logic for prototype
+export function BattleMap({ tokens, onMoveToken, onTokenClick, role }: BattleMapProps) {
+  // Grid size
+  const GRID_SIZE = 50;
+
   const handleDragEnd = (e: any, info: any, token: Token) => {
-    // In a real app, calculate grid snap
-    // For now, just visual
+    // Snap to grid
+    const x = Math.round(info.point.x / GRID_SIZE) * GRID_SIZE;
+    const y = Math.round(info.point.y / GRID_SIZE) * GRID_SIZE;
+    
+    // We need relative position, not absolute screen position.
+    // Framer motion's drag behavior with absolute positioning can be tricky.
+    // For this prototype, let's trust the visual snap logic on the parent update
+    // But framer's 'onDragEnd' gives us viewport coordinates usually unless configured.
+    // A simpler way for prototype:
+    // Just use the offset from the drag. 
+    
+    // Actually, let's use a simple snap calculation based on the final position
+    // We'll assume the parent handles the actual state update which re-renders the token
+    // But we need to give the parent the new coordinates.
+    
+    // For this mockup, let's just pass the raw coordinates and let parent snap them?
+    // Or snap here. Let's snap here visually.
+    
+    // Since we are using absolute positioning in parent state, we need to calculate 
+    // the new position based on the drag delta or final position.
+    // The easiest way with Framer Motion drag is to rely on `onDragEnd` updating state.
+    // However, `info.point` is absolute. `info.offset` is relative to start.
+    
+    const newX = Math.round((token.x + info.offset.x) / GRID_SIZE) * GRID_SIZE;
+    const newY = Math.round((token.y + info.offset.y) / GRID_SIZE) * GRID_SIZE;
+    
+    onMoveToken(token.id, newX, newY);
   };
 
   return (
@@ -164,14 +192,17 @@ export function BattleMap({ tokens, onMoveToken, role }: BattleMapProps) {
           key={token.id}
           drag={role === 'gm' || token.type === 'player'} // Only GM moves enemies, players move themselves
           dragMomentum={false}
-          dragElastic={0.1}
+          dragElastic={0} // No elasticity for grid feel
+          onDragEnd={(e, info) => handleDragEnd(e, info, token)}
+          onClick={() => onTokenClick && onTokenClick(token)}
           whileHover={{ scale: 1.1, zIndex: 10 }}
           whileDrag={{ scale: 1.2, zIndex: 20 }}
-          initial={{ x: token.x, y: token.y }}
+          // Use animate to force position updates from state
+          animate={{ x: token.x, y: token.y }}
+          transition={{ type: "spring", stiffness: 300, damping: 30 }}
           className="absolute top-0 left-0 w-[50px] h-[50px] rounded-full shadow-xl ring-2 ring-white/20 overflow-hidden bg-black"
-          style={{ x: token.x, y: token.y }}
         >
-          <img src={token.image} alt="token" className="w-full h-full object-cover" />
+          <img src={token.image} alt="token" className="w-full h-full object-cover pointer-events-none" />
           {/* Selection Ring */}
           <div className={`absolute inset-0 border-2 rounded-full ${token.type === 'player' ? 'border-blue-400' : 'border-red-500'}`} />
         </motion.div>

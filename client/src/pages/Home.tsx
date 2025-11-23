@@ -62,18 +62,18 @@ export default function Home() {
             </Card>
           </Link>
 
-          {/* Join / My Campaigns */}
-          <Link href="/campaign?role=player">
+          {/* My Campaigns */}
+          <Link href="/my-campaigns">
             <Card className="group cursor-pointer border-stone-800 bg-stone-950/60 backdrop-blur-sm transition-all hover:-translate-y-1 hover:border-blue-600/50 hover:bg-stone-900/80 hover:shadow-[0_0_30px_rgba(37,99,235,0.2)]">
               <CardHeader>
                 <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-blue-900/30 text-blue-500 group-hover:bg-blue-600 group-hover:text-white transition-colors">
-                  <Play className="h-6 w-6 ml-1" />
+                  <ScrollText className="h-6 w-6 ml-1" />
                 </div>
-                <CardTitle className="font-display text-xl text-stone-200 group-hover:text-blue-400">Join Campaign</CardTitle>
+                <CardTitle className="font-display text-xl text-stone-200 group-hover:text-blue-400">My Campaigns</CardTitle>
               </CardHeader>
               <CardContent>
                 <p className="text-sm text-stone-500 group-hover:text-stone-400">
-                  Enter an invite code to join your party or resume an existing adventure.
+                  Resume your adventures, manage your created campaigns, or join new ones.
                 </p>
               </CardContent>
             </Card>
