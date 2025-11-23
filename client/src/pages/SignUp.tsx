@@ -30,12 +30,22 @@ export default function SignUp() {
     setIsLoading(true);
     // Mock registration delay
     setTimeout(() => {
-      // Save user to local storage to simulate a session
-      localStorage.setItem("arcana_user", JSON.stringify({ 
+      // Save user to local "DB"
+      const usersDb = JSON.parse(localStorage.getItem("arcana_users") || "{}");
+      const newUser = {
         name: formData.name,
         username: formData.username,
-        email: formData.email 
-      }));
+        email: formData.email,
+        password: formData.password // Mock only!
+      };
+      
+      // Use email as key for simplicity
+      usersDb[formData.email] = newUser;
+      localStorage.setItem("arcana_users", JSON.stringify(usersDb));
+
+      // Auto-login
+      localStorage.setItem("arcana_user", JSON.stringify(newUser));
+      
       setIsLoading(false);
       window.location.href = "/"; // Force reload to pick up auth state
     }, 1500);

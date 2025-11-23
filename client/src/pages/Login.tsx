@@ -18,9 +18,20 @@ export default function Login() {
     setIsLoading(true);
     // Mock login delay
     setTimeout(() => {
-      localStorage.setItem("arcana_user", JSON.stringify({ email, name: "Adventurer" }));
-      setIsLoading(false);
-      window.location.href = "/"; // Force reload to pick up auth state in App
+      // Check if user exists in local "DB"
+      const usersDb = JSON.parse(localStorage.getItem("arcana_users") || "{}");
+      // Simple check: does any user match this email/username?
+      // In a real app, we'd check password hash, etc.
+      const user = Object.values(usersDb).find((u: any) => u.email === email || u.username === email);
+
+      if (user) {
+        localStorage.setItem("arcana_user", JSON.stringify(user));
+        setIsLoading(false);
+        window.location.href = "/"; 
+      } else {
+        setIsLoading(false);
+        alert("Account not found. Please sign up first.");
+      }
     }, 1000);
   };
 
