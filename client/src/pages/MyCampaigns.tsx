@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Link, useLocation } from "wouter";
+import { Link, useLocation, useSearch } from "wouter";
 import { motion } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -20,6 +20,10 @@ const MOCK_CAMPAIGNS = {
 
 export default function MyCampaigns() {
   const [_, setLocation] = useLocation();
+  const search = useSearch();
+  const params = new URLSearchParams(search);
+  const defaultTab = params.get("tab") || "all";
+  
   const [campaigns, setCampaigns] = useState(MOCK_CAMPAIGNS);
 
   const handleDelete = (id: string) => {
@@ -141,7 +145,7 @@ export default function MyCampaigns() {
           </Button>
         </div>
 
-        <Tabs defaultValue="all" className="w-full">
+        <Tabs defaultValue={defaultTab} className="w-full">
           <TabsList className="grid w-full grid-cols-2 bg-stone-900/80 border border-stone-800">
             <TabsTrigger value="all" className="data-[state=active]:bg-stone-800 data-[state=active]:text-stone-100">All Campaigns</TabsTrigger>
             <TabsTrigger value="favorites" className="data-[state=active]:bg-stone-800 data-[state=active]:text-stone-100 flex items-center gap-2">
