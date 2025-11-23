@@ -8,6 +8,7 @@ import Home from "@/pages/Home";
 import Campaign from "@/pages/Campaign";
 import MyCampaigns from "@/pages/MyCampaigns";
 import Login from "@/pages/Login";
+import SignUp from "@/pages/SignUp";
 import { useEffect, useState } from "react";
 
 // Protected Route Component
@@ -35,6 +36,7 @@ function Router() {
   return (
     <Switch>
       <Route path="/login" component={Login} />
+      <Route path="/signup" component={SignUp} />
       <Route path="/">
         {() => <ProtectedRoute component={Home} />}
       </Route>

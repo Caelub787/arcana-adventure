@@ -81,7 +81,10 @@ export default function Login() {
                 {isLoading ? "Opening Portal..." : "Login"}
               </Button>
               <div className="text-center text-xs text-stone-600 mt-4">
-                No account? <span className="text-amber-500 cursor-pointer hover:underline">Sign up</span>
+                No account?{" "}
+                <Link href="/signup" className="text-amber-500 cursor-pointer hover:underline">
+                  Sign up
+                </Link>
               </div>
             </form>
           </CardContent>
