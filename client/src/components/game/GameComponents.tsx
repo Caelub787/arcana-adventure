@@ -299,7 +299,12 @@ export function HUD({ character }: HUDProps) {
 }
 
 // 4. GM Tools
-export function GMTools() {
+interface GMToolsProps {
+  inviteCode?: string;
+  inspectedChar?: Character;
+}
+
+export function GMTools({ inviteCode, inspectedChar }: GMToolsProps) {
   return (
     <div className="absolute top-0 right-0 p-2 z-30 flex flex-col gap-2 pointer-events-auto">
       <Sheet>
@@ -313,6 +318,43 @@ export function GMTools() {
             <h2 className="font-display text-2xl text-purple-400 mb-1">Game Master</h2>
             <p className="text-xs text-stone-500">Campaign Control</p>
           </div>
+          
+          {/* Invite Code Section (Top if present) */}
+          {inviteCode && (
+             <div className="mb-6 p-3 bg-amber-900/20 border border-amber-700/50 rounded-lg">
+               <h3 className="text-xs font-bold text-amber-500 uppercase mb-1">Invite Code</h3>
+               <div className="font-mono text-xl text-amber-100 tracking-widest select-all cursor-pointer hover:text-white">
+                 {inviteCode}
+               </div>
+               <p className="text-[10px] text-amber-400/60 mt-1">Share this with players to join.</p>
+             </div>
+          )}
+
+          {/* Inspector Inventory (Top Section) */}
+          {inspectedChar && (
+            <div className="mb-6 border-b border-stone-800 pb-6">
+              <h3 className="text-sm font-bold text-stone-400 uppercase mb-2 flex items-center gap-2">
+                <Backpack className="h-4 w-4" /> {inspectedChar.name}'s Inventory
+              </h3>
+              <div className="bg-stone-800/50 rounded p-2 max-h-32 overflow-y-auto">
+                {inspectedChar.inventory.length === 0 ? (
+                  <span className="text-xs text-stone-600 italic">Empty inventory</span>
+                ) : (
+                  <div className="space-y-1">
+                    {inspectedChar.inventory.map((item, i) => (
+                      <div key={i} className="flex items-center gap-2 text-xs p-1 hover:bg-stone-700 rounded cursor-pointer">
+                        <Sparkles className="h-3 w-3 text-purple-400" />
+                        <span>{item}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <Button size="sm" variant="outline" className="w-full mt-2 h-7 text-xs border-stone-700 hover:bg-stone-800">
+                Add Item +
+              </Button>
+            </div>
+          )}
           
           <div className="space-y-6">
             <div>

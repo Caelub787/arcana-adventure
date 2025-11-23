@@ -77,12 +77,14 @@ export default function Campaign() {
         </Button>
       </div>
 
-      {/* Invite Code Overlay (If New) */}
+      {/* Invite Code Overlay (If New) - Removed, now in Sidebar */}
+      {/* 
       {isNew && role === 'gm' && (
         <div className="absolute top-4 left-1/2 -translate-x-1/2 z-40 bg-amber-900/80 text-amber-100 px-4 py-1 rounded-full border border-amber-500/50 text-sm font-mono animate-pulse">
           Invite Code: ARCANA-7729
         </div>
-      )}
+      )} 
+      */}
 
       {/* Character Creation Modal */}
       {!character && role === 'player' && (
@@ -110,7 +112,10 @@ export default function Campaign() {
           
           {role === 'gm' && (
             <>
-              <GMTools />
+              <GMTools 
+                inviteCode={isNew ? "ARCANA-7729" : undefined} 
+                inspectedChar={inspectedChar}
+              />
               {/* GM Inspector HUD */}
               {inspectedChar && (
                 <div className="absolute bottom-0 left-0 right-0 z-20 pointer-events-none">
