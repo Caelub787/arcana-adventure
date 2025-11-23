@@ -38,14 +38,6 @@ export default function Home() {
           <div className="text-stone-400 text-sm">
             Welcome, <span className="text-amber-500 font-bold">{user.name || "Traveler"}</span>
           </div>
-          <Button 
-            variant="ghost" 
-            size="sm" 
-            onClick={handleLogout}
-            className="text-stone-500 hover:text-stone-300 hover:bg-stone-900/50"
-          >
-            Logout
-          </Button>
         </div>
 
         {/* Title */}
@@ -72,18 +64,23 @@ export default function Home() {
         >
           <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
             
-            {/* New Campaign (Restored) */}
-            <Link href="/campaign?role=gm&new=true">
-              <Card className="group cursor-pointer border-stone-800 bg-stone-950/60 backdrop-blur-sm transition-all hover:-translate-y-1 hover:border-amber-600/50 hover:bg-stone-900/80 hover:shadow-[0_0_30px_rgba(217,119,6,0.2)]">
+            {/* Favorites */}
+            <Link href="/my-campaigns?tab=favorites">
+              <Card className="group cursor-pointer border-stone-800 bg-stone-950/60 backdrop-blur-sm transition-all hover:-translate-y-1 hover:border-red-600/50 hover:bg-stone-900/80 hover:shadow-[0_0_30px_rgba(220,38,38,0.2)]">
                 <CardHeader>
-                  <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-amber-900/30 text-amber-500 group-hover:bg-amber-600 group-hover:text-white transition-colors">
-                    <Plus className="h-6 w-6" />
+                  <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-red-900/30 text-red-500 group-hover:bg-red-600 group-hover:text-white transition-colors">
+                    <div className="relative">
+                       <ScrollText className="h-6 w-6" />
+                       <div className="absolute -bottom-1 -right-1 bg-stone-900 rounded-full p-0.5">
+                         <Heart className="h-3 w-3 fill-current" />
+                       </div>
+                    </div>
                   </div>
-                  <CardTitle className="font-display text-xl text-stone-200 group-hover:text-amber-400">New Campaign</CardTitle>
+                  <CardTitle className="font-display text-xl text-stone-200 group-hover:text-red-400">Favorites</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <p className="text-sm text-stone-500 group-hover:text-stone-400">
-                    Start a new adventure as the Game Master. Create maps, manage encounters, and invite players.
+                    Quickly jump back into your starred adventures and favorite campaigns.
                   </p>
                 </CardContent>
               </Card>
@@ -152,6 +149,16 @@ export default function Home() {
                  ))}
                </div>
              )}
+          </div>
+          
+          <div className="flex justify-center pt-8 pb-4">
+            <Button 
+              variant="outline" 
+              onClick={handleLogout}
+              className="border-stone-800 bg-stone-950/50 text-stone-500 hover:bg-red-950/20 hover:text-red-400 hover:border-red-900/30 w-full max-w-xs"
+            >
+              Logout
+            </Button>
           </div>
 
         </motion.div>
