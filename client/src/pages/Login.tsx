@@ -20,14 +20,20 @@ export default function Login() {
     setTimeout(() => {
       // Check if user exists in local "DB"
       const usersDb = JSON.parse(localStorage.getItem("arcana_users") || "{}");
-      // Simple check: does any user match this email/username?
-      // In a real app, we'd check password hash, etc.
-      const user = Object.values(usersDb).find((u: any) => u.email === email || u.username === email);
+      
+      // Find user by email or username
+      const user = Object.values(usersDb).find((u: any) => u.email === email || u.username === email) as any;
 
       if (user) {
-        localStorage.setItem("arcana_user", JSON.stringify(user));
-        setIsLoading(false);
-        window.location.href = "/"; 
+        // Check password (mock auth)
+        if (user.password === password) {
+          localStorage.setItem("arcana_user", JSON.stringify(user));
+          setIsLoading(false);
+          window.location.href = "/"; 
+        } else {
+          setIsLoading(false);
+          alert("Invalid password. Please try again.");
+        }
       } else {
         setIsLoading(false);
         alert("Account not found. Please sign up first.");
