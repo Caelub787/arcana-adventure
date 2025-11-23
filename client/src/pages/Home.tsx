@@ -45,7 +45,7 @@ export default function Home() {
           initial={{ y: -50, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           transition={{ duration: 0.8, ease: "easeOut" }}
-          className="mb-12 text-center"
+          className="mb-8 text-center"
         >
           <h1 className="font-display text-6xl font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-b from-amber-100 to-amber-600 drop-shadow-[0_4px_4px_rgba(0,0,0,0.8)] filter">
             Arcana Adventures
@@ -55,37 +55,49 @@ export default function Home() {
           </p>
         </motion.div>
 
-        {/* Main Menu */}
+        {/* Main Content Area */}
         <motion.div 
           initial={{ y: 50, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           transition={{ duration: 0.8, delay: 0.2, ease: "easeOut" }}
           className="w-full max-w-4xl space-y-8"
         >
-          <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
-            
-            {/* Favorites */}
-            <Link href="/my-campaigns?tab=favorites">
-              <Card className="group cursor-pointer border-stone-800 bg-stone-950/60 backdrop-blur-sm transition-all hover:-translate-y-1 hover:border-red-600/50 hover:bg-stone-900/80 hover:shadow-[0_0_30px_rgba(220,38,38,0.2)]">
-                <CardHeader>
-                  <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-red-900/30 text-red-500 group-hover:bg-red-600 group-hover:text-white transition-colors">
-                    <div className="relative">
-                       <ScrollText className="h-6 w-6" />
-                       <div className="absolute -bottom-1 -right-1 bg-stone-900 rounded-full p-0.5">
-                         <Heart className="h-3 w-3 fill-current" />
-                       </div>
-                    </div>
-                  </div>
-                  <CardTitle className="font-display text-xl text-stone-200 group-hover:text-red-400">Favorites</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-sm text-stone-500 group-hover:text-stone-400">
-                    Quickly jump back into your starred adventures and favorite campaigns.
-                  </p>
-                </CardContent>
-              </Card>
-            </Link>
+          
+          {/* Favorites Section (At Top) */}
+          <div className="w-full">
+             <h2 className="text-2xl font-display text-stone-400 mb-4 flex items-center gap-2">
+               <Heart className="h-5 w-5 text-red-500 fill-current" /> Your Favorites
+             </h2>
+             
+             {favorites.length === 0 ? (
+               <div className="w-full p-6 rounded border border-dashed border-stone-800 bg-stone-950/30 text-center text-stone-600">
+                 No favorites yet. Visit "My Campaigns" to star your adventures.
+               </div>
+             ) : (
+               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                 {favorites.map(campaign => (
+                   <Link key={campaign.id} href={campaign.type === 'created' ? "/campaign?role=gm" : "/campaign?role=player"}>
+                     <Card className="group cursor-pointer border-stone-800 bg-stone-950/40 backdrop-blur-sm transition-all hover:-translate-y-1 hover:border-red-900/50 hover:bg-stone-900/60">
+                       <CardContent className="p-4 flex items-center justify-between">
+                         <div>
+                           <h3 className="font-display text-stone-200 group-hover:text-amber-400 transition-colors">{campaign.name}</h3>
+                           <div className="text-xs text-stone-500 mt-1 flex items-center gap-2">
+                             <span>{campaign.lastPlayed}</span>
+                             {campaign.type === 'created' && <span className="text-amber-700 border border-amber-900/30 px-1 rounded text-[10px]">GM</span>}
+                           </div>
+                         </div>
+                         <Play className="h-4 w-4 text-stone-600 group-hover:text-white" />
+                       </CardContent>
+                     </Card>
+                   </Link>
+                 ))}
+               </div>
+             )}
+          </div>
 
+          {/* Main Menu Grid (My Campaigns, Settings) */}
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+            
             {/* My Campaigns */}
             <Link href="/my-campaigns">
               <Card className="group cursor-pointer border-stone-800 bg-stone-950/60 backdrop-blur-sm transition-all hover:-translate-y-1 hover:border-blue-600/50 hover:bg-stone-900/80 hover:shadow-[0_0_30px_rgba(37,99,235,0.2)]">
@@ -117,38 +129,6 @@ export default function Home() {
                 </p>
               </CardContent>
             </Card>
-          </div>
-
-          {/* Favorites Section */}
-          <div className="w-full">
-             <h2 className="text-2xl font-display text-stone-400 mb-4 flex items-center gap-2">
-               <Heart className="h-5 w-5 text-red-500 fill-current" /> Your Favorites
-             </h2>
-             
-             {favorites.length === 0 ? (
-               <div className="w-full p-6 rounded border border-dashed border-stone-800 bg-stone-950/30 text-center text-stone-600">
-                 No favorites yet. Visit "My Campaigns" to star your adventures.
-               </div>
-             ) : (
-               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                 {favorites.map(campaign => (
-                   <Link key={campaign.id} href={campaign.type === 'created' ? "/campaign?role=gm" : "/campaign?role=player"}>
-                     <Card className="group cursor-pointer border-stone-800 bg-stone-950/40 backdrop-blur-sm transition-all hover:-translate-y-1 hover:border-red-900/50 hover:bg-stone-900/60">
-                       <CardContent className="p-4 flex items-center justify-between">
-                         <div>
-                           <h3 className="font-display text-stone-200 group-hover:text-amber-400 transition-colors">{campaign.name}</h3>
-                           <div className="text-xs text-stone-500 mt-1 flex items-center gap-2">
-                             <span>{campaign.lastPlayed}</span>
-                             {campaign.type === 'created' && <span className="text-amber-700 border border-amber-900/30 px-1 rounded text-[10px]">GM</span>}
-                           </div>
-                         </div>
-                         <Play className="h-4 w-4 text-stone-600 group-hover:text-white" />
-                       </CardContent>
-                     </Card>
-                   </Link>
-                 ))}
-               </div>
-             )}
           </div>
           
           <div className="flex justify-center pt-8 pb-4">
