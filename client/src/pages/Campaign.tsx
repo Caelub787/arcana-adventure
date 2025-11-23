@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useLocation, useSearch } from "wouter";
 import { motion } from "framer-motion";
 import { CharacterCreation, BattleMap, HUD, GMTools } from "@/components/game/GameComponents";
@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { ArrowLeft } from "lucide-react";
 import warriorToken from "@assets/generated_images/top_down_warrior_token.png";
 import goblinToken from "@assets/generated_images/top_down_goblin_token.png";
+import { storage } from "@/lib/storage";
 
 // --- Mock State ---
 // In a real app, this would be in a Context or Store (Zustand/Redux)
@@ -22,6 +23,9 @@ export default function Campaign() {
   const role = (params.get("role") as "gm" | "player") || "player";
   const isNew = params.get("new") === "true";
 
+  const user = JSON.parse(localStorage.getItem("arcana_user") || "{}");
+  const hasCreatedRef = useRef(false);
+
   const [character, setCharacter] = useState<any>(null);
   const [tokens, setTokens] = useState(INITIAL_TOKENS);
   const [inspectedChar, setInspectedChar] = useState<any>(null); // For GM
@@ -30,6 +34,27 @@ export default function Campaign() {
   const CHARACTERS_DB: Record<string, any> = {
     'p1': { name: 'Valerius', class: 'warrior', hp: 80, maxHp: 100, energy: 30, maxEnergy: 50, inventory: ['Rusty Sword', 'Health Potion'] },
   };
+
+  // Handle New Campaign Creation
+  useEffect(() => {
+    if (role === 'gm' && isNew && !hasCreatedRef.current && user.email) {
+      const newCampaignId = `c-${Date.now()}`;
+      const newCampaign = {
+        id: newCampaignId,
+        name: `Campaign ${new Date().toLocaleDateString()}`,
+        players: 0,
+        lastPlayed: "Just now",
+        favorite: false,
+        type: 'created' as const
+      };
+      
+      storage.addCreatedCampaign(user.email, newCampaign);
+      hasCreatedRef.current = true;
+      
+      // Optional: Update URL to remove 'new=true' so refresh doesn't duplicate?
+      // For now we just rely on the ref for the session.
+    }
+  }, [role, isNew, user.email]);
 
   // If GM, no character creation needed
   useEffect(() => {

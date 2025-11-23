@@ -1,22 +1,12 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Link, useLocation, useSearch } from "wouter";
 import { motion } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowLeft, Trash2, LogOut, Play, Plus, Crown, User, Heart, Star } from "lucide-react";
+import { ArrowLeft, Trash2, LogOut, Play, Plus, Crown, User, Heart } from "lucide-react";
 import bgImage from "@assets/generated_images/dark_fantasy_landscape_with_arcane_ruins.png";
-
-// Mock Data with Favorite flag
-const MOCK_CAMPAIGNS = {
-  created: [
-    { id: "c1", name: "The Shadowed Keep", players: 4, lastPlayed: "2 hours ago", favorite: true },
-    { id: "c2", name: "Ruins of Azlant", players: 2, lastPlayed: "1 week ago", favorite: false },
-  ],
-  joined: [
-    { id: "j1", name: "Curse of Strahd", gm: "DungeonMaster99", charName: "Valerius", lastPlayed: "Yesterday", favorite: true },
-  ]
-};
+import { storage, UserCampaigns } from "@/lib/storage";
 
 export default function MyCampaigns() {
   const [_, setLocation] = useLocation();
@@ -24,29 +14,29 @@ export default function MyCampaigns() {
   const params = new URLSearchParams(search);
   const defaultTab = params.get("tab") || "all";
   
-  const [campaigns, setCampaigns] = useState(MOCK_CAMPAIGNS);
+  const user = JSON.parse(localStorage.getItem("arcana_user") || "{}");
+  const [campaigns, setCampaigns] = useState<UserCampaigns>({ created: [], joined: [] });
+
+  // Load user-specific campaigns on mount
+  useEffect(() => {
+    if (user.email) {
+      setCampaigns(storage.getCampaigns(user.email));
+    }
+  }, []);
 
   const handleDelete = (id: string) => {
-    setCampaigns(prev => ({
-      ...prev,
-      created: prev.created.filter(c => c.id !== id)
-    }));
+    const updated = storage.deleteCreatedCampaign(user.email, id);
+    setCampaigns(updated);
   };
 
   const handleLeave = (id: string) => {
-    setCampaigns(prev => ({
-      ...prev,
-      joined: prev.joined.filter(c => c.id !== id)
-    }));
+    const updated = storage.leaveJoinedCampaign(user.email, id);
+    setCampaigns(updated);
   };
 
   const toggleFavorite = (id: string, type: 'created' | 'joined') => {
-    setCampaigns(prev => ({
-      ...prev,
-      [type]: prev[type].map(c => 
-        c.id === id ? { ...c, favorite: !c.favorite } : c
-      )
-    }));
+    const updated = storage.toggleFavorite(user.email, id, type);
+    setCampaigns({...updated}); // Force re-render
   };
 
   const renderCampaignCard = (campaign: any, type: 'created' | 'joined') => {

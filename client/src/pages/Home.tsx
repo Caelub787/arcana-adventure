@@ -6,12 +6,16 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Play, Users, Settings, ScrollText, Plus, Heart } from "lucide-react";
 import bgImage from "@assets/generated_images/dark_fantasy_landscape_with_arcane_ruins.png";
 
-import { MOCK_CAMPAIGNS } from "@/lib/mockData";
+import { storage } from "@/lib/storage";
+import { Campaign } from "@/lib/mockData";
 
 export default function Home() {
   const [location, setLocation] = useLocation();
-  const favorites = MOCK_CAMPAIGNS.filter(c => c.favorite);
   const user = JSON.parse(localStorage.getItem("arcana_user") || "{}");
+  
+  // Load campaigns from storage specific to this user
+  const userCampaigns = storage.getCampaigns(user.email);
+  const favorites = [...userCampaigns.created, ...userCampaigns.joined].filter(c => c.favorite);
 
   const handleLogout = () => {
     localStorage.removeItem("arcana_user");
