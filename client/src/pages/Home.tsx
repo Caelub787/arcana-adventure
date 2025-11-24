@@ -72,45 +72,49 @@ export default function Home() {
         >
           
           {/* Favorites Section (At Top) */}
-          <div className="w-full">
-             <h2 className="text-2xl font-display text-stone-400 mb-4 flex items-center gap-2">
-               <Heart className="h-5 w-5 text-red-500 fill-current" /> Your Favorites
-             </h2>
-             
-             {isLoading ? (
-               <div className="w-full p-6 rounded border border-stone-800 bg-stone-950/30 text-center text-stone-500 flex items-center justify-center gap-2">
-                 <Loader2 className="h-4 w-4 animate-spin" />
-                 Loading favorites...
-               </div>
-             ) : favorites.length === 0 ? (
-               <div className="w-full p-6 rounded border border-dashed border-stone-800 bg-stone-950/30 text-center text-stone-600">
-                 No favorites yet. Visit "My Campaigns" to star your adventures.
-               </div>
-             ) : (
-               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                 {favorites.map((campaign: any) => {
-                   const isCreated = (userCampaigns.created ?? []).some((c: any) => c.id === campaign.id);
-                   const role = isCreated ? 'gm' : 'player';
-                   return (
-                     <Link key={campaign.id} href={`/campaign/${campaign.id}?role=${role}`} data-testid={`link-campaign-${campaign.id}`}>
-                       <Card className="group cursor-pointer border-stone-800 bg-stone-950/40 backdrop-blur-sm transition-all hover:-translate-y-1 hover:border-red-900/50 hover:bg-stone-900/60">
-                         <CardContent className="p-4 flex items-center justify-between">
-                           <div>
-                             <h3 className="font-display text-stone-200 group-hover:text-amber-400 transition-colors" data-testid={`text-campaign-name-${campaign.id}`}>{campaign.name}</h3>
-                             <div className="text-xs text-stone-500 mt-1 flex items-center gap-2">
-                               <span>{campaign.lastPlayed}</span>
-                               {isCreated && <span className="text-amber-700 border border-amber-900/30 px-1 rounded text-[10px]">GM</span>}
-                             </div>
-                           </div>
-                           <Play className="h-4 w-4 text-stone-600 group-hover:text-white" />
-                         </CardContent>
-                       </Card>
-                     </Link>
-                   );
-                 })}
-               </div>
-             )}
-          </div>
+          <Card className="border-stone-800 bg-stone-950/60 backdrop-blur-sm">
+            <CardHeader>
+              <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-red-900/30 text-red-500">
+                <Heart className="h-6 w-6 fill-current" />
+              </div>
+              <CardTitle className="font-display text-xl text-stone-200">Your Favorites</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {isLoading ? (
+                <div className="w-full p-6 rounded border border-stone-800 bg-stone-950/30 text-center text-stone-500 flex items-center justify-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Loading favorites...
+                </div>
+              ) : favorites.length === 0 ? (
+                <div className="w-full p-6 rounded border border-dashed border-stone-800 bg-stone-950/30 text-center text-stone-600">
+                  No favorites yet. Visit "My Campaigns" to star your adventures.
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {favorites.map((campaign: any) => {
+                    const isCreated = (userCampaigns.created ?? []).some((c: any) => c.id === campaign.id);
+                    const role = isCreated ? 'gm' : 'player';
+                    return (
+                      <Link key={campaign.id} href={`/campaign/${campaign.id}?role=${role}`} data-testid={`link-campaign-${campaign.id}`}>
+                        <Card className="group cursor-pointer border-stone-800 bg-stone-950/40 backdrop-blur-sm transition-all hover:-translate-y-1 hover:border-red-900/50 hover:bg-stone-900/60">
+                          <CardContent className="p-4 flex items-center justify-between">
+                            <div>
+                              <h3 className="font-display text-stone-200 group-hover:text-amber-400 transition-colors" data-testid={`text-campaign-name-${campaign.id}`}>{campaign.name}</h3>
+                              <div className="text-xs text-stone-500 mt-1 flex items-center gap-2">
+                                <span>{campaign.lastPlayed}</span>
+                                {isCreated && <span className="text-amber-700 border border-amber-900/30 px-1 rounded text-[10px]">GM</span>}
+                              </div>
+                            </div>
+                            <Play className="h-4 w-4 text-stone-600 group-hover:text-white" />
+                          </CardContent>
+                        </Card>
+                      </Link>
+                    );
+                  })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
           {/* Main Menu Grid (My Campaigns, Settings) */}
           <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
