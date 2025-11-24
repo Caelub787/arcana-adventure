@@ -182,6 +182,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/forgot-password", async (req, res) => {
     try {
       const { email } = req.body;
+      console.log(`[PASSWORD RESET] Request received for email: ${email}`);
       
       if (!email) {
         return res.status(400).json({ error: "Email is required" });
@@ -190,9 +191,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const user = await storage.getUserByEmail(email);
       
       if (!user) {
+        console.log(`[PASSWORD RESET] No user found with email: ${email}`);
         return res.json({ message: "If an account with that email exists, a password reset link has been sent." });
       }
 
+      console.log(`[PASSWORD RESET] User found: ${user.id}`);
       await storage.deleteUserPasswordResetTokens(user.id);
 
       const resetToken = crypto.randomBytes(32).toString('hex');
@@ -203,13 +206,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         token: resetToken,
         expiresAt
       });
+      console.log(`[PASSWORD RESET] Token created in database`);
 
       const baseUrl = req.protocol + '://' + req.get('host');
-      await sendPasswordResetEmail(user.email, resetToken, baseUrl);
+      console.log(`[PASSWORD RESET] Sending email to ${user.email} from Support@arcanaadventure.com`);
+      const emailResult = await sendPasswordResetEmail(user.email, resetToken, baseUrl);
+      console.log(`[PASSWORD RESET] Email sent successfully:`, emailResult);
 
       res.json({ message: "If an account with that email exists, a password reset link has been sent." });
     } catch (err) {
-      console.error("Forgot password error:", err);
+      console.error("[PASSWORD RESET] Error:", err);
       res.status(500).json({ error: "Failed to send reset email" });
     }
   });
