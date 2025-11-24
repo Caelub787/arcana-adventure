@@ -144,9 +144,12 @@ interface BattleMapProps {
 }
 
 export function BattleMap({ tokens, onMoveToken, onTokenClick, role, gridSize, backgroundImage }: BattleMapProps) {
-  // Pan state
+  // Pan and zoom state
   const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [zoom, setZoom] = useState(1);
   const constraintsRef = React.useRef(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const lastTouchDistanceRef = useRef<number | null>(null);
 
   const handleDragEnd = (e: any, info: any, token: Token) => {
     const newX = Math.round((token.x + info.offset.x) / gridSize) * gridSize;
@@ -154,15 +157,67 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, role, gridSize, b
     onMoveToken(token.id, newX, newY);
   };
 
+  // Handle wheel zoom (desktop)
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const handleWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const delta = -e.deltaY * 0.001;
+      setZoom(prev => Math.max(0.5, Math.min(3, prev + delta)));
+    };
+
+    container.addEventListener('wheel', handleWheel, { passive: false });
+    return () => container.removeEventListener('wheel', handleWheel);
+  }, []);
+
+  // Handle pinch zoom (mobile)
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const handleTouchMove = (e: TouchEvent) => {
+      if (e.touches.length === 2) {
+        e.preventDefault();
+        
+        const touch1 = e.touches[0];
+        const touch2 = e.touches[1];
+        const distance = Math.hypot(
+          touch2.clientX - touch1.clientX,
+          touch2.clientY - touch1.clientY
+        );
+
+        if (lastTouchDistanceRef.current !== null) {
+          const delta = (distance - lastTouchDistanceRef.current) * 0.01;
+          setZoom(prev => Math.max(0.5, Math.min(3, prev + delta)));
+        }
+
+        lastTouchDistanceRef.current = distance;
+      }
+    };
+
+    const handleTouchEnd = () => {
+      lastTouchDistanceRef.current = null;
+    };
+
+    container.addEventListener('touchmove', handleTouchMove, { passive: false });
+    container.addEventListener('touchend', handleTouchEnd);
+    return () => {
+      container.removeEventListener('touchmove', handleTouchMove);
+      container.removeEventListener('touchend', handleTouchEnd);
+    };
+  }, []);
+
   return (
-    <div className="relative h-full w-full overflow-hidden bg-black rounded-lg border border-white/10 shadow-inner group" ref={constraintsRef}>
+    <div className="relative h-full w-full overflow-hidden bg-black rounded-lg border border-white/10 shadow-inner group" ref={containerRef}>
       
       {/* Reset View Button (Floating) */}
       <Button 
          size="sm" 
          variant="secondary" 
          className="absolute bottom-4 left-4 z-30 bg-black/50 hover:bg-black/80 text-xs border border-white/10 backdrop-blur-sm"
-         onClick={() => setPan({ x: 0, y: 0 })}
+         onClick={() => { setPan({ x: 0, y: 0 }); setZoom(1); }}
       >
         <MapIcon className="h-3 w-3 mr-1" /> Reset View
       </Button>
@@ -173,7 +228,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, role, gridSize, b
         drag
         dragConstraints={constraintsRef}
         dragElastic={0.1}
-        animate={{ x: pan.x, y: pan.y }}
+        animate={{ x: pan.x, y: pan.y, scale: zoom }}
         onDragEnd={(e, info) => setPan({ x: pan.x + info.offset.x, y: pan.y + info.offset.y })}
         style={{ top: 0, left: 0 }} 
       >
@@ -215,7 +270,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, role, gridSize, b
       </motion.div>
 
       <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-black/50 backdrop-blur px-2 py-1 rounded text-[10px] text-stone-400 pointer-events-none border border-white/10">
-         {role === 'gm' ? 'GM Mode' : 'Player Mode'} • Pan: Middle Mouse / 2-Finger • 1 Sq = 5ft
+         {role === 'gm' ? 'GM Mode' : 'Player Mode'} • Pan: Drag • Zoom: Scroll/Pinch • 1 Sq = 5ft
       </div>
     </div>
   );
