@@ -38,7 +38,6 @@ export default function Home() {
         />
         <div className="absolute inset-0 bg-gradient-to-t from-black via-black/50 to-transparent" />
       </div>
-
       {/* Content Layer */}
       <div className="relative z-10 flex min-h-screen flex-col items-center justify-center p-6">
         
@@ -161,9 +160,7 @@ export default function Home() {
 
         </motion.div>
 
-        <div className="mt-12 text-xs text-stone-600 font-mono">
-          v0.1.0 Alpha • Built with Replit
-        </div>
+        <div className="mt-12 text-xs text-stone-600 font-mono">v0.1.0 Beta • Mystereed</div>
       </div>
     </div>
   );
