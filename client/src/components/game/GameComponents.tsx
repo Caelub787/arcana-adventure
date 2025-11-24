@@ -147,6 +147,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, role, gridSize, b
   // Pan and zoom state
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
+  const [isPinching, setIsPinching] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const lastTouchDistanceRef = useRef<number | null>(null);
 
@@ -196,9 +197,16 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, role, gridSize, b
     const container = containerRef.current;
     if (!container) return;
 
+    const handleTouchStart = (e: TouchEvent) => {
+      if (e.touches.length === 2) {
+        setIsPinching(true);
+      }
+    };
+
     const handleTouchMove = (e: TouchEvent) => {
       if (e.touches.length === 2) {
         e.preventDefault();
+        setIsPinching(true);
         
         const touch1 = e.touches[0];
         const touch2 = e.touches[1];
@@ -238,13 +246,18 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, role, gridSize, b
 
     const handleTouchEnd = () => {
       lastTouchDistanceRef.current = null;
+      setIsPinching(false);
     };
 
+    container.addEventListener('touchstart', handleTouchStart, { passive: false });
     container.addEventListener('touchmove', handleTouchMove, { passive: false });
     container.addEventListener('touchend', handleTouchEnd);
+    container.addEventListener('touchcancel', handleTouchEnd);
     return () => {
+      container.removeEventListener('touchstart', handleTouchStart);
       container.removeEventListener('touchmove', handleTouchMove);
       container.removeEventListener('touchend', handleTouchEnd);
+      container.removeEventListener('touchcancel', handleTouchEnd);
     };
   }, [zoom, pan]);
 
@@ -265,7 +278,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, role, gridSize, b
       {/* Draggable World Container - This pans the whole map */}
       <motion.div 
         className="absolute w-[2000px] h-[2000px] cursor-grab active:cursor-grabbing"
-        drag
+        drag={!isPinching}
         dragConstraints={containerRef}
         dragElastic={0.1}
         animate={{ x: pan.x, y: pan.y, scale: zoom }}
