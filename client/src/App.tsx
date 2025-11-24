@@ -39,6 +39,9 @@ function Router() {
       <Route path="/">
         {() => <ProtectedRoute component={Home} />}
       </Route>
+      <Route path="/campaign/:id">
+        {() => <ProtectedRoute component={Campaign} />}
+      </Route>
       <Route path="/campaign">
         {() => <ProtectedRoute component={Campaign} />}
       </Route>

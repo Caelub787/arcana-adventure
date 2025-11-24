@@ -3,22 +3,27 @@ import { motion } from "framer-motion";
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Play, Users, Settings, ScrollText, Plus, Heart } from "lucide-react";
+import { Play, Users, Settings, ScrollText, Plus, Heart, Loader2 } from "lucide-react";
 import bgImage from "@assets/generated_images/dark_fantasy_landscape_with_arcane_ruins.png";
-
-import { storage } from "@/lib/storage";
-import { Campaign } from "@/lib/mockData";
+import { useAuth } from "@/lib/AuthContext";
+import { api } from "@/lib/api";
+import { useQuery } from "@tanstack/react-query";
 
 export default function Home() {
   const [location, setLocation] = useLocation();
-  const user = JSON.parse(localStorage.getItem("arcana_user") || "{}");
+  const { user, logout } = useAuth();
   
-  // Load campaigns from storage specific to this user
-  const userCampaigns = storage.getCampaigns(user.email);
-  const favorites = [...userCampaigns.created, ...userCampaigns.joined].filter(c => c.favorite);
+  // Load campaigns from API with React Query
+  const { data: campaignsData, isLoading } = useQuery<{ created: any[], joined: any[] }>({
+    queryKey: ['/api/campaigns'],
+    enabled: !!user,
+  });
 
-  const handleLogout = () => {
-    localStorage.removeItem("arcana_user");
+  const userCampaigns = campaignsData ?? { created: [], joined: [] };
+  const favorites = [...(userCampaigns.created ?? []), ...(userCampaigns.joined ?? [])].filter((c: any) => c.favorite);
+
+  const handleLogout = async () => {
+    await logout();
     setLocation("/login");
   };
 
@@ -40,7 +45,7 @@ export default function Home() {
         {/* User & Logout */}
         <div className="absolute top-4 right-4 flex items-center gap-4">
           <div className="text-stone-400 text-sm">
-            Welcome, <span className="text-amber-500 font-bold">{user.name || "Traveler"}</span>
+            Welcome, <span className="text-amber-500 font-bold">{user?.name || "Traveler"}</span>
           </div>
         </div>
 
@@ -73,28 +78,37 @@ export default function Home() {
                <Heart className="h-5 w-5 text-red-500 fill-current" /> Your Favorites
              </h2>
              
-             {favorites.length === 0 ? (
+             {isLoading ? (
+               <div className="w-full p-6 rounded border border-stone-800 bg-stone-950/30 text-center text-stone-500 flex items-center justify-center gap-2">
+                 <Loader2 className="h-4 w-4 animate-spin" />
+                 Loading favorites...
+               </div>
+             ) : favorites.length === 0 ? (
                <div className="w-full p-6 rounded border border-dashed border-stone-800 bg-stone-950/30 text-center text-stone-600">
                  No favorites yet. Visit "My Campaigns" to star your adventures.
                </div>
              ) : (
                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                 {favorites.map(campaign => (
-                   <Link key={campaign.id} href={campaign.type === 'created' ? "/campaign?role=gm" : "/campaign?role=player"}>
-                     <Card className="group cursor-pointer border-stone-800 bg-stone-950/40 backdrop-blur-sm transition-all hover:-translate-y-1 hover:border-red-900/50 hover:bg-stone-900/60">
-                       <CardContent className="p-4 flex items-center justify-between">
-                         <div>
-                           <h3 className="font-display text-stone-200 group-hover:text-amber-400 transition-colors">{campaign.name}</h3>
-                           <div className="text-xs text-stone-500 mt-1 flex items-center gap-2">
-                             <span>{campaign.lastPlayed}</span>
-                             {campaign.type === 'created' && <span className="text-amber-700 border border-amber-900/30 px-1 rounded text-[10px]">GM</span>}
+                 {favorites.map((campaign: any) => {
+                   const isCreated = (userCampaigns.created ?? []).some((c: any) => c.id === campaign.id);
+                   const role = isCreated ? 'gm' : 'player';
+                   return (
+                     <Link key={campaign.id} href={`/campaign/${campaign.id}?role=${role}`} data-testid={`link-campaign-${campaign.id}`}>
+                       <Card className="group cursor-pointer border-stone-800 bg-stone-950/40 backdrop-blur-sm transition-all hover:-translate-y-1 hover:border-red-900/50 hover:bg-stone-900/60">
+                         <CardContent className="p-4 flex items-center justify-between">
+                           <div>
+                             <h3 className="font-display text-stone-200 group-hover:text-amber-400 transition-colors" data-testid={`text-campaign-name-${campaign.id}`}>{campaign.name}</h3>
+                             <div className="text-xs text-stone-500 mt-1 flex items-center gap-2">
+                               <span>{campaign.lastPlayed}</span>
+                               {isCreated && <span className="text-amber-700 border border-amber-900/30 px-1 rounded text-[10px]">GM</span>}
+                             </div>
                            </div>
-                         </div>
-                         <Play className="h-4 w-4 text-stone-600 group-hover:text-white" />
-                       </CardContent>
-                     </Card>
-                   </Link>
-                 ))}
+                           <Play className="h-4 w-4 text-stone-600 group-hover:text-white" />
+                         </CardContent>
+                       </Card>
+                     </Link>
+                   );
+                 })}
                </div>
              )}
           </div>
