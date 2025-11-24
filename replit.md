@@ -40,11 +40,13 @@ Preferred communication style: Simple, everyday language.
 - Interactive grid-based battle map with token management
 - **Pan functionality**: Click and drag to pan the map view, with drag constraints to keep the map bounded within the viewport
 - **Zoom functionality**: 
-  - Desktop: Mouse wheel scroll to zoom in/out
-  - Mobile/Touch: Two-finger pinch gesture to zoom in/out
+  - Desktop: Mouse wheel scroll to zoom in/out, zooms toward cursor position
+  - Mobile/Touch: Two-finger pinch gesture to zoom in/out, zooms toward pinch center
   - Zoom range: 0.5x to 3x scale
   - Smooth zoom animations using Framer Motion
-- **Reset View button**: Returns both pan position and zoom level to default state
+  - Zoom-to-pointer implementation keeps the focal point stationary during zoom
+- **Reset View button**: Positioned at top center with refresh icon, returns both pan position and zoom level to default state
+- **UI Layout**: Reset button at top center, control hints at bottom center
 - Grid-snapped token movement for precise positioning
 - Configurable grid sizes (30-100px, each square = 5ft)
 - Real-time token synchronization via WebSocket
