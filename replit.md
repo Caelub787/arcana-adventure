@@ -95,6 +95,7 @@ chatMessages (id, campaignId, userId, sender, text, timestamp)
 - Session cookies with 7-day expiration
 - CSRF protection via session validation
 - Environment-based session secrets
+- API endpoints sanitize responses to prevent PII leakage (e.g., campaign members API returns only necessary fields: id, userId, role, username)
 
 ## External Dependencies
 
