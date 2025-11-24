@@ -71,10 +71,7 @@ export default function Campaign() {
 
   // Create character mutation
   const createCharacterMutation = useMutation({
-    mutationFn: (characterData: any) => api.createCharacter({
-      ...characterData,
-      campaignId: effectiveCampaignId!,
-    }),
+    mutationFn: (characterData: any) => api.createCharacter(effectiveCampaignId!, characterData),
     onSuccess: (newCharacter) => {
       setCharacter(newCharacter);
       queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${effectiveCampaignId}/characters`] });
@@ -95,10 +92,7 @@ export default function Campaign() {
 
   // Create token mutation
   const createTokenMutation = useMutation({
-    mutationFn: (tokenData: any) => api.createToken({
-      ...tokenData,
-      campaignId: effectiveCampaignId!,
-    }),
+    mutationFn: (tokenData: any) => api.createToken(effectiveCampaignId!, tokenData),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${effectiveCampaignId}/tokens`] });
     },
@@ -180,6 +174,11 @@ export default function Campaign() {
 
   const handleCharacterCreated = (char: any) => {
     createCharacterMutation.mutate(char);
+  };
+
+  const handleAddCharacter = (characterData: any) => {
+    createCharacterMutation.mutate(characterData);
+    toast({ title: "Success", description: "Character created successfully" });
   };
 
   const handleMoveToken = (id: string, x: number, y: number) => {
@@ -264,6 +263,8 @@ export default function Campaign() {
             setGridSize={handleGridSizeChange}
             onAddToken={handleAddToken}
             onChangeMap={handleChangeMap}
+            characters={characters as any[]}
+            onAddCharacter={handleAddCharacter}
           />
         </div>
       </div>

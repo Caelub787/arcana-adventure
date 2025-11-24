@@ -29,10 +29,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         
         if (message.type === "join_campaign" && message.campaignId) {
           currentCampaignId = message.campaignId;
-          if (!campaignRooms.has(currentCampaignId)) {
-            campaignRooms.set(currentCampaignId, new Set());
+          if (!campaignRooms.has(message.campaignId)) {
+            campaignRooms.set(message.campaignId, new Set());
           }
-          campaignRooms.get(currentCampaignId)!.add(ws);
+          campaignRooms.get(message.campaignId)!.add(ws);
         }
 
         if (message.type === "token_move" && currentCampaignId) {
@@ -281,10 +281,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Character routes
-  app.post("/api/characters", requireAuth, async (req, res) => {
+  app.post("/api/campaigns/:campaignId/characters", requireAuth, async (req, res) => {
     try {
       const character = await storage.createCharacter({
         ...req.body,
+        campaignId: req.params.campaignId,
         userId: req.session.userId!
       });
       res.json(character);
@@ -315,9 +316,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Token routes
-  app.post("/api/tokens", requireAuth, async (req, res) => {
+  app.post("/api/campaigns/:campaignId/tokens", requireAuth, async (req, res) => {
     try {
-      const token = await storage.createToken(req.body);
+      const token = await storage.createToken({
+        ...req.body,
+        campaignId: req.params.campaignId
+      });
       res.json(token);
     } catch (err) {
       res.status(400).json({ error: "Failed to create token" });

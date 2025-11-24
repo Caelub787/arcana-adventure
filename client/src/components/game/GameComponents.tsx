@@ -8,11 +8,13 @@ import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { 
   Sword, Shield, Scroll, Map as MapIcon, Settings, 
   Users, Plus, LogOut, Menu, ChevronRight, ChevronLeft,
   Heart, Zap, Backpack, Sparkles, Dice5, MessageSquare
 } from "lucide-react";
+import { useForm } from "react-hook-form";
 import bgImage from "@assets/generated_images/dark_fantasy_landscape_with_arcane_ruins.png";
 import parchmentTexture from "@assets/generated_images/aged_parchment_paper_texture.png";
 import battleMapImage1 from "@assets/generated_images/top_down_dungeon_battlemap.png";
@@ -308,7 +310,144 @@ export function HUD({ character, onOpenChat }: HUDProps) {
   );
 }
 
-// 4. Campaign Menu & Chat
+// 4. Add Character Dialog
+interface AddCharacterDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onAddCharacter: (characterData: any) => void;
+}
+
+function AddCharacterDialog({ open, onOpenChange, onAddCharacter }: AddCharacterDialogProps) {
+  const { register, handleSubmit, reset, formState: { errors } } = useForm({
+    defaultValues: {
+      name: "",
+      class: "warrior",
+      level: 1,
+      hp: 100,
+      maxHp: 100,
+      energy: 50,
+      maxEnergy: 50,
+    }
+  });
+
+  const onSubmit = (data: any) => {
+    onAddCharacter(data);
+    reset();
+    onOpenChange(false);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="bg-stone-900 border-stone-700 text-stone-200 sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="text-amber-500 font-display text-2xl">Add Character</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="name" className="text-stone-300">Character Name</Label>
+            <Input
+              id="name"
+              data-testid="input-character-name"
+              {...register("name", { required: true })}
+              className="bg-stone-800 border-stone-700 text-stone-200"
+              placeholder="Enter character name"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="class" className="text-stone-300">Class</Label>
+            <Input
+              id="class"
+              data-testid="input-character-class"
+              {...register("class", { required: true })}
+              className="bg-stone-800 border-stone-700 text-stone-200"
+              placeholder="e.g., Warrior, Mage, Rogue"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="level" className="text-stone-300">Level</Label>
+              <Input
+                id="level"
+                data-testid="input-character-level"
+                type="number"
+                {...register("level", { required: true, valueAsNumber: true, min: 1 })}
+                className="bg-stone-800 border-stone-700 text-stone-200"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="hp" className="text-stone-300">HP</Label>
+              <Input
+                id="hp"
+                data-testid="input-character-hp"
+                type="number"
+                {...register("hp", { required: true, valueAsNumber: true, min: 1 })}
+                className="bg-stone-800 border-stone-700 text-stone-200"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="maxHp" className="text-stone-300">Max HP</Label>
+              <Input
+                id="maxHp"
+                data-testid="input-character-maxhp"
+                type="number"
+                {...register("maxHp", { required: true, valueAsNumber: true, min: 1 })}
+                className="bg-stone-800 border-stone-700 text-stone-200"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="energy" className="text-stone-300">Energy</Label>
+              <Input
+                id="energy"
+                data-testid="input-character-energy"
+                type="number"
+                {...register("energy", { required: true, valueAsNumber: true, min: 0 })}
+                className="bg-stone-800 border-stone-700 text-stone-200"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="maxEnergy" className="text-stone-300">Max Energy</Label>
+            <Input
+              id="maxEnergy"
+              data-testid="input-character-maxenergy"
+              type="number"
+              {...register("maxEnergy", { required: true, valueAsNumber: true, min: 0 })}
+              className="bg-stone-800 border-stone-700 text-stone-200"
+            />
+          </div>
+
+          <div className="flex gap-2 pt-4">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+              className="flex-1 bg-stone-800 border-stone-700 hover:bg-stone-700"
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              data-testid="button-submit-character"
+              className="flex-1 bg-amber-700 hover:bg-amber-600 text-white"
+            >
+              Create Character
+            </Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// 5. Campaign Menu & Chat
 interface CampaignMenuProps {
   role: Role;
   inviteCode?: string;
@@ -318,10 +457,13 @@ interface CampaignMenuProps {
   setGridSize: (size: number) => void;
   onAddToken?: () => void;
   onChangeMap?: () => void;
+  characters?: any[];
+  onAddCharacter?: (characterData: any) => void;
 }
 
-export function CampaignMenu({ role, inviteCode, inspectedChar, onInspectChar, gridSize, setGridSize, onAddToken, onChangeMap }: CampaignMenuProps) {
+export function CampaignMenu({ role, inviteCode, inspectedChar, onInspectChar, gridSize, setGridSize, onAddToken, onChangeMap, characters, onAddCharacter }: CampaignMenuProps) {
   const [chatOpen, setChatOpen] = useState(false);
+  const [addCharacterOpen, setAddCharacterOpen] = useState(false);
   const [messages, setMessages] = useState([
     { sender: "System", text: "Welcome to Arcana Adventures!", type: "system" },
     { sender: "GM", text: "Roll for initiative!", type: "chat" }
@@ -447,19 +589,48 @@ export function CampaignMenu({ role, inviteCode, inspectedChar, onInspectChar, g
             </TabsContent>
             
             <TabsContent value="characters" className="mt-4 space-y-4">
-               {/* Mock Characters List */}
+               {/* Add Character Button (GM only) */}
+               {role === 'gm' && onAddCharacter && (
+                 <Button 
+                   variant="secondary" 
+                   className="w-full bg-stone-800 hover:bg-stone-700" 
+                   onClick={() => setAddCharacterOpen(true)}
+                   data-testid="button-add-character"
+                 >
+                   <Plus className="mr-2 h-4 w-4" /> Add Character
+                 </Button>
+               )}
+               
+               {/* Characters List */}
                <div className="space-y-2">
-                  <div className="p-3 bg-stone-900 rounded border border-stone-800 flex justify-between items-center">
-                     <div className="flex items-center gap-3">
-                        <div className="h-10 w-10 bg-stone-800 rounded flex items-center justify-center border border-stone-700">
-                          <Sword className="h-5 w-5 text-stone-500" />
+                  {characters && characters.length > 0 ? (
+                    characters.map((char: any) => (
+                      <div 
+                        key={char.id} 
+                        className="p-3 bg-stone-900 rounded border border-stone-800 flex justify-between items-center"
+                        data-testid={`character-item-${char.id}`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="h-10 w-10 bg-stone-800 rounded flex items-center justify-center border border-stone-700">
+                            <Sword className="h-5 w-5 text-stone-500" />
+                          </div>
+                          <div>
+                            <div className="font-bold text-stone-200">{char.name}</div>
+                            <div className="text-xs text-stone-500">
+                              Lvl {char.level} {char.class}
+                            </div>
+                          </div>
                         </div>
-                        <div>
-                           <div className="font-bold text-stone-200">Valerius</div>
-                           <div className="text-xs text-stone-500">Lvl 3 Warrior</div>
+                        <div className="text-xs text-stone-400">
+                          HP: {char.hp}/{char.maxHp}
                         </div>
-                     </div>
-                  </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="p-4 text-center text-stone-500 text-sm">
+                      No characters yet
+                    </div>
+                  )}
                </div>
             </TabsContent>
           </Tabs>
@@ -517,6 +688,15 @@ export function CampaignMenu({ role, inviteCode, inspectedChar, onInspectChar, g
           </div>
         </SheetContent>
       </Sheet>
+      
+      {/* Add Character Dialog */}
+      {onAddCharacter && (
+        <AddCharacterDialog 
+          open={addCharacterOpen}
+          onOpenChange={setAddCharacterOpen}
+          onAddCharacter={onAddCharacter}
+        />
+      )}
     </>
   );
 }

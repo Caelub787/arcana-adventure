@@ -143,8 +143,8 @@ class ApiClient {
   }
 
   // Characters
-  async createCharacter(character: Omit<Character, 'id' | 'userId'>): Promise<Character> {
-    return this.request('/characters', {
+  async createCharacter(campaignId: string, character: Omit<Character, 'id' | 'userId' | 'campaignId'>): Promise<Character> {
+    return this.request(`/campaigns/${campaignId}/characters`, {
       method: 'POST',
       body: JSON.stringify(character),
     });
@@ -162,8 +162,8 @@ class ApiClient {
   }
 
   // Tokens
-  async createToken(token: Omit<Token, 'id'>): Promise<Token> {
-    return this.request('/tokens', {
+  async createToken(campaignId: string, token: Omit<Token, 'id' | 'campaignId'>): Promise<Token> {
+    return this.request(`/campaigns/${campaignId}/tokens`, {
       method: 'POST',
       body: JSON.stringify(token),
     });
