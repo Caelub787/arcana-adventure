@@ -147,7 +147,6 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, role, gridSize, b
   // Pan and zoom state
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
-  const constraintsRef = React.useRef(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const lastTouchDistanceRef = useRef<number | null>(null);
 
@@ -226,7 +225,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, role, gridSize, b
       <motion.div 
         className="absolute w-[2000px] h-[2000px] cursor-grab active:cursor-grabbing"
         drag
-        dragConstraints={constraintsRef}
+        dragConstraints={containerRef}
         dragElastic={0.1}
         animate={{ x: pan.x, y: pan.y, scale: zoom }}
         onDragEnd={(e, info) => setPan({ x: pan.x + info.offset.x, y: pan.y + info.offset.y })}
