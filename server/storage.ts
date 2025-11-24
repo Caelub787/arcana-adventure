@@ -14,6 +14,7 @@ export interface IStorage {
   // User operations
   getUser(id: string): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
+  getUserByUsername(username: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
 
   // Campaign operations
@@ -55,6 +56,11 @@ export class DatabaseStorage implements IStorage {
 
   async getUserByEmail(email: string): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.email, email)).limit(1);
+    return user;
+  }
+
+  async getUserByUsername(username: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.username, username)).limit(1);
     return user;
   }
 
@@ -104,7 +110,7 @@ export class DatabaseStorage implements IStorage {
       ))
       .orderBy(desc(campaigns.lastPlayed));
 
-    const joinedCampaigns = joinedCampaignsData.map(row => row.campaigns);
+    const joinedCampaigns = joinedCampaignsData.map((row: any) => row.campaigns);
 
     return {
       created: createdCampaigns,

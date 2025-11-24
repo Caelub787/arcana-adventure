@@ -3,6 +3,8 @@
 export interface User {
   id: string;
   email: string;
+  username: string;
+  name: string;
 }
 
 export interface Campaign {
@@ -80,10 +82,10 @@ class ApiClient {
   }
 
   // Auth
-  async register(email: string, password: string): Promise<{ user: User }> {
+  async register(email: string, password: string, username: string, name: string): Promise<{ user: User }> {
     return this.request('/register', {
       method: 'POST',
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ email, password, username, name }),
     });
   }
 

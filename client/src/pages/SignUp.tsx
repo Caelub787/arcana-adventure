@@ -14,6 +14,8 @@ import bgImage from "@assets/generated_images/dark_fantasy_landscape_with_arcane
 export default function SignUp() {
   const [_, setLocation] = useLocation();
   const [formData, setFormData] = useState({
+    name: "",
+    username: "",
     email: "",
     password: "",
     tosAccepted: false
@@ -36,7 +38,7 @@ export default function SignUp() {
     setIsLoading(true);
     
     try {
-      await register(formData.email, formData.password);
+      await register(formData.email, formData.password, formData.username, formData.name);
       setLocation("/");
     } catch (error: any) {
       toast({
@@ -75,6 +77,32 @@ export default function SignUp() {
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="name" data-testid="label-name">Full Name</Label>
+                <Input 
+                  id="name" 
+                  value={formData.name}
+                  onChange={(e) => setFormData({...formData, name: e.target.value})}
+                  className="bg-stone-900/50 border-stone-700 focus:border-amber-600"
+                  placeholder="E.g. Gandalf the Grey"
+                  data-testid="input-name"
+                  required
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="username" data-testid="label-username">Username (Unique ID)</Label>
+                <Input 
+                  id="username" 
+                  value={formData.username}
+                  onChange={(e) => setFormData({...formData, username: e.target.value})}
+                  className="bg-stone-900/50 border-stone-700 focus:border-amber-600"
+                  placeholder="wizard_of_oz"
+                  data-testid="input-username"
+                  required
+                />
+              </div>
+
               <div className="space-y-2">
                 <Label htmlFor="email" data-testid="label-email">Email</Label>
                 <Input 
