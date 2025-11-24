@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { 
   Sword, Shield, Scroll, Map as MapIcon, Settings, 
   Users, Plus, LogOut, Menu, ChevronRight, ChevronLeft,
-  Heart, Zap, Backpack, Sparkles, Dice5, MessageSquare
+  Heart, Zap, Backpack, Sparkles, Dice5, MessageSquare, RefreshCw
 } from "lucide-react";
 import { useForm } from "react-hook-form";
 import bgImage from "@assets/generated_images/dark_fantasy_landscape_with_arcane_ruins.png";
@@ -149,6 +149,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, role, gridSize, b
   const [zoom, setZoom] = useState(1);
   const containerRef = useRef<HTMLDivElement>(null);
   const lastTouchDistanceRef = useRef<number | null>(null);
+  const lastTouchCenterRef = useRef<{ x: number; y: number } | null>(null);
 
   const handleDragEnd = (e: any, info: any, token: Token) => {
     const newX = Math.round((token.x + info.offset.x) / gridSize) * gridSize;
@@ -156,22 +157,42 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, role, gridSize, b
     onMoveToken(token.id, newX, newY);
   };
 
-  // Handle wheel zoom (desktop)
+  // Handle wheel zoom (desktop) - zoom toward cursor position
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
     const handleWheel = (e: WheelEvent) => {
       e.preventDefault();
+      
+      const rect = container.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+      
       const delta = -e.deltaY * 0.001;
-      setZoom(prev => Math.max(0.5, Math.min(3, prev + delta)));
+      const newZoom = Math.max(0.5, Math.min(3, zoom + delta));
+      
+      if (newZoom !== zoom) {
+        // Calculate the world position under the cursor
+        const worldX = (mouseX - pan.x) / zoom;
+        const worldY = (mouseY - pan.y) / zoom;
+        
+        // Adjust pan to keep the world position under the cursor
+        const newPan = {
+          x: mouseX - worldX * newZoom,
+          y: mouseY - worldY * newZoom
+        };
+        
+        setPan(newPan);
+        setZoom(newZoom);
+      }
     };
 
     container.addEventListener('wheel', handleWheel, { passive: false });
     return () => container.removeEventListener('wheel', handleWheel);
-  }, []);
+  }, [zoom, pan]);
 
-  // Handle pinch zoom (mobile)
+  // Handle pinch zoom (mobile) - zoom toward pinch center
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -187,17 +208,39 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, role, gridSize, b
           touch2.clientY - touch1.clientY
         );
 
-        if (lastTouchDistanceRef.current !== null) {
+        // Calculate pinch center
+        const rect = container.getBoundingClientRect();
+        const centerX = ((touch1.clientX + touch2.clientX) / 2) - rect.left;
+        const centerY = ((touch1.clientY + touch2.clientY) / 2) - rect.top;
+
+        if (lastTouchDistanceRef.current !== null && lastTouchCenterRef.current !== null) {
           const delta = (distance - lastTouchDistanceRef.current) * 0.01;
-          setZoom(prev => Math.max(0.5, Math.min(3, prev + delta)));
+          const newZoom = Math.max(0.5, Math.min(3, zoom + delta));
+          
+          if (newZoom !== zoom) {
+            // Use the previous touch center for consistent zoom point
+            const worldX = (lastTouchCenterRef.current.x - pan.x) / zoom;
+            const worldY = (lastTouchCenterRef.current.y - pan.y) / zoom;
+            
+            // Adjust pan to keep the world position under the pinch center
+            const newPan = {
+              x: centerX - worldX * newZoom,
+              y: centerY - worldY * newZoom
+            };
+            
+            setPan(newPan);
+            setZoom(newZoom);
+          }
         }
 
         lastTouchDistanceRef.current = distance;
+        lastTouchCenterRef.current = { x: centerX, y: centerY };
       }
     };
 
     const handleTouchEnd = () => {
       lastTouchDistanceRef.current = null;
+      lastTouchCenterRef.current = null;
     };
 
     container.addEventListener('touchmove', handleTouchMove, { passive: false });
@@ -206,19 +249,20 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, role, gridSize, b
       container.removeEventListener('touchmove', handleTouchMove);
       container.removeEventListener('touchend', handleTouchEnd);
     };
-  }, []);
+  }, [zoom, pan]);
 
   return (
     <div className="relative h-full w-full overflow-hidden bg-black rounded-lg border border-white/10 shadow-inner group" ref={containerRef}>
       
-      {/* Reset View Button (Floating) */}
+      {/* Reset View Button (Top Center) */}
       <Button 
          size="sm" 
          variant="secondary" 
-         className="absolute bottom-4 left-4 z-30 bg-black/50 hover:bg-black/80 text-xs border border-white/10 backdrop-blur-sm"
+         className="absolute top-4 left-1/2 -translate-x-1/2 z-30 bg-black/50 hover:bg-black/80 text-xs border border-white/10 backdrop-blur-sm"
          onClick={() => { setPan({ x: 0, y: 0 }); setZoom(1); }}
+         data-testid="button-reset-view"
       >
-        <MapIcon className="h-3 w-3 mr-1" /> Reset View
+        <RefreshCw className="h-3 w-3" />
       </Button>
 
       {/* Draggable World Container - This pans the whole map */}
@@ -268,7 +312,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, role, gridSize, b
         ))}
       </motion.div>
 
-      <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-black/50 backdrop-blur px-2 py-1 rounded text-[10px] text-stone-400 pointer-events-none border border-white/10">
+      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black/50 backdrop-blur px-2 py-1 rounded text-[10px] text-stone-400 pointer-events-none border border-white/10">
          {role === 'gm' ? 'GM Mode' : 'Player Mode'} • Pan: Drag • Zoom: Scroll/Pinch • 1 Sq = 5ft
       </div>
     </div>
