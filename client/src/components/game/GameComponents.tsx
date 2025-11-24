@@ -458,10 +458,11 @@ interface CampaignMenuProps {
   onAddToken?: () => void;
   onChangeMap?: () => void;
   characters?: any[];
+  members?: any[];
   onAddCharacter?: (characterData: any) => void;
 }
 
-export function CampaignMenu({ role, inviteCode, inspectedChar, onInspectChar, gridSize, setGridSize, onAddToken, onChangeMap, characters, onAddCharacter }: CampaignMenuProps) {
+export function CampaignMenu({ role, inviteCode, inspectedChar, onInspectChar, gridSize, setGridSize, onAddToken, onChangeMap, characters, members, onAddCharacter }: CampaignMenuProps) {
   const [chatOpen, setChatOpen] = useState(false);
   const [addCharacterOpen, setAddCharacterOpen] = useState(false);
   const [messages, setMessages] = useState([
@@ -563,28 +564,29 @@ export function CampaignMenu({ role, inviteCode, inspectedChar, onInspectChar, g
             </TabsList>
             
             <TabsContent value="players" className="mt-4 space-y-4">
-               {/* Mock Players List */}
+               {/* Campaign Members List */}
                <div className="space-y-2">
-                  <div className="p-3 bg-stone-900 rounded border border-stone-800 flex justify-between items-center">
-                     <div className="flex items-center gap-3">
-                        <span className="text-2xl">🧙‍♂️</span>
-                        <div>
-                           <div className="font-bold text-stone-200">DungeonMaster99</div>
-                           <div className="text-xs text-stone-500">GM</div>
+                  {members && members.length > 0 ? (
+                    members.map((member: any) => (
+                      <div 
+                        key={member.id} 
+                        className="p-3 bg-stone-900 rounded border border-stone-800 flex justify-between items-center"
+                        data-testid={`member-item-${member.id}`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <span className="text-2xl">{member.role === 'gm' ? '🧙‍♂️' : '🛡️'}</span>
+                          <div>
+                            <div className="font-bold text-stone-200">{member.username || 'Unknown'}</div>
+                            <div className="text-xs text-stone-500">{member.role === 'gm' ? 'GM' : 'Player'}</div>
+                          </div>
                         </div>
-                     </div>
-                     <span className="text-xs bg-green-900/20 text-green-400 px-2 py-1 rounded">Online</span>
-                  </div>
-                  <div className="p-3 bg-stone-900 rounded border border-stone-800 flex justify-between items-center">
-                     <div className="flex items-center gap-3">
-                        <span className="text-2xl">🛡️</span>
-                        <div>
-                           <div className="font-bold text-stone-200">ValeriusUser</div>
-                           <div className="text-xs text-stone-500">Player</div>
-                        </div>
-                     </div>
-                     <span className="text-xs bg-green-900/20 text-green-400 px-2 py-1 rounded">Online</span>
-                  </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="p-4 text-center text-stone-500 text-sm">
+                      No members yet
+                    </div>
+                  )}
                </div>
             </TabsContent>
             

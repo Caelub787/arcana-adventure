@@ -144,10 +144,23 @@ export class DatabaseStorage implements IStorage {
     return campaignMember;
   }
 
-  async getCampaignMembers(campaignId: string): Promise<CampaignMember[]> {
-    return await db.select()
+  async getCampaignMembers(campaignId: string): Promise<any[]> {
+    const membersData = await db.select()
       .from(campaignMembers)
+      .innerJoin(users, eq(campaignMembers.userId, users.id))
       .where(eq(campaignMembers.campaignId, campaignId));
+
+    return membersData.map((row: any) => ({
+      id: row.campaign_members.id,
+      campaignId: row.campaign_members.campaignId,
+      userId: row.campaign_members.userId,
+      role: row.campaign_members.role,
+      favorite: row.campaign_members.favorite,
+      joinedAt: row.campaign_members.joinedAt,
+      username: row.users.username,
+      name: row.users.name,
+      email: row.users.email
+    }));
   }
 
   async removeCampaignMember(campaignId: string, userId: string): Promise<void> {

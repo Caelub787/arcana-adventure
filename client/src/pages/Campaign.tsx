@@ -56,6 +56,12 @@ export default function Campaign() {
     enabled: !!effectiveCampaignId && !isNew,
   });
 
+  // Load campaign members
+  const { data: members, isLoading: membersLoading } = useQuery({
+    queryKey: [`/api/campaigns/${effectiveCampaignId}/members`],
+    enabled: !!effectiveCampaignId && !isNew,
+  });
+
   // Create campaign mutation
   const createCampaignMutation = useMutation({
     mutationFn: (name: string) => api.createCampaign(name, gridSize, currentMap),
@@ -226,7 +232,7 @@ export default function Campaign() {
   };
 
   // Show loading state
-  if (campaignLoading || tokensLoading || charactersLoading || createCampaignMutation.isPending) {
+  if (campaignLoading || tokensLoading || charactersLoading || membersLoading || createCampaignMutation.isPending) {
     return (
       <div className="relative h-screen w-screen overflow-hidden bg-black text-white flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
@@ -264,6 +270,7 @@ export default function Campaign() {
             onAddToken={handleAddToken}
             onChangeMap={handleChangeMap}
             characters={characters as any[]}
+            members={members as any[]}
             onAddCharacter={handleAddCharacter}
           />
         </div>
