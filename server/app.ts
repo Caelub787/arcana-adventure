@@ -2,6 +2,9 @@ import { type Server } from "node:http";
 
 import express, { type Express, type Request, Response, NextFunction } from "express";
 import session from "express-session";
+import ConnectPgSimple from "connect-pg-simple";
+import { Pool, neonConfig } from "@neondatabase/serverless";
+import ws from "ws";
 import { registerRoutes } from "./routes";
 
 export function log(message: string, source = "express") {
@@ -23,11 +26,31 @@ declare module 'http' {
   }
 }
 
+// Configure Neon to use WebSocket for connections (required for Node.js)
+neonConfig.webSocketConstructor = ws;
+
+// PostgreSQL session store for persistence across server restarts
+const PgStore = ConnectPgSimple(session);
+const pool = new Pool({ 
+  connectionString: process.env.DATABASE_URL,
+  max: 10
+});
+
 app.use(session({
+  store: new PgStore({
+    pool,
+    createTableIfMissing: true,
+    tableName: 'session',
+    pruneSessionInterval: 900 // Prune expired sessions every 15 minutes
+  }),
   secret: process.env.SESSION_SECRET || 'arcana-adventures-secret-key',
   resave: false,
   saveUninitialized: false,
-  cookie: { secure: false, maxAge: 1000 * 60 * 60 * 24 * 7 } // 7 days
+  cookie: { 
+    secure: false, 
+    maxAge: 1000 * 60 * 60 * 24 * 7, // 7 days
+    httpOnly: true
+  }
 }));
 
 app.use(express.json({
