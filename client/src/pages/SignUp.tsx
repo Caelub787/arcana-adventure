@@ -7,48 +7,46 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { useAuth } from "@/lib/AuthContext";
+import { useToast } from "@/hooks/use-toast";
 import bgImage from "@assets/generated_images/dark_fantasy_landscape_with_arcane_ruins.png";
 
 export default function SignUp() {
   const [_, setLocation] = useLocation();
   const [formData, setFormData] = useState({
-    name: "",
-    username: "",
     email: "",
     password: "",
     tosAccepted: false
   });
   const [isLoading, setIsLoading] = useState(false);
+  const { register } = useAuth();
+  const { toast } = useToast();
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.tosAccepted) {
-      alert("You must accept the Terms of Service to continue.");
+      toast({
+        title: "Terms Required",
+        description: "You must accept the Terms of Service to continue.",
+        variant: "destructive"
+      });
       return;
     }
     
     setIsLoading(true);
-    // Mock registration delay
-    setTimeout(() => {
-      // Save user to local "DB"
-      const usersDb = JSON.parse(localStorage.getItem("arcana_users") || "{}");
-      const newUser = {
-        name: formData.name,
-        username: formData.username,
-        email: formData.email,
-        password: formData.password // Mock only!
-      };
-      
-      // Use email as key for simplicity
-      usersDb[formData.email] = newUser;
-      localStorage.setItem("arcana_users", JSON.stringify(usersDb));
-
-      // Auto-login
-      localStorage.setItem("arcana_user", JSON.stringify(newUser));
-      
+    
+    try {
+      await register(formData.email, formData.password);
+      setLocation("/");
+    } catch (error: any) {
+      toast({
+        title: "Registration failed",
+        description: error.message || "Could not create account",
+        variant: "destructive"
+      });
+    } finally {
       setIsLoading(false);
-      window.location.href = "/"; // Force reload to pick up auth state
-    }, 1500);
+    }
   };
 
   return (
@@ -77,33 +75,8 @@ export default function SignUp() {
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">
-              
               <div className="space-y-2">
-                <Label htmlFor="name">Full Name</Label>
-                <Input 
-                  id="name" 
-                  value={formData.name}
-                  onChange={(e) => setFormData({...formData, name: e.target.value})}
-                  className="bg-stone-900/50 border-stone-700 focus:border-amber-600"
-                  placeholder="E.g. Gandalf the Grey"
-                  required
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="username">Username (Unique ID)</Label>
-                <Input 
-                  id="username" 
-                  value={formData.username}
-                  onChange={(e) => setFormData({...formData, username: e.target.value})}
-                  className="bg-stone-900/50 border-stone-700 focus:border-amber-600"
-                  placeholder="wizard_of_oz"
-                  required
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
+                <Label htmlFor="email" data-testid="label-email">Email</Label>
                 <Input 
                   id="email" 
                   type="email" 
@@ -111,18 +84,20 @@ export default function SignUp() {
                   onChange={(e) => setFormData({...formData, email: e.target.value})}
                   className="bg-stone-900/50 border-stone-700 focus:border-amber-600"
                   placeholder="you@example.com"
+                  data-testid="input-email"
                   required
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="password">Password</Label>
+                <Label htmlFor="password" data-testid="label-password">Password</Label>
                 <Input 
                   id="password" 
                   type="password" 
                   value={formData.password}
                   onChange={(e) => setFormData({...formData, password: e.target.value})}
                   className="bg-stone-900/50 border-stone-700 focus:border-amber-600"
+                  data-testid="input-password"
                   required
                 />
               </div>

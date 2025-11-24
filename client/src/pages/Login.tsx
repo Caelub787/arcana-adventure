@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
+import { useAuth } from "@/lib/AuthContext";
+import { useToast } from "@/hooks/use-toast";
 import bgImage from "@assets/generated_images/dark_fantasy_landscape_with_arcane_ruins.png";
 
 export default function Login() {
@@ -12,33 +14,25 @@ export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const { login } = useAuth();
+  const { toast } = useToast();
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    // Mock login delay
-    setTimeout(() => {
-      // Check if user exists in local "DB"
-      const usersDb = JSON.parse(localStorage.getItem("arcana_users") || "{}");
-      
-      // Find user by email or username
-      const user = Object.values(usersDb).find((u: any) => u.email === email || u.username === email) as any;
-
-      if (user) {
-        // Check password (mock auth)
-        if (user.password === password) {
-          localStorage.setItem("arcana_user", JSON.stringify(user));
-          setIsLoading(false);
-          window.location.href = "/"; 
-        } else {
-          setIsLoading(false);
-          alert("Invalid password. Please try again.");
-        }
-      } else {
-        setIsLoading(false);
-        alert("Account not found. Please sign up first.");
-      }
-    }, 1000);
+    
+    try {
+      await login(email, password);
+      setLocation("/");
+    } catch (error: any) {
+      toast({
+        title: "Login failed",
+        description: error.message || "Invalid credentials",
+        variant: "destructive"
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -68,25 +62,27 @@ export default function Login() {
           <CardContent>
             <form onSubmit={handleLogin} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="email">Email / Username</Label>
+                <Label htmlFor="email" data-testid="label-email">Email</Label>
                 <Input 
                   id="email" 
-                  type="text" 
+                  type="email" 
                   placeholder="wizard@arcana.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="bg-stone-900/50 border-stone-700 focus:border-amber-600"
+                  data-testid="input-email"
                   required
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="password">Password</Label>
+                <Label htmlFor="password" data-testid="label-password">Password</Label>
                 <Input 
                   id="password" 
                   type="password" 
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="bg-stone-900/50 border-stone-700 focus:border-amber-600"
+                  data-testid="input-password"
                   required
                 />
               </div>
@@ -94,6 +90,7 @@ export default function Login() {
                 type="submit" 
                 className="w-full bg-amber-700 hover:bg-amber-600 text-white font-bold mt-4"
                 disabled={isLoading}
+                data-testid="button-login"
               >
                 {isLoading ? "Opening Portal..." : "Login"}
               </Button>
