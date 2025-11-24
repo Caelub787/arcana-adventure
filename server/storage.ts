@@ -157,9 +157,7 @@ export class DatabaseStorage implements IStorage {
       role: row.campaign_members.role,
       favorite: row.campaign_members.favorite,
       joinedAt: row.campaign_members.joinedAt,
-      username: row.users.username,
-      name: row.users.name,
-      email: row.users.email
+      username: row.users.username
     }));
   }
 
