@@ -5,7 +5,8 @@ import {
   type Character, type InsertCharacter,
   type Token, type InsertToken,
   type ChatMessage, type InsertChatMessage,
-  users, campaigns, campaignMembers, characters, tokens, chatMessages
+  type PasswordResetToken, type InsertPasswordResetToken,
+  users, campaigns, campaignMembers, characters, tokens, chatMessages, passwordResetTokens
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql } from "drizzle-orm";
@@ -45,6 +46,13 @@ export interface IStorage {
   // Chat operations
   createChatMessage(message: InsertChatMessage): Promise<ChatMessage>;
   getCampaignMessages(campaignId: string, limit?: number): Promise<ChatMessage[]>;
+
+  // Password Reset operations
+  createPasswordResetToken(token: InsertPasswordResetToken): Promise<PasswordResetToken>;
+  getPasswordResetToken(token: string): Promise<PasswordResetToken | undefined>;
+  deletePasswordResetToken(token: string): Promise<void>;
+  deleteUserPasswordResetTokens(userId: string): Promise<void>;
+  updateUserPassword(userId: string, hashedPassword: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -215,6 +223,34 @@ export class DatabaseStorage implements IStorage {
       .where(eq(chatMessages.campaignId, campaignId))
       .orderBy(desc(chatMessages.createdAt))
       .limit(limit);
+  }
+
+  // Password Reset operations
+  async createPasswordResetToken(token: InsertPasswordResetToken): Promise<PasswordResetToken> {
+    const [resetToken] = await db.insert(passwordResetTokens).values(token).returning();
+    return resetToken;
+  }
+
+  async getPasswordResetToken(token: string): Promise<PasswordResetToken | undefined> {
+    const [resetToken] = await db.select()
+      .from(passwordResetTokens)
+      .where(eq(passwordResetTokens.token, token))
+      .limit(1);
+    return resetToken;
+  }
+
+  async deletePasswordResetToken(token: string): Promise<void> {
+    await db.delete(passwordResetTokens).where(eq(passwordResetTokens.token, token));
+  }
+
+  async deleteUserPasswordResetTokens(userId: string): Promise<void> {
+    await db.delete(passwordResetTokens).where(eq(passwordResetTokens.userId, userId));
+  }
+
+  async updateUserPassword(userId: string, hashedPassword: string): Promise<void> {
+    await db.update(users)
+      .set({ password: hashedPassword })
+      .where(eq(users.id, userId));
   }
 }
 
