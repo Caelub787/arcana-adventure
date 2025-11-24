@@ -149,7 +149,6 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, role, gridSize, b
   const [zoom, setZoom] = useState(1);
   const containerRef = useRef<HTMLDivElement>(null);
   const lastTouchDistanceRef = useRef<number | null>(null);
-  const lastTouchCenterRef = useRef<{ x: number; y: number } | null>(null);
 
   const handleDragEnd = (e: any, info: any, token: Token) => {
     const newX = Math.round((token.x + info.offset.x) / gridSize) * gridSize;
@@ -213,14 +212,14 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, role, gridSize, b
         const centerX = ((touch1.clientX + touch2.clientX) / 2) - rect.left;
         const centerY = ((touch1.clientY + touch2.clientY) / 2) - rect.top;
 
-        if (lastTouchDistanceRef.current !== null && lastTouchCenterRef.current !== null) {
+        if (lastTouchDistanceRef.current !== null) {
           const delta = (distance - lastTouchDistanceRef.current) * 0.01;
           const newZoom = Math.max(0.5, Math.min(3, zoom + delta));
           
           if (newZoom !== zoom) {
-            // Use the previous touch center for consistent zoom point
-            const worldX = (lastTouchCenterRef.current.x - pan.x) / zoom;
-            const worldY = (lastTouchCenterRef.current.y - pan.y) / zoom;
+            // Use the current touch center for consistent zoom point
+            const worldX = (centerX - pan.x) / zoom;
+            const worldY = (centerY - pan.y) / zoom;
             
             // Adjust pan to keep the world position under the pinch center
             const newPan = {
@@ -234,13 +233,11 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, role, gridSize, b
         }
 
         lastTouchDistanceRef.current = distance;
-        lastTouchCenterRef.current = { x: centerX, y: centerY };
       }
     };
 
     const handleTouchEnd = () => {
       lastTouchDistanceRef.current = null;
-      lastTouchCenterRef.current = null;
     };
 
     container.addEventListener('touchmove', handleTouchMove, { passive: false });
