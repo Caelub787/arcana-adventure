@@ -150,6 +150,15 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, role, gridSize, b
   const [isPinching, setIsPinching] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const lastTouchDistanceRef = useRef<number | null>(null);
+  
+  // Use refs to avoid stale closures in event listeners
+  const panRef = useRef(pan);
+  const zoomRef = useRef(zoom);
+  
+  useEffect(() => {
+    panRef.current = pan;
+    zoomRef.current = zoom;
+  }, [pan, zoom]);
 
   const handleDragEnd = (e: any, info: any, token: Token) => {
     const newX = Math.round((token.x + info.offset.x) / gridSize) * gridSize;
@@ -165,17 +174,20 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, role, gridSize, b
     const handleWheel = (e: WheelEvent) => {
       e.preventDefault();
       
+      const currentZoom = zoomRef.current;
+      const currentPan = panRef.current;
+      
       const rect = container.getBoundingClientRect();
       const mouseX = e.clientX - rect.left;
       const mouseY = e.clientY - rect.top;
       
       const delta = -e.deltaY * 0.001;
-      const newZoom = Math.max(0.5, Math.min(3, zoom + delta));
+      const newZoom = Math.max(0.5, Math.min(3, currentZoom + delta));
       
-      if (newZoom !== zoom) {
+      if (newZoom !== currentZoom) {
         // Calculate the world position under the cursor
-        const worldX = (mouseX - pan.x) / zoom;
-        const worldY = (mouseY - pan.y) / zoom;
+        const worldX = (mouseX - currentPan.x) / currentZoom;
+        const worldY = (mouseY - currentPan.y) / currentZoom;
         
         // Adjust pan to keep the world position under the cursor
         const newPan = {
@@ -190,7 +202,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, role, gridSize, b
 
     container.addEventListener('wheel', handleWheel, { passive: false });
     return () => container.removeEventListener('wheel', handleWheel);
-  }, [zoom, pan]);
+  }, []);
 
   // Handle pinch zoom (mobile) - zoom toward pinch center
   useEffect(() => {
@@ -200,6 +212,8 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, role, gridSize, b
     const handleTouchStart = (e: TouchEvent) => {
       if (e.touches.length === 2) {
         setIsPinching(true);
+      } else if (e.touches.length === 1) {
+        setIsPinching(false);
       }
     };
 
@@ -207,6 +221,9 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, role, gridSize, b
       if (e.touches.length === 2) {
         e.preventDefault();
         setIsPinching(true);
+        
+        const currentZoom = zoomRef.current;
+        const currentPan = panRef.current;
         
         const touch1 = e.touches[0];
         const touch2 = e.touches[1];
@@ -222,12 +239,12 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, role, gridSize, b
 
         if (lastTouchDistanceRef.current !== null) {
           const delta = (distance - lastTouchDistanceRef.current) * 0.01;
-          const newZoom = Math.max(0.5, Math.min(3, zoom + delta));
+          const newZoom = Math.max(0.5, Math.min(3, currentZoom + delta));
           
-          if (newZoom !== zoom) {
+          if (newZoom !== currentZoom) {
             // Use the current touch center for consistent zoom point
-            const worldX = (centerX - pan.x) / zoom;
-            const worldY = (centerY - pan.y) / zoom;
+            const worldX = (centerX - currentPan.x) / currentZoom;
+            const worldY = (centerY - currentPan.y) / currentZoom;
             
             // Adjust pan to keep the world position under the pinch center
             const newPan = {
@@ -241,12 +258,18 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, role, gridSize, b
         }
 
         lastTouchDistanceRef.current = distance;
+      } else if (e.touches.length === 1) {
+        // Reset when back to 1 finger
+        lastTouchDistanceRef.current = null;
+        setIsPinching(false);
       }
     };
 
-    const handleTouchEnd = () => {
-      lastTouchDistanceRef.current = null;
-      setIsPinching(false);
+    const handleTouchEnd = (e: TouchEvent) => {
+      if (e.touches.length < 2) {
+        lastTouchDistanceRef.current = null;
+        setIsPinching(false);
+      }
     };
 
     container.addEventListener('touchstart', handleTouchStart, { passive: false });
@@ -259,7 +282,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, role, gridSize, b
       container.removeEventListener('touchend', handleTouchEnd);
       container.removeEventListener('touchcancel', handleTouchEnd);
     };
-  }, [zoom, pan]);
+  }, []);
 
   return (
     <div className="relative h-full w-full overflow-hidden bg-black rounded-lg border border-white/10 shadow-inner group" ref={containerRef}>
