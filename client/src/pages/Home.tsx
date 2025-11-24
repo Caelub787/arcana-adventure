@@ -44,7 +44,7 @@ export default function Home() {
         {/* User & Logout */}
         <div className="absolute top-4 right-4 flex items-center gap-4">
           <div className="text-stone-400 text-sm">
-            Welcome, <span className="text-amber-500 font-bold">{user?.name || "Traveler"}</span>
+            Welcome, <span className="text-amber-500 font-bold">{user?.username || "Traveler"}</span>
           </div>
         </div>
 
