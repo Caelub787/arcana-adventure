@@ -4,6 +4,8 @@ import { motion } from "framer-motion";
 import { CharacterCreation, BattleMap, HUD, CampaignMenu } from "@/components/game/GameComponents";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft } from "lucide-react";
+import battleMapImage1 from "@assets/generated_images/top_down_dungeon_battlemap.png";
+import battleMapImage2 from "@assets/generated_images/dark_fantasy_landscape_with_arcane_ruins.png"; // Use this as alt map
 import warriorToken from "@assets/generated_images/top_down_warrior_token.png";
 import goblinToken from "@assets/generated_images/top_down_goblin_token.png";
 import { storage } from "@/lib/storage";
@@ -28,6 +30,7 @@ export default function Campaign() {
   const [character, setCharacter] = useState<any>(null);
   const [tokens, setTokens] = useState(INITIAL_TOKENS);
   const [inspectedChar, setInspectedChar] = useState<any>(null); // For GM
+  const [currentMap, setCurrentMap] = useState(battleMapImage1);
 
   // Mock Character Registry
   const CHARACTERS_DB: Record<string, any> = {
@@ -99,6 +102,23 @@ export default function Campaign() {
     }
   };
 
+  // GM Actions
+  const handleAddToken = () => {
+    const newTokenId = `e-${Date.now()}`;
+    const newToken = {
+      id: newTokenId,
+      x: 200 + Math.floor(Math.random() * 200),
+      y: 200 + Math.floor(Math.random() * 200),
+      type: 'enemy' as const,
+      image: goblinToken // Defaulting to goblin for now
+    };
+    setTokens(prev => [...prev, newToken]);
+  };
+
+  const handleChangeMap = () => {
+    setCurrentMap(prev => prev === battleMapImage1 ? battleMapImage2 : battleMapImage1);
+  };
+
   return (
     <div className="relative h-screen w-screen overflow-hidden bg-black text-white select-none flex flex-col">
       
@@ -117,6 +137,8 @@ export default function Campaign() {
             onInspectChar={setInspectedChar}
             gridSize={gridSize}
             setGridSize={setGridSize}
+            onAddToken={handleAddToken}
+            onChangeMap={handleChangeMap}
           />
         </div>
       </div>
@@ -138,6 +160,7 @@ export default function Campaign() {
                onTokenClick={handleTokenClick}
                role={role} 
                gridSize={gridSize}
+               backgroundImage={currentMap}
              />
           </div>
           
