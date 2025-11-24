@@ -43,7 +43,7 @@ export async function sendPasswordResetEmail(to: string, resetToken: string, bas
   
   const resetLink = `${baseUrl}/reset-password?token=${resetToken}`;
   
-  const senderEmail = fromEmail || 'caleb@arcanaadventure.com';
+  const senderEmail = fromEmail || 'Support@arcanaadventure.com';
   
   const { data, error } = await client.emails.send({
     from: senderEmail,
