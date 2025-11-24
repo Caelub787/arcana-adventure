@@ -101,12 +101,21 @@ export class DatabaseStorage implements IStorage {
     return campaign;
   }
 
-  async getUserCampaigns(userId: string): Promise<{ created: Campaign[], joined: Campaign[] }> {
-    // Get campaigns where user is GM
-    const createdCampaigns = await db.select()
+  async getUserCampaigns(userId: string): Promise<{ created: any[], joined: any[] }> {
+    // Get campaigns where user is GM (with favorite status)
+    const createdCampaignsData = await db.select()
       .from(campaigns)
+      .leftJoin(campaignMembers, and(
+        eq(campaignMembers.campaignId, campaigns.id),
+        eq(campaignMembers.userId, userId)
+      ))
       .where(eq(campaigns.gmUserId, userId))
       .orderBy(desc(campaigns.lastPlayed));
+
+    const createdCampaigns = createdCampaignsData.map((row: any) => ({
+      ...row.campaigns,
+      favorite: row.campaign_members?.favorite ?? false
+    }));
 
     // Get campaigns where user is a member (but not GM)
     const joinedCampaignsData = await db.select()
@@ -118,7 +127,10 @@ export class DatabaseStorage implements IStorage {
       ))
       .orderBy(desc(campaigns.lastPlayed));
 
-    const joinedCampaigns = joinedCampaignsData.map((row: any) => row.campaigns);
+    const joinedCampaigns = joinedCampaignsData.map((row: any) => ({
+      ...row.campaigns,
+      favorite: row.campaign_members?.favorite ?? false
+    }));
 
     return {
       created: createdCampaigns,
