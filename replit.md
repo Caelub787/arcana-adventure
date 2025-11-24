@@ -36,6 +36,19 @@ Preferred communication style: Simple, everyday language.
 - Campaign-specific "rooms" for broadcasting updates to participants
 - Custom WebSocket event types for `join_campaign`, `token_move`, and `chat_message`
 
+**Battle Map Features**
+- Interactive grid-based battle map with token management
+- **Pan functionality**: Click and drag to pan the map view, with drag constraints to keep the map bounded within the viewport
+- **Zoom functionality**: 
+  - Desktop: Mouse wheel scroll to zoom in/out
+  - Mobile/Touch: Two-finger pinch gesture to zoom in/out
+  - Zoom range: 0.5x to 3x scale
+  - Smooth zoom animations using Framer Motion
+- **Reset View button**: Returns both pan position and zoom level to default state
+- Grid-snapped token movement for precise positioning
+- Configurable grid sizes (30-100px, each square = 5ft)
+- Real-time token synchronization via WebSocket
+
 ### Backend Architecture
 
 **Server Framework**
