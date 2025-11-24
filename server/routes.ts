@@ -4,6 +4,8 @@ import { storage } from "./storage";
 import { insertUserSchema, insertCampaignSchema, insertCharacterSchema, insertTokenSchema, insertChatMessageSchema } from "@shared/schema";
 import bcrypt from "bcryptjs";
 import { WebSocketServer } from "ws";
+import { sendPasswordResetEmail } from "./email";
+import crypto from "crypto";
 
 declare module "express-session" {
   interface SessionData {
@@ -174,6 +176,76 @@ export async function registerRoutes(app: Express): Promise<Server> {
         name: user.name 
       } 
     });
+  });
+
+  // Password reset routes
+  app.post("/api/forgot-password", async (req, res) => {
+    try {
+      const { email } = req.body;
+      
+      if (!email) {
+        return res.status(400).json({ error: "Email is required" });
+      }
+
+      const user = await storage.getUserByEmail(email);
+      
+      if (!user) {
+        return res.json({ message: "If an account with that email exists, a password reset link has been sent." });
+      }
+
+      await storage.deleteUserPasswordResetTokens(user.id);
+
+      const resetToken = crypto.randomBytes(32).toString('hex');
+      const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
+
+      await storage.createPasswordResetToken({
+        userId: user.id,
+        token: resetToken,
+        expiresAt
+      });
+
+      const baseUrl = req.protocol + '://' + req.get('host');
+      await sendPasswordResetEmail(user.email, resetToken, baseUrl);
+
+      res.json({ message: "If an account with that email exists, a password reset link has been sent." });
+    } catch (err) {
+      console.error("Forgot password error:", err);
+      res.status(500).json({ error: "Failed to send reset email" });
+    }
+  });
+
+  app.post("/api/reset-password", async (req, res) => {
+    try {
+      const { token, newPassword } = req.body;
+
+      if (!token || !newPassword) {
+        return res.status(400).json({ error: "Token and new password are required" });
+      }
+
+      if (newPassword.length < 6) {
+        return res.status(400).json({ error: "Password must be at least 6 characters" });
+      }
+
+      const resetToken = await storage.getPasswordResetToken(token);
+
+      if (!resetToken) {
+        return res.status(400).json({ error: "Invalid or expired reset token" });
+      }
+
+      if (new Date() > resetToken.expiresAt) {
+        await storage.deletePasswordResetToken(token);
+        return res.status(400).json({ error: "Reset token has expired" });
+      }
+
+      const hashedPassword = await bcrypt.hash(newPassword, 10);
+      await storage.updateUserPassword(resetToken.userId, hashedPassword);
+      await storage.deletePasswordResetToken(token);
+
+      res.json({ message: "Password successfully reset" });
+    } catch (err) {
+      console.error("Reset password error:", err);
+      res.status(500).json({ error: "Failed to reset password" });
+    }
   });
 
   // Campaign routes
