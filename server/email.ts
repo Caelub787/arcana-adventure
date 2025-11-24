@@ -48,7 +48,7 @@ export async function sendPasswordResetEmail(to: string, resetToken: string, bas
   const { data, error } = await client.emails.send({
     from: senderEmail,
     to: [to],
-    subject: 'Reset Your Arcana Adventures Password',
+    subject: 'Reset Your Arcana Adventure Password',
     html: `
       <!DOCTYPE html>
       <html>
@@ -110,11 +110,11 @@ export async function sendPasswordResetEmail(to: string, resetToken: string, bas
         </head>
         <body>
           <div class="container">
-            <div class="logo">⚔️ Arcana Adventures</div>
+            <div class="logo">⚔️ Arcana Adventure</div>
             
             <div class="content">
               <h2 style="color: #d4af37;">Password Reset Request</h2>
-              <p>We received a request to reset your password for your Arcana Adventures account.</p>
+              <p>We received a request to reset your password for your Arcana Adventure account.</p>
               
               <div class="button-container">
                 <a href="${resetLink}" class="button">Reset Your Password</a>
@@ -130,7 +130,7 @@ export async function sendPasswordResetEmail(to: string, resetToken: string, bas
             </div>
             
             <div class="footer">
-              <p>This email was sent from Arcana Adventures.</p>
+              <p>This email was sent from Arcana Adventure.</p>
               <p>For security reasons, this link will expire in 1 hour.</p>
             </div>
           </div>

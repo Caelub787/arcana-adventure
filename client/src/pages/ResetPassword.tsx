@@ -111,7 +111,7 @@ export default function ResetPassword() {
     <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-b from-background to-background/80">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <h1 className="text-4xl font-cinzel font-bold text-primary mb-2">⚔️ Arcana Adventures</h1>
+          <h1 className="text-4xl font-cinzel font-bold text-primary mb-2">⚔️ Arcana Adventure</h1>
           <p className="text-muted-foreground">Reset Your Password</p>
         </div>
 

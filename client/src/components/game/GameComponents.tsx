@@ -466,7 +466,7 @@ export function CampaignMenu({ role, inviteCode, inspectedChar, onInspectChar, g
   const [chatOpen, setChatOpen] = useState(false);
   const [addCharacterOpen, setAddCharacterOpen] = useState(false);
   const [messages, setMessages] = useState([
-    { sender: "System", text: "Welcome to Arcana Adventures!", type: "system" },
+    { sender: "System", text: "Welcome to Arcana Adventure!", type: "system" },
     { sender: "GM", text: "Roll for initiative!", type: "chat" }
   ]);
   const [chatInput, setChatInput] = useState("");

@@ -1,8 +1,8 @@
-# Arcana Adventures - Mobile RPG Manager & Tabletop Hub
+# Arcana Adventure - Mobile RPG Manager & Tabletop Hub
 
 ## Overview
 
-Arcana Adventures is a full-stack web application designed for tabletop RPG gameplay, enabling game masters (GMs) and players to collaborate in real-time campaigns. The application features a battle map with token management, character creation and tracking, real-time chat, and campaign management capabilities. Built with a dark fantasy aesthetic, it provides both GM and player perspectives with role-based access control.
+Arcana Adventure is a full-stack web application designed for tabletop RPG gameplay, enabling game masters (GMs) and players to collaborate in real-time campaigns. The application features a battle map with token management, character creation and tracking, real-time chat, and campaign management capabilities. Built with a dark fantasy aesthetic, it provides both GM and player perspectives with role-based access control.
 
 ## User Preferences
 

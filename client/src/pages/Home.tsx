@@ -56,7 +56,7 @@ export default function Home() {
           className="mb-8 text-center"
         >
           <h1 className="font-display text-6xl font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-b from-amber-100 to-amber-600 drop-shadow-[0_4px_4px_rgba(0,0,0,0.8)] filter">
-            Arcana Adventures
+            Arcana Adventure
           </h1>
           <p className="mt-2 font-medieval text-xl text-stone-400">
             Tabletop Manager & RPG Hub
