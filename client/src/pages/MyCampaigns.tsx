@@ -62,6 +62,9 @@ export default function MyCampaigns() {
     mutationFn: (inviteCode: string) => api.joinCampaign(inviteCode),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/campaigns'] });
+      queryClient.invalidateQueries({ predicate: (query) => 
+        typeof query.queryKey[0] === 'string' && query.queryKey[0].includes('/members')
+      });
       setIsJoinOpen(false);
       setJoinCode("");
       setJoinError("");
