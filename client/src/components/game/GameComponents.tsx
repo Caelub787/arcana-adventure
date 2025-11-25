@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useLocation } from "wouter";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, useMotionValue } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -151,6 +151,10 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, role, gridSize, b
   const containerRef = useRef<HTMLDivElement>(null);
   const lastTouchDistanceRef = useRef<number | null>(null);
   
+  // Motion values for smooth dragging without re-renders
+  const motionX = useMotionValue(0);
+  const motionY = useMotionValue(0);
+  
   // Use refs to avoid stale closures in event listeners
   const panRef = useRef(pan);
   const zoomRef = useRef(zoom);
@@ -159,6 +163,12 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, role, gridSize, b
     panRef.current = pan;
     zoomRef.current = zoom;
   }, [pan, zoom]);
+
+  // Sync motion values when pan state changes (from wheel zoom, pinch zoom, or reset)
+  useEffect(() => {
+    motionX.set(pan.x);
+    motionY.set(pan.y);
+  }, [pan.x, pan.y, motionX, motionY]);
 
   const handleDragEnd = (e: any, info: any, token: Token) => {
     const newX = Math.round((token.x + info.offset.x) / gridSize) * gridSize;
@@ -305,9 +315,12 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, role, gridSize, b
         dragConstraints={containerRef}
         dragElastic={0}
         dragMomentum={false}
-        animate={{ x: pan.x, y: pan.y, scale: zoom }}
-        onDragEnd={(e, info) => setPan({ x: pan.x + info.offset.x, y: pan.y + info.offset.y })}
-        style={{ top: 0, left: 0, transformOrigin: "0 0" }} 
+        onDragEnd={() => {
+          // Sync motion values back to state after drag
+          setPan({ x: motionX.get(), y: motionY.get() });
+        }}
+        style={{ x: motionX, y: motionY, top: 0, left: 0, transformOrigin: "0 0" }}
+        animate={{ scale: zoom }}
       >
         {/* Map Background */}
         <div 
