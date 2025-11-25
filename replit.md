@@ -39,8 +39,9 @@ Preferred communication style: Simple, everyday language.
 **Battle Map Features**
 - Interactive grid-based battle map with token management
 - **Pan functionality**: 
-  - Desktop: Click and drag to pan the map view
+  - Desktop: Click and drag to pan the map view (fluid, stops where released)
   - Mobile: Single-finger touch and drag to pan
+  - No momentum or elastic bounce - direct 1:1 response using Framer Motion values
   - Drag constraints keep the map bounded within the viewport
 - **Zoom functionality**: 
   - Desktop: Mouse wheel scroll to zoom in/out, zooms toward cursor position
@@ -48,11 +49,25 @@ Preferred communication style: Simple, everyday language.
   - Zoom range: 0.5x to 3x scale
   - Smooth zoom animations using Framer Motion
   - Zoom-to-pointer implementation keeps the focal point stationary during zoom
+  - Uses refs to avoid stale closures in event listeners
 - **Touch gesture separation**: Pan (1 finger) and zoom (2 fingers) work independently without interference
-- **Reset View button**: Positioned at top center with refresh icon, returns both pan position and zoom level to default state
+- **Reset View button**: Positioned at top center with refresh icon, returns both pan position and zoom level to scene default view
 - **UI Layout**: Reset button at top center, control hints at bottom center
-- Grid-snapped token movement for precise positioning
-- Configurable grid sizes (30-100px, each square = 5ft)
+- **Scene Management** (GM only):
+  - Create, switch, and delete scenes within campaigns
+  - Each scene has independent settings: background image, grid configuration, default view
+  - Scenes Settings dialog with real-time preview
+  - Set Default View button to capture current camera position as reset point
+- **Grid System**:
+  - Toggle grid on/off per scene
+  - Grid types: Square or Hexagon patterns (SVG-based rendering)
+  - Configurable grid sizes (30-100px slider, each square = 5ft)
+  - Token snapping only active when grid is enabled
+  - Grid overlays rendered conditionally based on scene settings
+- **Background Images**:
+  - Upload custom battlemap images (base64 conversion)
+  - Per-scene background image storage
+  - Default background provided if none uploaded
 - Real-time token synchronization via WebSocket
 
 ### Backend Architecture
@@ -83,7 +98,8 @@ Preferred communication style: Simple, everyday language.
 **Database Schema**
 ```
 users (id, email, username, name, password, createdAt)
-campaigns (id, name, inviteCode, gmUserId, gridSize, currentMap, createdAt, lastPlayed)
+campaigns (id, name, inviteCode, gmUserId, activeSceneId, gridSize, currentMap, createdAt, lastPlayed)
+scenes (id, campaignId, name, backgroundImage, gridEnabled, gridType, gridSize, defaultViewX, defaultViewY, defaultViewZoom, createdAt)
 campaignMembers (id, campaignId, userId, role, joinedAt, isFavorite)
 characters (id, campaignId, userId, name, class, level, hp, maxHp, energy, maxEnergy, inventory, createdAt)
 tokens (id, campaignId, characterId, type, x, y, image, createdAt)
