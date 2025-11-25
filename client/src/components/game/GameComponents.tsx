@@ -214,7 +214,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, role, gridSize, b
       const mouseY = e.clientY - rect.top;
       
       const delta = -e.deltaY * 0.001;
-      const newZoom = Math.max(0.5, Math.min(3, currentZoom + delta));
+      const newZoom = Math.max(0.2, Math.min(3, currentZoom + delta));
       
       if (newZoom !== currentZoom) {
         // Calculate the world position under the cursor
@@ -271,7 +271,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, role, gridSize, b
 
         if (lastTouchDistanceRef.current !== null) {
           const delta = (distance - lastTouchDistanceRef.current) * 0.01;
-          const newZoom = Math.max(0.5, Math.min(3, currentZoom + delta));
+          const newZoom = Math.max(0.2, Math.min(3, currentZoom + delta));
           
           if (newZoom !== currentZoom) {
             // Use the current touch center for consistent zoom point

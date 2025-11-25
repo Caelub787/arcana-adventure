@@ -280,7 +280,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const defaultScene = await storage.createScene({
         campaignId: campaign.id,
         name: "Default Scene",
-        backgroundImage: null,
+        backgroundImage: "/default-map.jpg",
         gridEnabled: true,
         gridType: "square",
         gridSize: gridSize || 50,
