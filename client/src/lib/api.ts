@@ -150,6 +150,10 @@ class ApiClient {
     });
   }
 
+  async deleteCampaign(id: string): Promise<void> {
+    return this.request(`/campaigns/${id}`, { method: 'DELETE' });
+  }
+
   async leaveCampaign(id: string): Promise<void> {
     return this.request(`/campaigns/${id}/leave`, { method: 'POST' });
   }

@@ -24,6 +24,7 @@ export interface IStorage {
   getCampaignByInviteCode(code: string): Promise<Campaign | undefined>;
   createCampaign(campaign: InsertCampaign): Promise<Campaign>;
   updateCampaign(id: string, data: Partial<Campaign>): Promise<Campaign | undefined>;
+  deleteCampaign(id: string): Promise<void>;
   getUserCampaigns(userId: string): Promise<{ created: Campaign[], joined: Campaign[] }>;
 
   // Campaign Member operations
@@ -111,6 +112,15 @@ export class DatabaseStorage implements IStorage {
     return campaign;
   }
 
+  async deleteCampaign(id: string): Promise<void> {
+    await db.delete(campaignMembers).where(eq(campaignMembers.campaignId, id));
+    await db.delete(characters).where(eq(characters.campaignId, id));
+    await db.delete(tokens).where(eq(tokens.campaignId, id));
+    await db.delete(chatMessages).where(eq(chatMessages.campaignId, id));
+    await db.delete(scenes).where(eq(scenes.campaignId, id));
+    await db.delete(campaigns).where(eq(campaigns.id, id));
+  }
+
   async getUserCampaigns(userId: string): Promise<{ created: any[], joined: any[] }> {
     // Get campaigns where user is GM (with favorite status)
     const createdCampaignsData = await db.select()
@@ -188,7 +198,20 @@ export class DatabaseStorage implements IStorage {
       ))
       .limit(1);
 
-    if (member) {
+    if (!member) {
+      const campaign = await this.getCampaign(campaignId);
+      if (!campaign) {
+        throw new Error("Campaign not found");
+      }
+      
+      const role = campaign.gmUserId === userId ? "gm" : "player";
+      await db.insert(campaignMembers).values({
+        campaignId,
+        userId,
+        role,
+        favorite: true
+      });
+    } else {
       await db.update(campaignMembers)
         .set({ favorite: !member.favorite })
         .where(eq(campaignMembers.id, member.id));

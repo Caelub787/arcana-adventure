@@ -37,6 +37,17 @@ export default function MyCampaigns() {
   const campaigns = campaignsData ?? { created: [], joined: [] };
 
   // Mutations for campaign actions
+  const deleteCampaignMutation = useMutation({
+    mutationFn: (campaignId: string) => api.deleteCampaign(campaignId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/campaigns'] });
+      toast({ title: "Campaign deleted successfully" });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message || "Failed to delete campaign", variant: "destructive" });
+    },
+  });
+
   const leaveCampaignMutation = useMutation({
     mutationFn: (campaignId: string) => api.leaveCampaign(campaignId),
     onSuccess: () => {
@@ -76,7 +87,7 @@ export default function MyCampaigns() {
   });
 
   const handleDelete = (id: string) => {
-    leaveCampaignMutation.mutate(id);
+    deleteCampaignMutation.mutate(id);
   };
 
   const handleLeave = (id: string) => {
@@ -145,7 +156,7 @@ export default function MyCampaigns() {
                 className="h-8 w-8 text-stone-600 hover:text-red-400 hover:bg-red-950/30"
                 onClick={() => isCreated ? handleDelete(campaign.id) : handleLeave(campaign.id)}
                 data-testid={`button-${isCreated ? 'delete' : 'leave'}-${campaign.id}`}
-                disabled={leaveCampaignMutation.isPending}
+                disabled={deleteCampaignMutation.isPending || leaveCampaignMutation.isPending}
               >
                 {isCreated ? <Trash2 className="h-4 w-4" /> : <LogOut className="h-4 w-4" />}
               </Button>

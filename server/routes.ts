@@ -356,6 +356,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.delete("/api/campaigns/:id", requireAuth, async (req, res) => {
+    try {
+      const campaign = await storage.getCampaign(req.params.id);
+      if (!campaign) {
+        return res.status(404).json({ error: "Campaign not found" });
+      }
+
+      if (campaign.gmUserId !== req.session.userId) {
+        return res.status(403).json({ error: "Only the GM can delete the campaign" });
+      }
+
+      await storage.deleteCampaign(req.params.id);
+      res.json({ success: true });
+    } catch (err) {
+      res.status(400).json({ error: "Failed to delete campaign" });
+    }
+  });
+
   app.post("/api/campaigns/:id/leave", requireAuth, async (req, res) => {
     try {
       await storage.removeCampaignMember(req.params.id, req.session.userId!);
