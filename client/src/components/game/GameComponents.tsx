@@ -217,14 +217,16 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, role, gridSize, b
       const newZoom = Math.max(0.2, Math.min(3, currentZoom + delta));
       
       if (newZoom !== currentZoom) {
-        // Calculate the world position under the cursor
-        const worldX = (mouseX - currentPan.x) / currentZoom;
-        const worldY = (mouseY - currentPan.y) / currentZoom;
+        // Account for the 9000px world offset when calculating world position
+        // world = ((screen + 9000 - pan) / zoom) - 9000
+        const worldX = ((mouseX + 9000 - currentPan.x) / currentZoom) - 9000;
+        const worldY = ((mouseY + 9000 - currentPan.y) / currentZoom) - 9000;
         
         // Adjust pan to keep the world position under the cursor
+        // pan = screen + 9000 - (world + 9000) * zoom
         const newPan = {
-          x: mouseX - worldX * newZoom,
-          y: mouseY - worldY * newZoom
+          x: mouseX + 9000 - (worldX + 9000) * newZoom,
+          y: mouseY + 9000 - (worldY + 9000) * newZoom
         };
         
         setPan(newPan);
@@ -274,14 +276,16 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, role, gridSize, b
           const newZoom = Math.max(0.2, Math.min(3, currentZoom + delta));
           
           if (newZoom !== currentZoom) {
-            // Use the current touch center for consistent zoom point
-            const worldX = (centerX - currentPan.x) / currentZoom;
-            const worldY = (centerY - currentPan.y) / currentZoom;
+            // Account for the 9000px world offset when calculating world position
+            // world = ((screen + 9000 - pan) / zoom) - 9000
+            const worldX = ((centerX + 9000 - currentPan.x) / currentZoom) - 9000;
+            const worldY = ((centerY + 9000 - currentPan.y) / currentZoom) - 9000;
             
             // Adjust pan to keep the world position under the pinch center
+            // pan = screen + 9000 - (world + 9000) * zoom
             const newPan = {
-              x: centerX - worldX * newZoom,
-              y: centerY - worldY * newZoom
+              x: centerX + 9000 - (worldX + 9000) * newZoom,
+              y: centerY + 9000 - (worldY + 9000) * newZoom
             };
             
             setPan(newPan);

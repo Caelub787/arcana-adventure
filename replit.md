@@ -38,18 +38,24 @@ Preferred communication style: Simple, everyday language.
 
 **Battle Map Features**
 - Interactive grid-based battle map with token management
+- **Infinite Grid Space**:
+  - Large 20000x20000px world container allowing unlimited panning beyond uploaded images
+  - Background images positioned at (9000, 9000) with tokens offset accordingly
+  - Grid extends infinitely across the entire world space
+  - No drag constraints - users can pan freely in all directions
 - **Pan functionality**: 
   - Desktop: Click and drag to pan the map view (fluid, stops where released)
   - Mobile: Single-finger touch and drag to pan
   - No momentum or elastic bounce - direct 1:1 response using Framer Motion values
-  - Drag constraints keep the map bounded within the viewport
+  - Infinite panning beyond image boundaries with continuous grid
 - **Zoom functionality**: 
   - Desktop: Mouse wheel scroll to zoom in/out, zooms toward cursor position
   - Mobile/Touch: Two-finger pinch gesture to zoom in/out, zooms toward pinch center
-  - Zoom range: 0.5x to 3x scale
+  - Zoom range: 0.2x to 3x scale
   - Smooth zoom animations using Framer Motion
   - Zoom-to-pointer implementation keeps the focal point stationary during zoom
   - Uses refs to avoid stale closures in event listeners
+  - Coordinate math accounts for 9000px world offset in zoom calculations
 - **Touch gesture separation**: Pan (1 finger) and zoom (2 fingers) work independently without interference
 - **Reset View button**: Positioned at top center with refresh icon, returns both pan position and zoom level to scene default view
 - **UI Layout**: Reset button at top center, control hints at bottom center
