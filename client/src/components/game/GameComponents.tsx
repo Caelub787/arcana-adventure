@@ -303,7 +303,8 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, role, gridSize, b
         className="absolute w-[2000px] h-[2000px] cursor-grab active:cursor-grabbing"
         drag={!isPinching}
         dragConstraints={containerRef}
-        dragElastic={0.1}
+        dragElastic={0}
+        dragMomentum={false}
         animate={{ x: pan.x, y: pan.y, scale: zoom }}
         onDragEnd={(e, info) => setPan({ x: pan.x + info.offset.x, y: pan.y + info.offset.y })}
         style={{ top: 0, left: 0, transformOrigin: "0 0" }} 
