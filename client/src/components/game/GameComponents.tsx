@@ -9,6 +9,9 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
+import { Textarea } from "@/components/ui/textarea";
 import { 
   Sword, Shield, Scroll, Map as MapIcon, Settings, 
   Users, Plus, LogOut, Menu, ChevronRight, ChevronLeft,
@@ -1211,9 +1214,10 @@ interface CampaignMenuProps {
   characters?: any[];
   members?: any[];
   onAddCharacter?: (characterData: any) => void;
+  onViewCharacter?: (char: any) => void;
 }
 
-export function CampaignMenu({ role, inviteCode, inspectedChar, onInspectChar, gridSize, setGridSize, onAddToken, onChangeMap, characters, members, onAddCharacter }: CampaignMenuProps) {
+export function CampaignMenu({ role, inviteCode, inspectedChar, onInspectChar, gridSize, setGridSize, onAddToken, onChangeMap, characters, members, onAddCharacter, onViewCharacter }: CampaignMenuProps) {
   const [chatOpen, setChatOpen] = useState(false);
   const [addCharacterOpen, setAddCharacterOpen] = useState(false);
   const [messages, setMessages] = useState([
@@ -1360,22 +1364,35 @@ export function CampaignMenu({ role, inviteCode, inspectedChar, onInspectChar, g
                     characters.map((char: any) => (
                       <div 
                         key={char.id} 
-                        className="p-3 bg-stone-900 rounded border border-stone-800 flex justify-between items-center"
+                        className="p-3 bg-stone-900 rounded border border-stone-800 flex justify-between items-center gap-2"
                         data-testid={`character-item-${char.id}`}
                       >
-                        <div className="flex items-center gap-3">
-                          <div className="h-10 w-10 bg-stone-800 rounded flex items-center justify-center border border-stone-700">
+                        <div className="flex items-center gap-3 flex-1 min-w-0">
+                          <div className="h-10 w-10 bg-stone-800 rounded flex items-center justify-center border border-stone-700 shrink-0">
                             <Sword className="h-5 w-5 text-stone-500" />
                           </div>
-                          <div>
-                            <div className="font-bold text-stone-200">{char.name}</div>
+                          <div className="min-w-0 flex-1">
+                            <div className="font-bold text-stone-200 truncate">{char.name}</div>
                             <div className="text-xs text-stone-500">
                               Lvl {char.level} {char.class}
                             </div>
                           </div>
                         </div>
-                        <div className="text-xs text-stone-400">
-                          HP: {char.hp}/{char.maxHp}
+                        <div className="flex items-center gap-2 shrink-0">
+                          <div className="text-xs text-stone-400 hidden sm:block">
+                            HP: {char.hp}/{char.maxHp}
+                          </div>
+                          {onViewCharacter && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => onViewCharacter(char)}
+                              className="bg-amber-900/30 hover:bg-amber-800/50 border-amber-700 text-amber-200 text-xs"
+                              data-testid={`button-view-character-${char.id}`}
+                            >
+                              View Sheet
+                            </Button>
+                          )}
                         </div>
                       </div>
                     ))
@@ -1451,6 +1468,517 @@ export function CampaignMenu({ role, inviteCode, inspectedChar, onInspectChar, g
         />
       )}
     </>
+  );
+}
+
+// 6. Character Sheet Component
+interface CharacterSheetProps {
+  character: any;
+  isGM: boolean;
+  isOwner: boolean;
+  onUpdate?: (updates: any) => void;
+  onClose?: () => void;
+}
+
+export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose }: CharacterSheetProps) {
+  const [biography, setBiography] = useState(character?.biography || "");
+  const [gmNotes, setGmNotes] = useState(character?.gmNotes || "");
+  const [isEditingBio, setIsEditingBio] = useState(false);
+  const [isEditingGmNotes, setIsEditingGmNotes] = useState(false);
+
+  // Calculate attribute modifiers
+  const getAttributeModifier = (value: number) => {
+    return Math.floor((value - 10) / 2);
+  };
+
+  // Format modifier with sign
+  const formatModifier = (value: number) => {
+    return value >= 0 ? `+${value}` : `${value}`;
+  };
+
+  // Calculate HP/Energy percentages
+  const hpPercentage = (character.hp / character.maxHp) * 100;
+  const energyPercentage = (character.energy / character.maxEnergy) * 100;
+
+  const handleSaveBiography = () => {
+    if (onUpdate) {
+      onUpdate({ biography });
+    }
+    setIsEditingBio(false);
+  };
+
+  const handleSaveGmNotes = () => {
+    if (onUpdate) {
+      onUpdate({ gmNotes });
+    }
+    setIsEditingGmNotes(false);
+  };
+
+  // Skill categories for organization
+  const physicalSkills = [
+    { key: 'skillAgility', name: 'Agility' },
+    { key: 'skillStrength', name: 'Strength' },
+    { key: 'skillStealth', name: 'Stealth' },
+    { key: 'skillSleightOfHand', name: 'Sleight of Hand' },
+  ];
+
+  const mentalSkills = [
+    { key: 'skillArcana', name: 'Arcana' },
+    { key: 'skillConcentration', name: 'Concentration' },
+    { key: 'skillWisdom', name: 'Wisdom' },
+    { key: 'skillInvestigation', name: 'Investigation' },
+    { key: 'skillPerception', name: 'Perception' },
+    { key: 'skillMedicine', name: 'Medicine' },
+    { key: 'skillHistory', name: 'History' },
+  ];
+
+  const socialSkills = [
+    { key: 'skillCharisma', name: 'Charisma' },
+    { key: 'skillDeception', name: 'Deception' },
+    { key: 'skillIntimidation', name: 'Intimidation' },
+    { key: 'skillCulture', name: 'Culture' },
+  ];
+
+  return (
+    <div className="w-full h-full bg-stone-900 text-stone-200">
+      <Tabs defaultValue="overview" className="w-full h-full flex flex-col">
+        <TabsList className="grid w-full grid-cols-7 bg-stone-800 shrink-0">
+          <TabsTrigger value="overview" data-testid="tab-overview" className="text-xs sm:text-sm">Overview</TabsTrigger>
+          <TabsTrigger value="attributes" data-testid="tab-attributes" className="text-xs sm:text-sm">Attributes</TabsTrigger>
+          <TabsTrigger value="skills" data-testid="tab-skills" className="text-xs sm:text-sm">Skills</TabsTrigger>
+          <TabsTrigger value="inventory" data-testid="tab-inventory" className="text-xs sm:text-sm">Inventory</TabsTrigger>
+          <TabsTrigger value="magic" data-testid="tab-magic" className="text-xs sm:text-sm">Magic</TabsTrigger>
+          <TabsTrigger value="hotbars" data-testid="tab-hotbars" className="text-xs sm:text-sm">Hotbars</TabsTrigger>
+          <TabsTrigger value="background" data-testid="tab-background" className="text-xs sm:text-sm">Background</TabsTrigger>
+        </TabsList>
+
+        <ScrollArea className="flex-1 p-4">
+          {/* OVERVIEW TAB */}
+          <TabsContent value="overview" className="space-y-4 mt-0" data-testid="content-overview">
+            <Card className="bg-stone-800 border-stone-700">
+              <CardHeader>
+                <CardTitle className="text-amber-500 flex items-center justify-between">
+                  <span data-testid="text-character-name">{character.name}</span>
+                  <Badge variant="outline" className="text-stone-300 border-stone-600" data-testid="badge-level">
+                    Level {character.level}
+                  </Badge>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex flex-col sm:flex-row gap-4">
+                  {/* Portrait */}
+                  {character.portrait && (
+                    <div className="w-32 h-32 rounded-lg overflow-hidden border-2 border-stone-700 shrink-0">
+                      <img src={character.portrait} alt={character.name} className="w-full h-full object-cover" data-testid="img-portrait" />
+                    </div>
+                  )}
+                  
+                  {/* Basic Info */}
+                  <div className="flex-1 space-y-2">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <Label className="text-xs text-stone-400">Race</Label>
+                        <p className="text-stone-200" data-testid="text-race">{character.race}</p>
+                      </div>
+                      <div>
+                        <Label className="text-xs text-stone-400">Class</Label>
+                        <p className="text-stone-200 capitalize" data-testid="text-class">{character.class}</p>
+                      </div>
+                      <div>
+                        <Label className="text-xs text-stone-400">Size</Label>
+                        <p className="text-stone-200" data-testid="text-size">{character.size}</p>
+                      </div>
+                      <div>
+                        <Label className="text-xs text-stone-400">Natural Armor</Label>
+                        <p className="text-stone-200" data-testid="text-natural-armor">{character.naturalArmor}</p>
+                      </div>
+                      <div>
+                        <Label className="text-xs text-stone-400">Speed</Label>
+                        <p className="text-stone-200" data-testid="text-speed">{character.speed} ft</p>
+                      </div>
+                      <div>
+                        <Label className="text-xs text-stone-400">Fly Speed</Label>
+                        <p className="text-stone-200" data-testid="text-fly-speed">{character.flySpeed} ft</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* HP Bar */}
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center">
+                    <Label className="text-sm text-stone-300 flex items-center gap-2">
+                      <Heart className="h-4 w-4 text-red-500" />
+                      Health Points
+                    </Label>
+                    <span className="text-sm font-bold" data-testid="text-hp">
+                      {character.hp} / {character.maxHp}
+                    </span>
+                  </div>
+                  <Progress value={hpPercentage} className="h-3" data-testid="progress-hp" />
+                </div>
+
+                {/* Energy Bar */}
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center">
+                    <Label className="text-sm text-stone-300 flex items-center gap-2">
+                      <Zap className="h-4 w-4 text-blue-500" />
+                      Energy
+                    </Label>
+                    <span className="text-sm font-bold" data-testid="text-energy">
+                      {character.energy} / {character.maxEnergy}
+                    </span>
+                  </div>
+                  <Progress value={energyPercentage} className="h-3" data-testid="progress-energy" />
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* ATTRIBUTES TAB */}
+          <TabsContent value="attributes" className="space-y-4 mt-0" data-testid="content-attributes">
+            <Card className="bg-stone-800 border-stone-700">
+              <CardHeader>
+                <CardTitle className="text-amber-500">Attributes</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                  {[
+                    { key: 'agility', name: 'Agility' },
+                    { key: 'charisma', name: 'Charisma' },
+                    { key: 'strength', name: 'Strength' },
+                    { key: 'wisdom', name: 'Wisdom' },
+                    { key: 'arcana', name: 'Arcana' },
+                    { key: 'concentration', name: 'Concentration' },
+                  ].map(attr => {
+                    const value = character[attr.key] || 10;
+                    const modifier = getAttributeModifier(value);
+                    return (
+                      <Card key={attr.key} className="bg-stone-900 border-stone-600">
+                        <CardContent className="p-4 text-center">
+                          <Label className="text-xs text-stone-400">{attr.name}</Label>
+                          <div className="text-2xl font-bold text-amber-500 mt-1" data-testid={`text-attribute-${attr.key}`}>
+                            {value}
+                          </div>
+                          <Badge variant="secondary" className="mt-2" data-testid={`badge-modifier-${attr.key}`}>
+                            {formatModifier(modifier)}
+                          </Badge>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* SKILLS TAB */}
+          <TabsContent value="skills" className="space-y-4 mt-0" data-testid="content-skills">
+            <Card className="bg-stone-800 border-stone-700">
+              <CardHeader>
+                <CardTitle className="text-amber-500">Skills</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {/* Physical Skills */}
+                <div>
+                  <h3 className="text-sm font-bold text-stone-400 mb-3 uppercase">Physical</h3>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    {physicalSkills.map(skill => {
+                      const value = character[skill.key] || 0;
+                      return (
+                        <Badge 
+                          key={skill.key} 
+                          variant="outline" 
+                          className="justify-between p-3 bg-stone-900 border-stone-600"
+                          data-testid={`badge-skill-${skill.key}`}
+                        >
+                          <span className="text-xs">{skill.name}</span>
+                          <span className="font-bold ml-2">{formatModifier(value)}</span>
+                        </Badge>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Mental Skills */}
+                <div>
+                  <h3 className="text-sm font-bold text-stone-400 mb-3 uppercase">Mental</h3>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    {mentalSkills.map(skill => {
+                      const value = character[skill.key] || 0;
+                      return (
+                        <Badge 
+                          key={skill.key} 
+                          variant="outline" 
+                          className="justify-between p-3 bg-stone-900 border-stone-600"
+                          data-testid={`badge-skill-${skill.key}`}
+                        >
+                          <span className="text-xs">{skill.name}</span>
+                          <span className="font-bold ml-2">{formatModifier(value)}</span>
+                        </Badge>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Social Skills */}
+                <div>
+                  <h3 className="text-sm font-bold text-stone-400 mb-3 uppercase">Social</h3>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    {socialSkills.map(skill => {
+                      const value = character[skill.key] || 0;
+                      return (
+                        <Badge 
+                          key={skill.key} 
+                          variant="outline" 
+                          className="justify-between p-3 bg-stone-900 border-stone-600"
+                          data-testid={`badge-skill-${skill.key}`}
+                        >
+                          <span className="text-xs">{skill.name}</span>
+                          <span className="font-bold ml-2">{formatModifier(value)}</span>
+                        </Badge>
+                      );
+                    })}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* INVENTORY TAB */}
+          <TabsContent value="inventory" className="space-y-4 mt-0" data-testid="content-inventory">
+            <Card className="bg-stone-800 border-stone-700">
+              <CardHeader>
+                <CardTitle className="text-amber-500 flex items-center gap-2">
+                  <Backpack className="h-5 w-5" />
+                  Inventory
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="text-center py-8 text-stone-400" data-testid="text-inventory-placeholder">
+                  <Backpack className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                  <p className="font-bold">Inventory system coming in Phase 5</p>
+                  <p className="text-sm mt-2">Your items will appear here</p>
+                </div>
+
+                {/* Weight & Currency Placeholders */}
+                <div className="grid grid-cols-2 gap-4 pt-4 border-t border-stone-700">
+                  <div>
+                    <Label className="text-xs text-stone-400">Weight Carried</Label>
+                    <p className="text-stone-200" data-testid="text-weight">0 / 150 lbs</p>
+                  </div>
+                  <div>
+                    <Label className="text-xs text-stone-400">Currency</Label>
+                    <div className="text-xs text-stone-200 space-y-1" data-testid="text-currency">
+                      <div>Gold: 0</div>
+                      <div>Silver: 0</div>
+                      <div>Copper: 0</div>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* MAGIC TAB */}
+          <TabsContent value="magic" className="space-y-4 mt-0" data-testid="content-magic">
+            <Card className="bg-stone-800 border-stone-700">
+              <CardHeader>
+                <CardTitle className="text-amber-500 flex items-center gap-2">
+                  <Sparkles className="h-5 w-5" />
+                  Magic & Spells
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-center py-8 text-stone-400" data-testid="text-magic-placeholder">
+                  <Sparkles className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                  <p className="font-bold">Magic system coming in Phase 7</p>
+                  <p className="text-sm mt-2">Your spells will appear here</p>
+                </div>
+
+                <div className="pt-4 border-t border-stone-700">
+                  <Label className="text-xs text-stone-400">Total Spells Known</Label>
+                  <p className="text-2xl font-bold text-amber-500" data-testid="text-spells-known">0</p>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* HOTBARS TAB */}
+          <TabsContent value="hotbars" className="space-y-4 mt-0" data-testid="content-hotbars">
+            <Card className="bg-stone-800 border-stone-700">
+              <CardHeader>
+                <CardTitle className="text-amber-500">Hotbars</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="text-center py-4 text-stone-400" data-testid="text-hotbars-placeholder">
+                  <p className="font-bold">Hotbars system coming in Phase 4</p>
+                  <p className="text-sm mt-2">Quick access slots will appear here</p>
+                </div>
+
+                {/* Hotbar Structure Preview */}
+                <div className="space-y-4 pt-4 border-t border-stone-700">
+                  {[
+                    { name: 'Weapons', slots: 3 },
+                    { name: 'Magic', slots: 5 },
+                    { name: 'Skills', slots: 5 },
+                    { name: 'Consumables', slots: 2 },
+                    { name: 'Utility', slots: 5 },
+                  ].map(hotbar => (
+                    <div key={hotbar.name}>
+                      <Label className="text-xs text-stone-400 mb-2 block" data-testid={`label-hotbar-${hotbar.name.toLowerCase()}`}>
+                        {hotbar.name} ({hotbar.slots} slots)
+                      </Label>
+                      <div className="flex gap-2">
+                        {Array.from({ length: hotbar.slots }).map((_, i) => (
+                          <div 
+                            key={i} 
+                            className="w-12 h-12 bg-stone-900 border border-stone-700 rounded flex items-center justify-center text-xs text-stone-600"
+                            data-testid={`slot-${hotbar.name.toLowerCase()}-${i}`}
+                          >
+                            {i + 1}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* BACKGROUND TAB */}
+          <TabsContent value="background" className="space-y-4 mt-0" data-testid="content-background">
+            <Card className="bg-stone-800 border-stone-700">
+              <CardHeader>
+                <CardTitle className="text-amber-500">Character Background</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {/* Biography Section */}
+                <div>
+                  <div className="flex justify-between items-center mb-2">
+                    <Label className="text-sm text-stone-300">Biography</Label>
+                    {isOwner && !isEditingBio && (
+                      <Button 
+                        size="sm" 
+                        variant="outline" 
+                        onClick={() => setIsEditingBio(true)}
+                        data-testid="button-edit-biography"
+                      >
+                        Edit
+                      </Button>
+                    )}
+                  </div>
+                  {isEditingBio ? (
+                    <div className="space-y-2">
+                      <Textarea
+                        value={biography}
+                        onChange={(e) => setBiography(e.target.value)}
+                        className="min-h-[150px] bg-stone-900 border-stone-700"
+                        placeholder="Write your character's biography..."
+                        data-testid="textarea-biography"
+                      />
+                      <div className="flex gap-2">
+                        <Button 
+                          size="sm" 
+                          onClick={handleSaveBiography}
+                          data-testid="button-save-biography"
+                        >
+                          Save
+                        </Button>
+                        <Button 
+                          size="sm" 
+                          variant="outline" 
+                          onClick={() => {
+                            setBiography(character.biography || "");
+                            setIsEditingBio(false);
+                          }}
+                          data-testid="button-cancel-biography"
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div 
+                      className="p-3 bg-stone-900 rounded border border-stone-700 min-h-[100px] text-stone-300"
+                      data-testid="text-biography"
+                    >
+                      {character.biography || "No biography written yet."}
+                    </div>
+                  )}
+                </div>
+
+                {/* GM Notes Section (GM Only) */}
+                {isGM && (
+                  <div className="pt-4 border-t border-stone-700">
+                    <div className="flex justify-between items-center mb-2">
+                      <Label className="text-sm text-purple-400">GM Notes</Label>
+                      {!isEditingGmNotes && (
+                        <Button 
+                          size="sm" 
+                          variant="outline" 
+                          onClick={() => setIsEditingGmNotes(true)}
+                          data-testid="button-edit-gm-notes"
+                        >
+                          Edit
+                        </Button>
+                      )}
+                    </div>
+                    {isEditingGmNotes ? (
+                      <div className="space-y-2">
+                        <Textarea
+                          value={gmNotes}
+                          onChange={(e) => setGmNotes(e.target.value)}
+                          className="min-h-[150px] bg-purple-950/20 border-purple-900/50"
+                          placeholder="Private notes about this character (only visible to GM)..."
+                          data-testid="textarea-gm-notes"
+                        />
+                        <div className="flex gap-2">
+                          <Button 
+                            size="sm" 
+                            onClick={handleSaveGmNotes}
+                            data-testid="button-save-gm-notes"
+                          >
+                            Save
+                          </Button>
+                          <Button 
+                            size="sm" 
+                            variant="outline" 
+                            onClick={() => {
+                              setGmNotes(character.gmNotes || "");
+                              setIsEditingGmNotes(false);
+                            }}
+                            data-testid="button-cancel-gm-notes"
+                          >
+                            Cancel
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div 
+                        className="p-3 bg-purple-950/20 rounded border border-purple-900/50 min-h-[100px] text-purple-200"
+                        data-testid="text-gm-notes"
+                      >
+                        {character.gmNotes || "No GM notes yet."}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Character Creation Date */}
+                <div className="pt-4 border-t border-stone-700">
+                  <Label className="text-xs text-stone-400">Created</Label>
+                  <p className="text-sm text-stone-300" data-testid="text-created-date">
+                    {character.createdAt ? new Date(character.createdAt).toLocaleDateString() : 'Unknown'}
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </ScrollArea>
+      </Tabs>
+    </div>
   );
 }
 

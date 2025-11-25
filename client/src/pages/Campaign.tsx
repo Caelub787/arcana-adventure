@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useLocation, useSearch, useRoute } from "wouter";
 import { motion } from "framer-motion";
-import { CharacterCreation, BattleMap, HUD, CampaignMenu } from "@/components/game/GameComponents";
+import { CharacterCreation, BattleMap, HUD, CampaignMenu, CharacterSheet } from "@/components/game/GameComponents";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Loader2, Settings, Map as MapIcon, Layers, Trash2 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -166,6 +166,7 @@ export default function Campaign() {
   const [currentView, setCurrentView] = useState({ x: 0, y: 0, zoom: 1 });
   const [scenesManagementOpen, setScenesManagementOpen] = useState(false);
   const [newSceneName, setNewSceneName] = useState("");
+  const [viewingCharacterSheet, setViewingCharacterSheet] = useState<any>(null);
 
   // Determine effective campaign ID (from URL or newly created)
   const effectiveCampaignId = campaignId || createdCampaignId;
@@ -307,6 +308,18 @@ export default function Campaign() {
     },
     onError: (error: any) => {
       toast({ title: "Error", description: error.message || "Failed to change active scene", variant: "destructive" });
+    },
+  });
+
+  // Update character mutation
+  const updateCharacterMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: any }) => api.updateCharacter(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${effectiveCampaignId}/characters`] });
+      toast({ title: "Success", description: "Character updated successfully" });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message || "Failed to update character", variant: "destructive" });
     },
   });
 
@@ -464,6 +477,18 @@ export default function Campaign() {
     setScenesManagementOpen(false);
   };
 
+  const handleUpdateCharacter = (updates: any) => {
+    if (viewingCharacterSheet) {
+      updateCharacterMutation.mutate({ id: viewingCharacterSheet.id, data: updates });
+      // Optimistically update the local state
+      setViewingCharacterSheet({ ...viewingCharacterSheet, ...updates });
+    }
+  };
+
+  const handleViewCharacter = (char: any) => {
+    setViewingCharacterSheet(char);
+  };
+
   // Show loading state
   if (campaignLoading || tokensLoading || charactersLoading || membersLoading || sceneLoading || createCampaignMutation.isPending) {
     return (
@@ -505,6 +530,7 @@ export default function Campaign() {
             characters={characters as any[]}
             members={members as any[]}
             onAddCharacter={handleAddCharacter}
+            onViewCharacter={handleViewCharacter}
           />
           
           {/* Scenes Button (GM Only) - Icon only, directly under Settings */}
@@ -696,6 +722,26 @@ export default function Campaign() {
 
         </div>
       )}
+
+      {/* Character Sheet Dialog */}
+      <Dialog open={!!viewingCharacterSheet} onOpenChange={(open) => !open && setViewingCharacterSheet(null)}>
+        <DialogContent className="max-w-4xl h-[90vh] bg-stone-900 border-stone-700 text-stone-200 p-0">
+          <DialogHeader className="p-6 pb-0">
+            <DialogTitle className="text-2xl text-amber-500 font-display">
+              {viewingCharacterSheet?.name} - Character Sheet
+            </DialogTitle>
+          </DialogHeader>
+          {viewingCharacterSheet && (
+            <CharacterSheet
+              character={viewingCharacterSheet}
+              isGM={role === 'gm'}
+              isOwner={viewingCharacterSheet.userId === user?.id}
+              onUpdate={handleUpdateCharacter}
+              onClose={() => setViewingCharacterSheet(null)}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
