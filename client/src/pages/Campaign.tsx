@@ -211,7 +211,7 @@ export default function Campaign() {
 
   // Create campaign mutation
   const createCampaignMutation = useMutation({
-    mutationFn: (name: string) => api.createCampaign(name, gridSize, currentMap),
+    mutationFn: (name: string) => api.createCampaign(name, gridSize),
     onSuccess: (newCampaign) => {
       setCreatedCampaignId(newCampaign.id);
       queryClient.invalidateQueries({ queryKey: ['/api/campaigns'] });
