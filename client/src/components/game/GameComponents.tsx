@@ -48,25 +48,146 @@ interface Token {
 
 // --- Components ---
 
-// 1. Character Creation Modal
+// 1. Enhanced Character Creation Modal
 interface CharacterCreationProps {
-  onComplete: (char: Character) => void;
+  onComplete: (char: any) => void;
+  onCancel?: () => void;
 }
 
-export function CharacterCreation({ onComplete }: CharacterCreationProps) {
+export function CharacterCreation({ onComplete, onCancel }: CharacterCreationProps) {
   const [name, setName] = useState("");
   const [charClass, setCharClass] = useState("warrior");
+  const [level, setLevel] = useState(1);
+  const [race, setRace] = useState("Human");
+  const [portrait, setPortrait] = useState("");
+  const [hp, setHp] = useState(100);
+  const [maxHp, setMaxHp] = useState(100);
+  const [energy, setEnergy] = useState(50);
+  const [maxEnergy, setMaxEnergy] = useState(50);
+  const [biography, setBiography] = useState("");
+
+  const ATTRIBUTE_BASE = 10;
+  const ATTRIBUTE_POINTS_POOL = 6;
+  const ATTRIBUTE_MIN_MODIFIER = -4;
+  const ATTRIBUTE_MAX_MODIFIER = 6;
+
+  const [attributes, setAttributes] = useState({
+    agility: 0,
+    charisma: 0,
+    strength: 0,
+    wisdom: 0,
+    arcana: 0,
+    concentration: 0
+  });
+
+  const SKILL_BASE = 0;
+  const SKILL_POINTS_POOL = 12;
+  const SKILL_MIN_VALUE = -6;
+  const SKILL_MAX_VALUE = 12;
+
+  const [skills, setSkills] = useState({
+    skillAgility: 0,
+    skillArcana: 0,
+    skillCharisma: 0,
+    skillConcentration: 0,
+    skillDeception: 0,
+    skillHistory: 0,
+    skillIntimidation: 0,
+    skillInvestigation: 0,
+    skillMedicine: 0,
+    skillPerception: 0,
+    skillSleightOfHand: 0,
+    skillStealth: 0,
+    skillStrength: 0,
+    skillWisdom: 0,
+    skillCulture: 0
+  });
+
+  const [validationError, setValidationError] = useState("");
+
+  const attributePointsUsed = Object.values(attributes).reduce((sum, val) => sum + val, 0);
+  const attributePointsRemaining = ATTRIBUTE_POINTS_POOL - attributePointsUsed;
+
+  const skillPointsUsed = Object.values(skills).reduce((sum, val) => sum + val, 0);
+  const skillPointsRemaining = SKILL_POINTS_POOL - skillPointsUsed;
+
+  const updateAttribute = (attr: keyof typeof attributes, delta: number) => {
+    const current = attributes[attr];
+    const newValue = current + delta;
+    
+    if (newValue < ATTRIBUTE_MIN_MODIFIER || newValue > ATTRIBUTE_MAX_MODIFIER) return;
+    if (delta > 0 && attributePointsRemaining < delta) return;
+    
+    setAttributes({ ...attributes, [attr]: newValue });
+  };
+
+  const updateSkill = (skill: keyof typeof skills, delta: number) => {
+    const current = skills[skill];
+    const newValue = current + delta;
+    
+    if (newValue < SKILL_MIN_VALUE || newValue > SKILL_MAX_VALUE) return;
+    if (delta > 0 && skillPointsRemaining < delta) return;
+    
+    setSkills({ ...skills, [skill]: newValue });
+  };
+
+  const getRaceStats = (raceName: string) => {
+    if (raceName === "Human") {
+      return {
+        size: "Medium",
+        sizeBonus: 0,
+        naturalArmor: 5,
+        speed: 30,
+        flySpeed: 0,
+        lifespan: 100
+      };
+    }
+    return {
+      size: "Medium",
+      sizeBonus: 0,
+      naturalArmor: 5,
+      speed: 30,
+      flySpeed: 0,
+      lifespan: 100
+    };
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    setValidationError("");
+
+    if (attributePointsUsed > ATTRIBUTE_POINTS_POOL || attributePointsUsed < -4) {
+      setValidationError(`Invalid attribute allocation. You have ${attributePointsRemaining} points remaining.`);
+      return;
+    }
+
+    if (skillPointsUsed > SKILL_POINTS_POOL || skillPointsUsed < -6) {
+      setValidationError(`Invalid skill allocation. You have ${skillPointsRemaining} points remaining.`);
+      return;
+    }
+
+    const raceStats = getRaceStats(race);
+
     onComplete({
       name,
       class: charClass,
-      hp: 100,
-      maxHp: 100,
-      energy: 50,
-      maxEnergy: 50,
-      inventory: ["Rusty Sword", "Health Potion"]
+      level,
+      race,
+      ...raceStats,
+      portrait: portrait || undefined,
+      hp,
+      maxHp,
+      energy,
+      maxEnergy,
+      agility: ATTRIBUTE_BASE + attributes.agility,
+      charisma: ATTRIBUTE_BASE + attributes.charisma,
+      strength: ATTRIBUTE_BASE + attributes.strength,
+      wisdom: ATTRIBUTE_BASE + attributes.wisdom,
+      arcana: ATTRIBUTE_BASE + attributes.arcana,
+      concentration: ATTRIBUTE_BASE + attributes.concentration,
+      ...skills,
+      biography: biography || undefined,
+      inventory: []
     });
   };
 
@@ -75,60 +196,318 @@ export function CharacterCreation({ onComplete }: CharacterCreationProps) {
       <motion.div 
         initial={{ scale: 0.9, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
-        className="relative w-full max-w-md overflow-hidden rounded-lg border border-white/20 shadow-2xl"
+        className="relative w-full max-w-4xl max-h-[90vh] overflow-hidden rounded-lg border border-white/20 shadow-2xl"
       >
         {/* Background Texture */}
         <div className="absolute inset-0 z-0 opacity-90">
           <img src={parchmentTexture} className="h-full w-full object-cover" alt="" />
         </div>
 
-        <div className="relative z-10 p-6 text-stone-900">
-          <div className="mb-6 text-center">
-            <h2 className="font-display text-3xl font-bold text-stone-900">Create Legend</h2>
-            <p className="text-stone-600 font-medieval">Forge your destiny, adventurer.</p>
-          </div>
-
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <div className="space-y-2">
-              <Label htmlFor="charName" className="text-stone-800 font-bold">Character Name</Label>
-              <Input 
-                id="charName" 
-                value={name} 
-                onChange={(e) => setName(e.target.value)} 
-                className="border-stone-400 bg-white/50 text-stone-900 placeholder:text-stone-400 focus:border-stone-600 focus:ring-stone-600"
-                placeholder="E.g. Valerius the Brave"
-                required
-              />
+        <ScrollArea className="relative z-10 h-[90vh]">
+          <div className="p-6 text-stone-900">
+            <div className="mb-4 text-center">
+              <h2 className="font-display text-3xl font-bold text-stone-900">Create Legend</h2>
+              <p className="text-stone-600 font-medieval">Forge your destiny, adventurer.</p>
             </div>
 
-            <div className="space-y-2">
-              <Label className="text-stone-800 font-bold">Class</Label>
-              <div className="grid grid-cols-3 gap-2">
-                {['warrior', 'mage', 'rogue'].map((c) => (
-                  <button
-                    key={c}
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <Tabs defaultValue="basic" className="w-full">
+                <TabsList className="grid w-full grid-cols-4 bg-stone-200">
+                  <TabsTrigger value="basic" data-testid="tab-basic">Basic</TabsTrigger>
+                  <TabsTrigger value="attributes" data-testid="tab-attributes">Attributes</TabsTrigger>
+                  <TabsTrigger value="skills" data-testid="tab-skills">Skills</TabsTrigger>
+                  <TabsTrigger value="details" data-testid="tab-details">Details</TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="basic" className="space-y-4 mt-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="charName" className="text-stone-800 font-bold">Character Name *</Label>
+                      <Input 
+                        id="charName" 
+                        value={name} 
+                        onChange={(e) => setName(e.target.value)} 
+                        className="border-stone-400 bg-white/50 text-stone-900"
+                        placeholder="E.g. Valerius the Brave"
+                        required
+                        data-testid="input-character-name"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="level" className="text-stone-800 font-bold">Level *</Label>
+                      <Input 
+                        id="level" 
+                        type="number"
+                        min="1"
+                        max="20"
+                        value={level} 
+                        onChange={(e) => setLevel(parseInt(e.target.value) || 1)} 
+                        className="border-stone-400 bg-white/50 text-stone-900"
+                        required
+                        data-testid="input-level"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label className="text-stone-800 font-bold">Class *</Label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {['warrior', 'mage', 'rogue'].map((c) => (
+                        <button
+                          key={c}
+                          type="button"
+                          onClick={() => setCharClass(c)}
+                          className={`rounded border p-2 capitalize transition-all ${
+                            charClass === c 
+                              ? 'border-stone-900 bg-stone-800 text-white shadow-md' 
+                              : 'border-stone-300 bg-white/30 text-stone-700 hover:bg-white/50'
+                          }`}
+                          data-testid={`button-class-${c}`}
+                        >
+                          {c}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="race" className="text-stone-800 font-bold">Race *</Label>
+                    <select
+                      id="race"
+                      value={race}
+                      onChange={(e) => setRace(e.target.value)}
+                      className="w-full rounded border border-stone-400 bg-white/50 px-3 py-2 text-stone-900"
+                      required
+                      data-testid="select-race"
+                    >
+                      <option value="Human">Human</option>
+                    </select>
+                    <p className="text-xs text-stone-600">
+                      Human: Medium, Speed 30ft, Natural Armor 5, Lifespan 100 years
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="hp" className="text-stone-800 font-bold">HP *</Label>
+                      <Input 
+                        id="hp" 
+                        type="number"
+                        min="1"
+                        value={hp} 
+                        onChange={(e) => setHp(parseInt(e.target.value) || 1)} 
+                        className="border-stone-400 bg-white/50 text-stone-900"
+                        required
+                        data-testid="input-hp"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="maxHp" className="text-stone-800 font-bold">Max HP *</Label>
+                      <Input 
+                        id="maxHp" 
+                        type="number"
+                        min="1"
+                        value={maxHp} 
+                        onChange={(e) => setMaxHp(parseInt(e.target.value) || 1)} 
+                        className="border-stone-400 bg-white/50 text-stone-900"
+                        required
+                        data-testid="input-max-hp"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="energy" className="text-stone-800 font-bold">Energy *</Label>
+                      <Input 
+                        id="energy" 
+                        type="number"
+                        min="0"
+                        value={energy} 
+                        onChange={(e) => setEnergy(parseInt(e.target.value) || 0)} 
+                        className="border-stone-400 bg-white/50 text-stone-900"
+                        required
+                        data-testid="input-energy"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="maxEnergy" className="text-stone-800 font-bold">Max Energy *</Label>
+                      <Input 
+                        id="maxEnergy" 
+                        type="number"
+                        min="0"
+                        value={maxEnergy} 
+                        onChange={(e) => setMaxEnergy(parseInt(e.target.value) || 0)} 
+                        className="border-stone-400 bg-white/50 text-stone-900"
+                        required
+                        data-testid="input-max-energy"
+                      />
+                    </div>
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="attributes" className="space-y-4 mt-4">
+                  <div className="bg-amber-100 border border-amber-400 rounded p-3 mb-4">
+                    <p className="text-sm font-bold text-amber-900">
+                      Points Remaining: <span className={attributePointsRemaining < 0 ? "text-red-600" : "text-green-600"} data-testid="text-attribute-points-remaining">{attributePointsRemaining}</span> / {ATTRIBUTE_POINTS_POOL}
+                    </p>
+                    <p className="text-xs text-amber-800 mt-1">
+                      Each attribute starts at 10. Allocate up to +6 or -4 points per attribute.
+                    </p>
+                  </div>
+
+                  <div className="space-y-3">
+                    {Object.entries(attributes).map(([attr, value]) => (
+                      <div key={attr} className="flex items-center gap-3 bg-white/50 rounded p-3 border border-stone-300">
+                        <div className="flex-1">
+                          <Label className="text-stone-800 font-bold capitalize">{attr}</Label>
+                          <p className="text-xs text-stone-600">Base: {ATTRIBUTE_BASE} | Final: {ATTRIBUTE_BASE + value}</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={() => updateAttribute(attr as keyof typeof attributes, -1)}
+                            disabled={value <= ATTRIBUTE_MIN_MODIFIER}
+                            className="h-8 w-8 p-0"
+                            data-testid={`button-attribute-${attr}-decrease`}
+                          >
+                            -
+                          </Button>
+                          <span className="w-12 text-center font-bold text-stone-900" data-testid={`text-attribute-${attr}`}>
+                            {value >= 0 ? '+' : ''}{value}
+                          </span>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={() => updateAttribute(attr as keyof typeof attributes, 1)}
+                            disabled={value >= ATTRIBUTE_MAX_MODIFIER || attributePointsRemaining <= 0}
+                            className="h-8 w-8 p-0"
+                            data-testid={`button-attribute-${attr}-increase`}
+                          >
+                            +
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="skills" className="space-y-4 mt-4">
+                  <div className="bg-blue-100 border border-blue-400 rounded p-3 mb-4">
+                    <p className="text-sm font-bold text-blue-900">
+                      Points Remaining: <span className={skillPointsRemaining < 0 ? "text-red-600" : "text-green-600"} data-testid="text-skill-points-remaining">{skillPointsRemaining}</span> / {SKILL_POINTS_POOL}
+                    </p>
+                    <p className="text-xs text-blue-800 mt-1">
+                      Each skill starts at 0. Allocate between -6 and +12 points per skill.
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    {Object.entries(skills).map(([skill, value]) => {
+                      const displayName = skill.replace('skill', '').replace(/([A-Z])/g, ' $1').trim();
+                      return (
+                        <div key={skill} className="flex items-center gap-2 bg-white/50 rounded p-2 border border-stone-300">
+                          <div className="flex-1 min-w-0">
+                            <Label className="text-xs font-bold text-stone-800">{displayName}</Label>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              onClick={() => updateSkill(skill as keyof typeof skills, -1)}
+                              disabled={value <= SKILL_MIN_VALUE}
+                              className="h-7 w-7 p-0 text-xs"
+                              data-testid={`button-skill-${skill}-decrease`}
+                            >
+                              -
+                            </Button>
+                            <span className="w-10 text-center text-sm font-bold text-stone-900" data-testid={`text-skill-${skill}`}>
+                              {value >= 0 ? '+' : ''}{value}
+                            </span>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              onClick={() => updateSkill(skill as keyof typeof skills, 1)}
+                              disabled={value >= SKILL_MAX_VALUE || skillPointsRemaining <= 0}
+                              className="h-7 w-7 p-0 text-xs"
+                              data-testid={`button-skill-${skill}-increase`}
+                            >
+                              +
+                            </Button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="details" className="space-y-4 mt-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="portrait" className="text-stone-800 font-bold">Portrait URL (optional)</Label>
+                    <Input 
+                      id="portrait" 
+                      value={portrait} 
+                      onChange={(e) => setPortrait(e.target.value)} 
+                      className="border-stone-400 bg-white/50 text-stone-900"
+                      placeholder="https://example.com/portrait.jpg"
+                      data-testid="input-portrait"
+                    />
+                    {portrait && (
+                      <div className="mt-2">
+                        <img src={portrait} alt="Portrait preview" className="w-24 h-24 rounded object-cover border-2 border-stone-400" />
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="biography" className="text-stone-800 font-bold">Biography (optional)</Label>
+                    <textarea
+                      id="biography"
+                      value={biography}
+                      onChange={(e) => setBiography(e.target.value)}
+                      className="w-full min-h-[150px] rounded border border-stone-400 bg-white/50 px-3 py-2 text-stone-900"
+                      placeholder="Tell your character's story..."
+                      data-testid="textarea-biography"
+                    />
+                  </div>
+                </TabsContent>
+              </Tabs>
+
+              {validationError && (
+                <div className="bg-red-100 border border-red-400 rounded p-3" data-testid="error-validation">
+                  <p className="text-sm text-red-700">{validationError}</p>
+                </div>
+              )}
+
+              <div className="flex gap-3 mt-6">
+                {onCancel && (
+                  <Button 
                     type="button"
-                    onClick={() => setCharClass(c)}
-                    className={`rounded border p-2 capitalize transition-all ${
-                      charClass === c 
-                        ? 'border-stone-900 bg-stone-800 text-white shadow-md' 
-                        : 'border-stone-300 bg-white/30 text-stone-700 hover:bg-white/50'
-                    }`}
+                    variant="outline"
+                    onClick={onCancel}
+                    className="flex-1 bg-white/50 text-stone-800 border-stone-400"
+                    data-testid="button-cancel"
                   >
-                    {c}
-                  </button>
-                ))}
+                    Cancel
+                  </Button>
+                )}
+                <Button 
+                  type="submit" 
+                  className="flex-1 bg-stone-900 text-stone-100 hover:bg-stone-800 font-display text-lg"
+                  data-testid="button-create-character"
+                >
+                  Create Character
+                </Button>
               </div>
-            </div>
-
-            <Button 
-              type="submit" 
-              className="w-full bg-stone-900 text-stone-100 hover:bg-stone-800 font-display text-lg"
-            >
-              Begin Adventure
-            </Button>
-          </form>
-        </div>
+            </form>
+          </div>
+        </ScrollArea>
       </motion.div>
     </div>
   );
