@@ -336,31 +336,32 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, role, gridSize, b
         <RefreshCw className="h-3 w-3" />
       </Button>
 
-      {/* Draggable World Container - This pans the whole map */}
+      {/* Draggable World Container - Large scrollable space beyond image bounds */}
       <motion.div 
-        className="absolute w-[2000px] h-[2000px] cursor-grab active:cursor-grabbing"
+        className="absolute cursor-grab active:cursor-grabbing"
+        style={{ 
+          width: '20000px', 
+          height: '20000px', 
+          x: motionX, 
+          y: motionY, 
+          left: '-9000px',
+          top: '-9000px',
+          transformOrigin: "0 0"
+        }}
         drag={!isPinching}
-        dragConstraints={containerRef}
         dragElastic={0}
         dragMomentum={false}
         onDragEnd={() => {
           // Sync motion values back to state after drag
           setPan({ x: motionX.get(), y: motionY.get() });
         }}
-        style={{ x: motionX, y: motionY, top: 0, left: 0, transformOrigin: "0 0" }}
         animate={{ scale: zoom }}
       >
-        {/* Map Background */}
-        <div 
-          className="absolute inset-0 bg-cover bg-center opacity-80 transition-all duration-500"
-          style={{ backgroundImage: `url(${scene?.backgroundImage || backgroundImage || battleMapImage1})` }}
-        />
-        
-        {/* Conditional Grid Overlay */}
+        {/* Conditional Grid Overlay - Extends infinitely across the large space */}
         {(scene?.gridEnabled !== undefined ? scene.gridEnabled : true) && (
           <>
             {(scene?.gridType || 'square') === 'square' ? (
-              /* Square Grid */
+              /* Square Grid - Infinite repeating pattern */
               <div className="absolute inset-0 opacity-20 pointer-events-none" 
                    style={{ 
                      backgroundImage: 'linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px)',
@@ -368,7 +369,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, role, gridSize, b
                    }} 
               />
             ) : (
-              /* Hex Grid */
+              /* Hex Grid - Infinite repeating pattern */
               <svg className="absolute inset-0 opacity-20 pointer-events-none" width="100%" height="100%">
                 <defs>
                   <pattern id="hexgrid" patternUnits="userSpaceOnUse" width={scene?.gridSize || gridSize} height={(scene?.gridSize || gridSize) * 0.866}>
@@ -386,7 +387,19 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, role, gridSize, b
           </>
         )}
 
-        {/* Tokens */}
+        {/* Map Background - Positioned in the space, can scroll beyond it */}
+        <div 
+          className="absolute bg-cover bg-center opacity-80 transition-all duration-500"
+          style={{ 
+            backgroundImage: `url(${scene?.backgroundImage || backgroundImage || battleMapImage1})`,
+            width: '2000px',
+            height: '2000px',
+            left: '9000px',
+            top: '9000px'
+          }}
+        />
+
+        {/* Tokens - Keep original coordinate system */}
         {tokens.map((token) => (
           <motion.div
             key={token.id}
@@ -398,7 +411,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, role, gridSize, b
             onClick={(e) => { e.stopPropagation(); onTokenClick && onTokenClick(token); }}
             whileHover={{ scale: 1.1, zIndex: 10 }}
             whileDrag={{ scale: 1.2, zIndex: 20 }}
-            animate={{ x: token.x, y: token.y, width: gridSize, height: gridSize }}
+            animate={{ x: token.x + 9000, y: token.y + 9000, width: gridSize, height: gridSize }}
             transition={{ type: "spring", stiffness: 300, damping: 30 }}
             className="absolute top-0 left-0 rounded-full shadow-xl ring-2 ring-white/20 overflow-hidden bg-black"
             style={{ width: gridSize, height: gridSize }}
