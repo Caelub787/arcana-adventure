@@ -157,7 +157,8 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, role, gridSize, b
     if (onViewChange) {
       onViewChange({ x: pan.x, y: pan.y, zoom });
     }
-  }, [pan.x, pan.y, zoom, onViewChange]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pan.x, pan.y, zoom]);
   const containerRef = useRef<HTMLDivElement>(null);
   const lastTouchDistanceRef = useRef<number | null>(null);
   

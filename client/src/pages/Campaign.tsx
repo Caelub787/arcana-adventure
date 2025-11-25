@@ -20,6 +20,14 @@ import { useToast } from "@/hooks/use-toast";
 
 // Scene Settings Form Component
 function SceneSettingsForm({ scene, onUpdateScene, onClose }: { scene: Scene; onUpdateScene: (settings: Partial<Scene>) => void; onClose: () => void }) {
+  // Store original scene values for cancel functionality
+  const originalSettingsRef = useRef({
+    gridEnabled: scene.gridEnabled,
+    gridType: scene.gridType,
+    gridSize: scene.gridSize,
+    backgroundImage: scene.backgroundImage || '',
+  });
+
   const [localSettings, setLocalSettings] = useState({
     gridEnabled: scene.gridEnabled,
     gridType: scene.gridType,
@@ -27,30 +35,34 @@ function SceneSettingsForm({ scene, onUpdateScene, onClose }: { scene: Scene; on
     backgroundImage: scene.backgroundImage || '',
   });
 
+  // Update scene settings immediately when they change
+  const updateSetting = (key: keyof typeof localSettings, value: any) => {
+    const newSettings = { ...localSettings, [key]: value };
+    setLocalSettings(newSettings);
+    // Apply changes immediately (optimistic update)
+    onUpdateScene({ [key]: value });
+  };
+
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       const reader = new FileReader();
       reader.onloadend = () => {
         const base64 = reader.result as string;
-        setLocalSettings(prev => ({ ...prev, backgroundImage: base64 }));
+        updateSetting('backgroundImage', base64);
       };
       reader.readAsDataURL(file);
     }
   };
 
   const handleConfirm = () => {
-    onUpdateScene(localSettings);
+    // Settings are already applied, just close
     onClose();
   };
 
   const handleCancel = () => {
-    setLocalSettings({
-      gridEnabled: scene.gridEnabled,
-      gridType: scene.gridType,
-      gridSize: scene.gridSize,
-      backgroundImage: scene.backgroundImage || '',
-    });
+    // Revert to original values
+    onUpdateScene(originalSettingsRef.current);
     onClose();
   };
 
@@ -63,7 +75,7 @@ function SceneSettingsForm({ scene, onUpdateScene, onClose }: { scene: Scene; on
           type="checkbox"
           id="grid-toggle"
           checked={localSettings.gridEnabled}
-          onChange={(e) => setLocalSettings(prev => ({ ...prev, gridEnabled: e.target.checked }))}
+          onChange={(e) => updateSetting('gridEnabled', e.target.checked)}
           className="h-4 w-4"
           data-testid="toggle-grid"
         />
@@ -76,7 +88,7 @@ function SceneSettingsForm({ scene, onUpdateScene, onClose }: { scene: Scene; on
           <select
             id="grid-type"
             value={localSettings.gridType}
-            onChange={(e) => setLocalSettings(prev => ({ ...prev, gridType: e.target.value }))}
+            onChange={(e) => updateSetting('gridType', e.target.value)}
             className="w-full bg-stone-800 border-stone-700 text-stone-200 rounded px-3 py-2"
             data-testid="select-grid-type"
           >
@@ -99,7 +111,7 @@ function SceneSettingsForm({ scene, onUpdateScene, onClose }: { scene: Scene; on
             min="30"
             max="100"
             value={localSettings.gridSize}
-            onChange={(e) => setLocalSettings(prev => ({ ...prev, gridSize: parseInt(e.target.value) }))}
+            onChange={(e) => updateSetting('gridSize', parseInt(e.target.value))}
             className="w-full accent-amber-600"
             data-testid="slider-grid-size"
           />
