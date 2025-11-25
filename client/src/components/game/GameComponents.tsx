@@ -306,7 +306,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, role, gridSize, b
         dragElastic={0.1}
         animate={{ x: pan.x, y: pan.y, scale: zoom }}
         onDragEnd={(e, info) => setPan({ x: pan.x + info.offset.x, y: pan.y + info.offset.y })}
-        style={{ top: 0, left: 0 }} 
+        style={{ top: 0, left: 0, transformOrigin: "0 0" }} 
       >
         {/* Map Background */}
         <div 
