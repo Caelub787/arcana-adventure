@@ -84,18 +84,54 @@ export const insertCampaignMemberSchema = createInsertSchema(campaignMembers).om
 export type InsertCampaignMember = z.infer<typeof insertCampaignMemberSchema>;
 export type CampaignMember = typeof campaignMembers.$inferSelect;
 
-// Characters table
+// Characters table (expanded for RPG features)
 export const characters = pgTable("characters", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   campaignId: varchar("campaign_id").notNull().references(() => campaigns.id, { onDelete: "cascade" }),
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
+  portrait: text("portrait"),
   class: text("class").notNull(),
   level: integer("level").default(1).notNull(),
   hp: integer("hp").notNull(),
   maxHp: integer("max_hp").notNull(),
   energy: integer("energy").notNull(),
   maxEnergy: integer("max_energy").notNull(),
+  // Race information
+  race: text("race").notNull().default("Human"),
+  size: text("size").notNull().default("Medium"),
+  sizeBonus: integer("size_bonus").notNull().default(0),
+  naturalArmor: integer("natural_armor").notNull().default(5),
+  speed: integer("speed").notNull().default(30),
+  flySpeed: integer("fly_speed").notNull().default(0),
+  lifespan: integer("lifespan").notNull().default(100),
+  // Attributes
+  agility: integer("agility").notNull().default(0),
+  charisma: integer("charisma").notNull().default(0),
+  strength: integer("strength").notNull().default(0),
+  wisdom: integer("wisdom").notNull().default(0),
+  arcana: integer("arcana").notNull().default(0),
+  concentration: integer("concentration").notNull().default(0),
+  // Skills
+  skillAgility: integer("skill_agility").notNull().default(0),
+  skillArcana: integer("skill_arcana").notNull().default(0),
+  skillCharisma: integer("skill_charisma").notNull().default(0),
+  skillConcentration: integer("skill_concentration").notNull().default(0),
+  skillDeception: integer("skill_deception").notNull().default(0),
+  skillHistory: integer("skill_history").notNull().default(0),
+  skillIntimidation: integer("skill_intimidation").notNull().default(0),
+  skillInvestigation: integer("skill_investigation").notNull().default(0),
+  skillMedicine: integer("skill_medicine").notNull().default(0),
+  skillPerception: integer("skill_perception").notNull().default(0),
+  skillSleightOfHand: integer("skill_sleight_of_hand").notNull().default(0),
+  skillStealth: integer("skill_stealth").notNull().default(0),
+  skillStrength: integer("skill_strength").notNull().default(0),
+  skillWisdom: integer("skill_wisdom").notNull().default(0),
+  skillCulture: integer("skill_culture").notNull().default(0),
+  // Background/notes
+  biography: text("biography"),
+  gmNotes: text("gm_notes"),
+  // Legacy inventory (kept for backward compatibility, use items table for new features)
   inventory: text("inventory").array().default(sql`ARRAY[]::text[]`).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
@@ -163,3 +199,83 @@ export const insertPasswordResetTokenSchema = createInsertSchema(passwordResetTo
 
 export type InsertPasswordResetToken = z.infer<typeof insertPasswordResetTokenSchema>;
 export type PasswordResetToken = typeof passwordResetTokens.$inferSelect;
+
+// Items table (for inventory system)
+export const items = pgTable("items", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  characterId: varchar("character_id").notNull().references(() => characters.id, { onDelete: "cascade" }),
+  containerId: varchar("container_id").references(() => items.id, { onDelete: "cascade" }), // For nested inventories
+  name: text("name").notNull(),
+  image: text("image"),
+  description: text("description"),
+  damage: text("damage"), // Dice notation e.g. "1d8"
+  damageType: text("damage_type"), // e.g. "slashing", "piercing", "fire"
+  mod: integer("mod").default(0), // Flat bonus added after dice roll
+  range: integer("range"), // In feet
+  aoe: text("aoe"), // Area of effect description
+  attribute: text("attribute"), // Attribute used for this item
+  size: text("size"), // Item size
+  weight: text("weight").default("light"), // "light" or "heavy"
+  priceCopper: integer("price_copper").default(0).notNull(),
+  priceSilver: integer("price_silver").default(0).notNull(),
+  priceGold: integer("price_gold").default(0).notNull(),
+  pricePlatinum: integer("price_platinum").default(0).notNull(),
+  itemWeight: real("item_weight").default(0).notNull(), // In pounds
+  quantity: integer("quantity").default(1).notNull(),
+  durability: integer("durability").default(10).notNull(), // 0-10
+  itemType: text("item_type").notNull(), // "weapon", "armor", "consumable", "utility", "container"
+  rarity: text("rarity").default("common").notNull(), // "common", "uncommon", "rare", "epic", "legendary"
+  isContainer: boolean("is_container").default(false).notNull(),
+  carryCapacity: integer("carry_capacity").default(0), // Additional carry capacity if container
+  isEquipped: boolean("is_equipped").default(false).notNull(),
+});
+
+export const insertItemSchema = createInsertSchema(items).omit({
+  id: true,
+});
+
+export type InsertItem = z.infer<typeof insertItemSchema>;
+export type Item = typeof items.$inferSelect;
+
+// Spells table (for magic system) - MUST be before hotbars to avoid TDZ error
+export const spells = pgTable("spells", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  characterId: varchar("character_id").notNull().references(() => characters.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  image: text("image"),
+  description: text("description"),
+  damage: text("damage"), // Dice notation
+  damageType: text("damage_type"),
+  range: integer("range"),
+  aoe: text("aoe"),
+  castingTime: text("casting_time"),
+  duration: text("duration"),
+  level: integer("level").default(0).notNull(), // Spell level 0-9
+  school: text("school"), // e.g. "evocation", "abjuration"
+  isEquipped: boolean("is_equipped").default(false).notNull(),
+});
+
+export const insertSpellSchema = createInsertSchema(spells).omit({
+  id: true,
+});
+
+export type InsertSpell = z.infer<typeof insertSpellSchema>;
+export type Spell = typeof spells.$inferSelect;
+
+// Hotbars table (for quick access slots)
+export const hotbars = pgTable("hotbars", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  characterId: varchar("character_id").notNull().references(() => characters.id, { onDelete: "cascade" }),
+  hotbarType: text("hotbar_type").notNull(), // "weapons", "magic", "skills", "consumables", "utility"
+  slotNumber: integer("slot_number").notNull(), // 0-4 for most, 0-2 for weapons, 0-1 for consumables
+  itemId: varchar("item_id").references(() => items.id, { onDelete: "set null" }), // For weapons, consumables, utility
+  spellId: varchar("spell_id").references(() => spells.id, { onDelete: "set null" }), // For magic hotbar
+  skillName: text("skill_name"), // For skills hotbar
+});
+
+export const insertHotbarSchema = createInsertSchema(hotbars).omit({
+  id: true,
+});
+
+export type InsertHotbar = z.infer<typeof insertHotbarSchema>;
+export type Hotbar = typeof hotbars.$inferSelect;
