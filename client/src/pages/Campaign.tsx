@@ -512,7 +512,7 @@ export default function Campaign() {
               variant="ghost"
               size="icon"
               onClick={() => setScenesManagementOpen(true)}
-              className="text-white/50 hover:text-white hover:bg-white/10"
+              className="text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto relative z-[60]"
               data-testid="button-scenes"
             >
               <Layers className="h-5 w-5" />
