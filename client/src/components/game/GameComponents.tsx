@@ -15,6 +15,7 @@ import {
   Heart, Zap, Backpack, Sparkles, Dice5, MessageSquare, RefreshCw
 } from "lucide-react";
 import { useForm } from "react-hook-form";
+import { type Scene } from "@/lib/api";
 import bgImage from "@assets/generated_images/dark_fantasy_landscape_with_arcane_ruins.png";
 import parchmentTexture from "@assets/generated_images/aged_parchment_paper_texture.png";
 import battleMapImage1 from "@assets/generated_images/top_down_dungeon_battlemap.png";
@@ -141,13 +142,22 @@ interface BattleMapProps {
   role: Role;
   gridSize: number;
   backgroundImage?: string;
+  scene?: Scene;
+  onViewChange?: (viewState: { x: number; y: number; zoom: number }) => void;
 }
 
-export function BattleMap({ tokens, onMoveToken, onTokenClick, role, gridSize, backgroundImage }: BattleMapProps) {
+export function BattleMap({ tokens, onMoveToken, onTokenClick, role, gridSize, backgroundImage, scene, onViewChange }: BattleMapProps) {
   // Pan and zoom state
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
   const [isPinching, setIsPinching] = useState(false);
+  
+  // Notify parent of view changes
+  useEffect(() => {
+    if (onViewChange) {
+      onViewChange({ x: pan.x, y: pan.y, zoom });
+    }
+  }, [pan.x, pan.y, zoom, onViewChange]);
   const containerRef = useRef<HTMLDivElement>(null);
   const lastTouchDistanceRef = useRef<number | null>(null);
   
@@ -171,9 +181,20 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, role, gridSize, b
   }, [pan.x, pan.y, motionX, motionY]);
 
   const handleDragEnd = (e: any, info: any, token: Token) => {
-    const newX = Math.round((token.x + info.offset.x) / gridSize) * gridSize;
-    const newY = Math.round((token.y + info.offset.y) / gridSize) * gridSize;
-    onMoveToken(token.id, newX, newY);
+    // Use scene settings if available, otherwise fall back to legacy gridSize prop
+    const effectiveGridSize = scene?.gridSize || gridSize;
+    const gridEnabled = scene?.gridEnabled !== undefined ? scene.gridEnabled : true;
+    
+    if (gridEnabled) {
+      const newX = Math.round((token.x + info.offset.x) / effectiveGridSize) * effectiveGridSize;
+      const newY = Math.round((token.y + info.offset.y) / effectiveGridSize) * effectiveGridSize;
+      onMoveToken(token.id, newX, newY);
+    } else {
+      // Free placement when grid is disabled
+      const newX = token.x + info.offset.x;
+      const newY = token.y + info.offset.y;
+      onMoveToken(token.id, newX, newY);
+    }
   };
 
   // Handle wheel zoom (desktop) - zoom toward cursor position
@@ -302,7 +323,13 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, role, gridSize, b
          size="sm" 
          variant="secondary" 
          className="absolute top-4 left-1/2 -translate-x-1/2 z-30 bg-black/50 hover:bg-black/80 text-xs border border-white/10 backdrop-blur-sm"
-         onClick={() => { setPan({ x: 0, y: 0 }); setZoom(1); }}
+         onClick={() => { 
+           const defaultX = scene?.defaultViewX ?? 0;
+           const defaultY = scene?.defaultViewY ?? 0;
+           const defaultZoom = scene?.defaultViewZoom ?? 1;
+           setPan({ x: defaultX, y: defaultY }); 
+           setZoom(defaultZoom); 
+         }}
          data-testid="button-reset-view"
       >
         <RefreshCw className="h-3 w-3" />
@@ -325,16 +352,38 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, role, gridSize, b
         {/* Map Background */}
         <div 
           className="absolute inset-0 bg-cover bg-center opacity-80 transition-all duration-500"
-          style={{ backgroundImage: `url(${backgroundImage || battleMapImage1})` }}
+          style={{ backgroundImage: `url(${scene?.backgroundImage || backgroundImage || battleMapImage1})` }}
         />
         
-        {/* Dynamic Grid Overlay */}
-        <div className="absolute inset-0 opacity-20 pointer-events-none" 
-             style={{ 
-               backgroundImage: 'linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px)',
-               backgroundSize: `${gridSize}px ${gridSize}px`
-             }} 
-        />
+        {/* Conditional Grid Overlay */}
+        {(scene?.gridEnabled !== undefined ? scene.gridEnabled : true) && (
+          <>
+            {(scene?.gridType || 'square') === 'square' ? (
+              /* Square Grid */
+              <div className="absolute inset-0 opacity-20 pointer-events-none" 
+                   style={{ 
+                     backgroundImage: 'linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px)',
+                     backgroundSize: `${scene?.gridSize || gridSize}px ${scene?.gridSize || gridSize}px`
+                   }} 
+              />
+            ) : (
+              /* Hex Grid */
+              <svg className="absolute inset-0 opacity-20 pointer-events-none" width="100%" height="100%">
+                <defs>
+                  <pattern id="hexgrid" patternUnits="userSpaceOnUse" width={scene?.gridSize || gridSize} height={(scene?.gridSize || gridSize) * 0.866}>
+                    <polygon 
+                      points={`${((scene?.gridSize || gridSize) / 4)},0 ${((scene?.gridSize || gridSize) * 3 / 4)},0 ${(scene?.gridSize || gridSize)},${((scene?.gridSize || gridSize) * 0.433)} ${((scene?.gridSize || gridSize) * 3 / 4)},${((scene?.gridSize || gridSize) * 0.866)} ${((scene?.gridSize || gridSize) / 4)},${((scene?.gridSize || gridSize) * 0.866)} 0,${((scene?.gridSize || gridSize) * 0.433)}`}
+                      fill="none" 
+                      stroke="#fff" 
+                      strokeWidth="1"
+                    />
+                  </pattern>
+                </defs>
+                <rect width="100%" height="100%" fill="url(#hexgrid)" />
+              </svg>
+            )}
+          </>
+        )}
 
         {/* Tokens */}
         {tokens.map((token) => (
@@ -587,6 +636,166 @@ function AddCharacterDialog({ open, onOpenChange, onAddCharacter }: AddCharacter
             </Button>
           </div>
         </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// Scene Settings Dialog
+interface SceneSettingsDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  scene?: Scene;
+  onUpdateScene: (settings: Partial<Scene>) => void;
+}
+
+function SceneSettingsDialog({ open, onOpenChange, scene, onUpdateScene }: SceneSettingsDialogProps) {
+  const [localSettings, setLocalSettings] = useState({
+    gridEnabled: scene?.gridEnabled ?? true,
+    gridType: scene?.gridType ?? 'square',
+    gridSize: scene?.gridSize ?? 50,
+    backgroundImage: scene?.backgroundImage ?? '',
+  });
+
+  // Reset local settings when scene changes or dialog opens
+  useEffect(() => {
+    if (scene) {
+      setLocalSettings({
+        gridEnabled: scene.gridEnabled,
+        gridType: scene.gridType,
+        gridSize: scene.gridSize,
+        backgroundImage: scene.backgroundImage || '',
+      });
+    }
+  }, [scene, open]);
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64 = reader.result as string;
+        setLocalSettings(prev => ({ ...prev, backgroundImage: base64 }));
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleConfirm = () => {
+    onUpdateScene(localSettings);
+    onOpenChange(false);
+  };
+
+  const handleCancel = () => {
+    if (scene) {
+      setLocalSettings({
+        gridEnabled: scene.gridEnabled,
+        gridType: scene.gridType,
+        gridSize: scene.gridSize,
+        backgroundImage: scene.backgroundImage || '',
+      });
+    }
+    onOpenChange(false);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="bg-stone-900 border-stone-700 text-stone-200 sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="text-amber-500 font-display text-2xl">Scene Settings</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-6">
+          {/* Grid Toggle */}
+          <div className="flex items-center justify-between">
+            <Label htmlFor="grid-toggle" className="text-stone-300">Enable Grid</Label>
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="grid-toggle"
+                checked={localSettings.gridEnabled}
+                onChange={(e) => setLocalSettings(prev => ({ ...prev, gridEnabled: e.target.checked }))}
+                className="h-4 w-4"
+                data-testid="toggle-grid"
+              />
+            </div>
+          </div>
+
+          {/* Grid Type */}
+          {localSettings.gridEnabled && (
+            <div className="space-y-2">
+              <Label htmlFor="grid-type" className="text-stone-300">Grid Type</Label>
+              <select
+                id="grid-type"
+                value={localSettings.gridType}
+                onChange={(e) => setLocalSettings(prev => ({ ...prev, gridType: e.target.value }))}
+                className="w-full bg-stone-800 border-stone-700 text-stone-200 rounded px-3 py-2"
+                data-testid="select-grid-type"
+              >
+                <option value="square">Square</option>
+                <option value="hex">Hexagon</option>
+              </select>
+            </div>
+          )}
+
+          {/* Grid Size */}
+          {localSettings.gridEnabled && (
+            <div className="space-y-2">
+              <div className="flex justify-between">
+                <Label htmlFor="grid-size" className="text-stone-300">Grid Size</Label>
+                <span className="text-xs text-amber-500">{localSettings.gridSize}px</span>
+              </div>
+              <input
+                type="range"
+                id="grid-size"
+                min="30"
+                max="100"
+                value={localSettings.gridSize}
+                onChange={(e) => setLocalSettings(prev => ({ ...prev, gridSize: parseInt(e.target.value) }))}
+                className="w-full accent-amber-600"
+                data-testid="slider-grid-size"
+              />
+            </div>
+          )}
+
+          {/* Background Image Upload */}
+          <div className="space-y-2">
+            <Label htmlFor="bg-image" className="text-stone-300">Background Image</Label>
+            <input
+              type="file"
+              id="bg-image"
+              accept="image/*"
+              onChange={handleImageUpload}
+              className="w-full bg-stone-800 border border-stone-700 text-stone-200 rounded px-3 py-2 text-sm"
+              data-testid="input-background-image"
+            />
+            {localSettings.backgroundImage && (
+              <div className="mt-2 text-xs text-stone-400">
+                Image loaded (preview on battlemap)
+              </div>
+            )}
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex gap-2 pt-4">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleCancel}
+              className="flex-1 bg-stone-800 border-stone-700 hover:bg-stone-700"
+              data-testid="button-cancel-scene-settings"
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              onClick={handleConfirm}
+              className="flex-1 bg-amber-700 hover:bg-amber-600 text-white"
+              data-testid="button-confirm-scene-settings"
+            >
+              Confirm
+            </Button>
+          </div>
+        </div>
       </DialogContent>
     </Dialog>
   );

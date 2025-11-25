@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertUserSchema, insertCampaignSchema, insertCharacterSchema, insertTokenSchema, insertChatMessageSchema } from "@shared/schema";
+import { insertUserSchema, insertCampaignSchema, insertCharacterSchema, insertTokenSchema, insertChatMessageSchema, insertSceneSchema } from "@shared/schema";
 import bcrypt from "bcryptjs";
 import { WebSocketServer } from "ws";
 import { sendPasswordResetEmail } from "./email";
@@ -276,6 +276,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
         role: "gm"
       });
 
+      // Create default scene
+      const defaultScene = await storage.createScene({
+        campaignId: campaign.id,
+        name: "Default Scene",
+        backgroundImage: null,
+        gridEnabled: true,
+        gridType: "square",
+        gridSize: gridSize || 50,
+        defaultViewX: 0,
+        defaultViewY: 0,
+        defaultViewZoom: 1
+      });
+
+      // Set the default scene as active
+      await storage.setActiveScene(campaign.id, defaultScene.id);
+
       res.json(campaign);
     } catch (err) {
       res.status(400).json({ error: "Failed to create campaign" });
@@ -453,6 +469,129 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(members);
     } catch (err) {
       res.status(500).json({ error: "Failed to fetch members" });
+    }
+  });
+
+  // Scene routes
+  app.post("/api/campaigns/:campaignId/scenes", requireAuth, async (req, res) => {
+    try {
+      const campaign = await storage.getCampaign(req.params.campaignId);
+      if (!campaign) {
+        return res.status(404).json({ error: "Campaign not found" });
+      }
+
+      // Only GM can create scenes
+      if (campaign.gmUserId !== req.session.userId) {
+        return res.status(403).json({ error: "Only the GM can create scenes" });
+      }
+
+      const scene = await storage.createScene({
+        ...req.body,
+        campaignId: req.params.campaignId
+      });
+
+      res.json(scene);
+    } catch (err) {
+      res.status(400).json({ error: "Failed to create scene" });
+    }
+  });
+
+  app.get("/api/campaigns/:campaignId/scenes", requireAuth, async (req, res) => {
+    try {
+      const scenes = await storage.getCampaignScenes(req.params.campaignId);
+      res.json(scenes);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch scenes" });
+    }
+  });
+
+  app.get("/api/scenes/:sceneId", requireAuth, async (req, res) => {
+    try {
+      const scene = await storage.getScene(req.params.sceneId);
+      if (!scene) {
+        return res.status(404).json({ error: "Scene not found" });
+      }
+      res.json(scene);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch scene" });
+    }
+  });
+
+  app.put("/api/scenes/:sceneId", requireAuth, async (req, res) => {
+    try {
+      const scene = await storage.getScene(req.params.sceneId);
+      if (!scene) {
+        return res.status(404).json({ error: "Scene not found" });
+      }
+
+      const campaign = await storage.getCampaign(scene.campaignId);
+      if (!campaign) {
+        return res.status(404).json({ error: "Campaign not found" });
+      }
+
+      // Only GM can update scenes
+      if (campaign.gmUserId !== req.session.userId) {
+        return res.status(403).json({ error: "Only the GM can update scenes" });
+      }
+
+      const updatedScene = await storage.updateScene(req.params.sceneId, req.body);
+      res.json(updatedScene);
+    } catch (err) {
+      res.status(400).json({ error: "Failed to update scene" });
+    }
+  });
+
+  app.delete("/api/scenes/:sceneId", requireAuth, async (req, res) => {
+    try {
+      const scene = await storage.getScene(req.params.sceneId);
+      if (!scene) {
+        return res.status(404).json({ error: "Scene not found" });
+      }
+
+      const campaign = await storage.getCampaign(scene.campaignId);
+      if (!campaign) {
+        return res.status(404).json({ error: "Campaign not found" });
+      }
+
+      // Only GM can delete scenes
+      if (campaign.gmUserId !== req.session.userId) {
+        return res.status(403).json({ error: "Only the GM can delete scenes" });
+      }
+
+      await storage.deleteScene(req.params.sceneId);
+      res.json({ success: true });
+    } catch (err) {
+      res.status(400).json({ error: "Failed to delete scene" });
+    }
+  });
+
+  app.post("/api/campaigns/:campaignId/active-scene", requireAuth, async (req, res) => {
+    try {
+      const campaign = await storage.getCampaign(req.params.campaignId);
+      if (!campaign) {
+        return res.status(404).json({ error: "Campaign not found" });
+      }
+
+      // Only GM can set active scene
+      if (campaign.gmUserId !== req.session.userId) {
+        return res.status(403).json({ error: "Only the GM can set the active scene" });
+      }
+
+      const { sceneId } = req.body;
+      if (!sceneId) {
+        return res.status(400).json({ error: "Scene ID is required" });
+      }
+
+      // Verify scene belongs to campaign
+      const scene = await storage.getScene(sceneId);
+      if (!scene || scene.campaignId !== req.params.campaignId) {
+        return res.status(400).json({ error: "Scene not found or does not belong to this campaign" });
+      }
+
+      const updatedCampaign = await storage.setActiveScene(req.params.campaignId, sceneId);
+      res.json(updatedCampaign);
+    } catch (err) {
+      res.status(400).json({ error: "Failed to set active scene" });
     }
   });
 

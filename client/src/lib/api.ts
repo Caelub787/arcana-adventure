@@ -14,6 +14,7 @@ export interface Campaign {
   gmUserId: string;
   gridSize: number;
   currentMap?: string;
+  activeSceneId?: string;
   createdAt: string;
   lastPlayed: string;
 }
@@ -59,6 +60,20 @@ export interface CampaignMember {
   role: string;
   favorite: boolean;
   joinedAt: string;
+}
+
+export interface Scene {
+  id: string;
+  campaignId: string;
+  name: string;
+  backgroundImage?: string;
+  gridEnabled: boolean;
+  gridType: string;
+  gridSize: number;
+  defaultViewX: number;
+  defaultViewY: number;
+  defaultViewZoom: number;
+  createdAt: string;
 }
 
 class ApiClient {
@@ -193,6 +208,40 @@ class ApiClient {
   // Members
   async getCampaignMembers(campaignId: string): Promise<CampaignMember[]> {
     return this.request(`/campaigns/${campaignId}/members`);
+  }
+
+  // Scenes
+  async getScenes(campaignId: string): Promise<Scene[]> {
+    return this.request(`/campaigns/${campaignId}/scenes`);
+  }
+
+  async createScene(campaignId: string, scene: Partial<Scene>): Promise<Scene> {
+    return this.request(`/campaigns/${campaignId}/scenes`, {
+      method: 'POST',
+      body: JSON.stringify(scene),
+    });
+  }
+
+  async getScene(sceneId: string): Promise<Scene> {
+    return this.request(`/scenes/${sceneId}`);
+  }
+
+  async updateScene(sceneId: string, data: Partial<Scene>): Promise<Scene> {
+    return this.request(`/scenes/${sceneId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteScene(sceneId: string): Promise<void> {
+    return this.request(`/scenes/${sceneId}`, { method: 'DELETE' });
+  }
+
+  async setActiveScene(campaignId: string, sceneId: string): Promise<void> {
+    return this.request(`/campaigns/${campaignId}/active-scene`, {
+      method: 'POST',
+      body: JSON.stringify({ sceneId }),
+    });
   }
 }
 

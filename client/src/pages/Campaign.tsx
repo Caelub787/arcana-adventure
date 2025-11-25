@@ -3,15 +3,150 @@ import { useLocation, useSearch, useRoute } from "wouter";
 import { motion } from "framer-motion";
 import { CharacterCreation, BattleMap, HUD, CampaignMenu } from "@/components/game/GameComponents";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Loader2 } from "lucide-react";
+import { ArrowLeft, Loader2, Settings, Map as MapIcon, Layers, Trash2 } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import battleMapImage1 from "@assets/generated_images/top_down_dungeon_battlemap.png";
 import battleMapImage2 from "@assets/generated_images/dark_fantasy_landscape_with_arcane_ruins.png";
 import warriorToken from "@assets/generated_images/top_down_warrior_token.png";
 import goblinToken from "@assets/generated_images/top_down_goblin_token.png";
 import { useAuth } from "@/lib/AuthContext";
-import { api, gameWs } from "@/lib/api";
+import { api, gameWs, type Scene } from "@/lib/api";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
+
+// Scene Settings Form Component
+function SceneSettingsForm({ scene, onUpdateScene, onClose }: { scene: Scene; onUpdateScene: (settings: Partial<Scene>) => void; onClose: () => void }) {
+  const [localSettings, setLocalSettings] = useState({
+    gridEnabled: scene.gridEnabled,
+    gridType: scene.gridType,
+    gridSize: scene.gridSize,
+    backgroundImage: scene.backgroundImage || '',
+  });
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64 = reader.result as string;
+        setLocalSettings(prev => ({ ...prev, backgroundImage: base64 }));
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleConfirm = () => {
+    onUpdateScene(localSettings);
+    onClose();
+  };
+
+  const handleCancel = () => {
+    setLocalSettings({
+      gridEnabled: scene.gridEnabled,
+      gridType: scene.gridType,
+      gridSize: scene.gridSize,
+      backgroundImage: scene.backgroundImage || '',
+    });
+    onClose();
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Grid Toggle */}
+      <div className="flex items-center justify-between">
+        <Label htmlFor="grid-toggle" className="text-stone-300">Enable Grid</Label>
+        <input
+          type="checkbox"
+          id="grid-toggle"
+          checked={localSettings.gridEnabled}
+          onChange={(e) => setLocalSettings(prev => ({ ...prev, gridEnabled: e.target.checked }))}
+          className="h-4 w-4"
+          data-testid="toggle-grid"
+        />
+      </div>
+
+      {/* Grid Type */}
+      {localSettings.gridEnabled && (
+        <div className="space-y-2">
+          <Label htmlFor="grid-type" className="text-stone-300">Grid Type</Label>
+          <select
+            id="grid-type"
+            value={localSettings.gridType}
+            onChange={(e) => setLocalSettings(prev => ({ ...prev, gridType: e.target.value }))}
+            className="w-full bg-stone-800 border-stone-700 text-stone-200 rounded px-3 py-2"
+            data-testid="select-grid-type"
+          >
+            <option value="square">Square</option>
+            <option value="hex">Hexagon</option>
+          </select>
+        </div>
+      )}
+
+      {/* Grid Size */}
+      {localSettings.gridEnabled && (
+        <div className="space-y-2">
+          <div className="flex justify-between">
+            <Label htmlFor="grid-size" className="text-stone-300">Grid Size</Label>
+            <span className="text-xs text-amber-500">{localSettings.gridSize}px</span>
+          </div>
+          <input
+            type="range"
+            id="grid-size"
+            min="30"
+            max="100"
+            value={localSettings.gridSize}
+            onChange={(e) => setLocalSettings(prev => ({ ...prev, gridSize: parseInt(e.target.value) }))}
+            className="w-full accent-amber-600"
+            data-testid="slider-grid-size"
+          />
+        </div>
+      )}
+
+      {/* Background Image Upload */}
+      <div className="space-y-2">
+        <Label htmlFor="bg-image" className="text-stone-300">Background Image</Label>
+        <input
+          type="file"
+          id="bg-image"
+          accept="image/*"
+          onChange={handleImageUpload}
+          className="w-full bg-stone-800 border border-stone-700 text-stone-200 rounded px-3 py-2 text-sm"
+          data-testid="input-background-image"
+        />
+        {localSettings.backgroundImage && (
+          <div className="mt-2 text-xs text-stone-400">
+            Image loaded (preview on battlemap)
+          </div>
+        )}
+      </div>
+
+      {/* Action Buttons */}
+      <div className="flex gap-2 pt-4">
+        <Button
+          type="button"
+          variant="outline"
+          onClick={handleCancel}
+          className="flex-1 bg-stone-800 border-stone-700 hover:bg-stone-700"
+          data-testid="button-cancel-scene-settings"
+        >
+          Cancel
+        </Button>
+        <Button
+          type="button"
+          onClick={handleConfirm}
+          className="flex-1 bg-amber-700 hover:bg-amber-600 text-white"
+          data-testid="button-confirm-scene-settings"
+        >
+          Confirm
+        </Button>
+      </div>
+    </div>
+  );
+}
 
 export default function Campaign() {
   const [location, setLocation] = useLocation();
@@ -34,6 +169,10 @@ export default function Campaign() {
   const [currentMap, setCurrentMap] = useState(battleMapImage1);
   const [gridSize, setGridSize] = useState(50);
   const [createdCampaignId, setCreatedCampaignId] = useState<string | null>(null);
+  const [currentView, setCurrentView] = useState({ x: 0, y: 0, zoom: 1 });
+  const [sceneSettingsOpen, setSceneSettingsOpen] = useState(false);
+  const [scenesManagementOpen, setScenesManagementOpen] = useState(false);
+  const [newSceneName, setNewSceneName] = useState("");
 
   // Determine effective campaign ID (from URL or newly created)
   const effectiveCampaignId = campaignId || createdCampaignId;
@@ -60,6 +199,21 @@ export default function Campaign() {
   const { data: members, isLoading: membersLoading } = useQuery({
     queryKey: [`/api/campaigns/${effectiveCampaignId}/members`],
     enabled: !!effectiveCampaignId && !isNew,
+  });
+
+  // Load active scene for the campaign
+  const activeSceneId = campaign && typeof campaign === 'object' && 'activeSceneId' in campaign ? campaign.activeSceneId : null;
+  const { data: activeScene, isLoading: sceneLoading } = useQuery({
+    queryKey: [`/api/scenes/${activeSceneId}`],
+    queryFn: () => api.getScene(activeSceneId as string),
+    enabled: !!activeSceneId,
+  });
+
+  // Load all scenes for the campaign
+  const { data: allScenes } = useQuery({
+    queryKey: [`/api/campaigns/${effectiveCampaignId}/scenes`],
+    queryFn: () => api.getScenes(effectiveCampaignId!),
+    enabled: !!effectiveCampaignId,
   });
 
   // Create campaign mutation
@@ -112,6 +266,55 @@ export default function Campaign() {
     mutationFn: (data: any) => api.updateCampaign(effectiveCampaignId!, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${effectiveCampaignId}`] });
+    },
+  });
+
+  // Update scene mutation
+  const updateSceneMutation = useMutation({
+    mutationFn: (data: Partial<Scene>) => api.updateScene(activeScene!.id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/scenes/${activeScene?.id}`] });
+      toast({ title: "Success", description: "Scene updated successfully" });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message || "Failed to update scene", variant: "destructive" });
+    },
+  });
+
+  // Create scene mutation
+  const createSceneMutation = useMutation({
+    mutationFn: (name: string) => api.createScene(effectiveCampaignId!, { name, campaignId: effectiveCampaignId! }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${effectiveCampaignId}/scenes`] });
+      toast({ title: "Success", description: "Scene created successfully" });
+      setNewSceneName("");
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message || "Failed to create scene", variant: "destructive" });
+    },
+  });
+
+  // Delete scene mutation
+  const deleteSceneMutation = useMutation({
+    mutationFn: (sceneId: string) => api.deleteScene(sceneId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${effectiveCampaignId}/scenes`] });
+      toast({ title: "Success", description: "Scene deleted successfully" });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message || "Failed to delete scene", variant: "destructive" });
+    },
+  });
+
+  // Set active scene mutation
+  const setActiveSceneMutation = useMutation({
+    mutationFn: (sceneId: string) => api.setActiveScene(effectiveCampaignId!, sceneId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${effectiveCampaignId}`] });
+      toast({ title: "Success", description: "Active scene changed" });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message || "Failed to change active scene", variant: "destructive" });
     },
   });
 
@@ -231,8 +434,46 @@ export default function Campaign() {
     updateCampaignMutation.mutate({ gridSize: newSize });
   };
 
+  const handleUpdateScene = (settings: Partial<Scene>) => {
+    if (activeScene) {
+      updateSceneMutation.mutate(settings);
+    }
+  };
+
+  const handleSetDefaultView = () => {
+    if (activeScene) {
+      updateSceneMutation.mutate({
+        defaultViewX: Math.round(currentView.x),
+        defaultViewY: Math.round(currentView.y),
+        defaultViewZoom: currentView.zoom,
+      });
+      toast({ title: "Success", description: "Default view saved" });
+    }
+  };
+
+  const handleCreateScene = () => {
+    if (newSceneName.trim()) {
+      createSceneMutation.mutate(newSceneName.trim());
+    }
+  };
+
+  const handleDeleteScene = (sceneId: string) => {
+    if (allScenes && allScenes.length <= 1) {
+      toast({ title: "Error", description: "Cannot delete the last scene", variant: "destructive" });
+      return;
+    }
+    if (window.confirm("Are you sure you want to delete this scene?")) {
+      deleteSceneMutation.mutate(sceneId);
+    }
+  };
+
+  const handleSwitchScene = (sceneId: string) => {
+    setActiveSceneMutation.mutate(sceneId);
+    setScenesManagementOpen(false);
+  };
+
   // Show loading state
-  if (campaignLoading || tokensLoading || charactersLoading || membersLoading || createCampaignMutation.isPending) {
+  if (campaignLoading || tokensLoading || charactersLoading || membersLoading || sceneLoading || createCampaignMutation.isPending) {
     return (
       <div className="relative h-screen w-screen overflow-hidden bg-black text-white flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
@@ -281,6 +522,120 @@ export default function Campaign() {
         <CharacterCreation onComplete={handleCharacterCreated} />
       )}
 
+      {/* Scene Settings Dialog (GM Only) */}
+      {role === 'gm' && activeScene && (
+        <Dialog open={sceneSettingsOpen} onOpenChange={setSceneSettingsOpen}>
+          <DialogContent className="bg-stone-900 border-stone-700 text-stone-200 sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle className="text-amber-500 font-display text-2xl">Scene Settings</DialogTitle>
+            </DialogHeader>
+            <SceneSettingsForm scene={activeScene} onUpdateScene={handleUpdateScene} onClose={() => setSceneSettingsOpen(false)} />
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Scenes Management Sheet (GM Only) */}
+      {role === 'gm' && (
+        <Sheet open={scenesManagementOpen} onOpenChange={setScenesManagementOpen}>
+          <SheetContent className="bg-stone-900 border-stone-700 text-stone-200 w-full sm:max-w-md">
+            <SheetHeader>
+              <SheetTitle className="text-amber-500 font-display text-2xl">Manage Scenes</SheetTitle>
+            </SheetHeader>
+            
+            <div className="mt-6 space-y-6">
+              {/* Create New Scene */}
+              <div className="space-y-3">
+                <Label htmlFor="new-scene-name" className="text-stone-300 font-bold">Create New Scene</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="new-scene-name"
+                    value={newSceneName}
+                    onChange={(e) => setNewSceneName(e.target.value)}
+                    placeholder="Enter scene name"
+                    className="bg-stone-800 border-stone-700 text-stone-200"
+                    onKeyPress={(e) => e.key === 'Enter' && handleCreateScene()}
+                    data-testid="input-new-scene-name"
+                  />
+                  <Button
+                    onClick={handleCreateScene}
+                    disabled={!newSceneName.trim() || createSceneMutation.isPending}
+                    className="bg-amber-700 hover:bg-amber-600"
+                    data-testid="button-create-scene"
+                  >
+                    Create
+                  </Button>
+                </div>
+              </div>
+
+              {/* Scenes List */}
+              <div className="space-y-3">
+                <Label className="text-stone-300 font-bold">All Scenes</Label>
+                <ScrollArea className="h-[400px] pr-4">
+                  <div className="space-y-2">
+                    {allScenes && allScenes.length > 0 ? (
+                      allScenes.map((scene: Scene) => (
+                        <div
+                          key={scene.id}
+                          className={`p-3 rounded border transition-all ${
+                            scene.id === activeScene?.id
+                              ? 'bg-amber-900/30 border-amber-700'
+                              : 'bg-stone-800 border-stone-700 hover:bg-stone-750'
+                          }`}
+                          data-testid={`scene-item-${scene.id}`}
+                        >
+                          <div className="flex justify-between items-center">
+                            <div className="flex-1">
+                              <div className="font-bold text-stone-200">{scene.name}</div>
+                              <div className="text-xs text-stone-400 mt-1">
+                                {scene.gridEnabled ? `${scene.gridType} grid (${scene.gridSize}px)` : 'Grid disabled'}
+                              </div>
+                            </div>
+                            <div className="flex gap-2">
+                              {scene.id !== activeScene?.id && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleSwitchScene(scene.id)}
+                                  className="bg-stone-700 border-stone-600 hover:bg-stone-600"
+                                  data-testid={`button-switch-scene-${scene.id}`}
+                                >
+                                  Switch
+                                </Button>
+                              )}
+                              {scene.id === activeScene?.id && (
+                                <span className="text-xs text-amber-500 font-bold px-2 py-1 bg-amber-900/20 rounded">
+                                  Active
+                                </span>
+                              )}
+                              {allScenes.length > 1 && (
+                                <Button
+                                  size="sm"
+                                  variant="destructive"
+                                  onClick={() => handleDeleteScene(scene.id)}
+                                  disabled={deleteSceneMutation.isPending}
+                                  className="bg-red-900/30 hover:bg-red-800/50"
+                                  data-testid={`button-delete-scene-${scene.id}`}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="p-4 text-center text-stone-500 text-sm">
+                        No scenes yet
+                      </div>
+                    )}
+                  </div>
+                </ScrollArea>
+              </div>
+            </div>
+          </SheetContent>
+        </Sheet>
+      )}
+
       {/* Game View */}
       {character && (
         <div className="flex flex-col h-full w-full">
@@ -294,7 +649,45 @@ export default function Campaign() {
                role={role} 
                gridSize={gridSize}
                backgroundImage={currentMap}
+               scene={activeScene}
+               onViewChange={setCurrentView}
              />
+             
+             {/* GM-Only Scene Controls */}
+             {role === 'gm' && activeScene && (
+               <div className="absolute top-20 left-4 z-30 flex flex-col gap-2">
+                 <Button
+                   size="sm"
+                   variant="secondary"
+                   onClick={() => setSceneSettingsOpen(true)}
+                   className="bg-purple-900/80 hover:bg-purple-800 text-white border border-purple-700"
+                   data-testid="button-scene-settings"
+                 >
+                   <Settings className="h-4 w-4 mr-2" />
+                   Scene Settings
+                 </Button>
+                 <Button
+                   size="sm"
+                   variant="secondary"
+                   onClick={handleSetDefaultView}
+                   className="bg-blue-900/80 hover:bg-blue-800 text-white border border-blue-700"
+                   data-testid="button-set-default-view"
+                 >
+                   <MapIcon className="h-4 w-4 mr-2" />
+                   Set Default View
+                 </Button>
+                 <Button
+                   size="sm"
+                   variant="secondary"
+                   onClick={() => setScenesManagementOpen(true)}
+                   className="bg-amber-900/80 hover:bg-amber-800 text-white border border-amber-700"
+                   data-testid="button-scenes-management"
+                 >
+                   <Layers className="h-4 w-4 mr-2" />
+                   Scenes
+                 </Button>
+               </div>
+             )}
           </div>
           
           {/* UI Overlays */}

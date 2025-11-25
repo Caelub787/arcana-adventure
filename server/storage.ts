@@ -6,7 +6,8 @@ import {
   type Token, type InsertToken,
   type ChatMessage, type InsertChatMessage,
   type PasswordResetToken, type InsertPasswordResetToken,
-  users, campaigns, campaignMembers, characters, tokens, chatMessages, passwordResetTokens
+  type Scene, type InsertScene,
+  users, campaigns, campaignMembers, characters, tokens, chatMessages, passwordResetTokens, scenes
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql } from "drizzle-orm";
@@ -53,6 +54,15 @@ export interface IStorage {
   deletePasswordResetToken(token: string): Promise<void>;
   deleteUserPasswordResetTokens(userId: string): Promise<void>;
   updateUserPassword(userId: string, hashedPassword: string): Promise<void>;
+
+  // Scene operations
+  createScene(scene: InsertScene): Promise<Scene>;
+  getScene(id: string): Promise<Scene | undefined>;
+  getCampaignScenes(campaignId: string): Promise<Scene[]>;
+  getActiveScene(campaignId: string): Promise<Scene | undefined>;
+  updateScene(id: string, data: Partial<Scene>): Promise<Scene | undefined>;
+  deleteScene(id: string): Promise<void>;
+  setActiveScene(campaignId: string, sceneId: string): Promise<Campaign | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -274,6 +284,57 @@ export class DatabaseStorage implements IStorage {
     await db.update(users)
       .set({ password: hashedPassword })
       .where(eq(users.id, userId));
+  }
+
+  // Scene operations
+  async createScene(scene: InsertScene): Promise<Scene> {
+    const [newScene] = await db.insert(scenes).values(scene).returning();
+    return newScene;
+  }
+
+  async getScene(id: string): Promise<Scene | undefined> {
+    const [scene] = await db.select().from(scenes).where(eq(scenes.id, id)).limit(1);
+    return scene;
+  }
+
+  async getCampaignScenes(campaignId: string): Promise<Scene[]> {
+    return await db.select()
+      .from(scenes)
+      .where(eq(scenes.campaignId, campaignId))
+      .orderBy(scenes.createdAt);
+  }
+
+  async getActiveScene(campaignId: string): Promise<Scene | undefined> {
+    const [campaign] = await db.select()
+      .from(campaigns)
+      .where(eq(campaigns.id, campaignId))
+      .limit(1);
+    
+    if (!campaign?.activeSceneId) {
+      return undefined;
+    }
+
+    return await this.getScene(campaign.activeSceneId);
+  }
+
+  async updateScene(id: string, data: Partial<Scene>): Promise<Scene | undefined> {
+    const [scene] = await db.update(scenes)
+      .set(data)
+      .where(eq(scenes.id, id))
+      .returning();
+    return scene;
+  }
+
+  async deleteScene(id: string): Promise<void> {
+    await db.delete(scenes).where(eq(scenes.id, id));
+  }
+
+  async setActiveScene(campaignId: string, sceneId: string): Promise<Campaign | undefined> {
+    const [campaign] = await db.update(campaigns)
+      .set({ activeSceneId: sceneId })
+      .where(eq(campaigns.id, campaignId))
+      .returning();
+    return campaign;
   }
 }
 
