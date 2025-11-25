@@ -387,7 +387,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       await storage.toggleFavorite(req.params.id, req.session.userId!);
       res.json({ success: true });
-    } catch (err) {
+    } catch (err: any) {
+      if (err.message === "Only campaign members can favorite a campaign") {
+        return res.status(403).json({ error: err.message });
+      }
       res.status(400).json({ error: "Failed to toggle favorite" });
     }
   });

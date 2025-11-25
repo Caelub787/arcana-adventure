@@ -113,12 +113,14 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteCampaign(id: string): Promise<void> {
-    await db.delete(campaignMembers).where(eq(campaignMembers.campaignId, id));
-    await db.delete(characters).where(eq(characters.campaignId, id));
-    await db.delete(tokens).where(eq(tokens.campaignId, id));
-    await db.delete(chatMessages).where(eq(chatMessages.campaignId, id));
-    await db.delete(scenes).where(eq(scenes.campaignId, id));
-    await db.delete(campaigns).where(eq(campaigns.id, id));
+    await db.transaction(async (tx) => {
+      await tx.delete(campaignMembers).where(eq(campaignMembers.campaignId, id));
+      await tx.delete(characters).where(eq(characters.campaignId, id));
+      await tx.delete(tokens).where(eq(tokens.campaignId, id));
+      await tx.delete(chatMessages).where(eq(chatMessages.campaignId, id));
+      await tx.delete(scenes).where(eq(scenes.campaignId, id));
+      await tx.delete(campaigns).where(eq(campaigns.id, id));
+    });
   }
 
   async getUserCampaigns(userId: string): Promise<{ created: any[], joined: any[] }> {
@@ -190,6 +192,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   async toggleFavorite(campaignId: string, userId: string): Promise<void> {
+    const campaign = await this.getCampaign(campaignId);
+    if (!campaign) {
+      throw new Error("Campaign not found");
+    }
+
     const [member] = await db.select()
       .from(campaignMembers)
       .where(and(
@@ -199,18 +206,16 @@ export class DatabaseStorage implements IStorage {
       .limit(1);
 
     if (!member) {
-      const campaign = await this.getCampaign(campaignId);
-      if (!campaign) {
-        throw new Error("Campaign not found");
+      if (campaign.gmUserId === userId) {
+        await db.insert(campaignMembers).values({
+          campaignId,
+          userId,
+          role: "gm",
+          favorite: true
+        });
+      } else {
+        throw new Error("Only campaign members can favorite a campaign");
       }
-      
-      const role = campaign.gmUserId === userId ? "gm" : "player";
-      await db.insert(campaignMembers).values({
-        campaignId,
-        userId,
-        role,
-        favorite: true
-      });
     } else {
       await db.update(campaignMembers)
         .set({ favorite: !member.favorite })
