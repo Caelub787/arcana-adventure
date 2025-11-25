@@ -358,19 +358,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.delete("/api/campaigns/:id", requireAuth, async (req, res) => {
     try {
+      console.log(`[DELETE] Campaign delete request for ID: ${req.params.id} by user: ${req.session.userId}`);
       const campaign = await storage.getCampaign(req.params.id);
       if (!campaign) {
+        console.log(`[DELETE] Campaign not found: ${req.params.id}`);
         return res.status(404).json({ error: "Campaign not found" });
       }
 
+      console.log(`[DELETE] Campaign found. GM: ${campaign.gmUserId}, Current user: ${req.session.userId}`);
       if (campaign.gmUserId !== req.session.userId) {
+        console.log(`[DELETE] Authorization failed. User is not GM.`);
         return res.status(403).json({ error: "Only the GM can delete the campaign" });
       }
 
+      console.log(`[DELETE] Starting cascade delete for campaign ${req.params.id}`);
       await storage.deleteCampaign(req.params.id);
+      console.log(`[DELETE] Campaign ${req.params.id} deleted successfully`);
       res.json({ success: true });
-    } catch (err) {
-      res.status(400).json({ error: "Failed to delete campaign" });
+    } catch (err: any) {
+      console.error(`[DELETE] Error deleting campaign:`, err);
+      res.status(400).json({ error: "Failed to delete campaign", details: err.message });
     }
   });
 

@@ -113,14 +113,8 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteCampaign(id: string): Promise<void> {
-    await db.transaction(async (tx) => {
-      await tx.delete(campaignMembers).where(eq(campaignMembers.campaignId, id));
-      await tx.delete(characters).where(eq(characters.campaignId, id));
-      await tx.delete(tokens).where(eq(tokens.campaignId, id));
-      await tx.delete(chatMessages).where(eq(chatMessages.campaignId, id));
-      await tx.delete(scenes).where(eq(scenes.campaignId, id));
-      await tx.delete(campaigns).where(eq(campaigns.id, id));
-    });
+    // Database CASCADE constraints will automatically delete related records
+    await db.delete(campaigns).where(eq(campaigns.id, id));
   }
 
   async getUserCampaigns(userId: string): Promise<{ created: any[], joined: any[] }> {

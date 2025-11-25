@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ArrowLeft, Trash2, LogOut, Play, Plus, Crown, User, Heart, Search, Loader2 } from "lucide-react";
 import bgImage from "@assets/generated_images/dark_fantasy_landscape_with_arcane_ruins.png";
@@ -27,6 +28,10 @@ export default function MyCampaigns() {
   const [isJoinOpen, setIsJoinOpen] = useState(false);
   const [joinCode, setJoinCode] = useState("");
   const [joinError, setJoinError] = useState("");
+  
+  // Delete Confirmation State
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [campaignToDelete, setCampaignToDelete] = useState<{ id: string, name: string } | null>(null);
 
   // Load campaigns from API with React Query
   const { data: campaignsData, isLoading } = useQuery<{ created: any[], joined: any[] }>({
@@ -86,8 +91,17 @@ export default function MyCampaigns() {
     },
   });
 
-  const handleDelete = (id: string) => {
-    deleteCampaignMutation.mutate(id);
+  const handleDelete = (id: string, name: string) => {
+    setCampaignToDelete({ id, name });
+    setDeleteDialogOpen(true);
+  };
+
+  const confirmDelete = () => {
+    if (campaignToDelete) {
+      deleteCampaignMutation.mutate(campaignToDelete.id);
+      setDeleteDialogOpen(false);
+      setCampaignToDelete(null);
+    }
   };
 
   const handleLeave = (id: string) => {
@@ -154,7 +168,7 @@ export default function MyCampaigns() {
                 variant="ghost" 
                 size="icon" 
                 className="h-8 w-8 text-stone-600 hover:text-red-400 hover:bg-red-950/30"
-                onClick={() => isCreated ? handleDelete(campaign.id) : handleLeave(campaign.id)}
+                onClick={() => isCreated ? handleDelete(campaign.id, campaign.name) : handleLeave(campaign.id)}
                 data-testid={`button-${isCreated ? 'delete' : 'leave'}-${campaign.id}`}
                 disabled={deleteCampaignMutation.isPending || leaveCampaignMutation.isPending}
               >
@@ -330,6 +344,31 @@ export default function MyCampaigns() {
             </TabsContent>
           </div>
         </Tabs>
+
+        {/* Delete Confirmation Dialog */}
+        <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+          <AlertDialogContent className="bg-stone-950 border-stone-800 text-stone-100">
+            <AlertDialogHeader>
+              <AlertDialogTitle className="text-red-500">Delete Campaign?</AlertDialogTitle>
+              <AlertDialogDescription className="text-stone-400">
+                Are you sure you want to delete <span className="font-bold text-stone-200">"{campaignToDelete?.name}"</span>? 
+                This action cannot be undone. All scenes, characters, and messages will be permanently deleted.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel className="bg-stone-900 border-stone-700 text-stone-100 hover:bg-stone-800">
+                Cancel
+              </AlertDialogCancel>
+              <AlertDialogAction 
+                onClick={confirmDelete}
+                className="bg-red-700 hover:bg-red-600 text-white"
+                data-testid="button-confirm-delete"
+              >
+                Delete Campaign
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </div>
   );
