@@ -19,15 +19,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 
 // Scene Settings Form Component
-function SceneSettingsForm({ scene, onUpdateScene, onClose }: { scene: Scene; onUpdateScene: (settings: Partial<Scene>) => void; onClose: () => void }) {
-  // Store original scene values for cancel functionality
-  const originalSettingsRef = useRef({
-    gridEnabled: scene.gridEnabled,
-    gridType: scene.gridType,
-    gridSize: scene.gridSize,
-    backgroundImage: scene.backgroundImage || '',
-  });
-
+function SceneSettingsForm({ scene, onUpdateScene }: { scene: Scene; onUpdateScene: (settings: Partial<Scene>) => void }) {
   const [localSettings, setLocalSettings] = useState({
     gridEnabled: scene.gridEnabled,
     gridType: scene.gridType,
@@ -35,12 +27,33 @@ function SceneSettingsForm({ scene, onUpdateScene, onClose }: { scene: Scene; on
     backgroundImage: scene.backgroundImage || '',
   });
 
-  // Update scene settings immediately when they change
+  const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (debounceTimeoutRef.current) {
+        clearTimeout(debounceTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  // Update scene settings immediately when they change (with debouncing for gridSize)
   const updateSetting = (key: keyof typeof localSettings, value: any) => {
     const newSettings = { ...localSettings, [key]: value };
     setLocalSettings(newSettings);
-    // Apply changes immediately (optimistic update)
-    onUpdateScene({ [key]: value });
+    
+    // Debounce gridSize updates to avoid spamming the server during slider drag
+    if (key === 'gridSize') {
+      if (debounceTimeoutRef.current) {
+        clearTimeout(debounceTimeoutRef.current);
+      }
+      debounceTimeoutRef.current = setTimeout(() => {
+        onUpdateScene({ [key]: value });
+      }, 300);
+    } else {
+      // Apply other changes immediately (optimistic update)
+      onUpdateScene({ [key]: value });
+    }
   };
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -55,19 +68,8 @@ function SceneSettingsForm({ scene, onUpdateScene, onClose }: { scene: Scene; on
     }
   };
 
-  const handleConfirm = () => {
-    // Settings are already applied, just close
-    onClose();
-  };
-
-  const handleCancel = () => {
-    // Revert to original values
-    onUpdateScene(originalSettingsRef.current);
-    onClose();
-  };
-
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* Grid Toggle */}
       <div className="flex items-center justify-between">
         <Label htmlFor="grid-toggle" className="text-stone-300">Enable Grid</Label>
@@ -135,27 +137,6 @@ function SceneSettingsForm({ scene, onUpdateScene, onClose }: { scene: Scene; on
           </div>
         )}
       </div>
-
-      {/* Action Buttons */}
-      <div className="flex gap-2 pt-4">
-        <Button
-          type="button"
-          variant="outline"
-          onClick={handleCancel}
-          className="flex-1 bg-stone-800 border-stone-700 hover:bg-stone-700"
-          data-testid="button-cancel-scene-settings"
-        >
-          Cancel
-        </Button>
-        <Button
-          type="button"
-          onClick={handleConfirm}
-          className="flex-1 bg-amber-700 hover:bg-amber-600 text-white"
-          data-testid="button-confirm-scene-settings"
-        >
-          Confirm
-        </Button>
-      </div>
     </div>
   );
 }
@@ -182,7 +163,6 @@ export default function Campaign() {
   const [gridSize, setGridSize] = useState(50);
   const [createdCampaignId, setCreatedCampaignId] = useState<string | null>(null);
   const [currentView, setCurrentView] = useState({ x: 0, y: 0, zoom: 1 });
-  const [sceneSettingsOpen, setSceneSettingsOpen] = useState(false);
   const [scenesManagementOpen, setScenesManagementOpen] = useState(false);
   const [newSceneName, setNewSceneName] = useState("");
 
@@ -286,7 +266,6 @@ export default function Campaign() {
     mutationFn: (data: Partial<Scene>) => api.updateScene(activeScene!.id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/scenes/${activeScene?.id}`] });
-      toast({ title: "Success", description: "Scene updated successfully" });
     },
     onError: (error: any) => {
       toast({ title: "Error", description: error.message || "Failed to update scene", variant: "destructive" });
@@ -512,7 +491,7 @@ export default function Campaign() {
         </Button>
         
         {/* Settings / Menu Button for ALL Roles */}
-        <div className="pointer-events-auto">
+        <div className="pointer-events-auto flex flex-col gap-2">
           <CampaignMenu 
             role={role} 
             inviteCode={(campaign && typeof campaign === 'object' && 'inviteCode' in campaign ? campaign.inviteCode as string : "") || ""}
@@ -526,6 +505,19 @@ export default function Campaign() {
             members={members as any[]}
             onAddCharacter={handleAddCharacter}
           />
+          
+          {/* Scenes Button (GM Only) - Icon only, directly under Settings */}
+          {role === 'gm' && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setScenesManagementOpen(true)}
+              className="text-white/50 hover:text-white hover:bg-white/10"
+              data-testid="button-scenes"
+            >
+              <Layers className="h-5 w-5" />
+            </Button>
+          )}
         </div>
       </div>
 
@@ -534,55 +526,43 @@ export default function Campaign() {
         <CharacterCreation onComplete={handleCharacterCreated} />
       )}
 
-      {/* Scene Settings Dialog (GM Only) */}
-      {role === 'gm' && activeScene && (
-        <Dialog open={sceneSettingsOpen} onOpenChange={setSceneSettingsOpen}>
-          <DialogContent className="bg-stone-900 border-stone-700 text-stone-200 sm:max-w-lg">
-            <DialogHeader>
-              <DialogTitle className="text-amber-500 font-display text-2xl">Scene Settings</DialogTitle>
-            </DialogHeader>
-            <SceneSettingsForm scene={activeScene} onUpdateScene={handleUpdateScene} onClose={() => setSceneSettingsOpen(false)} />
-          </DialogContent>
-        </Dialog>
-      )}
-
       {/* Scenes Management Sheet (GM Only) */}
-      {role === 'gm' && (
+      {role === 'gm' && activeScene && (
         <Sheet open={scenesManagementOpen} onOpenChange={setScenesManagementOpen}>
           <SheetContent className="bg-stone-900 border-stone-700 text-stone-200 w-full sm:max-w-md">
             <SheetHeader>
-              <SheetTitle className="text-amber-500 font-display text-2xl">Manage Scenes</SheetTitle>
+              <SheetTitle className="text-amber-500 font-display text-2xl">Scenes</SheetTitle>
             </SheetHeader>
             
-            <div className="mt-6 space-y-6">
-              {/* Create New Scene */}
-              <div className="space-y-3">
-                <Label htmlFor="new-scene-name" className="text-stone-300 font-bold">Create New Scene</Label>
-                <div className="flex gap-2">
-                  <Input
-                    id="new-scene-name"
-                    value={newSceneName}
-                    onChange={(e) => setNewSceneName(e.target.value)}
-                    placeholder="Enter scene name"
-                    className="bg-stone-800 border-stone-700 text-stone-200"
-                    onKeyPress={(e) => e.key === 'Enter' && handleCreateScene()}
-                    data-testid="input-new-scene-name"
-                  />
-                  <Button
-                    onClick={handleCreateScene}
-                    disabled={!newSceneName.trim() || createSceneMutation.isPending}
-                    className="bg-amber-700 hover:bg-amber-600"
-                    data-testid="button-create-scene"
-                  >
-                    Create
-                  </Button>
+            <ScrollArea className="h-[calc(100vh-100px)] pr-4">
+              <div className="mt-6 space-y-6">
+                {/* Create New Scene */}
+                <div className="space-y-3">
+                  <Label htmlFor="new-scene-name" className="text-stone-300 font-bold">Create New Scene</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      id="new-scene-name"
+                      value={newSceneName}
+                      onChange={(e) => setNewSceneName(e.target.value)}
+                      placeholder="Enter scene name"
+                      className="bg-stone-800 border-stone-700 text-stone-200"
+                      onKeyPress={(e) => e.key === 'Enter' && handleCreateScene()}
+                      data-testid="input-new-scene-name"
+                    />
+                    <Button
+                      onClick={handleCreateScene}
+                      disabled={!newSceneName.trim() || createSceneMutation.isPending}
+                      className="bg-amber-700 hover:bg-amber-600"
+                      data-testid="button-create-scene"
+                    >
+                      Create
+                    </Button>
+                  </div>
                 </div>
-              </div>
 
-              {/* Scenes List */}
-              <div className="space-y-3">
-                <Label className="text-stone-300 font-bold">All Scenes</Label>
-                <ScrollArea className="h-[400px] pr-4">
+                {/* Scenes List */}
+                <div className="space-y-3">
+                  <Label className="text-stone-300 font-bold">All Scenes</Label>
                   <div className="space-y-2">
                     {allScenes && allScenes.length > 0 ? (
                       allScenes.map((scene: Scene) => (
@@ -641,9 +621,34 @@ export default function Campaign() {
                       </div>
                     )}
                   </div>
-                </ScrollArea>
+                </div>
+
+                {/* Scene Settings Section */}
+                <div className="space-y-4 pt-4 border-t border-stone-700">
+                  <div className="flex items-center justify-between mb-4">
+                    <Label className="text-stone-300 font-bold text-lg">Scene Settings</Label>
+                    <span className="text-xs text-stone-500">Active: {activeScene.name}</span>
+                  </div>
+
+                  <SceneSettingsForm 
+                    scene={activeScene} 
+                    onUpdateScene={handleUpdateScene} 
+                  />
+
+                  {/* Set Default View Button */}
+                  <div className="pt-4">
+                    <Button
+                      onClick={handleSetDefaultView}
+                      className="w-full bg-blue-900/80 hover:bg-blue-800 text-white border border-blue-700"
+                      data-testid="button-set-default-view"
+                    >
+                      <MapIcon className="h-4 w-4 mr-2" />
+                      Set Default View
+                    </Button>
+                  </div>
+                </div>
               </div>
-            </div>
+            </ScrollArea>
           </SheetContent>
         </Sheet>
       )}
@@ -664,42 +669,6 @@ export default function Campaign() {
                scene={activeScene}
                onViewChange={setCurrentView}
              />
-             
-             {/* GM-Only Scene Controls */}
-             {role === 'gm' && activeScene && (
-               <div className="absolute top-20 left-4 z-30 flex flex-col gap-2">
-                 <Button
-                   size="sm"
-                   variant="secondary"
-                   onClick={() => setSceneSettingsOpen(true)}
-                   className="bg-purple-900/80 hover:bg-purple-800 text-white border border-purple-700"
-                   data-testid="button-scene-settings"
-                 >
-                   <Settings className="h-4 w-4 mr-2" />
-                   Scene Settings
-                 </Button>
-                 <Button
-                   size="sm"
-                   variant="secondary"
-                   onClick={handleSetDefaultView}
-                   className="bg-blue-900/80 hover:bg-blue-800 text-white border border-blue-700"
-                   data-testid="button-set-default-view"
-                 >
-                   <MapIcon className="h-4 w-4 mr-2" />
-                   Set Default View
-                 </Button>
-                 <Button
-                   size="sm"
-                   variant="secondary"
-                   onClick={() => setScenesManagementOpen(true)}
-                   className="bg-amber-900/80 hover:bg-amber-800 text-white border border-amber-700"
-                   data-testid="button-scenes-management"
-                 >
-                   <Layers className="h-4 w-4 mr-2" />
-                   Scenes
-                 </Button>
-               </div>
-             )}
           </div>
           
           {/* UI Overlays */}
