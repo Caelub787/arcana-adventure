@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, timestamp, boolean, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, timestamp, boolean, jsonb, real } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -27,8 +27,9 @@ export const campaigns = pgTable("campaigns", {
   name: text("name").notNull(),
   inviteCode: text("invite_code").notNull().unique(),
   gmUserId: varchar("gm_user_id").notNull().references(() => users.id),
-  gridSize: integer("grid_size").default(50).notNull(),
-  currentMap: text("current_map"),
+  gridSize: integer("grid_size").default(50).notNull(), // deprecated, kept for backward compat
+  currentMap: text("current_map"), // deprecated, kept for backward compat
+  activeSceneId: varchar("active_scene_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   lastPlayed: timestamp("last_played").defaultNow().notNull(),
 });
@@ -41,6 +42,29 @@ export const insertCampaignSchema = createInsertSchema(campaigns).omit({
 
 export type InsertCampaign = z.infer<typeof insertCampaignSchema>;
 export type Campaign = typeof campaigns.$inferSelect;
+
+// Scenes table (for battlemap scenes within campaigns)
+export const scenes = pgTable("scenes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  campaignId: varchar("campaign_id").notNull().references(() => campaigns.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  backgroundImage: text("background_image"),
+  gridEnabled: boolean("grid_enabled").default(true).notNull(),
+  gridType: text("grid_type").default("square").notNull(), // "square" or "hex"
+  gridSize: integer("grid_size").default(50).notNull(),
+  defaultViewX: integer("default_view_x").default(0).notNull(),
+  defaultViewY: integer("default_view_y").default(0).notNull(),
+  defaultViewZoom: real("default_view_zoom").default(1).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertSceneSchema = createInsertSchema(scenes).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertScene = z.infer<typeof insertSceneSchema>;
+export type Scene = typeof scenes.$inferSelect;
 
 // Campaign Members (players in campaigns)
 export const campaignMembers = pgTable("campaign_members", {
