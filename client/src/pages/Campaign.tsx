@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { ArrowLeft, Loader2, Settings, Map as MapIcon, Layers, Trash2 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -508,15 +509,24 @@ export default function Campaign() {
           
           {/* Scenes Button (GM Only) - Icon only, directly under Settings */}
           {role === 'gm' && (
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setScenesManagementOpen(true)}
-              className="text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto relative z-[60]"
-              data-testid="button-scenes"
-            >
-              <Layers className="h-5 w-5" />
-            </Button>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setScenesManagementOpen(true)}
+                    className="text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto relative z-[60]"
+                    data-testid="button-scenes"
+                  >
+                    <Layers className="h-5 w-5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="left" className="bg-stone-800 border-stone-700 text-stone-200">
+                  <p>Scenes</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           )}
         </div>
       </div>
