@@ -15,10 +15,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { 
   Sword, Shield, Scroll, Map as MapIcon, Settings, 
   Users, Plus, LogOut, Menu, ChevronRight, ChevronLeft,
-  Heart, Zap, Backpack, Sparkles, Dice5, MessageSquare, RefreshCw
+  Heart, Zap, Backpack, Sparkles, Dice5, MessageSquare, RefreshCw, X, Trash2
 } from "lucide-react";
 import { useForm } from "react-hook-form";
-import { type Scene } from "@/lib/api";
+import { type Scene, type Hotbar, api } from "@/lib/api";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import bgImage from "@assets/generated_images/dark_fantasy_landscape_with_arcane_ruins.png";
 import parchmentTexture from "@assets/generated_images/aged_parchment_paper_texture.png";
 import battleMapImage1 from "@assets/generated_images/top_down_dungeon_battlemap.png";
@@ -1471,6 +1474,512 @@ export function CampaignMenu({ role, inviteCode, inspectedChar, onInspectChar, g
   );
 }
 
+// 6a. Hotbars Tab Content Component
+interface HotbarsTabContentProps {
+  character: any;
+  isGM: boolean;
+  isOwner: boolean;
+}
+
+function HotbarsTabContent({ character, isGM, isOwner }: HotbarsTabContentProps) {
+  const queryClient = useQueryClient();
+  const canEdit = isOwner || isGM;
+  const [clearDialogOpen, setClearDialogOpen] = useState(false);
+  const [clearHotbarType, setClearHotbarType] = useState<string>('');
+
+  const { data: hotbars = [], isLoading } = useQuery({
+    queryKey: ['hotbars', character.id],
+    queryFn: () => api.getHotbars(character.id),
+    enabled: !!character.id
+  });
+
+  const upsertMutation = useMutation({
+    mutationFn: (data: { hotbarType: string; slotNumber: number; itemId?: string; spellId?: string; skillName?: string }) =>
+      api.upsertHotbar(character.id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['hotbars', character.id] });
+    }
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => api.deleteHotbar(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['hotbars', character.id] });
+    }
+  });
+
+  const handleDrop = (hotbarType: string, slotNumber: number, data: any) => {
+    if (!canEdit) return;
+
+    if (data.type === 'skill') {
+      upsertMutation.mutate({
+        hotbarType,
+        slotNumber,
+        skillName: data.skillName
+      });
+    }
+  };
+
+  const handleRemove = (hotbarId: string) => {
+    if (!canEdit) return;
+    deleteMutation.mutate(hotbarId);
+  };
+
+  const handleClearAll = async (hotbarType: string) => {
+    if (!canEdit) return;
+    const hotbarsToDelete = hotbars.filter(h => h.hotbarType === hotbarType);
+    await Promise.all(hotbarsToDelete.map(h => deleteMutation.mutateAsync(h.id)));
+    setClearDialogOpen(false);
+  };
+
+  const getHotbarsByType = (type: string) => {
+    return hotbars.filter(h => h.hotbarType === type);
+  };
+
+  const getHotbarForSlot = (type: string, slotNumber: number) => {
+    return hotbars.find(h => h.hotbarType === type && h.slotNumber === slotNumber);
+  };
+
+  const handleDragStart = (e: React.DragEvent, data: any) => {
+    e.dataTransfer.setData('text/plain', JSON.stringify(data));
+    e.dataTransfer.effectAllowed = 'copy';
+  };
+
+  const skillsList = [
+    { key: 'skillAgility', name: 'Agility', category: 'Physical' },
+    { key: 'skillStrength', name: 'Strength', category: 'Physical' },
+    { key: 'skillStealth', name: 'Stealth', category: 'Physical' },
+    { key: 'skillSleightOfHand', name: 'Sleight of Hand', category: 'Physical' },
+    { key: 'skillArcana', name: 'Arcana', category: 'Mental' },
+    { key: 'skillConcentration', name: 'Concentration', category: 'Mental' },
+    { key: 'skillWisdom', name: 'Wisdom', category: 'Mental' },
+    { key: 'skillInvestigation', name: 'Investigation', category: 'Mental' },
+    { key: 'skillPerception', name: 'Perception', category: 'Mental' },
+    { key: 'skillMedicine', name: 'Medicine', category: 'Mental' },
+    { key: 'skillHistory', name: 'History', category: 'Mental' },
+    { key: 'skillCharisma', name: 'Charisma', category: 'Social' },
+    { key: 'skillDeception', name: 'Deception', category: 'Social' },
+    { key: 'skillIntimidation', name: 'Intimidation', category: 'Social' },
+    { key: 'skillCulture', name: 'Culture', category: 'Social' },
+  ];
+
+  if (isLoading) {
+    return (
+      <Card className="bg-stone-800 border-stone-700">
+        <CardContent className="py-8">
+          <div className="text-center text-stone-400">Loading hotbars...</div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Weapons Hotbar */}
+      <Card className="bg-stone-800 border-stone-700">
+        <CardHeader>
+          <div className="flex justify-between items-center">
+            <CardTitle className="text-amber-500 flex items-center gap-2">
+              <Sword className="h-5 w-5" />
+              Weapons Hotbar (3 slots)
+            </CardTitle>
+            {canEdit && getHotbarsByType('weapons').length > 0 && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setClearHotbarType('weapons');
+                  setClearDialogOpen(true);
+                }}
+                data-testid="button-clear-weapons"
+              >
+                <Trash2 className="h-3 w-3 mr-1" />
+                Clear All
+              </Button>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="flex gap-2 flex-wrap">
+            {[0, 1, 2].map(slotNum => (
+              <div key={slotNum} className="flex flex-col items-center gap-1">
+                <Label className="text-xs text-stone-400">
+                  {slotNum === 0 ? 'Left' : slotNum === 1 ? 'Ammo' : 'Right'}
+                </Label>
+                <HotbarSlot
+                  type="weapons"
+                  slotNumber={slotNum}
+                  hotbar={getHotbarForSlot('weapons', slotNum)}
+                  character={character}
+                  canEdit={canEdit}
+                  onDrop={(slot, data) => handleDrop('weapons', slot, data)}
+                  onRemove={handleRemove}
+                />
+              </div>
+            ))}
+          </div>
+          <p className="text-xs text-stone-500 mt-3">
+            Left/Right for weapons, Middle for ammunition. Heavy weapons occupy both side slots.
+          </p>
+        </CardContent>
+      </Card>
+
+      {/* Magic Hotbar */}
+      <Card className="bg-stone-800 border-stone-700">
+        <CardHeader>
+          <div className="flex justify-between items-center">
+            <CardTitle className="text-purple-500 flex items-center gap-2">
+              <Sparkles className="h-5 w-5" />
+              Magic Hotbar (5 slots)
+            </CardTitle>
+            {canEdit && getHotbarsByType('magic').length > 0 && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setClearHotbarType('magic');
+                  setClearDialogOpen(true);
+                }}
+                data-testid="button-clear-magic"
+              >
+                <Trash2 className="h-3 w-3 mr-1" />
+                Clear All
+              </Button>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="flex gap-2 flex-wrap">
+            {[0, 1, 2, 3, 4].map(slotNum => (
+              <HotbarSlot
+                key={slotNum}
+                type="magic"
+                slotNumber={slotNum}
+                hotbar={getHotbarForSlot('magic', slotNum)}
+                character={character}
+                canEdit={canEdit}
+                onDrop={(slot, data) => handleDrop('magic', slot, data)}
+                onRemove={handleRemove}
+              />
+            ))}
+          </div>
+          <p className="text-xs text-stone-500 mt-3">
+            Equipped spells will appear here when the magic system is implemented (Phase 7).
+          </p>
+        </CardContent>
+      </Card>
+
+      {/* Skills Hotbar */}
+      <Card className="bg-stone-800 border-stone-700">
+        <CardHeader>
+          <div className="flex justify-between items-center">
+            <CardTitle className="text-blue-500 flex items-center gap-2">
+              <Dice5 className="h-5 w-5" />
+              Skills Hotbar (5 slots)
+            </CardTitle>
+            {canEdit && getHotbarsByType('skills').length > 0 && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setClearHotbarType('skills');
+                  setClearDialogOpen(true);
+                }}
+                data-testid="button-clear-skills"
+              >
+                <Trash2 className="h-3 w-3 mr-1" />
+                Clear All
+              </Button>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="flex gap-2 flex-wrap mb-4">
+            {[0, 1, 2, 3, 4].map(slotNum => (
+              <HotbarSlot
+                key={slotNum}
+                type="skills"
+                slotNumber={slotNum}
+                hotbar={getHotbarForSlot('skills', slotNum)}
+                character={character}
+                canEdit={canEdit}
+                onDrop={(slot, data) => handleDrop('skills', slot, data)}
+                onRemove={handleRemove}
+              />
+            ))}
+          </div>
+          
+          {canEdit && (
+            <div className="pt-4 border-t border-stone-700">
+              <Label className="text-xs text-stone-400 mb-2 block">Drag skills to hotbar slots:</Label>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-48 overflow-y-auto">
+                {skillsList.map(skill => {
+                  const skillValue = character[skill.key as keyof typeof character] || 0;
+                  const modifier = skillValue >= 0 ? `+${skillValue}` : `${skillValue}`;
+                  return (
+                    <div
+                      key={skill.key}
+                      draggable
+                      onDragStart={(e) => handleDragStart(e, { type: 'skill', skillName: skill.name })}
+                      className="px-2 py-1 bg-stone-900 rounded border border-stone-700 cursor-move hover:border-blue-500 hover:bg-stone-800 transition-all text-xs"
+                      data-testid={`drag-skill-${skill.name.toLowerCase().replace(/ /g, '-')}`}
+                    >
+                      <div className="flex justify-between items-center">
+                        <span className="font-medium text-stone-300">{skill.name}</span>
+                        <span className="text-stone-500">{modifier}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Consumables Hotbar */}
+      <Card className="bg-stone-800 border-stone-700">
+        <CardHeader>
+          <div className="flex justify-between items-center">
+            <CardTitle className="text-green-500 flex items-center gap-2">
+              <Heart className="h-5 w-5" />
+              Consumables Hotbar (2 slots)
+            </CardTitle>
+            {canEdit && getHotbarsByType('consumables').length > 0 && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setClearHotbarType('consumables');
+                  setClearDialogOpen(true);
+                }}
+                data-testid="button-clear-consumables"
+              >
+                <Trash2 className="h-3 w-3 mr-1" />
+                Clear All
+              </Button>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="flex gap-2 flex-wrap">
+            {[0, 1].map(slotNum => (
+              <HotbarSlot
+                key={slotNum}
+                type="consumables"
+                slotNumber={slotNum}
+                hotbar={getHotbarForSlot('consumables', slotNum)}
+                character={character}
+                canEdit={canEdit}
+                onDrop={(slot, data) => handleDrop('consumables', slot, data)}
+                onRemove={handleRemove}
+              />
+            ))}
+          </div>
+          <p className="text-xs text-stone-500 mt-3">
+            Consumable items will appear here when the inventory system is implemented (Phase 5).
+          </p>
+        </CardContent>
+      </Card>
+
+      {/* Utility Hotbar */}
+      <Card className="bg-stone-800 border-stone-700">
+        <CardHeader>
+          <div className="flex justify-between items-center">
+            <CardTitle className="text-orange-500 flex items-center gap-2">
+              <Backpack className="h-5 w-5" />
+              Utility Hotbar (5 slots)
+            </CardTitle>
+            {canEdit && getHotbarsByType('utility').length > 0 && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setClearHotbarType('utility');
+                  setClearDialogOpen(true);
+                }}
+                data-testid="button-clear-utility"
+              >
+                <Trash2 className="h-3 w-3 mr-1" />
+                Clear All
+              </Button>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="flex gap-2 flex-wrap">
+            {[0, 1, 2, 3, 4].map(slotNum => (
+              <HotbarSlot
+                key={slotNum}
+                type="utility"
+                slotNumber={slotNum}
+                hotbar={getHotbarForSlot('utility', slotNum)}
+                character={character}
+                canEdit={canEdit}
+                onDrop={(slot, data) => handleDrop('utility', slot, data)}
+                onRemove={handleRemove}
+              />
+            ))}
+          </div>
+          <p className="text-xs text-stone-500 mt-3">
+            Utility items will appear here when the inventory system is implemented (Phase 5).
+          </p>
+        </CardContent>
+      </Card>
+
+      {/* Clear All Confirmation Dialog */}
+      <AlertDialog open={clearDialogOpen} onOpenChange={setClearDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Clear all {clearHotbarType} slots?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will remove all items from the {clearHotbarType} hotbar. You can add them back later.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => handleClearAll(clearHotbarType)}>
+              Clear All
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  );
+}
+
+// 6b. Hotbar Slot Component
+interface HotbarSlotProps {
+  type: string;
+  slotNumber: number;
+  hotbar?: Hotbar;
+  character: any;
+  canEdit: boolean;
+  onDrop: (slotNumber: number, data: any) => void;
+  onRemove: (hotbarId: string) => void;
+}
+
+function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRemove }: HotbarSlotProps) {
+  const [isDragOver, setIsDragOver] = useState(false);
+  const [showRemoveDialog, setShowRemoveDialog] = useState(false);
+
+  const handleDragOver = (e: React.DragEvent) => {
+    if (!canEdit) return;
+    e.preventDefault();
+    setIsDragOver(true);
+  };
+
+  const handleDragLeave = () => {
+    setIsDragOver(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    if (!canEdit) return;
+    e.preventDefault();
+    setIsDragOver(false);
+    
+    try {
+      const data = JSON.parse(e.dataTransfer.getData('text/plain'));
+      onDrop(slotNumber, data);
+    } catch (err) {
+      console.error('Failed to parse drop data:', err);
+    }
+  };
+
+  const getSlotContent = () => {
+    if (!hotbar) return null;
+
+    if (hotbar.skillName) {
+      const skillKey = `skill${hotbar.skillName.charAt(0).toUpperCase()}${hotbar.skillName.slice(1)}` as keyof typeof character;
+      const skillValue = character[skillKey] || 0;
+      const modifier = skillValue >= 0 ? `+${skillValue}` : `${skillValue}`;
+      
+      return (
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className="text-xs font-bold text-center">
+                <div className="text-amber-400 truncate">{hotbar.skillName}</div>
+                <div className="text-stone-400 text-[10px]">{modifier}</div>
+              </div>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p className="font-bold">{hotbar.skillName}</p>
+              <p className="text-sm">Modifier: {modifier}</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      );
+    }
+
+    return (
+      <div className="text-xs text-center text-stone-400">
+        <div className="text-[10px]">Empty</div>
+      </div>
+    );
+  };
+
+  const slotContent = getSlotContent();
+
+  return (
+    <div className="relative group">
+      <div
+        className={`
+          w-14 h-14 rounded border-2 flex items-center justify-center
+          transition-all duration-200
+          ${hotbar 
+            ? 'bg-stone-800 border-amber-600/50 hover:border-amber-500' 
+            : 'bg-stone-900 border-dashed border-stone-700 hover:border-stone-600'
+          }
+          ${isDragOver ? 'border-amber-500 bg-amber-900/20 scale-105' : ''}
+          ${canEdit && !hotbar ? 'cursor-pointer' : ''}
+        `}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+        data-testid={`hotbar-slot-${type}-${slotNumber}`}
+      >
+        {hotbar ? (
+          <div className="relative w-full h-full flex items-center justify-center p-1">
+            {slotContent}
+            {canEdit && (
+              <button
+                onClick={() => setShowRemoveDialog(true)}
+                className="absolute -top-1 -right-1 w-4 h-4 bg-red-600 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                data-testid={`button-remove-${type}-${slotNumber}`}
+              >
+                <X className="w-3 h-3 text-white" />
+              </button>
+            )}
+          </div>
+        ) : (
+          <span className="text-stone-600 text-xs font-medium">{slotNumber}</span>
+        )}
+      </div>
+
+      <AlertDialog open={showRemoveDialog} onOpenChange={setShowRemoveDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove from hotbar?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will remove the item from this hotbar slot. You can add it back later.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => {
+              if (hotbar) onRemove(hotbar.id);
+              setShowRemoveDialog(false);
+            }}>
+              Remove
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  );
+}
+
 // 6. Character Sheet Component
 interface CharacterSheetProps {
   character: any;
@@ -1806,45 +2315,7 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose }: 
 
           {/* HOTBARS TAB */}
           <TabsContent value="hotbars" className="space-y-4 mt-0" data-testid="content-hotbars">
-            <Card className="bg-stone-800 border-stone-700">
-              <CardHeader>
-                <CardTitle className="text-amber-500">Hotbars</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="text-center py-4 text-stone-400" data-testid="text-hotbars-placeholder">
-                  <p className="font-bold">Hotbars system coming in Phase 4</p>
-                  <p className="text-sm mt-2">Quick access slots will appear here</p>
-                </div>
-
-                {/* Hotbar Structure Preview */}
-                <div className="space-y-4 pt-4 border-t border-stone-700">
-                  {[
-                    { name: 'Weapons', slots: 3 },
-                    { name: 'Magic', slots: 5 },
-                    { name: 'Skills', slots: 5 },
-                    { name: 'Consumables', slots: 2 },
-                    { name: 'Utility', slots: 5 },
-                  ].map(hotbar => (
-                    <div key={hotbar.name}>
-                      <Label className="text-xs text-stone-400 mb-2 block" data-testid={`label-hotbar-${hotbar.name.toLowerCase()}`}>
-                        {hotbar.name} ({hotbar.slots} slots)
-                      </Label>
-                      <div className="flex gap-2">
-                        {Array.from({ length: hotbar.slots }).map((_, i) => (
-                          <div 
-                            key={i} 
-                            className="w-12 h-12 bg-stone-900 border border-stone-700 rounded flex items-center justify-center text-xs text-stone-600"
-                            data-testid={`slot-${hotbar.name.toLowerCase()}-${i}`}
-                          >
-                            {i + 1}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
+            <HotbarsTabContent character={character} isGM={isGM} isOwner={isOwner} />
           </TabsContent>
 
           {/* BACKGROUND TAB */}

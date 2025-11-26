@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, timestamp, boolean, jsonb, real } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, timestamp, boolean, jsonb, real, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -271,7 +271,13 @@ export const hotbars = pgTable("hotbars", {
   itemId: varchar("item_id").references(() => items.id, { onDelete: "set null" }), // For weapons, consumables, utility
   spellId: varchar("spell_id").references(() => spells.id, { onDelete: "set null" }), // For magic hotbar
   skillName: text("skill_name"), // For skills hotbar
-});
+}, (table) => ({
+  uniqueSlot: uniqueIndex("hotbars_character_type_slot_unique").on(
+    table.characterId,
+    table.hotbarType,
+    table.slotNumber
+  ),
+}));
 
 export const insertHotbarSchema = createInsertSchema(hotbars).omit({
   id: true,

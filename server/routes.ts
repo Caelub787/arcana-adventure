@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertUserSchema, insertCampaignSchema, insertCharacterSchema, insertTokenSchema, insertChatMessageSchema, insertSceneSchema } from "@shared/schema";
+import { insertUserSchema, insertCampaignSchema, insertCharacterSchema, insertTokenSchema, insertChatMessageSchema, insertSceneSchema, insertHotbarSchema } from "@shared/schema";
 import bcrypt from "bcryptjs";
 import { WebSocketServer } from "ws";
 import { sendPasswordResetEmail } from "./email";
@@ -434,6 +434,69 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(character);
     } catch (err) {
       res.status(400).json({ error: "Failed to update character" });
+    }
+  });
+
+  // Hotbar routes
+  app.get("/api/characters/:characterId/hotbars", requireAuth, async (req, res) => {
+    try {
+      const character = await storage.getCharacter(req.params.characterId);
+      if (!character) {
+        return res.status(404).json({ error: "Character not found" });
+      }
+
+      const campaign = await storage.getCampaign(character.campaignId);
+      if (!campaign) {
+        return res.status(404).json({ error: "Campaign not found" });
+      }
+
+      const isOwnerOrGM = character.userId === req.session.userId || campaign.gmUserId === req.session.userId;
+      if (!isOwnerOrGM) {
+        return res.status(403).json({ error: "Unauthorized" });
+      }
+
+      const hotbars = await storage.getHotbarsByCharacter(req.params.characterId);
+      res.json(hotbars);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch hotbars" });
+    }
+  });
+
+  app.post("/api/characters/:characterId/hotbars", requireAuth, async (req, res) => {
+    try {
+      const character = await storage.getCharacter(req.params.characterId);
+      if (!character) {
+        return res.status(404).json({ error: "Character not found" });
+      }
+
+      const campaign = await storage.getCampaign(character.campaignId);
+      if (!campaign) {
+        return res.status(404).json({ error: "Campaign not found" });
+      }
+
+      const isOwnerOrGM = character.userId === req.session.userId || campaign.gmUserId === req.session.userId;
+      if (!isOwnerOrGM) {
+        return res.status(403).json({ error: "Unauthorized" });
+      }
+
+      const hotbarData = insertHotbarSchema.parse({
+        ...req.body,
+        characterId: req.params.characterId
+      });
+
+      const hotbar = await storage.upsertHotbar(hotbarData);
+      res.json(hotbar);
+    } catch (err) {
+      res.status(400).json({ error: "Failed to upsert hotbar" });
+    }
+  });
+
+  app.delete("/api/hotbars/:id", requireAuth, async (req, res) => {
+    try {
+      await storage.deleteHotbar(req.params.id);
+      res.json({ success: true });
+    } catch (err) {
+      res.status(400).json({ error: "Failed to delete hotbar" });
     }
   });
 

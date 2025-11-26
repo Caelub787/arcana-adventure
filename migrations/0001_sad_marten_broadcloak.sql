@@ -1,0 +1,1 @@
+ALTER TABLE "characters" ADD COLUMN "inventory" text[] DEFAULT ARRAY[]::text[] NOT NULL;

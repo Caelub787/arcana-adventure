@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "hotbars_character_type_slot_unique" ON "hotbars" USING btree ("character_id","hotbar_type","slot_number");

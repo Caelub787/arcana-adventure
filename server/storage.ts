@@ -7,7 +7,8 @@ import {
   type ChatMessage, type InsertChatMessage,
   type PasswordResetToken, type InsertPasswordResetToken,
   type Scene, type InsertScene,
-  users, campaigns, campaignMembers, characters, tokens, chatMessages, passwordResetTokens, scenes
+  type Hotbar, type InsertHotbar,
+  users, campaigns, campaignMembers, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql } from "drizzle-orm";
@@ -64,6 +65,11 @@ export interface IStorage {
   updateScene(id: string, data: Partial<Scene>): Promise<Scene | undefined>;
   deleteScene(id: string): Promise<void>;
   setActiveScene(campaignId: string, sceneId: string): Promise<Campaign | undefined>;
+
+  // Hotbar operations
+  getHotbarsByCharacter(characterId: string): Promise<Hotbar[]>;
+  upsertHotbar(hotbar: InsertHotbar): Promise<Hotbar>;
+  deleteHotbar(id: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -357,6 +363,33 @@ export class DatabaseStorage implements IStorage {
       .where(eq(campaigns.id, campaignId))
       .returning();
     return campaign;
+  }
+
+  // Hotbar operations
+  async getHotbarsByCharacter(characterId: string): Promise<Hotbar[]> {
+    return await db.select()
+      .from(hotbars)
+      .where(eq(hotbars.characterId, characterId));
+  }
+
+  async upsertHotbar(hotbar: InsertHotbar): Promise<Hotbar> {
+    const [result] = await db
+      .insert(hotbars)
+      .values(hotbar)
+      .onConflictDoUpdate({
+        target: [hotbars.characterId, hotbars.hotbarType, hotbars.slotNumber],
+        set: {
+          itemId: hotbar.itemId,
+          spellId: hotbar.spellId,
+          skillName: hotbar.skillName,
+        },
+      })
+      .returning();
+    return result;
+  }
+
+  async deleteHotbar(id: string): Promise<void> {
+    await db.delete(hotbars).where(eq(hotbars.id, id));
   }
 }
 

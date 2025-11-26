@@ -107,6 +107,16 @@ export interface Scene {
   createdAt: string;
 }
 
+export interface Hotbar {
+  id: string;
+  characterId: string;
+  hotbarType: string;
+  slotNumber: number;
+  itemId?: string;
+  spellId?: string;
+  skillName?: string;
+}
+
 class ApiClient {
   private baseUrl = '/api';
 
@@ -277,6 +287,22 @@ class ApiClient {
       method: 'POST',
       body: JSON.stringify({ sceneId }),
     });
+  }
+
+  // Hotbars
+  async getHotbars(characterId: string): Promise<Hotbar[]> {
+    return this.request(`/characters/${characterId}/hotbars`);
+  }
+
+  async upsertHotbar(characterId: string, hotbar: Omit<Hotbar, 'id' | 'characterId'>): Promise<Hotbar> {
+    return this.request(`/characters/${characterId}/hotbars`, {
+      method: 'POST',
+      body: JSON.stringify(hotbar),
+    });
+  }
+
+  async deleteHotbar(id: string): Promise<void> {
+    return this.request(`/hotbars/${id}`, { method: 'DELETE' });
   }
 }
 
