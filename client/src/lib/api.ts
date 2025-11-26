@@ -146,6 +146,23 @@ export interface Item {
   isEquipped: boolean;
 }
 
+export interface Spell {
+  id: string;
+  characterId: string;
+  name: string;
+  image?: string;
+  description?: string;
+  damage?: string;
+  damageType?: string;
+  range?: number;
+  aoe?: string;
+  castingTime?: string;
+  duration?: string;
+  level: number;
+  school?: string;
+  isEquipped: boolean;
+}
+
 class ApiClient {
   private baseUrl = '/api';
 
@@ -356,6 +373,29 @@ class ApiClient {
   async deleteItem(id: string): Promise<void> {
     return this.request(`/items/${id}`, { method: 'DELETE' });
   }
+
+  // Spells
+  async getSpells(characterId: string): Promise<Spell[]> {
+    return this.request(`/characters/${characterId}/spells`);
+  }
+
+  async createSpell(characterId: string, spell: Partial<Spell>): Promise<Spell> {
+    return this.request(`/characters/${characterId}/spells`, {
+      method: 'POST',
+      body: JSON.stringify(spell),
+    });
+  }
+
+  async updateSpell(id: string, data: Partial<Spell>): Promise<Spell> {
+    return this.request(`/spells/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteSpell(id: string): Promise<void> {
+    return this.request(`/spells/${id}`, { method: 'DELETE' });
+  }
 }
 
 export const api = new ApiClient();
@@ -422,11 +462,19 @@ export class GameWebSocket {
   }
 
   sendTokenMove(tokenId: string, x: number, y: number) {
-    this.send({ type: 'token_move', tokenId, x, y });
+    if (!this.campaignId) {
+      console.error('Cannot send token move: not connected to a campaign');
+      return;
+    }
+    this.send({ type: 'token_move', campaignId: this.campaignId, tokenId, x, y });
   }
 
   sendChatMessage(userId: string, sender: string, text: string, messageType = 'chat') {
-    this.send({ type: 'chat_message', userId, sender, text, messageType });
+    if (!this.campaignId) {
+      console.error('Cannot send chat message: not connected to a campaign');
+      return;
+    }
+    this.send({ type: 'chat_message', campaignId: this.campaignId, text, messageType });
   }
 }
 

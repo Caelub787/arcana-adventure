@@ -17,13 +17,14 @@ import { Textarea } from "@/components/ui/textarea";
 import { 
   Sword, Shield, Scroll, Map as MapIcon, Settings, 
   Users, Plus, LogOut, Menu, ChevronRight, ChevronLeft, ChevronDown,
-  Heart, Zap, Backpack, Sparkles, Dice5, MessageSquare, RefreshCw, X, Trash2, Package, FolderOpen
+  Heart, Zap, Backpack, Sparkles, Dice5, MessageSquare, RefreshCw, X, Trash2, Package, FolderOpen, Lock
 } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { type Scene, type Hotbar, api } from "@/lib/api";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { toast } from "@/hooks/use-toast";
 import bgImage from "@assets/generated_images/dark_fantasy_landscape_with_arcane_ruins.png";
 import parchmentTexture from "@assets/generated_images/aged_parchment_paper_texture.png";
 import battleMapImage1 from "@assets/generated_images/top_down_dungeon_battlemap.png";
@@ -220,12 +221,14 @@ export function CharacterCreation({ onComplete, onCancel }: CharacterCreationPro
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <Tabs defaultValue="basic" className="w-full">
-                <TabsList className="grid w-full grid-cols-4 bg-stone-200">
-                  <TabsTrigger value="basic" data-testid="tab-basic">Basic</TabsTrigger>
-                  <TabsTrigger value="attributes" data-testid="tab-attributes">Attributes</TabsTrigger>
-                  <TabsTrigger value="skills" data-testid="tab-skills">Skills</TabsTrigger>
-                  <TabsTrigger value="details" data-testid="tab-details">Details</TabsTrigger>
-                </TabsList>
+                <div className="overflow-x-auto custom-scrollbar">
+                  <TabsList className="grid w-full grid-cols-4 bg-stone-200 min-w-max">
+                    <TabsTrigger value="basic" data-testid="tab-basic" className="text-xs sm:text-sm">Basic</TabsTrigger>
+                    <TabsTrigger value="attributes" data-testid="tab-attributes" className="text-xs sm:text-sm">Attributes</TabsTrigger>
+                    <TabsTrigger value="skills" data-testid="tab-skills" className="text-xs sm:text-sm">Skills</TabsTrigger>
+                    <TabsTrigger value="details" data-testid="tab-details" className="text-xs sm:text-sm">Details</TabsTrigger>
+                  </TabsList>
+                </div>
 
                 <TabsContent value="basic" className="space-y-4 mt-4">
                   <div className="grid grid-cols-2 gap-4">
@@ -260,18 +263,19 @@ export function CharacterCreation({ onComplete, onCancel }: CharacterCreationPro
 
                   <div className="space-y-2">
                     <Label className="text-stone-800 font-bold">Class *</Label>
-                    <div className="grid grid-cols-3 gap-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                       {['warrior', 'mage', 'rogue'].map((c) => (
                         <button
                           key={c}
                           type="button"
                           onClick={() => setCharClass(c)}
-                          className={`rounded border p-2 capitalize transition-all ${
+                          className={`rounded border p-3 sm:p-2 capitalize transition-all touch-target hover-scale focus-ring-amber ${
                             charClass === c 
-                              ? 'border-stone-900 bg-stone-800 text-white shadow-md' 
+                              ? 'border-stone-900 bg-stone-800 text-white shadow-md glow-amber' 
                               : 'border-stone-300 bg-white/30 text-stone-700 hover:bg-white/50'
                           }`}
                           data-testid={`button-class-${c}`}
+                          aria-label={`Select ${c} class`}
                         >
                           {c}
                         </button>
@@ -367,7 +371,7 @@ export function CharacterCreation({ onComplete, onCancel }: CharacterCreationPro
 
                   <div className="space-y-3">
                     {Object.entries(attributes).map(([attr, value]) => (
-                      <div key={attr} className="flex items-center gap-3 bg-white/50 rounded p-3 border border-stone-300">
+                      <div key={attr} className="flex items-center gap-3 bg-white/50 rounded p-3 border border-stone-300 hover-scale">
                         <div className="flex-1">
                           <Label className="text-stone-800 font-bold capitalize">{attr}</Label>
                           <p className="text-xs text-stone-600">Base: {ATTRIBUTE_BASE} | Final: {ATTRIBUTE_BASE + value}</p>
@@ -379,8 +383,9 @@ export function CharacterCreation({ onComplete, onCancel }: CharacterCreationPro
                             variant="outline"
                             onClick={() => updateAttribute(attr as keyof typeof attributes, -1)}
                             disabled={value <= ATTRIBUTE_MIN_MODIFIER}
-                            className="h-8 w-8 p-0"
+                            className="h-10 w-10 sm:h-8 sm:w-8 p-0 touch-target focus-ring-amber"
                             data-testid={`button-attribute-${attr}-decrease`}
+                            aria-label={`Decrease ${attr}`}
                           >
                             -
                           </Button>
@@ -393,8 +398,9 @@ export function CharacterCreation({ onComplete, onCancel }: CharacterCreationPro
                             variant="outline"
                             onClick={() => updateAttribute(attr as keyof typeof attributes, 1)}
                             disabled={value >= ATTRIBUTE_MAX_MODIFIER || attributePointsRemaining <= 0}
-                            className="h-8 w-8 p-0"
+                            className="h-10 w-10 sm:h-8 sm:w-8 p-0 touch-target focus-ring-amber"
                             data-testid={`button-attribute-${attr}-increase`}
+                            aria-label={`Increase ${attr}`}
                           >
                             +
                           </Button>
@@ -414,11 +420,11 @@ export function CharacterCreation({ onComplete, onCancel }: CharacterCreationPro
                     </p>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     {Object.entries(skills).map(([skill, value]) => {
                       const displayName = skill.replace('skill', '').replace(/([A-Z])/g, ' $1').trim();
                       return (
-                        <div key={skill} className="flex items-center gap-2 bg-white/50 rounded p-2 border border-stone-300">
+                        <div key={skill} className="flex items-center gap-2 bg-white/50 rounded p-2 border border-stone-300 hover-scale">
                           <div className="flex-1 min-w-0">
                             <Label className="text-xs font-bold text-stone-800">{displayName}</Label>
                           </div>
@@ -429,8 +435,9 @@ export function CharacterCreation({ onComplete, onCancel }: CharacterCreationPro
                               variant="outline"
                               onClick={() => updateSkill(skill as keyof typeof skills, -1)}
                               disabled={value <= SKILL_MIN_VALUE}
-                              className="h-7 w-7 p-0 text-xs"
+                              className="h-9 w-9 sm:h-7 sm:w-7 p-0 text-xs touch-target focus-ring-amber"
                               data-testid={`button-skill-${skill}-decrease`}
+                              aria-label={`Decrease ${displayName}`}
                             >
                               -
                             </Button>
@@ -443,8 +450,9 @@ export function CharacterCreation({ onComplete, onCancel }: CharacterCreationPro
                               variant="outline"
                               onClick={() => updateSkill(skill as keyof typeof skills, 1)}
                               disabled={value >= SKILL_MAX_VALUE || skillPointsRemaining <= 0}
-                              className="h-7 w-7 p-0 text-xs"
+                              className="h-9 w-9 sm:h-7 sm:w-7 p-0 text-xs touch-target focus-ring-amber"
                               data-testid={`button-skill-${skill}-increase`}
+                              aria-label={`Increase ${displayName}`}
                             >
                               +
                             </Button>
@@ -531,9 +539,10 @@ interface BattleMapProps {
   backgroundImage?: string;
   scene?: Scene;
   onViewChange?: (viewState: { x: number; y: number; zoom: number }) => void;
+  characters?: any[];
 }
 
-export function BattleMap({ tokens, onMoveToken, onTokenClick, role, gridSize, backgroundImage, scene, onViewChange }: BattleMapProps) {
+export function BattleMap({ tokens, onMoveToken, onTokenClick, role, gridSize, backgroundImage, scene, onViewChange, characters = [] }: BattleMapProps) {
   // Pan and zoom state
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
@@ -568,6 +577,11 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, role, gridSize, b
     motionY.set(pan.y);
   }, [pan.x, pan.y, motionX, motionY]);
 
+  /**
+   * handleDragEnd - Processes token drag completion
+   * Implements grid snapping when enabled, or free placement when disabled.
+   * Rounds token position to nearest grid cell for alignment.
+   */
   const handleDragEnd = (e: any, info: any, token: Token) => {
     // Use scene settings if available, otherwise fall back to legacy gridSize prop
     const effectiveGridSize = scene?.gridSize || gridSize;
@@ -585,7 +599,33 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, role, gridSize, b
     }
   };
 
-  // Handle wheel zoom (desktop) - zoom toward cursor position
+  /**
+   * getCharacterForToken - Retrieves character data linked to a token
+   * Used for displaying HP bars and character portraits on tokens.
+   * Returns undefined if token has no associated character.
+   */
+  const getCharacterForToken = (token: Token) => {
+    if (!token.characterId || !characters) return undefined;
+    return characters.find((c: any) => c.id === token.characterId);
+  };
+
+  /**
+   * handleWheel - Desktop zoom-to-cursor implementation
+   * 
+   * This effect handles mouse wheel zoom while keeping the world point under the cursor stationary.
+   * Uses refs to avoid stale closures during event handling.
+   * 
+   * Coordinate System:
+   * - The battlemap world is 20000x20000px positioned at (-9000, -9000)
+   * - Background image is at (9000, 9000) within this world space
+   * - Tokens use their raw coordinates, offset by +9000 for rendering
+   * 
+   * Zoom Math:
+   * 1. Convert screen coordinates to world coordinates accounting for current pan and zoom
+   * 2. Calculate new zoom level (clamped 0.2x to 3x)
+   * 3. Adjust pan so the world point stays under the cursor position
+   * 4. This creates a "zoom toward cursor" effect instead of zooming to center
+   */
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -625,7 +665,26 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, role, gridSize, b
     return () => container.removeEventListener('wheel', handleWheel);
   }, []);
 
-  // Handle pinch zoom (mobile) - zoom toward pinch center
+  /**
+   * handleTouch - Mobile pinch-to-zoom implementation
+   * 
+   * This effect handles two-finger pinch gestures for zooming on touch devices.
+   * Separates pan (1 finger) from zoom (2 fingers) to prevent gesture conflicts.
+   * 
+   * Gesture States:
+   * - 1 finger: Pan mode (drag disabled via isPinching=false)
+   * - 2 fingers: Zoom mode (drag disabled via isPinching=true)
+   * 
+   * Pinch Zoom Math:
+   * 1. Calculate distance between two touch points
+   * 2. Compare with previous distance to determine zoom delta
+   * 3. Find center point between the two fingers
+   * 4. Convert pinch center to world coordinates
+   * 5. Adjust pan so the world point under pinch center stays stationary
+   * 
+   * This creates a natural pinch-to-zoom experience where the content between
+   * your fingers stays in place as you zoom in/out.
+   */
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -791,26 +850,54 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, role, gridSize, b
         />
 
         {/* Tokens - Keep original coordinate system */}
-        {tokens.map((token) => (
-          <motion.div
-            key={token.id}
-            drag={role === 'gm' || token.type === 'player'} 
-            dragMomentum={false}
-            dragElastic={0}
-            onPointerDown={(e) => e.stopPropagation()}
-            onDragEnd={(e, info) => handleDragEnd(e, info, token)}
-            onClick={(e) => { e.stopPropagation(); onTokenClick && onTokenClick(token); }}
-            whileHover={{ scale: 1.1, zIndex: 10 }}
-            whileDrag={{ scale: 1.2, zIndex: 20 }}
-            animate={{ x: token.x + 9000, y: token.y + 9000, width: gridSize, height: gridSize }}
-            transition={{ type: "spring", stiffness: 300, damping: 30 }}
-            className="absolute top-0 left-0 rounded-full shadow-xl ring-2 ring-white/20 overflow-hidden bg-black"
-            style={{ width: gridSize, height: gridSize }}
-          >
-            <img src={token.image} alt="token" className="w-full h-full object-cover pointer-events-none" />
-            <div className={`absolute inset-0 border-2 rounded-full ${token.type === 'player' ? 'border-blue-400' : 'border-red-500'}`} />
-          </motion.div>
-        ))}
+        {tokens.map((token) => {
+          const character = getCharacterForToken(token);
+          const tokenImage = character?.portrait || token.image;
+          const hpPercent = character ? (character.hp / character.maxHp) * 100 : null;
+          
+          return (
+            <motion.div
+              key={token.id}
+              drag={role === 'gm' || token.type === 'player'} 
+              dragMomentum={false}
+              dragElastic={0}
+              onPointerDown={(e) => e.stopPropagation()}
+              onDragEnd={(e, info) => handleDragEnd(e, info, token)}
+              onClick={(e) => { e.stopPropagation(); onTokenClick && onTokenClick(token); }}
+              whileHover={{ scale: 1.1, zIndex: 10 }}
+              whileDrag={{ scale: 1.2, zIndex: 20 }}
+              animate={{ x: token.x + 9000, y: token.y + 9000, width: gridSize, height: gridSize }}
+              transition={{ type: "spring", stiffness: 300, damping: 30 }}
+              className="absolute top-0 left-0 rounded-full shadow-xl ring-2 ring-white/20 overflow-visible bg-black token-shadow cursor-pointer"
+              style={{ width: gridSize, height: gridSize }}
+              aria-label={`${token.type} token`}
+              role="button"
+              tabIndex={0}
+            >
+              <img src={tokenImage} alt="token" className="w-full h-full object-cover pointer-events-none rounded-full" />
+              <div className={`absolute inset-0 border-2 rounded-full ${token.type === 'player' ? 'border-blue-400 glow-amber' : 'border-red-500 glow-red'}`} />
+              
+              {/* HP Bar - Only show if token is linked to a character */}
+              {character && hpPercent !== null && (
+                <div className="absolute -bottom-1 left-0 right-0 h-1.5 bg-black/50 rounded-full overflow-hidden">
+                  <div 
+                    className={`h-full transition-all duration-300 ${
+                      hpPercent > 60 ? 'bg-green-500' : hpPercent > 30 ? 'bg-yellow-500' : 'bg-red-500'
+                    }`}
+                    style={{ width: `${Math.max(0, Math.min(100, hpPercent))}%` }}
+                  />
+                </div>
+              )}
+              
+              {/* HP Text - Show on hover */}
+              {character && (
+                <div className="absolute -top-6 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity bg-black/80 text-white text-xs px-2 py-0.5 rounded whitespace-nowrap pointer-events-none">
+                  {character.hp}/{character.maxHp} HP
+                </div>
+              )}
+            </motion.div>
+          );
+        })}
       </motion.div>
 
       <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black/50 backdrop-blur px-2 py-1 rounded text-[10px] text-stone-400 pointer-events-none border border-white/10">
@@ -1510,20 +1597,177 @@ function HotbarsTabContent({ character, isGM, isOwner }: HotbarsTabContentProps)
     }
   });
 
-  const handleDrop = (hotbarType: string, slotNumber: number, data: any) => {
+  const handleDrop = async (hotbarType: string, slotNumber: number, data: any) => {
     if (!canEdit) return;
 
+    // Handle spell drops
+    if (data.type === 'spell') {
+      try {
+        // Add spell to hotbar
+        await upsertMutation.mutateAsync({
+          hotbarType,
+          slotNumber,
+          spellId: data.id
+        });
+
+        // Update spell's isEquipped flag
+        await api.updateSpell(data.id, { isEquipped: true });
+        queryClient.invalidateQueries({ queryKey: ['spells', character.id] });
+
+        toast({
+          title: "Spell Equipped",
+          description: `${data.name} equipped to magic hotbar`,
+        });
+      } catch (err) {
+        toast({
+          title: "Equip Failed",
+          description: "Failed to equip spell",
+          variant: "destructive"
+        });
+      }
+      return;
+    }
+
+    // Handle skill drops
     if (data.type === 'skill') {
       upsertMutation.mutate({
         hotbarType,
         slotNumber,
         skillName: data.skillName
       });
+      return;
+    }
+
+    // Handle item drops
+    if (data.type === 'item') {
+      const item = data.item;
+      
+      // Validate item type matches hotbar type
+      const validTypeMapping: Record<string, string[]> = {
+        weapons: ['weapon'],
+        consumables: ['consumable'],
+        utility: ['utility']
+      };
+      
+      if (hotbarType in validTypeMapping && !validTypeMapping[hotbarType].includes(item.itemType)) {
+        toast({
+          title: "Invalid Item Type",
+          description: `${item.itemType} items cannot be equipped to ${hotbarType} hotbar`,
+          variant: "destructive"
+        });
+        return;
+      }
+
+      // Heavy weapon logic - occupy both slots 0 and 2
+      if (hotbarType === 'weapons' && item.weight === 'heavy') {
+        // Check if trying to drop on middle slot
+        if (slotNumber === 1) {
+          toast({
+            title: "Invalid Slot",
+            description: "Heavy weapons cannot be equipped in the ammunition slot",
+            variant: "destructive"
+          });
+          return;
+        }
+
+        // Clear any existing weapons in slots 0 and 2
+        const existingSlot0 = hotbars.find(h => h.hotbarType === 'weapons' && h.slotNumber === 0);
+        const existingSlot2 = hotbars.find(h => h.hotbarType === 'weapons' && h.slotNumber === 2);
+        
+        if (existingSlot0) {
+          await deleteMutation.mutateAsync(existingSlot0.id);
+        }
+        if (existingSlot2) {
+          await deleteMutation.mutateAsync(existingSlot2.id);
+        }
+
+        // Equip heavy weapon to both slots
+        try {
+          await upsertMutation.mutateAsync({
+            hotbarType: 'weapons',
+            slotNumber: 0,
+            itemId: item.id
+          });
+          await upsertMutation.mutateAsync({
+            hotbarType: 'weapons',
+            slotNumber: 2,
+            itemId: item.id
+          });
+          
+          toast({
+            title: "Heavy Weapon Equipped",
+            description: `${item.name} equipped to both hands`,
+          });
+        } catch (err) {
+          toast({
+            title: "Equip Failed",
+            description: "Failed to equip heavy weapon",
+            variant: "destructive"
+          });
+        }
+        return;
+      }
+
+      // For weapons hotbar, check if heavy weapon is equipped
+      if (hotbarType === 'weapons' && slotNumber !== 1) {
+        const existingHeavy = hotbars.find(h => 
+          h.hotbarType === 'weapons' && 
+          (h.slotNumber === 0 || h.slotNumber === 2) &&
+          h.itemId
+        );
+        
+        // Check if the existing weapon is heavy by checking if it appears in both slots
+        if (existingHeavy) {
+          const bothSlots = hotbars.filter(h => h.itemId === existingHeavy.itemId && h.hotbarType === 'weapons');
+          if (bothSlots.length === 2) {
+            toast({
+              title: "Heavy Weapon Equipped",
+              description: "Remove the heavy weapon first before equipping another weapon",
+              variant: "destructive"
+            });
+            return;
+          }
+        }
+      }
+
+      // Standard item equip
+      try {
+        await upsertMutation.mutateAsync({
+          hotbarType,
+          slotNumber,
+          itemId: item.id
+        });
+        
+        toast({
+          title: "Item Equipped",
+          description: `${item.name} equipped to hotbar`,
+        });
+      } catch (err) {
+        toast({
+          title: "Equip Failed",
+          description: "Failed to equip item",
+          variant: "destructive"
+        });
+      }
     }
   };
 
-  const handleRemove = (hotbarId: string) => {
+  const handleRemove = async (hotbarId: string) => {
     if (!canEdit) return;
+    
+    // Find the hotbar to get spell/item info before deleting
+    const hotbar = hotbars.find(h => h.id === hotbarId);
+    
+    // If it's a spell, clear the isEquipped flag
+    if (hotbar?.spellId) {
+      try {
+        await api.updateSpell(hotbar.spellId, { isEquipped: false });
+        queryClient.invalidateQueries({ queryKey: ['spells', character.id] });
+      } catch (err) {
+        console.error('Failed to update spell isEquipped flag:', err);
+      }
+    }
+    
     deleteMutation.mutate(hotbarId);
   };
 
@@ -1865,9 +2109,24 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
   const [isDragOver, setIsDragOver] = useState(false);
   const [showRemoveDialog, setShowRemoveDialog] = useState(false);
 
+  // Fetch item data if itemId exists
+  const { data: itemData } = useQuery({
+    queryKey: ['item', hotbar?.itemId],
+    queryFn: () => api.getItems(character.id).then(items => items.find((i: any) => i.id === hotbar?.itemId)),
+    enabled: !!hotbar?.itemId
+  });
+
+  // Fetch spell data if spellId exists
+  const { data: spellData } = useQuery({
+    queryKey: ['spell', hotbar?.spellId],
+    queryFn: () => api.getSpells(character.id).then(spells => spells.find((s: any) => s.id === hotbar?.spellId)),
+    enabled: !!hotbar?.spellId
+  });
+
   const handleDragOver = (e: React.DragEvent) => {
     if (!canEdit) return;
     e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
     setIsDragOver(true);
   };
 
@@ -1881,8 +2140,23 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
     setIsDragOver(false);
     
     try {
-      const data = JSON.parse(e.dataTransfer.getData('text/plain'));
-      onDrop(slotNumber, data);
+      // Try spell data first for magic hotbar
+      const spellData = e.dataTransfer.getData('spell');
+      if (spellData) {
+        const data = JSON.parse(spellData);
+        onDrop(slotNumber, { type: 'spell', ...data });
+        return;
+      }
+
+      const jsonData = e.dataTransfer.getData('application/json');
+      if (jsonData) {
+        const data = JSON.parse(jsonData);
+        onDrop(slotNumber, data);
+      } else {
+        // Fallback to text/plain
+        const data = JSON.parse(e.dataTransfer.getData('text/plain'));
+        onDrop(slotNumber, data);
+      }
     } catch (err) {
       console.error('Failed to parse drop data:', err);
     }
@@ -1891,6 +2165,80 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
   const getSlotContent = () => {
     if (!hotbar) return null;
 
+    // Display spell if equipped
+    if (hotbar.spellId && spellData) {
+      const getLevelColor = (level: number) => {
+        if (level === 0) return 'text-gray-400';
+        if (level <= 3) return 'text-blue-400';
+        if (level <= 6) return 'text-purple-400';
+        return 'text-amber-400';
+      };
+      
+      return (
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className="text-xs font-bold text-center w-full">
+                <div className="text-purple-400 truncate text-[10px]">{spellData.name}</div>
+                <div className={`text-[9px] ${getLevelColor(spellData.level)}`}>
+                  {spellData.level === 0 ? 'Cantrip' : `Lvl ${spellData.level}`}
+                </div>
+                {spellData.damage && (
+                  <div className="text-red-400 text-[8px]">{spellData.damage}</div>
+                )}
+              </div>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p className="font-bold">{spellData.name}</p>
+              <p className="text-sm">Level: {spellData.level === 0 ? 'Cantrip' : spellData.level}</p>
+              {spellData.school && <p className="text-sm">School: {spellData.school}</p>}
+              {spellData.damage && <p className="text-sm">Damage: {spellData.damage} {spellData.damageType || ''}</p>}
+              {spellData.range && <p className="text-sm">Range: {spellData.range}ft</p>}
+              {spellData.castingTime && <p className="text-sm">Casting: {spellData.castingTime}</p>}
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      );
+    }
+
+    // Display item if equipped
+    if (hotbar.itemId && itemData) {
+      const durabilityColor = itemData.durability >= 8 ? 'bg-green-500' : itemData.durability >= 4 ? 'bg-yellow-500' : 'bg-red-500';
+      const durabilityWidth = (itemData.durability / 10) * 100;
+      
+      return (
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className="text-xs font-bold text-center w-full">
+                <div className="text-amber-400 truncate text-[10px]">{itemData.name}</div>
+                {itemData.damage && (
+                  <div className="text-stone-400 text-[9px]">{itemData.damage}</div>
+                )}
+                {/* Durability bar */}
+                <div className="w-full h-1 bg-stone-700 rounded-full overflow-hidden mt-1">
+                  <div 
+                    className={`h-full ${durabilityColor} transition-all`} 
+                    style={{ width: `${durabilityWidth}%` }}
+                  />
+                </div>
+              </div>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p className="font-bold">{itemData.name}</p>
+              {itemData.damage && <p className="text-sm">Damage: {itemData.damage}</p>}
+              {itemData.damageType && <p className="text-sm">Type: {itemData.damageType}</p>}
+              <p className={`text-sm ${itemData.durability <= 3 ? 'text-red-400 font-bold' : ''}`}>
+                Durability: {itemData.durability}/10
+                {itemData.durability <= 3 && ' ⚠️'}
+              </p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      );
+    }
+
+    // Display skill if equipped
     if (hotbar.skillName) {
       const skillKey = `skill${hotbar.skillName.charAt(0).toUpperCase()}${hotbar.skillName.slice(1)}` as keyof typeof character;
       const skillValue = character[skillKey] || 0;
@@ -1927,19 +2275,22 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
     <div className="relative group">
       <div
         className={`
-          w-14 h-14 rounded border-2 flex items-center justify-center
-          transition-all duration-200
+          w-14 h-14 sm:w-16 sm:h-16 md:w-20 md:h-20 rounded border-2 flex items-center justify-center
+          transition-all duration-200 hover-scale touch-target
           ${hotbar 
-            ? 'bg-stone-800 border-amber-600/50 hover:border-amber-500' 
+            ? 'bg-stone-800 border-amber-600/50 hover:border-amber-500 glow-amber-subtle' 
             : 'bg-stone-900 border-dashed border-stone-700 hover:border-stone-600'
           }
-          ${isDragOver ? 'border-amber-500 bg-amber-900/20 scale-105' : ''}
+          ${isDragOver ? 'border-amber-500 bg-amber-900/20 scale-105 glow-amber' : ''}
           ${canEdit && !hotbar ? 'cursor-pointer' : ''}
         `}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
         data-testid={`hotbar-slot-${type}-${slotNumber}`}
+        aria-label={`${type} slot ${slotNumber}`}
+        role={canEdit ? "button" : "presentation"}
+        tabIndex={canEdit ? 0 : -1}
       >
         {hotbar ? (
           <div className="relative w-full h-full flex items-center justify-center p-1">
@@ -1982,6 +2333,13 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
   );
 }
 
+// GM Only Badge Component
+const GMOnlyBadge = () => (
+  <Badge variant="destructive" className="text-xs ml-2">
+    GM Only
+  </Badge>
+);
+
 // 6. Character Sheet Component
 interface CharacterSheetProps {
   character: any;
@@ -1997,6 +2355,49 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose }: 
   const [isEditingBio, setIsEditingBio] = useState(false);
   const [isEditingGmNotes, setIsEditingGmNotes] = useState(false);
 
+  // Edit mode states
+  const [editingOverview, setEditingOverview] = useState(false);
+  const [editingAttributes, setEditingAttributes] = useState(false);
+  const [editingSkills, setEditingSkills] = useState(false);
+  
+  // Edit data states
+  const [overviewData, setOverviewData] = useState({
+    name: character?.name || "",
+    class: character?.class || "",
+    level: character?.level || 1,
+    hp: character?.hp || 0,
+    maxHp: character?.maxHp || 0,
+    energy: character?.energy || 0,
+    maxEnergy: character?.maxEnergy || 0
+  });
+  
+  const [attributesData, setAttributesData] = useState({
+    agility: character?.agility || 10,
+    charisma: character?.charisma || 10,
+    strength: character?.strength || 10,
+    wisdom: character?.wisdom || 10,
+    arcana: character?.arcana || 10,
+    concentration: character?.concentration || 10
+  });
+  
+  const [skillsData, setSkillsData] = useState({
+    skillAgility: character?.skillAgility || 0,
+    skillArcana: character?.skillArcana || 0,
+    skillCharisma: character?.skillCharisma || 0,
+    skillConcentration: character?.skillConcentration || 0,
+    skillDeception: character?.skillDeception || 0,
+    skillHistory: character?.skillHistory || 0,
+    skillIntimidation: character?.skillIntimidation || 0,
+    skillInvestigation: character?.skillInvestigation || 0,
+    skillMedicine: character?.skillMedicine || 0,
+    skillPerception: character?.skillPerception || 0,
+    skillSleightOfHand: character?.skillSleightOfHand || 0,
+    skillStealth: character?.skillStealth || 0,
+    skillStrength: character?.skillStrength || 0,
+    skillWisdom: character?.skillWisdom || 0,
+    skillCulture: character?.skillCulture || 0
+  });
+
   // Inventory state
   const queryClient = useQueryClient();
   const [itemSearch, setItemSearch] = useState("");
@@ -2006,6 +2407,21 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose }: 
   const [selectedItem, setSelectedItem] = useState<any>(null);
   const [showItemDetail, setShowItemDetail] = useState(false);
   const [expandedContainers, setExpandedContainers] = useState<Set<string>>(new Set());
+  const [isEditingItem, setIsEditingItem] = useState(false);
+  const [editItemData, setEditItemData] = useState<any>(null);
+  
+  // Magic/Spell state
+  const [spellSearch, setSpellSearch] = useState("");
+  const [spellLevelFilter, setSpellLevelFilter] = useState("all");
+  const [spellSchoolFilter, setSpellSchoolFilter] = useState("all");
+  const [spellSort, setSpellSort] = useState("name-asc");
+  const [showAddSpell, setShowAddSpell] = useState(false);
+  const [selectedSpell, setSelectedSpell] = useState<any>(null);
+  const [showSpellDetail, setShowSpellDetail] = useState(false);
+  const [isEditingSpell, setIsEditingSpell] = useState(false);
+  const [editSpellData, setEditSpellData] = useState<any>(null);
+  
+  const canEdit = isOwner || isGM;
 
   // Fetch items
   const { data: items = [] } = useQuery({
@@ -2040,6 +2456,96 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose }: 
       setSelectedItem(null);
     }
   });
+
+  // Fetch spells
+  const { data: spells = [] } = useQuery({
+    queryKey: ['spells', character.id],
+    queryFn: () => api.getSpells(character.id),
+    enabled: !!character.id
+  });
+
+  // Spell mutations
+  const createSpellMutation = useMutation({
+    mutationFn: (spellData: any) => api.createSpell(character.id, spellData),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['spells', character.id] });
+      setShowAddSpell(false);
+      setEditSpellData(null);
+      toast({ title: "Spell added successfully" });
+    }
+  });
+
+  const updateSpellMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: any }) => api.updateSpell(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['spells', character.id] });
+      queryClient.invalidateQueries({ queryKey: ['hotbars', character.id] });
+      setShowSpellDetail(false);
+      setSelectedSpell(null);
+      setIsEditingSpell(false);
+      setEditSpellData(null);
+      toast({ title: "Spell updated successfully" });
+    }
+  });
+
+  const deleteSpellMutation = useMutation({
+    mutationFn: (id: string) => api.deleteSpell(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['spells', character.id] });
+      queryClient.invalidateQueries({ queryKey: ['hotbars', character.id] });
+      setShowSpellDetail(false);
+      setSelectedSpell(null);
+      toast({ title: "Spell deleted successfully" });
+    }
+  });
+
+  // Character update mutation
+  const updateCharacterMutation = useMutation({
+    mutationFn: (data: any) => api.updateCharacter(character.id, data),
+    onSuccess: () => {
+      if (onUpdate) {
+        // Notify parent component
+        queryClient.invalidateQueries({ queryKey: ['characters'] });
+      }
+      toast({ title: "Character updated successfully" });
+    },
+    onError: (error: any) => {
+      toast({ 
+        title: "Update failed", 
+        description: error.message || "Failed to update character",
+        variant: "destructive" 
+      });
+    }
+  });
+
+  // Spell helper functions
+  const getSpellLevelColor = (level: number): string => {
+    if (level === 0) return 'text-gray-400';
+    if (level <= 3) return 'text-blue-400';
+    if (level <= 6) return 'text-purple-400';
+    return 'text-amber-400';
+  };
+
+  const getSpellLevelBgColor = (level: number): string => {
+    if (level === 0) return 'bg-gray-700';
+    if (level <= 3) return 'bg-blue-700';
+    if (level <= 6) return 'bg-purple-700';
+    return 'bg-amber-700';
+  };
+
+  const getSchoolBadgeColor = (school?: string): string => {
+    switch (school?.toLowerCase()) {
+      case 'evocation': return 'bg-red-700 text-red-100';
+      case 'abjuration': return 'bg-blue-700 text-blue-100';
+      case 'conjuration': return 'bg-green-700 text-green-100';
+      case 'divination': return 'bg-purple-700 text-purple-100';
+      case 'enchantment': return 'bg-pink-700 text-pink-100';
+      case 'illusion': return 'bg-cyan-700 text-cyan-100';
+      case 'necromancy': return 'bg-stone-900 text-stone-100';
+      case 'transmutation': return 'bg-orange-700 text-orange-100';
+      default: return 'bg-stone-700 text-stone-100';
+    }
+  };
 
   // Calculate attribute modifiers
   const getAttributeModifier = (value: number) => {
@@ -2266,10 +2772,48 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose }: 
             <Card className="bg-stone-800 border-stone-700">
               <CardHeader>
                 <CardTitle className="text-amber-500 flex items-center justify-between">
-                  <span data-testid="text-character-name">{character.name}</span>
-                  <Badge variant="outline" className="text-stone-300 border-stone-600" data-testid="badge-level">
-                    Level {character.level}
-                  </Badge>
+                  {editingOverview ? (
+                    <div className="flex-1 mr-4">
+                      <Label className="text-xs text-stone-400 mb-1 block">Name</Label>
+                      <Input
+                        value={overviewData.name}
+                        onChange={(e) => setOverviewData({ ...overviewData, name: e.target.value })}
+                        className="bg-stone-900 border-stone-700 text-amber-500"
+                        data-testid="input-edit-name"
+                      />
+                    </div>
+                  ) : (
+                    <span data-testid="text-character-name">{character.name}</span>
+                  )}
+                  {!editingOverview ? (
+                    <>
+                      <Badge variant="outline" className="text-stone-300 border-stone-600" data-testid="badge-level">
+                        Level {character.level}
+                      </Badge>
+                      {(isOwner || isGM) && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="ml-2"
+                          onClick={() => {
+                            setOverviewData({
+                              name: character.name,
+                              class: character.class,
+                              level: character.level,
+                              hp: character.hp,
+                              maxHp: character.maxHp,
+                              energy: character.energy,
+                              maxEnergy: character.maxEnergy
+                            });
+                            setEditingOverview(true);
+                          }}
+                          data-testid="button-edit-overview"
+                        >
+                          Edit
+                        </Button>
+                      )}
+                    </>
+                  ) : null}
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -2289,8 +2833,61 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose }: 
                         <p className="text-stone-200" data-testid="text-race">{character.race}</p>
                       </div>
                       <div>
-                        <Label className="text-xs text-stone-400">Class</Label>
-                        <p className="text-stone-200 capitalize" data-testid="text-class">{character.class}</p>
+                        <div className="flex items-center gap-1">
+                          <Label className="text-xs text-stone-400">Class</Label>
+                          {editingOverview && !isGM && (
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger>
+                                  <Lock className="h-3 w-3 text-amber-600" />
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p>Only GMs can edit this field</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          )}
+                        </div>
+                        {editingOverview && isGM ? (
+                          <Input
+                            value={overviewData.class}
+                            onChange={(e) => setOverviewData({ ...overviewData, class: e.target.value })}
+                            className="bg-stone-900 border-amber-700 text-stone-200"
+                            data-testid="input-edit-class"
+                          />
+                        ) : (
+                          <p className="text-stone-200 capitalize" data-testid="text-class">{character.class}</p>
+                        )}
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-1">
+                          <Label className="text-xs text-stone-400">Level</Label>
+                          {editingOverview && !isGM && (
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger>
+                                  <Lock className="h-3 w-3 text-amber-600" />
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p>Only GMs can edit this field</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          )}
+                        </div>
+                        {editingOverview && isGM ? (
+                          <Input
+                            type="number"
+                            min="1"
+                            max="20"
+                            value={overviewData.level}
+                            onChange={(e) => setOverviewData({ ...overviewData, level: parseInt(e.target.value) || 1 })}
+                            className="bg-stone-900 border-amber-700 text-stone-200"
+                            data-testid="input-edit-level"
+                          />
+                        ) : (
+                          <p className="text-stone-200">{character.level}</p>
+                        )}
                       </div>
                       <div>
                         <Label className="text-xs text-stone-400">Size</Label>
@@ -2319,11 +2916,48 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose }: 
                       <Heart className="h-4 w-4 text-red-500" />
                       Health Points
                     </Label>
-                    <span className="text-sm font-bold" data-testid="text-hp">
-                      {character.hp} / {character.maxHp}
-                    </span>
+                    {editingOverview ? (
+                      <div className="flex gap-2 items-center">
+                        <Input
+                          type="number"
+                          min="0"
+                          value={overviewData.hp}
+                          onChange={(e) => setOverviewData({ ...overviewData, hp: parseInt(e.target.value) || 0 })}
+                          className="w-20 bg-stone-900 border-stone-700 text-stone-200"
+                          data-testid="input-edit-hp"
+                        />
+                        <span className="text-sm">/</span>
+                        <div className="flex items-center gap-1">
+                          <Input
+                            type="number"
+                            min="1"
+                            value={overviewData.maxHp}
+                            onChange={(e) => setOverviewData({ ...overviewData, maxHp: parseInt(e.target.value) || 1 })}
+                            className={`w-20 bg-stone-900 text-stone-200 ${isGM ? 'border-amber-700' : 'border-stone-700'}`}
+                            disabled={!isGM}
+                            data-testid="input-edit-max-hp"
+                          />
+                          {!isGM && (
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger>
+                                  <Lock className="h-3 w-3 text-amber-600" />
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p>Only GMs can edit Max HP</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <span className="text-sm font-bold" data-testid="text-hp">
+                        {character.hp} / {character.maxHp}
+                      </span>
+                    )}
                   </div>
-                  <Progress value={hpPercentage} className="h-3" data-testid="progress-hp" />
+                  {!editingOverview && <Progress value={hpPercentage} className="h-3" data-testid="progress-hp" />}
                 </div>
 
                 {/* Energy Bar */}
@@ -2333,12 +2967,73 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose }: 
                       <Zap className="h-4 w-4 text-blue-500" />
                       Energy
                     </Label>
-                    <span className="text-sm font-bold" data-testid="text-energy">
-                      {character.energy} / {character.maxEnergy}
-                    </span>
+                    {editingOverview ? (
+                      <div className="flex gap-2 items-center">
+                        <Input
+                          type="number"
+                          min="0"
+                          value={overviewData.energy}
+                          onChange={(e) => setOverviewData({ ...overviewData, energy: parseInt(e.target.value) || 0 })}
+                          className="w-20 bg-stone-900 border-stone-700 text-stone-200"
+                          data-testid="input-edit-energy"
+                        />
+                        <span className="text-sm">/</span>
+                        <div className="flex items-center gap-1">
+                          <Input
+                            type="number"
+                            min="0"
+                            value={overviewData.maxEnergy}
+                            onChange={(e) => setOverviewData({ ...overviewData, maxEnergy: parseInt(e.target.value) || 0 })}
+                            className={`w-20 bg-stone-900 text-stone-200 ${isGM ? 'border-amber-700' : 'border-stone-700'}`}
+                            disabled={!isGM}
+                            data-testid="input-edit-max-energy"
+                          />
+                          {!isGM && (
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger>
+                                  <Lock className="h-3 w-3 text-amber-600" />
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p>Only GMs can edit Max Energy</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <span className="text-sm font-bold" data-testid="text-energy">
+                        {character.energy} / {character.maxEnergy}
+                      </span>
+                    )}
                   </div>
-                  <Progress value={energyPercentage} className="h-3" data-testid="progress-energy" />
+                  {!editingOverview && <Progress value={energyPercentage} className="h-3" data-testid="progress-energy" />}
                 </div>
+
+                {/* Edit Mode Buttons */}
+                {editingOverview && (
+                  <div className="flex gap-2 pt-4 border-t border-stone-700">
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        updateCharacterMutation.mutate(overviewData);
+                        setEditingOverview(false);
+                      }}
+                      data-testid="button-save-overview"
+                    >
+                      Save Changes
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setEditingOverview(false)}
+                      data-testid="button-cancel-overview"
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
@@ -2347,7 +3042,32 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose }: 
           <TabsContent value="attributes" className="space-y-4 mt-0" data-testid="content-attributes">
             <Card className="bg-stone-800 border-stone-700">
               <CardHeader>
-                <CardTitle className="text-amber-500">Attributes</CardTitle>
+                <CardTitle className="text-amber-500 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span>Attributes</span>
+                    {isGM && !editingAttributes && <GMOnlyBadge />}
+                  </div>
+                  {isGM && !editingAttributes && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setAttributesData({
+                          agility: character.agility || 10,
+                          charisma: character.charisma || 10,
+                          strength: character.strength || 10,
+                          wisdom: character.wisdom || 10,
+                          arcana: character.arcana || 10,
+                          concentration: character.concentration || 10
+                        });
+                        setEditingAttributes(true);
+                      }}
+                      data-testid="button-edit-attributes"
+                    >
+                      Edit Attributes
+                    </Button>
+                  )}
+                </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
@@ -2359,23 +3079,69 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose }: 
                     { key: 'arcana', name: 'Arcana' },
                     { key: 'concentration', name: 'Concentration' },
                   ].map(attr => {
-                    const value = character[attr.key] || 10;
+                    const value = editingAttributes ? attributesData[attr.key as keyof typeof attributesData] : (character[attr.key] || 10);
                     const modifier = getAttributeModifier(value);
                     return (
-                      <Card key={attr.key} className="bg-stone-900 border-stone-600">
+                      <Card key={attr.key} className={`bg-stone-900 ${editingAttributes ? 'border-amber-700' : 'border-stone-600'}`}>
                         <CardContent className="p-4 text-center">
                           <Label className="text-xs text-stone-400">{attr.name}</Label>
-                          <div className="text-2xl font-bold text-amber-500 mt-1" data-testid={`text-attribute-${attr.key}`}>
-                            {value}
-                          </div>
-                          <Badge variant="secondary" className="mt-2" data-testid={`badge-modifier-${attr.key}`}>
-                            {formatModifier(modifier)}
-                          </Badge>
+                          {editingAttributes ? (
+                            <>
+                              <Input
+                                type="number"
+                                min="1"
+                                max="30"
+                                value={value}
+                                onChange={(e) => setAttributesData({
+                                  ...attributesData,
+                                  [attr.key]: parseInt(e.target.value) || 1
+                                })}
+                                className="text-2xl font-bold text-amber-500 mt-1 mb-2 text-center bg-stone-800 border-amber-700"
+                                data-testid={`input-attribute-${attr.key}`}
+                              />
+                              <Badge variant="secondary" className="mt-2" data-testid={`badge-modifier-${attr.key}`}>
+                                {formatModifier(modifier)}
+                              </Badge>
+                            </>
+                          ) : (
+                            <>
+                              <div className="text-2xl font-bold text-amber-500 mt-1" data-testid={`text-attribute-${attr.key}`}>
+                                {value}
+                              </div>
+                              <Badge variant="secondary" className="mt-2" data-testid={`badge-modifier-${attr.key}`}>
+                                {formatModifier(modifier)}
+                              </Badge>
+                            </>
+                          )}
                         </CardContent>
                       </Card>
                     );
                   })}
                 </div>
+
+                {/* Edit Mode Buttons */}
+                {editingAttributes && (
+                  <div className="flex gap-2 pt-4 mt-4 border-t border-stone-700">
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        updateCharacterMutation.mutate(attributesData);
+                        setEditingAttributes(false);
+                      }}
+                      data-testid="button-save-attributes"
+                    >
+                      Save Changes
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setEditingAttributes(false)}
+                      data-testid="button-cancel-attributes"
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
@@ -2384,7 +3150,41 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose }: 
           <TabsContent value="skills" className="space-y-4 mt-0" data-testid="content-skills">
             <Card className="bg-stone-800 border-stone-700">
               <CardHeader>
-                <CardTitle className="text-amber-500">Skills</CardTitle>
+                <CardTitle className="text-amber-500 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span>Skills</span>
+                    {isGM && !editingSkills && <GMOnlyBadge />}
+                  </div>
+                  {isGM && !editingSkills && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setSkillsData({
+                          skillAgility: character.skillAgility || 0,
+                          skillArcana: character.skillArcana || 0,
+                          skillCharisma: character.skillCharisma || 0,
+                          skillConcentration: character.skillConcentration || 0,
+                          skillDeception: character.skillDeception || 0,
+                          skillHistory: character.skillHistory || 0,
+                          skillIntimidation: character.skillIntimidation || 0,
+                          skillInvestigation: character.skillInvestigation || 0,
+                          skillMedicine: character.skillMedicine || 0,
+                          skillPerception: character.skillPerception || 0,
+                          skillSleightOfHand: character.skillSleightOfHand || 0,
+                          skillStealth: character.skillStealth || 0,
+                          skillStrength: character.skillStrength || 0,
+                          skillWisdom: character.skillWisdom || 0,
+                          skillCulture: character.skillCulture || 0
+                        });
+                        setEditingSkills(true);
+                      }}
+                      data-testid="button-edit-skills"
+                    >
+                      Edit Skills
+                    </Button>
+                  )}
+                </CardTitle>
               </CardHeader>
               <CardContent className="space-y-6">
                 {/* Physical Skills */}
@@ -2392,8 +3192,22 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose }: 
                   <h3 className="text-sm font-bold text-stone-400 mb-3 uppercase">Physical</h3>
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                     {physicalSkills.map(skill => {
-                      const value = character[skill.key] || 0;
-                      return (
+                      const value = editingSkills ? skillsData[skill.key as keyof typeof skillsData] : (character[skill.key] || 0);
+                      return editingSkills ? (
+                        <div key={skill.key} className="flex flex-col gap-1 p-3 bg-stone-900 border border-amber-700 rounded-md">
+                          <Label className="text-xs text-stone-400">{skill.name}</Label>
+                          <Input
+                            type="number"
+                            value={value}
+                            onChange={(e) => setSkillsData({
+                              ...skillsData,
+                              [skill.key]: parseInt(e.target.value) || 0
+                            })}
+                            className="bg-stone-800 border-amber-700 text-center font-bold"
+                            data-testid={`input-skill-${skill.key}`}
+                          />
+                        </div>
+                      ) : (
                         <Badge 
                           key={skill.key} 
                           variant="outline" 
@@ -2413,8 +3227,22 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose }: 
                   <h3 className="text-sm font-bold text-stone-400 mb-3 uppercase">Mental</h3>
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                     {mentalSkills.map(skill => {
-                      const value = character[skill.key] || 0;
-                      return (
+                      const value = editingSkills ? skillsData[skill.key as keyof typeof skillsData] : (character[skill.key] || 0);
+                      return editingSkills ? (
+                        <div key={skill.key} className="flex flex-col gap-1 p-3 bg-stone-900 border border-amber-700 rounded-md">
+                          <Label className="text-xs text-stone-400">{skill.name}</Label>
+                          <Input
+                            type="number"
+                            value={value}
+                            onChange={(e) => setSkillsData({
+                              ...skillsData,
+                              [skill.key]: parseInt(e.target.value) || 0
+                            })}
+                            className="bg-stone-800 border-amber-700 text-center font-bold"
+                            data-testid={`input-skill-${skill.key}`}
+                          />
+                        </div>
+                      ) : (
                         <Badge 
                           key={skill.key} 
                           variant="outline" 
@@ -2434,8 +3262,22 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose }: 
                   <h3 className="text-sm font-bold text-stone-400 mb-3 uppercase">Social</h3>
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                     {socialSkills.map(skill => {
-                      const value = character[skill.key] || 0;
-                      return (
+                      const value = editingSkills ? skillsData[skill.key as keyof typeof skillsData] : (character[skill.key] || 0);
+                      return editingSkills ? (
+                        <div key={skill.key} className="flex flex-col gap-1 p-3 bg-stone-900 border border-amber-700 rounded-md">
+                          <Label className="text-xs text-stone-400">{skill.name}</Label>
+                          <Input
+                            type="number"
+                            value={value}
+                            onChange={(e) => setSkillsData({
+                              ...skillsData,
+                              [skill.key]: parseInt(e.target.value) || 0
+                            })}
+                            className="bg-stone-800 border-amber-700 text-center font-bold"
+                            data-testid={`input-skill-${skill.key}`}
+                          />
+                        </div>
+                      ) : (
                         <Badge 
                           key={skill.key} 
                           variant="outline" 
@@ -2449,6 +3291,30 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose }: 
                     })}
                   </div>
                 </div>
+
+                {/* Edit Mode Buttons */}
+                {editingSkills && (
+                  <div className="flex gap-2 pt-4 mt-4 border-t border-stone-700">
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        updateCharacterMutation.mutate(skillsData);
+                        setEditingSkills(false);
+                      }}
+                      data-testid="button-save-skills"
+                    >
+                      Save Changes
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setEditingSkills(false)}
+                      data-testid="button-cancel-skills"
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
@@ -2556,6 +3422,25 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose }: 
                             <div
                               className={`p-3 bg-stone-900 rounded border ${rarityColors[stack.rarity] || rarityColors.common} hover:bg-stone-800 transition-colors`}
                               data-testid={`item-${stack.id}`}
+                              draggable={canEdit && !stack.isContainer}
+                              onDragStart={(e) => {
+                                if (!canEdit || stack.isContainer) {
+                                  e.preventDefault();
+                                  return;
+                                }
+                                e.dataTransfer.setData('application/json', JSON.stringify({
+                                  type: 'item',
+                                  itemId: stack.id,
+                                  itemType: stack.itemType,
+                                  weight: stack.weight,
+                                  item: stack
+                                }));
+                                e.dataTransfer.effectAllowed = 'move';
+                                e.currentTarget.style.opacity = '0.5';
+                              }}
+                              onDragEnd={(e) => {
+                                e.currentTarget.style.opacity = '1';
+                              }}
                             >
                               <div className="flex items-center gap-3">
                                 {/* Container Expand/Collapse Icon */}
@@ -2579,6 +3464,7 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose }: 
                                 <div 
                                   className="flex items-center gap-3 flex-1 cursor-pointer"
                                   onClick={() => { setSelectedItem(stack); setShowItemDetail(true); }}
+                                  onDoubleClick={() => { setSelectedItem(stack); setShowItemDetail(true); }}
                                 >
                                   <div className="w-12 h-12 bg-black/50 rounded flex items-center justify-center shrink-0 border border-stone-700">
                                     {stack.isContainer ? (
@@ -2680,24 +3566,625 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose }: 
           <TabsContent value="magic" className="space-y-4 mt-0" data-testid="content-magic">
             <Card className="bg-stone-800 border-stone-700">
               <CardHeader>
-                <CardTitle className="text-amber-500 flex items-center gap-2">
-                  <Sparkles className="h-5 w-5" />
-                  Magic & Spells
-                </CardTitle>
+                <div className="flex justify-between items-center">
+                  <CardTitle className="text-purple-400 flex items-center gap-2">
+                    <Sparkles className="h-5 w-5" />
+                    Spells & Magic
+                  </CardTitle>
+                  {canEdit && (
+                    <Button 
+                      size="sm"
+                      onClick={() => {
+                        setEditSpellData(null);
+                        setShowAddSpell(true);
+                      }}
+                      data-testid="button-add-spell"
+                      className="bg-purple-600 hover:bg-purple-700"
+                    >
+                      <Plus className="h-4 w-4 mr-1" />
+                      Add Spell
+                    </Button>
+                  )}
+                </div>
               </CardHeader>
-              <CardContent>
-                <div className="text-center py-8 text-stone-400" data-testid="text-magic-placeholder">
-                  <Sparkles className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                  <p className="font-bold">Magic system coming in Phase 7</p>
-                  <p className="text-sm mt-2">Your spells will appear here</p>
+              <CardContent className="space-y-4">
+                {/* Spell Stats */}
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="bg-stone-900 p-3 rounded">
+                    <Label className="text-xs text-stone-400">Total Spells</Label>
+                    <p className="text-2xl font-bold text-purple-400" data-testid="text-spells-known">{spells.length}</p>
+                  </div>
+                  <div className="bg-stone-900 p-3 rounded">
+                    <Label className="text-xs text-stone-400">Cantrips</Label>
+                    <p className="text-2xl font-bold text-gray-400">{spells.filter((s: any) => s.level === 0).length}</p>
+                  </div>
+                  <div className="bg-stone-900 p-3 rounded">
+                    <Label className="text-xs text-stone-400">Equipped</Label>
+                    <p className="text-2xl font-bold text-amber-400">{spells.filter((s: any) => s.isEquipped).length}</p>
+                  </div>
                 </div>
 
-                <div className="pt-4 border-t border-stone-700">
-                  <Label className="text-xs text-stone-400">Total Spells Known</Label>
-                  <p className="text-2xl font-bold text-amber-500" data-testid="text-spells-known">0</p>
+                {/* Filters and Search */}
+                <div className="space-y-2">
+                  <Input
+                    placeholder="Search spells..."
+                    value={spellSearch}
+                    onChange={(e) => setSpellSearch(e.target.value)}
+                    className="bg-stone-900 border-stone-700"
+                    data-testid="input-spell-search"
+                  />
+                  <div className="grid grid-cols-3 gap-2">
+                    <Select value={spellLevelFilter} onValueChange={setSpellLevelFilter}>
+                      <SelectTrigger className="bg-stone-900 border-stone-700" data-testid="select-spell-level-filter">
+                        <SelectValue placeholder="Level" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Levels</SelectItem>
+                        <SelectItem value="0">Cantrips</SelectItem>
+                        {[1,2,3,4,5,6,7,8,9].map(l => (
+                          <SelectItem key={l} value={l.toString()}>Level {l}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Select value={spellSchoolFilter} onValueChange={setSpellSchoolFilter}>
+                      <SelectTrigger className="bg-stone-900 border-stone-700" data-testid="select-spell-school-filter">
+                        <SelectValue placeholder="School" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Schools</SelectItem>
+                        <SelectItem value="evocation">Evocation</SelectItem>
+                        <SelectItem value="abjuration">Abjuration</SelectItem>
+                        <SelectItem value="conjuration">Conjuration</SelectItem>
+                        <SelectItem value="divination">Divination</SelectItem>
+                        <SelectItem value="enchantment">Enchantment</SelectItem>
+                        <SelectItem value="illusion">Illusion</SelectItem>
+                        <SelectItem value="necromancy">Necromancy</SelectItem>
+                        <SelectItem value="transmutation">Transmutation</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Select value={spellSort} onValueChange={setSpellSort}>
+                      <SelectTrigger className="bg-stone-900 border-stone-700" data-testid="select-spell-sort">
+                        <SelectValue placeholder="Sort" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="name-asc">Name (A-Z)</SelectItem>
+                        <SelectItem value="name-desc">Name (Z-A)</SelectItem>
+                        <SelectItem value="level-asc">Level (Low-High)</SelectItem>
+                        <SelectItem value="level-desc">Level (High-Low)</SelectItem>
+                        <SelectItem value="school-asc">School (A-Z)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
+
+                {/* Spell List */}
+                <ScrollArea className="h-[400px]">
+                  {(() => {
+                    let filteredSpells = [...spells];
+
+                    if (spellSearch) {
+                      filteredSpells = filteredSpells.filter((s: any) =>
+                        s.name.toLowerCase().includes(spellSearch.toLowerCase())
+                      );
+                    }
+
+                    if (spellLevelFilter !== "all") {
+                      filteredSpells = filteredSpells.filter((s: any) =>
+                        s.level === parseInt(spellLevelFilter)
+                      );
+                    }
+
+                    if (spellSchoolFilter !== "all") {
+                      filteredSpells = filteredSpells.filter((s: any) =>
+                        s.school?.toLowerCase() === spellSchoolFilter.toLowerCase()
+                      );
+                    }
+
+                    if (spellSort === "name-asc") {
+                      filteredSpells.sort((a: any, b: any) => a.name.localeCompare(b.name));
+                    } else if (spellSort === "name-desc") {
+                      filteredSpells.sort((a: any, b: any) => b.name.localeCompare(a.name));
+                    } else if (spellSort === "level-asc") {
+                      filteredSpells.sort((a: any, b: any) => a.level - b.level);
+                    } else if (spellSort === "level-desc") {
+                      filteredSpells.sort((a: any, b: any) => b.level - a.level);
+                    } else if (spellSort === "school-asc") {
+                      filteredSpells.sort((a: any, b: any) => (a.school || "").localeCompare(b.school || ""));
+                    }
+
+                    if (filteredSpells.length === 0) {
+                      return (
+                        <div className="text-center py-12 text-stone-400">
+                          <Sparkles className="h-12 w-12 mx-auto mb-3 opacity-30" />
+                          <p className="text-sm">No spells found</p>
+                          {canEdit && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="mt-3"
+                              onClick={() => {
+                                setEditSpellData(null);
+                                setShowAddSpell(true);
+                              }}
+                            >
+                              <Plus className="h-4 w-4 mr-1" />
+                              Add Your First Spell
+                            </Button>
+                          )}
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div className="grid grid-cols-1 gap-2">
+                        {filteredSpells.map((spell: any) => (
+                          <div
+                            key={spell.id}
+                            draggable={true}
+                            onDragStart={(e) => {
+                              e.dataTransfer.setData('spell', JSON.stringify({
+                                id: spell.id,
+                                name: spell.name,
+                                level: spell.level,
+                                school: spell.school,
+                                damage: spell.damage
+                              }));
+                            }}
+                            className="bg-stone-900 rounded-lg p-3 border border-stone-700 hover:border-purple-500 cursor-pointer transition-all"
+                            onClick={() => {
+                              setSelectedSpell(spell);
+                              setShowSpellDetail(true);
+                            }}
+                            data-testid={`spell-card-${spell.id}`}
+                          >
+                            <div className="flex items-start gap-3">
+                              <div className="w-12 h-12 bg-stone-800 rounded flex items-center justify-center flex-shrink-0">
+                                {spell.image ? (
+                                  <img src={spell.image} alt={spell.name} className="w-full h-full object-cover rounded" />
+                                ) : (
+                                  <Sparkles className={`h-6 w-6 ${getSpellLevelColor(spell.level)}`} />
+                                )}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center justify-between gap-2">
+                                  <h4 className="font-semibold text-stone-100 truncate">{spell.name}</h4>
+                                  {spell.isEquipped && (
+                                    <Badge variant="outline" className="bg-amber-900 text-amber-100 border-amber-700 flex-shrink-0">
+                                      Equipped
+                                    </Badge>
+                                  )}
+                                </div>
+                                <div className="flex flex-wrap gap-2 mt-1">
+                                  <Badge className={`${getSpellLevelBgColor(spell.level)} text-xs`}>
+                                    {spell.level === 0 ? 'Cantrip' : `Level ${spell.level}`}
+                                  </Badge>
+                                  {spell.school && (
+                                    <Badge className={`${getSchoolBadgeColor(spell.school)} text-xs`}>
+                                      {spell.school}
+                                    </Badge>
+                                  )}
+                                  {spell.damage && (
+                                    <Badge variant="outline" className="bg-red-900/30 text-red-300 border-red-700 text-xs">
+                                      {spell.damage} {spell.damageType || ''}
+                                    </Badge>
+                                  )}
+                                </div>
+                                <div className="flex flex-wrap gap-3 mt-2 text-xs text-stone-400">
+                                  {spell.castingTime && <span>⏱ {spell.castingTime}</span>}
+                                  {spell.range && <span>📏 {spell.range}ft</span>}
+                                  {spell.aoe && <span>💥 {spell.aoe}</span>}
+                                  {spell.duration && <span>⏳ {spell.duration}</span>}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
+                </ScrollArea>
               </CardContent>
             </Card>
+
+            {/* Add/Edit Spell Dialog */}
+            <Dialog open={showAddSpell} onOpenChange={setShowAddSpell}>
+              <DialogContent key={editSpellData?.id || 'new'} className="max-w-2xl bg-stone-900 border-stone-700 max-h-[90vh] overflow-y-auto">
+                <DialogHeader>
+                  <DialogTitle className="text-purple-400">
+                    {editSpellData ? 'Edit Spell' : 'Add New Spell'}
+                  </DialogTitle>
+                </DialogHeader>
+                <form onSubmit={(e) => {
+                  e.preventDefault();
+                  const formData = new FormData(e.currentTarget);
+                  const spellData = {
+                    name: formData.get('name'),
+                    image: formData.get('image') || undefined,
+                    description: formData.get('description') || undefined,
+                    level: parseInt(formData.get('level') as string),
+                    school: formData.get('school') || undefined,
+                    damage: formData.get('damage') || undefined,
+                    damageType: formData.get('damageType') || undefined,
+                    range: formData.get('range') ? parseInt(formData.get('range') as string) : undefined,
+                    aoe: formData.get('aoe') || undefined,
+                    castingTime: formData.get('castingTime') || undefined,
+                    duration: formData.get('duration') || undefined,
+                  };
+
+                  if (editSpellData) {
+                    updateSpellMutation.mutate({ id: editSpellData.id, data: spellData });
+                  } else {
+                    createSpellMutation.mutate(spellData);
+                  }
+                }} className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="col-span-2">
+                      <Label>Spell Name *</Label>
+                      <Input
+                        name="name"
+                        required
+                        defaultValue={editSpellData?.name}
+                        className="bg-stone-800 border-stone-700"
+                        data-testid="input-spell-name"
+                      />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <Label>Level *</Label>
+                        {!isGM && (
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger>
+                                <Lock className="h-3 w-3 text-amber-600" />
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>Only GMs can edit this field</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        )}
+                      </div>
+                      <Select name="level" defaultValue={editSpellData?.level?.toString() || "0"} required disabled={!isGM}>
+                        <SelectTrigger className={`bg-stone-800 ${isGM ? 'border-amber-700' : 'border-stone-700'}`}>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="0">Cantrip</SelectItem>
+                          {[1,2,3,4,5,6,7,8,9].map(l => (
+                            <SelectItem key={l} value={l.toString()}>Level {l}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <Label>School</Label>
+                        {!isGM && (
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger>
+                                <Lock className="h-3 w-3 text-amber-600" />
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>Only GMs can edit this field</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        )}
+                      </div>
+                      <Select name="school" defaultValue={editSpellData?.school || ""} disabled={!isGM}>
+                        <SelectTrigger className={`bg-stone-800 ${isGM ? 'border-amber-700' : 'border-stone-700'}`}>
+                          <SelectValue placeholder="Select school" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="">None</SelectItem>
+                          <SelectItem value="evocation">Evocation</SelectItem>
+                          <SelectItem value="abjuration">Abjuration</SelectItem>
+                          <SelectItem value="conjuration">Conjuration</SelectItem>
+                          <SelectItem value="divination">Divination</SelectItem>
+                          <SelectItem value="enchantment">Enchantment</SelectItem>
+                          <SelectItem value="illusion">Illusion</SelectItem>
+                          <SelectItem value="necromancy">Necromancy</SelectItem>
+                          <SelectItem value="transmutation">Transmutation</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="col-span-2">
+                      <Label>Image URL</Label>
+                      <Input
+                        name="image"
+                        type="url"
+                        defaultValue={editSpellData?.image}
+                        className="bg-stone-800 border-stone-700"
+                        placeholder="https://example.com/spell-icon.png"
+                      />
+                    </div>
+                    <div className="col-span-2">
+                      <Label>Description</Label>
+                      <Textarea
+                        name="description"
+                        defaultValue={editSpellData?.description}
+                        className="bg-stone-800 border-stone-700 min-h-[80px]"
+                        placeholder="Describe what the spell does..."
+                      />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <Label>Damage (dice notation)</Label>
+                        {!isGM && (
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger>
+                                <Lock className="h-3 w-3 text-amber-600" />
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>Only GMs can edit this field</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        )}
+                      </div>
+                      <Input
+                        name="damage"
+                        defaultValue={editSpellData?.damage}
+                        className={`bg-stone-800 ${isGM ? 'border-amber-700' : 'border-stone-700'}`}
+                        placeholder="2d6"
+                        disabled={!isGM}
+                      />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <Label>Damage Type</Label>
+                        {!isGM && (
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger>
+                                <Lock className="h-3 w-3 text-amber-600" />
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>Only GMs can edit this field</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        )}
+                      </div>
+                      <Input
+                        name="damageType"
+                        defaultValue={editSpellData?.damageType}
+                        className={`bg-stone-800 ${isGM ? 'border-amber-700' : 'border-stone-700'}`}
+                        placeholder="fire, cold, lightning..."
+                        disabled={!isGM}
+                      />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <Label>Range (feet)</Label>
+                        {!isGM && (
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger>
+                                <Lock className="h-3 w-3 text-amber-600" />
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>Only GMs can edit this field</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        )}
+                      </div>
+                      <Input
+                        name="range"
+                        type="number"
+                        defaultValue={editSpellData?.range}
+                        className={`bg-stone-800 ${isGM ? 'border-amber-700' : 'border-stone-700'}`}
+                        placeholder="60"
+                        disabled={!isGM}
+                      />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <Label>Area of Effect</Label>
+                        {!isGM && (
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger>
+                                <Lock className="h-3 w-3 text-amber-600" />
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>Only GMs can edit this field</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        )}
+                      </div>
+                      <Input
+                        name="aoe"
+                        defaultValue={editSpellData?.aoe}
+                        className={`bg-stone-800 ${isGM ? 'border-amber-700' : 'border-stone-700'}`}
+                        placeholder="15-foot cone"
+                        disabled={!isGM}
+                      />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <Label>Casting Time</Label>
+                        {!isGM && (
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger>
+                                <Lock className="h-3 w-3 text-amber-600" />
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>Only GMs can edit this field</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        )}
+                      </div>
+                      <Input
+                        name="castingTime"
+                        defaultValue={editSpellData?.castingTime}
+                        className={`bg-stone-800 ${isGM ? 'border-amber-700' : 'border-stone-700'}`}
+                        placeholder="1 action"
+                        disabled={!isGM}
+                      />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <Label>Duration</Label>
+                        {!isGM && (
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger>
+                                <Lock className="h-3 w-3 text-amber-600" />
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>Only GMs can edit this field</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        )}
+                      </div>
+                      <Input
+                        name="duration"
+                        defaultValue={editSpellData?.duration}
+                        className={`bg-stone-800 ${isGM ? 'border-amber-700' : 'border-stone-700'}`}
+                        placeholder="Instantaneous"
+                        disabled={!isGM}
+                      />
+                    </div>
+                  </div>
+                  <div className="flex justify-end gap-2 pt-4">
+                    <Button type="button" variant="outline" onClick={() => setShowAddSpell(false)}>
+                      Cancel
+                    </Button>
+                    <Button type="submit" className="bg-purple-600 hover:bg-purple-700">
+                      {editSpellData ? 'Update Spell' : 'Add Spell'}
+                    </Button>
+                  </div>
+                </form>
+              </DialogContent>
+            </Dialog>
+
+            {/* Spell Detail Dialog */}
+            <Dialog open={showSpellDetail} onOpenChange={setShowSpellDetail}>
+              <DialogContent className="max-w-2xl bg-stone-900 border-stone-700">
+                {selectedSpell && (
+                  <>
+                    <DialogHeader>
+                      <DialogTitle className="text-purple-400 flex items-center gap-2">
+                        {selectedSpell.image ? (
+                          <img src={selectedSpell.image} alt={selectedSpell.name} className="w-8 h-8 rounded" />
+                        ) : (
+                          <Sparkles className={`h-6 w-6 ${getSpellLevelColor(selectedSpell.level)}`} />
+                        )}
+                        {selectedSpell.name}
+                      </DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4">
+                      <div className="flex gap-2">
+                        <Badge className={`${getSpellLevelBgColor(selectedSpell.level)}`}>
+                          {selectedSpell.level === 0 ? 'Cantrip' : `Level ${selectedSpell.level}`}
+                        </Badge>
+                        {selectedSpell.school && (
+                          <Badge className={getSchoolBadgeColor(selectedSpell.school)}>
+                            {selectedSpell.school}
+                          </Badge>
+                        )}
+                        {selectedSpell.isEquipped && (
+                          <Badge variant="outline" className="bg-amber-900 text-amber-100 border-amber-700">
+                            Equipped
+                          </Badge>
+                        )}
+                      </div>
+
+                      {selectedSpell.description && (
+                        <div>
+                          <Label className="text-xs text-stone-400">Description</Label>
+                          <p className="text-sm text-stone-300 mt-1">{selectedSpell.description}</p>
+                        </div>
+                      )}
+
+                      <div className="grid grid-cols-2 gap-4">
+                        {selectedSpell.castingTime && (
+                          <div>
+                            <Label className="text-xs text-stone-400">Casting Time</Label>
+                            <p className="text-sm text-stone-100">{selectedSpell.castingTime}</p>
+                          </div>
+                        )}
+                        {selectedSpell.duration && (
+                          <div>
+                            <Label className="text-xs text-stone-400">Duration</Label>
+                            <p className="text-sm text-stone-100">{selectedSpell.duration}</p>
+                          </div>
+                        )}
+                        {selectedSpell.range && (
+                          <div>
+                            <Label className="text-xs text-stone-400">Range</Label>
+                            <p className="text-sm text-stone-100">{selectedSpell.range} feet</p>
+                          </div>
+                        )}
+                        {selectedSpell.aoe && (
+                          <div>
+                            <Label className="text-xs text-stone-400">Area of Effect</Label>
+                            <p className="text-sm text-stone-100">{selectedSpell.aoe}</p>
+                          </div>
+                        )}
+                        {selectedSpell.damage && (
+                          <div>
+                            <Label className="text-xs text-stone-400">Damage</Label>
+                            <p className="text-sm text-stone-100">
+                              {selectedSpell.damage} {selectedSpell.damageType || ''}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex gap-2 pt-4 border-t border-stone-700">
+                        {isGM && (
+                          <>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setEditSpellData(selectedSpell);
+                                setShowSpellDetail(false);
+                                setShowAddSpell(true);
+                              }}
+                              data-testid="button-edit-spell"
+                            >
+                              Edit
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="text-red-400 hover:text-red-300"
+                              onClick={() => {
+                                if (confirm(`Delete ${selectedSpell.name}?`)) {
+                                  deleteSpellMutation.mutate(selectedSpell.id);
+                                }
+                              }}
+                              data-testid="button-delete-spell"
+                            >
+                              <Trash2 className="h-4 w-4 mr-1" />
+                              Delete
+                            </Button>
+                          </>
+                        )}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setShowSpellDetail(false)}
+                          className="ml-auto"
+                        >
+                          Close
+                        </Button>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </DialogContent>
+            </Dialog>
           </TabsContent>
 
           {/* HOTBARS TAB */}
@@ -2838,150 +4325,23 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose }: 
       </Tabs>
 
       {/* Item Detail Dialog */}
-      <Dialog open={showItemDetail} onOpenChange={setShowItemDetail}>
-        <DialogContent className="bg-stone-900 border-stone-700 max-w-2xl">
-          <DialogHeader>
-            <DialogTitle className="text-amber-500">Item Details</DialogTitle>
-          </DialogHeader>
-          {selectedItem && (
-            <ScrollArea className="max-h-[500px] pr-4">
-              <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label className="text-xs text-stone-400">Name</Label>
-                    <p className="text-stone-200 font-bold">{selectedItem.name}</p>
-                  </div>
-                  <div>
-                    <Label className="text-xs text-stone-400">Type</Label>
-                    <p className="text-stone-200 capitalize">{selectedItem.itemType}</p>
-                  </div>
-                  <div>
-                    <Label className="text-xs text-stone-400">Rarity</Label>
-                    <p className="text-stone-200 capitalize">{selectedItem.rarity}</p>
-                  </div>
-                  <div>
-                    <Label className="text-xs text-stone-400">Quantity</Label>
-                    <p className="text-stone-200">{selectedItem.totalQuantity || selectedItem.quantity}</p>
-                  </div>
-                </div>
-                {(selectedItem.damage || selectedItem.damageType || selectedItem.mod) && (
-                  <div className="pt-4 border-t border-stone-700">
-                    <h3 className="text-sm font-bold text-stone-300 mb-2">Combat Stats</h3>
-                    <div className="grid grid-cols-2 gap-4">
-                      {selectedItem.damage && (
-                        <div>
-                          <Label className="text-xs text-stone-400">Damage</Label>
-                          <p className="text-stone-200">{selectedItem.damage}</p>
-                        </div>
-                      )}
-                      {selectedItem.damageType && (
-                        <div>
-                          <Label className="text-xs text-stone-400">Damage Type</Label>
-                          <p className="text-stone-200">{selectedItem.damageType}</p>
-                        </div>
-                      )}
-                      {selectedItem.mod !== undefined && (
-                        <div>
-                          <Label className="text-xs text-stone-400">Modifier</Label>
-                          <p className="text-stone-200">{selectedItem.mod >= 0 ? `+${selectedItem.mod}` : selectedItem.mod}</p>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-                <div className="pt-4 border-t border-stone-700">
-                  <h3 className="text-sm font-bold text-stone-300 mb-2">Physical</h3>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label className="text-xs text-stone-400">Weight (per unit)</Label>
-                      <p className="text-stone-200">{selectedItem.itemWeight} lbs</p>
-                    </div>
-                    <div>
-                      <Label className="text-xs text-stone-400">Total Weight</Label>
-                      <p className="text-stone-200">{(selectedItem.itemWeight * (selectedItem.totalQuantity || selectedItem.quantity)).toFixed(1)} lbs</p>
-                    </div>
-                    <div>
-                      <Label className="text-xs text-stone-400">Durability</Label>
-                      <div className="flex items-center gap-2">
-                        <div className="flex-1 h-3 bg-stone-700 rounded overflow-hidden">
-                          <div 
-                            className={`h-full ${selectedItem.durability >= 7 ? 'bg-green-500' : selectedItem.durability >= 4 ? 'bg-yellow-500' : 'bg-red-500'}`} 
-                            style={{ width: `${(selectedItem.durability / 10) * 100}%` }} 
-                          />
-                        </div>
-                        <span className="text-sm text-stone-200">{selectedItem.durability}/10</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Container Management */}
-                {(isOwner || isGM) && !selectedItem.isContainer && (
-                  <div className="pt-4 border-t border-stone-700">
-                    <h3 className="text-sm font-bold text-stone-300 mb-2">Container Management</h3>
-                    <div className="space-y-2">
-                      {selectedItem.containerId ? (
-                        <div>
-                          <Label className="text-xs text-stone-400 mb-2 block">Currently in container</Label>
-                          <Button 
-                            size="sm" 
-                            variant="outline"
-                            onClick={() => {
-                              updateItemMutation.mutate({ 
-                                id: selectedItem.id, 
-                                data: { containerId: null } 
-                              });
-                            }}
-                            data-testid="button-remove-from-container"
-                          >
-                            Remove from Container
-                          </Button>
-                        </div>
-                      ) : (
-                        <div>
-                          <Label className="text-xs text-stone-400 mb-2 block">Move to Container</Label>
-                          <Select 
-                            onValueChange={(containerId) => {
-                              updateItemMutation.mutate({ 
-                                id: selectedItem.id, 
-                                data: { containerId } 
-                              });
-                            }}
-                          >
-                            <SelectTrigger className="bg-stone-900 border-stone-700" data-testid="select-move-to-container">
-                              <SelectValue placeholder="Select container..." />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {items.filter((item: any) => item.isContainer && item.id !== selectedItem.id).map((container: any) => (
-                                <SelectItem key={container.id} value={container.id}>
-                                  {container.name} ({(container.children?.length || 0)} / {container.carryCapacity || 0})
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                <div className="flex gap-2">
-                  {(isOwner || isGM) && (
-                    <>
-                      <Button size="sm" variant="outline" onClick={() => deleteItemMutation.mutate(selectedItem.id)} data-testid="button-delete-item">
-                        <Trash2 className="h-4 w-4 mr-1" /> Delete
-                      </Button>
-                      <Button size="sm" onClick={() => { setShowItemDetail(false); }} data-testid="button-close-item-detail">
-                        Close
-                      </Button>
-                    </>
-                  )}
-                </div>
-              </div>
-            </ScrollArea>
-          )}
-        </DialogContent>
-      </Dialog>
+      <ItemDetailDialog
+        item={selectedItem}
+        open={showItemDetail}
+        onOpenChange={(open) => {
+          setShowItemDetail(open);
+          if (!open) {
+            setIsEditingItem(false);
+            setEditItemData(null);
+          }
+        }}
+        isGM={isGM}
+        isOwner={isOwner}
+        character={character}
+        items={items}
+        onUpdate={(data) => updateItemMutation.mutate({ id: selectedItem.id, data })}
+        onDelete={() => deleteItemMutation.mutate(selectedItem.id)}
+      />
 
       {/* Add/Edit Item Dialog */}
       <AddItemDialog 
@@ -3159,6 +4519,484 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM }: { open: boolean; on
             <div className="flex gap-2 pt-4">
               <Button onClick={handleSubmit} disabled={!formData.name}>Add Item</Button>
               <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+            </div>
+          </div>
+        </ScrollArea>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// Item Detail Dialog Component with Edit Mode and Equip to Hotbar
+interface ItemDetailDialogProps {
+  item: any;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  isGM: boolean;
+  isOwner: boolean;
+  character: any;
+  items: any[];
+  onUpdate: (data: any) => void;
+  onDelete: () => void;
+}
+
+function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, items, onUpdate, onDelete }: ItemDetailDialogProps) {
+  const queryClient = useQueryClient();
+  const [isEditing, setIsEditing] = useState(false);
+  const [editData, setEditData] = useState<any>(null);
+  const [showEquipMenu, setShowEquipMenu] = useState(false);
+
+  const { data: hotbars = [] } = useQuery({
+    queryKey: ['hotbars', character.id],
+    queryFn: () => api.getHotbars(character.id),
+    enabled: !!character.id
+  });
+
+  const upsertHotbarMutation = useMutation({
+    mutationFn: (data: any) => api.upsertHotbar(character.id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['hotbars', character.id] });
+      toast({ title: "Item Equipped", description: "Item equipped to hotbar successfully" });
+      setShowEquipMenu(false);
+    }
+  });
+
+  const handleEditToggle = () => {
+    if (!isEditing) {
+      setEditData({ ...item });
+    }
+    setIsEditing(!isEditing);
+  };
+
+  const handleSave = () => {
+    if (editData) {
+      onUpdate(editData);
+      setIsEditing(false);
+    }
+  };
+
+  const handleCancel = () => {
+    setEditData(null);
+    setIsEditing(false);
+  };
+
+  const handleEquipToSlot = (hotbarType: string, slotNumber: number) => {
+    if (!item) return;
+
+    if (hotbarType === 'weapons' && item.weight === 'heavy') {
+      upsertHotbarMutation.mutate({ hotbarType, slotNumber: 0, itemId: item.id });
+      upsertHotbarMutation.mutate({ hotbarType, slotNumber: 2, itemId: item.id });
+    } else {
+      upsertHotbarMutation.mutate({ hotbarType, slotNumber, itemId: item.id });
+    }
+  };
+
+  const getAvailableSlots = () => {
+    if (!item) return [];
+    
+    const slots: { label: string; hotbarType: string; slotNumber: number }[] = [];
+    
+    if (item.itemType === 'weapon') {
+      if (item.weight === 'heavy') {
+        slots.push({ label: 'Weapons (Both Hands)', hotbarType: 'weapons', slotNumber: 0 });
+      } else {
+        slots.push({ label: 'Weapons - Left Hand', hotbarType: 'weapons', slotNumber: 0 });
+        slots.push({ label: 'Weapons - Ammo', hotbarType: 'weapons', slotNumber: 1 });
+        slots.push({ label: 'Weapons - Right Hand', hotbarType: 'weapons', slotNumber: 2 });
+      }
+    } else if (item.itemType === 'consumable') {
+      slots.push({ label: 'Consumables - Slot 1', hotbarType: 'consumables', slotNumber: 0 });
+      slots.push({ label: 'Consumables - Slot 2', hotbarType: 'consumables', slotNumber: 1 });
+    } else if (item.itemType === 'utility') {
+      for (let i = 0; i < 5; i++) {
+        slots.push({ label: `Utility - Slot ${i + 1}`, hotbarType: 'utility', slotNumber: i });
+      }
+    }
+    
+    return slots;
+  };
+
+  if (!item) return null;
+
+  const currentData = isEditing ? editData : item;
+  const canEditItem = isOwner || isGM;
+  const canEditAllFields = isGM;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="bg-stone-900 border-stone-700 max-w-2xl">
+        <DialogHeader>
+          <div className="flex justify-between items-center">
+            <DialogTitle className="text-amber-500">Item Details</DialogTitle>
+            {canEditItem && !isEditing && (
+              <Button size="sm" variant="outline" onClick={handleEditToggle} data-testid="button-edit-item">
+                Edit
+              </Button>
+            )}
+          </div>
+        </DialogHeader>
+        <ScrollArea className="max-h-[500px] pr-4">
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label className="text-xs text-stone-400">Name</Label>
+                {isEditing ? (
+                  <Input 
+                    value={currentData.name} 
+                    onChange={(e) => setEditData({ ...editData, name: e.target.value })}
+                    className="bg-stone-800 border-stone-700"
+                    data-testid="input-edit-name"
+                  />
+                ) : (
+                  <p className="text-stone-200 font-bold">{currentData.name}</p>
+                )}
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <Label className="text-xs text-stone-400">Type</Label>
+                  {!canEditAllFields && (
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger>
+                          <Lock className="h-3 w-3 text-amber-600" />
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Only GMs can edit this field</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  )}
+                </div>
+                {isEditing && canEditAllFields ? (
+                  <Select value={currentData.itemType} onValueChange={(v) => setEditData({ ...editData, itemType: v })}>
+                    <SelectTrigger className="bg-stone-800 border-amber-700">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="weapon">Weapon</SelectItem>
+                      <SelectItem value="armor">Armor</SelectItem>
+                      <SelectItem value="consumable">Consumable</SelectItem>
+                      <SelectItem value="utility">Utility</SelectItem>
+                      <SelectItem value="container">Container</SelectItem>
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <p className="text-stone-200 capitalize">{currentData.itemType}</p>
+                )}
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <Label className="text-xs text-stone-400">Rarity</Label>
+                  {!canEditAllFields && (
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger>
+                          <Lock className="h-3 w-3 text-amber-600" />
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Only GMs can edit this field</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  )}
+                </div>
+                {isEditing && canEditAllFields ? (
+                  <Select value={currentData.rarity} onValueChange={(v) => setEditData({ ...editData, rarity: v })}>
+                    <SelectTrigger className="bg-stone-800 border-amber-700">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="common">Common</SelectItem>
+                      <SelectItem value="uncommon">Uncommon</SelectItem>
+                      <SelectItem value="rare">Rare</SelectItem>
+                      <SelectItem value="epic">Epic</SelectItem>
+                      <SelectItem value="legendary">Legendary</SelectItem>
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <p className="text-stone-200 capitalize">{currentData.rarity}</p>
+                )}
+              </div>
+              <div>
+                <Label className="text-xs text-stone-400">Quantity</Label>
+                {isEditing ? (
+                  <Input 
+                    type="number"
+                    min="1"
+                    value={currentData.quantity} 
+                    onChange={(e) => setEditData({ ...editData, quantity: parseInt(e.target.value) || 1 })}
+                    className="bg-stone-800 border-stone-700"
+                  />
+                ) : (
+                  <p className="text-stone-200">{currentData.totalQuantity || currentData.quantity}</p>
+                )}
+              </div>
+            </div>
+
+            {(currentData.damage || currentData.damageType || currentData.mod !== undefined || isEditing) && (
+              <div className="pt-4 border-t border-stone-700">
+                <div className="flex items-center gap-2 mb-2">
+                  <h3 className="text-sm font-bold text-stone-300">Combat Stats</h3>
+                  {!canEditAllFields && <GMOnlyBadge />}
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <Label className="text-xs text-stone-400">Damage</Label>
+                      {isEditing && !canEditAllFields && (
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger>
+                              <Lock className="h-3 w-3 text-amber-600" />
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Only GMs can edit this field</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      )}
+                    </div>
+                    {isEditing && canEditAllFields ? (
+                      <Input 
+                        value={currentData.damage || ''} 
+                        onChange={(e) => setEditData({ ...editData, damage: e.target.value })}
+                        className="bg-stone-800 border-amber-700"
+                        placeholder="e.g., 1d8"
+                      />
+                    ) : (
+                      <p className="text-stone-200">{currentData.damage || 'N/A'}</p>
+                    )}
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <Label className="text-xs text-stone-400">Damage Type</Label>
+                      {isEditing && !canEditAllFields && (
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger>
+                              <Lock className="h-3 w-3 text-amber-600" />
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Only GMs can edit this field</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      )}
+                    </div>
+                    {isEditing && canEditAllFields ? (
+                      <Input 
+                        value={currentData.damageType || ''} 
+                        onChange={(e) => setEditData({ ...editData, damageType: e.target.value })}
+                        className="bg-stone-800 border-amber-700"
+                        placeholder="e.g., slashing"
+                      />
+                    ) : (
+                      <p className="text-stone-200">{currentData.damageType || 'N/A'}</p>
+                    )}
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <Label className="text-xs text-stone-400">Modifier</Label>
+                      {isEditing && !canEditAllFields && (
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger>
+                              <Lock className="h-3 w-3 text-amber-600" />
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Only GMs can edit this field</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      )}
+                    </div>
+                    {isEditing && canEditAllFields ? (
+                      <Input 
+                        type="number"
+                        value={currentData.mod !== undefined ? currentData.mod : 0} 
+                        onChange={(e) => setEditData({ ...editData, mod: parseInt(e.target.value) || 0 })}
+                        className="bg-stone-800 border-amber-700"
+                      />
+                    ) : (
+                      <p className="text-stone-200">{currentData.mod >= 0 ? `+${currentData.mod}` : currentData.mod}</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="pt-4 border-t border-stone-700">
+              <div className="flex items-center gap-2 mb-2">
+                <h3 className="text-sm font-bold text-stone-300">Physical</h3>
+                {!canEditAllFields && <GMOnlyBadge />}
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <Label className="text-xs text-stone-400">Weight (per unit)</Label>
+                    {isEditing && !canEditAllFields && (
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger>
+                            <Lock className="h-3 w-3 text-amber-600" />
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Only GMs can edit this field</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    )}
+                  </div>
+                  {isEditing && canEditAllFields ? (
+                    <Input 
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      value={currentData.itemWeight} 
+                      onChange={(e) => setEditData({ ...editData, itemWeight: parseFloat(e.target.value) || 0 })}
+                      className="bg-stone-800 border-amber-700"
+                    />
+                  ) : (
+                    <p className="text-stone-200">{currentData.itemWeight} lbs</p>
+                  )}
+                </div>
+                <div>
+                  <Label className="text-xs text-stone-400">Total Weight</Label>
+                  <p className="text-stone-200">
+                    {(currentData.itemWeight * (currentData.totalQuantity || currentData.quantity)).toFixed(1)} lbs
+                  </p>
+                </div>
+                <div className="col-span-2">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Label className="text-xs text-stone-400">Durability</Label>
+                    {isEditing && !canEditAllFields && (
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger>
+                            <Lock className="h-3 w-3 text-amber-600" />
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Only GMs can edit this field</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    )}
+                  </div>
+                  {isEditing && canEditItem ? (
+                    <div className="space-y-2">
+                      <Slider 
+                        value={[currentData.durability]} 
+                        onValueChange={(v) => setEditData({ ...editData, durability: v[0] })}
+                        min={0}
+                        max={10}
+                        step={1}
+                        className="mt-2"
+                        data-testid="slider-durability"
+                      />
+                      <div className="text-sm text-stone-400">
+                        {currentData.durability}/10
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1 h-3 bg-stone-700 rounded overflow-hidden">
+                        <div 
+                          className={`h-full ${currentData.durability >= 8 ? 'bg-green-500' : currentData.durability >= 4 ? 'bg-yellow-500' : 'bg-red-500'}`} 
+                          style={{ width: `${(currentData.durability / 10) * 100}%` }} 
+                        />
+                      </div>
+                      <span className="text-sm text-stone-200">{currentData.durability}/10</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {(isOwner || isGM) && !currentData.isContainer && !isEditing && (
+              <div className="pt-4 border-t border-stone-700">
+                <h3 className="text-sm font-bold text-stone-300 mb-2">Container Management</h3>
+                <div className="space-y-2">
+                  {currentData.containerId ? (
+                    <div>
+                      <Label className="text-xs text-stone-400 mb-2 block">Currently in container</Label>
+                      <Button 
+                        size="sm" 
+                        variant="outline"
+                        onClick={() => onUpdate({ containerId: null })}
+                        data-testid="button-remove-from-container"
+                      >
+                        Remove from Container
+                      </Button>
+                    </div>
+                  ) : (
+                    <div>
+                      <Label className="text-xs text-stone-400 mb-2 block">Move to Container</Label>
+                      <Select 
+                        onValueChange={(containerId) => onUpdate({ containerId })}
+                      >
+                        <SelectTrigger className="bg-stone-900 border-stone-700" data-testid="select-move-to-container">
+                          <SelectValue placeholder="Select container..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {items.filter((i: any) => i.isContainer && i.id !== currentData.id).map((container: any) => (
+                            <SelectItem key={container.id} value={container.id}>
+                              {container.name} ({(container.children?.length || 0)} / {container.carryCapacity || 0})
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {!isEditing && (isOwner || isGM) && ['weapon', 'consumable', 'utility'].includes(currentData.itemType) && (
+              <div className="pt-4 border-t border-stone-700">
+                <h3 className="text-sm font-bold text-stone-300 mb-2">Quick Actions</h3>
+                <div className="space-y-2">
+                  <Label className="text-xs text-stone-400 mb-2 block">Equip to Hotbar</Label>
+                  <Select onValueChange={(value) => {
+                    const [hotbarType, slotNumber] = value.split('-');
+                    handleEquipToSlot(hotbarType, parseInt(slotNumber));
+                  }}>
+                    <SelectTrigger className="bg-stone-900 border-stone-700" data-testid="select-equip-slot">
+                      <SelectValue placeholder="Select slot..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {getAvailableSlots().map((slot) => (
+                        <SelectItem key={`${slot.hotbarType}-${slot.slotNumber}`} value={`${slot.hotbarType}-${slot.slotNumber}`}>
+                          {slot.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            )}
+
+            <div className="flex gap-2 pt-4">
+              {isEditing ? (
+                <>
+                  <Button size="sm" onClick={handleSave} data-testid="button-save-item">
+                    Save Changes
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={handleCancel} data-testid="button-cancel-edit">
+                    Cancel
+                  </Button>
+                </>
+              ) : (
+                <>
+                  {(isOwner || isGM) && (
+                    <Button size="sm" variant="outline" onClick={onDelete} data-testid="button-delete-item">
+                      <Trash2 className="h-4 w-4 mr-1" /> Delete
+                    </Button>
+                  )}
+                  <Button size="sm" onClick={() => onOpenChange(false)} data-testid="button-close-item-detail">
+                    Close
+                  </Button>
+                </>
+              )}
             </div>
           </div>
         </ScrollArea>

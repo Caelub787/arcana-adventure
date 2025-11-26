@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertUserSchema, insertCampaignSchema, insertCharacterSchema, insertTokenSchema, insertChatMessageSchema, insertSceneSchema, insertHotbarSchema, insertItemSchema } from "@shared/schema";
+import { insertUserSchema, insertCampaignSchema, insertCharacterSchema, insertTokenSchema, insertChatMessageSchema, insertSceneSchema, insertHotbarSchema, insertItemSchema, insertSpellSchema } from "@shared/schema";
 import bcrypt from "bcryptjs";
 import { WebSocketServer } from "ws";
 import { sendPasswordResetEmail } from "./email";
@@ -16,73 +16,307 @@ declare module "express-session" {
 export async function registerRoutes(app: Express): Promise<Server> {
   const httpServer = createServer(app);
   
+  // Get session middleware from app
+  const sessionMiddleware = (app as any)._router.stack.find(
+    (layer: any) => layer.name === 'session'
+  )?.handle;
+  
   // WebSocket server for real-time updates
   const wss = new WebSocketServer({ server: httpServer, path: "/ws" });
   
   // Map to track campaign rooms
   const campaignRooms = new Map<string, Set<any>>();
+  
+  // Rate limiting map: userId -> { count, resetTime }
+  const rateLimits = new Map<string, { count: number; resetTime: number }>();
+  
+  // Rate limit check: 10 messages per second per user
+  function checkRateLimit(userId: string): boolean {
+    const now = Date.now();
+    const limit = rateLimits.get(userId);
+    
+    if (!limit || now > limit.resetTime) {
+      rateLimits.set(userId, { count: 1, resetTime: now + 1000 });
+      return true;
+    }
+    
+    if (limit.count >= 10) {
+      return false;
+    }
+    
+    limit.count++;
+    return true;
+  }
 
-  wss.on("connection", (ws, req) => {
-    let currentCampaignId: string | null = null;
+  wss.on("connection", async (ws, req) => {
+    // Validate Origin header to prevent CSRF attacks
+    const origin = req.headers.origin;
+    const allowedOrigins = [
+      process.env.REPL_SLUG ? 
+        `https://${process.env.REPL_ID}.${process.env.REPL_SLUG}.repl.co` : 
+        'http://localhost:5000',
+      'http://localhost:5173', // Vite dev server
+    ];
+    
+    if (origin && !allowedOrigins.some(allowed => origin.startsWith(allowed))) {
+      console.warn(`WebSocket connection rejected - invalid origin: ${origin}`);
+      ws.close(4403, 'Forbidden - Invalid origin');
+      return;
+    }
+    
+    // Parse session from request
+    if (!sessionMiddleware) {
+      console.error("WebSocket: Session middleware not found");
+      ws.close(1011, "Server configuration error");
+      return;
+    }
+    
+    // Create mock response object for session middleware
+    const mockRes = {
+      getHeader: () => {},
+      setHeader: () => {},
+      end: () => {},
+    };
+    
+    // Parse session
+    await new Promise<void>((resolve) => {
+      sessionMiddleware(req, mockRes, () => resolve());
+    });
+    
+    const userId = (req as any).session?.userId;
+    
+    // Reject unauthenticated connections
+    if (!userId) {
+      ws.close(4401, "Unauthorized - No active session");
+      return;
+    }
+    
+    // Fetch user data for authenticated user
+    const user = await storage.getUser(userId);
+    if (!user) {
+      ws.close(4401, "Unauthorized - User not found");
+      return;
+    }
+    
+    // Store authenticated user info on WebSocket connection
+    (ws as any).userId = userId;
+    (ws as any).username = user.username;
+    (ws as any).campaigns = new Map<string, { role: string }>(); // Track joined campaigns with roles
 
     ws.on("message", async (data) => {
       try {
         const message = JSON.parse(data.toString());
+        const authenticatedUserId = (ws as any).userId;
+        const username = (ws as any).username;
+        
+        // Rate limiting check
+        if (!checkRateLimit(authenticatedUserId)) {
+          ws.send(JSON.stringify({
+            type: "error",
+            message: "Rate limit exceeded. Please slow down."
+          }));
+          return;
+        }
         
         if (message.type === "join_campaign" && message.campaignId) {
-          currentCampaignId = message.campaignId;
-          if (!campaignRooms.has(message.campaignId)) {
-            campaignRooms.set(message.campaignId, new Set());
+          const campaignId = message.campaignId;
+          
+          // Check if user is a member of this campaign or is the GM
+          const campaign = await storage.getCampaign(campaignId);
+          if (!campaign) {
+            ws.send(JSON.stringify({
+              type: "error",
+              message: "Campaign not found"
+            }));
+            return;
           }
-          campaignRooms.get(message.campaignId)!.add(ws);
+          
+          // Check if user is GM (owner)
+          const isGM = campaign.gmUserId === authenticatedUserId;
+          
+          // Check if user is a member
+          const membership = await storage.getCampaignMembership(authenticatedUserId, campaignId);
+          
+          if (!isGM && !membership) {
+            ws.send(JSON.stringify({
+              type: "error",
+              message: "Not authorized - You are not a member of this campaign"
+            }));
+            return;
+          }
+          
+          // Store campaign with role in Map
+          const role = isGM ? "gm" : membership?.role || "player";
+          (ws as any).campaigns.set(campaignId, { role });
+          
+          // Join room
+          if (!campaignRooms.has(campaignId)) {
+            campaignRooms.set(campaignId, new Set());
+          }
+          campaignRooms.get(campaignId)!.add(ws);
+          
+          // Send confirmation with role
+          ws.send(JSON.stringify({
+            type: "joined_campaign",
+            campaignId,
+            role
+          }));
+          
+          console.log(`[WebSocket] User ${username} joined campaign ${campaignId} as ${role}`);
         }
 
-        if (message.type === "token_move" && currentCampaignId) {
+        if (message.type === "token_move") {
+          const { campaignId, tokenId, x, y, snapToGrid } = message;
+          
+          // Verify user has joined this campaign
+          const userCampaign = (ws as any).campaigns.get(campaignId);
+          if (!userCampaign) {
+            ws.send(JSON.stringify({
+              type: "error",
+              message: "Not authorized for this campaign"
+            }));
+            return;
+          }
+          
+          const userRole = userCampaign.role;
+          
+          // Fetch the token from database to verify ownership
+          const token = await storage.getToken(tokenId);
+          
+          if (!token || token.campaignId !== campaignId) {
+            ws.send(JSON.stringify({
+              type: "error",
+              message: "Invalid token for this campaign"
+            }));
+            return;
+          }
+          
+          // Authorization: GM can move any token, players can only move their own character tokens
+          if (userRole !== "gm") {
+            // If token has a characterId, verify it belongs to this user
+            if (token.characterId) {
+              const character = await storage.getCharacter(token.characterId);
+              if (!character || character.userId !== authenticatedUserId) {
+                ws.send(JSON.stringify({
+                  type: "error",
+                  message: "Not authorized to move this token"
+                }));
+                return;
+              }
+            } else {
+              // Non-character tokens (enemies, NPCs) can only be moved by GM
+              ws.send(JSON.stringify({
+                type: "error",
+                message: "Only GMs can move non-player tokens"
+              }));
+              return;
+            }
+          }
+          
+          // Update token position in database
+          await storage.updateToken(tokenId, { x, y });
+          
           // Broadcast to all clients in the campaign
-          const room = campaignRooms.get(currentCampaignId);
+          const room = campaignRooms.get(campaignId);
           if (room) {
+            const broadcastMessage = JSON.stringify({
+              type: "token_move",
+              tokenId,
+              x,
+              y,
+              snapToGrid,
+              userId: authenticatedUserId // Use server-side authenticated userId
+            });
+            
             room.forEach((client) => {
               if (client.readyState === 1) { // OPEN
-                client.send(JSON.stringify(message));
+                client.send(broadcastMessage);
               }
             });
           }
         }
 
-        if (message.type === "chat_message" && currentCampaignId) {
-          // Save to database and broadcast
+        if (message.type === "chat_message") {
+          const { campaignId, text, messageType } = message;
+          
+          // Verify user has joined this campaign
+          const userCampaign = (ws as any).campaigns.get(campaignId);
+          if (!userCampaign) {
+            ws.send(JSON.stringify({
+              type: "error",
+              message: "Not authorized - You have not joined this campaign"
+            }));
+            return;
+          }
+          
+          // Validate message length (max 1000 characters)
+          if (!text || typeof text !== 'string') {
+            ws.send(JSON.stringify({
+              type: "error",
+              message: "Invalid message"
+            }));
+            return;
+          }
+          
+          if (text.length > 1000) {
+            ws.send(JSON.stringify({
+              type: "error",
+              message: "Message too long (max 1000 characters)"
+            }));
+            return;
+          }
+          
+          // Validate messageType to prevent injection
+          const validMessageTypes = ["chat", "roll", "emote", "system"];
+          const sanitizedMessageType = validMessageTypes.includes(messageType) ? messageType : "chat";
+          
+          // Save to database with server-side authenticated userId
           const chatMessage = await storage.createChatMessage({
-            campaignId: currentCampaignId,
-            userId: message.userId,
-            sender: message.sender,
-            text: message.text,
-            type: message.messageType || "chat"
+            campaignId,
+            userId: authenticatedUserId, // Use server-authenticated userId
+            sender: username, // Use server-authenticated username
+            text,
+            type: sanitizedMessageType
           });
 
-          const room = campaignRooms.get(currentCampaignId);
+          // Broadcast to all clients in the campaign
+          const room = campaignRooms.get(campaignId);
           if (room) {
+            const broadcastMessage = JSON.stringify({ 
+              type: "chat_message", 
+              message: chatMessage 
+            });
+            
             room.forEach((client) => {
               if (client.readyState === 1) {
-                client.send(JSON.stringify({ type: "chat_message", message: chatMessage }));
+                client.send(broadcastMessage);
               }
             });
           }
         }
       } catch (err) {
         console.error("WebSocket error:", err);
+        ws.send(JSON.stringify({
+          type: "error",
+          message: "An error occurred processing your message"
+        }));
       }
     });
 
     ws.on("close", () => {
-      if (currentCampaignId) {
-        const room = campaignRooms.get(currentCampaignId);
+      // Remove from all campaign rooms
+      const campaigns = (ws as any).campaigns || new Map();
+      campaigns.forEach((_, campaignId: string) => {
+        const room = campaignRooms.get(campaignId);
         if (room) {
           room.delete(ws);
           if (room.size === 0) {
-            campaignRooms.delete(currentCampaignId);
+            campaignRooms.delete(campaignId);
           }
         }
-      }
+      });
+      
+      console.log(`[WebSocket] User ${(ws as any).username} disconnected`);
     });
   });
 
@@ -93,6 +327,108 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
     next();
   };
+
+  /**
+   * Permission Validation Functions
+   * 
+   * These validators enforce role-based access control for game data.
+   * GMs have full edit rights, while players have restricted permissions.
+   * 
+   * Throws errors with descriptive messages when non-GMs attempt unauthorized edits,
+   * which are then caught by route handlers and returned as 403 Forbidden responses.
+   */
+
+  /**
+   * validateCharacterUpdate - Enforces player restrictions on character edits
+   * 
+   * Players can only modify:
+   * - Cosmetic fields: name, portrait, biography
+   * - Current resources: hp, energy (not maximums)
+   * - Inventory array (legacy field)
+   * 
+   * GMs can edit all fields including:
+   * - Attributes (agility, strength, etc.)
+   * - Skills (skillAgility, skillPerception, etc.)
+   * - Max HP/Energy
+   * - Race stats (size, speed, naturalArmor, etc.)
+   * - GM Notes (players cannot see this field)
+   */
+  function validateCharacterUpdate(updates: Partial<any>, isGM: boolean): void {
+    if (!isGM) {
+      // Only allow these fields for non-GMs
+      const allowedFields = ['name', 'portrait', 'biography', 'hp', 'energy', 'inventory'];
+      const attemptedFields = Object.keys(updates);
+      const restrictedFields = attemptedFields.filter(
+        f => !allowedFields.includes(f)
+      );
+      if (restrictedFields.length > 0) {
+        throw new Error(
+          `Forbidden: Only GMs can edit ${restrictedFields.join(', ')}`
+        );
+      }
+    }
+  }
+
+  /**
+   * validateItemUpdate - Enforces player restrictions on item edits
+   * 
+   * Players can only modify:
+   * - name, description (flavor text)
+   * - containerId (move items between containers)
+   * - isEquipped (hotbar integration)
+   * 
+   * GMs can edit all properties including:
+   * - Combat stats (damage, mod, range, aoe)
+   * - Item properties (durability, rarity, weight)
+   * - Pricing (copper, silver, gold, platinum)
+   * - Container settings (isContainer, carryCapacity)
+   * 
+   * This prevents players from cheating by modifying weapon damage or item durability.
+   */
+  function validateItemUpdate(updates: Partial<any>, isGM: boolean): void {
+    if (!isGM) {
+      // Only allow name and description for non-GMs (plus container organization)
+      const allowedFields = ['name', 'description', 'containerId', 'isEquipped'];
+      const attemptedFields = Object.keys(updates);
+      const restrictedFields = attemptedFields.filter(
+        f => !allowedFields.includes(f)
+      );
+      if (restrictedFields.length > 0) {
+        throw new Error(
+          `Forbidden: Only GMs can edit item properties: ${restrictedFields.join(', ')}`
+        );
+      }
+    }
+  }
+
+  /**
+   * validateSpellUpdate - Enforces player restrictions on spell edits
+   * 
+   * Players can only modify:
+   * - name, description (flavor text)
+   * - isEquipped (magic hotbar integration)
+   * 
+   * GMs can edit all properties including:
+   * - Spell mechanics (damage, damageType, range, aoe)
+   * - Spell metadata (level, school, castingTime, duration)
+   * 
+   * This prevents players from upgrading spell power or changing spell levels.
+   */
+  function validateSpellUpdate(updates: Partial<any>, isGM: boolean): void {
+    if (!isGM) {
+      // Only allow name and description for non-GMs
+      const allowedFields = ['name', 'description', 'isEquipped'];
+      const attemptedFields = Object.keys(updates);
+      const restrictedFields = attemptedFields.filter(
+        f => !allowedFields.includes(f)
+      );
+      if (restrictedFields.length > 0) {
+        throw new Error(
+          `Forbidden: Only GMs can edit spell properties: ${restrictedFields.join(', ')}`
+        );
+      }
+    }
+  }
 
   // Auth routes
   app.post("/api/register", async (req, res) => {
@@ -427,11 +763,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.patch("/api/characters/:id", requireAuth, async (req, res) => {
     try {
-      const character = await storage.updateCharacter(req.params.id, req.body);
+      const character = await storage.getCharacter(req.params.id);
       if (!character) {
         return res.status(404).json({ error: "Character not found" });
       }
-      res.json(character);
+
+      const campaign = await storage.getCampaign(character.campaignId);
+      if (!campaign) {
+        return res.status(404).json({ error: "Campaign not found" });
+      }
+
+      const isOwner = character.userId === req.session.userId;
+      const isGM = campaign.gmUserId === req.session.userId;
+
+      // Must be either owner or GM
+      if (!isOwner && !isGM) {
+        return res.status(403).json({ error: "Unauthorized: You must own this character or be the GM" });
+      }
+
+      // Validate update based on GM status
+      try {
+        validateCharacterUpdate(req.body, isGM);
+      } catch (validationErr: any) {
+        return res.status(403).json({ error: validationErr.message });
+      }
+
+      const updatedCharacter = await storage.updateCharacter(req.params.id, req.body);
+      res.json(updatedCharacter);
     } catch (err) {
       res.status(400).json({ error: "Failed to update character" });
     }
@@ -497,6 +855,109 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ success: true });
     } catch (err) {
       res.status(400).json({ error: "Failed to delete hotbar" });
+    }
+  });
+
+  // Spell routes
+  app.get("/api/characters/:characterId/spells", requireAuth, async (req, res) => {
+    try {
+      const character = await storage.getCharacter(req.params.characterId);
+      if (!character) {
+        return res.status(404).json({ error: "Character not found" });
+      }
+
+      const campaign = await storage.getCampaign(character.campaignId);
+      if (!campaign) {
+        return res.status(404).json({ error: "Campaign not found" });
+      }
+
+      const isOwnerOrGM = character.userId === req.session.userId || campaign.gmUserId === req.session.userId;
+      if (!isOwnerOrGM) {
+        return res.status(403).json({ error: "Unauthorized" });
+      }
+
+      const spells = await storage.getSpellsByCharacter(req.params.characterId);
+      res.json(spells);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch spells" });
+    }
+  });
+
+  app.post("/api/characters/:characterId/spells", requireAuth, async (req, res) => {
+    try {
+      const character = await storage.getCharacter(req.params.characterId);
+      if (!character) {
+        return res.status(404).json({ error: "Character not found" });
+      }
+
+      const campaign = await storage.getCampaign(character.campaignId);
+      if (!campaign) {
+        return res.status(404).json({ error: "Campaign not found" });
+      }
+
+      const isOwnerOrGM = character.userId === req.session.userId || campaign.gmUserId === req.session.userId;
+      if (!isOwnerOrGM) {
+        return res.status(403).json({ error: "Unauthorized" });
+      }
+
+      const spellData = insertSpellSchema.parse({
+        ...req.body,
+        characterId: req.params.characterId
+      });
+
+      const spell = await storage.createSpell(spellData);
+      res.json(spell);
+    } catch (err) {
+      res.status(400).json({ error: "Failed to create spell" });
+    }
+  });
+
+  app.patch("/api/spells/:id", requireAuth, async (req, res) => {
+    try {
+      // First fetch the spell to get its character
+      const currentSpell = await storage.updateSpell(req.params.id, {});
+      if (!currentSpell) {
+        return res.status(404).json({ error: "Spell not found" });
+      }
+
+      const character = await storage.getCharacter(currentSpell.characterId);
+      if (!character) {
+        return res.status(404).json({ error: "Character not found" });
+      }
+
+      const campaign = await storage.getCampaign(character.campaignId);
+      if (!campaign) {
+        return res.status(404).json({ error: "Campaign not found" });
+      }
+
+      const isOwner = character.userId === req.session.userId;
+      const isGM = campaign.gmUserId === req.session.userId;
+
+      // Must be either owner or GM
+      if (!isOwner && !isGM) {
+        return res.status(403).json({ error: "Unauthorized: You must own this character or be the GM" });
+      }
+
+      // Validate update based on GM status
+      try {
+        validateSpellUpdate(req.body, isGM);
+      } catch (validationErr: any) {
+        return res.status(403).json({ error: validationErr.message });
+      }
+
+      const spell = await storage.updateSpell(req.params.id, req.body);
+      res.json(spell);
+    } catch (err) {
+      res.status(400).json({ error: "Failed to update spell" });
+    }
+  });
+
+  app.delete("/api/spells/:id", requireAuth, async (req, res) => {
+    try {
+      await storage.deleteSpell(req.params.id);
+      res.json({ success: true });
+    } catch (err) {
+      res.status(400).json({ error: "Failed to delete spell" });
     }
   });
 
@@ -758,9 +1219,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Campaign not found" });
       }
 
-      const isOwnerOrGM = character.userId === req.session.userId || campaign.gmUserId === req.session.userId;
-      if (!isOwnerOrGM) {
-        return res.status(403).json({ error: "Unauthorized" });
+      const isOwner = character.userId === req.session.userId;
+      const isGM = campaign.gmUserId === req.session.userId;
+
+      // Must be either owner or GM
+      if (!isOwner && !isGM) {
+        return res.status(403).json({ error: "Unauthorized: You must own this character or be the GM" });
+      }
+
+      // Validate update based on GM status
+      try {
+        validateItemUpdate(req.body, isGM);
+      } catch (validationErr: any) {
+        return res.status(403).json({ error: validationErr.message });
       }
 
       // Cycle detection for containerId updates
@@ -806,6 +1277,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(updatedItem);
     } catch (err) {
       res.status(400).json({ error: "Failed to update item" });
+    }
+  });
+
+  app.post("/api/items/:id/damage", requireAuth, async (req, res) => {
+    try {
+      const amount = req.body.amount || 1;
+      const item = await storage.damageItem(req.params.id, amount);
+      
+      if (!item) {
+        return res.status(404).json({ error: "Item not found" });
+      }
+
+      const character = await storage.getCharacter(item.characterId);
+      if (!character) {
+        return res.status(404).json({ error: "Character not found" });
+      }
+
+      const campaign = await storage.getCampaign(character.campaignId);
+      if (!campaign) {
+        return res.status(404).json({ error: "Campaign not found" });
+      }
+
+      if (campaign.gmUserId !== req.session.userId && character.userId !== req.session.userId) {
+        return res.status(403).json({ error: "Not authorized" });
+      }
+
+      res.json(item);
+    } catch (err) {
+      console.error("Error damaging item:", err);
+      res.status(400).json({ error: "Failed to damage item" });
     }
   });
 

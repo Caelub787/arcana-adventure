@@ -9,7 +9,8 @@ import {
   type Scene, type InsertScene,
   type Hotbar, type InsertHotbar,
   type Item, type InsertItem,
-  users, campaigns, campaignMembers, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, items
+  type Spell, type InsertSpell,
+  users, campaigns, campaignMembers, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, items, spells
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql } from "drizzle-orm";
@@ -32,8 +33,10 @@ export interface IStorage {
   // Campaign Member operations
   addCampaignMember(member: InsertCampaignMember): Promise<CampaignMember>;
   getCampaignMembers(campaignId: string): Promise<CampaignMember[]>;
+  getCampaignMembership(userId: string, campaignId: string): Promise<CampaignMember | null>;
   removeCampaignMember(campaignId: string, userId: string): Promise<void>;
   toggleFavorite(campaignId: string, userId: string): Promise<void>;
+  isGM(userId: string, campaignId: string): Promise<boolean>;
 
   // Character operations
   createCharacter(character: InsertCharacter): Promise<Character>;
@@ -43,6 +46,7 @@ export interface IStorage {
 
   // Token operations
   createToken(token: InsertToken): Promise<Token>;
+  getToken(id: string): Promise<Token | undefined>;
   getCampaignTokens(campaignId: string): Promise<Token[]>;
   updateToken(id: string, data: Partial<Token>): Promise<Token | undefined>;
   deleteToken(id: string): Promise<void>;
@@ -77,6 +81,13 @@ export interface IStorage {
   createItem(item: InsertItem): Promise<Item>;
   updateItem(id: string, updates: Partial<InsertItem>): Promise<Item | undefined>;
   deleteItem(id: string): Promise<void>;
+  damageItem(id: string, amount?: number): Promise<Item | undefined>;
+
+  // Spell operations
+  getSpellsByCharacter(characterId: string): Promise<Spell[]>;
+  createSpell(spell: InsertSpell): Promise<Spell>;
+  updateSpell(id: string, updates: Partial<InsertSpell>): Promise<Spell | undefined>;
+  deleteSpell(id: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -190,6 +201,21 @@ export class DatabaseStorage implements IStorage {
     }));
   }
 
+  async getCampaignMembership(userId: string, campaignId: string): Promise<CampaignMember | null> {
+    const [membership] = await db
+      .select()
+      .from(campaignMembers)
+      .where(
+        and(
+          eq(campaignMembers.userId, userId),
+          eq(campaignMembers.campaignId, campaignId)
+        )
+      )
+      .limit(1);
+    
+    return membership || null;
+  }
+
   async removeCampaignMember(campaignId: string, userId: string): Promise<void> {
     await db.delete(campaignMembers)
       .where(and(
@@ -230,6 +256,29 @@ export class DatabaseStorage implements IStorage {
     }
   }
 
+  async isGM(userId: string, campaignId: string): Promise<boolean> {
+    const campaign = await this.getCampaign(campaignId);
+    if (!campaign) {
+      return false;
+    }
+
+    // Check if user is the GM of the campaign
+    if (campaign.gmUserId === userId) {
+      return true;
+    }
+
+    // Also check campaign members table
+    const [member] = await db.select()
+      .from(campaignMembers)
+      .where(and(
+        eq(campaignMembers.userId, userId),
+        eq(campaignMembers.campaignId, campaignId)
+      ))
+      .limit(1);
+
+    return member?.role === 'gm';
+  }
+
   // Character operations
   async createCharacter(character: InsertCharacter): Promise<Character> {
     const [char] = await db.insert(characters).values(character).returning();
@@ -259,6 +308,11 @@ export class DatabaseStorage implements IStorage {
   async createToken(token: InsertToken): Promise<Token> {
     const [newToken] = await db.insert(tokens).values(token).returning();
     return newToken;
+  }
+
+  async getToken(id: string): Promise<Token | undefined> {
+    const [token] = await db.select().from(tokens).where(eq(tokens.id, id)).limit(1);
+    return token;
   }
 
   async getCampaignTokens(campaignId: string): Promise<Token[]> {
@@ -407,7 +461,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createItem(item: InsertItem): Promise<Item> {
-    const [newItem] = await db.insert(items).values(item).returning();
+    const [newItem] = await db.insert(items).values(item).returning() as Item[];
     return newItem;
   }
 
@@ -421,6 +475,43 @@ export class DatabaseStorage implements IStorage {
 
   async deleteItem(id: string): Promise<void> {
     await db.delete(items).where(eq(items.id, id));
+  }
+
+  async damageItem(id: string, amount: number = 1): Promise<Item | undefined> {
+    const [item] = await db.select().from(items).where(eq(items.id, id)).limit(1);
+    if (!item) return undefined;
+
+    const newDurability = Math.max(0, item.durability - amount);
+    const [updatedItem] = await db.update(items)
+      .set({ durability: newDurability })
+      .where(eq(items.id, id))
+      .returning();
+    
+    return updatedItem;
+  }
+
+  // Spell operations
+  async getSpellsByCharacter(characterId: string): Promise<Spell[]> {
+    return await db.select()
+      .from(spells)
+      .where(eq(spells.characterId, characterId));
+  }
+
+  async createSpell(spell: InsertSpell): Promise<Spell> {
+    const [newSpell] = await db.insert(spells).values(spell).returning();
+    return newSpell;
+  }
+
+  async updateSpell(id: string, updates: Partial<InsertSpell>): Promise<Spell | undefined> {
+    const [spell] = await db.update(spells)
+      .set(updates)
+      .where(eq(spells.id, id))
+      .returning();
+    return spell;
+  }
+
+  async deleteSpell(id: string): Promise<void> {
+    await db.delete(spells).where(eq(spells.id, id));
   }
 }
 

@@ -110,4 +110,193 @@
   .energy-gradient {
     background: linear-gradient(90deg, #1c4e8a 0%, #3182ce 50%, #1c4e8a 100%);
   }
+
+  /* Glow Effects */
+  .glow-amber {
+    box-shadow: 0 0 10px rgba(251, 191, 36, 0.3), 0 0 20px rgba(251, 191, 36, 0.1);
+  }
+
+  .glow-amber-strong {
+    box-shadow: 0 0 15px rgba(251, 191, 36, 0.5), 0 0 30px rgba(251, 191, 36, 0.2);
+  }
+
+  .glow-purple {
+    box-shadow: 0 0 10px rgba(168, 85, 247, 0.3), 0 0 20px rgba(168, 85, 247, 0.1);
+  }
+
+  .glow-red {
+    box-shadow: 0 0 10px rgba(239, 68, 68, 0.3), 0 0 20px rgba(239, 68, 68, 0.1);
+  }
+
+  .glow-green {
+    box-shadow: 0 0 10px rgba(16, 185, 129, 0.3), 0 0 20px rgba(16, 185, 129, 0.1);
+  }
+
+  /* Hover Scale Effects */
+  .hover-scale {
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+  }
+
+  .hover-scale:hover {
+    transform: scale(1.02);
+  }
+
+  .hover-scale:active {
+    transform: scale(0.98);
+  }
+
+  /* Card Enhancements */
+  .fantasy-card {
+    @apply bg-stone-800/90 border border-stone-700/50 rounded-lg shadow-lg;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3), 0 0 15px rgba(251, 191, 36, 0.05);
+    transition: all 0.2s ease;
+  }
+
+  .fantasy-card:hover {
+    @apply border-amber-700/30;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3), 0 0 20px rgba(251, 191, 36, 0.1);
+  }
+
+  /* Durability Gradient */
+  .durability-gradient {
+    background: linear-gradient(90deg, #10b981 0%, #eab308 50%, #ef4444 100%);
+  }
+
+  /* Pulse Animation for Low Durability */
+  @keyframes pulse-warning {
+    0%, 100% {
+      opacity: 1;
+      box-shadow: 0 0 10px rgba(239, 68, 68, 0.3);
+    }
+    50% {
+      opacity: 0.8;
+      box-shadow: 0 0 20px rgba(239, 68, 68, 0.6);
+    }
+  }
+
+  .pulse-warning {
+    animation: pulse-warning 2s ease-in-out infinite;
+  }
+
+  /* Shimmer Loading Effect */
+  @keyframes shimmer {
+    0% {
+      background-position: -1000px 0;
+    }
+    100% {
+      background-position: 1000px 0;
+    }
+  }
+
+  .shimmer {
+    background: linear-gradient(
+      90deg,
+      rgba(38, 38, 38, 0) 0%,
+      rgba(168, 85, 247, 0.1) 50%,
+      rgba(38, 38, 38, 0) 100%
+    );
+    background-size: 1000px 100%;
+    animation: shimmer 2s infinite;
+  }
+
+  /* Fade In Animation */
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .fade-in {
+    animation: fadeIn 0.3s ease-out;
+  }
+
+  /* Stagger Animation for Lists */
+  .stagger-item {
+    animation: fadeIn 0.3s ease-out backwards;
+  }
+
+  .stagger-item:nth-child(1) { animation-delay: 0.05s; }
+  .stagger-item:nth-child(2) { animation-delay: 0.1s; }
+  .stagger-item:nth-child(3) { animation-delay: 0.15s; }
+  .stagger-item:nth-child(4) { animation-delay: 0.2s; }
+  .stagger-item:nth-child(5) { animation-delay: 0.25s; }
+
+  /* Token Shadow for Battle Map */
+  .token-shadow {
+    filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.5)) drop-shadow(0 0 10px rgba(251, 191, 36, 0.2));
+  }
+
+  /* Grid Glow Effect */
+  .grid-glow {
+    stroke: rgba(251, 191, 36, 0.2);
+    stroke-width: 1;
+    filter: drop-shadow(0 0 3px rgba(251, 191, 36, 0.3));
+  }
+
+  /* Focus Ring - Amber */
+  .focus-ring-amber:focus-visible {
+    @apply outline-none ring-2 ring-amber-500 ring-offset-2 ring-offset-stone-900;
+  }
+
+  /* Equipped Item Glow */
+  .equipped-glow {
+    position: relative;
+  }
+
+  .equipped-glow::before {
+    content: '';
+    position: absolute;
+    inset: -2px;
+    border-radius: inherit;
+    padding: 2px;
+    background: linear-gradient(135deg, rgba(251, 191, 36, 0.5), rgba(245, 158, 11, 0.5));
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+  }
+
+  /* Mobile Touch Target */
+  .touch-target {
+    @apply min-h-[44px] min-w-[44px];
+  }
+
+  /* Responsive Hotbar Slot */
+  .hotbar-slot {
+    @apply w-14 h-14 sm:w-16 sm:h-16 md:w-20 md:h-20;
+  }
+
+  /* Responsive Text Scaling */
+  .text-responsive {
+    @apply text-sm sm:text-base;
+  }
+
+  .text-responsive-lg {
+    @apply text-base sm:text-lg md:text-xl;
+  }
+
+  /* Scrollbar Styling */
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: rgba(38, 38, 38, 0.5);
+    border-radius: 4px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: rgba(120, 113, 108, 0.5);
+    border-radius: 4px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: rgba(168, 85, 247, 0.6);
+  }
 }

@@ -72,15 +72,16 @@ function SceneSettingsForm({ scene, onUpdateScene }: { scene: Scene; onUpdateSce
   return (
     <div className="space-y-4">
       {/* Grid Toggle */}
-      <div className="flex items-center justify-between">
-        <Label htmlFor="grid-toggle" className="text-stone-300">Enable Grid</Label>
+      <div className="flex items-center justify-between touch-target">
+        <Label htmlFor="grid-toggle" className="text-stone-300 text-responsive">Enable Grid</Label>
         <input
           type="checkbox"
           id="grid-toggle"
           checked={localSettings.gridEnabled}
           onChange={(e) => updateSetting('gridEnabled', e.target.checked)}
-          className="h-4 w-4"
+          className="h-5 w-5 sm:h-4 sm:w-4 focus-ring-amber"
           data-testid="toggle-grid"
+          aria-label="Toggle grid visibility"
         />
       </div>
 
@@ -493,9 +494,9 @@ export default function Campaign() {
   if (campaignLoading || tokensLoading || charactersLoading || membersLoading || sceneLoading || createCampaignMutation.isPending) {
     return (
       <div className="relative h-screen w-screen overflow-hidden bg-black text-white flex items-center justify-center">
-        <div className="flex flex-col items-center gap-4">
-          <Loader2 className="h-8 w-8 animate-spin text-amber-500" />
-          <p className="text-stone-400">Loading campaign...</p>
+        <div className="flex flex-col items-center gap-4 shimmer p-8 rounded-lg">
+          <Loader2 className="h-12 w-12 sm:h-8 sm:w-8 animate-spin text-amber-500 glow-amber" aria-label="Loading" />
+          <p className="text-stone-400 text-responsive-lg">Loading campaign...</p>
         </div>
       </div>
     );
@@ -565,9 +566,9 @@ export default function Campaign() {
       {/* Scenes Management Sheet (GM Only) */}
       {role === 'gm' && activeScene && (
         <Sheet open={scenesManagementOpen} onOpenChange={setScenesManagementOpen}>
-          <SheetContent className="bg-stone-900 border-stone-700 text-stone-200 w-full sm:max-w-md">
+          <SheetContent className="bg-stone-900 border-stone-700 text-stone-200 w-full sm:max-w-md overflow-y-auto custom-scrollbar">
             <SheetHeader>
-              <SheetTitle className="text-amber-500 font-display text-2xl">Scenes</SheetTitle>
+              <SheetTitle className="text-amber-500 font-display text-xl sm:text-2xl">Scenes</SheetTitle>
             </SheetHeader>
             
             <ScrollArea className="h-[calc(100vh-100px)] pr-4">
@@ -704,6 +705,7 @@ export default function Campaign() {
                backgroundImage={currentMap}
                scene={activeScene}
                onViewChange={setCurrentView}
+               characters={characters as any[]}
              />
           </div>
           
