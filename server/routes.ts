@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertUserSchema, insertCampaignSchema, insertCharacterSchema, insertTokenSchema, insertChatMessageSchema, insertSceneSchema, insertHotbarSchema } from "@shared/schema";
+import { insertUserSchema, insertCampaignSchema, insertCharacterSchema, insertTokenSchema, insertChatMessageSchema, insertSceneSchema, insertHotbarSchema, insertItemSchema } from "@shared/schema";
 import bcrypt from "bcryptjs";
 import { WebSocketServer } from "ws";
 import { sendPasswordResetEmail } from "./email";
@@ -679,10 +679,162 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Scene not found or does not belong to this campaign" });
       }
 
-      const updatedCampaign = await storage.setActiveScene(req.params.campaignId, sceneId);
-      res.json(updatedCampaign);
+      await storage.setActiveScene(req.params.campaignId, sceneId);
+      res.json({ success: true });
     } catch (err) {
       res.status(400).json({ error: "Failed to set active scene" });
+    }
+  });
+
+  // Item routes
+  app.get("/api/characters/:characterId/items", requireAuth, async (req, res) => {
+    try {
+      const character = await storage.getCharacter(req.params.characterId);
+      if (!character) {
+        return res.status(404).json({ error: "Character not found" });
+      }
+
+      const campaign = await storage.getCampaign(character.campaignId);
+      if (!campaign) {
+        return res.status(404).json({ error: "Campaign not found" });
+      }
+
+      const isOwnerOrGM = character.userId === req.session.userId || campaign.gmUserId === req.session.userId;
+      if (!isOwnerOrGM) {
+        return res.status(403).json({ error: "Unauthorized" });
+      }
+
+      const items = await storage.getItemsByCharacter(req.params.characterId);
+      res.json(items);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch items" });
+    }
+  });
+
+  app.post("/api/characters/:characterId/items", requireAuth, async (req, res) => {
+    try {
+      const character = await storage.getCharacter(req.params.characterId);
+      if (!character) {
+        return res.status(404).json({ error: "Character not found" });
+      }
+
+      const campaign = await storage.getCampaign(character.campaignId);
+      if (!campaign) {
+        return res.status(404).json({ error: "Campaign not found" });
+      }
+
+      const isOwnerOrGM = character.userId === req.session.userId || campaign.gmUserId === req.session.userId;
+      if (!isOwnerOrGM) {
+        return res.status(403).json({ error: "Unauthorized" });
+      }
+
+      const itemData = insertItemSchema.parse({
+        ...req.body,
+        characterId: req.params.characterId
+      });
+
+      const item = await storage.createItem(itemData);
+      res.json(item);
+    } catch (err) {
+      res.status(400).json({ error: "Failed to create item" });
+    }
+  });
+
+  app.patch("/api/items/:id", requireAuth, async (req, res) => {
+    try {
+      // Get current item first (using empty update to fetch)
+      const currentItem = await storage.updateItem(req.params.id, {});
+      if (!currentItem) {
+        return res.status(404).json({ error: "Item not found" });
+      }
+
+      const character = await storage.getCharacter(currentItem.characterId);
+      if (!character) {
+        return res.status(404).json({ error: "Character not found" });
+      }
+
+      const campaign = await storage.getCampaign(character.campaignId);
+      if (!campaign) {
+        return res.status(404).json({ error: "Campaign not found" });
+      }
+
+      const isOwnerOrGM = character.userId === req.session.userId || campaign.gmUserId === req.session.userId;
+      if (!isOwnerOrGM) {
+        return res.status(403).json({ error: "Unauthorized" });
+      }
+
+      // Cycle detection for containerId updates
+      if (req.body.containerId !== undefined && req.body.containerId !== null) {
+        const targetContainerId = req.body.containerId;
+        
+        // Can't put an item inside itself
+        if (targetContainerId === req.params.id) {
+          return res.status(400).json({ error: "Cannot move an item into itself" });
+        }
+
+        // Check if target container is a descendant of the item being moved
+        const allItems = await storage.getItemsByCharacter(currentItem.characterId);
+        const containerMap = new Map<string, string | null>();
+        allItems.forEach(item => {
+          containerMap.set(item.id, item.containerId);
+        });
+
+        // Traverse up from target container to check for cycles
+        let current: string | null | undefined = targetContainerId;
+        const visited = new Set<string>();
+        while (current) {
+          if (current === req.params.id) {
+            return res.status(400).json({ 
+              error: "Cannot create container cycle - the target container is inside the item you're trying to move" 
+            });
+          }
+          if (visited.has(current)) {
+            // Prevent infinite loop in case of existing cycle
+            break;
+          }
+          visited.add(current);
+          current = containerMap.get(current);
+        }
+      }
+
+      // Perform the actual update
+      const updatedItem = await storage.updateItem(req.params.id, req.body);
+      if (!updatedItem) {
+        return res.status(404).json({ error: "Item not found" });
+      }
+
+      res.json(updatedItem);
+    } catch (err) {
+      res.status(400).json({ error: "Failed to update item" });
+    }
+  });
+
+  app.delete("/api/items/:id", requireAuth, async (req, res) => {
+    try {
+      const tempUpdate = await storage.updateItem(req.params.id, {});
+      if (!tempUpdate) {
+        return res.status(404).json({ error: "Item not found" });
+      }
+      
+      const character = await storage.getCharacter(tempUpdate.characterId);
+      if (!character) {
+        return res.status(404).json({ error: "Character not found" });
+      }
+
+      const campaign = await storage.getCampaign(character.campaignId);
+      if (!campaign) {
+        return res.status(404).json({ error: "Campaign not found" });
+      }
+
+      const isOwnerOrGM = character.userId === req.session.userId || campaign.gmUserId === req.session.userId;
+      if (!isOwnerOrGM) {
+        return res.status(403).json({ error: "Unauthorized" });
+      }
+
+      await storage.deleteItem(req.params.id);
+      res.json({ success: true });
+    } catch (err) {
+      res.status(400).json({ error: "Failed to delete item" });
     }
   });
 

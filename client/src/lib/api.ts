@@ -117,6 +117,35 @@ export interface Hotbar {
   skillName?: string;
 }
 
+export interface Item {
+  id: string;
+  characterId: string;
+  containerId?: string;
+  name: string;
+  image?: string;
+  description?: string;
+  damage?: string;
+  damageType?: string;
+  mod: number;
+  range?: number;
+  aoe?: string;
+  attribute?: string;
+  size?: string;
+  weight: string;
+  priceCopper: number;
+  priceSilver: number;
+  priceGold: number;
+  pricePlatinum: number;
+  itemWeight: number;
+  quantity: number;
+  durability: number;
+  itemType: string;
+  rarity: string;
+  isContainer: boolean;
+  carryCapacity?: number;
+  isEquipped: boolean;
+}
+
 class ApiClient {
   private baseUrl = '/api';
 
@@ -303,6 +332,29 @@ class ApiClient {
 
   async deleteHotbar(id: string): Promise<void> {
     return this.request(`/hotbars/${id}`, { method: 'DELETE' });
+  }
+
+  // Items
+  async getItems(characterId: string): Promise<Item[]> {
+    return this.request(`/characters/${characterId}/items`);
+  }
+
+  async createItem(characterId: string, item: Partial<Item>): Promise<Item> {
+    return this.request(`/characters/${characterId}/items`, {
+      method: 'POST',
+      body: JSON.stringify(item),
+    });
+  }
+
+  async updateItem(id: string, data: Partial<Item>): Promise<Item> {
+    return this.request(`/items/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteItem(id: string): Promise<void> {
+    return this.request(`/items/${id}`, { method: 'DELETE' });
   }
 }
 

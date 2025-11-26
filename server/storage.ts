@@ -8,7 +8,8 @@ import {
   type PasswordResetToken, type InsertPasswordResetToken,
   type Scene, type InsertScene,
   type Hotbar, type InsertHotbar,
-  users, campaigns, campaignMembers, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars
+  type Item, type InsertItem,
+  users, campaigns, campaignMembers, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, items
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql } from "drizzle-orm";
@@ -70,6 +71,12 @@ export interface IStorage {
   getHotbarsByCharacter(characterId: string): Promise<Hotbar[]>;
   upsertHotbar(hotbar: InsertHotbar): Promise<Hotbar>;
   deleteHotbar(id: string): Promise<void>;
+
+  // Item operations
+  getItemsByCharacter(characterId: string): Promise<Item[]>;
+  createItem(item: InsertItem): Promise<Item>;
+  updateItem(id: string, updates: Partial<InsertItem>): Promise<Item | undefined>;
+  deleteItem(id: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -390,6 +397,30 @@ export class DatabaseStorage implements IStorage {
 
   async deleteHotbar(id: string): Promise<void> {
     await db.delete(hotbars).where(eq(hotbars.id, id));
+  }
+
+  // Item operations
+  async getItemsByCharacter(characterId: string): Promise<Item[]> {
+    return await db.select()
+      .from(items)
+      .where(eq(items.characterId, characterId));
+  }
+
+  async createItem(item: InsertItem): Promise<Item> {
+    const [newItem] = await db.insert(items).values(item).returning();
+    return newItem;
+  }
+
+  async updateItem(id: string, updates: Partial<InsertItem>): Promise<Item | undefined> {
+    const [item] = await db.update(items)
+      .set(updates)
+      .where(eq(items.id, id))
+      .returning();
+    return item;
+  }
+
+  async deleteItem(id: string): Promise<void> {
+    await db.delete(items).where(eq(items.id, id));
   }
 }
 

@@ -9,13 +9,15 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Slider } from "@/components/ui/slider";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Textarea } from "@/components/ui/textarea";
 import { 
   Sword, Shield, Scroll, Map as MapIcon, Settings, 
-  Users, Plus, LogOut, Menu, ChevronRight, ChevronLeft,
-  Heart, Zap, Backpack, Sparkles, Dice5, MessageSquare, RefreshCw, X, Trash2
+  Users, Plus, LogOut, Menu, ChevronRight, ChevronLeft, ChevronDown,
+  Heart, Zap, Backpack, Sparkles, Dice5, MessageSquare, RefreshCw, X, Trash2, Package, FolderOpen
 } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { type Scene, type Hotbar, api } from "@/lib/api";
@@ -1995,6 +1997,50 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose }: 
   const [isEditingBio, setIsEditingBio] = useState(false);
   const [isEditingGmNotes, setIsEditingGmNotes] = useState(false);
 
+  // Inventory state
+  const queryClient = useQueryClient();
+  const [itemSearch, setItemSearch] = useState("");
+  const [itemSort, setItemSort] = useState("name-asc");
+  const [itemTypeFilter, setItemTypeFilter] = useState("all");
+  const [showAddItem, setShowAddItem] = useState(false);
+  const [selectedItem, setSelectedItem] = useState<any>(null);
+  const [showItemDetail, setShowItemDetail] = useState(false);
+  const [expandedContainers, setExpandedContainers] = useState<Set<string>>(new Set());
+
+  // Fetch items
+  const { data: items = [] } = useQuery({
+    queryKey: ['items', character.id],
+    queryFn: () => api.getItems(character.id),
+    enabled: !!character.id
+  });
+
+  // Item mutations
+  const createItemMutation = useMutation({
+    mutationFn: (itemData: any) => api.createItem(character.id, itemData),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['items', character.id] });
+      setShowAddItem(false);
+    }
+  });
+
+  const updateItemMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: any }) => api.updateItem(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['items', character.id] });
+      setShowItemDetail(false);
+      setSelectedItem(null);
+    }
+  });
+
+  const deleteItemMutation = useMutation({
+    mutationFn: (id: string) => api.deleteItem(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['items', character.id] });
+      setShowItemDetail(false);
+      setSelectedItem(null);
+    }
+  });
+
   // Calculate attribute modifiers
   const getAttributeModifier = (value: number) => {
     return Math.floor((value - 10) / 2);
@@ -2004,6 +2050,159 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose }: 
   const formatModifier = (value: number) => {
     return value >= 0 ? `+${value}` : `${value}`;
   };
+
+  // Helper functions for inventory
+  const convertCurrency = (copper: number, silver: number, gold: number, platinum: number) => {
+    let total = copper + (silver * 10) + (gold * 100) + (platinum * 1000);
+    const p = Math.floor(total / 1000);
+    total %= 1000;
+    const g = Math.floor(total / 100);
+    total %= 100;
+    const s = Math.floor(total / 10);
+    const c = total % 10;
+    return { platinum: p, gold: g, silver: s, copper: c };
+  };
+
+  const stackItems = (items: any[]) => {
+    const stacks = new Map<string, any>();
+    for (const item of items) {
+      const key = JSON.stringify({
+        name: item.name,
+        damage: item.damage,
+        damageType: item.damageType,
+        mod: item.mod,
+        range: item.range,
+        aoe: item.aoe,
+        attribute: item.attribute,
+        size: item.size,
+        weight: item.weight,
+        itemWeight: item.itemWeight,
+        priceCopper: item.priceCopper,
+        priceSilver: item.priceSilver,
+        priceGold: item.priceGold,
+        pricePlatinum: item.pricePlatinum,
+        durability: item.durability,
+        itemType: item.itemType,
+        rarity: item.rarity,
+        isContainer: item.isContainer,
+        carryCapacity: item.carryCapacity,
+        isEquipped: item.isEquipped,
+      });
+      if (stacks.has(key)) {
+        const stack = stacks.get(key)!;
+        stack.items.push(item);
+        stack.totalQuantity += item.quantity;
+      } else {
+        stacks.set(key, {
+          ...item,
+          items: [item],
+          totalQuantity: item.quantity,
+        });
+      }
+    }
+    return Array.from(stacks.values());
+  };
+
+  // Calculate total weight and currency
+  const totalWeight = items.reduce((sum: number, item: any) => sum + (item.itemWeight * item.quantity), 0);
+  const strengthMod = getAttributeModifier(character.strength);
+  const carryCapacity = 150 + (strengthMod * 10);
+  const weightPercentage = (totalWeight / carryCapacity) * 100;
+
+  const totalCurrency = items.reduce((acc: any, item: any) => {
+    return {
+      copper: acc.copper + (item.priceCopper * item.quantity),
+      silver: acc.silver + (item.priceSilver * item.quantity),
+      gold: acc.gold + (item.priceGold * item.quantity),
+      platinum: acc.platinum + (item.pricePlatinum * item.quantity),
+    };
+  }, { copper: 0, silver: 0, gold: 0, platinum: 0 });
+
+  const displayCurrency = convertCurrency(
+    totalCurrency.copper,
+    totalCurrency.silver,
+    totalCurrency.gold,
+    totalCurrency.platinum
+  );
+
+  // Filter, search, and sort items
+  let filteredItems = items;
+  if (itemSearch) {
+    filteredItems = filteredItems.filter((item: any) =>
+      item.name.toLowerCase().includes(itemSearch.toLowerCase())
+    );
+  }
+  if (itemTypeFilter !== "all") {
+    filteredItems = filteredItems.filter((item: any) => item.itemType === itemTypeFilter);
+  }
+
+  // Sort items
+  filteredItems = [...filteredItems].sort((a: any, b: any) => {
+    switch (itemSort) {
+      case "name-asc":
+        return a.name.localeCompare(b.name);
+      case "name-desc":
+        return b.name.localeCompare(a.name);
+      case "weight-low":
+        return a.itemWeight - b.itemWeight;
+      case "weight-high":
+        return b.itemWeight - a.itemWeight;
+      case "price-low":
+        return (a.priceCopper + a.priceSilver*10 + a.priceGold*100 + a.pricePlatinum*1000) -
+               (b.priceCopper + b.priceSilver*10 + b.priceGold*100 + b.pricePlatinum*1000);
+      case "price-high":
+        return (b.priceCopper + b.priceSilver*10 + b.priceGold*100 + b.pricePlatinum*1000) -
+               (a.priceCopper + a.priceSilver*10 + a.priceGold*100 + a.pricePlatinum*1000);
+      case "rarity":
+        const rarityOrder: Record<string, number> = { common: 0, uncommon: 1, rare: 2, epic: 3, legendary: 4 };
+        return (rarityOrder[b.rarity] || 0) - (rarityOrder[a.rarity] || 0);
+      default:
+        return 0;
+    }
+  });
+
+  const stackedItems = stackItems(filteredItems);
+
+  // Container hierarchy builder
+  const buildContainerHierarchy = (stackedItems: any[]) => {
+    const rootItems: any[] = [];
+    const containerMap = new Map<string, any[]>();
+
+    // First pass: separate root items and build container map
+    stackedItems.forEach((item: any) => {
+      if (item.containerId === null || item.containerId === undefined) {
+        rootItems.push(item);
+      } else {
+        if (!containerMap.has(item.containerId)) {
+          containerMap.set(item.containerId, []);
+        }
+        containerMap.get(item.containerId)!.push(item);
+      }
+    });
+
+    // Attach children to containers
+    rootItems.forEach((item: any) => {
+      if (item.isContainer) {
+        item.children = containerMap.get(item.id) || [];
+      }
+    });
+
+    return rootItems;
+  };
+
+  const toggleContainer = (containerId: string) => {
+    setExpandedContainers(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(containerId)) {
+        newSet.delete(containerId);
+      } else {
+        newSet.add(containerId);
+      }
+      return newSet;
+    });
+  };
+
+  const hierarchicalItems = buildContainerHierarchy(stackedItems);
 
   // Calculate HP/Energy percentages
   const hpPercentage = (character.hp / character.maxHp) * 100;
@@ -2258,33 +2457,221 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose }: 
           <TabsContent value="inventory" className="space-y-4 mt-0" data-testid="content-inventory">
             <Card className="bg-stone-800 border-stone-700">
               <CardHeader>
-                <CardTitle className="text-amber-500 flex items-center gap-2">
-                  <Backpack className="h-5 w-5" />
-                  Inventory
+                <CardTitle className="text-amber-500 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Backpack className="h-5 w-5" />
+                    Inventory
+                  </div>
+                  {(isOwner || isGM) && (
+                    <Button size="sm" onClick={() => setShowAddItem(true)} data-testid="button-add-item">
+                      <Plus className="h-4 w-4 mr-1" /> Add Item
+                    </Button>
+                  )}
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="text-center py-8 text-stone-400" data-testid="text-inventory-placeholder">
-                  <Backpack className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                  <p className="font-bold">Inventory system coming in Phase 5</p>
-                  <p className="text-sm mt-2">Your items will appear here</p>
-                </div>
-
-                {/* Weight & Currency Placeholders */}
-                <div className="grid grid-cols-2 gap-4 pt-4 border-t border-stone-700">
+                {/* Currency & Weight Display */}
+                <div className="grid grid-cols-2 gap-4 p-4 bg-stone-900 rounded-lg border border-stone-700">
                   <div>
                     <Label className="text-xs text-stone-400">Weight Carried</Label>
-                    <p className="text-stone-200" data-testid="text-weight">0 / 150 lbs</p>
+                    <p className={`text-lg font-bold ${weightPercentage > 100 ? 'text-red-500' : weightPercentage > 75 ? 'text-yellow-500' : 'text-green-500'}`} data-testid="text-weight">
+                      {totalWeight.toFixed(1)} / {carryCapacity} lbs
+                    </p>
                   </div>
                   <div>
                     <Label className="text-xs text-stone-400">Currency</Label>
-                    <div className="text-xs text-stone-200 space-y-1" data-testid="text-currency">
-                      <div>Gold: 0</div>
-                      <div>Silver: 0</div>
-                      <div>Copper: 0</div>
+                    <div className="text-sm text-stone-200 flex gap-2" data-testid="text-currency">
+                      {displayCurrency.platinum > 0 && <span className="text-purple-400">{displayCurrency.platinum}p</span>}
+                      {displayCurrency.gold > 0 && <span className="text-yellow-500">{displayCurrency.gold}g</span>}
+                      {displayCurrency.silver > 0 && <span className="text-gray-400">{displayCurrency.silver}s</span>}
+                      {displayCurrency.copper > 0 && <span className="text-orange-600">{displayCurrency.copper}c</span>}
+                      {displayCurrency.platinum === 0 && displayCurrency.gold === 0 && displayCurrency.silver === 0 && displayCurrency.copper === 0 && <span className="text-stone-500">No currency</span>}
                     </div>
                   </div>
                 </div>
+
+                {/* Toolbar */}
+                <div className="flex flex-wrap gap-2">
+                  <Input
+                    placeholder="Search items..."
+                    value={itemSearch}
+                    onChange={(e) => setItemSearch(e.target.value)}
+                    className="flex-1 min-w-[200px] bg-stone-900 border-stone-700"
+                    data-testid="input-item-search"
+                  />
+                  <Select value={itemSort} onValueChange={setItemSort}>
+                    <SelectTrigger className="w-[180px] bg-stone-900 border-stone-700" data-testid="select-sort">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="name-asc">Name (A-Z)</SelectItem>
+                      <SelectItem value="name-desc">Name (Z-A)</SelectItem>
+                      <SelectItem value="weight-low">Weight (Low-High)</SelectItem>
+                      <SelectItem value="weight-high">Weight (High-Low)</SelectItem>
+                      <SelectItem value="price-low">Price (Low-High)</SelectItem>
+                      <SelectItem value="price-high">Price (High-Low)</SelectItem>
+                      <SelectItem value="rarity">Rarity</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Select value={itemTypeFilter} onValueChange={setItemTypeFilter}>
+                    <SelectTrigger className="w-[150px] bg-stone-900 border-stone-700" data-testid="select-filter">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Types</SelectItem>
+                      <SelectItem value="weapon">Weapons</SelectItem>
+                      <SelectItem value="armor">Armor</SelectItem>
+                      <SelectItem value="consumable">Consumables</SelectItem>
+                      <SelectItem value="utility">Utilities</SelectItem>
+                      <SelectItem value="container">Containers</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Item List */}
+                <ScrollArea className="h-[400px] pr-4">
+                  {hierarchicalItems.length === 0 ? (
+                    <div className="text-center py-12 text-stone-400">
+                      <Backpack className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                      <p className="font-bold">No items found</p>
+                      <p className="text-sm mt-2">Add items to your inventory</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {hierarchicalItems.map((stack: any) => {
+                        const rarityColors: Record<string, string> = {
+                          common: 'text-stone-400 border-stone-600',
+                          uncommon: 'text-green-400 border-green-600',
+                          rare: 'text-blue-400 border-blue-600',
+                          epic: 'text-purple-400 border-purple-600',
+                          legendary: 'text-orange-400 border-orange-600'
+                        };
+                        const durabilityColor = stack.durability >= 7 ? 'bg-green-500' : stack.durability >= 4 ? 'bg-yellow-500' : 'bg-red-500';
+                        const isExpanded = expandedContainers.has(stack.id);
+                        const childCount = stack.children?.length || 0;
+                        
+                        return (
+                          <div key={stack.id}>
+                            {/* Main Item */}
+                            <div
+                              className={`p-3 bg-stone-900 rounded border ${rarityColors[stack.rarity] || rarityColors.common} hover:bg-stone-800 transition-colors`}
+                              data-testid={`item-${stack.id}`}
+                            >
+                              <div className="flex items-center gap-3">
+                                {/* Container Expand/Collapse Icon */}
+                                {stack.isContainer && (
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      toggleContainer(stack.id);
+                                    }}
+                                    className="shrink-0 p-1 hover:bg-stone-700 rounded"
+                                    data-testid={`button-toggle-container-${stack.id}`}
+                                  >
+                                    {isExpanded ? (
+                                      <ChevronDown className="h-4 w-4 text-amber-500" />
+                                    ) : (
+                                      <ChevronRight className="h-4 w-4 text-amber-500" />
+                                    )}
+                                  </button>
+                                )}
+                                
+                                <div 
+                                  className="flex items-center gap-3 flex-1 cursor-pointer"
+                                  onClick={() => { setSelectedItem(stack); setShowItemDetail(true); }}
+                                >
+                                  <div className="w-12 h-12 bg-black/50 rounded flex items-center justify-center shrink-0 border border-stone-700">
+                                    {stack.isContainer ? (
+                                      isExpanded ? <FolderOpen className="w-6 h-6 text-amber-500" /> : <Package className="w-6 h-6 text-amber-500" />
+                                    ) : stack.image ? (
+                                      <img src={stack.image} alt={stack.name} className="w-full h-full object-cover rounded" />
+                                    ) : (
+                                      <span className="text-xl font-bold text-stone-500">{stack.name[0]}</span>
+                                    )}
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <span className="font-bold text-stone-100">{stack.name}</span>
+                                      <Badge variant="outline" className="text-[10px] px-1 py-0">{stack.itemType}</Badge>
+                                      <Badge variant="outline" className={`text-[10px] px-1 py-0 ${rarityColors[stack.rarity]}`}>{stack.rarity}</Badge>
+                                      {stack.totalQuantity > 1 && (
+                                        <Badge className="bg-amber-600 text-xs">x{stack.totalQuantity}</Badge>
+                                      )}
+                                      {stack.isContainer && (
+                                        <Badge className="bg-purple-600 text-xs">{childCount} / {stack.carryCapacity || 0}</Badge>
+                                      )}
+                                    </div>
+                                    <div className="flex items-center gap-3 mt-1 text-xs text-stone-400">
+                                      <span>{stack.itemWeight}lbs</span>
+                                      <div className="flex items-center gap-1">
+                                        <span>Dur:</span>
+                                        <div className="w-16 h-2 bg-stone-700 rounded overflow-hidden">
+                                          <div className={`h-full ${durabilityColor}`} style={{ width: `${(stack.durability / 10) * 100}%` }} />
+                                        </div>
+                                        <span className="text-[10px]">{stack.durability}/10</span>
+                                      </div>
+                                      {(stack.priceGold > 0 || stack.priceSilver > 0 || stack.priceCopper > 0 || stack.pricePlatinum > 0) && (
+                                        <span className="flex gap-1">
+                                          {stack.pricePlatinum > 0 && <span className="text-purple-400">{stack.pricePlatinum}p</span>}
+                                          {stack.priceGold > 0 && <span className="text-yellow-500">{stack.priceGold}g</span>}
+                                          {stack.priceSilver > 0 && <span className="text-gray-400">{stack.priceSilver}s</span>}
+                                          {stack.priceCopper > 0 && <span className="text-orange-600">{stack.priceCopper}c</span>}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Nested Items */}
+                            {stack.isContainer && isExpanded && stack.children && stack.children.length > 0 && (
+                              <div className="ml-8 mt-2 space-y-2 border-l-2 border-stone-700 pl-4">
+                                {stack.children.map((child: any) => {
+                                  const childDurabilityColor = child.durability >= 7 ? 'bg-green-500' : child.durability >= 4 ? 'bg-yellow-500' : 'bg-red-500';
+                                  return (
+                                    <div
+                                      key={child.id}
+                                      className={`p-2 bg-stone-900/50 rounded border ${rarityColors[child.rarity] || rarityColors.common} hover:bg-stone-800 cursor-pointer transition-colors`}
+                                      onClick={() => { setSelectedItem(child); setShowItemDetail(true); }}
+                                      data-testid={`item-${child.id}`}
+                                    >
+                                      <div className="flex items-center gap-2">
+                                        <div className="w-10 h-10 bg-black/50 rounded flex items-center justify-center shrink-0 border border-stone-700">
+                                          {child.image ? (
+                                            <img src={child.image} alt={child.name} className="w-full h-full object-cover rounded" />
+                                          ) : (
+                                            <span className="text-sm font-bold text-stone-500">{child.name[0]}</span>
+                                          )}
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                          <div className="flex items-center gap-1 flex-wrap">
+                                            <span className="text-sm font-bold text-stone-100">{child.name}</span>
+                                            {child.totalQuantity > 1 && (
+                                              <Badge className="bg-amber-600 text-[10px]">x{child.totalQuantity}</Badge>
+                                            )}
+                                          </div>
+                                          <div className="flex items-center gap-2 mt-1 text-[10px] text-stone-400">
+                                            <span>{child.itemWeight}lbs</span>
+                                            <div className="flex items-center gap-1">
+                                              <div className="w-12 h-1.5 bg-stone-700 rounded overflow-hidden">
+                                                <div className={`h-full ${childDurabilityColor}`} style={{ width: `${(child.durability / 10) * 100}%` }} />
+                                              </div>
+                                            </div>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </ScrollArea>
               </CardContent>
             </Card>
           </TabsContent>
@@ -2449,7 +2836,334 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose }: 
           </TabsContent>
         </ScrollArea>
       </Tabs>
+
+      {/* Item Detail Dialog */}
+      <Dialog open={showItemDetail} onOpenChange={setShowItemDetail}>
+        <DialogContent className="bg-stone-900 border-stone-700 max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-amber-500">Item Details</DialogTitle>
+          </DialogHeader>
+          {selectedItem && (
+            <ScrollArea className="max-h-[500px] pr-4">
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label className="text-xs text-stone-400">Name</Label>
+                    <p className="text-stone-200 font-bold">{selectedItem.name}</p>
+                  </div>
+                  <div>
+                    <Label className="text-xs text-stone-400">Type</Label>
+                    <p className="text-stone-200 capitalize">{selectedItem.itemType}</p>
+                  </div>
+                  <div>
+                    <Label className="text-xs text-stone-400">Rarity</Label>
+                    <p className="text-stone-200 capitalize">{selectedItem.rarity}</p>
+                  </div>
+                  <div>
+                    <Label className="text-xs text-stone-400">Quantity</Label>
+                    <p className="text-stone-200">{selectedItem.totalQuantity || selectedItem.quantity}</p>
+                  </div>
+                </div>
+                {(selectedItem.damage || selectedItem.damageType || selectedItem.mod) && (
+                  <div className="pt-4 border-t border-stone-700">
+                    <h3 className="text-sm font-bold text-stone-300 mb-2">Combat Stats</h3>
+                    <div className="grid grid-cols-2 gap-4">
+                      {selectedItem.damage && (
+                        <div>
+                          <Label className="text-xs text-stone-400">Damage</Label>
+                          <p className="text-stone-200">{selectedItem.damage}</p>
+                        </div>
+                      )}
+                      {selectedItem.damageType && (
+                        <div>
+                          <Label className="text-xs text-stone-400">Damage Type</Label>
+                          <p className="text-stone-200">{selectedItem.damageType}</p>
+                        </div>
+                      )}
+                      {selectedItem.mod !== undefined && (
+                        <div>
+                          <Label className="text-xs text-stone-400">Modifier</Label>
+                          <p className="text-stone-200">{selectedItem.mod >= 0 ? `+${selectedItem.mod}` : selectedItem.mod}</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+                <div className="pt-4 border-t border-stone-700">
+                  <h3 className="text-sm font-bold text-stone-300 mb-2">Physical</h3>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label className="text-xs text-stone-400">Weight (per unit)</Label>
+                      <p className="text-stone-200">{selectedItem.itemWeight} lbs</p>
+                    </div>
+                    <div>
+                      <Label className="text-xs text-stone-400">Total Weight</Label>
+                      <p className="text-stone-200">{(selectedItem.itemWeight * (selectedItem.totalQuantity || selectedItem.quantity)).toFixed(1)} lbs</p>
+                    </div>
+                    <div>
+                      <Label className="text-xs text-stone-400">Durability</Label>
+                      <div className="flex items-center gap-2">
+                        <div className="flex-1 h-3 bg-stone-700 rounded overflow-hidden">
+                          <div 
+                            className={`h-full ${selectedItem.durability >= 7 ? 'bg-green-500' : selectedItem.durability >= 4 ? 'bg-yellow-500' : 'bg-red-500'}`} 
+                            style={{ width: `${(selectedItem.durability / 10) * 100}%` }} 
+                          />
+                        </div>
+                        <span className="text-sm text-stone-200">{selectedItem.durability}/10</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Container Management */}
+                {(isOwner || isGM) && !selectedItem.isContainer && (
+                  <div className="pt-4 border-t border-stone-700">
+                    <h3 className="text-sm font-bold text-stone-300 mb-2">Container Management</h3>
+                    <div className="space-y-2">
+                      {selectedItem.containerId ? (
+                        <div>
+                          <Label className="text-xs text-stone-400 mb-2 block">Currently in container</Label>
+                          <Button 
+                            size="sm" 
+                            variant="outline"
+                            onClick={() => {
+                              updateItemMutation.mutate({ 
+                                id: selectedItem.id, 
+                                data: { containerId: null } 
+                              });
+                            }}
+                            data-testid="button-remove-from-container"
+                          >
+                            Remove from Container
+                          </Button>
+                        </div>
+                      ) : (
+                        <div>
+                          <Label className="text-xs text-stone-400 mb-2 block">Move to Container</Label>
+                          <Select 
+                            onValueChange={(containerId) => {
+                              updateItemMutation.mutate({ 
+                                id: selectedItem.id, 
+                                data: { containerId } 
+                              });
+                            }}
+                          >
+                            <SelectTrigger className="bg-stone-900 border-stone-700" data-testid="select-move-to-container">
+                              <SelectValue placeholder="Select container..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {items.filter((item: any) => item.isContainer && item.id !== selectedItem.id).map((container: any) => (
+                                <SelectItem key={container.id} value={container.id}>
+                                  {container.name} ({(container.children?.length || 0)} / {container.carryCapacity || 0})
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex gap-2">
+                  {(isOwner || isGM) && (
+                    <>
+                      <Button size="sm" variant="outline" onClick={() => deleteItemMutation.mutate(selectedItem.id)} data-testid="button-delete-item">
+                        <Trash2 className="h-4 w-4 mr-1" /> Delete
+                      </Button>
+                      <Button size="sm" onClick={() => { setShowItemDetail(false); }} data-testid="button-close-item-detail">
+                        Close
+                      </Button>
+                    </>
+                  )}
+                </div>
+              </div>
+            </ScrollArea>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Add/Edit Item Dialog */}
+      <AddItemDialog 
+        open={showAddItem}
+        onOpenChange={setShowAddItem}
+        onSave={(itemData) => createItemMutation.mutate(itemData)}
+        isGM={isGM}
+      />
     </div>
+  );
+}
+
+// Add Item Dialog Component
+function AddItemDialog({ open, onOpenChange, onSave, isGM }: { open: boolean; onOpenChange: (open: boolean) => void; onSave: (data: any) => void; isGM: boolean }) {
+  const [formData, setFormData] = useState({
+    name: '',
+    image: '',
+    description: '',
+    itemType: 'utility',
+    rarity: 'common',
+    quantity: 1,
+    damage: '',
+    damageType: '',
+    mod: 0,
+    range: 0,
+    aoe: '',
+    attribute: '',
+    size: '',
+    weight: 'light',
+    itemWeight: 0,
+    priceCopper: 0,
+    priceSilver: 0,
+    priceGold: 0,
+    pricePlatinum: 0,
+    durability: 10,
+    isContainer: false,
+    carryCapacity: 0,
+  });
+
+  const handleSubmit = () => {
+    if (!formData.name) return;
+    onSave(formData);
+    setFormData({
+      name: '',
+      image: '',
+      description: '',
+      itemType: 'utility',
+      rarity: 'common',
+      quantity: 1,
+      damage: '',
+      damageType: '',
+      mod: 0,
+      range: 0,
+      aoe: '',
+      attribute: '',
+      size: '',
+      weight: 'light',
+      itemWeight: 0,
+      priceCopper: 0,
+      priceSilver: 0,
+      priceGold: 0,
+      pricePlatinum: 0,
+      durability: 10,
+      isContainer: false,
+      carryCapacity: 0,
+    });
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="bg-stone-900 border-stone-700 max-w-3xl">
+        <DialogHeader>
+          <DialogTitle className="text-amber-500">Add New Item</DialogTitle>
+        </DialogHeader>
+        <ScrollArea className="max-h-[600px] pr-4">
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Name *</Label>
+                <Input value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} className="bg-stone-800 border-stone-700" />
+              </div>
+              <div>
+                <Label>Image URL</Label>
+                <Input value={formData.image} onChange={(e) => setFormData({...formData, image: e.target.value})} className="bg-stone-800 border-stone-700" />
+              </div>
+              <div>
+                <Label>Item Type</Label>
+                <Select value={formData.itemType} onValueChange={(v) => setFormData({...formData, itemType: v})}>
+                  <SelectTrigger className="bg-stone-800 border-stone-700">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="weapon">Weapon</SelectItem>
+                    <SelectItem value="armor">Armor</SelectItem>
+                    <SelectItem value="consumable">Consumable</SelectItem>
+                    <SelectItem value="utility">Utility</SelectItem>
+                    <SelectItem value="container">Container</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Rarity</Label>
+                <Select value={formData.rarity} onValueChange={(v) => setFormData({...formData, rarity: v})}>
+                  <SelectTrigger className="bg-stone-800 border-stone-700">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="common">Common</SelectItem>
+                    <SelectItem value="uncommon">Uncommon</SelectItem>
+                    <SelectItem value="rare">Rare</SelectItem>
+                    <SelectItem value="epic">Epic</SelectItem>
+                    <SelectItem value="legendary">Legendary</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Quantity</Label>
+                <Input type="number" min="1" value={formData.quantity} onChange={(e) => setFormData({...formData, quantity: parseInt(e.target.value) || 1})} className="bg-stone-800 border-stone-700" />
+              </div>
+              <div>
+                <Label>Weight (lbs)</Label>
+                <Input type="number" min="0" step="0.1" value={formData.itemWeight} onChange={(e) => setFormData({...formData, itemWeight: parseFloat(e.target.value) || 0})} className="bg-stone-800 border-stone-700" />
+              </div>
+            </div>
+            <div>
+              <Label>Description</Label>
+              <Textarea value={formData.description} onChange={(e) => setFormData({...formData, description: e.target.value})} className="bg-stone-800 border-stone-700 min-h-[80px]" />
+            </div>
+            <div className="border-t border-stone-700 pt-4">
+              <h3 className="text-sm font-bold text-stone-300 mb-3">Combat Stats</h3>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>Damage (dice notation)</Label>
+                  <Input value={formData.damage} onChange={(e) => setFormData({...formData, damage: e.target.value})} placeholder="1d6" className="bg-stone-800 border-stone-700" />
+                </div>
+                <div>
+                  <Label>Damage Type</Label>
+                  <Input value={formData.damageType} onChange={(e) => setFormData({...formData, damageType: e.target.value})} placeholder="slashing" className="bg-stone-800 border-stone-700" />
+                </div>
+                <div>
+                  <Label>Modifier</Label>
+                  <Input type="number" value={formData.mod} onChange={(e) => setFormData({...formData, mod: parseInt(e.target.value) || 0})} className="bg-stone-800 border-stone-700" />
+                </div>
+                <div>
+                  <Label>Range (feet)</Label>
+                  <Input type="number" min="0" value={formData.range} onChange={(e) => setFormData({...formData, range: parseInt(e.target.value) || 0})} className="bg-stone-800 border-stone-700" />
+                </div>
+              </div>
+            </div>
+            <div className="border-t border-stone-700 pt-4">
+              <h3 className="text-sm font-bold text-stone-300 mb-3">Price</h3>
+              <div className="grid grid-cols-4 gap-4">
+                <div>
+                  <Label>Platinum</Label>
+                  <Input type="number" min="0" value={formData.pricePlatinum} onChange={(e) => setFormData({...formData, pricePlatinum: parseInt(e.target.value) || 0})} className="bg-stone-800 border-stone-700" />
+                </div>
+                <div>
+                  <Label>Gold</Label>
+                  <Input type="number" min="0" value={formData.priceGold} onChange={(e) => setFormData({...formData, priceGold: parseInt(e.target.value) || 0})} className="bg-stone-800 border-stone-700" />
+                </div>
+                <div>
+                  <Label>Silver</Label>
+                  <Input type="number" min="0" value={formData.priceSilver} onChange={(e) => setFormData({...formData, priceSilver: parseInt(e.target.value) || 0})} className="bg-stone-800 border-stone-700" />
+                </div>
+                <div>
+                  <Label>Copper</Label>
+                  <Input type="number" min="0" value={formData.priceCopper} onChange={(e) => setFormData({...formData, priceCopper: parseInt(e.target.value) || 0})} className="bg-stone-800 border-stone-700" />
+                </div>
+              </div>
+            </div>
+            <div className="border-t border-stone-700 pt-4">
+              <Label>Durability: {formData.durability}/10</Label>
+              <Slider value={[formData.durability]} onValueChange={(v) => setFormData({...formData, durability: v[0]})} min={0} max={10} step={1} className="mt-2" />
+            </div>
+            <div className="flex gap-2 pt-4">
+              <Button onClick={handleSubmit} disabled={!formData.name}>Add Item</Button>
+              <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+            </div>
+          </div>
+        </ScrollArea>
+      </DialogContent>
+    </Dialog>
   );
 }
 
