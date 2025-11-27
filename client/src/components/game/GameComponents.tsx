@@ -996,6 +996,181 @@ export function HUD({ character, onOpenChat }: HUDProps) {
   );
 }
 
+// BattleMap Hotbars - Compact display for battlemap overlay
+interface BattleMapHotbarsProps {
+  character: any;
+}
+
+// Sub-component for individual hotbar slot
+interface BattleMapHotbarSlotProps {
+  hotbar?: Hotbar;
+  slotIndex: number;
+  type: string;
+  color: string;
+  character: any;
+}
+
+function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character }: BattleMapHotbarSlotProps) {
+  // Fetch item data if itemId exists (same pattern as HotbarSlot)
+  const { data: itemData } = useQuery({
+    queryKey: ['item', hotbar?.itemId],
+    queryFn: () => api.getItems(character.id).then(items => items.find((i: any) => i.id === hotbar?.itemId)),
+    enabled: !!hotbar?.itemId
+  });
+
+  // Fetch spell data if spellId exists (same pattern as HotbarSlot)
+  const { data: spellData } = useQuery({
+    queryKey: ['spell', hotbar?.spellId],
+    queryFn: () => api.getSpells(character.id).then(spells => spells.find((s: any) => s.id === hotbar?.spellId)),
+    enabled: !!hotbar?.spellId
+  });
+
+  const getSpellLevelColor = (level: number) => {
+    if (level === 0) return 'text-gray-400';
+    if (level <= 3) return 'text-blue-400';
+    if (level <= 6) return 'text-purple-400';
+    return 'text-amber-400';
+  };
+
+  // Determine what to display
+  let content = null;
+  let tooltipContent = null;
+
+  if (hotbar?.spellId && spellData) {
+    content = (
+      <>
+        <div className={`font-bold truncate ${getSpellLevelColor(spellData.level)}`}>
+          {spellData.name.substring(0, 3)}
+        </div>
+        <div className="text-[7px] text-stone-400">
+          {spellData.level === 0 ? 'C' : `L${spellData.level}`}
+        </div>
+      </>
+    );
+    tooltipContent = (
+      <>
+        <p className="font-bold">{spellData.name}</p>
+        <p className="text-sm">Level: {spellData.level === 0 ? 'Cantrip' : spellData.level}</p>
+        {spellData.school && <p className="text-sm">School: {spellData.school}</p>}
+        {spellData.damage && <p className="text-sm">Damage: {spellData.damage} {spellData.damageType || ''}</p>}
+      </>
+    );
+  } else if (hotbar?.itemId && itemData) {
+    content = (
+      <>
+        <div className="text-amber-400 font-bold truncate">
+          {itemData.name.substring(0, 4)}
+        </div>
+        {itemData.damage && (
+          <div className="text-red-400 text-[7px]">{itemData.damage}</div>
+        )}
+      </>
+    );
+    tooltipContent = (
+      <>
+        <p className="font-bold">{itemData.name}</p>
+        {itemData.damage && <p className="text-sm">Damage: {itemData.damage}</p>}
+        {itemData.durability !== undefined && <p className="text-sm">Durability: {itemData.durability}/10</p>}
+      </>
+    );
+  } else if (hotbar?.skillName) {
+    content = (
+      <div className="text-blue-400 font-bold truncate">
+        {hotbar.skillName.substring(0, 4)}
+      </div>
+    );
+    tooltipContent = <p className="font-bold">{hotbar.skillName}</p>;
+  }
+
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <div
+            className={`
+              w-10 h-10 md:w-12 md:h-12 rounded border flex items-center justify-center text-[8px] md:text-[10px]
+              ${content 
+                ? `bg-stone-800 border-${color}-600/50 hover:border-${color}-500` 
+                : 'bg-stone-900/50 border-stone-700 border-dashed'
+              }
+            `}
+            data-testid={`battlemap-hotbar-${type}-${slotIndex}`}
+          >
+            {content ? (
+              <div className="text-center w-full px-1">{content}</div>
+            ) : (
+              <span className="text-[6px] text-stone-600">{slotIndex + 1}</span>
+            )}
+          </div>
+        </TooltipTrigger>
+        {tooltipContent && (
+          <TooltipContent>
+            {tooltipContent}
+          </TooltipContent>
+        )}
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
+export function BattleMapHotbars({ character }: BattleMapHotbarsProps) {
+  const { data: hotbars = [], isLoading: hotbarsLoading } = useQuery({
+    queryKey: ['hotbars', character?.id],
+    queryFn: () => api.getHotbars(character.id),
+    enabled: !!character?.id
+  });
+
+  if (hotbarsLoading || !character) return null;
+
+  const hotbarTypes = [
+    { type: 'weapons', icon: Sword, color: 'amber', maxSlots: 3 },
+    { type: 'magic', icon: Sparkles, color: 'purple', maxSlots: 5 },
+    { type: 'skills', icon: Dice5, color: 'blue', maxSlots: 5 },
+    { type: 'consumables', icon: Heart, color: 'green', maxSlots: 2 },
+    { type: 'utility', icon: Package, color: 'stone', maxSlots: 5 }
+  ];
+
+  return (
+    <div className="absolute bottom-0 left-0 right-0 p-2 md:p-4 pointer-events-none flex justify-center z-30">
+      <div className="glass-panel rounded-lg p-2 pointer-events-auto border border-stone-700 max-w-full overflow-x-auto">
+        <div className="flex gap-1 md:gap-2">
+          {hotbarTypes.map(({ type, icon: Icon, color, maxSlots }) => {
+            const typeHotbars = hotbars.filter((h: Hotbar) => h.hotbarType === type);
+            
+            return (
+              <div key={type} className="flex flex-col gap-1">
+                {/* Hotbar Type Label */}
+                <div className={`text-[8px] md:text-[10px] text-center text-${color}-400 uppercase font-bold flex items-center justify-center gap-1`}>
+                  <Icon className="h-2 w-2 md:h-3 md:w-3" />
+                  <span className="hidden sm:inline">{type}</span>
+                </div>
+                
+                {/* Hotbar Slots */}
+                <div className="flex gap-1">
+                  {Array.from({ length: maxSlots }).map((_, slotIndex) => {
+                    const hotbar = typeHotbars.find((h: Hotbar) => h.slotNumber === slotIndex);
+                    
+                    return (
+                      <BattleMapHotbarSlot
+                        key={slotIndex}
+                        hotbar={hotbar}
+                        slotIndex={slotIndex}
+                        type={type}
+                        color={color}
+                        character={character}
+                      />
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // 4. Add Character Dialog
 interface AddCharacterDialogProps {
   open: boolean;

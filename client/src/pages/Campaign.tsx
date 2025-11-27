@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useLocation, useSearch, useRoute } from "wouter";
 import { motion } from "framer-motion";
-import { CharacterCreation, BattleMap, HUD, CampaignMenu, CharacterSheet } from "@/components/game/GameComponents";
+import { CharacterCreation, BattleMap, HUD, CampaignMenu, CharacterSheet, BattleMapHotbars } from "@/components/game/GameComponents";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Loader2, Settings, Map as MapIcon, Layers, Trash2 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -707,6 +707,9 @@ export default function Campaign() {
                onViewChange={setCurrentView}
                characters={characters as any[]}
              />
+             
+             {/* Hotbars Display for all users */}
+             <BattleMapHotbars character={character} />
           </div>
           
           {/* UI Overlays */}

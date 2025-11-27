@@ -24,6 +24,7 @@ Preferred communication style: Simple, everyday language.
 -   **Grid System**: Toggleable square or hexagon grids with configurable sizes (30-100px), supporting token snapping.
 -   **Backgrounds**: Upload custom base64 battle map images per scene.
 -   **Tokens**: Draggable character and enemy tokens with real-time sync, displaying character portraits and HP bars.
+-   **Hotbars Overlay**: All 5 hotbar types (weapons, magic, skills, consumables, utility) displayed at the bottom of the battlemap for quick access without opening character sheet. Shows abbreviated item/spell names, damage, and level indicators with tooltips for full details.
 
 ### Backend Architecture
 
