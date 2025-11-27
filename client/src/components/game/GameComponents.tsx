@@ -2621,9 +2621,10 @@ interface CharacterSheetProps {
   isOwner: boolean;
   onUpdate?: (updates: any) => void;
   onClose?: () => void;
+  defaultTab?: string;
 }
 
-export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose }: CharacterSheetProps) {
+export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, defaultTab = "overview" }: CharacterSheetProps) {
   const [biography, setBiography] = useState(character?.biography || "");
   const [gmNotes, setGmNotes] = useState(character?.gmNotes || "");
   const [isEditingBio, setIsEditingBio] = useState(false);
@@ -3029,7 +3030,7 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose }: 
 
   return (
     <div className="w-full h-full bg-stone-900 text-stone-200">
-      <Tabs defaultValue="overview" className="w-full h-full flex flex-col">
+      <Tabs defaultValue={defaultTab} className="w-full h-full flex flex-col">
         <TabsList className="grid w-full grid-cols-7 bg-stone-800 shrink-0">
           <TabsTrigger value="overview" data-testid="tab-overview" className="text-xs sm:text-sm">Overview</TabsTrigger>
           <TabsTrigger value="attributes" data-testid="tab-attributes" className="text-xs sm:text-sm">Attributes</TabsTrigger>

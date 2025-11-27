@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useLocation, useSearch, useRoute } from "wouter";
 import { motion } from "framer-motion";
-import { CharacterCreation, BattleMap, HUD, CampaignMenu, CharacterSheet, BattleMapHotbars } from "@/components/game/GameComponents";
+import { CharacterCreation, BattleMap, CampaignMenu, CharacterSheet, BattleMapHotbars } from "@/components/game/GameComponents";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Loader2, Settings, Map as MapIcon, Layers, Trash2, MessageSquare } from "lucide-react";
+import { ArrowLeft, Loader2, Settings, Map as MapIcon, Layers, Trash2, MessageSquare, User, BarChart3, Zap, Backpack, Sparkles, Grid3X3, ScrollText } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -168,6 +168,7 @@ export default function Campaign() {
   const [scenesManagementOpen, setScenesManagementOpen] = useState(false);
   const [newSceneName, setNewSceneName] = useState("");
   const [viewingCharacterSheet, setViewingCharacterSheet] = useState<any>(null);
+  const [characterSheetDefaultTab, setCharacterSheetDefaultTab] = useState("overview");
 
   // Determine effective campaign ID (from URL or newly created)
   const effectiveCampaignId = campaignId || createdCampaignId;
@@ -488,7 +489,17 @@ export default function Campaign() {
   };
 
   const handleViewCharacter = (char: any) => {
+    setCharacterSheetDefaultTab("overview");
     setViewingCharacterSheet(char);
+  };
+
+  // Open character sheet to a specific tab
+  const openCharacterSheetToTab = (tab: string) => {
+    const charToView = role === 'player' ? character : inspectedChar;
+    if (charToView) {
+      setCharacterSheetDefaultTab(tab);
+      setViewingCharacterSheet(charToView);
+    }
   };
 
   // Show loading state
@@ -732,12 +743,51 @@ export default function Campaign() {
              <BattleMapHotbars character={character} />
           </div>
           
-          {/* UI Overlays */}
-          {role === 'player' && <HUD character={character} />}
-          
-          {/* GM Inspector HUD */}
-          {role === 'gm' && inspectedChar && (
-            <HUD character={inspectedChar} />
+          {/* Character Sheet Tab Buttons - Middle right (visible when character/inspectedChar exists) */}
+          {((role === 'player' && character) || (role === 'gm' && inspectedChar)) && (
+            <div className="absolute right-3 top-1/2 -translate-y-1/2 z-20 flex flex-col gap-2">
+              {[
+                { tab: 'overview', icon: User, color: 'stone', label: 'Overview' },
+                { tab: 'attributes', icon: BarChart3, color: 'blue', label: 'Attributes' },
+                { tab: 'skills', icon: Zap, color: 'green', label: 'Skills' },
+                { tab: 'inventory', icon: Backpack, color: 'amber', label: 'Inventory' },
+                { tab: 'magic', icon: Sparkles, color: 'purple', label: 'Magic' },
+                { tab: 'hotbars', icon: Grid3X3, color: 'red', label: 'Hotbars' },
+                { tab: 'background', icon: ScrollText, color: 'cyan', label: 'Background' },
+              ].map(({ tab, icon: Icon, color, label }) => {
+                const colorClasses: Record<string, string> = {
+                  stone: 'bg-stone-900/90 border-stone-600 text-stone-300 hover:bg-stone-800 hover:border-stone-500',
+                  blue: 'bg-blue-900/90 border-blue-600 text-blue-300 hover:bg-blue-800 hover:border-blue-500',
+                  green: 'bg-green-900/90 border-green-600 text-green-300 hover:bg-green-800 hover:border-green-500',
+                  amber: 'bg-amber-900/90 border-amber-600 text-amber-300 hover:bg-amber-800 hover:border-amber-500',
+                  purple: 'bg-purple-900/90 border-purple-600 text-purple-300 hover:bg-purple-800 hover:border-purple-500',
+                  red: 'bg-red-900/90 border-red-600 text-red-300 hover:bg-red-800 hover:border-red-500',
+                  cyan: 'bg-cyan-900/90 border-cyan-600 text-cyan-300 hover:bg-cyan-800 hover:border-cyan-500',
+                };
+                return (
+                  <TooltipProvider key={tab}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          onClick={() => openCharacterSheetToTab(tab)}
+                          className={`
+                            w-9 h-9 md:w-10 md:h-10 rounded-lg border-2 flex items-center justify-center
+                            transition-all duration-200 shadow-lg backdrop-blur-sm hover:scale-105
+                            ${colorClasses[color]}
+                          `}
+                          data-testid={`button-sheet-${tab}`}
+                        >
+                          <Icon className="h-4 w-4 md:h-5 md:w-5" />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent side="left" className="bg-stone-800 border-stone-700 text-stone-200">
+                        <p>{label}</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                );
+              })}
+            </div>
           )}
 
         </div>
@@ -758,6 +808,7 @@ export default function Campaign() {
               isOwner={viewingCharacterSheet.userId === user?.id}
               onUpdate={handleUpdateCharacter}
               onClose={() => setViewingCharacterSheet(null)}
+              defaultTab={characterSheetDefaultTab}
             />
           )}
         </DialogContent>
