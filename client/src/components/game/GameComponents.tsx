@@ -864,17 +864,18 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, role, gridSize, b
               drag={role === 'gm' || token.type === 'player'} 
               dragMomentum={false}
               dragElastic={0}
-              dragConstraints={{ left: -Infinity, right: Infinity, top: -Infinity, bottom: Infinity }}
               onPointerDown={(e) => e.stopPropagation()}
               onDragEnd={(e, info) => handleDragEnd(e, info, token)}
               onClick={(e) => { e.stopPropagation(); onTokenClick && onTokenClick(token); }}
-              whileHover={{ scale: 1.1, zIndex: 10 }}
+              whileHover={{ scale: 1.1 }}
               whileDrag={{ scale: 1.15, zIndex: 20 }}
-              initial={false}
-              animate={{ x: token.x + 9000, y: token.y + 9000 }}
-              transition={{ type: "tween", duration: 0.15 }}
               className="absolute top-0 left-0 rounded-full shadow-xl ring-2 ring-white/20 overflow-visible bg-black token-shadow cursor-pointer"
-              style={{ width: gridSize, height: gridSize }}
+              style={{ 
+                width: gridSize, 
+                height: gridSize,
+                left: token.x + 9000,
+                top: token.y + 9000
+              }}
               aria-label={`${token.type} token`}
               role="button"
               tabIndex={0}
