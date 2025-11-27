@@ -1046,7 +1046,7 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character }: Batt
         <TooltipTrigger asChild>
           <div
             className={`
-              w-10 h-10 md:w-12 md:h-12 rounded border flex items-center justify-center text-[8px] md:text-[10px]
+              w-8 h-8 md:w-12 md:h-12 rounded border flex items-center justify-center text-[7px] md:text-[10px]
               ${content 
                 ? `bg-stone-800 border-${color}-600/50 hover:border-${color}-500` 
                 : 'bg-stone-900/50 border-stone-700 border-dashed'
@@ -1133,71 +1133,77 @@ export function BattleMapHotbars({ character }: BattleMapHotbarsProps) {
         })}
       </div>
 
-      {/* HP and Energy Bars - Bottom LEFT */}
-      <div className="absolute bottom-2 md:bottom-4 left-2 md:left-4 pointer-events-auto z-30">
-        <div className="flex flex-col gap-1 w-40 md:w-48">
-          {/* Health Bar */}
-          <div className="glass-panel p-2 rounded-lg border-l-4 border-red-600 relative overflow-hidden">
-            <div className="flex justify-between text-[10px] md:text-xs uppercase tracking-wider mb-1 font-bold text-red-200">
-              <span>HP</span>
-              <span>{character.hp ?? character.currentHp ?? 10}/{character.maxHp ?? 10}</span>
-            </div>
-            <div className="h-2 bg-black/50 rounded-full overflow-hidden">
-              <motion.div 
-                className="h-full bg-gradient-to-r from-red-700 to-red-500"
-                initial={{ width: 0 }}
-                animate={{ width: `${((character.hp ?? character.currentHp ?? 10) / (character.maxHp ?? 10)) * 100}%` }}
-              />
-            </div>
-          </div>
-
-          {/* Energy Bar */}
-          <div className="glass-panel p-2 rounded-lg border-l-4 border-blue-600 relative overflow-hidden">
-            <div className="flex justify-between text-[10px] md:text-xs uppercase tracking-wider mb-1 font-bold text-blue-200">
-              <span>Energy</span>
-              <span>{character.energy ?? character.currentEnergy ?? 10}/{character.maxEnergy ?? 10}</span>
-            </div>
-            <div className="h-2 bg-black/50 rounded-full overflow-hidden">
-              <motion.div 
-                className="h-full bg-gradient-to-r from-blue-700 to-blue-500"
-                initial={{ width: 0 }}
-                animate={{ width: `${((character.energy ?? character.currentEnergy ?? 10) / (character.maxEnergy ?? 10)) * 100}%` }}
-              />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Hotbar Display - Bottom RIGHT */}
-      <div className="absolute bottom-2 md:bottom-4 right-2 md:right-4 pointer-events-none z-30">
-        <div className="glass-panel rounded-lg p-3 pointer-events-auto border border-stone-700">
-          {activeHotbarConfig && (
-            <div className="flex flex-col gap-2">
-              {/* Hotbar Type Label */}
-              <div className={`text-xs md:text-sm text-center text-${activeHotbarConfig.color}-400 uppercase font-bold flex items-center justify-center gap-2`}>
-                <activeHotbarConfig.icon className="h-4 w-4 md:h-5 md:w-5" />
-                <span>{activeHotbarConfig.type}</span>
+      {/* Bottom UI Container - Stacked on mobile, side-by-side on desktop */}
+      <div className="absolute bottom-2 md:bottom-4 left-2 md:left-4 right-2 md:right-4 pointer-events-none z-30">
+        <div className="flex flex-col md:flex-row md:justify-between items-stretch md:items-end gap-2">
+          
+          {/* HP and Energy Bars - LEFT on desktop, TOP on mobile */}
+          <div className="pointer-events-auto order-1 md:order-1">
+            <div className="flex flex-row md:flex-col gap-1">
+              {/* Health Bar */}
+              <div className="glass-panel p-2 rounded-lg border-l-4 border-red-600 relative overflow-hidden flex-1 md:w-48">
+                <div className="flex justify-between text-[10px] md:text-xs uppercase tracking-wider mb-1 font-bold text-red-200">
+                  <span>HP</span>
+                  <span>{character.hp ?? character.currentHp ?? 10}/{character.maxHp ?? 10}</span>
+                </div>
+                <div className="h-2 bg-black/50 rounded-full overflow-hidden">
+                  <motion.div 
+                    className="h-full bg-gradient-to-r from-red-700 to-red-500"
+                    initial={{ width: 0 }}
+                    animate={{ width: `${((character.hp ?? character.currentHp ?? 10) / (character.maxHp ?? 10)) * 100}%` }}
+                  />
+                </div>
               </div>
-              
-              {/* Hotbar Slots */}
-              <div className="flex gap-2 justify-center">
-                {Array.from({ length: activeHotbarConfig.maxSlots }).map((_, slotIndex) => {
-                  const hotbar = activeTypeHotbars.find((h: Hotbar) => h.slotNumber === slotIndex);
+
+              {/* Energy Bar */}
+              <div className="glass-panel p-2 rounded-lg border-l-4 border-blue-600 relative overflow-hidden flex-1 md:w-48">
+                <div className="flex justify-between text-[10px] md:text-xs uppercase tracking-wider mb-1 font-bold text-blue-200">
+                  <span>Energy</span>
+                  <span>{character.energy ?? character.currentEnergy ?? 10}/{character.maxEnergy ?? 10}</span>
+                </div>
+                <div className="h-2 bg-black/50 rounded-full overflow-hidden">
+                  <motion.div 
+                    className="h-full bg-gradient-to-r from-blue-700 to-blue-500"
+                    initial={{ width: 0 }}
+                    animate={{ width: `${((character.energy ?? character.currentEnergy ?? 10) / (character.maxEnergy ?? 10)) * 100}%` }}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Hotbar Display - RIGHT on desktop, BOTTOM on mobile */}
+          <div className="pointer-events-auto order-2 md:order-2">
+            <div className="glass-panel rounded-lg p-2 md:p-3 border border-stone-700">
+              {activeHotbarConfig && (
+                <div className="flex flex-col gap-1 md:gap-2">
+                  {/* Hotbar Type Label */}
+                  <div className={`text-[10px] md:text-sm text-center text-${activeHotbarConfig.color}-400 uppercase font-bold flex items-center justify-center gap-1 md:gap-2`}>
+                    <activeHotbarConfig.icon className="h-3 w-3 md:h-5 md:w-5" />
+                    <span>{activeHotbarConfig.type}</span>
+                  </div>
                   
-                  return (
-                    <BattleMapHotbarSlot
-                      key={slotIndex}
-                      hotbar={hotbar}
-                      slotIndex={slotIndex}
-                      type={activeHotbarConfig.type}
-                      color={activeHotbarConfig.color}
-                      character={character}
-                    />
-                  );
-                })}
-              </div>
+                  {/* Hotbar Slots */}
+                  <div className="flex gap-1 md:gap-2 justify-center">
+                    {Array.from({ length: activeHotbarConfig.maxSlots }).map((_, slotIndex) => {
+                      const hotbar = activeTypeHotbars.find((h: Hotbar) => h.slotNumber === slotIndex);
+                      
+                      return (
+                        <BattleMapHotbarSlot
+                          key={slotIndex}
+                          hotbar={hotbar}
+                          slotIndex={slotIndex}
+                          type={activeHotbarConfig.type}
+                          color={activeHotbarConfig.color}
+                          character={character}
+                        />
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
-          )}
+          </div>
         </div>
       </div>
     </>
