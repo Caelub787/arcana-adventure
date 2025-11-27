@@ -913,41 +913,9 @@ interface HUDProps {
 
 export function HUD({ character, onOpenChat }: HUDProps) {
   return (
-    <div className="absolute bottom-0 left-0 right-0 p-4 pointer-events-none flex flex-col md:flex-row justify-end md:justify-between items-center md:items-end z-20 gap-4">
-      {/* Left: Vitals (Stacked on mobile) */}
-      <div className="flex flex-row md:flex-col gap-2 w-full md:w-64 pointer-events-auto order-2 md:order-1">
-        <div className="glass-panel p-2 md:p-3 rounded-lg border-l-4 border-red-600 relative overflow-hidden flex-1">
-          <div className="flex justify-between text-xs uppercase tracking-wider mb-1 font-bold text-red-200">
-            <span>Health</span>
-            <span>{character.hp}/{character.maxHp}</span>
-          </div>
-          <div className="h-2 md:h-3 bg-black/50 rounded-full overflow-hidden">
-            <motion.div 
-              className="h-full health-gradient"
-              initial={{ width: 0 }}
-              animate={{ width: `${(character.hp / character.maxHp) * 100}%` }}
-            />
-          </div>
-        </div>
-
-        <div className="glass-panel p-2 md:p-3 rounded-lg border-l-4 border-blue-600 relative overflow-hidden flex-1">
-          <div className="flex justify-between text-xs uppercase tracking-wider mb-1 font-bold text-blue-200">
-            <span>Energy</span>
-            <span>{character.energy}/{character.maxEnergy}</span>
-          </div>
-          <div className="h-2 md:h-3 bg-black/50 rounded-full overflow-hidden">
-            <motion.div 
-              className="h-full energy-gradient"
-              initial={{ width: 0 }}
-              animate={{ width: `${(character.energy / character.maxEnergy) * 100}%` }}
-            />
-          </div>
-        </div>
-      </div>
-
-
-      {/* Right: Menu & Inventory - Top right floating usually, but here integrated */}
-      <div className="flex gap-2 pointer-events-auto order-1 md:order-3 absolute top-[-60px] right-0 md:static">
+    <div className="absolute top-4 right-4 pointer-events-none z-20">
+      {/* Menu & Inventory buttons - Top right */}
+      <div className="flex gap-2 pointer-events-auto">
         {/* Chat Toggle */}
         <Button 
           size="icon" 
@@ -1127,8 +1095,8 @@ export function BattleMapHotbars({ character }: BattleMapHotbarsProps) {
 
   return (
     <>
-      {/* Hotbar Switcher Buttons - Left side of screen */}
-      <div className="absolute left-2 md:left-4 top-1/2 -translate-y-1/2 flex flex-col gap-2 z-30 pointer-events-auto">
+      {/* Hotbar Switcher Buttons - Left side of screen, positioned higher */}
+      <div className="absolute left-2 md:left-4 top-1/4 flex flex-col gap-2 z-30 pointer-events-auto">
         {hotbarTypes.map(({ type, icon: Icon, color }) => {
           const isActive = activeHotbar === type;
           const colorClasses: Record<string, string> = {
@@ -1166,7 +1134,40 @@ export function BattleMapHotbars({ character }: BattleMapHotbarsProps) {
       </div>
 
       {/* Active Hotbar Display - Bottom center */}
-      <div className="absolute bottom-0 left-0 right-0 p-2 md:p-4 pointer-events-none flex justify-center z-30">
+      <div className="absolute bottom-0 left-0 right-0 p-2 md:p-4 pointer-events-none flex flex-col items-center z-30">
+        {/* HP and Energy Bars - Stacked above hotbar */}
+        <div className="flex flex-col gap-1 mb-2 w-48 md:w-64 pointer-events-auto">
+          {/* Health Bar */}
+          <div className="glass-panel p-2 rounded-lg border-l-4 border-red-600 relative overflow-hidden">
+            <div className="flex justify-between text-[10px] md:text-xs uppercase tracking-wider mb-1 font-bold text-red-200">
+              <span>HP</span>
+              <span>{character.hp ?? character.currentHp ?? 10}/{character.maxHp ?? 10}</span>
+            </div>
+            <div className="h-2 bg-black/50 rounded-full overflow-hidden">
+              <motion.div 
+                className="h-full bg-gradient-to-r from-red-700 to-red-500"
+                initial={{ width: 0 }}
+                animate={{ width: `${((character.hp ?? character.currentHp ?? 10) / (character.maxHp ?? 10)) * 100}%` }}
+              />
+            </div>
+          </div>
+
+          {/* Energy Bar */}
+          <div className="glass-panel p-2 rounded-lg border-l-4 border-blue-600 relative overflow-hidden">
+            <div className="flex justify-between text-[10px] md:text-xs uppercase tracking-wider mb-1 font-bold text-blue-200">
+              <span>Energy</span>
+              <span>{character.energy ?? character.currentEnergy ?? 10}/{character.maxEnergy ?? 10}</span>
+            </div>
+            <div className="h-2 bg-black/50 rounded-full overflow-hidden">
+              <motion.div 
+                className="h-full bg-gradient-to-r from-blue-700 to-blue-500"
+                initial={{ width: 0 }}
+                animate={{ width: `${((character.energy ?? character.currentEnergy ?? 10) / (character.maxEnergy ?? 10)) * 100}%` }}
+              />
+            </div>
+          </div>
+        </div>
+
         <div className="glass-panel rounded-lg p-3 pointer-events-auto border border-stone-700">
           {activeHotbarConfig && (
             <div className="flex flex-col gap-2">
