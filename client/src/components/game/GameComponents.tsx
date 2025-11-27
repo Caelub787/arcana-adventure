@@ -1135,7 +1135,7 @@ export function BattleMapHotbars({ character }: BattleMapHotbarsProps) {
 
       {/* Bottom UI Container - Stacked on mobile, side-by-side on desktop */}
       <div className="absolute bottom-2 md:bottom-4 left-2 md:left-4 right-2 md:right-4 pointer-events-none z-30">
-        <div className="flex flex-col md:flex-row md:justify-between items-stretch md:items-end gap-2">
+        <div className="flex flex-col md:flex-row md:justify-between items-start md:items-end gap-2">
           
           {/* HP and Energy Bars - LEFT on desktop, TOP on mobile */}
           <div className="pointer-events-auto order-1 md:order-1">
