@@ -1114,6 +1114,8 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character }: Batt
 }
 
 export function BattleMapHotbars({ character }: BattleMapHotbarsProps) {
+  const [activeHotbar, setActiveHotbar] = useState<string>('weapons');
+  
   const { data: hotbars = [], isLoading: hotbarsLoading } = useQuery({
     queryKey: ['hotbars', character?.id],
     queryFn: () => api.getHotbars(character.id),
@@ -1130,44 +1132,82 @@ export function BattleMapHotbars({ character }: BattleMapHotbarsProps) {
     { type: 'utility', icon: Package, color: 'stone', maxSlots: 5 }
   ];
 
+  const activeHotbarConfig = hotbarTypes.find(h => h.type === activeHotbar);
+  const activeTypeHotbars = hotbars.filter((h: Hotbar) => h.hotbarType === activeHotbar);
+
   return (
-    <div className="absolute bottom-0 left-0 right-0 p-2 md:p-4 pointer-events-none flex justify-center z-30">
-      <div className="glass-panel rounded-lg p-2 pointer-events-auto border border-stone-700 max-w-full overflow-x-auto">
-        <div className="flex gap-1 md:gap-2">
-          {hotbarTypes.map(({ type, icon: Icon, color, maxSlots }) => {
-            const typeHotbars = hotbars.filter((h: Hotbar) => h.hotbarType === type);
-            
-            return (
-              <div key={type} className="flex flex-col gap-1">
-                {/* Hotbar Type Label */}
-                <div className={`text-[8px] md:text-[10px] text-center text-${color}-400 uppercase font-bold flex items-center justify-center gap-1`}>
-                  <Icon className="h-2 w-2 md:h-3 md:w-3" />
-                  <span className="hidden sm:inline">{type}</span>
-                </div>
-                
-                {/* Hotbar Slots */}
-                <div className="flex gap-1">
-                  {Array.from({ length: maxSlots }).map((_, slotIndex) => {
-                    const hotbar = typeHotbars.find((h: Hotbar) => h.slotNumber === slotIndex);
-                    
-                    return (
-                      <BattleMapHotbarSlot
-                        key={slotIndex}
-                        hotbar={hotbar}
-                        slotIndex={slotIndex}
-                        type={type}
-                        color={color}
-                        character={character}
-                      />
-                    );
-                  })}
-                </div>
+    <>
+      {/* Hotbar Switcher Buttons - Left side of screen */}
+      <div className="absolute left-2 md:left-4 top-1/2 -translate-y-1/2 flex flex-col gap-2 z-30 pointer-events-auto">
+        {hotbarTypes.map(({ type, icon: Icon, color }) => {
+          const isActive = activeHotbar === type;
+          const colorClasses: Record<string, string> = {
+            amber: isActive ? 'bg-amber-600 border-amber-400 text-amber-100' : 'bg-stone-800/80 border-stone-600 text-amber-400 hover:bg-amber-900/50',
+            purple: isActive ? 'bg-purple-600 border-purple-400 text-purple-100' : 'bg-stone-800/80 border-stone-600 text-purple-400 hover:bg-purple-900/50',
+            blue: isActive ? 'bg-blue-600 border-blue-400 text-blue-100' : 'bg-stone-800/80 border-stone-600 text-blue-400 hover:bg-blue-900/50',
+            green: isActive ? 'bg-green-600 border-green-400 text-green-100' : 'bg-stone-800/80 border-stone-600 text-green-400 hover:bg-green-900/50',
+            stone: isActive ? 'bg-stone-600 border-stone-400 text-stone-100' : 'bg-stone-800/80 border-stone-600 text-stone-400 hover:bg-stone-700/50',
+          };
+          
+          return (
+            <TooltipProvider key={type}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={() => setActiveHotbar(type)}
+                    className={`
+                      w-12 h-12 md:w-14 md:h-14 rounded-lg border-2 flex items-center justify-center
+                      transition-all duration-200 shadow-lg backdrop-blur-sm
+                      ${colorClasses[color]}
+                      ${isActive ? 'scale-110 ring-2 ring-white/20' : 'hover:scale-105'}
+                    `}
+                    data-testid={`hotbar-switch-${type}`}
+                  >
+                    <Icon className="h-6 w-6 md:h-7 md:w-7" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="right">
+                  <p className="capitalize font-bold">{type} Hotbar</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          );
+        })}
+      </div>
+
+      {/* Active Hotbar Display - Bottom center */}
+      <div className="absolute bottom-0 left-0 right-0 p-2 md:p-4 pointer-events-none flex justify-center z-30">
+        <div className="glass-panel rounded-lg p-3 pointer-events-auto border border-stone-700">
+          {activeHotbarConfig && (
+            <div className="flex flex-col gap-2">
+              {/* Hotbar Type Label */}
+              <div className={`text-xs md:text-sm text-center text-${activeHotbarConfig.color}-400 uppercase font-bold flex items-center justify-center gap-2`}>
+                <activeHotbarConfig.icon className="h-4 w-4 md:h-5 md:w-5" />
+                <span>{activeHotbarConfig.type}</span>
               </div>
-            );
-          })}
+              
+              {/* Hotbar Slots */}
+              <div className="flex gap-2 justify-center">
+                {Array.from({ length: activeHotbarConfig.maxSlots }).map((_, slotIndex) => {
+                  const hotbar = activeTypeHotbars.find((h: Hotbar) => h.slotNumber === slotIndex);
+                  
+                  return (
+                    <BattleMapHotbarSlot
+                      key={slotIndex}
+                      hotbar={hotbar}
+                      slotIndex={slotIndex}
+                      type={activeHotbarConfig.type}
+                      color={activeHotbarConfig.color}
+                      character={character}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
       </div>
-    </div>
+    </>
   );
 }
 
