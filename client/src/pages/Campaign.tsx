@@ -419,12 +419,13 @@ export default function Campaign() {
   };
 
   // GM Actions
-  const handleAddToken = () => {
+  const handleAddCharacterToken = (character: any) => {
     const newToken = {
-      type: 'enemy',
+      type: 'player',
+      characterId: character.id,
       x: 200 + Math.floor(Math.random() * 200),
       y: 200 + Math.floor(Math.random() * 200),
-      image: goblinToken,
+      image: character.portrait || goblinToken,
     };
     createTokenMutation.mutate(newToken);
   };
@@ -526,7 +527,7 @@ export default function Campaign() {
             onInspectChar={setInspectedChar}
             gridSize={gridSize}
             setGridSize={handleGridSizeChange}
-            onAddToken={handleAddToken}
+            onAddCharacterToken={handleAddCharacterToken}
             onChangeMap={handleChangeMap}
             characters={characters as any[]}
             members={members as any[]}

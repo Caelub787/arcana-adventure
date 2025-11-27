@@ -1513,7 +1513,7 @@ interface CampaignMenuProps {
   onInspectChar?: (char: Character | null) => void;
   gridSize: number;
   setGridSize: (size: number) => void;
-  onAddToken?: () => void;
+  onAddCharacterToken?: (character: any) => void;
   onChangeMap?: () => void;
   characters?: any[];
   members?: any[];
@@ -1521,9 +1521,10 @@ interface CampaignMenuProps {
   onViewCharacter?: (char: any) => void;
 }
 
-export function CampaignMenu({ role, inviteCode, inspectedChar, onInspectChar, gridSize, setGridSize, onAddToken, onChangeMap, characters, members, onAddCharacter, onViewCharacter }: CampaignMenuProps) {
+export function CampaignMenu({ role, inviteCode, inspectedChar, onInspectChar, gridSize, setGridSize, onAddCharacterToken, onChangeMap, characters, members, onAddCharacter, onViewCharacter }: CampaignMenuProps) {
   const [chatOpen, setChatOpen] = useState(false);
   const [addCharacterOpen, setAddCharacterOpen] = useState(false);
+  const [addTokenDialogOpen, setAddTokenDialogOpen] = useState(false);
   const [messages, setMessages] = useState([
     { sender: "System", text: "Welcome to Arcana Adventure!", type: "system" },
     { sender: "GM", text: "Roll for initiative!", type: "chat" }
@@ -1745,7 +1746,7 @@ export function CampaignMenu({ role, inviteCode, inspectedChar, onInspectChar, g
               )}
 
               <div className="grid grid-cols-2 gap-2">
-                <Button variant="secondary" className="bg-stone-800 hover:bg-stone-700" onClick={onAddToken}>
+                <Button variant="secondary" className="bg-stone-800 hover:bg-stone-700" onClick={() => setAddTokenDialogOpen(true)} data-testid="button-add-token">
                   <Plus className="mr-2 h-4 w-4" /> Add Token
                 </Button>
                 <Button variant="secondary" className="bg-stone-800 hover:bg-stone-700" onClick={onChangeMap}>
@@ -1771,6 +1772,80 @@ export function CampaignMenu({ role, inviteCode, inspectedChar, onInspectChar, g
           onAddCharacter={onAddCharacter}
         />
       )}
+
+      {/* Add Token Dialog - Character Selection for GM */}
+      <Dialog open={addTokenDialogOpen} onOpenChange={setAddTokenDialogOpen}>
+        <DialogContent className="bg-stone-950 border-stone-800 text-stone-200 max-w-md max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-amber-500 font-display text-xl">Add Token to Battlemap</DialogTitle>
+            <DialogDescription className="text-stone-400">
+              Select a character to place on the battlemap
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-2 mt-4">
+            {characters && characters.length > 0 ? (
+              characters.map((char: any) => (
+                <div
+                  key={char.id}
+                  className="flex items-center gap-3 p-3 bg-stone-900 border border-stone-800 rounded-lg hover:border-amber-600/50 cursor-pointer transition-colors"
+                  onClick={() => {
+                    if (onAddCharacterToken) {
+                      onAddCharacterToken(char);
+                    }
+                    setAddTokenDialogOpen(false);
+                  }}
+                  data-testid={`select-character-token-${char.id}`}
+                >
+                  {/* Character Portrait */}
+                  <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-stone-700 flex-shrink-0">
+                    {char.portrait ? (
+                      <img src={char.portrait} alt={char.name} className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full bg-stone-800 flex items-center justify-center">
+                        <Users className="h-6 w-6 text-stone-600" />
+                      </div>
+                    )}
+                  </div>
+                  
+                  {/* Character Info */}
+                  <div className="flex-1 min-w-0">
+                    <div className="font-bold text-stone-100 truncate">{char.name}</div>
+                    <div className="text-xs text-stone-400">
+                      {char.race} {char.class} • Level {char.level || 1}
+                    </div>
+                  </div>
+                  
+                  {/* HP Display */}
+                  <div className="text-right flex-shrink-0">
+                    <div className="text-sm font-bold text-red-400">
+                      {char.currentHp ?? char.maxHp ?? 10}/{char.maxHp ?? 10}
+                    </div>
+                    <div className="text-xs text-stone-500">HP</div>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="text-center py-8 text-stone-500">
+                <Users className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                <p>No characters in this campaign</p>
+                <p className="text-xs mt-1">Create characters first to add them as tokens</p>
+              </div>
+            )}
+          </div>
+          
+          <div className="mt-4 pt-4 border-t border-stone-800">
+            <Button
+              variant="outline"
+              className="w-full bg-stone-800 border-stone-700 hover:bg-stone-700"
+              onClick={() => setAddTokenDialogOpen(false)}
+              data-testid="button-cancel-add-token"
+            >
+              Cancel
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
