@@ -900,9 +900,6 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, role, gridSize, b
         })}
       </motion.div>
 
-      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black/50 backdrop-blur px-2 py-1 rounded text-[10px] text-stone-400 pointer-events-none border border-white/10">
-         {role === 'gm' ? 'GM Mode' : 'Player Mode'} • Pan: Drag • Zoom: Scroll/Pinch • 1 Sq = 5ft
-      </div>
     </div>
   );
 }
@@ -1128,7 +1125,7 @@ export function BattleMapHotbars({ character }: BattleMapHotbarsProps) {
     { type: 'weapons', icon: Sword, color: 'amber', maxSlots: 3 },
     { type: 'magic', icon: Sparkles, color: 'purple', maxSlots: 5 },
     { type: 'skills', icon: Dice5, color: 'blue', maxSlots: 5 },
-    { type: 'consumables', icon: Heart, color: 'green', maxSlots: 2 },
+    { type: 'consumables', icon: Heart, color: 'green', maxSlots: 5 },
     { type: 'utility', icon: Package, color: 'stone', maxSlots: 5 }
   ];
 
