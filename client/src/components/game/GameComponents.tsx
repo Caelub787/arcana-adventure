@@ -1046,7 +1046,7 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character }: Batt
         <TooltipTrigger asChild>
           <div
             className={`
-              w-8 h-8 md:w-12 md:h-12 rounded border flex items-center justify-center text-[7px] md:text-[10px]
+              w-10 h-10 md:w-14 md:h-14 rounded border flex items-center justify-center text-[8px] md:text-[11px]
               ${content 
                 ? `bg-stone-800 border-${color}-600/50 hover:border-${color}-500` 
                 : 'bg-stone-900/50 border-stone-700 border-dashed'
@@ -1174,7 +1174,7 @@ export function BattleMapHotbars({ character }: BattleMapHotbarsProps) {
 
           {/* Hotbar Display - RIGHT on desktop, BOTTOM on mobile */}
           <div className="pointer-events-auto order-2 md:order-2">
-            <div className="glass-panel rounded-lg p-2 md:p-3 border border-stone-700">
+            <div className="glass-panel rounded p-1 md:p-2 border border-stone-700">
               {activeHotbarConfig && (
                 <div className="flex flex-col gap-1 md:gap-2">
                   {/* Hotbar Type Label */}
