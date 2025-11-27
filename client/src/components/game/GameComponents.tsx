@@ -945,14 +945,6 @@ export function HUD({ character, onOpenChat }: HUDProps) {
         </div>
       </div>
 
-      {/* Center: Action Bar (Mock) - Bottom on mobile */}
-      <div className="flex gap-2 pointer-events-auto order-3 md:order-2 w-full md:w-auto justify-center overflow-x-auto pb-1">
-        {[1, 2, 3, 4, 5].map((slot) => (
-          <button key={slot} className="w-12 h-12 md:w-14 md:h-14 glass-panel rounded border border-white/20 hover:border-white/60 flex items-center justify-center text-white/50 hover:text-white hover:scale-105 transition-all shrink-0">
-            <span className="font-display font-bold text-lg">{slot}</span>
-          </button>
-        ))}
-      </div>
 
       {/* Right: Menu & Inventory - Top right floating usually, but here integrated */}
       <div className="flex gap-2 pointer-events-auto order-1 md:order-3 absolute top-[-60px] right-0 md:static">
