@@ -913,18 +913,9 @@ interface HUDProps {
 
 export function HUD({ character, onOpenChat }: HUDProps) {
   return (
-    <div className="absolute top-4 right-4 pointer-events-none z-20">
-      {/* Menu & Inventory buttons - Top right */}
-      <div className="flex gap-2 pointer-events-auto">
-        {/* Chat Toggle */}
-        <Button 
-          size="icon" 
-          className="h-12 w-12 md:h-14 md:w-14 rounded-full bg-stone-800 border-2 border-stone-600 hover:bg-stone-700 shadow-lg"
-          onClick={onOpenChat}
-        >
-           <MessageSquare className="h-6 w-6 text-stone-300" />
-        </Button>
-
+    <>
+      {/* Inventory Button - Middle right */}
+      <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-auto z-20">
         <Sheet>
           <SheetTrigger asChild>
             <Button size="icon" className="h-12 w-12 md:h-14 md:w-14 rounded-full bg-amber-900 border-2 border-amber-700 hover:bg-amber-800 shadow-lg">
@@ -950,7 +941,7 @@ export function HUD({ character, onOpenChat }: HUDProps) {
           </SheetContent>
         </Sheet>
       </div>
-    </div>
+    </>
   );
 }
 
@@ -1114,14 +1105,14 @@ export function BattleMapHotbars({ character }: BattleMapHotbarsProps) {
                   <button
                     onClick={() => setActiveHotbar(type)}
                     className={`
-                      w-12 h-12 md:w-14 md:h-14 rounded-lg border-2 flex items-center justify-center
+                      w-9 h-9 md:w-10 md:h-10 rounded-lg border-2 flex items-center justify-center
                       transition-all duration-200 shadow-lg backdrop-blur-sm
                       ${colorClasses[color]}
                       ${isActive ? 'scale-110 ring-2 ring-white/20' : 'hover:scale-105'}
                     `}
                     data-testid={`hotbar-switch-${type}`}
                   >
-                    <Icon className="h-6 w-6 md:h-7 md:w-7" />
+                    <Icon className="h-4 w-4 md:h-5 md:w-5" />
                   </button>
                 </TooltipTrigger>
                 <TooltipContent side="right">
