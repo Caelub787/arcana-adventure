@@ -1133,41 +1133,8 @@ export function BattleMapHotbars({ character }: BattleMapHotbarsProps) {
         })}
       </div>
 
-      {/* Hotbar Display - Bottom LEFT */}
-      <div className="absolute bottom-2 md:bottom-4 left-16 md:left-20 pointer-events-none z-30">
-        <div className="glass-panel rounded-lg p-3 pointer-events-auto border border-stone-700">
-          {activeHotbarConfig && (
-            <div className="flex flex-col gap-2">
-              {/* Hotbar Type Label */}
-              <div className={`text-xs md:text-sm text-center text-${activeHotbarConfig.color}-400 uppercase font-bold flex items-center justify-center gap-2`}>
-                <activeHotbarConfig.icon className="h-4 w-4 md:h-5 md:w-5" />
-                <span>{activeHotbarConfig.type}</span>
-              </div>
-              
-              {/* Hotbar Slots */}
-              <div className="flex gap-2 justify-center">
-                {Array.from({ length: activeHotbarConfig.maxSlots }).map((_, slotIndex) => {
-                  const hotbar = activeTypeHotbars.find((h: Hotbar) => h.slotNumber === slotIndex);
-                  
-                  return (
-                    <BattleMapHotbarSlot
-                      key={slotIndex}
-                      hotbar={hotbar}
-                      slotIndex={slotIndex}
-                      type={activeHotbarConfig.type}
-                      color={activeHotbarConfig.color}
-                      character={character}
-                    />
-                  );
-                })}
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* HP and Energy Bars - Bottom RIGHT */}
-      <div className="absolute bottom-2 md:bottom-4 right-2 md:right-4 pointer-events-auto z-30">
+      {/* HP and Energy Bars - Bottom LEFT */}
+      <div className="absolute bottom-2 md:bottom-4 left-16 md:left-20 pointer-events-auto z-30">
         <div className="flex flex-col gap-1 w-40 md:w-48">
           {/* Health Bar */}
           <div className="glass-panel p-2 rounded-lg border-l-4 border-red-600 relative overflow-hidden">
@@ -1198,6 +1165,39 @@ export function BattleMapHotbars({ character }: BattleMapHotbarsProps) {
               />
             </div>
           </div>
+        </div>
+      </div>
+
+      {/* Hotbar Display - Bottom RIGHT */}
+      <div className="absolute bottom-2 md:bottom-4 right-2 md:right-4 pointer-events-none z-30">
+        <div className="glass-panel rounded-lg p-3 pointer-events-auto border border-stone-700">
+          {activeHotbarConfig && (
+            <div className="flex flex-col gap-2">
+              {/* Hotbar Type Label */}
+              <div className={`text-xs md:text-sm text-center text-${activeHotbarConfig.color}-400 uppercase font-bold flex items-center justify-center gap-2`}>
+                <activeHotbarConfig.icon className="h-4 w-4 md:h-5 md:w-5" />
+                <span>{activeHotbarConfig.type}</span>
+              </div>
+              
+              {/* Hotbar Slots */}
+              <div className="flex gap-2 justify-center">
+                {Array.from({ length: activeHotbarConfig.maxSlots }).map((_, slotIndex) => {
+                  const hotbar = activeTypeHotbars.find((h: Hotbar) => h.slotNumber === slotIndex);
+                  
+                  return (
+                    <BattleMapHotbarSlot
+                      key={slotIndex}
+                      hotbar={hotbar}
+                      slotIndex={slotIndex}
+                      type={activeHotbarConfig.type}
+                      color={activeHotbarConfig.color}
+                      character={character}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </>
