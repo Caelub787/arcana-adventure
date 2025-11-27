@@ -1046,7 +1046,7 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character }: Batt
         <TooltipTrigger asChild>
           <div
             className={`
-              w-10 h-10 md:w-14 md:h-14 rounded border flex items-center justify-center text-[8px] md:text-[11px]
+              w-11 h-11 md:w-16 md:h-16 rounded border flex items-center justify-center text-[9px] md:text-[12px]
               ${content 
                 ? `bg-stone-800 border-${color}-600/50 hover:border-${color}-500` 
                 : 'bg-stone-900/50 border-stone-700 border-dashed'
