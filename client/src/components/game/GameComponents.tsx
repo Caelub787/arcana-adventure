@@ -1134,7 +1134,7 @@ export function BattleMapHotbars({ character }: BattleMapHotbarsProps) {
       </div>
 
       {/* HP and Energy Bars - Bottom LEFT */}
-      <div className="absolute bottom-2 md:bottom-4 left-16 md:left-20 pointer-events-auto z-30">
+      <div className="absolute bottom-2 md:bottom-4 left-2 md:left-4 pointer-events-auto z-30">
         <div className="flex flex-col gap-1 w-40 md:w-48">
           {/* Health Bar */}
           <div className="glass-panel p-2 rounded-lg border-l-4 border-red-600 relative overflow-hidden">
