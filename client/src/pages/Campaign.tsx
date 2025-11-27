@@ -739,8 +739,8 @@ export default function Campaign() {
                characters={characters as any[]}
              />
              
-             {/* Hotbars Display for all users */}
-             <BattleMapHotbars character={character} />
+             {/* Hotbars Display for all users - use inspectedChar for GM, character for players */}
+             <BattleMapHotbars character={role === 'gm' ? inspectedChar : character} />
           </div>
           
           {/* Character Sheet Tab Buttons - Middle right (visible when character/inspectedChar exists) */}

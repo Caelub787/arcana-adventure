@@ -17,7 +17,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { 
   Sword, Shield, Scroll, Map as MapIcon, Settings, 
   Users, Plus, LogOut, Menu, ChevronRight, ChevronLeft, ChevronDown,
-  Heart, Zap, Backpack, Sparkles, Dice5, MessageSquare, RefreshCw, X, Trash2, Package, FolderOpen, Lock, Target
+  Heart, Zap, Backpack, Sparkles, Dice5, MessageSquare, RefreshCw, X, Trash2, Package, FolderOpen, Lock
 } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { type Scene, type Hotbar, api } from "@/lib/api";
@@ -1076,7 +1076,6 @@ export function BattleMapHotbars({ character }: BattleMapHotbarsProps) {
   const hotbarTypes = [
     { type: 'weapons', icon: Sword, color: 'amber', maxSlots: 3 },
     { type: 'magic', icon: Sparkles, color: 'purple', maxSlots: 5 },
-    { type: 'ammo', icon: Target, color: 'orange', maxSlots: 5 },
     { type: 'skills', icon: Dice5, color: 'blue', maxSlots: 5 },
     { type: 'consumables', icon: Heart, color: 'green', maxSlots: 5 },
     { type: 'utility', icon: Package, color: 'stone', maxSlots: 5 }
@@ -1094,7 +1093,6 @@ export function BattleMapHotbars({ character }: BattleMapHotbarsProps) {
           const colorClasses: Record<string, string> = {
             amber: isActive ? 'bg-amber-600 border-amber-400 text-amber-100' : 'bg-stone-800/80 border-stone-600 text-amber-400 hover:bg-amber-900/50',
             purple: isActive ? 'bg-purple-600 border-purple-400 text-purple-100' : 'bg-stone-800/80 border-stone-600 text-purple-400 hover:bg-purple-900/50',
-            orange: isActive ? 'bg-orange-600 border-orange-400 text-orange-100' : 'bg-stone-800/80 border-stone-600 text-orange-400 hover:bg-orange-900/50',
             blue: isActive ? 'bg-blue-600 border-blue-400 text-blue-100' : 'bg-stone-800/80 border-stone-600 text-blue-400 hover:bg-blue-900/50',
             green: isActive ? 'bg-green-600 border-green-400 text-green-100' : 'bg-stone-800/80 border-stone-600 text-green-400 hover:bg-green-900/50',
             stone: isActive ? 'bg-stone-600 border-stone-400 text-stone-100' : 'bg-stone-800/80 border-stone-600 text-stone-400 hover:bg-stone-700/50',
@@ -1921,7 +1919,6 @@ function HotbarsTabContent({ character, isGM, isOwner }: HotbarsTabContentProps)
       // Validate item type matches hotbar type
       const validTypeMapping: Record<string, string[]> = {
         weapons: ['weapon'],
-        ammo: ['ammo', 'ammunition'],
         consumables: ['consumable'],
         utility: ['utility']
       };
@@ -2127,7 +2124,7 @@ function HotbarsTabContent({ character, isGM, isOwner }: HotbarsTabContentProps)
             {[0, 1, 2].map(slotNum => (
               <div key={slotNum} className="flex flex-col items-center gap-1">
                 <Label className="text-xs text-stone-400">
-                  {slotNum === 0 ? 'Left' : slotNum === 1 ? 'Ammo' : 'Right'}
+                  {slotNum === 0 ? 'Left' : slotNum === 1 ? 'Right' : 'Ammo'}
                 </Label>
                 <HotbarSlot
                   type="weapons"
@@ -2142,7 +2139,7 @@ function HotbarsTabContent({ character, isGM, isOwner }: HotbarsTabContentProps)
             ))}
           </div>
           <p className="text-xs text-stone-500 mt-3">
-            Left/Right for weapons, Middle for ammunition. Heavy weapons occupy both side slots.
+            Left/Right for weapons, Far-right for ammunition. Heavy weapons occupy both side slots.
           </p>
         </CardContent>
       </Card>
@@ -2188,51 +2185,6 @@ function HotbarsTabContent({ character, isGM, isOwner }: HotbarsTabContentProps)
           </div>
           <p className="text-xs text-stone-500 mt-3">
             Drag spells from your spell list to equip them.
-          </p>
-        </CardContent>
-      </Card>
-
-      {/* Ammo Hotbar */}
-      <Card className="bg-stone-800 border-stone-700">
-        <CardHeader>
-          <div className="flex justify-between items-center">
-            <CardTitle className="text-orange-500 flex items-center gap-2">
-              <Target className="h-5 w-5" />
-              Ammo Hotbar (5 slots)
-            </CardTitle>
-            {canEdit && getHotbarsByType('ammo').length > 0 && (
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => {
-                  setClearHotbarType('ammo');
-                  setClearDialogOpen(true);
-                }}
-                data-testid="button-clear-ammo"
-              >
-                <Trash2 className="h-3 w-3 mr-1" />
-                Clear All
-              </Button>
-            )}
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className="flex gap-2 flex-wrap">
-            {[0, 1, 2, 3, 4].map(slotNum => (
-              <HotbarSlot
-                key={slotNum}
-                type="ammo"
-                slotNumber={slotNum}
-                hotbar={getHotbarForSlot('ammo', slotNum)}
-                character={character}
-                canEdit={canEdit}
-                onDrop={(slot, data) => handleDrop('ammo', slot, data)}
-                onRemove={handleRemove}
-              />
-            ))}
-          </div>
-          <p className="text-xs text-stone-500 mt-3">
-            Drag ammunition items from your inventory to quick-access them during combat.
           </p>
         </CardContent>
       </Card>
