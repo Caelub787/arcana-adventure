@@ -544,39 +544,30 @@ interface BattleMapProps {
 }
 
 export function BattleMap({ tokens, onMoveToken, onTokenClick, role, gridSize, backgroundImage, scene, onViewChange, characters = [] }: BattleMapProps) {
-  // Pan and zoom state
-  const [pan, setPan] = useState({ x: 0, y: 0 });
-  const [zoom, setZoom] = useState(1);
+  // Use refs for pan/zoom to avoid re-renders during interaction
+  const panRef = useRef({ x: 0, y: 0 });
+  const zoomRef = useRef(1);
   const [isPinching, setIsPinching] = useState(false);
+  const [, forceUpdate] = useState(0); // Only for zoom display updates
   
-  // Notify parent of view changes
-  useEffect(() => {
-    if (onViewChange) {
-      onViewChange({ x: pan.x, y: pan.y, zoom });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pan.x, pan.y, zoom]);
   const containerRef = useRef<HTMLDivElement>(null);
   const lastTouchDistanceRef = useRef<number | null>(null);
   
   // Motion values for smooth dragging without re-renders
   const motionX = useMotionValue(0);
   const motionY = useMotionValue(0);
+  const motionZoom = useMotionValue(1);
   
-  // Use refs to avoid stale closures in event listeners
-  const panRef = useRef(pan);
-  const zoomRef = useRef(zoom);
-  
-  useEffect(() => {
-    panRef.current = pan;
-    zoomRef.current = zoom;
-  }, [pan, zoom]);
-
-  // Sync motion values when pan state changes (from wheel zoom, pinch zoom, or reset)
-  useEffect(() => {
-    motionX.set(pan.x);
-    motionY.set(pan.y);
-  }, [pan.x, pan.y, motionX, motionY]);
+  // Throttled view change notification - only on significant changes
+  const notifyViewChangeRef = useRef<NodeJS.Timeout | null>(null);
+  const notifyViewChange = () => {
+    if (notifyViewChangeRef.current) clearTimeout(notifyViewChangeRef.current);
+    notifyViewChangeRef.current = setTimeout(() => {
+      if (onViewChange) {
+        onViewChange({ x: panRef.current.x, y: panRef.current.y, zoom: zoomRef.current });
+      }
+    }, 100);
+  };
 
   /**
    * handleDragEnd - Processes token drag completion
@@ -641,30 +632,33 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, role, gridSize, b
       const mouseX = e.clientX - rect.left;
       const mouseY = e.clientY - rect.top;
       
-      const delta = -e.deltaY * 0.001;
+      const delta = -e.deltaY * 0.002; // Slightly smoother zoom
       const newZoom = Math.max(0.2, Math.min(3, currentZoom + delta));
       
-      if (newZoom !== currentZoom) {
+      if (Math.abs(newZoom - currentZoom) > 0.001) {
         // Account for the 9000px world offset when calculating world position
-        // world = ((screen + 9000 - pan) / zoom) - 9000
         const worldX = ((mouseX + 9000 - currentPan.x) / currentZoom) - 9000;
         const worldY = ((mouseY + 9000 - currentPan.y) / currentZoom) - 9000;
         
         // Adjust pan to keep the world position under the cursor
-        // pan = screen + 9000 - (world + 9000) * zoom
         const newPan = {
           x: mouseX + 9000 - (worldX + 9000) * newZoom,
           y: mouseY + 9000 - (worldY + 9000) * newZoom
         };
         
-        setPan(newPan);
-        setZoom(newZoom);
+        // Update refs and motion values directly - no state updates
+        panRef.current = newPan;
+        zoomRef.current = newZoom;
+        motionX.set(newPan.x);
+        motionY.set(newPan.y);
+        motionZoom.set(newZoom);
+        notifyViewChange();
       }
     };
 
     container.addEventListener('wheel', handleWheel, { passive: false });
     return () => container.removeEventListener('wheel', handleWheel);
-  }, []);
+  }, [motionX, motionY, motionZoom]);
 
   /**
    * handleTouch - Mobile pinch-to-zoom implementation
@@ -722,21 +716,24 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, role, gridSize, b
           const delta = (distance - lastTouchDistanceRef.current) * 0.01;
           const newZoom = Math.max(0.2, Math.min(3, currentZoom + delta));
           
-          if (newZoom !== currentZoom) {
+          if (Math.abs(newZoom - currentZoom) > 0.001) {
             // Account for the 9000px world offset when calculating world position
-            // world = ((screen + 9000 - pan) / zoom) - 9000
             const worldX = ((centerX + 9000 - currentPan.x) / currentZoom) - 9000;
             const worldY = ((centerY + 9000 - currentPan.y) / currentZoom) - 9000;
             
             // Adjust pan to keep the world position under the pinch center
-            // pan = screen + 9000 - (world + 9000) * zoom
             const newPan = {
               x: centerX + 9000 - (worldX + 9000) * newZoom,
               y: centerY + 9000 - (worldY + 9000) * newZoom
             };
             
-            setPan(newPan);
-            setZoom(newZoom);
+            // Update refs and motion values directly - no state updates
+            panRef.current = newPan;
+            zoomRef.current = newZoom;
+            motionX.set(newPan.x);
+            motionY.set(newPan.y);
+            motionZoom.set(newZoom);
+            notifyViewChange();
           }
         }
 
@@ -779,8 +776,12 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, role, gridSize, b
            const defaultX = scene?.defaultViewX ?? 0;
            const defaultY = scene?.defaultViewY ?? 0;
            const defaultZoom = scene?.defaultViewZoom ?? 1;
-           setPan({ x: defaultX, y: defaultY }); 
-           setZoom(defaultZoom); 
+           panRef.current = { x: defaultX, y: defaultY };
+           zoomRef.current = defaultZoom;
+           motionX.set(defaultX);
+           motionY.set(defaultY);
+           motionZoom.set(defaultZoom);
+           notifyViewChange();
          }}
          data-testid="button-reset-view"
       >
@@ -795,6 +796,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, role, gridSize, b
           height: '20000px', 
           x: motionX, 
           y: motionY, 
+          scale: motionZoom,
           left: '-9000px',
           top: '-9000px',
           transformOrigin: "0 0"
@@ -803,10 +805,10 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, role, gridSize, b
         dragElastic={0}
         dragMomentum={false}
         onDragEnd={() => {
-          // Sync motion values back to state after drag
-          setPan({ x: motionX.get(), y: motionY.get() });
+          // Sync motion values back to refs after drag
+          panRef.current = { x: motionX.get(), y: motionY.get() };
+          notifyViewChange();
         }}
-        animate={{ scale: zoom }}
       >
         {/* Conditional Grid Overlay - Extends infinitely across the large space */}
         {(scene?.gridEnabled !== undefined ? scene.gridEnabled : true) && (
@@ -862,13 +864,15 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, role, gridSize, b
               drag={role === 'gm' || token.type === 'player'} 
               dragMomentum={false}
               dragElastic={0}
+              dragConstraints={{ left: -Infinity, right: Infinity, top: -Infinity, bottom: Infinity }}
               onPointerDown={(e) => e.stopPropagation()}
               onDragEnd={(e, info) => handleDragEnd(e, info, token)}
               onClick={(e) => { e.stopPropagation(); onTokenClick && onTokenClick(token); }}
               whileHover={{ scale: 1.1, zIndex: 10 }}
-              whileDrag={{ scale: 1.2, zIndex: 20 }}
-              animate={{ x: token.x + 9000, y: token.y + 9000, width: gridSize, height: gridSize }}
-              transition={{ type: "spring", stiffness: 300, damping: 30 }}
+              whileDrag={{ scale: 1.15, zIndex: 20 }}
+              initial={false}
+              animate={{ x: token.x + 9000, y: token.y + 9000 }}
+              transition={{ type: "tween", duration: 0.15 }}
               className="absolute top-0 left-0 rounded-full shadow-xl ring-2 ring-white/20 overflow-visible bg-black token-shadow cursor-pointer"
               style={{ width: gridSize, height: gridSize }}
               aria-label={`${token.type} token`}
