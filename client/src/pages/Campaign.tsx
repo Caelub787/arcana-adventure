@@ -718,14 +718,7 @@ export default function Campaign() {
           
           {/* GM Inspector HUD */}
           {role === 'gm' && inspectedChar && (
-            <>
-              <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 pointer-events-none">
-                <div className="bg-black/80 text-amber-400 px-3 py-1.5 rounded text-sm border border-amber-900/50 font-bold">
-                  Inspecting: {inspectedChar.name}
-                </div>
-              </div>
-              <HUD character={inspectedChar} />
-            </>
+            <HUD character={inspectedChar} />
           )}
 
         </div>
