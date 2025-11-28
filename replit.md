@@ -27,6 +27,15 @@ Preferred communication style: Simple, everyday language.
 -   **Hotbars Overlay**: All 5 hotbar types (weapons, magic, skills, consumables, utility) displayed at the bottom of the battlemap for quick access without opening character sheet. Shows abbreviated item/spell names, damage, and level indicators with tooltips for full details.
 -   **Portrait Upload**: Character sheet Background tab includes portrait upload with square cropping tool (drag-to-position, size slider, bounds clamping, center initialization). Portraits display as 256x256 JPEG for optimal storage and render as circular tokens on the battle map.
 
+**Character Sheet Design** (Mobile-Optimized):
+-   **Icon-based Tabs**: 7 tabs matching battlemap sidebar icons with color-coded styling:
+    - Overview (User, stone), Attributes (BarChart3, blue), Skills (Zap, green), Inventory (Backpack, amber), Magic (Sparkles, purple), Hotbars (Grid3X3, red), Background (ScrollText, cyan)
+-   **Tab States**: Active tabs have bright background/text/border; inactive tabs are muted with hover effects
+-   **Responsive Layout**: Full-screen dialog on mobile (w-full h-full), constrained on desktop (max-w-4xl)
+-   **Single Scroll**: Entire character sheet scrolls as one unit instead of multiple mini scroll areas
+-   **Touch-friendly**: Minimum 44px touch targets on tabs, larger icons on mobile (h-5 w-5)
+-   **Accessibility**: aria-labels on all tabs, data-testid attributes preserved
+
 **Campaign Creation**:
 -   Dialog with campaign name input and game system dropdown (currently "Arcana Adventure" only).
 -   Cancel button navigates back to home page.
