@@ -22,9 +22,14 @@ Preferred communication style: Simple, everyday language.
 -   **Pan & Zoom**: Fluid pan (1-finger touch/drag or click-drag) and zoom (2-finger pinch or mouse wheel) with smooth Framer Motion animations. Zoom range 0.2x to 3x, with zoom-to-cursor/pinch center.
 -   **Scene Management (GM)**: Create, switch, and delete scenes, each with independent settings (background, grid, default view).
 -   **Grid System**: Toggleable square or hexagon grids with configurable sizes (30-100px), supporting token snapping.
--   **Backgrounds**: Upload custom base64 battle map images per scene.
--   **Tokens**: Draggable character and enemy tokens with real-time sync, displaying character portraits and HP bars.
+-   **Backgrounds**: Upload custom base64 battle map images per scene. Default: Rocky Coast gridded battlemap.
+-   **Tokens**: Draggable character and enemy tokens with real-time sync, displaying character portraits and HP bars. GM can hold-click tokens to reveal delete button.
 -   **Hotbars Overlay**: All 5 hotbar types (weapons, magic, skills, consumables, utility) displayed at the bottom of the battlemap for quick access without opening character sheet. Shows abbreviated item/spell names, damage, and level indicators with tooltips for full details.
+
+**Campaign Creation**:
+-   Dialog with campaign name input and game system dropdown (currently "Arcana Adventure" only).
+-   Cancel button navigates back to home page.
+-   New campaigns get Rocky Coast as default background.
 
 ### Backend Architecture
 

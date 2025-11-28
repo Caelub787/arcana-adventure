@@ -52,13 +52,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
     // Validate Origin header to prevent CSRF attacks
     const origin = req.headers.origin;
     const allowedOrigins = [
-      process.env.REPL_SLUG ? 
-        `https://${process.env.REPL_ID}.${process.env.REPL_SLUG}.repl.co` : 
-        'http://localhost:5000',
+      'http://localhost:5000',
       'http://localhost:5173', // Vite dev server
+      'http://0.0.0.0:5000',
     ];
     
-    if (origin && !allowedOrigins.some(allowed => origin.startsWith(allowed))) {
+    // Add Replit-specific origins when running on Replit
+    if (process.env.REPL_ID) {
+      allowedOrigins.push(`https://${process.env.REPL_ID}.repl.co`);
+      allowedOrigins.push(`https://${process.env.REPL_ID}-00-`); // Partial match for dev URLs
+    }
+    if (process.env.REPLIT_DEV_DOMAIN) {
+      allowedOrigins.push(`https://${process.env.REPLIT_DEV_DOMAIN}`);
+    }
+    
+    // Check if origin matches any allowed origin (with partial match support)
+    const isAllowed = !origin || allowedOrigins.some(allowed => 
+      origin === allowed || origin.startsWith(allowed) || (allowed.includes('.repl.co') && origin.includes('.repl.co'))
+    );
+    
+    if (!isAllowed) {
       console.warn(`WebSocket connection rejected - invalid origin: ${origin}`);
       ws.close(4403, 'Forbidden - Invalid origin');
       return;
