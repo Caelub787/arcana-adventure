@@ -953,10 +953,15 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onDeleteToken, ro
           top: '-9000px',
           transformOrigin: "0 0"
         }}
-        drag={!isPinching && !isMapLocked && !draggingToken}
+        drag
+        dragListener={!isPinching && !isMapLocked && !draggingToken}
         dragElastic={0}
         dragMomentum={false}
         onClick={() => setShowDeleteButton(null)}
+        onDragStart={() => {
+          // Sync panRef with motion values at drag start to prevent jumps
+          panRef.current = { x: motionX.get(), y: motionY.get() };
+        }}
         onDragEnd={() => {
           // Sync motion values back to refs after drag
           panRef.current = { x: motionX.get(), y: motionY.get() };
