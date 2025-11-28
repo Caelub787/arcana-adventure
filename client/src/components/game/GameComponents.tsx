@@ -554,6 +554,9 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onDeleteToken, ro
   const [showDeleteButton, setShowDeleteButton] = useState<string | null>(null);
   const holdTimerRef = useRef<NodeJS.Timeout | null>(null);
   
+  // Track snapped positions during drag for live grid snapping
+  const [draggingToken, setDraggingToken] = useState<{ id: string; snappedX: number; snappedY: number } | null>(null);
+  
   const containerRef = useRef<HTMLDivElement>(null);
   const lastTouchDistanceRef = useRef<number | null>(null);
   
@@ -604,6 +607,23 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onDeleteToken, ro
   };
 
   /**
+   * handleDrag - Live grid snapping during token drag
+   * Updates the snapped position in real-time as the user drags
+   */
+  const handleDrag = (e: any, info: any, token: Token) => {
+    const effectiveGridSize = scene?.gridSize || gridSize;
+    const gridEnabled = scene?.gridEnabled !== undefined ? scene.gridEnabled : true;
+    
+    if (gridEnabled) {
+      const snappedX = Math.round((token.x + info.offset.x) / effectiveGridSize) * effectiveGridSize;
+      const snappedY = Math.round((token.y + info.offset.y) / effectiveGridSize) * effectiveGridSize;
+      setDraggingToken({ id: token.id, snappedX, snappedY });
+    } else {
+      setDraggingToken(null);
+    }
+  };
+
+  /**
    * handleDragEnd - Processes token drag completion
    * Implements grid snapping when enabled, or free placement when disabled.
    * Rounds token position to nearest grid cell for alignment.
@@ -612,6 +632,9 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onDeleteToken, ro
     // Use scene settings if available, otherwise fall back to legacy gridSize prop
     const effectiveGridSize = scene?.gridSize || gridSize;
     const gridEnabled = scene?.gridEnabled !== undefined ? scene.gridEnabled : true;
+    
+    // Clear dragging state
+    setDraggingToken(null);
     
     if (gridEnabled) {
       const newX = Math.round((token.x + info.offset.x) / effectiveGridSize) * effectiveGridSize;
@@ -924,16 +947,24 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onDeleteToken, ro
             setShowDeleteButton(null);
           };
           
+          const effectiveGridSize = scene?.gridSize || gridSize;
+          const gridEnabled = scene?.gridEnabled !== undefined ? scene.gridEnabled : true;
+          const isDragging = draggingToken?.id === token.id && gridEnabled;
+          const snapCorrectionX = isDragging ? draggingToken.snappedX - token.x : 0;
+          const snapCorrectionY = isDragging ? draggingToken.snappedY - token.y : 0;
+          
           return (
             <motion.div
               key={token.id}
               drag={role === 'gm' || token.type === 'player'} 
               dragMomentum={false}
               dragElastic={0}
+              dragSnapToOrigin={false}
               onPointerDown={handleTokenPointerDown}
               onPointerUp={handleTokenPointerUp}
               onPointerLeave={handleTokenPointerLeave}
               onDragStart={handleTokenDragStart}
+              onDrag={(e, info) => handleDrag(e, info, token)}
               onDragEnd={(e, info) => handleDragEnd(e, info, token)}
               onClick={(e) => { 
                 e.stopPropagation(); 
@@ -941,12 +972,18 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onDeleteToken, ro
                   onTokenClick && onTokenClick(token);
                 }
               }}
+              initial={false}
+              animate={isDragging ? { 
+                x: snapCorrectionX,
+                y: snapCorrectionY
+              } : undefined}
+              transition={{ duration: 0 }}
               whileHover={{ scale: 1.1 }}
               whileDrag={{ scale: 1.15, zIndex: 20 }}
               className="absolute top-0 left-0 rounded-full shadow-xl ring-2 ring-white/20 overflow-visible bg-black token-shadow cursor-pointer"
               style={{ 
-                width: scene?.gridSize || gridSize, 
-                height: scene?.gridSize || gridSize,
+                width: effectiveGridSize, 
+                height: effectiveGridSize,
                 left: token.x + 9000,
                 top: token.y + 9000
               }}
@@ -4691,7 +4728,7 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                           />
                           {/* Crop Overlay */}
                           <div 
-                            className="absolute border-4 border-amber-500 bg-amber-500/10 cursor-move"
+                            className="absolute border-4 border-amber-500 bg-amber-500/10 cursor-move touch-none"
                             style={{
                               left: cropPosition.x,
                               top: cropPosition.y,
@@ -4699,35 +4736,37 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                               height: cropPosition.size,
                               boxShadow: '0 0 0 9999px rgba(0,0,0,0.6)'
                             }}
-                            onMouseDown={(e) => {
+                            onPointerDown={(e) => {
                               e.preventDefault();
-                              const imgRect = cropImageRef.current?.getBoundingClientRect();
-                              if (!imgRect) return;
+                              e.stopPropagation();
+                              (e.target as HTMLElement).setPointerCapture(e.pointerId);
                               
-                              const initialMouseX = e.clientX;
-                              const initialMouseY = e.clientY;
+                              const initialPointerX = e.clientX;
+                              const initialPointerY = e.clientY;
                               const initialCropX = cropPosition.x;
                               const initialCropY = cropPosition.y;
+                              const currentSize = cropPosition.size;
                               
-                              const handleMove = (moveEvent: MouseEvent) => {
-                                const deltaX = moveEvent.clientX - initialMouseX;
-                                const deltaY = moveEvent.clientY - initialMouseY;
+                              const handleMove = (moveEvent: PointerEvent) => {
+                                const deltaX = moveEvent.clientX - initialPointerX;
+                                const deltaY = moveEvent.clientY - initialPointerY;
                                 
-                                const maxX = imageDimensions.width - cropPosition.size;
-                                const maxY = imageDimensions.height - cropPosition.size;
+                                const maxX = imageDimensions.width - currentSize;
+                                const maxY = imageDimensions.height - currentSize;
                                 
                                 const newX = Math.max(0, Math.min(maxX, initialCropX + deltaX));
                                 const newY = Math.max(0, Math.min(maxY, initialCropY + deltaY));
                                 setCropPosition(prev => ({ ...prev, x: newX, y: newY }));
                               };
                               
-                              const handleUp = () => {
-                                document.removeEventListener('mousemove', handleMove);
-                                document.removeEventListener('mouseup', handleUp);
+                              const handleUp = (upEvent: PointerEvent) => {
+                                (upEvent.target as HTMLElement).releasePointerCapture(upEvent.pointerId);
+                                document.removeEventListener('pointermove', handleMove);
+                                document.removeEventListener('pointerup', handleUp);
                               };
                               
-                              document.addEventListener('mousemove', handleMove);
-                              document.addEventListener('mouseup', handleUp);
+                              document.addEventListener('pointermove', handleMove);
+                              document.addEventListener('pointerup', handleUp);
                             }}
                           />
                         </div>
