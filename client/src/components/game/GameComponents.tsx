@@ -629,6 +629,9 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onDeleteToken, ro
     const target = e.currentTarget as HTMLElement;
     target.setPointerCapture(e.pointerId);
     
+    // Lock the current map position to prevent any drift during token drag
+    panRef.current = { x: motionX.get(), y: motionY.get() };
+    
     const effectiveGridSize = scene?.gridSize || gridSize;
     const gridEnabled = scene?.gridEnabled !== undefined ? scene.gridEnabled : true;
     
@@ -700,6 +703,12 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onDeleteToken, ro
     
     // Save the final position
     onMoveToken(token.id, draggingToken.visualX, draggingToken.visualY);
+    
+    // Reset motion values to match panRef to prevent map teleporting
+    // This ensures Framer Motion doesn't apply accumulated drag delta
+    motionX.set(panRef.current.x);
+    motionY.set(panRef.current.y);
+    
     setDraggingToken(null);
   };
 
