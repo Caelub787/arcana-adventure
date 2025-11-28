@@ -16,8 +16,8 @@ import { Progress } from "@/components/ui/progress";
 import { Textarea } from "@/components/ui/textarea";
 import { 
   Sword, Shield, Scroll, Map as MapIcon, Settings, 
-  Users, Plus, LogOut, Menu, ChevronRight, ChevronLeft, ChevronDown,
-  Heart, Zap, Backpack, Sparkles, Dice5, MessageSquare, RefreshCw, X, Trash2, Package, FolderOpen, Lock
+  Users, User, Plus, LogOut, Menu, ChevronRight, ChevronLeft, ChevronDown,
+  Heart, Zap, Backpack, Sparkles, Dice5, MessageSquare, RefreshCw, X, Trash2, Package, FolderOpen, Lock, Camera
 } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { type Scene, type Hotbar, api } from "@/lib/api";
@@ -1591,8 +1591,6 @@ interface CampaignMenuProps {
   inviteCode?: string;
   inspectedChar?: Character;
   onInspectChar?: (char: Character | null) => void;
-  gridSize: number;
-  setGridSize: (size: number) => void;
   onAddCharacterToken?: (character: any) => void;
   onChangeMap?: () => void;
   characters?: any[];
@@ -1601,7 +1599,7 @@ interface CampaignMenuProps {
   onViewCharacter?: (char: any) => void;
 }
 
-export function CampaignMenu({ role, inviteCode, inspectedChar, onInspectChar, gridSize, setGridSize, onAddCharacterToken, onChangeMap, characters, members, onAddCharacter, onViewCharacter }: CampaignMenuProps) {
+export function CampaignMenu({ role, inviteCode, inspectedChar, onInspectChar, onAddCharacterToken, onChangeMap, characters, members, onAddCharacter, onViewCharacter }: CampaignMenuProps) {
   const [chatOpen, setChatOpen] = useState(false);
   const [addCharacterOpen, setAddCharacterOpen] = useState(false);
   const [addTokenDialogOpen, setAddTokenDialogOpen] = useState(false);
@@ -1794,22 +1792,6 @@ export function CampaignMenu({ role, inviteCode, inspectedChar, onInspectChar, g
           {role === 'gm' && (
             <div className="mt-8 border-t border-stone-800 pt-6">
               <h3 className="text-sm font-bold text-purple-400 uppercase mb-4">GM Tools</h3>
-              
-              {/* Grid Settings */}
-              <div className="mb-4 p-3 bg-stone-900 border border-stone-800 rounded">
-                 <div className="flex justify-between mb-2">
-                   <Label className="text-xs font-bold text-stone-400">Grid Size (1 Sq = 5ft)</Label>
-                   <span className="text-xs text-amber-500">{gridSize}px</span>
-                 </div>
-                 <input 
-                   type="range" 
-                   min="30" 
-                   max="100" 
-                   value={gridSize} 
-                   onChange={(e) => setGridSize(parseInt(e.target.value))}
-                   className="w-full accent-amber-600"
-                 />
-              </div>
               
               {inspectedChar && (
                 <div className="mb-4 p-3 bg-purple-900/10 border border-purple-900/30 rounded">
@@ -2722,6 +2704,14 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
   const [gmNotes, setGmNotes] = useState(character?.gmNotes || "");
   const [isEditingBio, setIsEditingBio] = useState(false);
   const [isEditingGmNotes, setIsEditingGmNotes] = useState(false);
+  
+  // Portrait cropping state
+  const [showPortraitCrop, setShowPortraitCrop] = useState(false);
+  const [uploadedImage, setUploadedImage] = useState<string | null>(null);
+  const [cropPosition, setCropPosition] = useState({ x: 0, y: 0, size: 200 });
+  const portraitInputRef = useRef<HTMLInputElement>(null);
+  const cropImageRef = useRef<HTMLImageElement>(null);
+  const [imageDimensions, setImageDimensions] = useState({ width: 0, height: 0 });
 
   // Edit mode states
   const [editingOverview, setEditingOverview] = useState(false);
@@ -3094,6 +3084,76 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
       onUpdate({ gmNotes });
     }
     setIsEditingGmNotes(false);
+  };
+
+  // Portrait upload and cropping handlers
+  const handlePortraitUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        setUploadedImage(event.target?.result as string);
+        setShowPortraitCrop(true);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleImageLoad = () => {
+    if (cropImageRef.current) {
+      const img = cropImageRef.current;
+      const imgWidth = img.width;
+      const imgHeight = img.height;
+      setImageDimensions({ width: imgWidth, height: imgHeight });
+      const minDim = Math.min(imgWidth, imgHeight);
+      const initialSize = Math.min(minDim, 200);
+      const centerX = Math.max(0, (imgWidth - initialSize) / 2);
+      const centerY = Math.max(0, (imgHeight - initialSize) / 2);
+      setCropPosition({ x: centerX, y: centerY, size: initialSize });
+    }
+  };
+
+  const handleCropConfirm = () => {
+    if (!uploadedImage || !cropImageRef.current) return;
+    
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    
+    const img = cropImageRef.current;
+    const scaleX = img.naturalWidth / img.width;
+    const scaleY = img.naturalHeight / img.height;
+    
+    const outputSize = 256;
+    canvas.width = outputSize;
+    canvas.height = outputSize;
+    
+    ctx.drawImage(
+      img,
+      cropPosition.x * scaleX,
+      cropPosition.y * scaleY,
+      cropPosition.size * scaleX,
+      cropPosition.size * scaleY,
+      0, 0, outputSize, outputSize
+    );
+    
+    const croppedImage = canvas.toDataURL('image/jpeg', 0.9);
+    if (onUpdate) {
+      onUpdate({ portrait: croppedImage });
+    }
+    setShowPortraitCrop(false);
+    setUploadedImage(null);
+    if (portraitInputRef.current) {
+      portraitInputRef.current.value = '';
+    }
+  };
+
+  const handleCropCancel = () => {
+    setShowPortraitCrop(false);
+    setUploadedImage(null);
+    if (portraitInputRef.current) {
+      portraitInputRef.current.value = '';
+    }
   };
 
   // Skill categories for organization
@@ -4567,6 +4627,145 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                 <CardTitle className="text-amber-500">Character Background</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
+                {/* Portrait Section */}
+                <div>
+                  <div className="flex justify-between items-center mb-2">
+                    <Label className="text-sm text-stone-300">Character Portrait</Label>
+                    {canEdit && onUpdate && (
+                      <Button 
+                        size="sm" 
+                        variant="outline"
+                        onClick={() => portraitInputRef.current?.click()}
+                        data-testid="button-upload-portrait"
+                      >
+                        <Camera className="h-4 w-4 mr-1" />
+                        Upload
+                      </Button>
+                    )}
+                  </div>
+                  <input
+                    ref={portraitInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handlePortraitUpload}
+                    data-testid="input-portrait-file"
+                  />
+                  <div className="flex justify-center">
+                    {character.portrait ? (
+                      <div className="w-32 h-32 rounded-full overflow-hidden border-4 border-amber-600/50 shadow-lg">
+                        <img 
+                          src={character.portrait} 
+                          alt={character.name} 
+                          className="w-full h-full object-cover"
+                          data-testid="img-character-portrait"
+                        />
+                      </div>
+                    ) : (
+                      <div className="w-32 h-32 rounded-full bg-stone-700 border-4 border-stone-600 flex items-center justify-center">
+                        <User className="h-12 w-12 text-stone-500" />
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Portrait Cropping Dialog */}
+                <Dialog open={showPortraitCrop} onOpenChange={setShowPortraitCrop}>
+                  <DialogContent className="bg-stone-900 border-stone-700 max-w-lg">
+                    <DialogHeader>
+                      <DialogTitle className="text-amber-500">Crop Portrait</DialogTitle>
+                      <DialogDescription className="text-stone-400">
+                        Drag to position the crop area. The portrait will be cropped as a square for circular token display.
+                      </DialogDescription>
+                    </DialogHeader>
+                    {uploadedImage && (
+                      <div className="relative">
+                        <div className="relative overflow-hidden bg-stone-800 rounded-lg" style={{ maxHeight: '400px' }}>
+                          <img 
+                            ref={cropImageRef}
+                            src={uploadedImage} 
+                            alt="Crop preview"
+                            onLoad={handleImageLoad}
+                            className="max-w-full"
+                            style={{ display: 'block' }}
+                          />
+                          {/* Crop Overlay */}
+                          <div 
+                            className="absolute border-4 border-amber-500 bg-amber-500/10 cursor-move"
+                            style={{
+                              left: cropPosition.x,
+                              top: cropPosition.y,
+                              width: cropPosition.size,
+                              height: cropPosition.size,
+                              boxShadow: '0 0 0 9999px rgba(0,0,0,0.6)'
+                            }}
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              const imgRect = cropImageRef.current?.getBoundingClientRect();
+                              if (!imgRect) return;
+                              
+                              const initialMouseX = e.clientX;
+                              const initialMouseY = e.clientY;
+                              const initialCropX = cropPosition.x;
+                              const initialCropY = cropPosition.y;
+                              
+                              const handleMove = (moveEvent: MouseEvent) => {
+                                const deltaX = moveEvent.clientX - initialMouseX;
+                                const deltaY = moveEvent.clientY - initialMouseY;
+                                
+                                const maxX = imageDimensions.width - cropPosition.size;
+                                const maxY = imageDimensions.height - cropPosition.size;
+                                
+                                const newX = Math.max(0, Math.min(maxX, initialCropX + deltaX));
+                                const newY = Math.max(0, Math.min(maxY, initialCropY + deltaY));
+                                setCropPosition(prev => ({ ...prev, x: newX, y: newY }));
+                              };
+                              
+                              const handleUp = () => {
+                                document.removeEventListener('mousemove', handleMove);
+                                document.removeEventListener('mouseup', handleUp);
+                              };
+                              
+                              document.addEventListener('mousemove', handleMove);
+                              document.addEventListener('mouseup', handleUp);
+                            }}
+                          />
+                        </div>
+                        {/* Size Slider */}
+                        <div className="mt-4 space-y-2">
+                          <Label className="text-stone-300">Crop Size</Label>
+                          <input
+                            type="range"
+                            min="50"
+                            max={Math.min(imageDimensions.width || 300, imageDimensions.height || 300)}
+                            value={cropPosition.size}
+                            onChange={(e) => {
+                              const newSize = parseInt(e.target.value);
+                              const maxX = Math.max(0, (imageDimensions.width || 300) - newSize);
+                              const maxY = Math.max(0, (imageDimensions.height || 300) - newSize);
+                              setCropPosition(prev => ({
+                                x: Math.min(prev.x, maxX),
+                                y: Math.min(prev.y, maxY),
+                                size: newSize
+                              }));
+                            }}
+                            className="w-full accent-amber-600"
+                            data-testid="slider-crop-size"
+                          />
+                        </div>
+                      </div>
+                    )}
+                    <div className="flex gap-2 justify-end">
+                      <Button variant="outline" onClick={handleCropCancel} data-testid="button-cancel-crop">
+                        Cancel
+                      </Button>
+                      <Button onClick={handleCropConfirm} className="bg-amber-600 hover:bg-amber-700" data-testid="button-confirm-crop">
+                        Save Portrait
+                      </Button>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+
                 {/* Biography Section */}
                 <div>
                   <div className="flex justify-between items-center mb-2">

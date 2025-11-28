@@ -163,7 +163,6 @@ export default function Campaign() {
   const [tokens, setTokens] = useState<any[]>([]);
   const [inspectedChar, setInspectedChar] = useState<any>(null);
   const [currentMap, setCurrentMap] = useState(battleMapImage1);
-  const [gridSize, setGridSize] = useState(50);
   const [createdCampaignId, setCreatedCampaignId] = useState<string | null>(null);
   const [currentView, setCurrentView] = useState({ x: 0, y: 0, zoom: 1 });
   const [scenesManagementOpen, setScenesManagementOpen] = useState(false);
@@ -219,7 +218,7 @@ export default function Campaign() {
 
   // Create campaign mutation
   const createCampaignMutation = useMutation({
-    mutationFn: (name: string) => api.createCampaign(name, gridSize),
+    mutationFn: (name: string) => api.createCampaign(name),
     onSuccess: (newCampaign) => {
       setCreatedCampaignId(newCampaign.id);
       queryClient.invalidateQueries({ queryKey: ['/api/campaigns'] });
@@ -371,12 +370,9 @@ export default function Campaign() {
     }
   }, [tokensData]);
 
-  // Load grid size from campaign
+  // Load current map from campaign
   useEffect(() => {
     if (campaign && typeof campaign === 'object') {
-      if ('gridSize' in campaign && typeof campaign.gridSize === 'number') {
-        setGridSize(campaign.gridSize);
-      }
       if ('currentMap' in campaign && typeof campaign.currentMap === 'string') {
         setCurrentMap(campaign.currentMap);
       }
@@ -465,11 +461,6 @@ export default function Campaign() {
     const newMap = currentMap === battleMapImage1 ? battleMapImage2 : battleMapImage1;
     setCurrentMap(newMap);
     updateCampaignMutation.mutate({ currentMap: newMap });
-  };
-
-  const handleGridSizeChange = (newSize: number) => {
-    setGridSize(newSize);
-    updateCampaignMutation.mutate({ gridSize: newSize });
   };
 
   const handleUpdateScene = (settings: Partial<Scene>) => {
@@ -629,8 +620,6 @@ export default function Campaign() {
             inviteCode={(campaign && typeof campaign === 'object' && 'inviteCode' in campaign ? campaign.inviteCode as string : "") || ""}
             inspectedChar={inspectedChar}
             onInspectChar={setInspectedChar}
-            gridSize={gridSize}
-            setGridSize={handleGridSizeChange}
             onAddCharacterToken={handleAddCharacterToken}
             onChangeMap={handleChangeMap}
             characters={characters as any[]}
@@ -826,7 +815,7 @@ export default function Campaign() {
                onTokenClick={handleTokenClick}
                onDeleteToken={handleDeleteToken}
                role={role} 
-               gridSize={gridSize}
+               gridSize={50}
                backgroundImage={currentMap}
                scene={activeScene}
                onViewChange={setCurrentView}
