@@ -1101,21 +1101,21 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onDeleteToken, ro
           <>
             {(scene?.gridType || 'square') === 'square' ? (
               /* Square Grid - Infinite repeating pattern */
-              <div className="absolute inset-0 opacity-20 pointer-events-none" 
+              <div className="absolute inset-0 opacity-40 pointer-events-none" 
                    style={{ 
-                     backgroundImage: 'linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px)',
+                     backgroundImage: `linear-gradient(${scene?.gridColor || '#ffffff'} 1px, transparent 1px), linear-gradient(90deg, ${scene?.gridColor || '#ffffff'} 1px, transparent 1px)`,
                      backgroundSize: `${scene?.gridSize || gridSize}px ${scene?.gridSize || gridSize}px`
                    }} 
               />
             ) : (
               /* Hex Grid - Infinite repeating pattern */
-              <svg className="absolute inset-0 opacity-20 pointer-events-none" width="100%" height="100%">
+              <svg className="absolute inset-0 opacity-40 pointer-events-none" width="100%" height="100%">
                 <defs>
                   <pattern id="hexgrid" patternUnits="userSpaceOnUse" width={scene?.gridSize || gridSize} height={(scene?.gridSize || gridSize) * 0.866}>
                     <polygon 
                       points={`${((scene?.gridSize || gridSize) / 4)},0 ${((scene?.gridSize || gridSize) * 3 / 4)},0 ${(scene?.gridSize || gridSize)},${((scene?.gridSize || gridSize) * 0.433)} ${((scene?.gridSize || gridSize) * 3 / 4)},${((scene?.gridSize || gridSize) * 0.866)} ${((scene?.gridSize || gridSize) / 4)},${((scene?.gridSize || gridSize) * 0.866)} 0,${((scene?.gridSize || gridSize) * 0.433)}`}
                       fill="none" 
-                      stroke="#fff" 
+                      stroke={scene?.gridColor || '#ffffff'} 
                       strokeWidth="1"
                     />
                   </pattern>
@@ -1227,11 +1227,19 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onDeleteToken, ro
               {/* Delete Button - Show when holding click (GM only) */}
               {showDeleteButton === token.id && role === 'gm' && (
                 <button
+                  onPointerDown={(e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
+                  }}
                   onClick={(e) => {
                     e.stopPropagation();
-                    onDeleteToken && onDeleteToken(token.id);
+                    e.preventDefault();
+                    if (onDeleteToken) {
+                      onDeleteToken(token.id);
+                      setShowDeleteButton(null);
+                    }
                   }}
-                  className="absolute -top-3 -right-3 w-7 h-7 bg-red-600 hover:bg-red-700 rounded-full flex items-center justify-center shadow-lg border-2 border-red-400 z-30"
+                  className="absolute -top-3 -right-3 w-7 h-7 bg-red-600 hover:bg-red-700 rounded-full flex items-center justify-center shadow-lg border-2 border-red-400 z-30 pointer-events-auto touch-auto"
                   data-testid={`button-delete-token-${token.id}`}
                 >
                   <Trash2 className="w-4 h-4 text-white" />

@@ -101,6 +101,7 @@ export interface Scene {
   gridEnabled: boolean;
   gridType: string;
   gridSize: number;
+  gridColor: string;
   defaultViewX: number;
   defaultViewY: number;
   defaultViewZoom: number;

@@ -26,6 +26,7 @@ function SceneSettingsForm({ scene, onUpdateScene }: { scene: Scene; onUpdateSce
     gridEnabled: scene.gridEnabled,
     gridType: scene.gridType,
     gridSize: scene.gridSize,
+    gridColor: scene.gridColor || '#ffffff',
     backgroundImage: scene.backgroundImage || '',
   });
 
@@ -120,6 +121,40 @@ function SceneSettingsForm({ scene, onUpdateScene }: { scene: Scene; onUpdateSce
             className="w-full accent-amber-600"
             data-testid="slider-grid-size"
           />
+        </div>
+      )}
+
+      {/* Grid Color */}
+      {localSettings.gridEnabled && (
+        <div className="space-y-2">
+          <Label htmlFor="grid-color" className="text-stone-300">Grid Color</Label>
+          <div className="flex items-center gap-3">
+            <input
+              type="color"
+              id="grid-color"
+              value={localSettings.gridColor}
+              onChange={(e) => updateSetting('gridColor', e.target.value)}
+              className="w-12 h-10 rounded border border-stone-700 bg-stone-800 cursor-pointer"
+              data-testid="input-grid-color"
+            />
+            <div className="flex gap-1.5 flex-wrap">
+              {['#ffffff', '#ff0000', '#00ff00', '#0088ff', '#ffff00', '#ff00ff', '#000000'].map((color) => (
+                <button
+                  key={color}
+                  type="button"
+                  onClick={() => updateSetting('gridColor', color)}
+                  className={`w-7 h-7 rounded border-2 transition-all ${
+                    localSettings.gridColor === color 
+                      ? 'border-amber-500 ring-2 ring-amber-500/50' 
+                      : 'border-stone-600 hover:border-stone-400'
+                  }`}
+                  style={{ backgroundColor: color }}
+                  data-testid={`button-grid-color-${color.replace('#', '')}`}
+                  aria-label={`Set grid color to ${color}`}
+                />
+              ))}
+            </div>
+          </div>
         </div>
       )}
 

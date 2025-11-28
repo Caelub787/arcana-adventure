@@ -52,6 +52,7 @@ export const scenes = pgTable("scenes", {
   gridEnabled: boolean("grid_enabled").default(true).notNull(),
   gridType: text("grid_type").default("square").notNull(), // "square" or "hex"
   gridSize: integer("grid_size").default(50).notNull(),
+  gridColor: text("grid_color").default("#ffffff").notNull(), // Hex color for grid lines
   defaultViewX: integer("default_view_x").default(0).notNull(),
   defaultViewY: integer("default_view_y").default(0).notNull(),
   defaultViewZoom: real("default_view_zoom").default(1).notNull(),
