@@ -567,6 +567,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onDeleteToken, ro
   
   // Lock state for preventing map movement
   const [isMapLocked, setIsMapLocked] = useState(false);
+  const isMapLockedRef = useRef(false);
   
   const containerRef = useRef<HTMLDivElement>(null);
   const lastTouchDistanceRef = useRef<number | null>(null);
@@ -736,6 +737,9 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onDeleteToken, ro
     const handleWheel = (e: WheelEvent) => {
       e.preventDefault();
       
+      // Prevent zooming when map is locked (use ref to avoid stale closure)
+      if (isMapLockedRef.current) return;
+      
       const currentZoom = zoomRef.current;
       const currentPan = panRef.current;
       
@@ -807,6 +811,9 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onDeleteToken, ro
       if (e.touches.length === 2) {
         e.preventDefault();
         setIsPinching(true);
+        
+        // Prevent zooming when map is locked (use ref to avoid stale closure)
+        if (isMapLockedRef.current) return;
         
         const currentZoom = zoomRef.current;
         const currentPan = panRef.current;
@@ -903,7 +910,15 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onDeleteToken, ro
            size="sm" 
            variant="secondary" 
            className={`bg-black/50 hover:bg-black/80 text-xs border backdrop-blur-sm ${isMapLocked ? 'border-amber-500 text-amber-400' : 'border-white/10'}`}
-           onClick={() => setIsMapLocked(!isMapLocked)}
+           onClick={() => {
+             const newLockState = !isMapLocked;
+             // Update ref synchronously to prevent zoom race condition
+             isMapLockedRef.current = newLockState;
+             if (newLockState) {
+               lastTouchDistanceRef.current = null;
+             }
+             setIsMapLocked(newLockState);
+           }}
            data-testid="button-lock-map"
            title={isMapLocked ? "Unlock map movement" : "Lock map movement"}
         >
@@ -988,6 +1003,10 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onDeleteToken, ro
           const displayX = isDragging ? draggingToken.visualX : token.x;
           const displayY = isDragging ? draggingToken.visualY : token.y;
           
+          // Token size is 90% of grid to fit within cells with some padding
+          const tokenSize = effectiveGridSize * 0.9;
+          const tokenOffset = effectiveGridSize * 0.05; // Center the token in the cell
+          
           const handleTokenPointerDown = (e: React.PointerEvent) => {
             e.stopPropagation();
             
@@ -1046,10 +1065,10 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onDeleteToken, ro
               }}
               className={`absolute top-0 left-0 rounded-full shadow-xl ring-2 ring-white/20 overflow-visible bg-black token-shadow cursor-pointer touch-none select-none ${isDragging ? 'z-20 scale-110' : 'hover:scale-105'} transition-transform`}
               style={{ 
-                width: effectiveGridSize, 
-                height: effectiveGridSize,
-                left: displayX + 9000,
-                top: displayY + 9000
+                width: tokenSize, 
+                height: tokenSize,
+                left: displayX + 9000 + tokenOffset,
+                top: displayY + 9000 + tokenOffset
               }}
               aria-label={`${token.type} token`}
               role="button"
