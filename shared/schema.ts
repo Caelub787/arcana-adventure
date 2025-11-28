@@ -53,6 +53,8 @@ export const scenes = pgTable("scenes", {
   gridType: text("grid_type").default("square").notNull(), // "square" or "hex"
   gridSize: integer("grid_size").default(50).notNull(),
   gridColor: text("grid_color").default("#ffffff").notNull(), // Hex color for grid lines
+  gridThickness: real("grid_thickness").default(1).notNull(), // Line thickness in pixels
+  gridOpacity: real("grid_opacity").default(0.4).notNull(), // 0.0 to 1.0
   defaultViewX: integer("default_view_x").default(0).notNull(),
   defaultViewY: integer("default_view_y").default(0).notNull(),
   defaultViewZoom: real("default_view_zoom").default(1).notNull(),
@@ -151,8 +153,8 @@ export const tokens = pgTable("tokens", {
   campaignId: varchar("campaign_id").notNull().references(() => campaigns.id, { onDelete: "cascade" }),
   characterId: varchar("character_id").references(() => characters.id, { onDelete: "cascade" }),
   type: text("type").notNull(), // "player" or "enemy"
-  x: integer("x").notNull(),
-  y: integer("y").notNull(),
+  x: real("x").notNull(),
+  y: real("y").notNull(),
   image: text("image").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });

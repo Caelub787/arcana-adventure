@@ -27,6 +27,8 @@ function SceneSettingsForm({ scene, onUpdateScene }: { scene: Scene; onUpdateSce
     gridType: scene.gridType,
     gridSize: scene.gridSize,
     gridColor: scene.gridColor || '#ffffff',
+    gridThickness: scene.gridThickness ?? 1,
+    gridOpacity: scene.gridOpacity ?? 0.4,
     backgroundImage: scene.backgroundImage || '',
   });
 
@@ -40,13 +42,13 @@ function SceneSettingsForm({ scene, onUpdateScene }: { scene: Scene; onUpdateSce
     };
   }, []);
 
-  // Update scene settings immediately when they change (with debouncing for gridSize)
+  // Update scene settings immediately when they change (with debouncing for sliders)
   const updateSetting = (key: keyof typeof localSettings, value: any) => {
     const newSettings = { ...localSettings, [key]: value };
     setLocalSettings(newSettings);
     
-    // Debounce gridSize updates to avoid spamming the server during slider drag
-    if (key === 'gridSize') {
+    // Debounce slider updates to avoid spamming the server during slider drag
+    if (key === 'gridSize' || key === 'gridThickness' || key === 'gridOpacity') {
       if (debounceTimeoutRef.current) {
         clearTimeout(debounceTimeoutRef.current);
       }
@@ -120,6 +122,48 @@ function SceneSettingsForm({ scene, onUpdateScene }: { scene: Scene; onUpdateSce
             onChange={(e) => updateSetting('gridSize', parseInt(e.target.value))}
             className="w-full accent-amber-600"
             data-testid="slider-grid-size"
+          />
+        </div>
+      )}
+
+      {/* Grid Thickness */}
+      {localSettings.gridEnabled && (
+        <div className="space-y-2">
+          <div className="flex justify-between">
+            <Label htmlFor="grid-thickness" className="text-stone-300">Grid Thickness</Label>
+            <span className="text-xs text-amber-500">{localSettings.gridThickness}px</span>
+          </div>
+          <input
+            type="range"
+            id="grid-thickness"
+            min="1"
+            max="5"
+            step="0.5"
+            value={localSettings.gridThickness}
+            onChange={(e) => updateSetting('gridThickness', parseFloat(e.target.value))}
+            className="w-full accent-amber-600"
+            data-testid="slider-grid-thickness"
+          />
+        </div>
+      )}
+
+      {/* Grid Opacity */}
+      {localSettings.gridEnabled && (
+        <div className="space-y-2">
+          <div className="flex justify-between">
+            <Label htmlFor="grid-opacity" className="text-stone-300">Grid Opacity</Label>
+            <span className="text-xs text-amber-500">{Math.round(localSettings.gridOpacity * 100)}%</span>
+          </div>
+          <input
+            type="range"
+            id="grid-opacity"
+            min="0.1"
+            max="1"
+            step="0.05"
+            value={localSettings.gridOpacity}
+            onChange={(e) => updateSetting('gridOpacity', parseFloat(e.target.value))}
+            className="w-full accent-amber-600"
+            data-testid="slider-grid-opacity"
           />
         </div>
       )}

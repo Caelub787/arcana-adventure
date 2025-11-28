@@ -102,6 +102,8 @@ export interface Scene {
   gridType: string;
   gridSize: number;
   gridColor: string;
+  gridThickness: number;
+  gridOpacity: number;
   defaultViewX: number;
   defaultViewY: number;
   defaultViewZoom: number;

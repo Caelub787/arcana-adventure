@@ -18,7 +18,7 @@ import {
   Sword, Shield, Scroll, Map as MapIcon, Settings, 
   Users, User, Plus, LogOut, Menu, ChevronRight, ChevronLeft, ChevronDown,
   Heart, Zap, Backpack, Sparkles, Dice5, MessageSquare, RefreshCw, X, Trash2, Package, FolderOpen, Lock, Unlock, Camera,
-  BarChart3, Grid3X3, ScrollText
+  BarChart3, Grid3X3, ScrollText, Upload, Image as ImageIcon, Layers
 } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { type Scene, type Hotbar, api } from "@/lib/api";
@@ -1101,22 +1101,23 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onDeleteToken, ro
           <>
             {(scene?.gridType || 'square') === 'square' ? (
               /* Square Grid - Infinite repeating pattern */
-              <div className="absolute inset-0 opacity-40 pointer-events-none" 
+              <div className="absolute inset-0 pointer-events-none" 
                    style={{ 
-                     backgroundImage: `linear-gradient(${scene?.gridColor || '#ffffff'} 1px, transparent 1px), linear-gradient(90deg, ${scene?.gridColor || '#ffffff'} 1px, transparent 1px)`,
+                     opacity: scene?.gridOpacity ?? 0.4,
+                     backgroundImage: `linear-gradient(${scene?.gridColor || '#ffffff'} ${scene?.gridThickness ?? 1}px, transparent ${scene?.gridThickness ?? 1}px), linear-gradient(90deg, ${scene?.gridColor || '#ffffff'} ${scene?.gridThickness ?? 1}px, transparent ${scene?.gridThickness ?? 1}px)`,
                      backgroundSize: `${scene?.gridSize || gridSize}px ${scene?.gridSize || gridSize}px`
                    }} 
               />
             ) : (
               /* Hex Grid - Infinite repeating pattern */
-              <svg className="absolute inset-0 opacity-40 pointer-events-none" width="100%" height="100%">
+              <svg className="absolute inset-0 pointer-events-none" width="100%" height="100%" style={{ opacity: scene?.gridOpacity ?? 0.4 }}>
                 <defs>
                   <pattern id="hexgrid" patternUnits="userSpaceOnUse" width={scene?.gridSize || gridSize} height={(scene?.gridSize || gridSize) * 0.866}>
                     <polygon 
                       points={`${((scene?.gridSize || gridSize) / 4)},0 ${((scene?.gridSize || gridSize) * 3 / 4)},0 ${(scene?.gridSize || gridSize)},${((scene?.gridSize || gridSize) * 0.433)} ${((scene?.gridSize || gridSize) * 3 / 4)},${((scene?.gridSize || gridSize) * 0.866)} ${((scene?.gridSize || gridSize) / 4)},${((scene?.gridSize || gridSize) * 0.866)} 0,${((scene?.gridSize || gridSize) * 0.433)}`}
                       fill="none" 
                       stroke={scene?.gridColor || '#ffffff'} 
-                      strokeWidth="1"
+                      strokeWidth={scene?.gridThickness ?? 1}
                     />
                   </pattern>
                 </defs>
@@ -1713,6 +1714,8 @@ function SceneSettingsDialog({ open, onOpenChange, scene, onUpdateScene }: Scene
     gridEnabled: scene?.gridEnabled ?? true,
     gridType: scene?.gridType ?? 'square',
     gridSize: scene?.gridSize ?? 50,
+    gridThickness: scene?.gridThickness ?? 1,
+    gridOpacity: scene?.gridOpacity ?? 0.4,
     backgroundImage: scene?.backgroundImage ?? '',
   });
 
@@ -1723,6 +1726,8 @@ function SceneSettingsDialog({ open, onOpenChange, scene, onUpdateScene }: Scene
         gridEnabled: scene.gridEnabled,
         gridType: scene.gridType,
         gridSize: scene.gridSize,
+        gridThickness: scene.gridThickness ?? 1,
+        gridOpacity: scene.gridOpacity ?? 0.4,
         backgroundImage: scene.backgroundImage || '',
       });
     }
@@ -1751,6 +1756,8 @@ function SceneSettingsDialog({ open, onOpenChange, scene, onUpdateScene }: Scene
         gridEnabled: scene.gridEnabled,
         gridType: scene.gridType,
         gridSize: scene.gridSize,
+        gridThickness: scene.gridThickness ?? 1,
+        gridOpacity: scene.gridOpacity ?? 0.4,
         backgroundImage: scene.backgroundImage || '',
       });
     }
@@ -1812,6 +1819,48 @@ function SceneSettingsDialog({ open, onOpenChange, scene, onUpdateScene }: Scene
                 onChange={(e) => setLocalSettings(prev => ({ ...prev, gridSize: parseInt(e.target.value) }))}
                 className="w-full accent-amber-600"
                 data-testid="slider-grid-size"
+              />
+            </div>
+          )}
+
+          {/* Grid Thickness */}
+          {localSettings.gridEnabled && (
+            <div className="space-y-2">
+              <div className="flex justify-between">
+                <Label htmlFor="grid-thickness" className="text-stone-300">Grid Thickness</Label>
+                <span className="text-xs text-amber-500">{localSettings.gridThickness}px</span>
+              </div>
+              <input
+                type="range"
+                id="grid-thickness"
+                min="1"
+                max="5"
+                step="0.5"
+                value={localSettings.gridThickness}
+                onChange={(e) => setLocalSettings(prev => ({ ...prev, gridThickness: parseFloat(e.target.value) }))}
+                className="w-full accent-amber-600"
+                data-testid="slider-grid-thickness"
+              />
+            </div>
+          )}
+
+          {/* Grid Opacity */}
+          {localSettings.gridEnabled && (
+            <div className="space-y-2">
+              <div className="flex justify-between">
+                <Label htmlFor="grid-opacity" className="text-stone-300">Grid Opacity</Label>
+                <span className="text-xs text-amber-500">{Math.round(localSettings.gridOpacity * 100)}%</span>
+              </div>
+              <input
+                type="range"
+                id="grid-opacity"
+                min="0.1"
+                max="1"
+                step="0.05"
+                value={localSettings.gridOpacity}
+                onChange={(e) => setLocalSettings(prev => ({ ...prev, gridOpacity: parseFloat(e.target.value) }))}
+                className="w-full accent-amber-600"
+                data-testid="slider-grid-opacity"
               />
             </div>
           )}
@@ -5290,6 +5339,100 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM }: { open: boolean; on
     carryCapacity: 0,
   });
 
+  const [showImageCrop, setShowImageCrop] = useState(false);
+  const [uploadedImage, setUploadedImage] = useState<string | null>(null);
+  const [cropPosition, setCropPosition] = useState({ x: 0, y: 0, size: 150 });
+  const [imageDimensions, setImageDimensions] = useState({ width: 0, height: 0 });
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const cropImageRef = useRef<HTMLImageElement>(null);
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        setUploadedImage(event.target?.result as string);
+        setShowImageCrop(true);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleImageLoad = () => {
+    if (cropImageRef.current) {
+      const img = cropImageRef.current;
+      setImageDimensions({ width: img.naturalWidth, height: img.naturalHeight });
+      const minDim = Math.min(img.naturalWidth, img.naturalHeight);
+      const initialSize = Math.min(150, minDim);
+      setCropPosition({
+        x: (img.naturalWidth - initialSize) / 2,
+        y: (img.naturalHeight - initialSize) / 2,
+        size: initialSize
+      });
+    }
+  };
+
+  const handleCropDrag = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!cropImageRef.current) return;
+    const container = e.currentTarget.parentElement;
+    if (!container) return;
+    
+    const rect = container.getBoundingClientRect();
+    const img = cropImageRef.current;
+    const scaleX = img.naturalWidth / img.clientWidth;
+    const scaleY = img.naturalHeight / img.clientHeight;
+    
+    const handleMove = (moveEvent: PointerEvent) => {
+      const relX = (moveEvent.clientX - rect.left) * scaleX;
+      const relY = (moveEvent.clientY - rect.top) * scaleY;
+      
+      const newX = Math.max(0, Math.min(relX - cropPosition.size / 2, img.naturalWidth - cropPosition.size));
+      const newY = Math.max(0, Math.min(relY - cropPosition.size / 2, img.naturalHeight - cropPosition.size));
+      
+      setCropPosition(prev => ({ ...prev, x: newX, y: newY }));
+    };
+    
+    const handleUp = () => {
+      document.removeEventListener('pointermove', handleMove);
+      document.removeEventListener('pointerup', handleUp);
+    };
+    
+    document.addEventListener('pointermove', handleMove);
+    document.addEventListener('pointerup', handleUp);
+  };
+
+  const handleCropConfirm = () => {
+    if (!uploadedImage || !cropImageRef.current) return;
+    
+    const canvas = document.createElement('canvas');
+    const outputSize = 128;
+    canvas.width = outputSize;
+    canvas.height = outputSize;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    
+    const img = new Image();
+    img.onload = () => {
+      ctx.drawImage(
+        img,
+        cropPosition.x, cropPosition.y, cropPosition.size, cropPosition.size,
+        0, 0, outputSize, outputSize
+      );
+      const croppedImage = canvas.toDataURL('image/jpeg', 0.9);
+      setFormData(prev => ({ ...prev, image: croppedImage }));
+      setShowImageCrop(false);
+      setUploadedImage(null);
+      if (imageInputRef.current) imageInputRef.current.value = '';
+    };
+    img.src = uploadedImage;
+  };
+
+  const handleCropCancel = () => {
+    setShowImageCrop(false);
+    setUploadedImage(null);
+    if (imageInputRef.current) imageInputRef.current.value = '';
+  };
+
   const handleSubmit = () => {
     if (!formData.name) return;
     onSave(formData);
@@ -5333,8 +5476,41 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM }: { open: boolean; on
                 <Input value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} className="bg-stone-800 border-stone-700" />
               </div>
               <div>
-                <Label>Image URL</Label>
-                <Input value={formData.image} onChange={(e) => setFormData({...formData, image: e.target.value})} className="bg-stone-800 border-stone-700" />
+                <Label>Item Image</Label>
+                <div className="flex items-center gap-2">
+                  {formData.image ? (
+                    <div className="relative">
+                      <img src={formData.image} alt="Item" className="h-12 w-12 rounded object-cover border border-stone-600" />
+                      <button 
+                        type="button"
+                        onClick={() => setFormData({...formData, image: ''})}
+                        className="absolute -top-1 -right-1 bg-red-600 text-white rounded-full h-4 w-4 text-xs flex items-center justify-center hover:bg-red-500"
+                      >×</button>
+                    </div>
+                  ) : (
+                    <div className="h-12 w-12 rounded bg-stone-800 border border-stone-600 flex items-center justify-center text-stone-500">
+                      <ImageIcon className="h-6 w-6" />
+                    </div>
+                  )}
+                  <input 
+                    ref={imageInputRef}
+                    type="file" 
+                    accept="image/*" 
+                    onChange={handleImageUpload}
+                    className="hidden"
+                    data-testid="input-item-image"
+                  />
+                  <Button 
+                    type="button" 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => imageInputRef.current?.click()}
+                    className="bg-stone-800 border-stone-600 hover:bg-stone-700"
+                    data-testid="button-upload-item-image"
+                  >
+                    <Upload className="h-4 w-4 mr-1" /> Upload
+                  </Button>
+                </div>
               </div>
               <div>
                 <Label>Item Type</Label>
@@ -5432,6 +5608,75 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM }: { open: boolean; on
           </div>
         </ScrollArea>
       </DialogContent>
+
+      {/* Image Cropping Dialog */}
+      <Dialog open={showImageCrop} onOpenChange={setShowImageCrop}>
+        <DialogContent className="bg-stone-900 border-stone-700 max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="text-amber-500">Crop Item Image</DialogTitle>
+            <DialogDescription className="text-stone-400">
+              Drag to position the crop area. The image will be cropped as a square.
+            </DialogDescription>
+          </DialogHeader>
+          {uploadedImage && (
+            <div className="relative">
+              <div className="relative overflow-hidden bg-stone-800 rounded-lg" style={{ maxHeight: '400px' }}>
+                <img 
+                  ref={cropImageRef}
+                  src={uploadedImage} 
+                  alt="Crop preview"
+                  className="max-w-full h-auto"
+                  onLoad={handleImageLoad}
+                  draggable={false}
+                />
+                {imageDimensions.width > 0 && cropImageRef.current && (
+                  <div
+                    className="absolute border-2 border-amber-500 bg-amber-500/20 cursor-move"
+                    style={{
+                      left: `${(cropPosition.x / imageDimensions.width) * 100}%`,
+                      top: `${(cropPosition.y / imageDimensions.height) * 100}%`,
+                      width: `${(cropPosition.size / imageDimensions.width) * 100}%`,
+                      height: `${(cropPosition.size / imageDimensions.height) * 100}%`,
+                    }}
+                    onPointerDown={handleCropDrag}
+                  />
+                )}
+              </div>
+              <div className="mt-4 space-y-2">
+                <div className="flex justify-between items-center">
+                  <Label className="text-stone-300">Crop Size</Label>
+                  <span className="text-xs text-amber-500">{Math.round(cropPosition.size)}px</span>
+                </div>
+                <Slider
+                  value={[cropPosition.size]}
+                  onValueChange={(v) => {
+                    const newSize = v[0];
+                    const maxSize = Math.min(imageDimensions.width, imageDimensions.height);
+                    setCropPosition(prev => ({
+                      ...prev,
+                      size: Math.min(newSize, maxSize),
+                      x: Math.min(prev.x, imageDimensions.width - newSize),
+                      y: Math.min(prev.y, imageDimensions.height - newSize)
+                    }));
+                  }}
+                  min={50}
+                  max={Math.min(imageDimensions.width, imageDimensions.height) || 300}
+                  step={10}
+                  className="accent-amber-600"
+                />
+              </div>
+              <div className="flex gap-2 mt-4">
+                <Button onClick={handleCropConfirm} className="flex-1 bg-amber-700 hover:bg-amber-600">
+                  Crop & Save
+                </Button>
+                <Button variant="outline" onClick={handleCropCancel} className="flex-1 bg-stone-800 border-stone-600">
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </Dialog>
   );
 }
