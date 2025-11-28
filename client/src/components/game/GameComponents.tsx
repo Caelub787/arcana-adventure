@@ -569,6 +569,14 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onDeleteToken, ro
   const [isMapLocked, setIsMapLocked] = useState(false);
   const isMapLockedRef = useRef(false);
   
+  // Gesture state machine to prevent conflicts between pan/zoom/token drag
+  type GestureMode = 'idle' | 'panning' | 'pinching' | 'draggingToken';
+  const gestureModeRef = useRef<GestureMode>('idle');
+  
+  // Custom pan state for pointer-based panning (replaces Framer Motion drag)
+  const panStartRef = useRef<{ pointerX: number; pointerY: number; panX: number; panY: number } | null>(null);
+  const panPointerIdRef = useRef<number | null>(null);
+  
   const containerRef = useRef<HTMLDivElement>(null);
   const lastTouchDistanceRef = useRef<number | null>(null);
   
@@ -626,11 +634,11 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onDeleteToken, ro
     e.preventDefault();
     e.stopPropagation();
     
+    // Set gesture mode to prevent map panning
+    gestureModeRef.current = 'draggingToken';
+    
     const target = e.currentTarget as HTMLElement;
     target.setPointerCapture(e.pointerId);
-    
-    // Lock the current map position to prevent any drift during token drag
-    panRef.current = { x: motionX.get(), y: motionY.get() };
     
     const effectiveGridSize = scene?.gridSize || gridSize;
     const gridEnabled = scene?.gridEnabled !== undefined ? scene.gridEnabled : true;
@@ -704,10 +712,8 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onDeleteToken, ro
     // Save the final position
     onMoveToken(token.id, draggingToken.visualX, draggingToken.visualY);
     
-    // Reset motion values to match panRef to prevent map teleporting
-    // This ensures Framer Motion doesn't apply accumulated drag delta
-    motionX.set(panRef.current.x);
-    motionY.set(panRef.current.y);
+    // Reset gesture mode
+    gestureModeRef.current = 'idle';
     
     setDraggingToken(null);
   };
@@ -721,6 +727,127 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onDeleteToken, ro
     if (!token.characterId || !characters) return undefined;
     return characters.find((c: any) => c.id === token.characterId);
   };
+
+  /**
+   * Custom pointer-based map panning (replaces Framer Motion drag)
+   * This gives us full control over when panning is allowed and prevents teleportation bugs.
+   */
+  const handleMapPointerDown = (e: React.PointerEvent) => {
+    // Don't start panning if locked, pinching, or dragging a token
+    if (isMapLockedRef.current) return;
+    if (gestureModeRef.current !== 'idle') return;
+    
+    // Only pan with primary button (left click / single touch)
+    if (e.button !== 0) return;
+    
+    gestureModeRef.current = 'panning';
+    panPointerIdRef.current = e.pointerId;
+    panStartRef.current = {
+      pointerX: e.clientX,
+      pointerY: e.clientY,
+      panX: panRef.current.x,
+      panY: panRef.current.y
+    };
+    
+    // Capture pointer for reliable tracking
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  };
+  
+  const handleMapPointerMove = (e: React.PointerEvent) => {
+    // Only handle if we're panning with this pointer
+    if (gestureModeRef.current !== 'panning') return;
+    if (panPointerIdRef.current !== e.pointerId) return;
+    if (!panStartRef.current) return;
+    
+    const deltaX = e.clientX - panStartRef.current.pointerX;
+    const deltaY = e.clientY - panStartRef.current.pointerY;
+    
+    const newX = panStartRef.current.panX + deltaX;
+    const newY = panStartRef.current.panY + deltaY;
+    
+    panRef.current = { x: newX, y: newY };
+    motionX.set(newX);
+    motionY.set(newY);
+  };
+  
+  const handleMapPointerUp = (e: React.PointerEvent) => {
+    if (gestureModeRef.current !== 'panning') return;
+    if (panPointerIdRef.current !== e.pointerId) return;
+    
+    try {
+      (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+    } catch (err) {
+      // Pointer capture may already be released
+    }
+    
+    gestureModeRef.current = 'idle';
+    panPointerIdRef.current = null;
+    panStartRef.current = null;
+    notifyViewChange();
+  };
+  
+  const handleMapPointerCancel = (e: React.PointerEvent) => {
+    if (gestureModeRef.current === 'panning' && panPointerIdRef.current === e.pointerId) {
+      gestureModeRef.current = 'idle';
+      panPointerIdRef.current = null;
+      panStartRef.current = null;
+    }
+  };
+  
+  // Force reset all gesture state - used as a failsafe
+  // Releases pointer capture and clears all gesture tracking refs
+  const forceResetGestureState = () => {
+    // Release pointer capture if held on map container
+    const container = containerRef.current;
+    if (container && panPointerIdRef.current !== null) {
+      try {
+        container.releasePointerCapture(panPointerIdRef.current);
+      } catch (err) {
+        // Pointer capture may already be released or invalid
+      }
+    }
+    
+    // Reset all gesture state
+    gestureModeRef.current = 'idle';
+    panPointerIdRef.current = null;
+    panStartRef.current = null;
+    lastTouchDistanceRef.current = null;
+    setIsPinching(false);
+  };
+  
+  // Global cleanup effect - resets gesture state if pointer is lost
+  useEffect(() => {
+    const handleGlobalPointerUp = () => {
+      // Reset panning state on any global pointer up as failsafe
+      if (gestureModeRef.current === 'panning' || gestureModeRef.current === 'pinching') {
+        forceResetGestureState();
+      }
+    };
+    
+    // Also reset on visibility change (when user switches tabs/apps)
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        forceResetGestureState();
+      }
+    };
+    
+    // Reset on blur (when window loses focus)
+    const handleBlur = () => {
+      forceResetGestureState();
+    };
+    
+    window.addEventListener('pointerup', handleGlobalPointerUp);
+    window.addEventListener('pointercancel', handleGlobalPointerUp);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('blur', handleBlur);
+    
+    return () => {
+      window.removeEventListener('pointerup', handleGlobalPointerUp);
+      window.removeEventListener('pointercancel', handleGlobalPointerUp);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('blur', handleBlur);
+    };
+  }, []);
 
   /**
    * handleWheel - Desktop zoom-to-cursor implementation
@@ -746,8 +873,9 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onDeleteToken, ro
     const handleWheel = (e: WheelEvent) => {
       e.preventDefault();
       
-      // Prevent zooming when map is locked (use ref to avoid stale closure)
+      // Prevent zooming when map is locked or in a gesture
       if (isMapLockedRef.current) return;
+      if (gestureModeRef.current !== 'idle' && gestureModeRef.current !== 'panning') return;
       
       const currentZoom = zoomRef.current;
       const currentPan = panRef.current;
@@ -810,6 +938,13 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onDeleteToken, ro
 
     const handleTouchStart = (e: TouchEvent) => {
       if (e.touches.length === 2) {
+        // Cancel any ongoing pan when pinching starts
+        if (gestureModeRef.current === 'panning') {
+          gestureModeRef.current = 'idle';
+          panPointerIdRef.current = null;
+          panStartRef.current = null;
+        }
+        gestureModeRef.current = 'pinching';
         setIsPinching(true);
       } else if (e.touches.length === 1) {
         setIsPinching(false);
@@ -819,9 +954,10 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onDeleteToken, ro
     const handleTouchMove = (e: TouchEvent) => {
       if (e.touches.length === 2) {
         e.preventDefault();
+        gestureModeRef.current = 'pinching';
         setIsPinching(true);
         
-        // Prevent zooming when map is locked (use ref to avoid stale closure)
+        // Prevent zooming when map is locked
         if (isMapLockedRef.current) return;
         
         const currentZoom = zoomRef.current;
@@ -876,6 +1012,9 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onDeleteToken, ro
       if (e.touches.length < 2) {
         lastTouchDistanceRef.current = null;
         setIsPinching(false);
+        if (gestureModeRef.current === 'pinching') {
+          gestureModeRef.current = 'idle';
+        }
       }
     };
 
@@ -922,15 +1061,11 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onDeleteToken, ro
            onClick={() => {
              const newLockState = !isMapLocked;
              
-             // Sync motion values to panRef before toggling lock to prevent teleporting
-             // This ensures Framer Motion doesn't apply accumulated drag delta when drag prop changes
-             panRef.current = { x: motionX.get(), y: motionY.get() };
+             // Force reset all gesture state when toggling lock to ensure clean state
+             forceResetGestureState();
              
-             // Update ref synchronously to prevent zoom race condition
+             // Update ref synchronously
              isMapLockedRef.current = newLockState;
-             if (newLockState) {
-               lastTouchDistanceRef.current = null;
-             }
              setIsMapLocked(newLockState);
            }}
            data-testid="button-lock-map"
@@ -941,8 +1076,9 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onDeleteToken, ro
       </div>
 
       {/* Draggable World Container - Large scrollable space beyond image bounds */}
+      {/* Using custom pointer handlers instead of Framer Motion drag for stability */}
       <motion.div 
-        className={`absolute ${isMapLocked || draggingToken ? 'cursor-default' : 'cursor-grab active:cursor-grabbing'}`}
+        className={`absolute ${isMapLocked || draggingToken ? 'cursor-default' : 'cursor-grab active:cursor-grabbing'} touch-none`}
         style={{ 
           width: '20000px', 
           height: '20000px', 
@@ -953,20 +1089,11 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onDeleteToken, ro
           top: '-9000px',
           transformOrigin: "0 0"
         }}
-        drag
-        dragListener={!isPinching && !isMapLocked && !draggingToken}
-        dragElastic={0}
-        dragMomentum={false}
+        onPointerDown={handleMapPointerDown}
+        onPointerMove={handleMapPointerMove}
+        onPointerUp={handleMapPointerUp}
+        onPointerCancel={handleMapPointerCancel}
         onClick={() => setShowDeleteButton(null)}
-        onDragStart={() => {
-          // Sync panRef with motion values at drag start to prevent jumps
-          panRef.current = { x: motionX.get(), y: motionY.get() };
-        }}
-        onDragEnd={() => {
-          // Sync motion values back to refs after drag
-          panRef.current = { x: motionX.get(), y: motionY.get() };
-          notifyViewChange();
-        }}
       >
         {/* Conditional Grid Overlay - Extends infinitely across the large space */}
         {(scene?.gridEnabled !== undefined ? scene.gridEnabled : true) && (
