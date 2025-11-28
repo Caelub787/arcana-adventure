@@ -27,7 +27,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { toast } from "@/hooks/use-toast";
 import bgImage from "@assets/generated_images/dark_fantasy_landscape_with_arcane_ruins.png";
 import parchmentTexture from "@assets/generated_images/aged_parchment_paper_texture.png";
-import battleMapImage1 from "@assets/generated_images/top_down_dungeon_battlemap.png";
+import battleMapImage1 from "@/assets/rocky_coast_battlemap.jpg";
 import warriorToken from "@assets/generated_images/top_down_warrior_token.png";
 import goblinToken from "@assets/generated_images/top_down_goblin_token.png";
 
@@ -549,6 +549,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, role, gridSize, b
   const zoomRef = useRef(1);
   const [isPinching, setIsPinching] = useState(false);
   const [, forceUpdate] = useState(0); // Only for zoom display updates
+  const initializedSceneRef = useRef<string | null>(null);
   
   const containerRef = useRef<HTMLDivElement>(null);
   const lastTouchDistanceRef = useRef<number | null>(null);
@@ -557,6 +558,29 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, role, gridSize, b
   const motionX = useMotionValue(0);
   const motionY = useMotionValue(0);
   const motionZoom = useMotionValue(1);
+  
+  // Initialize view from scene's default values when scene changes
+  useEffect(() => {
+    if (scene && scene.id !== initializedSceneRef.current) {
+      const defaultX = scene.defaultViewX ?? 0;
+      const defaultY = scene.defaultViewY ?? 0;
+      const defaultZoom = scene.defaultViewZoom ?? 1;
+      
+      panRef.current = { x: defaultX, y: defaultY };
+      zoomRef.current = defaultZoom;
+      motionX.set(defaultX);
+      motionY.set(defaultY);
+      motionZoom.set(defaultZoom);
+      
+      initializedSceneRef.current = scene.id;
+      forceUpdate(n => n + 1);
+      
+      // Notify parent of initial view
+      if (onViewChange) {
+        onViewChange({ x: defaultX, y: defaultY, zoom: defaultZoom });
+      }
+    }
+  }, [scene, motionX, motionY, motionZoom, onViewChange]);
   
   // Throttled view change notification - only on significant changes
   const notifyViewChangeRef = useRef<NodeJS.Timeout | null>(null);
@@ -871,8 +895,8 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, role, gridSize, b
               whileDrag={{ scale: 1.15, zIndex: 20 }}
               className="absolute top-0 left-0 rounded-full shadow-xl ring-2 ring-white/20 overflow-visible bg-black token-shadow cursor-pointer"
               style={{ 
-                width: gridSize, 
-                height: gridSize,
+                width: scene?.gridSize || gridSize, 
+                height: scene?.gridSize || gridSize,
                 left: token.x + 9000,
                 top: token.y + 9000
               }}
