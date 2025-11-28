@@ -157,7 +157,7 @@ function SceneSettingsForm({ scene, onUpdateScene }: { scene: Scene; onUpdateSce
           <input
             type="range"
             id="grid-opacity"
-            min="0.1"
+            min="0"
             max="1"
             step="0.05"
             value={localSettings.gridOpacity}
