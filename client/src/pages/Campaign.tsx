@@ -876,12 +876,12 @@ export default function Campaign() {
         </div>
       )}
 
-      {/* Character Sheet Dialog */}
+      {/* Character Sheet Dialog - Full screen on mobile */}
       <Dialog open={!!viewingCharacterSheet} onOpenChange={(open) => !open && setViewingCharacterSheet(null)}>
-        <DialogContent className="max-w-4xl h-[90vh] bg-stone-900 border-stone-700 text-stone-200 p-0">
-          <DialogHeader className="p-6 pb-0">
-            <DialogTitle className="text-2xl text-amber-500 font-display">
-              {viewingCharacterSheet?.name} - Character Sheet
+        <DialogContent className="w-full h-full max-w-full max-h-full sm:max-w-4xl sm:h-[90vh] sm:max-h-[90vh] bg-stone-900 border-stone-700 text-stone-200 p-0 rounded-none sm:rounded-lg">
+          <DialogHeader className="p-4 pb-0 sm:p-6 sm:pb-0 shrink-0">
+            <DialogTitle className="text-lg sm:text-2xl text-amber-500 font-display truncate pr-8">
+              {viewingCharacterSheet?.name}
             </DialogTitle>
           </DialogHeader>
           {viewingCharacterSheet && (

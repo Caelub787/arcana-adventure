@@ -17,7 +17,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { 
   Sword, Shield, Scroll, Map as MapIcon, Settings, 
   Users, User, Plus, LogOut, Menu, ChevronRight, ChevronLeft, ChevronDown,
-  Heart, Zap, Backpack, Sparkles, Dice5, MessageSquare, RefreshCw, X, Trash2, Package, FolderOpen, Lock, Unlock, Camera
+  Heart, Zap, Backpack, Sparkles, Dice5, MessageSquare, RefreshCw, X, Trash2, Package, FolderOpen, Lock, Unlock, Camera,
+  BarChart3, Grid3X3, ScrollText
 } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { type Scene, type Hotbar, api } from "@/lib/api";
@@ -3447,20 +3448,85 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
     { key: 'skillCulture', name: 'Culture' },
   ];
 
+  // Tab configuration matching battlemap sidebar icons and colors
+  const tabConfig = [
+    { value: 'overview', icon: User, color: 'stone', label: 'Overview' },
+    { value: 'attributes', icon: BarChart3, color: 'blue', label: 'Attributes' },
+    { value: 'skills', icon: Zap, color: 'green', label: 'Skills' },
+    { value: 'inventory', icon: Backpack, color: 'amber', label: 'Inventory' },
+    { value: 'magic', icon: Sparkles, color: 'purple', label: 'Magic' },
+    { value: 'hotbars', icon: Grid3X3, color: 'red', label: 'Hotbars' },
+    { value: 'background', icon: ScrollText, color: 'cyan', label: 'Background' },
+  ];
+
+  const getTabColorClasses = (color: string) => {
+    const colors: Record<string, { base: string; active: string }> = {
+      stone: { 
+        base: 'text-stone-400 hover:text-stone-200 hover:bg-stone-800/50',
+        active: 'data-[state=active]:bg-stone-700 data-[state=active]:text-stone-100 data-[state=active]:border-stone-500'
+      },
+      blue: { 
+        base: 'text-blue-400/70 hover:text-blue-300 hover:bg-blue-900/30',
+        active: 'data-[state=active]:bg-blue-900/80 data-[state=active]:text-blue-200 data-[state=active]:border-blue-500'
+      },
+      green: { 
+        base: 'text-green-400/70 hover:text-green-300 hover:bg-green-900/30',
+        active: 'data-[state=active]:bg-green-900/80 data-[state=active]:text-green-200 data-[state=active]:border-green-500'
+      },
+      amber: { 
+        base: 'text-amber-400/70 hover:text-amber-300 hover:bg-amber-900/30',
+        active: 'data-[state=active]:bg-amber-900/80 data-[state=active]:text-amber-200 data-[state=active]:border-amber-500'
+      },
+      purple: { 
+        base: 'text-purple-400/70 hover:text-purple-300 hover:bg-purple-900/30',
+        active: 'data-[state=active]:bg-purple-900/80 data-[state=active]:text-purple-200 data-[state=active]:border-purple-500'
+      },
+      red: { 
+        base: 'text-red-400/70 hover:text-red-300 hover:bg-red-900/30',
+        active: 'data-[state=active]:bg-red-900/80 data-[state=active]:text-red-200 data-[state=active]:border-red-500'
+      },
+      cyan: { 
+        base: 'text-cyan-400/70 hover:text-cyan-300 hover:bg-cyan-900/30',
+        active: 'data-[state=active]:bg-cyan-900/80 data-[state=active]:text-cyan-200 data-[state=active]:border-cyan-500'
+      },
+    };
+    return `${colors[color]?.base || ''} ${colors[color]?.active || ''}`;
+  };
+
   return (
-    <div className="w-full h-full bg-stone-900 text-stone-200">
-      <Tabs defaultValue={defaultTab} className="w-full h-full flex flex-col">
-        <TabsList className="grid w-full grid-cols-7 bg-stone-800 shrink-0">
-          <TabsTrigger value="overview" data-testid="tab-overview" className="text-xs sm:text-sm">Overview</TabsTrigger>
-          <TabsTrigger value="attributes" data-testid="tab-attributes" className="text-xs sm:text-sm">Attributes</TabsTrigger>
-          <TabsTrigger value="skills" data-testid="tab-skills" className="text-xs sm:text-sm">Skills</TabsTrigger>
-          <TabsTrigger value="inventory" data-testid="tab-inventory" className="text-xs sm:text-sm">Inventory</TabsTrigger>
-          <TabsTrigger value="magic" data-testid="tab-magic" className="text-xs sm:text-sm">Magic</TabsTrigger>
-          <TabsTrigger value="hotbars" data-testid="tab-hotbars" className="text-xs sm:text-sm">Hotbars</TabsTrigger>
-          <TabsTrigger value="background" data-testid="tab-background" className="text-xs sm:text-sm">Background</TabsTrigger>
+    <div className="w-full h-full bg-stone-900 text-stone-200 flex flex-col overflow-hidden">
+      <Tabs defaultValue={defaultTab} className="w-full h-full flex flex-col overflow-hidden">
+        {/* Icon-based tabs matching battlemap sidebar - icons on mobile, icons+text on desktop */}
+        <TabsList className="grid w-full grid-cols-7 bg-stone-950 border-b border-stone-700 shrink-0 h-auto p-1 gap-0.5 sm:gap-1">
+          {tabConfig.map(({ value, icon: Icon, color, label }) => (
+            <TooltipProvider key={value}>
+              <Tooltip delayDuration={0}>
+                <TooltipTrigger asChild>
+                  <TabsTrigger 
+                    value={value} 
+                    data-testid={`tab-${value}`}
+                    aria-label={label}
+                    className={`
+                      flex flex-col items-center justify-center p-1.5 sm:p-2 rounded-lg border border-transparent
+                      transition-all duration-200 min-h-[44px] sm:min-h-[56px]
+                      data-[state=active]:shadow-md
+                      ${getTabColorClasses(color)}
+                    `}
+                  >
+                    <Icon className="h-5 w-5 sm:h-4 sm:w-4" />
+                    <span className="text-[9px] sm:text-xs mt-0.5 leading-tight font-medium">{label}</span>
+                  </TabsTrigger>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="bg-stone-800 border-stone-700 text-stone-200">
+                  <p>{label}</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          ))}
         </TabsList>
 
-        <ScrollArea className="flex-1 p-4">
+        {/* Scrollable content area - entire sheet scrolls as one unit */}
+        <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-3 sm:p-4 custom-scrollbar">
           {/* OVERVIEW TAB */}
           <TabsContent value="overview" className="space-y-4 mt-0" data-testid="content-overview">
             <Card className="bg-stone-800 border-stone-700">
@@ -4089,7 +4155,7 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                 </div>
 
                 {/* Item List */}
-                <ScrollArea className="h-[400px] pr-4">
+                <div className="space-y-2">
                   {hierarchicalItems.length === 0 ? (
                     <div className="text-center py-12 text-stone-400">
                       <Backpack className="h-12 w-12 mx-auto mb-3 opacity-50" />
@@ -4251,7 +4317,7 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                       })}
                     </div>
                   )}
-                </ScrollArea>
+                </div>
               </CardContent>
             </Card>
           </TabsContent>
@@ -4352,7 +4418,7 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                 </div>
 
                 {/* Spell List */}
-                <ScrollArea className="h-[400px]">
+                <div>
                   {(() => {
                     let filteredSpells = [...spells];
 
@@ -4476,7 +4542,7 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                       </div>
                     );
                   })()}
-                </ScrollArea>
+                </div>
               </CardContent>
             </Card>
 
@@ -5156,7 +5222,7 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
               </CardContent>
             </Card>
           </TabsContent>
-        </ScrollArea>
+        </div>
       </Tabs>
 
       {/* Item Detail Dialog */}
