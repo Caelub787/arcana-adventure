@@ -554,8 +554,16 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onDeleteToken, ro
   const [showDeleteButton, setShowDeleteButton] = useState<string | null>(null);
   const holdTimerRef = useRef<NodeJS.Timeout | null>(null);
   
-  // Track snapped positions during drag for live grid snapping
-  const [draggingToken, setDraggingToken] = useState<{ id: string; snappedX: number; snappedY: number } | null>(null);
+  // Track token being dragged with its current visual position
+  const [draggingToken, setDraggingToken] = useState<{ 
+    id: string; 
+    visualX: number; 
+    visualY: number;
+    startX: number;
+    startY: number;
+    startPointerX: number;
+    startPointerY: number;
+  } | null>(null);
   
   const containerRef = useRef<HTMLDivElement>(null);
   const lastTouchDistanceRef = useRef<number | null>(null);
@@ -607,45 +615,88 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onDeleteToken, ro
   };
 
   /**
-   * handleDrag - Live grid snapping during token drag
-   * Updates the snapped position in real-time as the user drags
+   * startTokenDrag - Initiates custom pointer-based token dragging
+   * Captures pointer and sets up drag state for precise grid snapping
    */
-  const handleDrag = (e: any, info: any, token: Token) => {
+  const startTokenDrag = (e: React.PointerEvent, token: Token) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    const target = e.currentTarget as HTMLElement;
+    target.setPointerCapture(e.pointerId);
+    
     const effectiveGridSize = scene?.gridSize || gridSize;
     const gridEnabled = scene?.gridEnabled !== undefined ? scene.gridEnabled : true;
     
-    if (gridEnabled) {
-      const snappedX = Math.round((token.x + info.offset.x) / effectiveGridSize) * effectiveGridSize;
-      const snappedY = Math.round((token.y + info.offset.y) / effectiveGridSize) * effectiveGridSize;
-      setDraggingToken({ id: token.id, snappedX, snappedY });
-    } else {
-      setDraggingToken(null);
+    // Calculate initial snapped position
+    const visualX = gridEnabled 
+      ? Math.round(token.x / effectiveGridSize) * effectiveGridSize 
+      : token.x;
+    const visualY = gridEnabled 
+      ? Math.round(token.y / effectiveGridSize) * effectiveGridSize 
+      : token.y;
+    
+    setDraggingToken({
+      id: token.id,
+      visualX,
+      visualY,
+      startX: token.x,
+      startY: token.y,
+      startPointerX: e.clientX,
+      startPointerY: e.clientY
+    });
+    
+    // Clear any delete button
+    setShowDeleteButton(null);
+    if (holdTimerRef.current) {
+      clearTimeout(holdTimerRef.current);
+      holdTimerRef.current = null;
     }
   };
 
   /**
-   * handleDragEnd - Processes token drag completion
-   * Implements grid snapping when enabled, or free placement when disabled.
-   * Rounds token position to nearest grid cell for alignment.
+   * moveTokenDrag - Updates token position during drag with grid snapping
+   * Token visually snaps to grid cells as pointer moves
    */
-  const handleDragEnd = (e: any, info: any, token: Token) => {
-    // Use scene settings if available, otherwise fall back to legacy gridSize prop
+  const moveTokenDrag = (e: React.PointerEvent) => {
+    if (!draggingToken) return;
+    
     const effectiveGridSize = scene?.gridSize || gridSize;
     const gridEnabled = scene?.gridEnabled !== undefined ? scene.gridEnabled : true;
+    const currentZoom = zoomRef.current;
     
-    // Clear dragging state
+    // Calculate movement delta in world coordinates (accounting for zoom)
+    const deltaX = (e.clientX - draggingToken.startPointerX) / currentZoom;
+    const deltaY = (e.clientY - draggingToken.startPointerY) / currentZoom;
+    
+    // Calculate new position
+    const rawX = draggingToken.startX + deltaX;
+    const rawY = draggingToken.startY + deltaY;
+    
+    // Snap to grid if enabled
+    const visualX = gridEnabled 
+      ? Math.round(rawX / effectiveGridSize) * effectiveGridSize 
+      : rawX;
+    const visualY = gridEnabled 
+      ? Math.round(rawY / effectiveGridSize) * effectiveGridSize 
+      : rawY;
+    
+    setDraggingToken(prev => prev ? { ...prev, visualX, visualY } : null);
+  };
+
+  /**
+   * endTokenDrag - Finalizes token position on drag end
+   * Commits the snapped position to the server
+   */
+  const endTokenDrag = (e: React.PointerEvent, token: Token) => {
+    if (!draggingToken || draggingToken.id !== token.id) return;
+    
+    const target = e.currentTarget as HTMLElement;
+    target.releasePointerCapture(e.pointerId);
+    
+    // Save the final position
+    onMoveToken(token.id, draggingToken.visualX, draggingToken.visualY);
     setDraggingToken(null);
-    
-    if (gridEnabled) {
-      const newX = Math.round((token.x + info.offset.x) / effectiveGridSize) * effectiveGridSize;
-      const newY = Math.round((token.y + info.offset.y) / effectiveGridSize) * effectiveGridSize;
-      onMoveToken(token.id, newX, newY);
-    } else {
-      // Free placement when grid is disabled
-      const newX = token.x + info.offset.x;
-      const newY = token.y + info.offset.y;
-      onMoveToken(token.id, newX, newY);
-    }
   };
 
   /**
@@ -915,9 +966,20 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onDeleteToken, ro
           const character = getCharacterForToken(token);
           const tokenImage = character?.portrait || token.image;
           const hpPercent = character ? (character.hp / character.maxHp) * 100 : null;
+          const effectiveGridSize = scene?.gridSize || gridSize;
+          const canDrag = role === 'gm' || token.type === 'player';
+          
+          const isDragging = draggingToken?.id === token.id;
+          const displayX = isDragging ? draggingToken.visualX : token.x;
+          const displayY = isDragging ? draggingToken.visualY : token.y;
           
           const handleTokenPointerDown = (e: React.PointerEvent) => {
             e.stopPropagation();
+            
+            if (canDrag) {
+              startTokenDrag(e, token);
+            }
+            
             if (role === 'gm') {
               holdTimerRef.current = setTimeout(() => {
                 setShowDeleteButton(token.id);
@@ -925,67 +987,51 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onDeleteToken, ro
             }
           };
           
-          const handleTokenPointerUp = () => {
+          const handleTokenPointerUp = (e: React.PointerEvent) => {
             if (holdTimerRef.current) {
               clearTimeout(holdTimerRef.current);
               holdTimerRef.current = null;
             }
+            if (isDragging) {
+              endTokenDrag(e, token);
+            }
           };
           
-          const handleTokenPointerLeave = () => {
+          const handleTokenPointerMove = (e: React.PointerEvent) => {
+            if (isDragging) {
+              moveTokenDrag(e);
+            }
+          };
+          
+          const handleTokenPointerCancel = (e: React.PointerEvent) => {
             if (holdTimerRef.current) {
               clearTimeout(holdTimerRef.current);
               holdTimerRef.current = null;
             }
-          };
-          
-          const handleTokenDragStart = () => {
-            if (holdTimerRef.current) {
-              clearTimeout(holdTimerRef.current);
-              holdTimerRef.current = null;
+            if (isDragging) {
+              setDraggingToken(null);
             }
-            setShowDeleteButton(null);
           };
-          
-          const effectiveGridSize = scene?.gridSize || gridSize;
-          const gridEnabled = scene?.gridEnabled !== undefined ? scene.gridEnabled : true;
-          const isDragging = draggingToken?.id === token.id && gridEnabled;
-          const snapCorrectionX = isDragging ? draggingToken.snappedX - token.x : 0;
-          const snapCorrectionY = isDragging ? draggingToken.snappedY - token.y : 0;
           
           return (
-            <motion.div
+            <div
               key={token.id}
-              drag={role === 'gm' || token.type === 'player'} 
-              dragMomentum={false}
-              dragElastic={0}
-              dragSnapToOrigin={false}
               onPointerDown={handleTokenPointerDown}
               onPointerUp={handleTokenPointerUp}
-              onPointerLeave={handleTokenPointerLeave}
-              onDragStart={handleTokenDragStart}
-              onDrag={(e, info) => handleDrag(e, info, token)}
-              onDragEnd={(e, info) => handleDragEnd(e, info, token)}
+              onPointerMove={handleTokenPointerMove}
+              onPointerCancel={handleTokenPointerCancel}
               onClick={(e) => { 
                 e.stopPropagation(); 
-                if (showDeleteButton !== token.id) {
+                if (showDeleteButton !== token.id && !isDragging) {
                   onTokenClick && onTokenClick(token);
                 }
               }}
-              initial={false}
-              animate={isDragging ? { 
-                x: snapCorrectionX,
-                y: snapCorrectionY
-              } : undefined}
-              transition={{ duration: 0 }}
-              whileHover={{ scale: 1.1 }}
-              whileDrag={{ scale: 1.15, zIndex: 20 }}
-              className="absolute top-0 left-0 rounded-full shadow-xl ring-2 ring-white/20 overflow-visible bg-black token-shadow cursor-pointer"
+              className={`absolute top-0 left-0 rounded-full shadow-xl ring-2 ring-white/20 overflow-visible bg-black token-shadow cursor-pointer touch-none select-none ${isDragging ? 'z-20 scale-110' : 'hover:scale-105'} transition-transform`}
               style={{ 
                 width: effectiveGridSize, 
                 height: effectiveGridSize,
-                left: token.x + 9000,
-                top: token.y + 9000
+                left: displayX + 9000,
+                top: displayY + 9000
               }}
               aria-label={`${token.type} token`}
               role="button"
@@ -1026,7 +1072,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onDeleteToken, ro
                   {character.hp}/{character.maxHp} HP
                 </div>
               )}
-            </motion.div>
+            </div>
           );
         })}
       </motion.div>
