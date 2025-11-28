@@ -921,6 +921,11 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onDeleteToken, ro
            className={`bg-black/50 hover:bg-black/80 text-xs border backdrop-blur-sm ${isMapLocked ? 'border-amber-500 text-amber-400' : 'border-white/10'}`}
            onClick={() => {
              const newLockState = !isMapLocked;
+             
+             // Sync motion values to panRef before toggling lock to prevent teleporting
+             // This ensures Framer Motion doesn't apply accumulated drag delta when drag prop changes
+             panRef.current = { x: motionX.get(), y: motionY.get() };
+             
              // Update ref synchronously to prevent zoom race condition
              isMapLockedRef.current = newLockState;
              if (newLockState) {
