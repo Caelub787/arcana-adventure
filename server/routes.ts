@@ -612,11 +612,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         role: "gm"
       });
 
-      // Create default scene
+      // Create default scene (null backgroundImage uses frontend's default Rocky Coast image)
       const defaultScene = await storage.createScene({
         campaignId: campaign.id,
         name: "Default Scene",
-        backgroundImage: "/default-map.jpg",
+        backgroundImage: null,
         gridEnabled: true,
         gridType: "square",
         gridSize: gridSize || 50,

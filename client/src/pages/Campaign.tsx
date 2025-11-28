@@ -4,13 +4,14 @@ import { motion } from "framer-motion";
 import { CharacterCreation, BattleMap, CampaignMenu, CharacterSheet, BattleMapHotbars } from "@/components/game/GameComponents";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Loader2, Settings, Map as MapIcon, Layers, Trash2, MessageSquare, User, BarChart3, Zap, Backpack, Sparkles, Grid3X3, ScrollText } from "lucide-react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import battleMapImage1 from "@assets/generated_images/top_down_dungeon_battlemap.png";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import battleMapImage1 from "@/assets/rocky_coast_battlemap.jpg";
 import battleMapImage2 from "@assets/generated_images/dark_fantasy_landscape_with_arcane_ruins.png";
 import warriorToken from "@assets/generated_images/top_down_warrior_token.png";
 import goblinToken from "@assets/generated_images/top_down_goblin_token.png";
@@ -169,6 +170,10 @@ export default function Campaign() {
   const [newSceneName, setNewSceneName] = useState("");
   const [viewingCharacterSheet, setViewingCharacterSheet] = useState<any>(null);
   const [characterSheetDefaultTab, setCharacterSheetDefaultTab] = useState("overview");
+  
+  const [showCampaignDialog, setShowCampaignDialog] = useState(false);
+  const [newCampaignName, setNewCampaignName] = useState("");
+  const [newCampaignSystem, setNewCampaignSystem] = useState("arcana-adventure");
 
   // Determine effective campaign ID (from URL or newly created)
   const effectiveCampaignId = campaignId || createdCampaignId;
@@ -243,6 +248,19 @@ export default function Campaign() {
       api.updateToken(id, { x, y }),
     onError: (error: any) => {
       toast({ title: "Error", description: error.message || "Failed to update token", variant: "destructive" });
+    },
+  });
+
+  // Delete token mutation
+  const deleteTokenMutation = useMutation({
+    mutationFn: (tokenId: string) => api.deleteToken(tokenId),
+    onSuccess: (_, tokenId) => {
+      setTokens(prev => prev.filter(t => t.id !== tokenId));
+      queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${effectiveCampaignId}/tokens`] });
+      toast({ title: "Success", description: "Token removed from battlemap" });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message || "Failed to delete token", variant: "destructive" });
     },
   });
 
@@ -325,14 +343,26 @@ export default function Campaign() {
     },
   });
 
-  // Handle New Campaign Creation
+  // Handle New Campaign Creation - Show dialog instead of auto-creating
   useEffect(() => {
     if (role === 'gm' && isNew && !hasCreatedRef.current && user) {
-      const campaignName = `Campaign ${new Date().toLocaleDateString()}`;
-      createCampaignMutation.mutate(campaignName);
+      setShowCampaignDialog(true);
       hasCreatedRef.current = true;
     }
   }, [role, isNew, user]);
+
+  const handleCreateCampaign = () => {
+    if (!newCampaignName.trim()) {
+      toast({ title: "Error", description: "Please enter a campaign name", variant: "destructive" });
+      return;
+    }
+    createCampaignMutation.mutate(newCampaignName.trim());
+    setShowCampaignDialog(false);
+  };
+
+  const handleDeleteToken = (tokenId: string) => {
+    deleteTokenMutation.mutate(tokenId);
+  };
 
   // Load tokens from API
   useEffect(() => {
@@ -510,6 +540,69 @@ export default function Campaign() {
           <Loader2 className="h-12 w-12 sm:h-8 sm:w-8 animate-spin text-amber-500 glow-amber" aria-label="Loading" />
           <p className="text-stone-400 text-responsive-lg">Loading campaign...</p>
         </div>
+      </div>
+    );
+  }
+
+  // Show campaign creation dialog
+  if (showCampaignDialog) {
+    return (
+      <div className="relative h-screen w-screen overflow-hidden bg-black text-white flex items-center justify-center">
+        <Dialog open={showCampaignDialog} onOpenChange={(open) => !open && setLocation('/')}>
+          <DialogContent className="bg-stone-900 border-stone-700 text-stone-200 sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="text-amber-500 font-display text-2xl">Create New Campaign</DialogTitle>
+              <DialogDescription className="text-stone-400">
+                Set up your new adventure with a name and game system.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-6 pt-4">
+              <div className="space-y-2">
+                <Label htmlFor="campaign-name" className="text-stone-300">Campaign Name</Label>
+                <Input
+                  id="campaign-name"
+                  value={newCampaignName}
+                  onChange={(e) => setNewCampaignName(e.target.value)}
+                  placeholder="Enter campaign name..."
+                  className="bg-stone-800 border-stone-700 text-stone-200"
+                  data-testid="input-campaign-name"
+                  autoFocus
+                />
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="campaign-system" className="text-stone-300">Game System</Label>
+                <Select value={newCampaignSystem} onValueChange={setNewCampaignSystem}>
+                  <SelectTrigger className="bg-stone-800 border-stone-700 text-stone-200" data-testid="select-game-system">
+                    <SelectValue placeholder="Select a system" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-stone-800 border-stone-700">
+                    <SelectItem value="arcana-adventure" className="text-stone-200">Arcana Adventure</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <Button
+                  variant="outline"
+                  onClick={() => setLocation('/')}
+                  className="flex-1 border-stone-600 text-stone-300 hover:bg-stone-800"
+                  data-testid="button-cancel-campaign"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleCreateCampaign}
+                  className="flex-1 bg-amber-600 hover:bg-amber-700 text-white"
+                  disabled={!newCampaignName.trim()}
+                  data-testid="button-create-campaign"
+                >
+                  Create Campaign
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
     );
   }
@@ -731,6 +824,7 @@ export default function Campaign() {
                tokens={tokens} 
                onMoveToken={handleMoveToken} 
                onTokenClick={handleTokenClick}
+               onDeleteToken={handleDeleteToken}
                role={role} 
                gridSize={gridSize}
                backgroundImage={currentMap}

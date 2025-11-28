@@ -535,6 +535,7 @@ interface BattleMapProps {
   tokens: Token[];
   onMoveToken: (id: string, x: number, y: number) => void;
   onTokenClick?: (token: Token) => void;
+  onDeleteToken?: (tokenId: string) => void;
   role: Role;
   gridSize: number;
   backgroundImage?: string;
@@ -543,13 +544,15 @@ interface BattleMapProps {
   characters?: any[];
 }
 
-export function BattleMap({ tokens, onMoveToken, onTokenClick, role, gridSize, backgroundImage, scene, onViewChange, characters = [] }: BattleMapProps) {
+export function BattleMap({ tokens, onMoveToken, onTokenClick, onDeleteToken, role, gridSize, backgroundImage, scene, onViewChange, characters = [] }: BattleMapProps) {
   // Use refs for pan/zoom to avoid re-renders during interaction
   const panRef = useRef({ x: 0, y: 0 });
   const zoomRef = useRef(1);
   const [isPinching, setIsPinching] = useState(false);
   const [, forceUpdate] = useState(0); // Only for zoom display updates
   const initializedSceneRef = useRef<string | null>(null);
+  const [showDeleteButton, setShowDeleteButton] = useState<string | null>(null);
+  const holdTimerRef = useRef<NodeJS.Timeout | null>(null);
   
   const containerRef = useRef<HTMLDivElement>(null);
   const lastTouchDistanceRef = useRef<number | null>(null);
@@ -581,6 +584,13 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, role, gridSize, b
       }
     }
   }, [scene, motionX, motionY, motionZoom, onViewChange]);
+
+  // Clear delete button if token no longer exists (after successful deletion)
+  useEffect(() => {
+    if (showDeleteButton && !tokens.find(t => t.id === showDeleteButton)) {
+      setShowDeleteButton(null);
+    }
+  }, [tokens, showDeleteButton]);
   
   // Throttled view change notification - only on significant changes
   const notifyViewChangeRef = useRef<NodeJS.Timeout | null>(null);
@@ -828,6 +838,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, role, gridSize, b
         drag={!isPinching}
         dragElastic={0}
         dragMomentum={false}
+        onClick={() => setShowDeleteButton(null)}
         onDragEnd={() => {
           // Sync motion values back to refs after drag
           panRef.current = { x: motionX.get(), y: motionY.get() };
@@ -882,15 +893,54 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, role, gridSize, b
           const tokenImage = character?.portrait || token.image;
           const hpPercent = character ? (character.hp / character.maxHp) * 100 : null;
           
+          const handleTokenPointerDown = (e: React.PointerEvent) => {
+            e.stopPropagation();
+            if (role === 'gm') {
+              holdTimerRef.current = setTimeout(() => {
+                setShowDeleteButton(token.id);
+              }, 500);
+            }
+          };
+          
+          const handleTokenPointerUp = () => {
+            if (holdTimerRef.current) {
+              clearTimeout(holdTimerRef.current);
+              holdTimerRef.current = null;
+            }
+          };
+          
+          const handleTokenPointerLeave = () => {
+            if (holdTimerRef.current) {
+              clearTimeout(holdTimerRef.current);
+              holdTimerRef.current = null;
+            }
+          };
+          
+          const handleTokenDragStart = () => {
+            if (holdTimerRef.current) {
+              clearTimeout(holdTimerRef.current);
+              holdTimerRef.current = null;
+            }
+            setShowDeleteButton(null);
+          };
+          
           return (
             <motion.div
               key={token.id}
               drag={role === 'gm' || token.type === 'player'} 
               dragMomentum={false}
               dragElastic={0}
-              onPointerDown={(e) => e.stopPropagation()}
+              onPointerDown={handleTokenPointerDown}
+              onPointerUp={handleTokenPointerUp}
+              onPointerLeave={handleTokenPointerLeave}
+              onDragStart={handleTokenDragStart}
               onDragEnd={(e, info) => handleDragEnd(e, info, token)}
-              onClick={(e) => { e.stopPropagation(); onTokenClick && onTokenClick(token); }}
+              onClick={(e) => { 
+                e.stopPropagation(); 
+                if (showDeleteButton !== token.id) {
+                  onTokenClick && onTokenClick(token);
+                }
+              }}
               whileHover={{ scale: 1.1 }}
               whileDrag={{ scale: 1.15, zIndex: 20 }}
               className="absolute top-0 left-0 rounded-full shadow-xl ring-2 ring-white/20 overflow-visible bg-black token-shadow cursor-pointer"
@@ -906,6 +956,20 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, role, gridSize, b
             >
               <img src={tokenImage} alt="token" className="w-full h-full object-cover pointer-events-none rounded-full" />
               <div className={`absolute inset-0 border-2 rounded-full ${token.type === 'player' ? 'border-blue-400 glow-amber' : 'border-red-500 glow-red'}`} />
+              
+              {/* Delete Button - Show when holding click (GM only) */}
+              {showDeleteButton === token.id && role === 'gm' && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDeleteToken && onDeleteToken(token.id);
+                  }}
+                  className="absolute -top-3 -right-3 w-7 h-7 bg-red-600 hover:bg-red-700 rounded-full flex items-center justify-center shadow-lg border-2 border-red-400 z-30"
+                  data-testid={`button-delete-token-${token.id}`}
+                >
+                  <Trash2 className="w-4 h-4 text-white" />
+                </button>
+              )}
               
               {/* HP Bar - Only show if token is linked to a character */}
               {character && hpPercent !== null && (
