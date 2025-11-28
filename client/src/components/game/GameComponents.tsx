@@ -17,7 +17,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { 
   Sword, Shield, Scroll, Map as MapIcon, Settings, 
   Users, User, Plus, LogOut, Menu, ChevronRight, ChevronLeft, ChevronDown,
-  Heart, Zap, Backpack, Sparkles, Dice5, MessageSquare, RefreshCw, X, Trash2, Package, FolderOpen, Lock, Camera
+  Heart, Zap, Backpack, Sparkles, Dice5, MessageSquare, RefreshCw, X, Trash2, Package, FolderOpen, Lock, Unlock, Camera
 } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { type Scene, type Hotbar, api } from "@/lib/api";
@@ -565,6 +565,9 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onDeleteToken, ro
     startPointerY: number;
   } | null>(null);
   
+  // Lock state for preventing map movement
+  const [isMapLocked, setIsMapLocked] = useState(false);
+  
   const containerRef = useRef<HTMLDivElement>(null);
   const lastTouchDistanceRef = useRef<number | null>(null);
   
@@ -875,30 +878,42 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onDeleteToken, ro
   return (
     <div className="relative h-full w-full overflow-hidden bg-black rounded-lg border border-white/10 shadow-inner group" ref={containerRef}>
       
-      {/* Reset View Button (Top Center) */}
-      <Button 
-         size="sm" 
-         variant="secondary" 
-         className="absolute top-4 left-1/2 -translate-x-1/2 z-30 bg-black/50 hover:bg-black/80 text-xs border border-white/10 backdrop-blur-sm"
-         onClick={() => { 
-           const defaultX = scene?.defaultViewX ?? 0;
-           const defaultY = scene?.defaultViewY ?? 0;
-           const defaultZoom = scene?.defaultViewZoom ?? 1;
-           panRef.current = { x: defaultX, y: defaultY };
-           zoomRef.current = defaultZoom;
-           motionX.set(defaultX);
-           motionY.set(defaultY);
-           motionZoom.set(defaultZoom);
-           notifyViewChange();
-         }}
-         data-testid="button-reset-view"
-      >
-        <RefreshCw className="h-3 w-3" />
-      </Button>
+      {/* Map Controls (Top Center) */}
+      <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 flex gap-1">
+        <Button 
+           size="sm" 
+           variant="secondary" 
+           className="bg-black/50 hover:bg-black/80 text-xs border border-white/10 backdrop-blur-sm"
+           onClick={() => { 
+             const defaultX = scene?.defaultViewX ?? 0;
+             const defaultY = scene?.defaultViewY ?? 0;
+             const defaultZoom = scene?.defaultViewZoom ?? 1;
+             panRef.current = { x: defaultX, y: defaultY };
+             zoomRef.current = defaultZoom;
+             motionX.set(defaultX);
+             motionY.set(defaultY);
+             motionZoom.set(defaultZoom);
+             notifyViewChange();
+           }}
+           data-testid="button-reset-view"
+        >
+          <RefreshCw className="h-3 w-3" />
+        </Button>
+        <Button 
+           size="sm" 
+           variant="secondary" 
+           className={`bg-black/50 hover:bg-black/80 text-xs border backdrop-blur-sm ${isMapLocked ? 'border-amber-500 text-amber-400' : 'border-white/10'}`}
+           onClick={() => setIsMapLocked(!isMapLocked)}
+           data-testid="button-lock-map"
+           title={isMapLocked ? "Unlock map movement" : "Lock map movement"}
+        >
+          {isMapLocked ? <Lock className="h-3 w-3" /> : <Unlock className="h-3 w-3" />}
+        </Button>
+      </div>
 
       {/* Draggable World Container - Large scrollable space beyond image bounds */}
       <motion.div 
-        className="absolute cursor-grab active:cursor-grabbing"
+        className={`absolute ${isMapLocked || draggingToken ? 'cursor-default' : 'cursor-grab active:cursor-grabbing'}`}
         style={{ 
           width: '20000px', 
           height: '20000px', 
@@ -909,7 +924,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onDeleteToken, ro
           top: '-9000px',
           transformOrigin: "0 0"
         }}
-        drag={!isPinching}
+        drag={!isPinching && !isMapLocked && !draggingToken}
         dragElastic={0}
         dragMomentum={false}
         onClick={() => setShowDeleteButton(null)}
@@ -988,6 +1003,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onDeleteToken, ro
           };
           
           const handleTokenPointerUp = (e: React.PointerEvent) => {
+            e.stopPropagation();
             if (holdTimerRef.current) {
               clearTimeout(holdTimerRef.current);
               holdTimerRef.current = null;
@@ -999,6 +1015,8 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onDeleteToken, ro
           
           const handleTokenPointerMove = (e: React.PointerEvent) => {
             if (isDragging) {
+              e.stopPropagation();
+              e.preventDefault();
               moveTokenDrag(e);
             }
           };
