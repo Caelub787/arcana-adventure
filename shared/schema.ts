@@ -94,7 +94,7 @@ export const characters = pgTable("characters", {
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   portrait: text("portrait"),
-  class: text("class").notNull(),
+  class: text("class").default(""), // Kept for backward compat, not used in UI
   level: integer("level").default(1).notNull(),
   hp: integer("hp").notNull(),
   maxHp: integer("max_hp").notNull(),
@@ -108,14 +108,22 @@ export const characters = pgTable("characters", {
   speed: integer("speed").notNull().default(30),
   flySpeed: integer("fly_speed").notNull().default(0),
   lifespan: integer("lifespan").notNull().default(100),
-  // Attributes
+  featTree: text("feat_tree").default(""), // Race-specific feat tree
+  // New Attributes (range -2 to 5, mod equals value)
+  might: integer("might").notNull().default(0),
+  finesse: integer("finesse").notNull().default(0),
+  wit: integer("wit").notNull().default(0),
+  presence: integer("presence").notNull().default(0),
+  will: integer("will").notNull().default(0),
+  craft: integer("craft").notNull().default(0),
+  // Legacy attributes (kept for backward compatibility)
   agility: integer("agility").notNull().default(0),
   charisma: integer("charisma").notNull().default(0),
   strength: integer("strength").notNull().default(0),
   wisdom: integer("wisdom").notNull().default(0),
   arcana: integer("arcana").notNull().default(0),
   concentration: integer("concentration").notNull().default(0),
-  // Skills
+  // Skills (range -2 to 5)
   skillAgility: integer("skill_agility").notNull().default(0),
   skillArcana: integer("skill_arcana").notNull().default(0),
   skillCharisma: integer("skill_charisma").notNull().default(0),
@@ -206,31 +214,39 @@ export type PasswordResetToken = typeof passwordResetTokens.$inferSelect;
 // Items table (for inventory system)
 export const items = pgTable("items", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  characterId: varchar("character_id").notNull().references(() => characters.id, { onDelete: "cascade" }),
+  characterId: varchar("character_id").references(() => characters.id, { onDelete: "cascade" }), // Null for campaign template items
+  campaignId: varchar("campaign_id").references(() => campaigns.id, { onDelete: "cascade" }), // For campaign template items
   containerId: varchar("container_id").references(() => items.id, { onDelete: "cascade" }), // For nested inventories
+  isTemplate: boolean("is_template").default(false).notNull(), // True for campaign item templates
   name: text("name").notNull(),
   image: text("image"),
-  description: text("description"),
+  description: text("description"), // GM only editable
+  rules: text("rules"), // Rules text, GM only editable
+  rulesVisible: boolean("rules_visible").default(true).notNull(), // Whether rules are visible to players
   damage: text("damage"), // Dice notation e.g. "1d8"
-  damageType: text("damage_type"), // e.g. "slashing", "piercing", "fire"
+  damageType: text("damage_type"), // Sharp, Blunt, Piercing, Flame, Frost, Storm, Tide, Stone, Flux, Light, Dark, Sound, Health
   mod: integer("mod").default(0), // Flat bonus added after dice roll
   range: integer("range"), // In feet
-  aoe: text("aoe"), // Area of effect description
-  attribute: text("attribute"), // Attribute used for this item
+  aoe: boolean("aoe").default(false).notNull(), // Yes or No field
+  attribute: text("attribute"), // Attribute used for attack rolls (might, finesse, wit, presence, will, craft)
   size: text("size"), // Item size
-  weight: text("weight").default("light"), // "light" or "heavy"
+  isHeavy: boolean("is_heavy").default(false).notNull(), // Heavy or Light - if heavy, cannot carry another weapon
+  price: integer("price").default(0).notNull(), // Price value
+  currency: text("currency").default("copper").notNull(), // copper, silver, gold, platinum
+  itemWeight: real("item_weight").default(0).notNull(), // In pounds
+  quantity: integer("quantity").default(1).notNull(),
+  durability: integer("durability").default(10).notNull(), // 0-10
+  itemType: text("item_type").notNull(), // "weapon", "armor", "consumable", "utility", "container", "currency"
+  rarity: text("rarity").default("common").notNull(), // "common", "uncommon", "rare", "epic", "legendary"
+  isContainer: boolean("is_container").default(false).notNull(),
+  carryCapacity: integer("carry_capacity").default(0), // Additional carry capacity if container, affects max carry weight
+  isEquipped: boolean("is_equipped").default(false).notNull(),
+  // Legacy price fields (kept for backward compatibility)
   priceCopper: integer("price_copper").default(0).notNull(),
   priceSilver: integer("price_silver").default(0).notNull(),
   priceGold: integer("price_gold").default(0).notNull(),
   pricePlatinum: integer("price_platinum").default(0).notNull(),
-  itemWeight: real("item_weight").default(0).notNull(), // In pounds
-  quantity: integer("quantity").default(1).notNull(),
-  durability: integer("durability").default(10).notNull(), // 0-10
-  itemType: text("item_type").notNull(), // "weapon", "armor", "consumable", "utility", "container"
-  rarity: text("rarity").default("common").notNull(), // "common", "uncommon", "rare", "epic", "legendary"
-  isContainer: boolean("is_container").default(false).notNull(),
-  carryCapacity: integer("carry_capacity").default(0), // Additional carry capacity if container
-  isEquipped: boolean("is_equipped").default(false).notNull(),
+  weight: text("weight").default("light"), // Legacy field
 });
 
 export const insertItemSchema = createInsertSchema(items).omit({

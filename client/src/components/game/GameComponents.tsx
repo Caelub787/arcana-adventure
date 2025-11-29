@@ -1434,7 +1434,8 @@ export function BattleMapHotbars({ character }: BattleMapHotbarsProps) {
     enabled: !!character?.id
   });
 
-  if (hotbarsLoading || !character) return null;
+  // Don't render if no character selected
+  if (!character) return null;
 
   const hotbarTypes = [
     { type: 'weapons', icon: Sword, color: 'amber', maxSlots: 3 },
@@ -3000,12 +3001,30 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
   );
 }
 
-// GM Only Badge Component
-const GMOnlyBadge = () => (
-  <Badge variant="destructive" className="text-xs ml-2">
-    GM Only
-  </Badge>
-);
+
+// Race data with stats for Arcana Adventure
+const ARCANA_RACES = [
+  { name: 'Human', size: 'Medium', naturalArmor: 5, sizeBonus: 0, featTree: 'Versatile', speed: 30, flySpeed: 0 },
+  { name: 'Elf', size: 'Medium', naturalArmor: 5, sizeBonus: 0, featTree: 'Elven Heritage', speed: 35, flySpeed: 0 },
+  { name: 'Dwarf', size: 'Medium', naturalArmor: 6, sizeBonus: 0, featTree: 'Dwarven Resilience', speed: 25, flySpeed: 0 },
+  { name: 'Halfling', size: 'Small', naturalArmor: 5, sizeBonus: 1, featTree: 'Lucky', speed: 25, flySpeed: 0 },
+  { name: 'Orc', size: 'Medium', naturalArmor: 6, sizeBonus: 0, featTree: 'Savage Attacks', speed: 30, flySpeed: 0 },
+  { name: 'Tiefling', size: 'Medium', naturalArmor: 5, sizeBonus: 0, featTree: 'Infernal Legacy', speed: 30, flySpeed: 0 },
+  { name: 'Dragonborn', size: 'Medium', naturalArmor: 6, sizeBonus: 0, featTree: 'Draconic Ancestry', speed: 30, flySpeed: 0 },
+  { name: 'Gnome', size: 'Small', naturalArmor: 5, sizeBonus: 1, featTree: 'Gnome Cunning', speed: 25, flySpeed: 0 },
+  { name: 'Half-Elf', size: 'Medium', naturalArmor: 5, sizeBonus: 0, featTree: 'Dual Heritage', speed: 30, flySpeed: 0 },
+  { name: 'Half-Orc', size: 'Medium', naturalArmor: 6, sizeBonus: 0, featTree: 'Relentless Endurance', speed: 30, flySpeed: 0 },
+  { name: 'Aasimar', size: 'Medium', naturalArmor: 5, sizeBonus: 0, featTree: 'Celestial Legacy', speed: 30, flySpeed: 0 },
+  { name: 'Goliath', size: 'Large', naturalArmor: 7, sizeBonus: -1, featTree: "Stone's Endurance", speed: 30, flySpeed: 0 },
+  { name: 'Tabaxi', size: 'Medium', naturalArmor: 5, sizeBonus: 0, featTree: 'Feline Agility', speed: 35, flySpeed: 0 },
+  { name: 'Kenku', size: 'Medium', naturalArmor: 5, sizeBonus: 0, featTree: 'Mimicry', speed: 30, flySpeed: 0 },
+  { name: 'Aarakocra', size: 'Medium', naturalArmor: 5, sizeBonus: 0, featTree: 'Flight', speed: 25, flySpeed: 50 },
+  { name: 'Firbolg', size: 'Large', naturalArmor: 6, sizeBonus: -1, featTree: 'Hidden Step', speed: 30, flySpeed: 0 },
+  { name: 'Kobold', size: 'Small', naturalArmor: 4, sizeBonus: 1, featTree: 'Pack Tactics', speed: 30, flySpeed: 0 },
+  { name: 'Lizardfolk', size: 'Medium', naturalArmor: 7, sizeBonus: 0, featTree: 'Natural Armor', speed: 30, flySpeed: 0 },
+  { name: 'Changeling', size: 'Medium', naturalArmor: 5, sizeBonus: 0, featTree: 'Shapechanger', speed: 30, flySpeed: 0 },
+  { name: 'Warforged', size: 'Medium', naturalArmor: 8, sizeBonus: 0, featTree: 'Constructed Resilience', speed: 30, flySpeed: 0 },
+];
 
 // 6. Character Sheet Component
 interface CharacterSheetProps {
@@ -3036,31 +3055,48 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
   const [editingAttributes, setEditingAttributes] = useState(false);
   const [editingSkills, setEditingSkills] = useState(false);
   
-  // Edit data states
+  // Live character data state (for real-time updates)
+  const [liveCharacter, setLiveCharacter] = useState(character);
+  
+  // Update live character when prop changes
+  useEffect(() => {
+    setLiveCharacter(character);
+  }, [character]);
+  
+  // Edit data states - includes race stats
   const [overviewData, setOverviewData] = useState({
     name: character?.name || "",
-    class: character?.class || "",
     level: character?.level || 1,
     hp: character?.hp || 0,
     maxHp: character?.maxHp || 0,
     energy: character?.energy || 0,
-    maxEnergy: character?.maxEnergy || 0
+    maxEnergy: character?.maxEnergy || 0,
+    race: character?.race || "Human",
+    size: character?.size || "Medium",
+    naturalArmor: character?.naturalArmor || 5,
+    sizeBonus: character?.sizeBonus || 0,
+    featTree: character?.featTree || "",
+    speed: character?.speed || 30,
+    flySpeed: character?.flySpeed || 0
   });
   
+  // New attributes: Might, Finesse, Wit, Presence, Will, Craft (range -2 to 5)
   const [attributesData, setAttributesData] = useState({
-    agility: character?.agility || 10,
-    charisma: character?.charisma || 10,
-    strength: character?.strength || 10,
-    wisdom: character?.wisdom || 10,
-    arcana: character?.arcana || 10,
-    concentration: character?.concentration || 10
+    might: character?.might || 0,
+    finesse: character?.finesse || 0,
+    wit: character?.wit || 0,
+    presence: character?.presence || 0,
+    will: character?.will || 0,
+    craft: character?.craft || 0
   });
   
+  // Skills data (all skills, range -2 to 5)
   const [skillsData, setSkillsData] = useState({
     skillAgility: character?.skillAgility || 0,
     skillArcana: character?.skillArcana || 0,
     skillCharisma: character?.skillCharisma || 0,
     skillConcentration: character?.skillConcentration || 0,
+    skillCulture: character?.skillCulture || 0,
     skillDeception: character?.skillDeception || 0,
     skillHistory: character?.skillHistory || 0,
     skillIntimidation: character?.skillIntimidation || 0,
@@ -3070,9 +3106,25 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
     skillSleightOfHand: character?.skillSleightOfHand || 0,
     skillStealth: character?.skillStealth || 0,
     skillStrength: character?.skillStrength || 0,
-    skillWisdom: character?.skillWisdom || 0,
-    skillCulture: character?.skillCulture || 0
+    skillWisdom: character?.skillWisdom || 0
   });
+  
+  // Handle race selection - auto-fill race stats
+  const handleRaceChange = (raceName: string) => {
+    const raceData = ARCANA_RACES.find(r => r.name === raceName);
+    if (raceData) {
+      setOverviewData(prev => ({
+        ...prev,
+        race: raceName,
+        size: raceData.size,
+        naturalArmor: raceData.naturalArmor,
+        sizeBonus: raceData.sizeBonus,
+        featTree: raceData.featTree,
+        speed: raceData.speed,
+        flySpeed: raceData.flySpeed
+      }));
+    }
+  };
 
   // Inventory state
   const queryClient = useQueryClient();
@@ -3175,10 +3227,18 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
     }
   });
 
-  // Character update mutation
+  // Character update mutation with immediate UI update
   const updateCharacterMutation = useMutation({
     mutationFn: (data: any) => api.updateCharacter(character.id, data),
-    onSuccess: () => {
+    onMutate: (data: any) => {
+      // Immediately update live character data for real-time display
+      setLiveCharacter((prev: any) => ({ ...prev, ...data }));
+    },
+    onSuccess: (updatedChar: any) => {
+      // Update with server response
+      if (updatedChar) {
+        setLiveCharacter(updatedChar);
+      }
       if (onUpdate) {
         // Notify parent component
         queryClient.invalidateQueries({ queryKey: ['characters'] });
@@ -3186,6 +3246,8 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
       toast({ title: "Character updated successfully" });
     },
     onError: (error: any) => {
+      // Revert to original character on error
+      setLiveCharacter(character);
       toast({ 
         title: "Update failed", 
         description: error.message || "Failed to update character",
@@ -3474,31 +3536,6 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
     }
   };
 
-  // Skill categories for organization
-  const physicalSkills = [
-    { key: 'skillAgility', name: 'Agility' },
-    { key: 'skillStrength', name: 'Strength' },
-    { key: 'skillStealth', name: 'Stealth' },
-    { key: 'skillSleightOfHand', name: 'Sleight of Hand' },
-  ];
-
-  const mentalSkills = [
-    { key: 'skillArcana', name: 'Arcana' },
-    { key: 'skillConcentration', name: 'Concentration' },
-    { key: 'skillWisdom', name: 'Wisdom' },
-    { key: 'skillInvestigation', name: 'Investigation' },
-    { key: 'skillPerception', name: 'Perception' },
-    { key: 'skillMedicine', name: 'Medicine' },
-    { key: 'skillHistory', name: 'History' },
-  ];
-
-  const socialSkills = [
-    { key: 'skillCharisma', name: 'Charisma' },
-    { key: 'skillDeception', name: 'Deception' },
-    { key: 'skillIntimidation', name: 'Intimidation' },
-    { key: 'skillCulture', name: 'Culture' },
-  ];
-
   // Tab configuration matching battlemap sidebar icons and colors
   const tabConfig = [
     { value: 'overview', icon: User, color: 'stone', label: 'Overview' },
@@ -3594,12 +3631,12 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                       />
                     </div>
                   ) : (
-                    <span data-testid="text-character-name">{character.name}</span>
+                    <span data-testid="text-character-name">{liveCharacter.name}</span>
                   )}
                   {!editingOverview ? (
                     <>
                       <Badge variant="outline" className="text-stone-300 border-stone-600" data-testid="badge-level">
-                        Level {character.level}
+                        Level {liveCharacter.level}
                       </Badge>
                       {(isOwner || isGM) && (
                         <Button
@@ -3608,13 +3645,19 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                           className="ml-2"
                           onClick={() => {
                             setOverviewData({
-                              name: character.name,
-                              class: character.class,
-                              level: character.level,
-                              hp: character.hp,
-                              maxHp: character.maxHp,
-                              energy: character.energy,
-                              maxEnergy: character.maxEnergy
+                              name: liveCharacter.name,
+                              level: liveCharacter.level,
+                              hp: liveCharacter.hp,
+                              maxHp: liveCharacter.maxHp,
+                              energy: liveCharacter.energy,
+                              maxEnergy: liveCharacter.maxEnergy,
+                              race: liveCharacter.race || "Human",
+                              size: liveCharacter.size || "Medium",
+                              naturalArmor: liveCharacter.naturalArmor || 5,
+                              sizeBonus: liveCharacter.sizeBonus || 0,
+                              featTree: liveCharacter.featTree || "",
+                              speed: liveCharacter.speed || 30,
+                              flySpeed: liveCharacter.flySpeed || 0
                             });
                             setEditingOverview(true);
                           }}
@@ -3630,91 +3673,91 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
               <CardContent className="space-y-4">
                 <div className="flex flex-col sm:flex-row gap-4">
                   {/* Portrait */}
-                  {character.portrait && (
+                  {liveCharacter.portrait && (
                     <div className="w-32 h-32 rounded-lg overflow-hidden border-2 border-stone-700 shrink-0">
-                      <img src={character.portrait} alt={character.name} className="w-full h-full object-cover" data-testid="img-portrait" />
+                      <img src={liveCharacter.portrait} alt={liveCharacter.name} className="w-full h-full object-cover" data-testid="img-portrait" />
                     </div>
                   )}
                   
                   {/* Basic Info */}
                   <div className="flex-1 space-y-2">
                     <div className="grid grid-cols-2 gap-2">
+                      {/* Race Dropdown */}
                       <div>
                         <Label className="text-xs text-stone-400">Race</Label>
-                        <p className="text-stone-200" data-testid="text-race">{character.race}</p>
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-1">
-                          <Label className="text-xs text-stone-400">Class</Label>
-                          {editingOverview && !isGM && (
-                            <TooltipProvider>
-                              <Tooltip>
-                                <TooltipTrigger>
-                                  <Lock className="h-3 w-3 text-amber-600" />
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  <p>Only GMs can edit this field</p>
-                                </TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
-                          )}
-                        </div>
-                        {editingOverview && isGM ? (
-                          <Input
-                            value={overviewData.class}
-                            onChange={(e) => setOverviewData({ ...overviewData, class: e.target.value })}
-                            className="bg-stone-900 border-amber-700 text-stone-200"
-                            data-testid="input-edit-class"
-                          />
+                        {editingOverview ? (
+                          <Select value={overviewData.race} onValueChange={handleRaceChange}>
+                            <SelectTrigger className="bg-stone-900 border-stone-700">
+                              <SelectValue placeholder="Select race" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {ARCANA_RACES.map(race => (
+                                <SelectItem key={race.name} value={race.name}>{race.name}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
                         ) : (
-                          <p className="text-stone-200 capitalize" data-testid="text-class">{character.class}</p>
+                          <p className="text-stone-200" data-testid="text-race">{liveCharacter.race}</p>
                         )}
                       </div>
+                      {/* Level */}
                       <div>
-                        <div className="flex items-center gap-1">
-                          <Label className="text-xs text-stone-400">Level</Label>
-                          {editingOverview && !isGM && (
-                            <TooltipProvider>
-                              <Tooltip>
-                                <TooltipTrigger>
-                                  <Lock className="h-3 w-3 text-amber-600" />
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  <p>Only GMs can edit this field</p>
-                                </TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
-                          )}
-                        </div>
-                        {editingOverview && isGM ? (
+                        <Label className="text-xs text-stone-400">Level</Label>
+                        {editingOverview ? (
                           <Input
                             type="number"
                             min="1"
                             max="20"
                             value={overviewData.level}
                             onChange={(e) => setOverviewData({ ...overviewData, level: parseInt(e.target.value) || 1 })}
-                            className="bg-stone-900 border-amber-700 text-stone-200"
+                            className="bg-stone-900 border-stone-700 text-stone-200"
                             data-testid="input-edit-level"
                           />
                         ) : (
-                          <p className="text-stone-200">{character.level}</p>
+                          <p className="text-stone-200">{liveCharacter.level}</p>
                         )}
                       </div>
+                      {/* Size (auto-filled from race) */}
                       <div>
                         <Label className="text-xs text-stone-400">Size</Label>
-                        <p className="text-stone-200" data-testid="text-size">{character.size}</p>
+                        <p className="text-stone-200" data-testid="text-size">
+                          {editingOverview ? overviewData.size : liveCharacter.size}
+                        </p>
                       </div>
+                      {/* Natural Armor (auto-filled from race) */}
                       <div>
                         <Label className="text-xs text-stone-400">Natural Armor</Label>
-                        <p className="text-stone-200" data-testid="text-natural-armor">{character.naturalArmor}</p>
+                        <p className="text-stone-200" data-testid="text-natural-armor">
+                          {editingOverview ? overviewData.naturalArmor : liveCharacter.naturalArmor}
+                        </p>
                       </div>
+                      {/* Size Bonus (auto-filled from race) */}
+                      <div>
+                        <Label className="text-xs text-stone-400">Size Bonus</Label>
+                        <p className="text-stone-200" data-testid="text-size-bonus">
+                          {editingOverview ? (overviewData.sizeBonus >= 0 ? `+${overviewData.sizeBonus}` : overviewData.sizeBonus) : (liveCharacter.sizeBonus >= 0 ? `+${liveCharacter.sizeBonus}` : liveCharacter.sizeBonus)}
+                        </p>
+                      </div>
+                      {/* Feat Tree (auto-filled from race) */}
+                      <div>
+                        <Label className="text-xs text-stone-400">Feat Tree</Label>
+                        <p className="text-stone-200" data-testid="text-feat-tree">
+                          {editingOverview ? overviewData.featTree : liveCharacter.featTree || "None"}
+                        </p>
+                      </div>
+                      {/* Speed (auto-filled from race) */}
                       <div>
                         <Label className="text-xs text-stone-400">Speed</Label>
-                        <p className="text-stone-200" data-testid="text-speed">{character.speed} ft</p>
+                        <p className="text-stone-200" data-testid="text-speed">
+                          {editingOverview ? overviewData.speed : liveCharacter.speed} ft
+                        </p>
                       </div>
+                      {/* Fly Speed (auto-filled from race) */}
                       <div>
                         <Label className="text-xs text-stone-400">Fly Speed</Label>
-                        <p className="text-stone-200" data-testid="text-fly-speed">{character.flySpeed} ft</p>
+                        <p className="text-stone-200" data-testid="text-fly-speed">
+                          {editingOverview ? overviewData.flySpeed : liveCharacter.flySpeed} ft
+                        </p>
                       </div>
                     </div>
                   </div>
@@ -3764,11 +3807,11 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                       </div>
                     ) : (
                       <span className="text-sm font-bold" data-testid="text-hp">
-                        {character.hp} / {character.maxHp}
+                        {liveCharacter.hp} / {liveCharacter.maxHp}
                       </span>
                     )}
                   </div>
-                  {!editingOverview && <Progress value={hpPercentage} className="h-3" data-testid="progress-hp" />}
+                  {!editingOverview && <Progress value={Math.round((liveCharacter.hp / liveCharacter.maxHp) * 100)} className="h-3" data-testid="progress-hp" />}
                 </div>
 
                 {/* Energy Bar */}
@@ -3815,11 +3858,11 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                       </div>
                     ) : (
                       <span className="text-sm font-bold" data-testid="text-energy">
-                        {character.energy} / {character.maxEnergy}
+                        {liveCharacter.energy} / {liveCharacter.maxEnergy}
                       </span>
                     )}
                   </div>
-                  {!editingOverview && <Progress value={energyPercentage} className="h-3" data-testid="progress-energy" />}
+                  {!editingOverview && <Progress value={Math.round((liveCharacter.energy / liveCharacter.maxEnergy) * 100)} className="h-3" data-testid="progress-energy" />}
                 </div>
 
                 {/* Edit Mode Buttons */}
@@ -3854,22 +3897,19 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
             <Card className="bg-stone-800 border-stone-700">
               <CardHeader>
                 <CardTitle className="text-amber-500 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span>Attributes</span>
-                    {isGM && !editingAttributes && <GMOnlyBadge />}
-                  </div>
-                  {isGM && !editingAttributes && (
+                  <span>Attributes</span>
+                  {(isOwner || isGM) && !editingAttributes && (
                     <Button
                       size="sm"
                       variant="outline"
                       onClick={() => {
                         setAttributesData({
-                          agility: character.agility || 10,
-                          charisma: character.charisma || 10,
-                          strength: character.strength || 10,
-                          wisdom: character.wisdom || 10,
-                          arcana: character.arcana || 10,
-                          concentration: character.concentration || 10
+                          might: liveCharacter.might || 0,
+                          finesse: liveCharacter.finesse || 0,
+                          wit: liveCharacter.wit || 0,
+                          presence: liveCharacter.presence || 0,
+                          will: liveCharacter.will || 0,
+                          craft: liveCharacter.craft || 0
                         });
                         setEditingAttributes(true);
                       }}
@@ -3881,49 +3921,46 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                 </CardTitle>
               </CardHeader>
               <CardContent>
+                <p className="text-xs text-stone-500 mb-4">Attributes range from -2 to 5. The modifier equals the value.</p>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
                   {[
-                    { key: 'agility', name: 'Agility' },
-                    { key: 'charisma', name: 'Charisma' },
-                    { key: 'strength', name: 'Strength' },
-                    { key: 'wisdom', name: 'Wisdom' },
-                    { key: 'arcana', name: 'Arcana' },
-                    { key: 'concentration', name: 'Concentration' },
+                    { key: 'might', name: 'Might', icon: '💪', description: 'Physical power and endurance' },
+                    { key: 'finesse', name: 'Finesse', icon: '🎯', description: 'Agility and precision' },
+                    { key: 'wit', name: 'Wit', icon: '🧠', description: 'Intelligence and perception' },
+                    { key: 'presence', name: 'Presence', icon: '✨', description: 'Charisma and influence' },
+                    { key: 'will', name: 'Will', icon: '🔮', description: 'Mental fortitude and magic' },
+                    { key: 'craft', name: 'Craft', icon: '🔧', description: 'Technical skill and creativity' },
                   ].map(attr => {
-                    const value = editingAttributes ? attributesData[attr.key as keyof typeof attributesData] : (character[attr.key] || 10);
-                    const modifier = getAttributeModifier(value);
+                    const value = editingAttributes ? attributesData[attr.key as keyof typeof attributesData] : (liveCharacter[attr.key] || 0);
                     return (
                       <Card key={attr.key} className={`bg-stone-900 ${editingAttributes ? 'border-amber-700' : 'border-stone-600'}`}>
                         <CardContent className="p-4 text-center">
-                          <Label className="text-xs text-stone-400">{attr.name}</Label>
+                          <div className="flex items-center justify-center gap-1 mb-1">
+                            <span className="text-lg">{attr.icon}</span>
+                            <Label className="text-xs text-stone-400">{attr.name}</Label>
+                          </div>
                           {editingAttributes ? (
-                            <>
-                              <Input
-                                type="number"
-                                min="1"
-                                max="30"
-                                value={value}
-                                onChange={(e) => setAttributesData({
+                            <Input
+                              type="number"
+                              min="-2"
+                              max="5"
+                              value={value}
+                              onChange={(e) => {
+                                const newVal = Math.max(-2, Math.min(5, parseInt(e.target.value) || 0));
+                                setAttributesData({
                                   ...attributesData,
-                                  [attr.key]: parseInt(e.target.value) || 1
-                                })}
-                                className="text-2xl font-bold text-amber-500 mt-1 mb-2 text-center bg-stone-800 border-amber-700"
-                                data-testid={`input-attribute-${attr.key}`}
-                              />
-                              <Badge variant="secondary" className="mt-2" data-testid={`badge-modifier-${attr.key}`}>
-                                {formatModifier(modifier)}
-                              </Badge>
-                            </>
+                                  [attr.key]: newVal
+                                });
+                              }}
+                              className="text-2xl font-bold text-amber-500 mt-1 text-center bg-stone-800 border-amber-700"
+                              data-testid={`input-attribute-${attr.key}`}
+                            />
                           ) : (
-                            <>
-                              <div className="text-2xl font-bold text-amber-500 mt-1" data-testid={`text-attribute-${attr.key}`}>
-                                {value}
-                              </div>
-                              <Badge variant="secondary" className="mt-2" data-testid={`badge-modifier-${attr.key}`}>
-                                {formatModifier(modifier)}
-                              </Badge>
-                            </>
+                            <div className="text-2xl font-bold text-amber-500 mt-1" data-testid={`text-attribute-${attr.key}`}>
+                              {value >= 0 ? `+${value}` : value}
+                            </div>
                           )}
+                          <p className="text-[10px] text-stone-500 mt-1">{attr.description}</p>
                         </CardContent>
                       </Card>
                     );
@@ -3962,31 +3999,28 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
             <Card className="bg-stone-800 border-stone-700">
               <CardHeader>
                 <CardTitle className="text-amber-500 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span>Skills</span>
-                    {isGM && !editingSkills && <GMOnlyBadge />}
-                  </div>
-                  {isGM && !editingSkills && (
+                  <span>Skills</span>
+                  {(isOwner || isGM) && !editingSkills && (
                     <Button
                       size="sm"
                       variant="outline"
                       onClick={() => {
                         setSkillsData({
-                          skillAgility: character.skillAgility || 0,
-                          skillArcana: character.skillArcana || 0,
-                          skillCharisma: character.skillCharisma || 0,
-                          skillConcentration: character.skillConcentration || 0,
-                          skillDeception: character.skillDeception || 0,
-                          skillHistory: character.skillHistory || 0,
-                          skillIntimidation: character.skillIntimidation || 0,
-                          skillInvestigation: character.skillInvestigation || 0,
-                          skillMedicine: character.skillMedicine || 0,
-                          skillPerception: character.skillPerception || 0,
-                          skillSleightOfHand: character.skillSleightOfHand || 0,
-                          skillStealth: character.skillStealth || 0,
-                          skillStrength: character.skillStrength || 0,
-                          skillWisdom: character.skillWisdom || 0,
-                          skillCulture: character.skillCulture || 0
+                          skillAgility: liveCharacter.skillAgility || 0,
+                          skillArcana: liveCharacter.skillArcana || 0,
+                          skillCharisma: liveCharacter.skillCharisma || 0,
+                          skillConcentration: liveCharacter.skillConcentration || 0,
+                          skillCulture: liveCharacter.skillCulture || 0,
+                          skillDeception: liveCharacter.skillDeception || 0,
+                          skillHistory: liveCharacter.skillHistory || 0,
+                          skillIntimidation: liveCharacter.skillIntimidation || 0,
+                          skillInvestigation: liveCharacter.skillInvestigation || 0,
+                          skillMedicine: liveCharacter.skillMedicine || 0,
+                          skillPerception: liveCharacter.skillPerception || 0,
+                          skillSleightOfHand: liveCharacter.skillSleightOfHand || 0,
+                          skillStealth: liveCharacter.skillStealth || 0,
+                          skillStrength: liveCharacter.skillStrength || 0,
+                          skillWisdom: liveCharacter.skillWisdom || 0
                         });
                         setEditingSkills(true);
                       }}
@@ -3997,110 +4031,59 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                   )}
                 </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-6">
-                {/* Physical Skills */}
-                <div>
-                  <h3 className="text-sm font-bold text-stone-400 mb-3 uppercase">Physical</h3>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                    {physicalSkills.map(skill => {
-                      const value = editingSkills ? skillsData[skill.key as keyof typeof skillsData] : (character[skill.key] || 0);
-                      return editingSkills ? (
-                        <div key={skill.key} className="flex flex-col gap-1 p-3 bg-stone-900 border border-amber-700 rounded-md">
-                          <Label className="text-xs text-stone-400">{skill.name}</Label>
-                          <Input
-                            type="number"
-                            value={value}
-                            onChange={(e) => setSkillsData({
+              <CardContent>
+                <p className="text-xs text-stone-500 mb-4">Skills range from -2 to 5. The modifier equals the value.</p>
+                {/* All Skills - Alphabetical Order */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {[
+                    { key: 'skillAgility', name: 'Agility' },
+                    { key: 'skillArcana', name: 'Arcana' },
+                    { key: 'skillCharisma', name: 'Charisma' },
+                    { key: 'skillConcentration', name: 'Concentration' },
+                    { key: 'skillCulture', name: 'Culture' },
+                    { key: 'skillDeception', name: 'Deception' },
+                    { key: 'skillHistory', name: 'History' },
+                    { key: 'skillIntimidation', name: 'Intimidation' },
+                    { key: 'skillInvestigation', name: 'Investigation' },
+                    { key: 'skillMedicine', name: 'Medicine' },
+                    { key: 'skillPerception', name: 'Perception' },
+                    { key: 'skillSleightOfHand', name: 'Sleight of Hand' },
+                    { key: 'skillStealth', name: 'Stealth' },
+                    { key: 'skillStrength', name: 'Strength' },
+                    { key: 'skillWisdom', name: 'Wisdom' },
+                  ].map(skill => {
+                    const value = editingSkills ? skillsData[skill.key as keyof typeof skillsData] : (liveCharacter[skill.key] || 0);
+                    return editingSkills ? (
+                      <div key={skill.key} className="flex flex-col gap-1 p-3 bg-stone-900 border border-amber-700 rounded-md">
+                        <Label className="text-xs text-stone-400">{skill.name}</Label>
+                        <Input
+                          type="number"
+                          min="-2"
+                          max="5"
+                          value={value}
+                          onChange={(e) => {
+                            const newVal = Math.max(-2, Math.min(5, parseInt(e.target.value) || 0));
+                            setSkillsData({
                               ...skillsData,
-                              [skill.key]: parseInt(e.target.value) || 0
-                            })}
-                            className="bg-stone-800 border-amber-700 text-center font-bold"
-                            data-testid={`input-skill-${skill.key}`}
-                          />
-                        </div>
-                      ) : (
-                        <Badge 
-                          key={skill.key} 
-                          variant="outline" 
-                          className="justify-between p-3 bg-stone-900 border-stone-600"
-                          data-testid={`badge-skill-${skill.key}`}
-                        >
-                          <span className="text-xs">{skill.name}</span>
-                          <span className="font-bold ml-2">{formatModifier(value)}</span>
-                        </Badge>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Mental Skills */}
-                <div>
-                  <h3 className="text-sm font-bold text-stone-400 mb-3 uppercase">Mental</h3>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                    {mentalSkills.map(skill => {
-                      const value = editingSkills ? skillsData[skill.key as keyof typeof skillsData] : (character[skill.key] || 0);
-                      return editingSkills ? (
-                        <div key={skill.key} className="flex flex-col gap-1 p-3 bg-stone-900 border border-amber-700 rounded-md">
-                          <Label className="text-xs text-stone-400">{skill.name}</Label>
-                          <Input
-                            type="number"
-                            value={value}
-                            onChange={(e) => setSkillsData({
-                              ...skillsData,
-                              [skill.key]: parseInt(e.target.value) || 0
-                            })}
-                            className="bg-stone-800 border-amber-700 text-center font-bold"
-                            data-testid={`input-skill-${skill.key}`}
-                          />
-                        </div>
-                      ) : (
-                        <Badge 
-                          key={skill.key} 
-                          variant="outline" 
-                          className="justify-between p-3 bg-stone-900 border-stone-600"
-                          data-testid={`badge-skill-${skill.key}`}
-                        >
-                          <span className="text-xs">{skill.name}</span>
-                          <span className="font-bold ml-2">{formatModifier(value)}</span>
-                        </Badge>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Social Skills */}
-                <div>
-                  <h3 className="text-sm font-bold text-stone-400 mb-3 uppercase">Social</h3>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                    {socialSkills.map(skill => {
-                      const value = editingSkills ? skillsData[skill.key as keyof typeof skillsData] : (character[skill.key] || 0);
-                      return editingSkills ? (
-                        <div key={skill.key} className="flex flex-col gap-1 p-3 bg-stone-900 border border-amber-700 rounded-md">
-                          <Label className="text-xs text-stone-400">{skill.name}</Label>
-                          <Input
-                            type="number"
-                            value={value}
-                            onChange={(e) => setSkillsData({
-                              ...skillsData,
-                              [skill.key]: parseInt(e.target.value) || 0
-                            })}
-                            className="bg-stone-800 border-amber-700 text-center font-bold"
-                            data-testid={`input-skill-${skill.key}`}
-                          />
-                        </div>
-                      ) : (
-                        <Badge 
-                          key={skill.key} 
-                          variant="outline" 
-                          className="justify-between p-3 bg-stone-900 border-stone-600"
-                          data-testid={`badge-skill-${skill.key}`}
-                        >
-                          <span className="text-xs">{skill.name}</span>
-                          <span className="font-bold ml-2">{formatModifier(value)}</span>
-                        </Badge>
-                      );
-                    })}
-                  </div>
+                              [skill.key]: newVal
+                            });
+                          }}
+                          className="bg-stone-800 border-amber-700 text-center font-bold"
+                          data-testid={`input-skill-${skill.key}`}
+                        />
+                      </div>
+                    ) : (
+                      <Badge 
+                        key={skill.key} 
+                        variant="outline" 
+                        className="justify-between p-3 bg-stone-900 border-stone-600"
+                        data-testid={`badge-skill-${skill.key}`}
+                      >
+                        <span className="text-xs">{skill.name}</span>
+                        <span className="font-bold ml-2">{value >= 0 ? `+${value}` : value}</span>
+                      </Badge>
+                    );
+                  })}
                 </div>
 
                 {/* Edit Mode Buttons */}
@@ -5883,10 +5866,7 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
 
             {(currentData.damage || currentData.damageType || currentData.mod !== undefined || isEditing) && (
               <div className="pt-4 border-t border-stone-700">
-                <div className="flex items-center gap-2 mb-2">
-                  <h3 className="text-sm font-bold text-stone-300">Combat Stats</h3>
-                  {!canEditAllFields && <GMOnlyBadge />}
-                </div>
+                <h3 className="text-sm font-bold text-stone-300 mb-2">Combat Stats</h3>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <div className="flex items-center gap-2">
@@ -5974,10 +5954,7 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
             )}
 
             <div className="pt-4 border-t border-stone-700">
-              <div className="flex items-center gap-2 mb-2">
-                <h3 className="text-sm font-bold text-stone-300">Physical</h3>
-                {!canEditAllFields && <GMOnlyBadge />}
-              </div>
+              <h3 className="text-sm font-bold text-stone-300 mb-2">Physical</h3>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <div className="flex items-center gap-2">

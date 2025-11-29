@@ -37,6 +37,24 @@ Preferred communication style: Simple, everyday language.
 -   **Single Scroll**: Entire character sheet scrolls as one unit instead of multiple mini scroll areas
 -   **Touch-friendly**: Minimum 44px touch targets on tabs, larger icons on mobile (h-5 w-5)
 -   **Accessibility**: aria-labels on all tabs, data-testid attributes preserved
+-   **Real-time Updates**: Uses liveCharacter state with optimistic UI updates via mutation callbacks
+
+**Race System** (20 playable races):
+-   Race selection dropdown auto-fills: Size, Natural Armor, Size Bonus, Feat Tree, Speed, Fly Speed
+-   Races: Human, Elf, Dwarf, Halfling, Orc, Tiefling, Dragonborn, Gnome, Half-Elf, Half-Orc, Aasimar, Goliath, Tabaxi, Kenku, Aarakocra, Firbolg, Kobold, Lizardfolk, Changeling, Warforged
+-   Size categories: Small (sizeBonus +1), Medium (sizeBonus 0), Large (sizeBonus -1)
+-   Natural Armor ranges from 4-8 based on race
+-   Flying races (Aarakocra) have flySpeed > 0
+
+**Attributes System** (6 attributes, range -2 to 5):
+-   Might (physical power), Finesse (agility), Wit (intelligence), Presence (charisma), Will (mental fortitude), Craft (technical skill)
+-   Modifier equals the attribute value (no (value-10)/2 calculation)
+-   Both players and GMs can edit their own character's attributes
+
+**Skills System** (15 skills, alphabetically ordered, range -2 to 5):
+-   Skills: Agility, Arcana, Charisma, Concentration, Culture, Deception, History, Intimidation, Investigation, Medicine, Perception, Sleight of Hand, Stealth, Strength, Wisdom
+-   Modifier equals the skill value
+-   Both players and GMs can edit their own character's skills
 
 **Campaign Creation**:
 -   Dialog with campaign name input and game system dropdown (currently "Arcana Adventure" only).

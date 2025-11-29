@@ -1,0 +1,76 @@
+Admin accounts (notclaudenot@gmail.com and reedmcaleb@gmail.com) should be able to access an exclusive settings section in the main menu of the app that allows them to create items for each system currently supported (RN This would mean Arcana Adventure).  It should showcase a button that asks you to select the system you are making the item for, and once you click the system the option fields for that system will appear and you can then create the item.  Once saved it will automatically be saved into the database for both published and the unpublished version of the app, and immediately appear in the campaigns using that system.
+
+When I select a token on the battlemap it should make all buttons appear at the same time (the hotbar and character sheet buttons).
+
+*The following changes need to be made to the character sheet*
+
+1. Remove all "GM Only" labels
+2. When I edit the stats for level, health points, energy, or anything else it should automatically make those changes appear, right now they only do once I close and re-open the character sheets.
+
+Overview
+1. Race should be a dropdown that includes all featured races
+a. When a race is selected, it should automatically fill in all required stats for that race (Size, Natural Armor, Size Bonus, Feat Tree, Speed, Fly Speed)
+2. Remove "Class"
+
+Attributes
+1. The attributes are as follows:
+Might
+Finesse
+Wit
+Presence
+Will
+Craft
+2. The max value is 5, low value is -2
+3. Their mod is equal to their value, so remove the mod display
+
+Skills
+1. I want all skills listed in alphabetical order, I don't want them grouped up in specific groups but rather all together.
+2. Max value of 5, low value of -2
+
+Inventory
+Add Item button in inventory should open a new display that does the following:
+1. Shows a button that if clicked allows you to create a new item (these items are saved in the campaign data but do not transfer between campaigns)
+2. Displays all items made for that campaign game system
+
+Items should contain the following:
+Name
+Profile Image (this is displayed in inv)
+Type
+Rarity
+Description Field (Editable by ONLY GM)
+Rules Field (Can be toggled on and off by GM, only visible to GM when off, only editable by GM).
+Damage Roll (ex. 1d12)
+Damage Type
+Mod (Affects Damage Rolls)
+Range
+Attribute (Adds the selected attribute to attack rolls)
+AOE (Yes or No Field)
+Size
+Weight
+Heavy or Light (If heavy is selected, you cannot carry another item as a weapon)
+Price (Displays a number value)
+Currency (Copper, Silver, Gold, Platinum)
+Durability (0-10)
+Capacity (Only applicable if its a container item)
+
+Damage Types:
+Sharp
+Blunt
+Piercing
+Flame
+Frost
+Storm
+Tide
+Stone
+Flux
+Light
+Dark
+Sound
+Health
+
+3. Don't display currency in the main inventory section next to weight carried, currency are items that can be carried
+4. Items in inventory should display their weight, price (ex. 1g), durability, item type, rarity, 
+5. When I click on the item in the inventory it should open up a display with all their stats.  ONLY the GM can edit those stats.
+6. Container items should have their own inventory inside their item sheet, and the total weight of the container item + the items within should be displayed on the container items weight in the character inventory display and total.
+7. Container items should have a dropdown button in the character inventory that if pressed displays all items within the container items inventory
+8. Container items should have a unique property that affects the players max carry weight total based on its value.
