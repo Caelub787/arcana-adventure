@@ -905,9 +905,9 @@ export default function Campaign() {
              <BattleMapHotbars character={role === 'gm' ? inspectedChar : character} />
           </div>
           
-          {/* Character Sheet Tab Buttons - Middle right (visible when character/inspectedChar exists) */}
+          {/* Character Sheet Tab Buttons - Right side, aligned with hotbar buttons (visible when character/inspectedChar exists) */}
           {((role === 'player' && character) || (role === 'gm' && inspectedChar)) && (
-            <div className="absolute right-3 top-1/2 -translate-y-1/2 z-20 flex flex-col gap-2">
+            <div className="absolute right-3 top-1/3 -translate-y-1/2 z-20 flex flex-col gap-2">
               {[
                 { tab: 'overview', icon: User, color: 'stone', label: 'Overview' },
                 { tab: 'attributes', icon: BarChart3, color: 'blue', label: 'Attributes' },
