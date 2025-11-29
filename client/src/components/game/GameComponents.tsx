@@ -3037,9 +3037,10 @@ interface InventoryItemRowProps {
   setShowItemDetail: (show: boolean) => void;
   canEdit: boolean;
   moveItemToContainer: (itemId: string, containerId: string | null) => void;
+  onDeleteItem?: (itemId: string) => void;
 }
 
-function InventoryItemRow({ item, depth, expandedContainers, toggleContainer, setSelectedItem, setShowItemDetail, canEdit, moveItemToContainer }: InventoryItemRowProps) {
+function InventoryItemRow({ item, depth, expandedContainers, toggleContainer, setSelectedItem, setShowItemDetail, canEdit, moveItemToContainer, onDeleteItem }: InventoryItemRowProps) {
   const [isDragOver, setIsDragOver] = useState(false);
   
   const rarityColors: Record<string, string> = {
@@ -3195,11 +3196,28 @@ function InventoryItemRow({ item, depth, expandedContainers, toggleContainer, se
                 e.stopPropagation();
                 moveItemToContainer(item.id, null);
               }}
-              className="shrink-0 p-1.5 hover:bg-red-900/50 rounded text-stone-400 hover:text-red-400"
+              className="shrink-0 p-1.5 hover:bg-stone-700 rounded text-stone-400 hover:text-amber-400"
               title="Remove from container"
               data-testid={`button-remove-from-container-${item.id}`}
             >
               <X className="h-4 w-4" />
+            </button>
+          )}
+          
+          {/* Delete item button */}
+          {canEdit && onDeleteItem && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                if (confirm(`Delete "${item.name}"?`)) {
+                  onDeleteItem(item.id);
+                }
+              }}
+              className="shrink-0 p-1.5 hover:bg-red-900/50 rounded text-stone-400 hover:text-red-400"
+              title="Delete item"
+              data-testid={`button-delete-item-${item.id}`}
+            >
+              <Trash2 className="h-4 w-4" />
             </button>
           )}
         </div>
@@ -3219,6 +3237,7 @@ function InventoryItemRow({ item, depth, expandedContainers, toggleContainer, se
               setShowItemDetail={setShowItemDetail}
               canEdit={canEdit}
               moveItemToContainer={moveItemToContainer}
+              onDeleteItem={onDeleteItem}
             />
           ))}
         </div>
@@ -4465,6 +4484,7 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                           setShowItemDetail={setShowItemDetail}
                           canEdit={canEdit}
                           moveItemToContainer={moveItemToContainer}
+                          onDeleteItem={(id) => deleteItemMutation.mutate(id)}
                         />
                       ))}
                     </div>
