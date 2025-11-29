@@ -3075,11 +3075,19 @@ function InventoryItemRow({ item, depth, expandedContainers, toggleContainer, se
     if (!item.isContainer || !canEdit) return;
     
     try {
-      const data = JSON.parse(e.dataTransfer.getData('application/json'));
+      const jsonData = e.dataTransfer.getData('application/json');
+      if (!jsonData) {
+        console.error('No drag data found');
+        return;
+      }
+      const data = JSON.parse(jsonData);
       if (data.type === 'item' && data.itemId && data.itemId !== item.id) {
+        console.log('Moving item', data.itemId, 'to container', item.id);
         moveItemToContainer(data.itemId, item.id);
       }
-    } catch (err) {}
+    } catch (err) {
+      console.error('Error handling drop:', err);
+    }
   };
   
   return (
@@ -6174,6 +6182,95 @@ function ManageTemplatesDialog({ open, onOpenChange, campaignId }: { open: boole
   );
 }
 
+// Container Contents Manager - Allows GMs to add items to containers
+interface ContainerContentsManagerProps {
+  containerId: string;
+  containerName: string;
+  items: any[];
+  onAddItem: (itemId: string) => void;
+}
+
+function ContainerContentsManager({ containerId, containerName, items, onAddItem }: ContainerContentsManagerProps) {
+  const [searchQuery, setSearchQuery] = useState('');
+  
+  // Get items that are NOT in this container and are NOT containers themselves
+  const availableItems = items.filter((item: any) => 
+    item.containerId !== containerId && 
+    !item.isContainer && 
+    item.id !== containerId
+  );
+  
+  const filteredItems = availableItems.filter((item: any) =>
+    item.name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  // Get items currently in this container
+  const containedItems = items.filter((item: any) => item.containerId === containerId);
+
+  return (
+    <div className="pt-4 border-t border-stone-700">
+      <h3 className="text-sm font-bold text-amber-500 mb-2 flex items-center gap-2">
+        <Package className="h-4 w-4" />
+        Container Contents ({containedItems.length} items)
+      </h3>
+      
+      {/* Current contents */}
+      {containedItems.length > 0 && (
+        <div className="mb-3 space-y-1">
+          {containedItems.map((item: any) => (
+            <div key={item.id} className="flex items-center justify-between p-2 bg-stone-800 rounded text-sm">
+              <span className="text-stone-200">{item.name}</span>
+              <Badge variant="outline" className="text-[10px]">{item.itemType}</Badge>
+            </div>
+          ))}
+        </div>
+      )}
+      
+      {/* Search and add items */}
+      <div className="space-y-2">
+        <Label className="text-xs text-stone-400">Add Item to {containerName}</Label>
+        <Input
+          placeholder="Search items to add..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="bg-stone-900 border-stone-700"
+          data-testid="input-container-search"
+        />
+        
+        {searchQuery && filteredItems.length > 0 && (
+          <div className="max-h-32 overflow-y-auto space-y-1 bg-stone-900 border border-stone-700 rounded p-1">
+            {filteredItems.slice(0, 10).map((item: any) => (
+              <button
+                key={item.id}
+                onClick={() => {
+                  onAddItem(item.id);
+                  setSearchQuery('');
+                }}
+                className="w-full flex items-center justify-between p-2 hover:bg-stone-800 rounded text-sm text-left"
+                data-testid={`button-add-item-${item.id}`}
+              >
+                <span className="text-stone-200">{item.name}</span>
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline" className="text-[10px]">{item.itemType}</Badge>
+                  <Plus className="h-4 w-4 text-green-500" />
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+        
+        {searchQuery && filteredItems.length === 0 && (
+          <p className="text-xs text-stone-500 p-2">No items found matching "{searchQuery}"</p>
+        )}
+        
+        {!searchQuery && availableItems.length === 0 && (
+          <p className="text-xs text-stone-500">No items available to add</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // Item Detail Dialog Component with Edit Mode and Equip to Hotbar
 interface ItemDetailDialogProps {
   item: any;
@@ -6590,6 +6687,27 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
                   )}
                 </div>
               </div>
+            )}
+
+            {/* Container Contents Management - GM Only */}
+            {isGM && currentData.isContainer && !isEditing && (
+              <ContainerContentsManager 
+                containerId={currentData.id}
+                containerName={currentData.name}
+                items={items}
+                onAddItem={(itemId) => {
+                  const updateItemMutation = async () => {
+                    try {
+                      await api.updateItem(itemId, { containerId: currentData.id });
+                      queryClient.invalidateQueries({ queryKey: ['items', character.id] });
+                      toast({ title: "Item Added", description: "Item added to container" });
+                    } catch (err: any) {
+                      toast({ title: "Error", description: err.message || "Failed to add item", variant: "destructive" });
+                    }
+                  };
+                  updateItemMutation();
+                }}
+              />
             )}
 
             {!isEditing && (isOwner || isGM) && ['weapon', 'consumable', 'utility'].includes(currentData.itemType) && (
