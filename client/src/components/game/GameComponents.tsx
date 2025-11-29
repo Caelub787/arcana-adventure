@@ -3166,10 +3166,10 @@ function InventoryItemRow({ item, depth, expandedContainers, toggleContainer, se
             onClick={() => { setSelectedItem(item); setShowItemDetail(true); }}
           >
             <div className="w-12 h-12 bg-black/50 rounded flex items-center justify-center shrink-0 border border-stone-700">
-              {item.isContainer ? (
-                isExpanded ? <FolderOpen className="w-6 h-6 text-amber-500" /> : <Package className="w-6 h-6 text-amber-500" />
-              ) : item.image ? (
+              {item.image ? (
                 <img src={item.image} alt={item.name} className="w-full h-full object-cover rounded" />
+              ) : item.isContainer ? (
+                isExpanded ? <FolderOpen className="w-6 h-6 text-amber-500" /> : <Package className="w-6 h-6 text-amber-500" />
               ) : (
                 <span className="text-xl font-bold text-stone-500">{item.name[0]}</span>
               )}
