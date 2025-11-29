@@ -11,6 +11,7 @@ import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Textarea } from "@/components/ui/textarea";
@@ -5658,7 +5659,7 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
           </button>
         </div>
 
-        <ScrollArea className="flex-1 max-h-[500px] pr-4">
+        <ScrollArea className="flex-1 min-h-0 overflow-y-auto" style={{ maxHeight: 'calc(90vh - 140px)' }}>
           {activeTab === 'templates' ? (
             <div className="space-y-4">
               {/* Search and Filter */}
@@ -5862,7 +5863,34 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
               <Label>Durability: {formData.durability}/10</Label>
               <Slider value={[formData.durability]} onValueChange={(v) => setFormData({...formData, durability: v[0]})} min={0} max={10} step={1} className="mt-2" />
             </div>
-            <div className="flex gap-2 pt-4">
+            <div className="border-t border-stone-700 pt-4">
+              <h3 className="text-sm font-bold text-stone-300 mb-3">Container Settings</h3>
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <Checkbox 
+                    id="isContainer" 
+                    checked={formData.isContainer} 
+                    onCheckedChange={(checked) => setFormData({...formData, isContainer: !!checked})}
+                    data-testid="checkbox-is-container"
+                  />
+                  <Label htmlFor="isContainer" className="cursor-pointer">This is a container</Label>
+                </div>
+                {formData.isContainer && (
+                  <div className="flex items-center gap-2">
+                    <Label>Carry Capacity Bonus:</Label>
+                    <Input 
+                      type="number" 
+                      min="0" 
+                      value={formData.carryCapacity} 
+                      onChange={(e) => setFormData({...formData, carryCapacity: parseInt(e.target.value) || 0})} 
+                      className="w-20 bg-stone-800 border-stone-700"
+                      data-testid="input-carry-capacity"
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="flex gap-2 pt-4 pb-4">
               <Button onClick={handleSubmit} disabled={!formData.name} data-testid="button-create-item">Add Item</Button>
               <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
             </div>
