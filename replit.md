@@ -61,6 +61,12 @@ Preferred communication style: Simple, everyday language.
 -   Cancel button navigates back to home page.
 -   New campaigns get Rocky Coast as default background.
 
+**Template Item System**:
+-   **System Items**: Global item templates managed by admins (notclaudenot@gmail.com, reedmcaleb@gmail.com) via `/admin` page
+-   **Campaign Items**: Campaign-specific templates created by GMs via "Templates" button in inventory tab
+-   **Add Item Dialog**: Two tabs - "From Library" (system + campaign templates) and "Create New" (custom item creation)
+-   Players can add items from either library or create new ones; only GMs see the Templates management button
+
 ### Backend Architecture
 
 **Technology Stack**: Express.js with TypeScript, `express-session` for session management.
