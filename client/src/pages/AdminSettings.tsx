@@ -334,7 +334,7 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
       toast({ title: 'Error', description: 'Item name is required', variant: 'destructive' });
       return;
     }
-    // Convert empty strings to 0 before saving
+    // Convert empty strings to proper values before saving
     const cleanedData = {
       ...formData,
       mod: Number(formData.mod) || 0,
@@ -344,6 +344,7 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
       price: Number(formData.price) || 0,
       carryCapacity: Number(formData.carryCapacity) || 0,
       quantity: Number(formData.quantity) || 1,
+      aoe: formData.aoe || null, // Convert empty string to null
     };
     onSave(cleanedData);
   };

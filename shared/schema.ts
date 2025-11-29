@@ -227,7 +227,7 @@ export const items = pgTable("items", {
   damageType: text("damage_type"), // Sharp, Blunt, Piercing, Flame, Frost, Storm, Tide, Stone, Flux, Light, Dark, Sound, Health
   mod: integer("mod").default(0), // Flat bonus added after dice roll
   range: integer("range"), // In feet
-  aoe: boolean("aoe").default(false).notNull(), // Yes or No field
+  aoe: text("aoe"), // Area of effect type: cone, sphere, line, cube, cylinder, or null for none
   attribute: text("attribute"), // Attribute used for attack rolls (might, finesse, wit, presence, will, craft)
   size: text("size"), // Item size
   isHeavy: boolean("is_heavy").default(false).notNull(), // Heavy or Light - if heavy, cannot carry another weapon
