@@ -4135,10 +4135,9 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
           {/* ATTRIBUTES TAB */}
           <TabsContent value="attributes" className="space-y-4 mt-0" data-testid="content-attributes">
             <Card className="bg-stone-800 border-stone-700">
-              <CardHeader>
-                <CardTitle className="text-amber-500 flex items-center justify-between">
-                  <span>Attributes</span>
-                  {(isOwner || isGM) && !editingAttributes && (
+              <CardContent className="pt-4">
+                {(isOwner || isGM) && !editingAttributes && (
+                  <div className="flex justify-end mb-2">
                     <Button
                       size="sm"
                       variant="outline"
@@ -4157,10 +4156,8 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                     >
                       Edit Attributes
                     </Button>
-                  )}
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
+                  </div>
+                )}
                 <p className="text-xs text-stone-500 mb-4">Attributes range from -2 to 5. The modifier equals the value.</p>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
                   {[
@@ -4237,10 +4234,9 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
           {/* SKILLS TAB */}
           <TabsContent value="skills" className="space-y-4 mt-0" data-testid="content-skills">
             <Card className="bg-stone-800 border-stone-700">
-              <CardHeader>
-                <CardTitle className="text-amber-500 flex items-center justify-between">
-                  <span>Skills</span>
-                  {(isOwner || isGM) && !editingSkills && (
+              <CardContent className="pt-4">
+                {(isOwner || isGM) && !editingSkills && (
+                  <div className="flex justify-end mb-2">
                     <Button
                       size="sm"
                       variant="outline"
@@ -4268,10 +4264,8 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                     >
                       Edit Skills
                     </Button>
-                  )}
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
+                  </div>
+                )}
                 <p className="text-xs text-stone-500 mb-4">Skills range from -2 to 5. The modifier equals the value.</p>
                 {/* All Skills - Alphabetical Order */}
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
@@ -4356,27 +4350,19 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
           {/* INVENTORY TAB */}
           <TabsContent value="inventory" className="space-y-4 mt-0" data-testid="content-inventory">
             <Card className="bg-stone-800 border-stone-700">
-              <CardHeader>
-                <CardTitle className="text-amber-500 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Backpack className="h-5 w-5" />
-                    Inventory
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {isGM && (
-                      <Button size="sm" variant="outline" onClick={() => setShowManageTemplates(true)} data-testid="button-manage-templates" className="bg-stone-700 border-stone-600 hover:bg-stone-600">
-                        <Layers className="h-4 w-4 mr-1" /> Templates
-                      </Button>
-                    )}
-                    {(isOwner || isGM) && (
-                      <Button size="sm" onClick={() => setShowAddItem(true)} data-testid="button-add-item">
-                        <Plus className="h-4 w-4 mr-1" /> Add Item
-                      </Button>
-                    )}
-                  </div>
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
+              <CardContent className="space-y-4 pt-4">
+                <div className="flex justify-end gap-2">
+                  {isGM && (
+                    <Button size="sm" variant="outline" onClick={() => setShowManageTemplates(true)} data-testid="button-manage-templates" className="bg-stone-700 border-stone-600 hover:bg-stone-600">
+                      <Layers className="h-4 w-4 mr-1" /> Templates
+                    </Button>
+                  )}
+                  {(isOwner || isGM) && (
+                    <Button size="sm" onClick={() => setShowAddItem(true)} data-testid="button-add-item">
+                      <Plus className="h-4 w-4 mr-1" /> Add Item
+                    </Button>
+                  )}
+                </div>
                 {/* Currency & Weight Display */}
                 <div className="grid grid-cols-2 gap-4 p-4 bg-stone-900 rounded-lg border border-stone-700">
                   <div>
@@ -4483,13 +4469,9 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
           {/* MAGIC TAB */}
           <TabsContent value="magic" className="space-y-4 mt-0" data-testid="content-magic">
             <Card className="bg-stone-800 border-stone-700">
-              <CardHeader>
-                <div className="flex justify-between items-center">
-                  <CardTitle className="text-purple-400 flex items-center gap-2">
-                    <Sparkles className="h-5 w-5" />
-                    Spells & Magic
-                  </CardTitle>
-                  {canEdit && (
+              <CardContent className="space-y-4 pt-4">
+                {canEdit && (
+                  <div className="flex justify-end">
                     <Button 
                       size="sm"
                       onClick={() => {
@@ -4502,10 +4484,8 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                       <Plus className="h-4 w-4 mr-1" />
                       Add Spell
                     </Button>
-                  )}
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-4">
+                  </div>
+                )}
                 {/* Spell Stats */}
                 <div className="grid grid-cols-3 gap-4">
                   <div className="bg-stone-900 p-3 rounded">
@@ -5113,10 +5093,7 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
           {/* BACKGROUND TAB */}
           <TabsContent value="background" className="space-y-4 mt-0" data-testid="content-background">
             <Card className="bg-stone-800 border-stone-700">
-              <CardHeader>
-                <CardTitle className="text-amber-500">Character Background</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
+              <CardContent className="space-y-4 pt-4">
                 {/* Portrait Section */}
                 <div>
                   <div className="flex justify-between items-center mb-2">
@@ -5453,7 +5430,7 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
     damageType: '',
     mod: 0,
     range: 0,
-    aoe: '',
+    aoe: false,
     attribute: '',
     size: '',
     weight: 'light',
@@ -5486,7 +5463,7 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
       damageType: template.damageType || '',
       mod: template.mod || 0,
       range: template.range || 0,
-      aoe: template.aoe || '',
+      aoe: template.aoe || false,
       attribute: template.attribute || '',
       size: template.size || '',
       weight: template.weight || 'light',
@@ -5611,7 +5588,7 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
       damageType: '',
       mod: 0,
       range: 0,
-      aoe: '',
+      aoe: false,
       attribute: '',
       size: '',
       weight: 'light',
