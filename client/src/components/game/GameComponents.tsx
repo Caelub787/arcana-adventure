@@ -1451,7 +1451,7 @@ export function BattleMapHotbars({ character }: BattleMapHotbarsProps) {
   return (
     <>
       {/* Hotbar Switcher Buttons - Left side of screen, aligned with character sheet buttons */}
-      <div className="absolute left-2 md:left-4 top-1/3 -translate-y-1/2 flex flex-col gap-2 z-30 pointer-events-auto">
+      <div className="absolute left-2 md:left-4 top-24 flex flex-col gap-2 z-30 pointer-events-auto">
         {hotbarTypes.map(({ type, icon: Icon, color }) => {
           const isActive = activeHotbar === type;
           const colorClasses: Record<string, string> = {
