@@ -907,7 +907,7 @@ export default function Campaign() {
           
           {/* Character Sheet Tab Buttons - Right side, aligned with hotbar buttons (visible when character/inspectedChar exists) */}
           {((role === 'player' && character) || (role === 'gm' && inspectedChar)) && (
-            <div className="absolute right-3 top-24 z-20 flex flex-col gap-2">
+            <div className="absolute right-3 top-44 z-20 flex flex-col gap-2">
               {[
                 { tab: 'overview', icon: User, color: 'stone', label: 'Overview' },
                 { tab: 'attributes', icon: BarChart3, color: 'blue', label: 'Attributes' },
