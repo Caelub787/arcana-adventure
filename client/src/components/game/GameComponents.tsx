@@ -3473,7 +3473,44 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
 
   const deleteItemMutation = useMutation({
     mutationFn: (id: string) => api.deleteItem(id),
-    onSuccess: () => {
+    onMutate: async (deletedId: string) => {
+      // Cancel any outgoing refetches
+      await queryClient.cancelQueries({ queryKey: ['items', character.id] });
+      
+      // Snapshot the previous value
+      const previousItems = queryClient.getQueryData(['items', character.id]);
+      
+      // Optimistically remove the item and any children (for containers)
+      queryClient.setQueryData(['items', character.id], (old: any[]) => {
+        if (!old) return [];
+        // Get all IDs to remove (the item itself + any items inside if it's a container)
+        const idsToRemove = new Set<string>();
+        idsToRemove.add(deletedId);
+        
+        // Find all nested children recursively
+        const findChildren = (parentId: string) => {
+          old.forEach((item: any) => {
+            if (item.containerId === parentId) {
+              idsToRemove.add(item.id);
+              findChildren(item.id);
+            }
+          });
+        };
+        findChildren(deletedId);
+        
+        return old.filter((item: any) => !idsToRemove.has(item.id));
+      });
+      
+      return { previousItems };
+    },
+    onError: (err, deletedId, context) => {
+      // Rollback on error
+      if (context?.previousItems) {
+        queryClient.setQueryData(['items', character.id], context.previousItems);
+      }
+    },
+    onSettled: () => {
+      // Refetch to ensure sync with server
       queryClient.invalidateQueries({ queryKey: ['items', character.id] });
       setShowItemDetail(false);
       setSelectedItem(null);
