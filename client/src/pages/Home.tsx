@@ -3,7 +3,7 @@ import { motion } from "framer-motion";
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Play, Users, Settings, ScrollText, Plus, Heart, Loader2 } from "lucide-react";
+import { Play, Users, Settings, ScrollText, Plus, Heart, Loader2, Shield } from "lucide-react";
 import bgImage from "@assets/generated_images/dark_fantasy_landscape_with_arcane_ruins.png";
 import { useAuth } from "@/lib/AuthContext";
 import { api } from "@/lib/api";
@@ -11,7 +11,7 @@ import { useQuery } from "@tanstack/react-query";
 
 export default function Home() {
   const [location, setLocation] = useLocation();
-  const { user, logout } = useAuth();
+  const { user, isAdmin, logout } = useAuth();
   
   // Load campaigns from API with React Query
   const { data: campaignsData, isLoading } = useQuery<{ created: any[], joined: any[] }>({
@@ -116,8 +116,8 @@ export default function Home() {
             </CardContent>
           </Card>
 
-          {/* Main Menu Grid (My Campaigns, Settings) */}
-          <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+          {/* Main Menu Grid (My Campaigns, Settings, Admin) */}
+          <div className={`grid grid-cols-1 gap-6 ${isAdmin ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
             
             {/* My Campaigns */}
             <Link href="/my-campaigns">
@@ -150,6 +150,25 @@ export default function Home() {
                 </p>
               </CardContent>
             </Card>
+
+            {/* Admin Settings - Only visible to admins */}
+            {isAdmin && (
+              <Link href="/admin">
+                <Card className="group cursor-pointer border-stone-800 bg-stone-950/60 backdrop-blur-sm transition-all hover:-translate-y-1 hover:border-amber-600/50 hover:bg-stone-900/80 hover:shadow-[0_0_30px_rgba(245,158,11,0.2)]" data-testid="card-admin-settings">
+                  <CardHeader>
+                    <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-amber-900/30 text-amber-500 group-hover:bg-amber-600 group-hover:text-white transition-colors">
+                      <Shield className="h-6 w-6" />
+                    </div>
+                    <CardTitle className="font-display text-xl text-stone-200 group-hover:text-amber-400">Admin Settings</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-sm text-stone-500 group-hover:text-stone-400">
+                      Manage system items, spells, and global game settings.
+                    </p>
+                  </CardContent>
+                </Card>
+              </Link>
+            )}
           </div>
           
           <div className="flex justify-center pt-8 pb-4">

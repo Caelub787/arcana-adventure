@@ -971,6 +971,7 @@ export default function Campaign() {
               onUpdate={handleUpdateCharacter}
               onClose={() => setViewingCharacterSheet(null)}
               defaultTab={characterSheetDefaultTab}
+              campaignId={effectiveCampaignId || undefined}
             />
           )}
         </DialogContent>

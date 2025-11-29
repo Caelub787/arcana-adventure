@@ -399,6 +399,52 @@ class ApiClient {
   async deleteSpell(id: string): Promise<void> {
     return this.request(`/spells/${id}`, { method: 'DELETE' });
   }
+
+  // Admin System Items
+  async getSystemItems(): Promise<Item[]> {
+    return this.request('/admin/system-items');
+  }
+
+  async createSystemItem(item: Partial<Item>): Promise<Item> {
+    return this.request('/admin/system-items', {
+      method: 'POST',
+      body: JSON.stringify(item),
+    });
+  }
+
+  async updateSystemItem(id: string, data: Partial<Item>): Promise<Item> {
+    return this.request(`/admin/system-items/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteSystemItem(id: string): Promise<void> {
+    return this.request(`/admin/system-items/${id}`, { method: 'DELETE' });
+  }
+
+  // Campaign Template Items
+  async getTemplateItems(campaignId: string): Promise<{ campaignItems: Item[], systemItems: Item[] }> {
+    return this.request(`/campaigns/${campaignId}/template-items`);
+  }
+
+  async createCampaignTemplateItem(campaignId: string, item: Partial<Item>): Promise<Item> {
+    return this.request(`/campaigns/${campaignId}/template-items`, {
+      method: 'POST',
+      body: JSON.stringify(item),
+    });
+  }
+
+  async updateCampaignTemplateItem(campaignId: string, id: string, data: Partial<Item>): Promise<Item> {
+    return this.request(`/campaigns/${campaignId}/template-items/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteCampaignTemplateItem(campaignId: string, id: string): Promise<void> {
+    return this.request(`/campaigns/${campaignId}/template-items/${id}`, { method: 'DELETE' });
+  }
 }
 
 export const api = new ApiClient();

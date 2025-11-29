@@ -12,6 +12,7 @@ import Login from "@/pages/Login";
 import SignUp from "@/pages/SignUp";
 import ForgotPassword from "@/pages/ForgotPassword";
 import ResetPassword from "@/pages/ResetPassword";
+import AdminSettings from "@/pages/AdminSettings";
 import { AuthProvider, useAuth } from "./lib/AuthContext";
 
 // Protected Route Component
@@ -51,6 +52,9 @@ function Router() {
       </Route>
       <Route path="/my-campaigns">
         {() => <ProtectedRoute component={MyCampaigns} />}
+      </Route>
+      <Route path="/admin">
+        {() => <ProtectedRoute component={AdminSettings} />}
       </Route>
       <Route component={NotFound} />
     </Switch>

@@ -3034,9 +3034,10 @@ interface CharacterSheetProps {
   onUpdate?: (updates: any) => void;
   onClose?: () => void;
   defaultTab?: string;
+  campaignId?: string;
 }
 
-export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, defaultTab = "overview" }: CharacterSheetProps) {
+export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, defaultTab = "overview", campaignId }: CharacterSheetProps) {
   const [biography, setBiography] = useState(character?.biography || "");
   const [gmNotes, setGmNotes] = useState(character?.gmNotes || "");
   const [isEditingBio, setIsEditingBio] = useState(false);
@@ -3132,6 +3133,7 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
   const [itemSort, setItemSort] = useState("name-asc");
   const [itemTypeFilter, setItemTypeFilter] = useState("all");
   const [showAddItem, setShowAddItem] = useState(false);
+  const [showManageTemplates, setShowManageTemplates] = useState(false);
   const [selectedItem, setSelectedItem] = useState<any>(null);
   const [showItemDetail, setShowItemDetail] = useState(false);
   const [expandedContainers, setExpandedContainers] = useState<Set<string>>(new Set());
@@ -4122,11 +4124,18 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                     <Backpack className="h-5 w-5" />
                     Inventory
                   </div>
-                  {(isOwner || isGM) && (
-                    <Button size="sm" onClick={() => setShowAddItem(true)} data-testid="button-add-item">
-                      <Plus className="h-4 w-4 mr-1" /> Add Item
-                    </Button>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {isGM && (
+                      <Button size="sm" variant="outline" onClick={() => setShowManageTemplates(true)} data-testid="button-manage-templates" className="bg-stone-700 border-stone-600 hover:bg-stone-600">
+                        <Layers className="h-4 w-4 mr-1" /> Templates
+                      </Button>
+                    )}
+                    {(isOwner || isGM) && (
+                      <Button size="sm" onClick={() => setShowAddItem(true)} data-testid="button-add-item">
+                        <Plus className="h-4 w-4 mr-1" /> Add Item
+                      </Button>
+                    )}
+                  </div>
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -5284,13 +5293,40 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
         onOpenChange={setShowAddItem}
         onSave={(itemData) => createItemMutation.mutate(itemData)}
         isGM={isGM}
+        campaignId={campaignId}
       />
+
+      {/* Manage Templates Dialog (GM Only) */}
+      {isGM && (
+        <ManageTemplatesDialog
+          open={showManageTemplates}
+          onOpenChange={setShowManageTemplates}
+          campaignId={campaignId}
+        />
+      )}
     </div>
   );
 }
 
 // Add Item Dialog Component
-function AddItemDialog({ open, onOpenChange, onSave, isGM }: { open: boolean; onOpenChange: (open: boolean) => void; onSave: (data: any) => void; isGM: boolean }) {
+function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open: boolean; onOpenChange: (open: boolean) => void; onSave: (data: any) => void; isGM: boolean; campaignId?: string }) {
+  const [activeTab, setActiveTab] = useState<'templates' | 'create'>('templates');
+  const [templateSearch, setTemplateSearch] = useState('');
+  const [templateTypeFilter, setTemplateTypeFilter] = useState('all');
+  
+  const { data: templateData } = useQuery({
+    queryKey: ['template-items', campaignId],
+    queryFn: () => campaignId ? api.getTemplateItems(campaignId) : Promise.resolve({ campaignItems: [], systemItems: [] }),
+    enabled: !!campaignId && open,
+  });
+
+  const allTemplates = [...(templateData?.systemItems || []), ...(templateData?.campaignItems || [])];
+  const filteredTemplates = allTemplates.filter((item: any) => {
+    const matchesSearch = item.name.toLowerCase().includes(templateSearch.toLowerCase());
+    const matchesType = templateTypeFilter === 'all' || item.itemType === templateTypeFilter;
+    return matchesSearch && matchesType;
+  });
+
   const [formData, setFormData] = useState({
     name: '',
     image: '',
@@ -5322,6 +5358,42 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM }: { open: boolean; on
   const [imageDimensions, setImageDimensions] = useState({ width: 0, height: 0 });
   const imageInputRef = useRef<HTMLInputElement>(null);
   const cropImageRef = useRef<HTMLImageElement>(null);
+
+  const handleAddFromTemplate = (template: any) => {
+    const itemData = {
+      name: template.name,
+      image: template.image || '',
+      description: template.description || '',
+      itemType: template.itemType,
+      rarity: template.rarity,
+      quantity: 1,
+      damage: template.damage || '',
+      damageType: template.damageType || '',
+      mod: template.mod || 0,
+      range: template.range || 0,
+      aoe: template.aoe || '',
+      attribute: template.attribute || '',
+      size: template.size || '',
+      weight: template.weight || 'light',
+      itemWeight: template.itemWeight || 0,
+      priceCopper: template.priceCopper || 0,
+      priceSilver: template.priceSilver || 0,
+      priceGold: template.priceGold || 0,
+      pricePlatinum: template.pricePlatinum || 0,
+      durability: template.durability || 10,
+      isContainer: template.isContainer || false,
+      carryCapacity: template.carryCapacity || 0,
+    };
+    onSave(itemData);
+  };
+
+  const rarityColors: Record<string, string> = {
+    common: 'bg-stone-600',
+    uncommon: 'bg-green-600',
+    rare: 'bg-blue-600',
+    epic: 'bg-purple-600',
+    legendary: 'bg-amber-600',
+  };
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -5441,11 +5513,109 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM }: { open: boolean; on
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-stone-900 border-stone-700 max-w-3xl">
+      <DialogContent className="bg-stone-900 border-stone-700 max-w-3xl max-h-[90vh] flex flex-col">
         <DialogHeader>
-          <DialogTitle className="text-amber-500">Add New Item</DialogTitle>
+          <DialogTitle className="text-amber-500">Add Item</DialogTitle>
         </DialogHeader>
-        <ScrollArea className="max-h-[600px] pr-4">
+        
+        {/* Tabs */}
+        <div className="flex border-b border-stone-700 mb-4">
+          <button
+            onClick={() => setActiveTab('templates')}
+            className={`px-4 py-2 font-medium transition-colors ${
+              activeTab === 'templates' 
+                ? 'text-amber-500 border-b-2 border-amber-500' 
+                : 'text-stone-400 hover:text-stone-200'
+            }`}
+            data-testid="tab-templates"
+          >
+            From Library
+          </button>
+          <button
+            onClick={() => setActiveTab('create')}
+            className={`px-4 py-2 font-medium transition-colors ${
+              activeTab === 'create' 
+                ? 'text-amber-500 border-b-2 border-amber-500' 
+                : 'text-stone-400 hover:text-stone-200'
+            }`}
+            data-testid="tab-create"
+          >
+            Create New
+          </button>
+        </div>
+
+        <ScrollArea className="flex-1 max-h-[500px] pr-4">
+          {activeTab === 'templates' ? (
+            <div className="space-y-4">
+              {/* Search and Filter */}
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-500" />
+                  <Input
+                    placeholder="Search items..."
+                    value={templateSearch}
+                    onChange={(e) => setTemplateSearch(e.target.value)}
+                    className="pl-9 bg-stone-800 border-stone-700"
+                    data-testid="input-template-search"
+                  />
+                </div>
+                <Select value={templateTypeFilter} onValueChange={setTemplateTypeFilter}>
+                  <SelectTrigger className="w-[150px] bg-stone-800 border-stone-700">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Types</SelectItem>
+                    <SelectItem value="weapon">Weapons</SelectItem>
+                    <SelectItem value="armor">Armor</SelectItem>
+                    <SelectItem value="consumable">Consumables</SelectItem>
+                    <SelectItem value="utility">Utilities</SelectItem>
+                    <SelectItem value="container">Containers</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Template Items List */}
+              {filteredTemplates.length === 0 ? (
+                <div className="text-center py-12 text-stone-400">
+                  <Package className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                  <p className="font-bold">No items in library</p>
+                  <p className="text-sm mt-2">Create custom items using the "Create New" tab</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {filteredTemplates.map((item: any) => (
+                    <div
+                      key={item.id}
+                      className="flex items-center gap-3 p-3 rounded-lg bg-stone-800 border border-stone-700 hover:border-amber-700 transition-colors cursor-pointer"
+                      onClick={() => handleAddFromTemplate(item)}
+                      data-testid={`template-item-${item.id}`}
+                    >
+                      {item.image ? (
+                        <img src={item.image} alt={item.name} className="h-10 w-10 rounded object-cover" />
+                      ) : (
+                        <div className="h-10 w-10 rounded bg-stone-700 flex items-center justify-center">
+                          <Package className="h-5 w-5 text-stone-500" />
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium truncate">{item.name}</span>
+                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${rarityColors[item.rarity]}`}>
+                            {item.rarity}
+                          </span>
+                        </div>
+                        <div className="text-xs text-stone-400 flex items-center gap-2">
+                          <span className="capitalize">{item.itemType}</span>
+                          {item.damage && <span>| {item.damage}</span>}
+                        </div>
+                      </div>
+                      <Plus className="h-5 w-5 text-amber-500" />
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : (
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div>
@@ -5579,10 +5749,11 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM }: { open: boolean; on
               <Slider value={[formData.durability]} onValueChange={(v) => setFormData({...formData, durability: v[0]})} min={0} max={10} step={1} className="mt-2" />
             </div>
             <div className="flex gap-2 pt-4">
-              <Button onClick={handleSubmit} disabled={!formData.name}>Add Item</Button>
+              <Button onClick={handleSubmit} disabled={!formData.name} data-testid="button-create-item">Add Item</Button>
               <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
             </div>
           </div>
+        )}
         </ScrollArea>
       </DialogContent>
 
@@ -5654,6 +5825,232 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM }: { open: boolean; on
           )}
         </DialogContent>
       </Dialog>
+    </Dialog>
+  );
+}
+
+// Manage Campaign Templates Dialog (GM Only)
+function ManageTemplatesDialog({ open, onOpenChange, campaignId }: { open: boolean; onOpenChange: (open: boolean) => void; campaignId?: string }) {
+  const queryClient = useQueryClient();
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [newItem, setNewItem] = useState({
+    name: '',
+    description: '',
+    itemType: 'utility',
+    rarity: 'common',
+    damage: '',
+    damageType: '',
+    mod: 0,
+    range: 0,
+    weight: 'light',
+    itemWeight: 0,
+    priceCopper: 0,
+    priceSilver: 0,
+    priceGold: 0,
+    pricePlatinum: 0,
+    durability: 10,
+  });
+
+  const { data: templateData, refetch } = useQuery({
+    queryKey: ['campaign-templates', campaignId],
+    queryFn: async () => {
+      if (!campaignId) return [];
+      const data = await api.getTemplateItems(campaignId);
+      return data.campaignItems || [];
+    },
+    enabled: !!campaignId && open,
+  });
+
+  const createTemplateMutation = useMutation({
+    mutationFn: (data: any) => api.createCampaignTemplateItem(campaignId!, data),
+    onSuccess: () => {
+      refetch();
+      queryClient.invalidateQueries({ queryKey: ['template-items', campaignId] });
+      setShowCreateForm(false);
+      setNewItem({
+        name: '', description: '', itemType: 'utility', rarity: 'common',
+        damage: '', damageType: '', mod: 0, range: 0, weight: 'light',
+        itemWeight: 0, priceCopper: 0, priceSilver: 0, priceGold: 0, pricePlatinum: 0, durability: 10,
+      });
+      toast({ title: "Template Created", description: "Campaign item template created successfully" });
+    }
+  });
+
+  const deleteTemplateMutation = useMutation({
+    mutationFn: (templateId: string) => api.deleteCampaignTemplateItem(campaignId!, templateId),
+    onSuccess: () => {
+      refetch();
+      queryClient.invalidateQueries({ queryKey: ['template-items', campaignId] });
+      toast({ title: "Template Deleted", description: "Campaign item template deleted" });
+    }
+  });
+
+  const rarityColors: Record<string, string> = {
+    common: 'bg-stone-600',
+    uncommon: 'bg-green-600',
+    rare: 'bg-blue-600',
+    epic: 'bg-purple-600',
+    legendary: 'bg-amber-600',
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="bg-stone-900 border-stone-700 max-w-2xl max-h-[90vh] flex flex-col">
+        <DialogHeader>
+          <DialogTitle className="text-amber-500 flex items-center gap-2">
+            <Layers className="h-5 w-5" />
+            Campaign Item Templates
+          </DialogTitle>
+          <DialogDescription className="text-stone-400">
+            Create item templates that players can add to their inventory.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="flex-1 overflow-hidden flex flex-col">
+          {!showCreateForm ? (
+            <>
+              <div className="mb-4">
+                <Button onClick={() => setShowCreateForm(true)} data-testid="button-create-template">
+                  <Plus className="h-4 w-4 mr-1" /> Create Template
+                </Button>
+              </div>
+
+              <ScrollArea className="flex-1">
+                {!templateData || templateData.length === 0 ? (
+                  <div className="text-center py-12 text-stone-400">
+                    <Package className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                    <p className="font-bold">No templates yet</p>
+                    <p className="text-sm mt-2">Create item templates for your campaign</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2 pr-4">
+                    {templateData.map((item: any) => (
+                      <div
+                        key={item.id}
+                        className="flex items-center gap-3 p-3 rounded-lg bg-stone-800 border border-stone-700"
+                        data-testid={`template-${item.id}`}
+                      >
+                        <div className="h-10 w-10 rounded bg-stone-700 flex items-center justify-center">
+                          <Package className="h-5 w-5 text-stone-500" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium truncate">{item.name}</span>
+                            <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${rarityColors[item.rarity]}`}>
+                              {item.rarity}
+                            </span>
+                          </div>
+                          <div className="text-xs text-stone-400 capitalize">{item.itemType}</div>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => deleteTemplateMutation.mutate(item.id)}
+                          className="text-red-500 hover:text-red-400 hover:bg-red-900/30"
+                          data-testid={`button-delete-template-${item.id}`}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </ScrollArea>
+            </>
+          ) : (
+            <ScrollArea className="flex-1 pr-4">
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label>Name *</Label>
+                    <Input value={newItem.name} onChange={(e) => setNewItem({...newItem, name: e.target.value})} className="bg-stone-800 border-stone-700" />
+                  </div>
+                  <div>
+                    <Label>Item Type</Label>
+                    <Select value={newItem.itemType} onValueChange={(v) => setNewItem({...newItem, itemType: v})}>
+                      <SelectTrigger className="bg-stone-800 border-stone-700">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="weapon">Weapon</SelectItem>
+                        <SelectItem value="armor">Armor</SelectItem>
+                        <SelectItem value="consumable">Consumable</SelectItem>
+                        <SelectItem value="utility">Utility</SelectItem>
+                        <SelectItem value="container">Container</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label>Rarity</Label>
+                    <Select value={newItem.rarity} onValueChange={(v) => setNewItem({...newItem, rarity: v})}>
+                      <SelectTrigger className="bg-stone-800 border-stone-700">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="common">Common</SelectItem>
+                        <SelectItem value="uncommon">Uncommon</SelectItem>
+                        <SelectItem value="rare">Rare</SelectItem>
+                        <SelectItem value="epic">Epic</SelectItem>
+                        <SelectItem value="legendary">Legendary</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label>Weight (lbs)</Label>
+                    <Input type="number" min="0" step="0.1" value={newItem.itemWeight} onChange={(e) => setNewItem({...newItem, itemWeight: parseFloat(e.target.value) || 0})} className="bg-stone-800 border-stone-700" />
+                  </div>
+                </div>
+                <div>
+                  <Label>Description</Label>
+                  <Textarea value={newItem.description} onChange={(e) => setNewItem({...newItem, description: e.target.value})} className="bg-stone-800 border-stone-700 min-h-[60px]" />
+                </div>
+                <div className="border-t border-stone-700 pt-4">
+                  <h3 className="text-sm font-bold text-stone-300 mb-3">Combat Stats</h3>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label>Damage</Label>
+                      <Input value={newItem.damage} onChange={(e) => setNewItem({...newItem, damage: e.target.value})} placeholder="1d6" className="bg-stone-800 border-stone-700" />
+                    </div>
+                    <div>
+                      <Label>Damage Type</Label>
+                      <Input value={newItem.damageType} onChange={(e) => setNewItem({...newItem, damageType: e.target.value})} placeholder="slashing" className="bg-stone-800 border-stone-700" />
+                    </div>
+                  </div>
+                </div>
+                <div className="border-t border-stone-700 pt-4">
+                  <h3 className="text-sm font-bold text-stone-300 mb-3">Price</h3>
+                  <div className="grid grid-cols-4 gap-4">
+                    <div>
+                      <Label>Platinum</Label>
+                      <Input type="number" min="0" value={newItem.pricePlatinum} onChange={(e) => setNewItem({...newItem, pricePlatinum: parseInt(e.target.value) || 0})} className="bg-stone-800 border-stone-700" />
+                    </div>
+                    <div>
+                      <Label>Gold</Label>
+                      <Input type="number" min="0" value={newItem.priceGold} onChange={(e) => setNewItem({...newItem, priceGold: parseInt(e.target.value) || 0})} className="bg-stone-800 border-stone-700" />
+                    </div>
+                    <div>
+                      <Label>Silver</Label>
+                      <Input type="number" min="0" value={newItem.priceSilver} onChange={(e) => setNewItem({...newItem, priceSilver: parseInt(e.target.value) || 0})} className="bg-stone-800 border-stone-700" />
+                    </div>
+                    <div>
+                      <Label>Copper</Label>
+                      <Input type="number" min="0" value={newItem.priceCopper} onChange={(e) => setNewItem({...newItem, priceCopper: parseInt(e.target.value) || 0})} className="bg-stone-800 border-stone-700" />
+                    </div>
+                  </div>
+                </div>
+                <div className="flex gap-2 pt-4">
+                  <Button onClick={() => createTemplateMutation.mutate(newItem)} disabled={!newItem.name}>
+                    Create Template
+                  </Button>
+                  <Button variant="outline" onClick={() => setShowCreateForm(false)}>
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            </ScrollArea>
+          )}
+        </div>
+      </DialogContent>
     </Dialog>
   );
 }

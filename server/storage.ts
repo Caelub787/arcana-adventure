@@ -78,10 +78,13 @@ export interface IStorage {
 
   // Item operations
   getItemsByCharacter(characterId: string): Promise<Item[]>;
+  getSystemItems(): Promise<Item[]>;
+  getCampaignTemplateItems(campaignId: string): Promise<Item[]>;
   createItem(item: InsertItem): Promise<Item>;
   updateItem(id: string, updates: Partial<InsertItem>): Promise<Item | undefined>;
   deleteItem(id: string): Promise<void>;
   damageItem(id: string, amount?: number): Promise<Item | undefined>;
+  getItem(id: string): Promise<Item | undefined>;
 
   // Spell operations
   getSpellsByCharacter(characterId: string): Promise<Spell[]>;
@@ -488,6 +491,31 @@ export class DatabaseStorage implements IStorage {
       .returning();
     
     return updatedItem;
+  }
+
+  async getItem(id: string): Promise<Item | undefined> {
+    const [item] = await db.select().from(items).where(eq(items.id, id)).limit(1);
+    return item;
+  }
+
+  async getSystemItems(): Promise<Item[]> {
+    return await db.select()
+      .from(items)
+      .where(and(
+        eq(items.isTemplate, true),
+        sql`${items.characterId} IS NULL`,
+        sql`${items.campaignId} IS NULL`
+      ));
+  }
+
+  async getCampaignTemplateItems(campaignId: string): Promise<Item[]> {
+    return await db.select()
+      .from(items)
+      .where(and(
+        eq(items.isTemplate, true),
+        eq(items.campaignId, campaignId),
+        sql`${items.characterId} IS NULL`
+      ));
   }
 
   // Spell operations

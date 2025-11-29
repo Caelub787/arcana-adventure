@@ -1160,6 +1160,165 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Admin emails for system-wide access
+  const ADMIN_EMAILS = ['notclaudenot@gmail.com', 'reedmcaleb@gmail.com'];
+
+  // Helper to check if user is admin
+  const isAdminUser = async (userId: string | undefined): Promise<boolean> => {
+    if (!userId) return false;
+    const user = await storage.getUser(userId);
+    return user ? ADMIN_EMAILS.includes(user.email.toLowerCase()) : false;
+  };
+
+  // Admin middleware
+  const requireAdmin: typeof requireAuth = async (req, res, next) => {
+    if (!req.session.userId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+    if (!(await isAdminUser(req.session.userId))) {
+      return res.status(403).json({ error: "Admin access required" });
+    }
+    next();
+  };
+
+  // System item routes (admin only)
+  app.get("/api/admin/system-items", requireAdmin, async (req, res) => {
+    try {
+      const items = await storage.getSystemItems();
+      res.json(items);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch system items" });
+    }
+  });
+
+  app.post("/api/admin/system-items", requireAdmin, async (req, res) => {
+    try {
+      const itemData = insertItemSchema.parse({
+        ...req.body,
+        isTemplate: true,
+        characterId: null,
+        campaignId: null
+      });
+      const item = await storage.createItem(itemData);
+      res.json(item);
+    } catch (err) {
+      res.status(400).json({ error: "Failed to create system item" });
+    }
+  });
+
+  app.patch("/api/admin/system-items/:id", requireAdmin, async (req, res) => {
+    try {
+      const item = await storage.getItem(req.params.id);
+      if (!item || !item.isTemplate || item.characterId || item.campaignId) {
+        return res.status(404).json({ error: "System item not found" });
+      }
+      const updatedItem = await storage.updateItem(req.params.id, req.body);
+      res.json(updatedItem);
+    } catch (err) {
+      res.status(400).json({ error: "Failed to update system item" });
+    }
+  });
+
+  app.delete("/api/admin/system-items/:id", requireAdmin, async (req, res) => {
+    try {
+      const item = await storage.getItem(req.params.id);
+      if (!item || !item.isTemplate || item.characterId || item.campaignId) {
+        return res.status(404).json({ error: "System item not found" });
+      }
+      await storage.deleteItem(req.params.id);
+      res.json({ success: true });
+    } catch (err) {
+      res.status(400).json({ error: "Failed to delete system item" });
+    }
+  });
+
+  // Campaign template item routes (GM only)
+  app.get("/api/campaigns/:campaignId/template-items", requireAuth, async (req, res) => {
+    try {
+      const campaign = await storage.getCampaign(req.params.campaignId);
+      if (!campaign) {
+        return res.status(404).json({ error: "Campaign not found" });
+      }
+      
+      // Get campaign template items and system items
+      const [campaignItems, systemItems] = await Promise.all([
+        storage.getCampaignTemplateItems(req.params.campaignId),
+        storage.getSystemItems()
+      ]);
+      
+      res.json({ campaignItems, systemItems });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch template items" });
+    }
+  });
+
+  app.post("/api/campaigns/:campaignId/template-items", requireAuth, async (req, res) => {
+    try {
+      const campaign = await storage.getCampaign(req.params.campaignId);
+      if (!campaign) {
+        return res.status(404).json({ error: "Campaign not found" });
+      }
+      if (campaign.gmUserId !== req.session.userId) {
+        return res.status(403).json({ error: "Only the GM can create campaign items" });
+      }
+      
+      const itemData = insertItemSchema.parse({
+        ...req.body,
+        isTemplate: true,
+        characterId: null,
+        campaignId: req.params.campaignId
+      });
+      const item = await storage.createItem(itemData);
+      res.json(item);
+    } catch (err) {
+      res.status(400).json({ error: "Failed to create campaign item" });
+    }
+  });
+
+  app.patch("/api/campaigns/:campaignId/template-items/:id", requireAuth, async (req, res) => {
+    try {
+      const campaign = await storage.getCampaign(req.params.campaignId);
+      if (!campaign) {
+        return res.status(404).json({ error: "Campaign not found" });
+      }
+      if (campaign.gmUserId !== req.session.userId) {
+        return res.status(403).json({ error: "Only the GM can edit campaign items" });
+      }
+      
+      const item = await storage.getItem(req.params.id);
+      if (!item || item.campaignId !== req.params.campaignId || !item.isTemplate) {
+        return res.status(404).json({ error: "Campaign item not found" });
+      }
+      
+      const updatedItem = await storage.updateItem(req.params.id, req.body);
+      res.json(updatedItem);
+    } catch (err) {
+      res.status(400).json({ error: "Failed to update campaign item" });
+    }
+  });
+
+  app.delete("/api/campaigns/:campaignId/template-items/:id", requireAuth, async (req, res) => {
+    try {
+      const campaign = await storage.getCampaign(req.params.campaignId);
+      if (!campaign) {
+        return res.status(404).json({ error: "Campaign not found" });
+      }
+      if (campaign.gmUserId !== req.session.userId) {
+        return res.status(403).json({ error: "Only the GM can delete campaign items" });
+      }
+      
+      const item = await storage.getItem(req.params.id);
+      if (!item || item.campaignId !== req.params.campaignId || !item.isTemplate) {
+        return res.status(404).json({ error: "Campaign item not found" });
+      }
+      
+      await storage.deleteItem(req.params.id);
+      res.json({ success: true });
+    } catch (err) {
+      res.status(400).json({ error: "Failed to delete campaign item" });
+    }
+  });
+
   // Item routes
   app.get("/api/characters/:characterId/items", requireAuth, async (req, res) => {
     try {

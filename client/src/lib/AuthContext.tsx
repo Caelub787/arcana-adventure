@@ -1,9 +1,13 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { api, type User } from './api';
 
+// Admin emails with system-wide access
+const ADMIN_EMAILS = ['notclaudenot@gmail.com', 'reedmcaleb@gmail.com'];
+
 interface AuthContextType {
   user: User | null;
   loading: boolean;
+  isAdmin: boolean;
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string, username: string, name: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -45,8 +49,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   };
 
+  const isAdmin = user ? ADMIN_EMAILS.includes(user.email.toLowerCase()) : false;
+
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout }}>
+    <AuthContext.Provider value={{ user, loading, isAdmin, login, register, logout }}>
       {children}
     </AuthContext.Provider>
   );
