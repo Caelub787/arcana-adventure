@@ -265,7 +265,30 @@ interface ItemFormDialogProps {
 }
 
 function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: ItemFormDialogProps) {
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<{
+    name: string;
+    image: string;
+    description: string;
+    rules: string;
+    rulesVisible: boolean;
+    itemType: string;
+    rarity: string;
+    quantity: number;
+    damage: string;
+    damageType: string;
+    mod: number | string;
+    range: number | string;
+    aoe: string;
+    attribute: string;
+    size: string;
+    isHeavy: boolean;
+    itemWeight: number | string;
+    price: number | string;
+    currency: string;
+    durability: number | string;
+    isContainer: boolean;
+    carryCapacity: number | string;
+  }>({
     name: initialData?.name || '',
     image: initialData?.image || '',
     description: initialData?.description || '',
@@ -311,7 +334,18 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
       toast({ title: 'Error', description: 'Item name is required', variant: 'destructive' });
       return;
     }
-    onSave(formData);
+    // Convert empty strings to 0 before saving
+    const cleanedData = {
+      ...formData,
+      mod: Number(formData.mod) || 0,
+      range: Number(formData.range) || 0,
+      itemWeight: Number(formData.itemWeight) || 0,
+      durability: Number(formData.durability) || 10,
+      price: Number(formData.price) || 0,
+      carryCapacity: Number(formData.carryCapacity) || 0,
+      quantity: Number(formData.quantity) || 1,
+    };
+    onSave(cleanedData);
   };
 
   return (
@@ -457,8 +491,8 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
                     <Label>Modifier</Label>
                     <Input
                       type="number"
-                      value={formData.mod}
-                      onChange={(e) => setFormData({ ...formData, mod: parseInt(e.target.value) || 0 })}
+                      value={formData.mod || ''}
+                      onChange={(e) => setFormData({ ...formData, mod: e.target.value === '' ? '' : parseInt(e.target.value) })}
                       className="bg-stone-800 border-stone-700"
                       data-testid="input-mod"
                     />
@@ -467,8 +501,8 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
                     <Label>Range (ft)</Label>
                     <Input
                       type="number"
-                      value={formData.range}
-                      onChange={(e) => setFormData({ ...formData, range: parseInt(e.target.value) || 0 })}
+                      value={formData.range || ''}
+                      onChange={(e) => setFormData({ ...formData, range: e.target.value === '' ? '' : parseInt(e.target.value) })}
                       className="bg-stone-800 border-stone-700"
                       data-testid="input-range"
                     />
@@ -521,8 +555,8 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
                 <Input
                   type="number"
                   step="0.1"
-                  value={formData.itemWeight}
-                  onChange={(e) => setFormData({ ...formData, itemWeight: parseFloat(e.target.value) || 0 })}
+                  value={formData.itemWeight || ''}
+                  onChange={(e) => setFormData({ ...formData, itemWeight: e.target.value === '' ? '' : parseFloat(e.target.value) })}
                   className="bg-stone-800 border-stone-700"
                   data-testid="input-weight"
                 />
@@ -534,8 +568,8 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
                   type="number"
                   min="0"
                   max="10"
-                  value={formData.durability}
-                  onChange={(e) => setFormData({ ...formData, durability: Math.min(10, Math.max(0, parseInt(e.target.value) || 0)) })}
+                  value={formData.durability || ''}
+                  onChange={(e) => setFormData({ ...formData, durability: e.target.value === '' ? '' : Math.min(10, Math.max(0, parseInt(e.target.value))) })}
                   className="bg-stone-800 border-stone-700"
                   data-testid="input-durability"
                 />
@@ -545,8 +579,8 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
                 <Label>Price</Label>
                 <Input
                   type="number"
-                  value={formData.price}
-                  onChange={(e) => setFormData({ ...formData, price: parseInt(e.target.value) || 0 })}
+                  value={formData.price || ''}
+                  onChange={(e) => setFormData({ ...formData, price: e.target.value === '' ? '' : parseInt(e.target.value) })}
                   className="bg-stone-800 border-stone-700"
                   data-testid="input-price"
                 />
@@ -582,8 +616,8 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
                       <Label>Carry Capacity (lbs)</Label>
                       <Input
                         type="number"
-                        value={formData.carryCapacity}
-                        onChange={(e) => setFormData({ ...formData, carryCapacity: parseInt(e.target.value) || 0 })}
+                        value={formData.carryCapacity || ''}
+                        onChange={(e) => setFormData({ ...formData, carryCapacity: e.target.value === '' ? '' : parseInt(e.target.value) })}
                         className="bg-stone-800 border-stone-700"
                         data-testid="input-carry-capacity"
                       />
