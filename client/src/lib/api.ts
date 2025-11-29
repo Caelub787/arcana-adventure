@@ -123,7 +123,7 @@ export interface Hotbar {
 export interface Item {
   id: string;
   characterId: string;
-  containerId?: string;
+  containerId?: string | null;
   name: string;
   image?: string;
   description?: string;

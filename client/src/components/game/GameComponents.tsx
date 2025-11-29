@@ -18,7 +18,7 @@ import {
   Sword, Shield, Scroll, Map as MapIcon, Settings, 
   Users, User, Plus, LogOut, Menu, ChevronRight, ChevronLeft, ChevronDown,
   Heart, Zap, Backpack, Sparkles, Dice5, MessageSquare, RefreshCw, X, Trash2, Package, FolderOpen, Lock, Unlock, Camera,
-  BarChart3, Grid3X3, ScrollText, Upload, Image as ImageIcon, Layers
+  BarChart3, Grid3X3, ScrollText, Upload, Image as ImageIcon, Layers, Search
 } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { type Scene, type Hotbar, api } from "@/lib/api";
@@ -3026,6 +3026,210 @@ const ARCANA_RACES = [
   { name: 'Warforged', size: 'Medium', naturalArmor: 8, sizeBonus: 0, featTree: 'Constructed Resilience', speed: 30, flySpeed: 0 },
 ];
 
+// Recursive inventory item row component with drag & drop support
+interface InventoryItemRowProps {
+  item: any;
+  depth: number;
+  expandedContainers: Set<string>;
+  toggleContainer: (id: string) => void;
+  setSelectedItem: (item: any) => void;
+  setShowItemDetail: (show: boolean) => void;
+  canEdit: boolean;
+  moveItemToContainer: (itemId: string, containerId: string | null) => void;
+}
+
+function InventoryItemRow({ item, depth, expandedContainers, toggleContainer, setSelectedItem, setShowItemDetail, canEdit, moveItemToContainer }: InventoryItemRowProps) {
+  const [isDragOver, setIsDragOver] = useState(false);
+  
+  const rarityColors: Record<string, string> = {
+    common: 'text-stone-400 border-stone-600',
+    uncommon: 'text-green-400 border-green-600',
+    rare: 'text-blue-400 border-blue-600',
+    epic: 'text-purple-400 border-purple-600',
+    legendary: 'text-orange-400 border-orange-600'
+  };
+  
+  const durabilityColor = item.durability >= 7 ? 'bg-green-500' : item.durability >= 4 ? 'bg-yellow-500' : 'bg-red-500';
+  const isExpanded = expandedContainers.has(item.id);
+  const childCount = item.children?.length || 0;
+  
+  const handleDragOver = (e: React.DragEvent) => {
+    if (!item.isContainer || !canEdit) return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = 'move';
+    setIsDragOver(true);
+  };
+  
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.stopPropagation();
+    setIsDragOver(false);
+  };
+  
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+    
+    if (!item.isContainer || !canEdit) return;
+    
+    try {
+      const data = JSON.parse(e.dataTransfer.getData('application/json'));
+      if (data.type === 'item' && data.itemId && data.itemId !== item.id) {
+        moveItemToContainer(data.itemId, item.id);
+      }
+    } catch (err) {}
+  };
+  
+  return (
+    <div>
+      {/* Main Item */}
+      <div
+        className={`p-3 bg-stone-900 rounded border transition-colors ${rarityColors[item.rarity] || rarityColors.common} ${isDragOver ? 'bg-amber-900/30 border-amber-500' : 'hover:bg-stone-800'}`}
+        style={{ marginLeft: depth > 0 ? `${depth * 24}px` : 0 }}
+        data-testid={`item-${item.id}`}
+        draggable={canEdit && !item.isContainer}
+        onDragStart={(e) => {
+          if (!canEdit || item.isContainer) {
+            e.preventDefault();
+            return;
+          }
+          e.dataTransfer.setData('application/json', JSON.stringify({
+            type: 'item',
+            itemId: item.id,
+            itemType: item.itemType,
+            weight: item.weight,
+            item: item
+          }));
+          e.dataTransfer.effectAllowed = 'move';
+          e.currentTarget.style.opacity = '0.5';
+        }}
+        onDragEnd={(e) => {
+          e.currentTarget.style.opacity = '1';
+        }}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+      >
+        <div className="flex items-center gap-3">
+          {/* Container Expand/Collapse Icon */}
+          {item.isContainer && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleContainer(item.id);
+              }}
+              className="shrink-0 p-1 hover:bg-stone-700 rounded"
+              data-testid={`button-toggle-container-${item.id}`}
+            >
+              {isExpanded ? (
+                <ChevronDown className="h-4 w-4 text-amber-500" />
+              ) : (
+                <ChevronRight className="h-4 w-4 text-amber-500" />
+              )}
+            </button>
+          )}
+          
+          <div 
+            className="flex items-center gap-3 flex-1 cursor-pointer"
+            onClick={() => { setSelectedItem(item); setShowItemDetail(true); }}
+          >
+            <div className="w-12 h-12 bg-black/50 rounded flex items-center justify-center shrink-0 border border-stone-700">
+              {item.isContainer ? (
+                isExpanded ? <FolderOpen className="w-6 h-6 text-amber-500" /> : <Package className="w-6 h-6 text-amber-500" />
+              ) : item.image ? (
+                <img src={item.image} alt={item.name} className="w-full h-full object-cover rounded" />
+              ) : (
+                <span className="text-xl font-bold text-stone-500">{item.name[0]}</span>
+              )}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-bold text-stone-100">{item.name}</span>
+                <Badge variant="outline" className="text-[10px] px-1 py-0">{item.itemType}</Badge>
+                <Badge variant="outline" className={`text-[10px] px-1 py-0 ${rarityColors[item.rarity]}`}>{item.rarity}</Badge>
+                {item.totalQuantity > 1 && (
+                  <Badge className="bg-amber-600 text-xs">x{item.totalQuantity}</Badge>
+                )}
+                {item.isContainer && (
+                  <Badge className="bg-purple-600 text-xs">{childCount} items | {item.carryCapacity || 0}lb cap</Badge>
+                )}
+                {item.containerId && depth === 0 && (
+                  <Badge className="bg-stone-600 text-xs">In Container</Badge>
+                )}
+              </div>
+              <div className="flex items-center gap-3 mt-1 text-xs text-stone-400">
+                <span>{item.itemWeight}lbs</span>
+                <div className="flex items-center gap-1">
+                  <span>Dur:</span>
+                  <div className="w-16 h-2 bg-stone-700 rounded overflow-hidden">
+                    <div className={`h-full ${durabilityColor}`} style={{ width: `${(item.durability / 10) * 100}%` }} />
+                  </div>
+                  <span className="text-[10px]">{item.durability}/10</span>
+                </div>
+                {(item.priceGold > 0 || item.priceSilver > 0 || item.priceCopper > 0 || item.pricePlatinum > 0) && (
+                  <span className="flex gap-1">
+                    {item.pricePlatinum > 0 && <span className="text-purple-400">{item.pricePlatinum}p</span>}
+                    {item.priceGold > 0 && <span className="text-yellow-500">{item.priceGold}g</span>}
+                    {item.priceSilver > 0 && <span className="text-gray-400">{item.priceSilver}s</span>}
+                    {item.priceCopper > 0 && <span className="text-orange-600">{item.priceCopper}c</span>}
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+          
+          {/* Remove from container button */}
+          {item.containerId && canEdit && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                moveItemToContainer(item.id, null);
+              }}
+              className="shrink-0 p-1.5 hover:bg-red-900/50 rounded text-stone-400 hover:text-red-400"
+              title="Remove from container"
+              data-testid={`button-remove-from-container-${item.id}`}
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Nested Items (recursive) */}
+      {item.isContainer && isExpanded && item.children && item.children.length > 0 && (
+        <div className="mt-2 space-y-2 border-l-2 border-stone-700 ml-4">
+          {item.children.map((child: any) => (
+            <InventoryItemRow
+              key={child.id}
+              item={child}
+              depth={depth + 1}
+              expandedContainers={expandedContainers}
+              toggleContainer={toggleContainer}
+              setSelectedItem={setSelectedItem}
+              setShowItemDetail={setShowItemDetail}
+              canEdit={canEdit}
+              moveItemToContainer={moveItemToContainer}
+            />
+          ))}
+        </div>
+      )}
+      
+      {/* Empty container drop zone */}
+      {item.isContainer && isExpanded && (!item.children || item.children.length === 0) && (
+        <div 
+          className="mt-2 ml-4 p-4 border-2 border-dashed border-stone-700 rounded text-center text-stone-500 text-sm"
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+        >
+          Drop items here
+        </div>
+      )}
+    </div>
+  );
+}
+
 // 6. Character Sheet Component
 interface CharacterSheetProps {
   character: any;
@@ -3350,9 +3554,23 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
   };
 
   // Calculate total weight and currency
-  const totalWeight = items.reduce((sum: number, item: any) => sum + (item.itemWeight * item.quantity), 0);
-  const strengthMod = getAttributeModifier(character.strength);
-  const carryCapacity = 150 + (strengthMod * 10);
+  // Items inside containers have reduced effective weight based on container's carryCapacity
+  const containerCapacityBonus = items
+    .filter((item: any) => item.isContainer)
+    .reduce((sum: number, item: any) => sum + (item.carryCapacity || 0), 0);
+  
+  // Calculate weight of items inside containers vs outside
+  const itemsInContainers = items.filter((item: any) => item.containerId !== null);
+  const containedWeight = itemsInContainers.reduce((sum: number, item: any) => sum + (item.itemWeight * item.quantity), 0);
+  
+  // Total weight = all items weight - min(containedWeight, containerCapacity)
+  // Containers reduce effective weight by their capacity (up to the weight of items inside them)
+  const rawWeight = items.reduce((sum: number, item: any) => sum + (item.itemWeight * item.quantity), 0);
+  const weightReduction = Math.min(containedWeight, containerCapacityBonus);
+  const totalWeight = rawWeight - weightReduction;
+  
+  const mightMod = character.might || 0; // Use new attribute system
+  const carryCapacity = 150 + (mightMod * 10);
   const weightPercentage = (totalWeight / carryCapacity) * 100;
 
   const totalCurrency = items.reduce((acc: any, item: any) => {
@@ -3409,31 +3627,50 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
 
   const stackedItems = stackItems(filteredItems);
 
-  // Container hierarchy builder
+  // Container hierarchy builder with recursive nesting support
   const buildContainerHierarchy = (stackedItems: any[]) => {
-    const rootItems: any[] = [];
+    const itemMap = new Map<string, any>();
     const containerMap = new Map<string, any[]>();
 
-    // First pass: separate root items and build container map
+    // First pass: create item map and identify children
     stackedItems.forEach((item: any) => {
-      if (item.containerId === null || item.containerId === undefined) {
-        rootItems.push(item);
-      } else {
+      itemMap.set(item.id, { ...item, children: [] });
+    });
+
+    // Second pass: organize by parent
+    stackedItems.forEach((item: any) => {
+      if (item.containerId && itemMap.has(item.containerId)) {
         if (!containerMap.has(item.containerId)) {
           containerMap.set(item.containerId, []);
         }
-        containerMap.get(item.containerId)!.push(item);
+        containerMap.get(item.containerId)!.push(itemMap.get(item.id));
       }
     });
 
-    // Attach children to containers
-    rootItems.forEach((item: any) => {
+    // Third pass: attach children to containers recursively
+    const attachChildren = (item: any): any => {
       if (item.isContainer) {
-        item.children = containerMap.get(item.id) || [];
+        item.children = (containerMap.get(item.id) || []).map(attachChildren);
       }
-    });
+      return item;
+    };
+
+    // Get root items (no parent) and build hierarchy
+    const rootItems = stackedItems
+      .filter((item: any) => !item.containerId || !itemMap.has(item.containerId))
+      .map((item: any) => attachChildren(itemMap.get(item.id)));
 
     return rootItems;
+  };
+
+  // Handle moving item to container via API
+  const moveItemToContainer = async (itemId: string, containerId: string | null) => {
+    try {
+      await api.updateItem(itemId, { containerId });
+      queryClient.invalidateQueries({ queryKey: ['items', character.id] });
+    } catch (error: any) {
+      console.error('Failed to move item:', error);
+    }
   };
 
   const toggleContainer = (containerId: string) => {
@@ -4198,7 +4435,22 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                 </div>
 
                 {/* Item List */}
-                <div className="space-y-2">
+                <div 
+                  className="space-y-2"
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = 'move';
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    try {
+                      const data = JSON.parse(e.dataTransfer.getData('application/json'));
+                      if (data.type === 'item' && data.itemId && canEdit) {
+                        moveItemToContainer(data.itemId, null);
+                      }
+                    } catch (err) {}
+                  }}
+                >
                   {hierarchicalItems.length === 0 ? (
                     <div className="text-center py-12 text-stone-400">
                       <Backpack className="h-12 w-12 mx-auto mb-3 opacity-50" />
@@ -4207,157 +4459,19 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                     </div>
                   ) : (
                     <div className="space-y-2">
-                      {hierarchicalItems.map((stack: any) => {
-                        const rarityColors: Record<string, string> = {
-                          common: 'text-stone-400 border-stone-600',
-                          uncommon: 'text-green-400 border-green-600',
-                          rare: 'text-blue-400 border-blue-600',
-                          epic: 'text-purple-400 border-purple-600',
-                          legendary: 'text-orange-400 border-orange-600'
-                        };
-                        const durabilityColor = stack.durability >= 7 ? 'bg-green-500' : stack.durability >= 4 ? 'bg-yellow-500' : 'bg-red-500';
-                        const isExpanded = expandedContainers.has(stack.id);
-                        const childCount = stack.children?.length || 0;
-                        
-                        return (
-                          <div key={stack.id}>
-                            {/* Main Item */}
-                            <div
-                              className={`p-3 bg-stone-900 rounded border ${rarityColors[stack.rarity] || rarityColors.common} hover:bg-stone-800 transition-colors`}
-                              data-testid={`item-${stack.id}`}
-                              draggable={canEdit && !stack.isContainer}
-                              onDragStart={(e) => {
-                                if (!canEdit || stack.isContainer) {
-                                  e.preventDefault();
-                                  return;
-                                }
-                                e.dataTransfer.setData('application/json', JSON.stringify({
-                                  type: 'item',
-                                  itemId: stack.id,
-                                  itemType: stack.itemType,
-                                  weight: stack.weight,
-                                  item: stack
-                                }));
-                                e.dataTransfer.effectAllowed = 'move';
-                                e.currentTarget.style.opacity = '0.5';
-                              }}
-                              onDragEnd={(e) => {
-                                e.currentTarget.style.opacity = '1';
-                              }}
-                            >
-                              <div className="flex items-center gap-3">
-                                {/* Container Expand/Collapse Icon */}
-                                {stack.isContainer && (
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      toggleContainer(stack.id);
-                                    }}
-                                    className="shrink-0 p-1 hover:bg-stone-700 rounded"
-                                    data-testid={`button-toggle-container-${stack.id}`}
-                                  >
-                                    {isExpanded ? (
-                                      <ChevronDown className="h-4 w-4 text-amber-500" />
-                                    ) : (
-                                      <ChevronRight className="h-4 w-4 text-amber-500" />
-                                    )}
-                                  </button>
-                                )}
-                                
-                                <div 
-                                  className="flex items-center gap-3 flex-1 cursor-pointer"
-                                  onClick={() => { setSelectedItem(stack); setShowItemDetail(true); }}
-                                  onDoubleClick={() => { setSelectedItem(stack); setShowItemDetail(true); }}
-                                >
-                                  <div className="w-12 h-12 bg-black/50 rounded flex items-center justify-center shrink-0 border border-stone-700">
-                                    {stack.isContainer ? (
-                                      isExpanded ? <FolderOpen className="w-6 h-6 text-amber-500" /> : <Package className="w-6 h-6 text-amber-500" />
-                                    ) : stack.image ? (
-                                      <img src={stack.image} alt={stack.name} className="w-full h-full object-cover rounded" />
-                                    ) : (
-                                      <span className="text-xl font-bold text-stone-500">{stack.name[0]}</span>
-                                    )}
-                                  </div>
-                                  <div className="flex-1 min-w-0">
-                                    <div className="flex items-center gap-2 flex-wrap">
-                                      <span className="font-bold text-stone-100">{stack.name}</span>
-                                      <Badge variant="outline" className="text-[10px] px-1 py-0">{stack.itemType}</Badge>
-                                      <Badge variant="outline" className={`text-[10px] px-1 py-0 ${rarityColors[stack.rarity]}`}>{stack.rarity}</Badge>
-                                      {stack.totalQuantity > 1 && (
-                                        <Badge className="bg-amber-600 text-xs">x{stack.totalQuantity}</Badge>
-                                      )}
-                                      {stack.isContainer && (
-                                        <Badge className="bg-purple-600 text-xs">{childCount} / {stack.carryCapacity || 0}</Badge>
-                                      )}
-                                    </div>
-                                    <div className="flex items-center gap-3 mt-1 text-xs text-stone-400">
-                                      <span>{stack.itemWeight}lbs</span>
-                                      <div className="flex items-center gap-1">
-                                        <span>Dur:</span>
-                                        <div className="w-16 h-2 bg-stone-700 rounded overflow-hidden">
-                                          <div className={`h-full ${durabilityColor}`} style={{ width: `${(stack.durability / 10) * 100}%` }} />
-                                        </div>
-                                        <span className="text-[10px]">{stack.durability}/10</span>
-                                      </div>
-                                      {(stack.priceGold > 0 || stack.priceSilver > 0 || stack.priceCopper > 0 || stack.pricePlatinum > 0) && (
-                                        <span className="flex gap-1">
-                                          {stack.pricePlatinum > 0 && <span className="text-purple-400">{stack.pricePlatinum}p</span>}
-                                          {stack.priceGold > 0 && <span className="text-yellow-500">{stack.priceGold}g</span>}
-                                          {stack.priceSilver > 0 && <span className="text-gray-400">{stack.priceSilver}s</span>}
-                                          {stack.priceCopper > 0 && <span className="text-orange-600">{stack.priceCopper}c</span>}
-                                        </span>
-                                      )}
-                                    </div>
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* Nested Items */}
-                            {stack.isContainer && isExpanded && stack.children && stack.children.length > 0 && (
-                              <div className="ml-8 mt-2 space-y-2 border-l-2 border-stone-700 pl-4">
-                                {stack.children.map((child: any) => {
-                                  const childDurabilityColor = child.durability >= 7 ? 'bg-green-500' : child.durability >= 4 ? 'bg-yellow-500' : 'bg-red-500';
-                                  return (
-                                    <div
-                                      key={child.id}
-                                      className={`p-2 bg-stone-900/50 rounded border ${rarityColors[child.rarity] || rarityColors.common} hover:bg-stone-800 cursor-pointer transition-colors`}
-                                      onClick={() => { setSelectedItem(child); setShowItemDetail(true); }}
-                                      data-testid={`item-${child.id}`}
-                                    >
-                                      <div className="flex items-center gap-2">
-                                        <div className="w-10 h-10 bg-black/50 rounded flex items-center justify-center shrink-0 border border-stone-700">
-                                          {child.image ? (
-                                            <img src={child.image} alt={child.name} className="w-full h-full object-cover rounded" />
-                                          ) : (
-                                            <span className="text-sm font-bold text-stone-500">{child.name[0]}</span>
-                                          )}
-                                        </div>
-                                        <div className="flex-1 min-w-0">
-                                          <div className="flex items-center gap-1 flex-wrap">
-                                            <span className="text-sm font-bold text-stone-100">{child.name}</span>
-                                            {child.totalQuantity > 1 && (
-                                              <Badge className="bg-amber-600 text-[10px]">x{child.totalQuantity}</Badge>
-                                            )}
-                                          </div>
-                                          <div className="flex items-center gap-2 mt-1 text-[10px] text-stone-400">
-                                            <span>{child.itemWeight}lbs</span>
-                                            <div className="flex items-center gap-1">
-                                              <div className="w-12 h-1.5 bg-stone-700 rounded overflow-hidden">
-                                                <div className={`h-full ${childDurabilityColor}`} style={{ width: `${(child.durability / 10) * 100}%` }} />
-                                              </div>
-                                            </div>
-                                          </div>
-                                        </div>
-                                      </div>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
+                      {hierarchicalItems.map((stack: any) => (
+                        <InventoryItemRow
+                          key={stack.id}
+                          item={stack}
+                          depth={0}
+                          expandedContainers={expandedContainers}
+                          toggleContainer={toggleContainer}
+                          setSelectedItem={setSelectedItem}
+                          setShowItemDetail={setShowItemDetail}
+                          canEdit={canEdit}
+                          moveItemToContainer={moveItemToContainer}
+                        />
+                      ))}
                     </div>
                   )}
                 </div>
