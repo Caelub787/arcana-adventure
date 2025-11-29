@@ -85,6 +85,8 @@ export interface IStorage {
   deleteItem(id: string): Promise<void>;
   damageItem(id: string, amount?: number): Promise<Item | undefined>;
   getItem(id: string): Promise<Item | undefined>;
+  moveItemToContainer(itemId: string, containerId: string | null): Promise<Item | undefined>;
+  getContainerItems(containerId: string): Promise<Item[]>;
 
   // Spell operations
   getSpellsByCharacter(characterId: string): Promise<Spell[]>;
@@ -516,6 +518,20 @@ export class DatabaseStorage implements IStorage {
         eq(items.campaignId, campaignId),
         sql`${items.characterId} IS NULL`
       ));
+  }
+
+  async moveItemToContainer(itemId: string, containerId: string | null): Promise<Item | undefined> {
+    const [item] = await db.update(items)
+      .set({ containerId })
+      .where(eq(items.id, itemId))
+      .returning();
+    return item;
+  }
+
+  async getContainerItems(containerId: string): Promise<Item[]> {
+    return await db.select()
+      .from(items)
+      .where(eq(items.containerId, containerId));
   }
 
   // Spell operations
