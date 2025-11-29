@@ -3318,7 +3318,22 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
   }, [character]);
   
   // Edit data states - includes race stats
-  const [overviewData, setOverviewData] = useState({
+  // HP/Energy fields allow string | number to support empty input during editing
+  const [overviewData, setOverviewData] = useState<{
+    name: string;
+    level: number;
+    hp: number | string;
+    maxHp: number | string;
+    energy: number | string;
+    maxEnergy: number | string;
+    race: string;
+    size: string;
+    naturalArmor: number;
+    sizeBonus: number;
+    featTree: string;
+    speed: number;
+    flySpeed: number;
+  }>({
     name: character?.name || "",
     level: character?.level || 1,
     hp: character?.hp || 0,
@@ -3335,7 +3350,15 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
   });
   
   // New attributes: Might, Finesse, Wit, Presence, Will, Craft (range -2 to 5)
-  const [attributesData, setAttributesData] = useState({
+  // Allow string | number to support empty input during editing
+  const [attributesData, setAttributesData] = useState<{
+    might: number | string;
+    finesse: number | string;
+    wit: number | string;
+    presence: number | string;
+    will: number | string;
+    craft: number | string;
+  }>({
     might: character?.might || 0,
     finesse: character?.finesse || 0,
     wit: character?.wit || 0,
@@ -3345,7 +3368,24 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
   });
   
   // Skills data (all skills, range -2 to 5)
-  const [skillsData, setSkillsData] = useState({
+  // Allow string | number to support empty input during editing
+  const [skillsData, setSkillsData] = useState<{
+    skillAgility: number | string;
+    skillArcana: number | string;
+    skillCharisma: number | string;
+    skillConcentration: number | string;
+    skillCulture: number | string;
+    skillDeception: number | string;
+    skillHistory: number | string;
+    skillIntimidation: number | string;
+    skillInvestigation: number | string;
+    skillMedicine: number | string;
+    skillPerception: number | string;
+    skillSleightOfHand: number | string;
+    skillStealth: number | string;
+    skillStrength: number | string;
+    skillWisdom: number | string;
+  }>({
     skillAgility: character?.skillAgility || 0,
     skillArcana: character?.skillArcana || 0,
     skillCharisma: character?.skillCharisma || 0,
@@ -4064,7 +4104,7 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                           type="number"
                           min="0"
                           value={overviewData.hp}
-                          onChange={(e) => setOverviewData({ ...overviewData, hp: parseInt(e.target.value) || 0 })}
+                          onChange={(e) => setOverviewData({ ...overviewData, hp: e.target.value === '' ? '' : parseInt(e.target.value) })}
                           className="w-20 bg-stone-900 border-stone-700 text-stone-200"
                           data-testid="input-edit-hp"
                         />
@@ -4074,7 +4114,7 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                             type="number"
                             min="1"
                             value={overviewData.maxHp}
-                            onChange={(e) => setOverviewData({ ...overviewData, maxHp: parseInt(e.target.value) || 1 })}
+                            onChange={(e) => setOverviewData({ ...overviewData, maxHp: e.target.value === '' ? '' : parseInt(e.target.value) })}
                             className={`w-20 bg-stone-900 text-stone-200 ${isGM ? 'border-amber-700' : 'border-stone-700'}`}
                             disabled={!isGM}
                             data-testid="input-edit-max-hp"
@@ -4115,7 +4155,7 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                           type="number"
                           min="0"
                           value={overviewData.energy}
-                          onChange={(e) => setOverviewData({ ...overviewData, energy: parseInt(e.target.value) || 0 })}
+                          onChange={(e) => setOverviewData({ ...overviewData, energy: e.target.value === '' ? '' : parseInt(e.target.value) })}
                           className="w-20 bg-stone-900 border-stone-700 text-stone-200"
                           data-testid="input-edit-energy"
                         />
@@ -4125,7 +4165,7 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                             type="number"
                             min="0"
                             value={overviewData.maxEnergy}
-                            onChange={(e) => setOverviewData({ ...overviewData, maxEnergy: parseInt(e.target.value) || 0 })}
+                            onChange={(e) => setOverviewData({ ...overviewData, maxEnergy: e.target.value === '' ? '' : parseInt(e.target.value) })}
                             className={`w-20 bg-stone-900 text-stone-200 ${isGM ? 'border-amber-700' : 'border-stone-700'}`}
                             disabled={!isGM}
                             data-testid="input-edit-max-energy"
@@ -4159,7 +4199,14 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                     <Button
                       size="sm"
                       onClick={() => {
-                        updateCharacterMutation.mutate(overviewData);
+                        const dataToSave = {
+                          ...overviewData,
+                          hp: overviewData.hp === '' ? 0 : Number(overviewData.hp),
+                          maxHp: overviewData.maxHp === '' ? 1 : Number(overviewData.maxHp),
+                          energy: overviewData.energy === '' ? 0 : Number(overviewData.energy),
+                          maxEnergy: overviewData.maxEnergy === '' ? 0 : Number(overviewData.maxEnergy)
+                        };
+                        updateCharacterMutation.mutate(dataToSave);
                         setEditingOverview(false);
                       }}
                       data-testid="button-save-overview"
@@ -4231,11 +4278,19 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                               max="5"
                               value={value}
                               onChange={(e) => {
-                                const newVal = Math.max(-2, Math.min(5, parseInt(e.target.value) || 0));
-                                setAttributesData({
-                                  ...attributesData,
-                                  [attr.key]: newVal
-                                });
+                                if (e.target.value === '') {
+                                  setAttributesData({
+                                    ...attributesData,
+                                    [attr.key]: ''
+                                  });
+                                } else {
+                                  const parsed = parseInt(e.target.value);
+                                  const newVal = Math.max(-2, Math.min(5, parsed));
+                                  setAttributesData({
+                                    ...attributesData,
+                                    [attr.key]: newVal
+                                  });
+                                }
                               }}
                               className="text-2xl font-bold text-amber-500 mt-1 text-center bg-stone-800 border-amber-700"
                               data-testid={`input-attribute-${attr.key}`}
@@ -4258,7 +4313,10 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                     <Button
                       size="sm"
                       onClick={() => {
-                        updateCharacterMutation.mutate(attributesData);
+                        const dataToSave = Object.fromEntries(
+                          Object.entries(attributesData).map(([key, val]) => [key, val === '' ? 0 : Number(val)])
+                        );
+                        updateCharacterMutation.mutate(dataToSave);
                         setEditingAttributes(false);
                       }}
                       data-testid="button-save-attributes"
@@ -4344,11 +4402,19 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                           max="5"
                           value={value}
                           onChange={(e) => {
-                            const newVal = Math.max(-2, Math.min(5, parseInt(e.target.value) || 0));
-                            setSkillsData({
-                              ...skillsData,
-                              [skill.key]: newVal
-                            });
+                            if (e.target.value === '') {
+                              setSkillsData({
+                                ...skillsData,
+                                [skill.key]: ''
+                              });
+                            } else {
+                              const parsed = parseInt(e.target.value);
+                              const newVal = Math.max(-2, Math.min(5, parsed));
+                              setSkillsData({
+                                ...skillsData,
+                                [skill.key]: newVal
+                              });
+                            }
                           }}
                           className="bg-stone-800 border-amber-700 text-center font-bold"
                           data-testid={`input-skill-${skill.key}`}
@@ -4374,7 +4440,10 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                     <Button
                       size="sm"
                       onClick={() => {
-                        updateCharacterMutation.mutate(skillsData);
+                        const dataToSave = Object.fromEntries(
+                          Object.entries(skillsData).map(([key, val]) => [key, val === '' ? 0 : Number(val)])
+                        );
+                        updateCharacterMutation.mutate(dataToSave);
                         setEditingSkills(false);
                       }}
                       data-testid="button-save-skills"

@@ -344,7 +344,7 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
       price: Number(formData.price) || 0,
       carryCapacity: Number(formData.carryCapacity) || 0,
       quantity: Number(formData.quantity) || 1,
-      aoe: formData.aoe || null, // Convert empty string to null
+      aoe: formData.aoe || undefined, // Convert empty string to undefined
     };
     onSave(cleanedData);
   };
