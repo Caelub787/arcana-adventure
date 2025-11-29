@@ -5568,7 +5568,7 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
     damageType: string;
     mod: number | string;
     range: number | string;
-    aoe: boolean;
+    aoe: string;
     attribute: string;
     size: string;
     weight: string;
@@ -5591,7 +5591,7 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
     damageType: '',
     mod: '',
     range: '',
-    aoe: false,
+    aoe: '',
     attribute: '',
     size: '',
     weight: 'light',
@@ -5624,7 +5624,7 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
       damageType: template.damageType || '',
       mod: template.mod || 0,
       range: template.range || 0,
-      aoe: template.aoe || false,
+      aoe: template.aoe || '',
       attribute: template.attribute || '',
       size: template.size || '',
       weight: template.weight || 'light',
@@ -5762,7 +5762,7 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
       damageType: '',
       mod: '',
       range: '',
-      aoe: false,
+      aoe: '',
       attribute: '',
       size: '',
       weight: 'light',
