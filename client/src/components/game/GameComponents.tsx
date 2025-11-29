@@ -5447,7 +5447,30 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
     return matchesSearch && matchesType;
   });
 
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<{
+    name: string;
+    image: string;
+    description: string;
+    itemType: string;
+    rarity: string;
+    quantity: number | string;
+    damage: string;
+    damageType: string;
+    mod: number | string;
+    range: number | string;
+    aoe: boolean;
+    attribute: string;
+    size: string;
+    weight: string;
+    itemWeight: number | string;
+    priceCopper: number | string;
+    priceSilver: number | string;
+    priceGold: number | string;
+    pricePlatinum: number | string;
+    durability: number;
+    isContainer: boolean;
+    carryCapacity: number | string;
+  }>({
     name: '',
     image: '',
     description: '',
@@ -5456,20 +5479,20 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
     quantity: 1,
     damage: '',
     damageType: '',
-    mod: 0,
-    range: 0,
+    mod: '',
+    range: '',
     aoe: false,
     attribute: '',
     size: '',
     weight: 'light',
-    itemWeight: 0,
-    priceCopper: 0,
-    priceSilver: 0,
-    priceGold: 0,
-    pricePlatinum: 0,
+    itemWeight: '',
+    priceCopper: '',
+    priceSilver: '',
+    priceGold: '',
+    pricePlatinum: '',
     durability: 10,
     isContainer: false,
-    carryCapacity: 0,
+    carryCapacity: '',
   });
 
   const [showImageCrop, setShowImageCrop] = useState(false);
@@ -5604,7 +5627,20 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
 
   const handleSubmit = () => {
     if (!formData.name) return;
-    onSave(formData);
+    // Convert empty/NaN values to 0 on submit
+    const cleanedData = {
+      ...formData,
+      mod: Number(formData.mod) || 0,
+      range: Number(formData.range) || 0,
+      itemWeight: Number(formData.itemWeight) || 0,
+      priceCopper: Number(formData.priceCopper) || 0,
+      priceSilver: Number(formData.priceSilver) || 0,
+      priceGold: Number(formData.priceGold) || 0,
+      pricePlatinum: Number(formData.pricePlatinum) || 0,
+      quantity: Number(formData.quantity) || 1,
+      carryCapacity: Number(formData.carryCapacity) || 0,
+    };
+    onSave(cleanedData);
     setFormData({
       name: '',
       image: '',
@@ -5614,20 +5650,20 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
       quantity: 1,
       damage: '',
       damageType: '',
-      mod: 0,
-      range: 0,
+      mod: '',
+      range: '',
       aoe: false,
       attribute: '',
       size: '',
       weight: 'light',
-      itemWeight: 0,
-      priceCopper: 0,
-      priceSilver: 0,
-      priceGold: 0,
-      pricePlatinum: 0,
+      itemWeight: '',
+      priceCopper: '',
+      priceSilver: '',
+      priceGold: '',
+      pricePlatinum: '',
       durability: 10,
       isContainer: false,
-      carryCapacity: 0,
+      carryCapacity: '',
     });
   };
 
@@ -5815,7 +5851,7 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
               </div>
               <div>
                 <Label>Weight (lbs)</Label>
-                <Input type="number" min="0" step="0.1" value={formData.itemWeight} onChange={(e) => setFormData({...formData, itemWeight: parseFloat(e.target.value) || 0})} className="bg-stone-800 border-stone-700" />
+                <Input type="number" min="0" step="0.1" value={formData.itemWeight || ''} onChange={(e) => setFormData({...formData, itemWeight: e.target.value === '' ? '' : parseFloat(e.target.value)})} className="bg-stone-800 border-stone-700" />
               </div>
             </div>
             <div>
@@ -5835,11 +5871,11 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
                 </div>
                 <div>
                   <Label>Modifier</Label>
-                  <Input type="number" value={formData.mod} onChange={(e) => setFormData({...formData, mod: parseInt(e.target.value) || 0})} className="bg-stone-800 border-stone-700" />
+                  <Input type="number" value={formData.mod || ''} onChange={(e) => setFormData({...formData, mod: e.target.value === '' ? '' : parseInt(e.target.value)})} className="bg-stone-800 border-stone-700" />
                 </div>
                 <div>
                   <Label>Range (feet)</Label>
-                  <Input type="number" min="0" value={formData.range} onChange={(e) => setFormData({...formData, range: parseInt(e.target.value) || 0})} className="bg-stone-800 border-stone-700" />
+                  <Input type="number" min="0" value={formData.range || ''} onChange={(e) => setFormData({...formData, range: e.target.value === '' ? '' : parseInt(e.target.value)})} className="bg-stone-800 border-stone-700" />
                 </div>
               </div>
             </div>
@@ -5848,19 +5884,19 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
               <div className="grid grid-cols-4 gap-4">
                 <div>
                   <Label>Platinum</Label>
-                  <Input type="number" min="0" value={formData.pricePlatinum} onChange={(e) => setFormData({...formData, pricePlatinum: parseInt(e.target.value) || 0})} className="bg-stone-800 border-stone-700" />
+                  <Input type="number" min="0" value={formData.pricePlatinum || ''} onChange={(e) => setFormData({...formData, pricePlatinum: e.target.value === '' ? '' : parseInt(e.target.value)})} className="bg-stone-800 border-stone-700" />
                 </div>
                 <div>
                   <Label>Gold</Label>
-                  <Input type="number" min="0" value={formData.priceGold} onChange={(e) => setFormData({...formData, priceGold: parseInt(e.target.value) || 0})} className="bg-stone-800 border-stone-700" />
+                  <Input type="number" min="0" value={formData.priceGold || ''} onChange={(e) => setFormData({...formData, priceGold: e.target.value === '' ? '' : parseInt(e.target.value)})} className="bg-stone-800 border-stone-700" />
                 </div>
                 <div>
                   <Label>Silver</Label>
-                  <Input type="number" min="0" value={formData.priceSilver} onChange={(e) => setFormData({...formData, priceSilver: parseInt(e.target.value) || 0})} className="bg-stone-800 border-stone-700" />
+                  <Input type="number" min="0" value={formData.priceSilver || ''} onChange={(e) => setFormData({...formData, priceSilver: e.target.value === '' ? '' : parseInt(e.target.value)})} className="bg-stone-800 border-stone-700" />
                 </div>
                 <div>
                   <Label>Copper</Label>
-                  <Input type="number" min="0" value={formData.priceCopper} onChange={(e) => setFormData({...formData, priceCopper: parseInt(e.target.value) || 0})} className="bg-stone-800 border-stone-700" />
+                  <Input type="number" min="0" value={formData.priceCopper || ''} onChange={(e) => setFormData({...formData, priceCopper: e.target.value === '' ? '' : parseInt(e.target.value)})} className="bg-stone-800 border-stone-700" />
                 </div>
               </div>
             </div>
@@ -5886,8 +5922,8 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
                     <Input 
                       type="number" 
                       min="0" 
-                      value={formData.carryCapacity} 
-                      onChange={(e) => setFormData({...formData, carryCapacity: parseInt(e.target.value) || 0})} 
+                      value={formData.carryCapacity || ''} 
+                      onChange={(e) => setFormData({...formData, carryCapacity: e.target.value === '' ? '' : parseInt(e.target.value)})} 
                       className="w-20 bg-stone-800 border-stone-700"
                       data-testid="input-carry-capacity"
                     />
@@ -5980,21 +6016,37 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
 function ManageTemplatesDialog({ open, onOpenChange, campaignId }: { open: boolean; onOpenChange: (open: boolean) => void; campaignId?: string }) {
   const queryClient = useQueryClient();
   const [showCreateForm, setShowCreateForm] = useState(false);
-  const [newItem, setNewItem] = useState({
+  const [newItem, setNewItem] = useState<{
+    name: string;
+    description: string;
+    itemType: string;
+    rarity: string;
+    damage: string;
+    damageType: string;
+    mod: number | string;
+    range: number | string;
+    weight: string;
+    itemWeight: number | string;
+    priceCopper: number | string;
+    priceSilver: number | string;
+    priceGold: number | string;
+    pricePlatinum: number | string;
+    durability: number;
+  }>({
     name: '',
     description: '',
     itemType: 'utility',
     rarity: 'common',
     damage: '',
     damageType: '',
-    mod: 0,
-    range: 0,
+    mod: '',
+    range: '',
     weight: 'light',
-    itemWeight: 0,
-    priceCopper: 0,
-    priceSilver: 0,
-    priceGold: 0,
-    pricePlatinum: 0,
+    itemWeight: '',
+    priceCopper: '',
+    priceSilver: '',
+    priceGold: '',
+    pricePlatinum: '',
     durability: 10,
   });
 
@@ -6009,15 +6061,28 @@ function ManageTemplatesDialog({ open, onOpenChange, campaignId }: { open: boole
   });
 
   const createTemplateMutation = useMutation({
-    mutationFn: (data: any) => api.createCampaignTemplateItem(campaignId!, data),
+    mutationFn: (data: any) => {
+      // Convert empty/NaN values to 0 before saving
+      const cleanedData = {
+        ...data,
+        mod: Number(data.mod) || 0,
+        range: Number(data.range) || 0,
+        itemWeight: Number(data.itemWeight) || 0,
+        priceCopper: Number(data.priceCopper) || 0,
+        priceSilver: Number(data.priceSilver) || 0,
+        priceGold: Number(data.priceGold) || 0,
+        pricePlatinum: Number(data.pricePlatinum) || 0,
+      };
+      return api.createCampaignTemplateItem(campaignId!, cleanedData);
+    },
     onSuccess: () => {
       refetch();
       queryClient.invalidateQueries({ queryKey: ['template-items', campaignId] });
       setShowCreateForm(false);
       setNewItem({
         name: '', description: '', itemType: 'utility', rarity: 'common',
-        damage: '', damageType: '', mod: 0, range: 0, weight: 'light',
-        itemWeight: 0, priceCopper: 0, priceSilver: 0, priceGold: 0, pricePlatinum: 0, durability: 10,
+        damage: '', damageType: '', mod: '', range: '', weight: 'light',
+        itemWeight: '', priceCopper: '', priceSilver: '', priceGold: '', pricePlatinum: '', durability: 10,
       });
       toast({ title: "Template Created", description: "Campaign item template created successfully" });
     }
@@ -6144,7 +6209,7 @@ function ManageTemplatesDialog({ open, onOpenChange, campaignId }: { open: boole
                   </div>
                   <div>
                     <Label>Weight (lbs)</Label>
-                    <Input type="number" min="0" step="0.1" value={newItem.itemWeight} onChange={(e) => setNewItem({...newItem, itemWeight: parseFloat(e.target.value) || 0})} className="bg-stone-800 border-stone-700" />
+                    <Input type="number" min="0" step="0.1" value={newItem.itemWeight || ''} onChange={(e) => setNewItem({...newItem, itemWeight: e.target.value === '' ? '' : parseFloat(e.target.value)})} className="bg-stone-800 border-stone-700" />
                   </div>
                 </div>
                 <div>
@@ -6169,19 +6234,19 @@ function ManageTemplatesDialog({ open, onOpenChange, campaignId }: { open: boole
                   <div className="grid grid-cols-4 gap-4">
                     <div>
                       <Label>Platinum</Label>
-                      <Input type="number" min="0" value={newItem.pricePlatinum} onChange={(e) => setNewItem({...newItem, pricePlatinum: parseInt(e.target.value) || 0})} className="bg-stone-800 border-stone-700" />
+                      <Input type="number" min="0" value={newItem.pricePlatinum || ''} onChange={(e) => setNewItem({...newItem, pricePlatinum: e.target.value === '' ? '' : parseInt(e.target.value)})} className="bg-stone-800 border-stone-700" />
                     </div>
                     <div>
                       <Label>Gold</Label>
-                      <Input type="number" min="0" value={newItem.priceGold} onChange={(e) => setNewItem({...newItem, priceGold: parseInt(e.target.value) || 0})} className="bg-stone-800 border-stone-700" />
+                      <Input type="number" min="0" value={newItem.priceGold || ''} onChange={(e) => setNewItem({...newItem, priceGold: e.target.value === '' ? '' : parseInt(e.target.value)})} className="bg-stone-800 border-stone-700" />
                     </div>
                     <div>
                       <Label>Silver</Label>
-                      <Input type="number" min="0" value={newItem.priceSilver} onChange={(e) => setNewItem({...newItem, priceSilver: parseInt(e.target.value) || 0})} className="bg-stone-800 border-stone-700" />
+                      <Input type="number" min="0" value={newItem.priceSilver || ''} onChange={(e) => setNewItem({...newItem, priceSilver: e.target.value === '' ? '' : parseInt(e.target.value)})} className="bg-stone-800 border-stone-700" />
                     </div>
                     <div>
                       <Label>Copper</Label>
-                      <Input type="number" min="0" value={newItem.priceCopper} onChange={(e) => setNewItem({...newItem, priceCopper: parseInt(e.target.value) || 0})} className="bg-stone-800 border-stone-700" />
+                      <Input type="number" min="0" value={newItem.priceCopper || ''} onChange={(e) => setNewItem({...newItem, priceCopper: e.target.value === '' ? '' : parseInt(e.target.value)})} className="bg-stone-800 border-stone-700" />
                     </div>
                   </div>
                 </div>
@@ -6334,7 +6399,20 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
 
   const handleSave = () => {
     if (editData) {
-      onUpdate(editData);
+      // Convert empty/NaN values to 0 before saving
+      const cleanedData = {
+        ...editData,
+        mod: Number(editData.mod) || 0,
+        range: Number(editData.range) || 0,
+        itemWeight: Number(editData.itemWeight) || 0,
+        priceCopper: Number(editData.priceCopper) || 0,
+        priceSilver: Number(editData.priceSilver) || 0,
+        priceGold: Number(editData.priceGold) || 0,
+        pricePlatinum: Number(editData.pricePlatinum) || 0,
+        quantity: Number(editData.quantity) || 1,
+        carryCapacity: Number(editData.carryCapacity) || 0,
+      };
+      onUpdate(cleanedData);
       setIsEditing(false);
     }
   };
@@ -6574,8 +6652,8 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
                     {isEditing && canEditAllFields ? (
                       <Input 
                         type="number"
-                        value={currentData.mod !== undefined ? currentData.mod : 0} 
-                        onChange={(e) => setEditData({ ...editData, mod: parseInt(e.target.value) || 0 })}
+                        value={currentData.mod || ''} 
+                        onChange={(e) => setEditData({ ...editData, mod: e.target.value === '' ? '' : parseInt(e.target.value) })}
                         className="bg-stone-800 border-amber-700"
                       />
                     ) : (
@@ -6610,8 +6688,8 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
                       type="number"
                       step="0.1"
                       min="0"
-                      value={currentData.itemWeight} 
-                      onChange={(e) => setEditData({ ...editData, itemWeight: parseFloat(e.target.value) || 0 })}
+                      value={currentData.itemWeight || ''} 
+                      onChange={(e) => setEditData({ ...editData, itemWeight: e.target.value === '' ? '' : parseFloat(e.target.value) })}
                       className="bg-stone-800 border-amber-700"
                     />
                   ) : (
