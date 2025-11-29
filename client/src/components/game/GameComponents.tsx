@@ -3027,6 +3027,9 @@ const ARCANA_RACES = [
   { name: 'Warforged', size: 'Medium', naturalArmor: 8, sizeBonus: 0, featTree: 'Constructed Resilience', speed: 30, flySpeed: 0 },
 ];
 
+// Shared state for drag and drop (works on mobile unlike dataTransfer)
+let globalDraggedItem: { id: string; item: any } | null = null;
+
 // Recursive inventory item row component with drag & drop support
 interface InventoryItemRowProps {
   item: any;
@@ -3075,20 +3078,33 @@ function InventoryItemRow({ item, depth, expandedContainers, toggleContainer, se
     
     if (!item.isContainer || !canEdit) return;
     
+    // Try dataTransfer first, fall back to global state (works on mobile)
+    let draggedItemId: string | null = null;
+    
     try {
       const jsonData = e.dataTransfer.getData('application/json');
-      if (!jsonData) {
-        console.error('No drag data found');
-        return;
-      }
-      const data = JSON.parse(jsonData);
-      if (data.type === 'item' && data.itemId && data.itemId !== item.id) {
-        console.log('Moving item', data.itemId, 'to container', item.id);
-        moveItemToContainer(data.itemId, item.id);
+      if (jsonData) {
+        const data = JSON.parse(jsonData);
+        if (data.type === 'item' && data.itemId) {
+          draggedItemId = data.itemId;
+        }
       }
     } catch (err) {
-      console.error('Error handling drop:', err);
+      // dataTransfer failed, try global state
     }
+    
+    // Fall back to global state if dataTransfer didn't work
+    if (!draggedItemId && globalDraggedItem) {
+      draggedItemId = globalDraggedItem.id;
+    }
+    
+    if (draggedItemId && draggedItemId !== item.id) {
+      console.log('Moving item', draggedItemId, 'to container', item.id);
+      moveItemToContainer(draggedItemId, item.id);
+    }
+    
+    // Clear global state
+    globalDraggedItem = null;
   };
   
   return (
@@ -3104,6 +3120,9 @@ function InventoryItemRow({ item, depth, expandedContainers, toggleContainer, se
             e.preventDefault();
             return;
           }
+          // Set global state for mobile fallback
+          globalDraggedItem = { id: item.id, item: item };
+          // Also set dataTransfer for desktop
           e.dataTransfer.setData('application/json', JSON.stringify({
             type: 'item',
             itemId: item.id,
@@ -3116,6 +3135,8 @@ function InventoryItemRow({ item, depth, expandedContainers, toggleContainer, se
         }}
         onDragEnd={(e) => {
           e.currentTarget.style.opacity = '1';
+          // Clear global state
+          globalDraggedItem = null;
         }}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
@@ -4457,12 +4478,32 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                   }}
                   onDrop={(e) => {
                     e.preventDefault();
+                    if (!canEdit) return;
+                    
+                    // Try dataTransfer first, fall back to global state (works on mobile)
+                    let draggedItemId: string | null = null;
+                    
                     try {
-                      const data = JSON.parse(e.dataTransfer.getData('application/json'));
-                      if (data.type === 'item' && data.itemId && canEdit) {
-                        moveItemToContainer(data.itemId, null);
+                      const jsonData = e.dataTransfer.getData('application/json');
+                      if (jsonData) {
+                        const data = JSON.parse(jsonData);
+                        if (data.type === 'item' && data.itemId) {
+                          draggedItemId = data.itemId;
+                        }
                       }
                     } catch (err) {}
+                    
+                    // Fall back to global state if dataTransfer didn't work
+                    if (!draggedItemId && globalDraggedItem) {
+                      draggedItemId = globalDraggedItem.id;
+                    }
+                    
+                    if (draggedItemId) {
+                      moveItemToContainer(draggedItemId, null);
+                    }
+                    
+                    // Clear global state
+                    globalDraggedItem = null;
                   }}
                 >
                   {hierarchicalItems.length === 0 ? (

@@ -1375,8 +1375,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.patch("/api/items/:id", requireAuth, async (req, res) => {
     try {
-      // Get current item first (using empty update to fetch)
-      const currentItem = await storage.updateItem(req.params.id, {});
+      // Get current item first
+      const currentItem = await storage.getItem(req.params.id);
       if (!currentItem) {
         return res.status(404).json({ error: "Item not found" });
       }
@@ -1484,12 +1484,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.delete("/api/items/:id", requireAuth, async (req, res) => {
     try {
-      const tempUpdate = await storage.updateItem(req.params.id, {});
-      if (!tempUpdate) {
+      const item = await storage.getItem(req.params.id);
+      if (!item) {
         return res.status(404).json({ error: "Item not found" });
       }
       
-      const character = await storage.getCharacter(tempUpdate.characterId);
+      const character = await storage.getCharacter(item.characterId);
       if (!character) {
         return res.status(404).json({ error: "Character not found" });
       }
