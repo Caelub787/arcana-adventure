@@ -3030,6 +3030,171 @@ const ARCANA_RACES = [
 // Shared state for drag and drop (works on mobile unlike dataTransfer)
 let globalDraggedItem: { id: string; item: any } | null = null;
 
+// QuantityAdjustDialog - for setting item quantity to an absolute value
+interface QuantityAdjustDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  item: any;
+  onSave: (quantityChange: number) => void;
+}
+
+function QuantityAdjustDialog({ open, onOpenChange, item, onSave }: QuantityAdjustDialogProps) {
+  const currentQuantity = item?.totalQuantity || item?.quantity || 1;
+  const [targetQuantity, setTargetQuantity] = useState<string>(String(currentQuantity));
+  
+  useEffect(() => {
+    if (open && item) {
+      const qty = item?.totalQuantity || item?.quantity || 1;
+      setTargetQuantity(String(qty));
+    }
+  }, [open, item]);
+  
+  const targetNum = targetQuantity === '' ? 0 : parseInt(targetQuantity) || 0;
+  const quantityChange = targetNum - currentQuantity;
+  
+  const handleSave = () => {
+    if (quantityChange !== 0 && targetNum >= 1) {
+      onSave(quantityChange);
+      onOpenChange(false);
+    }
+  };
+  
+  if (!item) return null;
+  
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="bg-stone-900 border-stone-700 max-w-sm">
+        <DialogHeader>
+          <DialogTitle className="text-amber-500">Set Quantity</DialogTitle>
+          <DialogDescription className="text-stone-400">
+            Set quantity for {item.name}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 py-4">
+          <div className="flex items-center justify-center gap-3">
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => setTargetQuantity(String(Math.max(1, targetNum - 1)))}
+              disabled={targetNum <= 1}
+              className="h-12 w-12 text-xl"
+              data-testid="button-quantity-minus"
+            >
+              -
+            </Button>
+            <Input
+              type="text"
+              value={targetQuantity}
+              onChange={(e) => {
+                const val = e.target.value;
+                if (val === '' || /^\d+$/.test(val)) {
+                  setTargetQuantity(val);
+                }
+              }}
+              className="w-20 text-center bg-stone-800 border-stone-700 text-lg"
+              data-testid="input-quantity-adjust"
+            />
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => setTargetQuantity(String(targetNum + 1))}
+              className="h-12 w-12 text-xl"
+              data-testid="button-quantity-plus"
+            >
+              +
+            </Button>
+          </div>
+          {targetNum < 1 && (
+            <p className="text-red-400 text-xs text-center">Quantity must be at least 1</p>
+          )}
+          {quantityChange !== 0 && targetNum >= 1 && (
+            <p className="text-stone-400 text-xs text-center">
+              {quantityChange > 0 ? `Adding ${quantityChange}` : `Removing ${Math.abs(quantityChange)}`} (was {currentQuantity})
+            </p>
+          )}
+        </div>
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" onClick={() => onOpenChange(false)} data-testid="button-quantity-cancel">
+            Cancel
+          </Button>
+          <Button 
+            onClick={handleSave} 
+            disabled={quantityChange === 0 || targetNum < 1}
+            data-testid="button-quantity-save"
+          >
+            Save
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// DeleteQuantityDialog - for deleting specific number of stacked items
+interface DeleteQuantityDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  item: any;
+  onDelete: (count: number) => void;
+}
+
+function DeleteQuantityDialog({ open, onOpenChange, item, onDelete }: DeleteQuantityDialogProps) {
+  const totalQuantity = item?.totalQuantity || item?.quantity || 1;
+  const [deleteCount, setDeleteCount] = useState(1);
+  
+  useEffect(() => {
+    if (open) {
+      setDeleteCount(1);
+    }
+  }, [open]);
+  
+  if (!item) return null;
+  
+  return (
+    <AlertDialog open={open} onOpenChange={onOpenChange}>
+      <AlertDialogContent className="bg-stone-900 border-stone-700">
+        <AlertDialogHeader>
+          <AlertDialogTitle className="text-red-400">Delete Items</AlertDialogTitle>
+          <AlertDialogDescription className="text-stone-400">
+            How many {item.name} do you want to delete? (Total: {totalQuantity})
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <div className="py-4 space-y-4">
+          <div className="flex items-center gap-4">
+            <span className="text-stone-400 text-sm w-16">Delete:</span>
+            <Slider
+              value={[deleteCount]}
+              onValueChange={(val) => setDeleteCount(val[0])}
+              min={1}
+              max={totalQuantity}
+              step={1}
+              className="flex-1"
+            />
+            <span className="text-red-400 font-bold w-12 text-right">{deleteCount}</span>
+          </div>
+          <div className="text-center text-stone-400 text-sm">
+            {deleteCount === totalQuantity ? (
+              <span className="text-red-400">This will delete all items</span>
+            ) : (
+              <span>Remaining after deletion: {totalQuantity - deleteCount}</span>
+            )}
+          </div>
+        </div>
+        <AlertDialogFooter>
+          <AlertDialogCancel data-testid="button-delete-cancel">Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            onClick={() => onDelete(deleteCount)}
+            className="bg-red-600 hover:bg-red-700"
+            data-testid="button-delete-confirm"
+          >
+            Delete {deleteCount} item{deleteCount > 1 ? 's' : ''}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
+
 // Recursive inventory item row component with drag & drop support
 interface InventoryItemRowProps {
   item: any;
@@ -3041,10 +3206,15 @@ interface InventoryItemRowProps {
   canEdit: boolean;
   moveItemToContainer: (itemId: string, containerId: string | null) => void;
   onDeleteItem?: (itemId: string) => void;
+  onUpdateQuantity?: (itemId: string, quantityChange: number) => void;
+  onDeleteMultiple?: (itemIds: string[]) => void;
 }
 
-function InventoryItemRow({ item, depth, expandedContainers, toggleContainer, setSelectedItem, setShowItemDetail, canEdit, moveItemToContainer, onDeleteItem }: InventoryItemRowProps) {
+function InventoryItemRow({ item, depth, expandedContainers, toggleContainer, setSelectedItem, setShowItemDetail, canEdit, moveItemToContainer, onDeleteItem, onUpdateQuantity, onDeleteMultiple }: InventoryItemRowProps) {
   const [isDragOver, setIsDragOver] = useState(false);
+  const [showQuantityDialog, setShowQuantityDialog] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [showStackedItems, setShowStackedItems] = useState(false);
   
   const rarityColors: Record<string, string> = {
     common: 'text-stone-400 border-stone-600',
@@ -3057,6 +3227,8 @@ function InventoryItemRow({ item, depth, expandedContainers, toggleContainer, se
   const durabilityColor = item.durability >= 7 ? 'bg-green-500' : item.durability >= 4 ? 'bg-yellow-500' : 'bg-red-500';
   const isExpanded = expandedContainers.has(item.id);
   const childCount = item.children?.length || 0;
+  const totalQuantity = item.totalQuantity || item.quantity || 1;
+  const stackedItems = item.items || [item];
   
   const handleDragOver = (e: React.DragEvent) => {
     if (!item.isContainer || !canEdit) return;
@@ -3179,8 +3351,19 @@ function InventoryItemRow({ item, depth, expandedContainers, toggleContainer, se
                 <span className="font-bold text-stone-100">{item.name}</span>
                 <Badge variant="outline" className="text-[10px] px-1 py-0">{item.itemType}</Badge>
                 <Badge variant="outline" className={`text-[10px] px-1 py-0 ${rarityColors[item.rarity]}`}>{item.rarity}</Badge>
-                {item.totalQuantity > 1 && (
-                  <Badge className="bg-amber-600 text-xs">x{item.totalQuantity}</Badge>
+                {totalQuantity > 1 && (
+                  <Badge 
+                    className={`bg-amber-600 text-xs ${canEdit && onUpdateQuantity ? 'cursor-pointer hover:bg-amber-500' : ''}`}
+                    onClick={(e) => {
+                      if (canEdit && onUpdateQuantity) {
+                        e.stopPropagation();
+                        setShowQuantityDialog(true);
+                      }
+                    }}
+                    data-testid={`badge-quantity-${item.id}`}
+                  >
+                    x{totalQuantity}
+                  </Badge>
                 )}
                 {item.isContainer && (
                   <Badge className="bg-purple-600 text-xs">{childCount} items | {item.carryCapacity || 0}lb cap</Badge>
@@ -3230,7 +3413,9 @@ function InventoryItemRow({ item, depth, expandedContainers, toggleContainer, se
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                if (confirm(`Delete "${item.name}"?`)) {
+                if (totalQuantity > 1 && onDeleteMultiple) {
+                  setShowDeleteDialog(true);
+                } else if (confirm(`Delete "${item.name}"?`)) {
                   onDeleteItem(item.id);
                 }
               }}
@@ -3241,8 +3426,63 @@ function InventoryItemRow({ item, depth, expandedContainers, toggleContainer, se
               <Trash2 className="h-4 w-4" />
             </button>
           )}
+          
+          {/* Stacked items expand button */}
+          {totalQuantity > 1 && stackedItems.length > 1 && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowStackedItems(!showStackedItems);
+              }}
+              className="shrink-0 p-1.5 hover:bg-stone-700 rounded text-stone-400 hover:text-amber-400"
+              title="View individual items"
+              data-testid={`button-expand-stack-${item.id}`}
+            >
+              {showStackedItems ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+            </button>
+          )}
         </div>
       </div>
+
+      {/* Stacked Items Dropdown */}
+      {showStackedItems && totalQuantity > 1 && stackedItems.length > 1 && (
+        <div className="mt-2 ml-4 space-y-1 border-l-2 border-amber-700/50 pl-2">
+          <div className="text-xs text-stone-500 mb-1">Individual items in stack:</div>
+          {stackedItems.map((stackedItem: any, index: number) => {
+            const itemDurabilityColor = stackedItem.durability >= 7 ? 'bg-green-500' : stackedItem.durability >= 4 ? 'bg-yellow-500' : 'bg-red-500';
+            return (
+              <div 
+                key={stackedItem.id} 
+                className="flex items-center gap-2 p-2 bg-stone-800/50 rounded text-sm"
+              >
+                <span className="text-stone-400">#{index + 1}</span>
+                <span className="text-stone-200">{stackedItem.name}</span>
+                <div className="flex items-center gap-1 ml-auto">
+                  <span className="text-xs text-stone-400">Dur:</span>
+                  <div className="w-12 h-1.5 bg-stone-700 rounded overflow-hidden">
+                    <div className={`h-full ${itemDurabilityColor}`} style={{ width: `${(stackedItem.durability / 10) * 100}%` }} />
+                  </div>
+                  <span className="text-[10px] text-stone-400">{stackedItem.durability}/10</span>
+                </div>
+                {canEdit && onDeleteItem && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (confirm(`Delete this individual item?`)) {
+                        onDeleteItem(stackedItem.id);
+                      }
+                    }}
+                    className="p-1 hover:bg-red-900/50 rounded text-stone-500 hover:text-red-400"
+                    title="Delete this item"
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* Nested Items (recursive) */}
       {item.isContainer && isExpanded && item.children && item.children.length > 0 && (
@@ -3259,6 +3499,8 @@ function InventoryItemRow({ item, depth, expandedContainers, toggleContainer, se
               canEdit={canEdit}
               moveItemToContainer={moveItemToContainer}
               onDeleteItem={onDeleteItem}
+              onUpdateQuantity={onUpdateQuantity}
+              onDeleteMultiple={onDeleteMultiple}
             />
           ))}
         </div>
@@ -3275,6 +3517,32 @@ function InventoryItemRow({ item, depth, expandedContainers, toggleContainer, se
           Drop items here
         </div>
       )}
+
+      {/* Quantity Adjust Dialog */}
+      <QuantityAdjustDialog
+        open={showQuantityDialog}
+        onOpenChange={setShowQuantityDialog}
+        item={item}
+        onSave={(quantityChange) => {
+          if (onUpdateQuantity) {
+            onUpdateQuantity(item.id, quantityChange);
+          }
+        }}
+      />
+
+      {/* Delete Quantity Dialog */}
+      <DeleteQuantityDialog
+        open={showDeleteDialog}
+        onOpenChange={setShowDeleteDialog}
+        item={item}
+        onDelete={(count) => {
+          if (onDeleteMultiple && stackedItems.length > 0) {
+            const itemsToDelete = stackedItems.slice(0, count).map((i: any) => i.id);
+            onDeleteMultiple(itemsToDelete);
+          }
+          setShowDeleteDialog(false);
+        }}
+      />
     </div>
   );
 }
@@ -3450,6 +3718,13 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
   const { data: items = [] } = useQuery({
     queryKey: ['items', character.id],
     queryFn: () => api.getItems(character.id),
+    enabled: !!character.id
+  });
+
+  // Fetch hotbars for weight calculation (container bonus when equipped in utility)
+  const { data: hotbars = [] } = useQuery({
+    queryKey: ['hotbars', character.id],
+    queryFn: () => api.getHotbars(character.id),
     enabled: !!character.id
   });
 
@@ -3680,23 +3955,18 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
   };
 
   // Calculate total weight and currency
-  // Items inside containers have reduced effective weight based on container's carryCapacity
-  const containerCapacityBonus = items
-    .filter((item: any) => item.isContainer)
+  // Total weight = sum of all items weight (including items in containers)
+  const totalWeight = items.reduce((sum: number, item: any) => sum + (item.itemWeight * item.quantity), 0);
+  
+  // Container bonus only applies when container is equipped in utility hotbar
+  const utilityHotbars = hotbars.filter((h: any) => h.hotbarType === 'utility' && h.itemId);
+  const equippedContainerIds = new Set(utilityHotbars.map((h: any) => h.itemId));
+  const equippedContainerBonus = items
+    .filter((item: any) => item.isContainer && equippedContainerIds.has(item.id))
     .reduce((sum: number, item: any) => sum + (item.carryCapacity || 0), 0);
   
-  // Calculate weight of items inside containers vs outside
-  const itemsInContainers = items.filter((item: any) => item.containerId !== null);
-  const containedWeight = itemsInContainers.reduce((sum: number, item: any) => sum + (item.itemWeight * item.quantity), 0);
-  
-  // Total weight = all items weight - min(containedWeight, containerCapacity)
-  // Containers reduce effective weight by their capacity (up to the weight of items inside them)
-  const rawWeight = items.reduce((sum: number, item: any) => sum + (item.itemWeight * item.quantity), 0);
-  const weightReduction = Math.min(containedWeight, containerCapacityBonus);
-  const totalWeight = rawWeight - weightReduction;
-  
   const mightMod = character.might || 0; // Use new attribute system
-  const carryCapacity = 150 + (mightMod * 10);
+  const carryCapacity = 50 + (mightMod * 10) + equippedContainerBonus;
   const weightPercentage = (totalWeight / carryCapacity) * 100;
 
   const totalCurrency = items.reduce((acc: any, item: any) => {
@@ -4632,6 +4902,47 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                           canEdit={canEdit}
                           moveItemToContainer={moveItemToContainer}
                           onDeleteItem={(id) => deleteItemMutation.mutate(id)}
+                          onUpdateQuantity={(itemId, quantityChange) => {
+                            if (!stack.items || stack.items.length === 0) return;
+                            
+                            if (quantityChange > 0) {
+                              // INCREASING: Add to first item's quantity
+                              const firstItem = stack.items[0];
+                              updateItemMutation.mutate({ 
+                                id: firstItem.id, 
+                                data: { quantity: firstItem.quantity + quantityChange } 
+                              });
+                            } else if (quantityChange < 0) {
+                              // DECREASING: Delete items from the stack until reaching target
+                              let remaining = Math.abs(quantityChange);
+                              const idsToDelete: string[] = [];
+                              
+                              // Go through items from the end and mark for deletion or reduce quantity
+                              for (let i = stack.items.length - 1; i >= 0 && remaining > 0; i--) {
+                                const item = stack.items[i];
+                                if (item.quantity <= remaining) {
+                                  // Delete entire item
+                                  idsToDelete.push(item.id);
+                                  remaining -= item.quantity;
+                                } else {
+                                  // Reduce this item's quantity (partial deletion)
+                                  updateItemMutation.mutate({ 
+                                    id: item.id, 
+                                    data: { quantity: item.quantity - remaining } 
+                                  });
+                                  remaining = 0;
+                                }
+                              }
+                              
+                              // Delete marked items
+                              if (idsToDelete.length > 0) {
+                                Promise.all(idsToDelete.map(id => deleteItemMutation.mutateAsync(id)));
+                              }
+                            }
+                          }}
+                          onDeleteMultiple={(itemIds) => {
+                            Promise.all(itemIds.map(id => deleteItemMutation.mutateAsync(id)));
+                          }}
                         />
                       ))}
                     </div>
@@ -6709,17 +7020,7 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
               </div>
               <div>
                 <Label className="text-xs text-stone-400">Quantity</Label>
-                {isEditing ? (
-                  <Input 
-                    type="number"
-                    min="1"
-                    value={currentData.quantity} 
-                    onChange={(e) => setEditData({ ...editData, quantity: parseInt(e.target.value) || 1 })}
-                    className="bg-stone-800 border-stone-700"
-                  />
-                ) : (
-                  <p className="text-stone-200">{currentData.totalQuantity || currentData.quantity}</p>
-                )}
+                <p className="text-stone-200">{currentData.totalQuantity || currentData.quantity}</p>
               </div>
             </div>
 
