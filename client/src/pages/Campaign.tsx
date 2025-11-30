@@ -241,6 +241,7 @@ export default function Campaign() {
   const [character, setCharacter] = useState<any>(null);
   const [tokens, setTokens] = useState<any[]>([]);
   const [inspectedChar, setInspectedChar] = useState<any>(null);
+  const [selectedChar, setSelectedChar] = useState<any>(null); // For players with edit access to other characters
   const [currentMap, setCurrentMap] = useState(battleMapImage1);
   const [createdCampaignId, setCreatedCampaignId] = useState<string | null>(null);
   const [currentView, setCurrentView] = useState({ x: 0, y: 0, zoom: 1 });
@@ -278,6 +279,13 @@ export default function Campaign() {
   const { data: members, isLoading: membersLoading } = useQuery({
     queryKey: [`/api/campaigns/${effectiveCampaignId}/members`],
     enabled: !!effectiveCampaignId && !isNew,
+  });
+
+  // Load current user's permissions for all characters in the campaign
+  const { data: myPermissions } = useQuery({
+    queryKey: [`/api/campaigns/${effectiveCampaignId}/my-permissions`],
+    queryFn: () => api.getMyPermissions(effectiveCampaignId!),
+    enabled: !!effectiveCampaignId && !isNew && role === 'player',
   });
 
   // Load active scene for the campaign
@@ -521,11 +529,18 @@ export default function Campaign() {
   };
 
   const handleTokenClick = (token: any) => {
-    if (role === 'gm' && token.type === 'player') {
-      if (characters && Array.isArray(characters)) {
-        const charData = characters.find((c: any) => c.id === token.characterId);
-        if (charData) {
+    if (token.type === 'player' && characters && Array.isArray(characters)) {
+      const charData = characters.find((c: any) => c.id === token.characterId);
+      if (charData) {
+        if (role === 'gm') {
+          // GMs can select any character
           setInspectedChar(charData);
+        } else if (role === 'player') {
+          // Players can select characters they own or have edit access to
+          const permission = myPermissions?.permissions?.[charData.id];
+          if (permission === 'owner' || permission === 'edit') {
+            setSelectedChar(charData);
+          }
         }
       }
     }
@@ -635,7 +650,9 @@ export default function Campaign() {
 
   // Open character sheet to a specific tab
   const openCharacterSheetToTab = (tab: string) => {
-    const charToView = role === 'player' ? character : inspectedChar;
+    // For players: use selectedChar (clicked token) or their own character
+    // For GMs: use inspectedChar (clicked token)
+    const charToView = role === 'player' ? (selectedChar || character) : inspectedChar;
     if (charToView) {
       setCharacterSheetDefaultTab(tab);
       setViewingCharacterSheet(charToView);
@@ -944,12 +961,14 @@ export default function Campaign() {
            />
            
            {/* Hotbars Display - only show when there's a character to display */}
-           {(role === 'gm' ? inspectedChar : character) && (
-             <BattleMapHotbars character={role === 'gm' ? inspectedChar : character} />
+           {/* For players: show selectedChar (clicked token) or their own character */}
+           {/* For GMs: show inspectedChar (clicked token) */}
+           {(role === 'gm' ? inspectedChar : (selectedChar || character)) && (
+             <BattleMapHotbars character={role === 'gm' ? inspectedChar : (selectedChar || character)} />
            )}
           
           {/* Character Sheet Tab Buttons - Right side, aligned with hotbar buttons (visible when character/inspectedChar exists) */}
-          {((role === 'player' && character) || (role === 'gm' && inspectedChar)) && (
+          {((role === 'player' && (selectedChar || character)) || (role === 'gm' && inspectedChar)) && (
             <div className="absolute right-3 top-44 z-20 flex flex-col gap-2">
               {[
                 { tab: 'overview', icon: User, color: 'stone' },
@@ -1002,7 +1021,10 @@ export default function Campaign() {
             <CharacterSheet
               character={viewingCharacterSheet}
               isGM={role === 'gm'}
-              isOwner={viewingCharacterSheet.userId === user?.id}
+              isOwner={
+                viewingCharacterSheet.userId === user?.id || 
+                myPermissions?.permissions?.[viewingCharacterSheet.id] === 'edit'
+              }
               onUpdate={handleUpdateCharacter}
               onClose={() => setViewingCharacterSheet(null)}
               defaultTab={characterSheetDefaultTab}

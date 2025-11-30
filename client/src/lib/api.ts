@@ -464,6 +464,11 @@ class ApiClient {
       body: JSON.stringify({ accessLevel }),
     });
   }
+
+  // Get current user's permissions for all characters in a campaign
+  async getMyPermissions(campaignId: string): Promise<{ permissions: Record<string, string>; isGM: boolean }> {
+    return this.request(`/campaigns/${campaignId}/my-permissions`);
+  }
 }
 
 export const api = new ApiClient();

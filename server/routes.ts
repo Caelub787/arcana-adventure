@@ -467,7 +467,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     ws.on("close", () => {
       // Remove from all campaign rooms
       const campaigns = (ws as any).campaigns || new Map();
-      campaigns.forEach((_, campaignId: string) => {
+      campaigns.forEach((_: any, campaignId: string) => {
         const room = campaignRooms.get(campaignId);
         if (room) {
           room.delete(ws);
@@ -1803,6 +1803,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ success: true });
     } catch (err) {
       res.status(400).json({ error: "Failed to delete item" });
+    }
+  });
+
+  // Get current user's permissions for all characters in a campaign
+  app.get("/api/campaigns/:campaignId/my-permissions", requireAuth, async (req, res) => {
+    try {
+      const campaign = await storage.getCampaign(req.params.campaignId);
+      if (!campaign) {
+        return res.status(404).json({ error: "Campaign not found" });
+      }
+      
+      // Get all characters in the campaign
+      const allCharacters = await storage.getCampaignCharacters(req.params.campaignId);
+      const characterIds = allCharacters.map(c => c.id);
+      
+      // Get all permissions for this user
+      const permissions = await storage.getUserPermissionsForCharacters(req.session.userId!, characterIds);
+      
+      // Build a map of characterId -> accessLevel, including ownership
+      const permissionMap: Record<string, string> = {};
+      
+      // Add explicit permissions
+      for (const p of permissions) {
+        permissionMap[p.characterId] = p.accessLevel;
+      }
+      
+      // Add ownership (owners always have 'edit' level)
+      for (const char of allCharacters) {
+        if (char.userId === req.session.userId) {
+          permissionMap[char.id] = 'owner';
+        }
+      }
+      
+      // Check if user is GM
+      const isGM = campaign.gmUserId === req.session.userId;
+      
+      res.json({ permissions: permissionMap, isGM });
+    } catch (e) {
+      console.error("Failed to get my permissions:", e);
+      res.status(500).json({ error: "Failed to get permissions" });
     }
   });
 
