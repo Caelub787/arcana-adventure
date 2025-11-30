@@ -284,7 +284,9 @@ export default function Campaign() {
   // Load campaign members
   const { data: members, isLoading: membersLoading } = useQuery({
     queryKey: [`/api/campaigns/${effectiveCampaignId}/members`],
+    queryFn: () => api.getCampaignMembers(effectiveCampaignId!),
     enabled: !!effectiveCampaignId && !isNew,
+    staleTime: 0, // Always refetch to get latest members
   });
 
   // Load current user's permissions for all characters in the campaign
@@ -486,6 +488,14 @@ export default function Campaign() {
     }
   }, [role, characters, user]);
 
+  // Store refs for stable closures in WebSocket handler
+  const queryClientRef = useRef(queryClient);
+  const toastRef = useRef(toast);
+  useEffect(() => {
+    queryClientRef.current = queryClient;
+    toastRef.current = toast;
+  }, [queryClient, toast]);
+
   // WebSocket connection
   useEffect(() => {
     if (effectiveCampaignId && !wsConnectedRef.current) {
@@ -500,20 +510,20 @@ export default function Campaign() {
           ));
         }
         if (data.type === 'character_changed') {
-          queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${effectiveCampaignId}/characters`] });
+          queryClientRef.current.invalidateQueries({ queryKey: [`/api/campaigns/${effectiveCampaignId}/characters`] });
           if (data.characterId) {
-            queryClient.invalidateQueries({ queryKey: [`/api/characters/${data.characterId}`] });
+            queryClientRef.current.invalidateQueries({ queryKey: [`/api/characters/${data.characterId}`] });
           }
         }
         if (data.type === 'permission_update') {
           console.log('Permission update received:', data);
           // Invalidate permissions cache so UI updates immediately
-          queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${effectiveCampaignId}/my-permissions`] });
+          queryClientRef.current.invalidateQueries({ queryKey: [`/api/campaigns/${effectiveCampaignId}/my-permissions`] });
           
           // Show toast for the affected user
           const accessDesc = data.accessLevel === 'edit' ? 'edit' : 
                              data.accessLevel === 'view' ? 'view only' : 'no';
-          toast({ 
+          toastRef.current({ 
             title: "Access Changed", 
             description: `Access to ${data.characterName || 'a character'} is now ${accessDesc}`,
             variant: data.accessLevel === 'none' ? 'destructive' : 'default'
@@ -527,7 +537,7 @@ export default function Campaign() {
         wsConnectedRef.current = false;
       };
     }
-  }, [effectiveCampaignId, queryClient, toast, user?.id]);
+  }, [effectiveCampaignId]);
 
   const handleCharacterCreated = (char: any) => {
     createCharacterMutation.mutate(char);

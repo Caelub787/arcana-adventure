@@ -2096,6 +2096,9 @@ export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onIn
   useEffect(() => {
     if (showAccessDialog && selectedCharForAccess) {
       setLoadingAccess(true);
+      // Invalidate members query to get fresh data when dialog opens
+      queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${campaignId}/members`] });
+      
       api.getCharacterPermissions(selectedCharForAccess.id)
         .then((permissions) => {
           const levels: Record<string, string> = {};
@@ -2114,7 +2117,7 @@ export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onIn
         })
         .finally(() => setLoadingAccess(false));
     }
-  }, [showAccessDialog, selectedCharForAccess]);
+  }, [showAccessDialog, selectedCharForAccess, queryClient, campaignId]);
 
   const handleSetAccess = async (userId: string, accessLevel: string) => {
     if (!selectedCharForAccess) return;
