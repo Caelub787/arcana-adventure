@@ -1921,9 +1921,11 @@ interface CampaignMenuProps {
   onLevelUpAll?: (mode: 'set' | 'add', targetLevel?: number) => void;
   chatOpen?: boolean;
   onChatOpenChange?: (open: boolean) => void;
+  onAssignCharacter?: (char: any) => void;
+  myPermissions?: { permissions: Record<string, string> };
 }
 
-export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onInspectChar, onAddCharacterToken, onChangeMap, characters, members, onAddCharacter, onViewCharacter, onLevelUpAll, chatOpen = false, onChatOpenChange }: CampaignMenuProps) {
+export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onInspectChar, onAddCharacterToken, onChangeMap, characters, members, onAddCharacter, onViewCharacter, onLevelUpAll, chatOpen = false, onChatOpenChange, onAssignCharacter, myPermissions }: CampaignMenuProps) {
   const setChatOpen = onChatOpenChange || (() => {});
   const [addCharacterOpen, setAddCharacterOpen] = useState(false);
   const [showLevelUpDialog, setShowLevelUpDialog] = useState(false);
@@ -2270,6 +2272,17 @@ export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onIn
                               data-testid={`button-view-character-${char.id}`}
                             >
                               View Sheet
+                            </Button>
+                          )}
+                          {onAssignCharacter && (role === 'gm' || myPermissions?.permissions?.[char.id] === 'edit' || myPermissions?.permissions?.[char.id] === 'owner') && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => onAssignCharacter(char)}
+                              className="bg-green-900/30 hover:bg-green-800/50 border-green-700 text-green-200 text-xs"
+                              data-testid={`button-assign-character-${char.id}`}
+                            >
+                              Assign
                             </Button>
                           )}
                           {role === 'gm' && (
