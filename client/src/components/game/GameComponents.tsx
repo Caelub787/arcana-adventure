@@ -19,7 +19,8 @@ import {
   Sword, Shield, Scroll, Map as MapIcon, Settings, 
   Users, User, Plus, LogOut, Menu, ChevronRight, ChevronLeft, ChevronDown,
   Heart, Zap, Backpack, Sparkles, Dice5, MessageSquare, RefreshCw, X, Trash2, Package, FolderOpen, Lock, Unlock, Camera,
-  BarChart3, Grid3X3, ScrollText, Upload, Image as ImageIcon, Layers, Search, TrendingUp, UserMinus, Ban
+  BarChart3, Grid3X3, ScrollText, Upload, Image as ImageIcon, Layers, Search, TrendingUp, UserMinus, Ban,
+  MousePointer, Target, UserCheck
 } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { type Scene, type Hotbar, api } from "@/lib/api";
@@ -532,6 +533,9 @@ export function CharacterCreation({ onComplete, onCancel }: CharacterCreationPro
   );
 }
 
+// Selection mode types
+export type SelectionMode = 'select' | 'target' | 'assign';
+
 // 2. BattleMap
 interface BattleMapProps {
   tokens: Token[];
@@ -544,9 +548,12 @@ interface BattleMapProps {
   scene?: Scene;
   onViewChange?: (viewState: { x: number; y: number; zoom: number }) => void;
   characters?: any[];
+  selectionMode?: SelectionMode;
+  targetedTokenId?: string | null;
+  selectedTokenId?: string | null;
 }
 
-export function BattleMap({ tokens, onMoveToken, onTokenClick, onDeleteToken, role, gridSize, backgroundImage, scene, onViewChange, characters = [] }: BattleMapProps) {
+export function BattleMap({ tokens, onMoveToken, onTokenClick, onDeleteToken, role, gridSize, backgroundImage, scene, onViewChange, characters = [], selectionMode = 'select', targetedTokenId, selectedTokenId }: BattleMapProps) {
   // Use refs for pan/zoom to avoid re-renders during interaction
   const panRef = useRef({ x: 0, y: 0 });
   const zoomRef = useRef(1);
@@ -1224,7 +1231,14 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onDeleteToken, ro
               tabIndex={0}
             >
               <img src={tokenImage} alt="token" className="w-full h-full object-cover pointer-events-none rounded-full" />
-              <div className={`absolute inset-0 border-2 rounded-full ${token.type === 'player' ? 'border-blue-400 glow-amber' : 'border-red-500 glow-red'}`} />
+              {/* Token border - shows targeting (red), selection (white), or default (blue/red based on type) */}
+              <div className={`absolute inset-0 rounded-full ${
+                targetedTokenId === token.id 
+                  ? 'border-4 border-red-500 ring-2 ring-red-500/50 glow-red' 
+                  : selectedTokenId === token.id
+                    ? 'border-3 border-white ring-2 ring-white/30'
+                    : `border-2 ${token.type === 'player' ? 'border-blue-400 glow-amber' : 'border-red-500 glow-red'}`
+              }`} />
               
               {/* Delete Button - Show when holding click (GM only) */}
               {showDeleteButton === token.id && role === 'gm' && (
@@ -1451,44 +1465,6 @@ export function BattleMapHotbars({ character }: BattleMapHotbarsProps) {
 
   return (
     <>
-      {/* Hotbar Switcher Buttons - Left side of screen, aligned with character sheet buttons */}
-      <div className="absolute left-2 md:left-4 top-44 flex flex-col gap-2 z-30 pointer-events-auto">
-        {hotbarTypes.map(({ type, icon: Icon, color }) => {
-          const isActive = activeHotbar === type;
-          const colorClasses: Record<string, string> = {
-            amber: isActive ? 'bg-amber-600 border-amber-400 text-amber-100' : 'bg-stone-800/80 border-stone-600 text-amber-400 hover:bg-amber-900/50',
-            purple: isActive ? 'bg-purple-600 border-purple-400 text-purple-100' : 'bg-stone-800/80 border-stone-600 text-purple-400 hover:bg-purple-900/50',
-            blue: isActive ? 'bg-blue-600 border-blue-400 text-blue-100' : 'bg-stone-800/80 border-stone-600 text-blue-400 hover:bg-blue-900/50',
-            green: isActive ? 'bg-green-600 border-green-400 text-green-100' : 'bg-stone-800/80 border-stone-600 text-green-400 hover:bg-green-900/50',
-            stone: isActive ? 'bg-stone-600 border-stone-400 text-stone-100' : 'bg-stone-800/80 border-stone-600 text-stone-400 hover:bg-stone-700/50',
-          };
-          
-          return (
-            <TooltipProvider key={type}>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    onClick={() => setActiveHotbar(type)}
-                    className={`
-                      w-9 h-9 md:w-10 md:h-10 rounded-lg border-2 flex items-center justify-center
-                      transition-all duration-200 shadow-lg backdrop-blur-sm
-                      ${colorClasses[color]}
-                      ${isActive ? 'scale-110 ring-2 ring-white/20' : 'hover:scale-105'}
-                    `}
-                    data-testid={`hotbar-switch-${type}`}
-                  >
-                    <Icon className="h-4 w-4 md:h-5 md:w-5" />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent side="right">
-                  <p className="capitalize font-bold">{type} Hotbar</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          );
-        })}
-      </div>
-
       {/* HP and Energy Bars - Bottom LEFT, stacked vertically */}
       <div className="absolute bottom-2 md:bottom-4 left-2 md:left-4 pointer-events-auto z-30">
         <div className="flex flex-col gap-1">
@@ -1524,17 +1500,49 @@ export function BattleMapHotbars({ character }: BattleMapHotbarsProps) {
         </div>
       </div>
 
-      {/* Hotbar Display - Bottom RIGHT */}
+      {/* Hotbar Display - Bottom CENTER/RIGHT with type buttons above */}
       <div className="absolute bottom-2 md:bottom-4 right-2 md:right-4 pointer-events-auto z-30">
         <div className="glass-panel rounded p-1 md:p-2 border border-stone-700">
+          {/* Hotbar Type Switcher Buttons - Horizontal above slots */}
+          <div className="flex gap-1 justify-center mb-1 md:mb-2">
+            {hotbarTypes.map(({ type, icon: Icon, color }) => {
+              const isActive = activeHotbar === type;
+              const colorClasses: Record<string, string> = {
+                amber: isActive ? 'bg-amber-600 border-amber-400 text-amber-100' : 'bg-stone-800/80 border-stone-600 text-amber-400 hover:bg-amber-900/50',
+                purple: isActive ? 'bg-purple-600 border-purple-400 text-purple-100' : 'bg-stone-800/80 border-stone-600 text-purple-400 hover:bg-purple-900/50',
+                blue: isActive ? 'bg-blue-600 border-blue-400 text-blue-100' : 'bg-stone-800/80 border-stone-600 text-blue-400 hover:bg-blue-900/50',
+                green: isActive ? 'bg-green-600 border-green-400 text-green-100' : 'bg-stone-800/80 border-stone-600 text-green-400 hover:bg-green-900/50',
+                stone: isActive ? 'bg-stone-600 border-stone-400 text-stone-100' : 'bg-stone-800/80 border-stone-600 text-stone-400 hover:bg-stone-700/50',
+              };
+              
+              return (
+                <TooltipProvider key={type}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        onClick={() => setActiveHotbar(type)}
+                        className={`
+                          w-7 h-7 md:w-8 md:h-8 rounded border-2 flex items-center justify-center
+                          transition-all duration-200
+                          ${colorClasses[color]}
+                          ${isActive ? 'ring-1 ring-white/20' : 'hover:scale-105'}
+                        `}
+                        data-testid={`hotbar-switch-${type}`}
+                      >
+                        <Icon className="h-3 w-3 md:h-4 md:w-4" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="top">
+                      <p className="capitalize font-bold">{type}</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              );
+            })}
+          </div>
+          
           {activeHotbarConfig && (
             <div className="flex flex-col gap-1">
-              {/* Hotbar Type Label */}
-              <div className={`text-[9px] md:text-sm text-center text-${activeHotbarConfig.color}-400 uppercase font-bold flex items-center justify-center gap-1`}>
-                <activeHotbarConfig.icon className="h-3 w-3 md:h-4 md:w-4" />
-                <span>{activeHotbarConfig.type}</span>
-              </div>
-              
               {/* Hotbar Slots */}
               <div className="flex gap-1 justify-center">
                 {Array.from({ length: activeHotbarConfig.maxSlots }).map((_, slotIndex) => {
@@ -1557,6 +1565,57 @@ export function BattleMapHotbars({ character }: BattleMapHotbarsProps) {
         </div>
       </div>
     </>
+  );
+}
+
+// Selection Mode Buttons Component
+interface SelectionModeButtonsProps {
+  selectionMode: SelectionMode;
+  onModeChange: (mode: SelectionMode) => void;
+}
+
+export function SelectionModeButtons({ selectionMode, onModeChange }: SelectionModeButtonsProps) {
+  const modes = [
+    { mode: 'select' as SelectionMode, icon: MousePointer, label: 'Select', color: 'stone' },
+    { mode: 'target' as SelectionMode, icon: Target, label: 'Target', color: 'red' },
+    { mode: 'assign' as SelectionMode, icon: UserCheck, label: 'Assign', color: 'green' },
+  ];
+
+  return (
+    <div className="absolute left-2 md:left-4 top-44 flex flex-col gap-2 z-30 pointer-events-auto">
+      {modes.map(({ mode, icon: Icon, label, color }) => {
+        const isActive = selectionMode === mode;
+        const colorClasses: Record<string, string> = {
+          stone: isActive ? 'bg-stone-600 border-stone-400 text-stone-100' : 'bg-stone-800/80 border-stone-600 text-stone-400 hover:bg-stone-700/50',
+          red: isActive ? 'bg-red-600 border-red-400 text-red-100' : 'bg-stone-800/80 border-stone-600 text-red-400 hover:bg-red-900/50',
+          green: isActive ? 'bg-green-600 border-green-400 text-green-100' : 'bg-stone-800/80 border-stone-600 text-green-400 hover:bg-green-900/50',
+        };
+        
+        return (
+          <TooltipProvider key={mode}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={() => onModeChange(mode)}
+                  className={`
+                    w-9 h-9 md:w-10 md:h-10 rounded-lg border-2 flex items-center justify-center
+                    transition-all duration-200 shadow-lg backdrop-blur-sm
+                    ${colorClasses[color]}
+                    ${isActive ? 'scale-110 ring-2 ring-white/20' : 'hover:scale-105'}
+                  `}
+                  data-testid={`selection-mode-${mode}`}
+                >
+                  <Icon className="h-4 w-4 md:h-5 md:w-5" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="right">
+                <p className="font-bold">{label}</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        );
+      })}
+    </div>
   );
 }
 

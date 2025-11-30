@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useLocation, useSearch, useRoute } from "wouter";
 import { motion } from "framer-motion";
-import { CharacterCreation, BattleMap, CampaignMenu, CharacterSheet, BattleMapHotbars } from "@/components/game/GameComponents";
+import { CharacterCreation, BattleMap, CampaignMenu, CharacterSheet, BattleMapHotbars, SelectionModeButtons, type SelectionMode } from "@/components/game/GameComponents";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Loader2, Settings, Map as MapIcon, Layers, Trash2, MessageSquare, User, BarChart3, Zap, Backpack, Sparkles, Grid3X3, ScrollText } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -254,6 +254,11 @@ export default function Campaign() {
   const [showCampaignDialog, setShowCampaignDialog] = useState(false);
   const [newCampaignName, setNewCampaignName] = useState("");
   const [newCampaignSystem, setNewCampaignSystem] = useState("arcana-adventure");
+  
+  // Selection mode state for battlemap interactions
+  const [selectionMode, setSelectionMode] = useState<SelectionMode>('select');
+  const [targetedTokenId, setTargetedTokenId] = useState<string | null>(null);
+  const [selectedTokenId, setSelectedTokenId] = useState<string | null>(null);
 
   // Determine effective campaign ID (from URL or newly created)
   const effectiveCampaignId = campaignId || createdCampaignId;
@@ -535,17 +540,52 @@ export default function Campaign() {
   };
 
   const handleTokenClick = (token: any) => {
-    if (token.type === 'player' && characters && Array.isArray(characters)) {
-      const charData = characters.find((c: any) => c.id === token.characterId);
-      if (charData) {
-        if (role === 'gm') {
-          // GMs can select any character to view/inspect
-          setInspectedChar(charData);
+    // Handle based on current selection mode
+    switch (selectionMode) {
+      case 'select':
+        // Select mode: just mark the token as selected, nothing else happens
+        setSelectedTokenId(token.id);
+        break;
+        
+      case 'target':
+        // Target mode: add red outline to selected token (only one at a time)
+        setTargetedTokenId(token.id);
+        setSelectedTokenId(token.id);
+        break;
+        
+      case 'assign':
+        // Assign mode: if user has edit access, assign the character to themselves
+        if (token.type === 'player' && characters && Array.isArray(characters)) {
+          const charData = characters.find((c: any) => c.id === token.characterId);
+          if (charData) {
+            if (role === 'gm') {
+              // GMs can assign any character
+              setCharacter(charData);
+              setInspectedChar(charData);
+              toast({ title: "Character Assigned", description: `${charData.name} is now your active character` });
+            } else if (role === 'player') {
+              // Players can only assign characters they have edit access to
+              const permission = myPermissions?.permissions?.[charData.id];
+              if (permission === 'owner' || permission === 'edit') {
+                setCharacter(charData);
+                toast({ title: "Character Assigned", description: `${charData.name} is now your active character` });
+              } else {
+                toast({ title: "No Access", description: "You don't have edit access to this character", variant: "destructive" });
+              }
+            }
+          }
         }
-        // Players no longer change display on token click - they use the Assign button instead
-        // Token clicking for players is only for moving tokens on the map
-      }
+        setSelectedTokenId(token.id);
+        break;
     }
+  };
+
+  // Handler for mode changes - clear targeting when switching away from Target mode
+  const handleModeChange = (mode: SelectionMode) => {
+    if (selectionMode === 'target' && mode !== 'target') {
+      setTargetedTokenId(null);
+    }
+    setSelectionMode(mode);
   };
 
   // GM Actions
@@ -966,6 +1006,15 @@ export default function Campaign() {
              scene={activeScene}
              onViewChange={setCurrentView}
              characters={characters as any[]}
+             selectionMode={selectionMode}
+             targetedTokenId={targetedTokenId}
+             selectedTokenId={selectedTokenId}
+           />
+           
+           {/* Selection Mode Buttons - Left side of screen */}
+           <SelectionModeButtons 
+             selectionMode={selectionMode}
+             onModeChange={handleModeChange}
            />
            
            {/* Hotbars Display - only show when there's a character to display */}
