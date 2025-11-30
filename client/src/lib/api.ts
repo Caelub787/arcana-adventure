@@ -559,28 +559,72 @@ export class GameWebSocket {
   private campaignId: string | null = null;
   private reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
   private messageHandlers: Set<(data: any) => void> = new Set();
+  private joinedCampaign: boolean = false;
+  private pendingMessages: Array<any> = [];
 
   connect(campaignId: string) {
+    // If already connected to this campaign and joined, don't reconnect
+    if (this.campaignId === campaignId && this.joinedCampaign && this.ws && this.ws.readyState === WebSocket.OPEN) {
+      console.log('WebSocket: Already connected and joined to campaign:', campaignId);
+      return;
+    }
+    
+    // Clean up any existing connection
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout);
+      this.reconnectTimeout = null;
+    }
+    if (this.ws) {
+      this.ws.onclose = null; // Prevent reconnect on intentional close
+      this.ws.close();
+      this.ws = null;
+    }
+    
     this.campaignId = campaignId;
+    this.joinedCampaign = false;
+    this.pendingMessages = [];
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = `${protocol}//${window.location.host}/ws`;
     
+    console.log('WebSocket: Creating new connection for campaign:', campaignId);
     this.ws = new WebSocket(wsUrl);
 
     this.ws.onopen = () => {
-      console.log('WebSocket connected');
+      console.log('WebSocket: Connection opened, sending join_campaign for:', campaignId);
       this.send({ type: 'join_campaign', campaignId });
     };
 
     this.ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      this.messageHandlers.forEach(handler => handler(data));
+      try {
+        const data = JSON.parse(event.data);
+        
+        // Track when we've successfully joined the campaign
+        if (data.type === 'joined_campaign') {
+          console.log('WebSocket: Received joined_campaign response:', data);
+          if (data.campaignId === this.campaignId) {
+            console.log('WebSocket: Successfully joined campaign', this.campaignId);
+            this.joinedCampaign = true;
+            // Send any pending messages
+            while (this.pendingMessages.length > 0) {
+              const msg = this.pendingMessages.shift();
+              console.log('WebSocket: Sending pending message:', msg.type);
+              this.send(msg);
+            }
+          }
+        }
+        
+        this.messageHandlers.forEach(handler => handler(data));
+      } catch (e) {
+        console.error('WebSocket: Error parsing message:', e);
+      }
     };
 
     this.ws.onclose = () => {
-      console.log('WebSocket disconnected, reconnecting...');
+      console.log('WebSocket: Connection closed');
+      this.joinedCampaign = false;
       this.reconnectTimeout = setTimeout(() => {
         if (this.campaignId) {
+          console.log('WebSocket: Attempting reconnect to campaign:', this.campaignId);
           this.connect(this.campaignId);
         }
       }, 3000);
@@ -600,6 +644,8 @@ export class GameWebSocket {
       this.ws = null;
     }
     this.campaignId = null;
+    this.joinedCampaign = false;
+    this.pendingMessages = [];
     this.messageHandlers.clear();
   }
 
@@ -607,6 +653,14 @@ export class GameWebSocket {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(data));
     }
+  }
+  
+  isJoinedToCampaign(): boolean {
+    return this.joinedCampaign && this.ws?.readyState === WebSocket.OPEN;
+  }
+  
+  getCurrentCampaignId(): string | null {
+    return this.campaignId;
   }
 
   onMessage(handler: (data: any) => void) {
@@ -636,6 +690,31 @@ export class GameWebSocket {
       return;
     }
     this.send({ type: 'character_update', campaignId: this.campaignId, characterId });
+  }
+  
+  sendDiceRoll(dieType: string, modifier: number = 0, purpose?: string, characterId?: string) {
+    if (!this.campaignId) {
+      console.error('Cannot send dice roll: not connected to a campaign');
+      return;
+    }
+    
+    const message = { 
+      type: 'request_dice_roll', 
+      campaignId: this.campaignId, 
+      dieType,
+      modifier,
+      purpose,
+      characterId
+    };
+    
+    // If not yet joined, queue the message
+    if (!this.joinedCampaign) {
+      console.log('WebSocket: Queueing dice roll until campaign join is confirmed');
+      this.pendingMessages.push(message);
+      return;
+    }
+    
+    this.send(message);
   }
 }
 

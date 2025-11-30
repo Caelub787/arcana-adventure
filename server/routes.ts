@@ -212,10 +212,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         
         if (message.type === "join_campaign" && message.campaignId) {
           const campaignId = message.campaignId;
+          console.log(`[WebSocket] Processing join_campaign request from ${username} for campaign ${campaignId}`);
           
           // Check if user is a member of this campaign or is the GM
           const campaign = await storage.getCampaign(campaignId);
           if (!campaign) {
+            console.log(`[WebSocket] Campaign ${campaignId} not found`);
             ws.send(JSON.stringify({
               type: "error",
               message: "Campaign not found"
@@ -225,11 +227,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
           
           // Check if user is GM (owner)
           const isGM = campaign.gmUserId === authenticatedUserId;
+          console.log(`[WebSocket] User ${username} isGM: ${isGM}, gmUserId: ${campaign.gmUserId}, userId: ${authenticatedUserId}`);
           
           // Check if user is a member
           const membership = await storage.getCampaignMembership(authenticatedUserId, campaignId);
+          console.log(`[WebSocket] User ${username} membership:`, membership);
           
           if (!isGM && !membership) {
+            console.log(`[WebSocket] User ${username} not authorized for campaign ${campaignId}`);
             ws.send(JSON.stringify({
               type: "error",
               message: "Not authorized - You are not a member of this campaign"
@@ -248,11 +253,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
           campaignRooms.get(campaignId)!.add(ws);
           
           // Send confirmation with role
-          ws.send(JSON.stringify({
+          const confirmationMsg = JSON.stringify({
             type: "joined_campaign",
             campaignId,
             role
-          }));
+          });
+          console.log(`[WebSocket] Sending joined_campaign confirmation to ${username}:`, confirmationMsg);
+          ws.send(confirmationMsg);
           
           console.log(`[WebSocket] User ${username} joined campaign ${campaignId} as ${role}`);
         }

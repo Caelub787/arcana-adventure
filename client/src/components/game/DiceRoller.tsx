@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,8 +9,6 @@ import {
   initDiceSystem, 
   cleanupDiceSystem, 
   handleServerRollResult, 
-  createRollMessage,
-  onDiceRoll,
   type DieType,
   type DiceRollResult
 } from '@/lib/diceSystem';
@@ -38,21 +36,25 @@ export function DiceRoller({ campaignId, isOpen, onOpenChange }: DiceRollerProps
   const [modifier, setModifier] = useState(0);
   const [rollHistory, setRollHistory] = useState<RollHistoryItem[]>([]);
   const [isRolling, setIsRolling] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const [containerEl, setContainerEl] = useState<HTMLDivElement | null>(null);
+  
+  const containerRef = useCallback((node: HTMLDivElement | null) => {
+    setContainerEl(node);
+  }, []);
   
   useEffect(() => {
-    if (containerRef.current) {
+    if (isOpen && containerEl) {
       initDiceSystem({
-        container: containerRef.current,
+        container: containerEl,
         onRollStart: () => setIsRolling(true),
         onRollComplete: () => setIsRolling(false),
       });
+      
+      return () => {
+        cleanupDiceSystem();
+      };
     }
-    
-    return () => {
-      cleanupDiceSystem();
-    };
-  }, []);
+  }, [isOpen, containerEl]);
   
   useEffect(() => {
     const handleWsMessage = (data: any) => {
@@ -72,13 +74,8 @@ export function DiceRoller({ campaignId, isOpen, onOpenChange }: DiceRollerProps
   const rollDie = useCallback((dieType: DieType) => {
     if (isRolling) return;
     
-    const message = createRollMessage({
-      dieType,
-      modifier,
-    }, campaignId);
-    
-    gameWs.send(message);
-  }, [campaignId, modifier, isRolling]);
+    gameWs.sendDiceRoll(dieType, modifier);
+  }, [modifier, isRolling]);
   
   const adjustModifier = (delta: number) => {
     setModifier(prev => Math.max(-10, Math.min(20, prev + delta)));
