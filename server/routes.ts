@@ -1991,6 +1991,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Broadcast permission update to affected user via WebSocket
       const campaignId = character.campaignId;
       const room = campaignRooms.get(campaignId);
+      console.log(`[Permission Update] Campaign: ${campaignId}, Room exists: ${!!room}, Room size: ${room?.size || 0}`);
+      
       if (room) {
         const permissionUpdateMessage = JSON.stringify({
           type: 'permission_update',
@@ -2003,9 +2005,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         
         // Send to all clients of the affected user in this campaign room
         const clients = Array.from(room);
+        let sentToTarget = false;
+        let sentToGM = false;
+        
         for (const client of clients) {
-          if (client.readyState === 1 && (client as any).userId === req.params.userId) {
+          const clientUserId = (client as any).userId;
+          console.log(`[Permission Update] Checking client userId: ${clientUserId}, target: ${req.params.userId}, GM: ${req.session.userId}`);
+          
+          if (client.readyState === 1 && clientUserId === req.params.userId) {
             client.send(permissionUpdateMessage);
+            sentToTarget = true;
+            console.log(`[Permission Update] Sent to target user: ${req.params.userId}`);
           }
         }
         
@@ -2013,8 +2023,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         for (const client of clients) {
           if (client.readyState === 1 && (client as any).userId === req.session.userId) {
             client.send(permissionUpdateMessage);
+            sentToGM = true;
+            console.log(`[Permission Update] Sent to GM: ${req.session.userId}`);
           }
         }
+        
+        console.log(`[Permission Update] Summary - Sent to target: ${sentToTarget}, Sent to GM: ${sentToGM}`);
       }
       
       res.json(result);

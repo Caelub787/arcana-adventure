@@ -493,6 +493,7 @@ export default function Campaign() {
       wsConnectedRef.current = true;
 
       const unsubscribe = gameWs.onMessage((data) => {
+        console.log('WebSocket message received:', data.type, data);
         if (data.type === 'token_move') {
           setTokens(prev => prev.map(t => 
             t.id === data.tokenId ? { ...t, x: data.x, y: data.y } : t
@@ -505,19 +506,18 @@ export default function Campaign() {
           }
         }
         if (data.type === 'permission_update') {
+          console.log('Permission update received:', data);
           // Invalidate permissions cache so UI updates immediately
           queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${effectiveCampaignId}/my-permissions`] });
           
-          // If permission was changed for the current user, show a toast
-          if (data.targetUserId === user?.id) {
-            const accessDesc = data.accessLevel === 'edit' ? 'edit' : 
-                               data.accessLevel === 'view' ? 'view only' : 'no';
-            toast({ 
-              title: "Access Changed", 
-              description: `Your access to ${data.characterName || 'a character'} is now ${accessDesc}`,
-              variant: data.accessLevel === 'none' ? 'destructive' : 'default'
-            });
-          }
+          // Show toast for the affected user
+          const accessDesc = data.accessLevel === 'edit' ? 'edit' : 
+                             data.accessLevel === 'view' ? 'view only' : 'no';
+          toast({ 
+            title: "Access Changed", 
+            description: `Access to ${data.characterName || 'a character'} is now ${accessDesc}`,
+            variant: data.accessLevel === 'none' ? 'destructive' : 'default'
+          });
         }
       });
 
@@ -527,7 +527,7 @@ export default function Campaign() {
         wsConnectedRef.current = false;
       };
     }
-  }, [effectiveCampaignId]);
+  }, [effectiveCampaignId, queryClient, toast, user?.id]);
 
   const handleCharacterCreated = (char: any) => {
     createCharacterMutation.mutate(char);

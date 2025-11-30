@@ -1161,7 +1161,12 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onDeleteToken, ro
           
           // Token size is 90% of grid to fit within cells with some padding
           const tokenSize = effectiveGridSize * 0.9;
-          const tokenOffset = effectiveGridSize * 0.05; // Center the token in the cell
+          // Center the token in the visible cell area (accounting for grid line thickness)
+          // The grid line takes up gridThickness pixels at the left/top edge of each cell
+          // So the usable cell area is (gridSize - gridThickness) pixels, starting at gridThickness
+          const gridThickness = scene?.gridThickness ?? 1;
+          const usableCellSize = effectiveGridSize - gridThickness;
+          const tokenOffset = gridThickness + (usableCellSize - tokenSize) / 2;
           
           const handleTokenPointerDown = (e: React.PointerEvent) => {
             e.stopPropagation();
