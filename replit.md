@@ -67,6 +67,15 @@ Preferred communication style: Simple, everyday language.
 -   **Add Item Dialog**: Two tabs - "From Library" (system + campaign templates) and "Create New" (custom item creation)
 -   Players can add items from either library or create new ones; only GMs see the Templates management button
 
+**Inventory & Weight System**:
+-   **Base Carry Capacity**: 50 lbs + (Might modifier × 10)
+-   **Container Bonuses**: Only apply when container is equipped in a utility hotbar slot
+-   **Weight Calculation**: All item weights count toward total, including items inside containers
+-   **Quantity Management**: Clickable quantity badge opens popup to set absolute target quantity (no delta math needed)
+-   **Stacked Items**: Items with matching properties stack together, showing dropdown with individual item details (durability, etc.)
+-   **Partial Deletion**: Delete dialog includes slider to choose how many items to remove from a stack
+-   **Optimistic Updates**: Item deletions update UI immediately without waiting for server response
+
 ### Backend Architecture
 
 **Technology Stack**: Express.js with TypeScript, `express-session` for session management.
