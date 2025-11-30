@@ -13,7 +13,9 @@ import {
   type Spell, type InsertSpell,
   type CharacterPermission, type InsertCharacterPermission,
   type InitiativeEntry, type InsertInitiativeEntry,
-  users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, items, spells, characterPermissions, initiativeEntries
+  type DiceTexture, type InsertDiceTexture,
+  type DiceRoll, type InsertDiceRoll,
+  users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, items, spells, characterPermissions, initiativeEntries, diceTextures, diceRolls
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql, inArray } from "drizzle-orm";
@@ -121,6 +123,16 @@ export interface IStorage {
   deleteInitiativeEntry(id: string): Promise<void>;
   clearSceneInitiative(sceneId: string): Promise<void>;
   getInitiativeEntryByCharacter(sceneId: string, characterId: string): Promise<InitiativeEntry | undefined>;
+
+  // Dice Texture operations
+  getDiceTexture(userId: string, dieType: string): Promise<DiceTexture | undefined>;
+  getUserDiceTextures(userId: string): Promise<DiceTexture[]>;
+  createOrUpdateDiceTexture(texture: InsertDiceTexture): Promise<DiceTexture>;
+  deleteDiceTexture(userId: string, dieType: string): Promise<void>;
+
+  // Dice Roll operations
+  createDiceRoll(roll: InsertDiceRoll): Promise<DiceRoll>;
+  getCampaignDiceRolls(campaignId: string, limit?: number): Promise<DiceRoll[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -755,6 +767,62 @@ export class DatabaseStorage implements IStorage {
       ))
       .limit(1);
     return entry;
+  }
+
+  // Dice Texture operations
+  async getDiceTexture(userId: string, dieType: string): Promise<DiceTexture | undefined> {
+    const [texture] = await db.select()
+      .from(diceTextures)
+      .where(and(
+        eq(diceTextures.userId, userId),
+        eq(diceTextures.dieType, dieType)
+      ))
+      .limit(1);
+    return texture;
+  }
+
+  async getUserDiceTextures(userId: string): Promise<DiceTexture[]> {
+    return await db.select()
+      .from(diceTextures)
+      .where(eq(diceTextures.userId, userId));
+  }
+
+  async createOrUpdateDiceTexture(texture: InsertDiceTexture): Promise<DiceTexture> {
+    const [result] = await db
+      .insert(diceTextures)
+      .values(texture)
+      .onConflictDoUpdate({
+        target: [diceTextures.userId, diceTextures.dieType],
+        set: {
+          textureData: texture.textureData,
+          name: texture.name,
+          isActive: texture.isActive ?? true,
+        },
+      })
+      .returning();
+    return result;
+  }
+
+  async deleteDiceTexture(userId: string, dieType: string): Promise<void> {
+    await db.delete(diceTextures)
+      .where(and(
+        eq(diceTextures.userId, userId),
+        eq(diceTextures.dieType, dieType)
+      ));
+  }
+
+  // Dice Roll operations
+  async createDiceRoll(roll: InsertDiceRoll): Promise<DiceRoll> {
+    const [result] = await db.insert(diceRolls).values(roll).returning();
+    return result;
+  }
+
+  async getCampaignDiceRolls(campaignId: string, limit: number = 50): Promise<DiceRoll[]> {
+    return await db.select()
+      .from(diceRolls)
+      .where(eq(diceRolls.campaignId, campaignId))
+      .orderBy(desc(diceRolls.createdAt))
+      .limit(limit);
   }
 }
 

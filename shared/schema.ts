@@ -366,3 +366,51 @@ export const insertInitiativeEntrySchema = createInsertSchema(initiativeEntries)
 
 export type InsertInitiativeEntry = z.infer<typeof insertInitiativeEntrySchema>;
 export type InitiativeEntry = typeof initiativeEntries.$inferSelect;
+
+// Dice Textures table (for custom per-user dice skins)
+export const diceTextures = pgTable("dice_textures", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  dieType: text("die_type").notNull(), // "d4", "d6", "d8", "d10", "d12", "d20"
+  textureData: text("texture_data").notNull(), // Base64 encoded texture image
+  name: text("name").default("Custom Dice").notNull(), // User-friendly name for the texture
+  isActive: boolean("is_active").default(true).notNull(), // Whether this texture is currently in use
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  uniqueUserDie: uniqueIndex("dice_textures_user_die_unique").on(
+    table.userId,
+    table.dieType
+  ),
+}));
+
+export const insertDiceTextureSchema = createInsertSchema(diceTextures).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertDiceTexture = z.infer<typeof insertDiceTextureSchema>;
+export type DiceTexture = typeof diceTextures.$inferSelect;
+
+// Dice Roll History (for tracking recent dice rolls on the battlemap)
+export const diceRolls = pgTable("dice_rolls", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  campaignId: varchar("campaign_id").notNull().references(() => campaigns.id, { onDelete: "cascade" }),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  characterId: varchar("character_id").references(() => characters.id, { onDelete: "set null" }),
+  dieType: text("die_type").notNull(), // "d4", "d6", "d8", "d10", "d12", "d20"
+  result: integer("result").notNull(), // Final result of the roll
+  modifier: integer("modifier").default(0).notNull(), // Any modifier added to the roll
+  purpose: text("purpose"), // "initiative", "attack", "damage", "skill", etc.
+  positionX: real("position_x").notNull(), // Where on battlemap the dice landed
+  positionY: real("position_y").notNull(),
+  seed: text("seed").notNull(), // Random seed for deterministic physics replay
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertDiceRollSchema = createInsertSchema(diceRolls).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertDiceRoll = z.infer<typeof insertDiceRollSchema>;
+export type DiceRoll = typeof diceRolls.$inferSelect;

@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertUserSchema, insertCampaignSchema, insertCharacterSchema, insertTokenSchema, insertChatMessageSchema, insertSceneSchema, insertHotbarSchema, insertItemSchema, insertSpellSchema, initiativeEntries } from "@shared/schema";
+import { insertUserSchema, insertCampaignSchema, insertCharacterSchema, insertTokenSchema, insertChatMessageSchema, insertSceneSchema, insertHotbarSchema, insertItemSchema, insertSpellSchema, insertDiceTextureSchema, insertDiceRollSchema, initiativeEntries } from "@shared/schema";
 import bcrypt from "bcryptjs";
 import { WebSocketServer } from "ws";
 import { sendPasswordResetEmail } from "./email";
@@ -2303,6 +2303,137 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (e) {
       console.error("Failed to clear initiative:", e);
       res.status(500).json({ error: "Failed to clear initiative" });
+    }
+  });
+
+  // Dice Texture routes
+  app.get("/api/users/:userId/dice-textures", requireAuth, async (req, res) => {
+    try {
+      const textures = await storage.getUserDiceTextures(req.params.userId);
+      res.json(textures);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch dice textures" });
+    }
+  });
+
+  app.post("/api/dice-textures", requireAuth, async (req, res) => {
+    try {
+      const { dieType, textureData, name } = req.body;
+      
+      if (!dieType || !textureData) {
+        return res.status(400).json({ error: "dieType and textureData are required" });
+      }
+      
+      const textureInput = insertDiceTextureSchema.parse({
+        userId: req.session.userId!,
+        dieType,
+        textureData,
+        name: name || "Custom Dice"
+      });
+      
+      const texture = await storage.createOrUpdateDiceTexture(textureInput);
+      res.json(texture);
+    } catch (err) {
+      res.status(400).json({ error: "Failed to create/update dice texture" });
+    }
+  });
+
+  app.delete("/api/dice-textures/:dieType", requireAuth, async (req, res) => {
+    try {
+      await storage.deleteDiceTexture(req.session.userId!, req.params.dieType);
+      res.json({ success: true });
+    } catch (err) {
+      res.status(400).json({ error: "Failed to delete dice texture" });
+    }
+  });
+
+  // Dice Roll routes
+  app.post("/api/campaigns/:campaignId/dice-rolls", requireAuth, async (req, res) => {
+    try {
+      const { campaignId } = req.params;
+      const { dieType, result, modifier, purpose, positionX, positionY, seed, characterId } = req.body;
+      
+      if (!dieType || result === undefined || positionX === undefined || positionY === undefined || !seed) {
+        return res.status(400).json({ error: "dieType, result, positionX, positionY, and seed are required" });
+      }
+      
+      const campaign = await storage.getCampaign(campaignId);
+      if (!campaign) {
+        return res.status(404).json({ error: "Campaign not found" });
+      }
+      
+      const isGM = campaign.gmUserId === req.session.userId;
+      const membership = await storage.getCampaignMembership(req.session.userId!, campaignId);
+      
+      if (!isGM && !membership) {
+        return res.status(403).json({ error: "Not a member of this campaign" });
+      }
+      
+      const rollInput = insertDiceRollSchema.parse({
+        campaignId,
+        userId: req.session.userId!,
+        characterId: characterId || null,
+        dieType,
+        result,
+        modifier: modifier || 0,
+        purpose: purpose || null,
+        positionX,
+        positionY,
+        seed
+      });
+      
+      const roll = await storage.createDiceRoll(rollInput);
+      
+      const userTextures = await storage.getUserDiceTextures(req.session.userId!);
+      const dieTexture = userTextures.find(t => t.dieType === dieType);
+      
+      const room = campaignRooms.get(campaignId);
+      if (room) {
+        const user = await storage.getUser(req.session.userId!);
+        const rollMessage = JSON.stringify({
+          type: 'dice_roll',
+          roll,
+          userId: req.session.userId,
+          username: user?.username,
+          texture: dieTexture || null
+        });
+        
+        const clients = Array.from(room);
+        for (const client of clients) {
+          if (client.readyState === 1) {
+            client.send(rollMessage);
+          }
+        }
+      }
+      
+      res.json(roll);
+    } catch (err) {
+      console.error("Failed to record dice roll:", err);
+      res.status(400).json({ error: "Failed to record dice roll" });
+    }
+  });
+
+  app.get("/api/campaigns/:campaignId/dice-rolls", requireAuth, async (req, res) => {
+    try {
+      const { campaignId } = req.params;
+      const limit = parseInt(req.query.limit as string) || 50;
+      
+      const campaign = await storage.getCampaign(campaignId);
+      if (!campaign) {
+        return res.status(404).json({ error: "Campaign not found" });
+      }
+      
+      const isGM = campaign.gmUserId === req.session.userId;
+      const membership = await storage.getCampaignMembership(req.session.userId!, campaignId);
+      
+      if (!isGM && !membership) {
+        return res.status(403).json({ error: "Not a member of this campaign" });
+      }
+      
+      const rolls = await storage.getCampaignDiceRolls(campaignId, limit);
+      res.json(rolls);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch dice rolls" });
     }
   });
 
