@@ -15,7 +15,8 @@ Preferred communication style: Simple, everyday language.
 **Technology Stack**: React 18 with TypeScript, Vite, Wouter for routing, TanStack Query for server state.
 **UI/UX Decisions**: Tailwind CSS v4 with a custom dark fantasy theme, `shadcn/ui` components (Radix UI) with a "new-york" style variant for a medieval/fantasy aesthetic, and Lucide React for iconography.
 **State Management**: React Context for authentication, TanStack Query for server state, local React hooks for component state.
-**Real-time Communication**: WebSocket for live token movement and chat, utilizing campaign-specific "rooms".
+**Real-time Communication**: WebSocket for live token movement, chat, and permission updates, utilizing campaign-specific "rooms".
+**Selection Modes**: Three battlemap interaction modes - Select (passive selection), Target (red combat marker), Assign (change active character).
 
 **Battle Map Features**:
 -   **Infinite Grid Space**: A 20000x20000px world container for limitless panning.
@@ -92,6 +93,7 @@ Preferred communication style: Simple, everyday language.
 
 **Authentication**: Password hashing with `bcryptjs`, session-based authentication using `express-session` with PostgreSQL storage (`connect-pg-simple`).
 **Authorization**: GM and Player roles with granular permissions stored in `campaignMembers`. GMs have full control over their campaigns; Players have restricted access to their own characters and campaign actions.
+**Character Access Control**: GMs can grant None/View/Edit access levels to players for individual characters. Permission changes are broadcast via WebSocket for instant UI updates without page refresh.
 **Member Moderation**: GMs can kick or ban players from campaigns. Kicked players can rejoin with the invite code; banned players are blocked from rejoining. Banned players list is viewable in GM Tools with unban functionality.
 **Security**: Hashed passwords, session cookies with 7-day expiry, CSRF protection, environment-based session secrets, PII sanitization in API responses.
 
