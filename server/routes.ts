@@ -8,6 +8,7 @@ import { sendPasswordResetEmail } from "./email";
 import crypto from "crypto";
 import { db } from "./db";
 import { eq } from "drizzle-orm";
+import { createRollResult, createWebSocketDiceRollMessage, type RollRequest } from "./dice/serverRollHandler";
 
 declare module "express-session" {
   interface SessionData {
@@ -456,6 +457,56 @@ export async function registerRoutes(app: Express): Promise<Server> {
           });
           
           console.log(`[WebSocket] Character ${characterId} update broadcast by ${username}`);
+        }
+        
+        // Handle dice roll requests - server-authoritative
+        if (message.type === "request_dice_roll") {
+          const { campaignId, dieType, modifier, purpose, characterId } = message;
+          
+          // Verify user has joined this campaign
+          const userCampaign = (ws as any).campaigns.get(campaignId);
+          if (!userCampaign) {
+            ws.send(JSON.stringify({
+              type: "error",
+              message: "Not authorized - You have not joined this campaign"
+            }));
+            return;
+          }
+          
+          // Validate die type
+          const validDieTypes = ['d4', 'd6', 'd8', 'd10', 'd12', 'd20'];
+          if (!validDieTypes.includes(dieType)) {
+            ws.send(JSON.stringify({
+              type: "error",
+              message: "Invalid die type"
+            }));
+            return;
+          }
+          
+          // Create server-side roll result using crypto.randomInt
+          const rollRequest: RollRequest = {
+            dieType,
+            modifier: modifier || 0,
+            purpose,
+            characterId,
+          };
+          
+          const rollResult = createRollResult(rollRequest, authenticatedUserId, username);
+          const wsMessage = createWebSocketDiceRollMessage(rollResult);
+          
+          // Broadcast to all clients in the campaign
+          const room = campaignRooms.get(campaignId);
+          if (room) {
+            const broadcastMessage = JSON.stringify(wsMessage);
+            
+            room.forEach((client) => {
+              if (client.readyState === 1) {
+                client.send(broadcastMessage);
+              }
+            });
+          }
+          
+          console.log(`[WebSocket] Dice roll by ${username}: ${dieType} = ${rollResult.result} (total: ${rollResult.total})`);
         }
       } catch (err) {
         console.error("WebSocket error:", err);
