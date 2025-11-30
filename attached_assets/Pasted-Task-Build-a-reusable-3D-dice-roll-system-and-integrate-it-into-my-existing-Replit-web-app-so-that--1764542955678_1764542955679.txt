@@ -1,0 +1,86 @@
+Task
+Build a reusable 3D dice roll system and integrate it into my existing Replit web app so that every random roll anywhere in the app shows a Foundry style 3D dice animation on the battlemap. The system must be drop in ready and work with my app architecture by exposing a simple init API and a single requestRoll API that any part of the app can call.
+
+High level requirements
+1 Use threejs for rendering
+2 Use gsap for animation
+3 Use socketio for realtime sync
+4 Server authoritative random generation so the server chooses final face values
+5 Visual animation is deterministic per server message so all clients show identical final faces
+6 Support per user custom dice skins using a single row atlas with six faces left to right
+7 Allow each player to upload and use their own texture and have others see it
+8 Work regardless of where the roll is triggered in the app and always display on the battlemap
+9 Provide a graceful fallback when WebGL is not available that shows a simple 2D dice animation
+
+What I want delivered
+1 A client module file diceSystem.js that exposes:
+   initDiceSystem(options)
+   requestRoll(params) which returns a promise that resolves with the roll event confirmation
+2 A server module or patch serverRollHandler.js that:
+   listens to requestRoll events from authenticated sockets
+   uses a cryptographic RNG to generate face indexes
+   emits rollEvent with final faces and spawn positions
+3 An upload endpoint POST /uploadDiceTexture that can accept either:
+   a single atlas image with six faces in a single row
+   or six separate face images which the server composes into an atlas
+   The endpoint must validate file type and size and return a public url
+4 Instructions and code snippets showing how to wire initDiceSystem into my existing front end including:
+   how to pass my app socket instance
+   how to provide a function getUserTextureUrl(userId)
+   how to convert my battlemap coordinates to threejs world coordinates via worldToMapPosition(mapPos)
+5 A minimal example integration that demonstrates calling requestRoll from three different places in the app and each time showing the dice on the battlemap
+6 A labeled PNG template diceTextureTemplate.png sized 1024 by 1024 with six equal labeled squares left to right labeled face0 face1 face2 face3 face4 face5
+7 Tests and verification steps the developer should run including:
+   a roll initiated by a client results in server chosen face indexes and a rollEvent emitted
+   multiple clients connected see identical final faces and textures
+   user uploaded texture displays correctly and maps faces correctly to numbers
+   fallback 2D animation works when WebGL not available
+8 Commented code and short developer notes explaining:
+   mapping between atlas index and threejs material order and how to tweak if mapping is off
+   how to change animation timing and how to switch to deterministic physics later
+
+Technical details and constraints
+1 Use threejs BoxGeometry for dice mesh and create six materials by slicing the atlas into six canvases
+2 Assume atlas order is left to right face0 face1 face2 face3 face4 face5
+3 Server rollEvent payload schema example
+  {
+    eventId: numeric or uuid,
+    requesterId: string,
+    rolls: [
+      {
+        faceIndex: integer 0 based,
+        textureUrl: string or null,
+        spawnMapPos: {x:number,y:number,z:number},
+        mapEndPos: {x:number,y:number,z:number}
+      }
+    ],
+    meta: object
+  }
+4 Client code must accept that textureUrl may be null and fall back to built in numbered faces
+5 Server must use secure RNG such as crypto randomBytes and not Math random
+6 Keep code modular so the dice system can be used with any existing roll path by calling requestRoll
+7 Provide example npm install commands for required packages
+
+Acceptance criteria
+1 I can paste diceSystem.js into my front end bundle and call initDiceSystem with my existing battlemap DOM container and socket instance without changing other app logic
+2 Any call to requestRoll anywhere in the app shows a 3D dice roll on the battlemap for all connected clients with the same final faces
+3 Users can upload custom dice skins and see their own texture used for their rolls and others see it too
+4 The atlas template file is included and tested
+5 Code is commented and includes basic unit tests or manual test steps
+
+Deliverables
+1 diceSystem.js client module
+2 serverRollHandler.js server snippet or module
+3 upload handler code and storage instructions
+4 diceTextureTemplate.png 1024 by 1024
+5 integration instructions and a minimal demo page that triggers rolls from three different code locations
+6 test plan and acceptance checklist
+
+Notes for the developer
+1 Do not assume any particular front end framework. Use plain javascript modules so I can adapt to my app
+2 Make the client module accept an existing socketio client instance so it integrates with my current socket auth
+3 Keep GPU usage lightweight and clean up older dice meshes after a few seconds
+4 Make mapping between atlas faces and cube faces easy to tweak with a single mapping constant at the top of the file
+5 Provide a clear example of how to call requestRoll from existing roll handlers so I can update my code in one place to forward rolls to the dice system
+
+If anything in this prompt is unclear implement sensible defaults and proceed. Deliver the code and demo in a single Replit workspace and provide a README with exact steps to test and to integrate into my app.
