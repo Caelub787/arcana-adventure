@@ -1987,6 +1987,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
         req.params.userId,
         accessLevel
       );
+      
+      // Broadcast permission update to affected user via WebSocket
+      const campaignId = character.campaignId;
+      const room = campaignRooms.get(campaignId);
+      if (room) {
+        const permissionUpdateMessage = JSON.stringify({
+          type: 'permission_update',
+          campaignId,
+          characterId: req.params.id,
+          characterName: character.name,
+          targetUserId: req.params.userId,
+          accessLevel,
+        });
+        
+        // Send to all clients of the affected user in this campaign room
+        const clients = Array.from(room);
+        for (const client of clients) {
+          if (client.readyState === 1 && (client as any).userId === req.params.userId) {
+            client.send(permissionUpdateMessage);
+          }
+        }
+        
+        // Also notify the GM who made the change
+        for (const client of clients) {
+          if (client.readyState === 1 && (client as any).userId === req.session.userId) {
+            client.send(permissionUpdateMessage);
+          }
+        }
+      }
+      
       res.json(result);
     } catch (e) {
       res.status(500).json({ error: "Failed to set permission" });
