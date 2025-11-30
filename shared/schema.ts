@@ -58,6 +58,8 @@ export const scenes = pgTable("scenes", {
   defaultViewX: integer("default_view_x").default(0).notNull(),
   defaultViewY: integer("default_view_y").default(0).notNull(),
   defaultViewZoom: real("default_view_zoom").default(1).notNull(),
+  inCombat: boolean("in_combat").default(false).notNull(), // Whether combat/initiative tracking is active
+  currentTurnCharacterId: varchar("current_turn_character_id"), // Character whose turn it is
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -341,3 +343,26 @@ export const insertCharacterPermissionSchema = createInsertSchema(characterPermi
 
 export type InsertCharacterPermission = z.infer<typeof insertCharacterPermissionSchema>;
 export type CharacterPermission = typeof characterPermissions.$inferSelect;
+
+// Initiative Entries table (for combat initiative tracking)
+export const initiativeEntries = pgTable("initiative_entries", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  sceneId: varchar("scene_id").notNull().references(() => scenes.id, { onDelete: "cascade" }),
+  characterId: varchar("character_id").notNull().references(() => characters.id, { onDelete: "cascade" }),
+  value: integer("value").notNull(), // Initiative roll result (1d20 + Finesse)
+  isHidden: boolean("is_hidden").default(false).notNull(), // GM can hide characters from players
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  uniqueSceneCharacter: uniqueIndex("initiative_entries_scene_char_unique").on(
+    table.sceneId,
+    table.characterId
+  ),
+}));
+
+export const insertInitiativeEntrySchema = createInsertSchema(initiativeEntries).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertInitiativeEntry = z.infer<typeof insertInitiativeEntrySchema>;
+export type InitiativeEntry = typeof initiativeEntries.$inferSelect;

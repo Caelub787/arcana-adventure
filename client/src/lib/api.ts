@@ -107,7 +107,24 @@ export interface Scene {
   defaultViewX: number;
   defaultViewY: number;
   defaultViewZoom: number;
+  inCombat: boolean;
+  currentTurnCharacterId?: string;
   createdAt: string;
+}
+
+export interface InitiativeEntry {
+  id: string;
+  sceneId: string;
+  characterId: string;
+  value: number;
+  isHidden: boolean;
+  createdAt: string;
+}
+
+export interface InitiativeData {
+  entries: InitiativeEntry[];
+  inCombat: boolean;
+  currentTurnCharacterId?: string;
 }
 
 export interface Hotbar {
@@ -497,6 +514,40 @@ class ApiClient {
   // Get current user's permissions for all characters in a campaign
   async getMyPermissions(campaignId: string): Promise<{ permissions: Record<string, string>; isGM: boolean }> {
     return this.request(`/campaigns/${campaignId}/my-permissions`);
+  }
+
+  // Initiative Tracking
+  async getSceneInitiative(sceneId: string): Promise<InitiativeData> {
+    return this.request(`/scenes/${sceneId}/initiative`);
+  }
+
+  async rollInitiative(sceneId: string, characterId: string, value: number, isHidden?: boolean): Promise<InitiativeEntry> {
+    return this.request(`/scenes/${sceneId}/initiative`, {
+      method: 'POST',
+      body: JSON.stringify({ characterId, value, isHidden }),
+    });
+  }
+
+  async updateInitiativeEntry(id: string, data: { value?: number; isHidden?: boolean }): Promise<InitiativeEntry> {
+    return this.request(`/initiative/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteInitiativeEntry(id: string): Promise<void> {
+    return this.request(`/initiative/${id}`, { method: 'DELETE' });
+  }
+
+  async clearSceneInitiative(sceneId: string): Promise<void> {
+    return this.request(`/scenes/${sceneId}/initiative`, { method: 'DELETE' });
+  }
+
+  async updateCombatState(sceneId: string, inCombat: boolean, currentTurnCharacterId?: string): Promise<Scene> {
+    return this.request(`/scenes/${sceneId}/combat`, {
+      method: 'POST',
+      body: JSON.stringify({ inCombat, currentTurnCharacterId }),
+    });
   }
 }
 

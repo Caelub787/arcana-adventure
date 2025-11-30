@@ -1969,6 +1969,298 @@ function SceneSettingsDialog({ open, onOpenChange, scene, onUpdateScene }: Scene
   );
 }
 
+// Initiative Tracker Component
+interface InitiativeTrackerProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  sceneId?: string;
+  campaignId?: string;
+  isGM: boolean;
+  characters?: any[];
+}
+
+export function InitiativeTracker({ open, onOpenChange, sceneId, campaignId, isGM, characters = [] }: InitiativeTrackerProps) {
+  const queryClient = useQueryClient();
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState<number>(0);
+
+  const { data: initiativeData, isLoading } = useQuery({
+    queryKey: [`/api/scenes/${sceneId}/initiative`],
+    queryFn: () => api.getSceneInitiative(sceneId!),
+    enabled: !!sceneId && open,
+    refetchInterval: open ? 3000 : false,
+  });
+
+  const entries = initiativeData?.entries || [];
+  const inCombat = initiativeData?.inCombat || false;
+  const currentTurnCharacterId = initiativeData?.currentTurnCharacterId;
+
+  // Sort entries by value (highest first)
+  const sortedEntries = [...entries].sort((a, b) => b.value - a.value);
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: { value?: number; isHidden?: boolean } }) => 
+      api.updateInitiativeEntry(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/scenes/${sceneId}/initiative`] });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => api.deleteInitiativeEntry(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/scenes/${sceneId}/initiative`] });
+    },
+  });
+
+  const combatMutation = useMutation({
+    mutationFn: ({ inCombat, currentTurnCharacterId }: { inCombat: boolean; currentTurnCharacterId?: string }) => 
+      api.updateCombatState(sceneId!, inCombat, currentTurnCharacterId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/scenes/${sceneId}/initiative`] });
+    },
+  });
+
+  const clearMutation = useMutation({
+    mutationFn: () => api.clearSceneInitiative(sceneId!),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/scenes/${sceneId}/initiative`] });
+    },
+  });
+
+  const getCharacterName = (characterId: string) => {
+    const char = characters.find(c => c.id === characterId);
+    return char?.name || 'Unknown';
+  };
+
+  const getCharacterPortrait = (characterId: string) => {
+    const char = characters.find(c => c.id === characterId);
+    return char?.portrait;
+  };
+
+  const handleStartCombat = () => {
+    if (sortedEntries.length > 0) {
+      combatMutation.mutate({ 
+        inCombat: true, 
+        currentTurnCharacterId: sortedEntries[0].characterId 
+      });
+      toast({
+        title: "Combat Started",
+        description: `${getCharacterName(sortedEntries[0].characterId)}'s turn!`,
+      });
+    }
+  };
+
+  const handleEndCombat = () => {
+    combatMutation.mutate({ inCombat: false, currentTurnCharacterId: undefined });
+    toast({
+      title: "Combat Ended",
+      description: "Initiative tracking paused",
+    });
+  };
+
+  const handleNextTurn = () => {
+    const currentIndex = sortedEntries.findIndex(e => e.characterId === currentTurnCharacterId);
+    const nextIndex = (currentIndex + 1) % sortedEntries.length;
+    const nextCharacterId = sortedEntries[nextIndex].characterId;
+    combatMutation.mutate({ inCombat: true, currentTurnCharacterId: nextCharacterId });
+    toast({
+      title: "Next Turn",
+      description: `${getCharacterName(nextCharacterId)}'s turn!`,
+    });
+  };
+
+  const handleSaveEdit = (id: string) => {
+    updateMutation.mutate({ id, data: { value: editValue } });
+    setEditingId(null);
+  };
+
+  const handleToggleHidden = (entry: any) => {
+    updateMutation.mutate({ id: entry.id, data: { isHidden: !entry.isHidden } });
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="bg-stone-900 border-stone-700 text-stone-200 sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="text-amber-500 font-display text-2xl flex items-center gap-2">
+            <Zap className="w-6 h-6" />
+            Initiative Tracker
+          </DialogTitle>
+        </DialogHeader>
+        
+        <div className="space-y-4">
+          {/* Combat Status */}
+          {inCombat && (
+            <div className="bg-red-900/50 border border-red-700 rounded-lg p-3 text-center">
+              <span className="text-red-300 font-semibold">Combat Active</span>
+            </div>
+          )}
+
+          {/* Initiative List */}
+          {isLoading ? (
+            <div className="text-center py-4 text-stone-400">Loading...</div>
+          ) : sortedEntries.length === 0 ? (
+            <div className="text-center py-8 text-stone-400">
+              <Zap className="w-12 h-12 mx-auto mb-2 opacity-50" />
+              <p>No initiative rolls yet</p>
+              <p className="text-xs mt-1">Characters can roll initiative from their character sheet</p>
+            </div>
+          ) : (
+            <div className="space-y-2 max-h-[300px] overflow-y-auto">
+              {sortedEntries.map((entry, index) => {
+                const isCurrentTurn = inCombat && entry.characterId === currentTurnCharacterId;
+                const portrait = getCharacterPortrait(entry.characterId);
+                
+                return (
+                  <div
+                    key={entry.id}
+                    className={`
+                      flex items-center gap-3 p-2 rounded-lg border transition-all
+                      ${isCurrentTurn 
+                        ? 'bg-amber-900/50 border-amber-600' 
+                        : 'bg-stone-800 border-stone-700'
+                      }
+                      ${entry.isHidden && isGM ? 'opacity-60' : ''}
+                    `}
+                    data-testid={`initiative-entry-${entry.characterId}`}
+                  >
+                    {/* Turn Indicator */}
+                    <div className="w-6 h-6 rounded-full bg-stone-700 flex items-center justify-center text-xs font-bold">
+                      {index + 1}
+                    </div>
+                    
+                    {/* Portrait */}
+                    {portrait ? (
+                      <img 
+                        src={portrait} 
+                        alt="" 
+                        className="w-8 h-8 rounded-full object-cover border border-stone-600"
+                      />
+                    ) : (
+                      <div className="w-8 h-8 rounded-full bg-stone-700 flex items-center justify-center">
+                        <User className="w-4 h-4 text-stone-400" />
+                      </div>
+                    )}
+                    
+                    {/* Character Name */}
+                    <div className="flex-1 min-w-0">
+                      <span className={`truncate block ${isCurrentTurn ? 'text-amber-300 font-semibold' : 'text-stone-200'}`}>
+                        {getCharacterName(entry.characterId)}
+                      </span>
+                      {entry.isHidden && isGM && (
+                        <span className="text-xs text-stone-500">(Hidden)</span>
+                      )}
+                    </div>
+                    
+                    {/* Initiative Value */}
+                    {editingId === entry.id ? (
+                      <div className="flex items-center gap-1">
+                        <Input
+                          type="number"
+                          value={editValue}
+                          onChange={(e) => setEditValue(parseInt(e.target.value) || 0)}
+                          className="w-16 h-8 bg-stone-700 border-stone-600 text-center"
+                          autoFocus
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') handleSaveEdit(entry.id);
+                            if (e.key === 'Escape') setEditingId(null);
+                          }}
+                        />
+                        <Button size="sm" variant="ghost" onClick={() => handleSaveEdit(entry.id)}>
+                          <Check className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    ) : (
+                      <span 
+                        className={`text-lg font-bold ${isCurrentTurn ? 'text-amber-400' : 'text-amber-500'} ${isGM ? 'cursor-pointer hover:text-amber-300' : ''}`}
+                        onClick={() => {
+                          if (isGM) {
+                            setEditingId(entry.id);
+                            setEditValue(entry.value);
+                          }
+                        }}
+                      >
+                        {entry.value}
+                      </span>
+                    )}
+                    
+                    {/* GM Controls */}
+                    {isGM && !editingId && (
+                      <div className="flex items-center gap-1">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => handleToggleHidden(entry)}
+                          className="h-8 w-8 p-0"
+                          title={entry.isHidden ? "Show to players" : "Hide from players"}
+                        >
+                          {entry.isHidden ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => deleteMutation.mutate(entry.id)}
+                          className="h-8 w-8 p-0 text-red-400 hover:text-red-300 hover:bg-red-900/50"
+                        >
+                          <X className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          
+          {/* GM Actions */}
+          {isGM && sortedEntries.length > 0 && (
+            <div className="flex flex-col gap-2 pt-4 border-t border-stone-700">
+              {!inCombat ? (
+                <Button
+                  onClick={handleStartCombat}
+                  className="w-full bg-red-700 hover:bg-red-600 text-white"
+                  data-testid="button-start-combat"
+                >
+                  <Swords className="w-4 h-4 mr-2" />
+                  Start Combat
+                </Button>
+              ) : (
+                <div className="flex gap-2">
+                  <Button
+                    onClick={handleNextTurn}
+                    className="flex-1 bg-amber-700 hover:bg-amber-600 text-white"
+                    data-testid="button-next-turn"
+                  >
+                    <ArrowRight className="w-4 h-4 mr-2" />
+                    Next Turn
+                  </Button>
+                  <Button
+                    onClick={handleEndCombat}
+                    variant="outline"
+                    className="border-stone-600 hover:bg-stone-800"
+                    data-testid="button-end-combat"
+                  >
+                    End
+                  </Button>
+                </div>
+              )}
+              <Button
+                onClick={() => clearMutation.mutate()}
+                variant="outline"
+                className="w-full border-stone-600 hover:bg-stone-800 text-stone-400"
+                data-testid="button-clear-initiative"
+              >
+                Clear All Initiative
+              </Button>
+            </div>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // 5. Campaign Menu & Chat
 interface CampaignMenuProps {
   campaignId?: string;
@@ -4033,9 +4325,10 @@ interface CharacterSheetProps {
   onClose?: () => void;
   defaultTab?: string;
   campaignId?: string;
+  sceneId?: string;
 }
 
-export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, defaultTab = "overview", campaignId }: CharacterSheetProps) {
+export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, defaultTab = "overview", campaignId, sceneId }: CharacterSheetProps) {
   const [biography, setBiography] = useState(character?.biography || "");
   const [gmNotes, setGmNotes] = useState(character?.gmNotes || "");
   const [isEditingBio, setIsEditingBio] = useState(false);
@@ -4747,10 +5040,39 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                     <span data-testid="text-character-name">{liveCharacter.name}</span>
                   )}
                   {!editingOverview ? (
-                    <>
+                    <div className="flex items-center gap-2 flex-wrap">
                       <Badge variant="outline" className="text-stone-300 border-stone-600" data-testid="badge-level">
                         Level {liveCharacter.level}
                       </Badge>
+                      {sceneId && (isOwner || isGM) && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="border-amber-600 text-amber-500 hover:bg-amber-600/20"
+                          onClick={async () => {
+                            const finesse = liveCharacter.finesse || 0;
+                            const d20 = Math.floor(Math.random() * 20) + 1;
+                            const total = d20 + finesse;
+                            try {
+                              await api.rollInitiative(sceneId, liveCharacter.id, total);
+                              toast({
+                                title: "Initiative Rolled",
+                                description: `${liveCharacter.name}: ${d20} + ${finesse} (Finesse) = ${total}`,
+                              });
+                            } catch (e: any) {
+                              toast({
+                                title: "Failed to roll initiative",
+                                description: e.message || "An error occurred",
+                                variant: "destructive",
+                              });
+                            }
+                          }}
+                          data-testid="button-roll-initiative"
+                        >
+                          <Zap className="w-3 h-3 mr-1" />
+                          Initiative
+                        </Button>
+                      )}
                       {(isOwner || isGM) && (
                         <Button
                           size="sm"
@@ -4779,7 +5101,7 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                           Edit
                         </Button>
                       )}
-                    </>
+                    </div>
                   ) : null}
                 </CardTitle>
               </CardHeader>

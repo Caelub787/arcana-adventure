@@ -1115,6 +1115,7 @@ export default function Campaign() {
               onClose={() => setViewingCharacterSheet(null)}
               defaultTab={characterSheetDefaultTab}
               campaignId={effectiveCampaignId || undefined}
+              sceneId={activeScene?.id}
             />
           )}
         </DialogContent>

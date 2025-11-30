@@ -12,7 +12,8 @@ import {
   type Item, type InsertItem,
   type Spell, type InsertSpell,
   type CharacterPermission, type InsertCharacterPermission,
-  users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, items, spells, characterPermissions
+  type InitiativeEntry, type InsertInitiativeEntry,
+  users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, items, spells, characterPermissions, initiativeEntries
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql, inArray } from "drizzle-orm";
@@ -112,6 +113,14 @@ export interface IStorage {
   unbanMember(campaignId: string, userId: string): Promise<void>;
   getCampaignBans(campaignId: string): Promise<any[]>;
   isUserBanned(campaignId: string, userId: string): Promise<boolean>;
+
+  // Initiative Tracking operations
+  getSceneInitiative(sceneId: string): Promise<InitiativeEntry[]>;
+  createInitiativeEntry(entry: InsertInitiativeEntry): Promise<InitiativeEntry>;
+  updateInitiativeEntry(id: string, data: Partial<InitiativeEntry>): Promise<InitiativeEntry | undefined>;
+  deleteInitiativeEntry(id: string): Promise<void>;
+  clearSceneInitiative(sceneId: string): Promise<void>;
+  getInitiativeEntryByCharacter(sceneId: string, characterId: string): Promise<InitiativeEntry | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -700,6 +709,52 @@ export class DatabaseStorage implements IStorage {
       ))
       .limit(1);
     return !!ban;
+  }
+
+  // Initiative Tracking operations
+  async getSceneInitiative(sceneId: string): Promise<InitiativeEntry[]> {
+    return await db.select()
+      .from(initiativeEntries)
+      .where(eq(initiativeEntries.sceneId, sceneId))
+      .orderBy(desc(initiativeEntries.value));
+  }
+
+  async createInitiativeEntry(entry: InsertInitiativeEntry): Promise<InitiativeEntry> {
+    const [created] = await db.insert(initiativeEntries)
+      .values(entry)
+      .onConflictDoUpdate({
+        target: [initiativeEntries.sceneId, initiativeEntries.characterId],
+        set: { value: entry.value, isHidden: entry.isHidden ?? false }
+      })
+      .returning();
+    return created;
+  }
+
+  async updateInitiativeEntry(id: string, data: Partial<InitiativeEntry>): Promise<InitiativeEntry | undefined> {
+    const [updated] = await db.update(initiativeEntries)
+      .set(data)
+      .where(eq(initiativeEntries.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteInitiativeEntry(id: string): Promise<void> {
+    await db.delete(initiativeEntries).where(eq(initiativeEntries.id, id));
+  }
+
+  async clearSceneInitiative(sceneId: string): Promise<void> {
+    await db.delete(initiativeEntries).where(eq(initiativeEntries.sceneId, sceneId));
+  }
+
+  async getInitiativeEntryByCharacter(sceneId: string, characterId: string): Promise<InitiativeEntry | undefined> {
+    const [entry] = await db.select()
+      .from(initiativeEntries)
+      .where(and(
+        eq(initiativeEntries.sceneId, sceneId),
+        eq(initiativeEntries.characterId, characterId)
+      ))
+      .limit(1);
+    return entry;
   }
 }
 

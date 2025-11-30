@@ -1,11 +1,13 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertUserSchema, insertCampaignSchema, insertCharacterSchema, insertTokenSchema, insertChatMessageSchema, insertSceneSchema, insertHotbarSchema, insertItemSchema, insertSpellSchema } from "@shared/schema";
+import { insertUserSchema, insertCampaignSchema, insertCharacterSchema, insertTokenSchema, insertChatMessageSchema, insertSceneSchema, insertHotbarSchema, insertItemSchema, insertSpellSchema, initiativeEntries } from "@shared/schema";
 import bcrypt from "bcryptjs";
 import { WebSocketServer } from "ws";
 import { sendPasswordResetEmail } from "./email";
 import crypto from "crypto";
+import { db } from "./db";
+import { eq } from "drizzle-orm";
 
 declare module "express-session" {
   interface SessionData {
@@ -2034,6 +2036,273 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(result);
     } catch (e) {
       res.status(500).json({ error: "Failed to set permission" });
+    }
+  });
+
+  // Initiative Tracking routes
+  app.get("/api/scenes/:sceneId/initiative", requireAuth, async (req, res) => {
+    try {
+      const scene = await storage.getScene(req.params.sceneId);
+      if (!scene) {
+        return res.status(404).json({ error: "Scene not found" });
+      }
+      
+      const campaign = await storage.getCampaign(scene.campaignId);
+      if (!campaign) {
+        return res.status(404).json({ error: "Campaign not found" });
+      }
+      
+      const isGM = campaign.gmUserId === req.session.userId;
+      const entries = await storage.getSceneInitiative(req.params.sceneId);
+      
+      // If not GM, filter out hidden entries
+      const visibleEntries = isGM ? entries : entries.filter(e => !e.isHidden);
+      
+      res.json({
+        entries: visibleEntries,
+        inCombat: scene.inCombat,
+        currentTurnCharacterId: scene.currentTurnCharacterId
+      });
+    } catch (e) {
+      console.error("Failed to get initiative:", e);
+      res.status(500).json({ error: "Failed to get initiative" });
+    }
+  });
+
+  app.post("/api/scenes/:sceneId/initiative", requireAuth, async (req, res) => {
+    try {
+      const { characterId, value, isHidden } = req.body;
+      
+      const scene = await storage.getScene(req.params.sceneId);
+      if (!scene) {
+        return res.status(404).json({ error: "Scene not found" });
+      }
+      
+      const character = await storage.getCharacter(characterId);
+      if (!character) {
+        return res.status(404).json({ error: "Character not found" });
+      }
+      
+      const campaign = await storage.getCampaign(scene.campaignId);
+      const isGM = campaign?.gmUserId === req.session.userId;
+      const isOwner = character.userId === req.session.userId;
+      
+      // Only GM or character owner can roll initiative
+      if (!isGM && !isOwner) {
+        return res.status(403).json({ error: "Not authorized to roll initiative for this character" });
+      }
+      
+      const entry = await storage.createInitiativeEntry({
+        sceneId: req.params.sceneId,
+        characterId,
+        value,
+        isHidden: isHidden ?? false
+      });
+      
+      // Broadcast initiative update to campaign room
+      const room = campaignRooms.get(scene.campaignId);
+      if (room) {
+        const initiativeMessage = JSON.stringify({
+          type: 'initiative_update',
+          sceneId: req.params.sceneId,
+          campaignId: scene.campaignId
+        });
+        
+        const clients = Array.from(room);
+        for (const client of clients) {
+          if (client.readyState === 1) {
+            client.send(initiativeMessage);
+          }
+        }
+      }
+      
+      res.json(entry);
+    } catch (e) {
+      console.error("Failed to create initiative entry:", e);
+      res.status(500).json({ error: "Failed to create initiative entry" });
+    }
+  });
+
+  app.patch("/api/initiative/:id", requireAuth, async (req, res) => {
+    try {
+      const { value, isHidden } = req.body;
+      
+      // Get the initiative entry to find the scene
+      const entries = await db.select().from(initiativeEntries).where(eq(initiativeEntries.id, req.params.id)).limit(1);
+      const entry = entries[0];
+      if (!entry) {
+        return res.status(404).json({ error: "Initiative entry not found" });
+      }
+      
+      const scene = await storage.getScene(entry.sceneId);
+      if (!scene) {
+        return res.status(404).json({ error: "Scene not found" });
+      }
+      
+      const campaign = await storage.getCampaign(scene.campaignId);
+      if (!campaign || campaign.gmUserId !== req.session.userId) {
+        return res.status(403).json({ error: "Only GMs can edit initiative values" });
+      }
+      
+      const updated = await storage.updateInitiativeEntry(req.params.id, { value, isHidden });
+      
+      // Broadcast initiative update
+      const room = campaignRooms.get(scene.campaignId);
+      if (room) {
+        const initiativeMessage = JSON.stringify({
+          type: 'initiative_update',
+          sceneId: entry.sceneId,
+          campaignId: scene.campaignId
+        });
+        
+        const clients = Array.from(room);
+        for (const client of clients) {
+          if (client.readyState === 1) {
+            client.send(initiativeMessage);
+          }
+        }
+      }
+      
+      res.json(updated);
+    } catch (e) {
+      console.error("Failed to update initiative:", e);
+      res.status(500).json({ error: "Failed to update initiative" });
+    }
+  });
+
+  app.delete("/api/initiative/:id", requireAuth, async (req, res) => {
+    try {
+      // Get the initiative entry to find the scene
+      const entries = await db.select().from(initiativeEntries).where(eq(initiativeEntries.id, req.params.id)).limit(1);
+      const entry = entries[0];
+      if (!entry) {
+        return res.status(404).json({ error: "Initiative entry not found" });
+      }
+      
+      const scene = await storage.getScene(entry.sceneId);
+      if (!scene) {
+        return res.status(404).json({ error: "Scene not found" });
+      }
+      
+      const campaign = await storage.getCampaign(scene.campaignId);
+      if (!campaign || campaign.gmUserId !== req.session.userId) {
+        return res.status(403).json({ error: "Only GMs can remove initiative entries" });
+      }
+      
+      await storage.deleteInitiativeEntry(req.params.id);
+      
+      // Broadcast initiative update
+      const room = campaignRooms.get(scene.campaignId);
+      if (room) {
+        const initiativeMessage = JSON.stringify({
+          type: 'initiative_update',
+          sceneId: entry.sceneId,
+          campaignId: scene.campaignId
+        });
+        
+        const clients = Array.from(room);
+        for (const client of clients) {
+          if (client.readyState === 1) {
+            client.send(initiativeMessage);
+          }
+        }
+      }
+      
+      res.json({ success: true });
+    } catch (e) {
+      console.error("Failed to delete initiative:", e);
+      res.status(500).json({ error: "Failed to delete initiative" });
+    }
+  });
+
+  // Start/stop combat
+  app.post("/api/scenes/:sceneId/combat", requireAuth, async (req, res) => {
+    try {
+      const { inCombat, currentTurnCharacterId } = req.body;
+      
+      const scene = await storage.getScene(req.params.sceneId);
+      if (!scene) {
+        return res.status(404).json({ error: "Scene not found" });
+      }
+      
+      const campaign = await storage.getCampaign(scene.campaignId);
+      if (!campaign || campaign.gmUserId !== req.session.userId) {
+        return res.status(403).json({ error: "Only GMs can start/stop combat" });
+      }
+      
+      const updated = await storage.updateScene(req.params.sceneId, { 
+        inCombat, 
+        currentTurnCharacterId 
+      });
+      
+      // Broadcast combat state update
+      const room = campaignRooms.get(scene.campaignId);
+      if (room) {
+        const combatMessage = JSON.stringify({
+          type: 'combat_update',
+          sceneId: req.params.sceneId,
+          campaignId: scene.campaignId,
+          inCombat,
+          currentTurnCharacterId
+        });
+        
+        const clients = Array.from(room);
+        for (const client of clients) {
+          if (client.readyState === 1) {
+            client.send(combatMessage);
+          }
+        }
+      }
+      
+      res.json(updated);
+    } catch (e) {
+      console.error("Failed to update combat state:", e);
+      res.status(500).json({ error: "Failed to update combat state" });
+    }
+  });
+
+  // Clear all initiative entries for a scene
+  app.delete("/api/scenes/:sceneId/initiative", requireAuth, async (req, res) => {
+    try {
+      const scene = await storage.getScene(req.params.sceneId);
+      if (!scene) {
+        return res.status(404).json({ error: "Scene not found" });
+      }
+      
+      const campaign = await storage.getCampaign(scene.campaignId);
+      if (!campaign || campaign.gmUserId !== req.session.userId) {
+        return res.status(403).json({ error: "Only GMs can clear initiative" });
+      }
+      
+      await storage.clearSceneInitiative(req.params.sceneId);
+      
+      // Also reset combat state
+      await storage.updateScene(req.params.sceneId, { 
+        inCombat: false, 
+        currentTurnCharacterId: null 
+      });
+      
+      // Broadcast initiative clear
+      const room = campaignRooms.get(scene.campaignId);
+      if (room) {
+        const clearMessage = JSON.stringify({
+          type: 'initiative_update',
+          sceneId: req.params.sceneId,
+          campaignId: scene.campaignId
+        });
+        
+        const clients = Array.from(room);
+        for (const client of clients) {
+          if (client.readyState === 1) {
+            client.send(clearMessage);
+          }
+        }
+      }
+      
+      res.json({ success: true });
+    } catch (e) {
+      console.error("Failed to clear initiative:", e);
+      res.status(500).json({ error: "Failed to clear initiative" });
     }
   });
 
