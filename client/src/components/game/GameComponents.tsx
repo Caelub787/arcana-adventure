@@ -6539,7 +6539,8 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
 
   const handleEditToggle = () => {
     if (!isEditing) {
-      setEditData({ ...item });
+      // Use totalQuantity for stacked items, otherwise use quantity
+      setEditData({ ...item, quantity: item.totalQuantity || item.quantity });
     }
     setIsEditing(!isEditing);
   };
