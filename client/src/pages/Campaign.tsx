@@ -518,6 +518,11 @@ export default function Campaign() {
     toast({ title: "Success", description: "Character created successfully" });
   };
 
+  const handleAssignCharacter = (char: any) => {
+    setCharacter(char);
+    toast({ title: "Character Assigned", description: `${char.name} is now your active character` });
+  };
+
   const handleMoveToken = (id: string, x: number, y: number) => {
     // Update locally first for immediate feedback
     setTokens(prev => prev.map(t => t.id === id ? { ...t, x, y } : t));
@@ -767,6 +772,8 @@ export default function Campaign() {
             onLevelUpAll={handleLevelUpAll}
             chatOpen={chatOpen}
             onChatOpenChange={setChatOpen}
+            onAssignCharacter={handleAssignCharacter}
+            myPermissions={myPermissions}
           />
           
           {/* Scenes Button (GM Only) - Icon only, directly under Settings */}
