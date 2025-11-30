@@ -952,14 +952,14 @@ export default function Campaign() {
           {((role === 'player' && character) || (role === 'gm' && inspectedChar)) && (
             <div className="absolute right-3 top-44 z-20 flex flex-col gap-2">
               {[
-                { tab: 'overview', icon: User, color: 'stone', label: 'Overview' },
-                { tab: 'attributes', icon: BarChart3, color: 'blue', label: 'Attributes' },
-                { tab: 'skills', icon: Zap, color: 'green', label: 'Skills' },
-                { tab: 'inventory', icon: Backpack, color: 'amber', label: 'Inventory' },
-                { tab: 'magic', icon: Sparkles, color: 'purple', label: 'Magic' },
-                { tab: 'hotbars', icon: Grid3X3, color: 'red', label: 'Hotbars' },
-                { tab: 'background', icon: ScrollText, color: 'cyan', label: 'Background' },
-              ].map(({ tab, icon: Icon, color, label }) => {
+                { tab: 'overview', icon: User, color: 'stone' },
+                { tab: 'attributes', icon: BarChart3, color: 'blue' },
+                { tab: 'skills', icon: Zap, color: 'green' },
+                { tab: 'inventory', icon: Backpack, color: 'amber' },
+                { tab: 'magic', icon: Sparkles, color: 'purple' },
+                { tab: 'hotbars', icon: Grid3X3, color: 'red' },
+                { tab: 'background', icon: ScrollText, color: 'cyan' },
+              ].map(({ tab, icon: Icon, color }) => {
                 const colorClasses: Record<string, string> = {
                   stone: 'bg-stone-900/90 border-stone-600 text-stone-300 hover:bg-stone-800 hover:border-stone-500',
                   blue: 'bg-blue-900/90 border-blue-600 text-blue-300 hover:bg-blue-800 hover:border-blue-500',
@@ -970,26 +970,18 @@ export default function Campaign() {
                   cyan: 'bg-cyan-900/90 border-cyan-600 text-cyan-300 hover:bg-cyan-800 hover:border-cyan-500',
                 };
                 return (
-                  <TooltipProvider key={tab}>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <button
-                          onClick={() => openCharacterSheetToTab(tab)}
-                          className={`
-                            w-9 h-9 md:w-10 md:h-10 rounded-lg border-2 flex items-center justify-center
-                            transition-all duration-200 shadow-lg backdrop-blur-sm hover:scale-105
-                            ${colorClasses[color]}
-                          `}
-                          data-testid={`button-sheet-${tab}`}
-                        >
-                          <Icon className="h-4 w-4 md:h-5 md:w-5" />
-                        </button>
-                      </TooltipTrigger>
-                      <TooltipContent side="left" className="bg-stone-800 border-stone-700 text-stone-200">
-                        <p>{label}</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
+                  <button
+                    key={tab}
+                    onClick={() => openCharacterSheetToTab(tab)}
+                    className={`
+                      w-9 h-9 md:w-10 md:h-10 rounded-lg border-2 flex items-center justify-center
+                      transition-all duration-200 shadow-lg backdrop-blur-sm hover:scale-105
+                      ${colorClasses[color]}
+                    `}
+                    data-testid={`button-sheet-${tab}`}
+                  >
+                    <Icon className="h-4 w-4 md:h-5 md:w-5" />
+                  </button>
                 );
               })}
             </div>
