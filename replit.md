@@ -77,6 +77,15 @@ Preferred communication style: Simple, everyday language.
 -   **Partial Deletion**: Delete dialog includes slider to choose how many items to remove from a stack
 -   **Optimistic Updates**: Item deletions update UI immediately without waiting for server response
 
+**Initiative Tracking System**:
+-   **Initiative Button**: Accessible from Campaign page HUD (Swords icon) for all users
+-   **Initiative Roll**: Characters roll 1d20 + Finesse attribute from character sheet Overview tab
+-   **Turn Order**: Entries sorted highest to lowest, with current turn highlighted in amber
+-   **GM Controls**: Start/End combat, advance turns, edit initiative values inline, hide/show entries from players, delete entries, clear all
+-   **Combat State**: Tracked per scene with `inCombat` flag and `currentTurnCharacterId`
+-   **Real-time Sync**: WebSocket broadcasts `initiative_update` and `combat_update` messages for instant cross-player synchronization
+-   **Database Schema**: `initiativeEntries` table with sceneId, characterId, value, isHidden fields
+
 ### Backend Architecture
 
 **Technology Stack**: Express.js with TypeScript, `express-session` for session management.
@@ -86,7 +95,7 @@ Preferred communication style: Simple, everyday language.
 ### Data Storage
 
 **Database**: PostgreSQL via Neon serverless, managed with Drizzle ORM for type-safe queries.
-**Schema**: Includes `users`, `campaigns`, `scenes`, `campaignMembers`, `campaignBans`, `characters`, `tokens`, and `chatMessages`.
+**Schema**: Includes `users`, `campaigns`, `scenes`, `campaignMembers`, `campaignBans`, `characters`, `tokens`, `chatMessages`, and `initiativeEntries`.
 **Validation**: Zod schemas generated from Drizzle for client/server input validation.
 
 ### Authentication & Authorization
