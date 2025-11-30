@@ -199,42 +199,6 @@ export interface CampaignBan {
   username: string;
 }
 
-export interface DiceTexture {
-  id: string;
-  userId: string;
-  dieType: string;
-  textureData: string;
-  name: string;
-  isActive: boolean;
-  createdAt: string;
-}
-
-export interface DiceRoll {
-  id: string;
-  campaignId: string;
-  userId: string;
-  characterId?: string;
-  dieType: string;
-  result: number;
-  modifier: number;
-  purpose?: string;
-  positionX: number;
-  positionY: number;
-  seed: string;
-  createdAt: string;
-}
-
-export interface DiceRollData {
-  dieType: string;
-  result: number;
-  modifier?: number;
-  purpose?: string;
-  positionX: number;
-  positionY: number;
-  seed: string;
-  characterId?: string;
-}
-
 class ApiClient {
   private baseUrl = '/api';
 
@@ -585,34 +549,6 @@ class ApiClient {
       body: JSON.stringify({ inCombat, currentTurnCharacterId }),
     });
   }
-
-  // Dice Textures
-  async getUserDiceTextures(userId: string): Promise<DiceTexture[]> {
-    return this.request(`/users/${userId}/dice-textures`);
-  }
-
-  async createDiceTexture(data: { dieType: string; textureData: string; name: string }): Promise<DiceTexture> {
-    return this.request('/dice-textures', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
-  }
-
-  async deleteDiceTexture(dieType: string): Promise<void> {
-    return this.request(`/dice-textures/${dieType}`, { method: 'DELETE' });
-  }
-
-  // Dice Rolls
-  async recordDiceRoll(campaignId: string, data: DiceRollData): Promise<DiceRoll> {
-    return this.request(`/campaigns/${campaignId}/dice-rolls`, {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
-  }
-
-  async getCampaignDiceRolls(campaignId: string): Promise<DiceRoll[]> {
-    return this.request(`/campaigns/${campaignId}/dice-rolls`);
-  }
 }
 
 export const api = new ApiClient();
@@ -700,25 +636,6 @@ export class GameWebSocket {
       return;
     }
     this.send({ type: 'character_update', campaignId: this.campaignId, characterId });
-  }
-
-  sendDiceRoll(dieType: string, result: number, modifier: number = 0, purpose?: string, positionX: number = 0, positionY: number = 0, seed: string = '', characterId?: string) {
-    if (!this.campaignId) {
-      console.error('Cannot send dice roll: not connected to a campaign');
-      return;
-    }
-    this.send({ 
-      type: 'dice_roll', 
-      campaignId: this.campaignId, 
-      dieType,
-      result,
-      modifier,
-      purpose,
-      positionX,
-      positionY,
-      seed,
-      characterId
-    });
   }
 }
 
