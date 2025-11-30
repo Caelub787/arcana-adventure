@@ -85,13 +85,14 @@ Preferred communication style: Simple, everyday language.
 ### Data Storage
 
 **Database**: PostgreSQL via Neon serverless, managed with Drizzle ORM for type-safe queries.
-**Schema**: Includes `users`, `campaigns`, `scenes`, `campaignMembers`, `characters`, `tokens`, and `chatMessages`.
+**Schema**: Includes `users`, `campaigns`, `scenes`, `campaignMembers`, `campaignBans`, `characters`, `tokens`, and `chatMessages`.
 **Validation**: Zod schemas generated from Drizzle for client/server input validation.
 
 ### Authentication & Authorization
 
 **Authentication**: Password hashing with `bcryptjs`, session-based authentication using `express-session` with PostgreSQL storage (`connect-pg-simple`).
 **Authorization**: GM and Player roles with granular permissions stored in `campaignMembers`. GMs have full control over their campaigns; Players have restricted access to their own characters and campaign actions.
+**Member Moderation**: GMs can kick or ban players from campaigns. Kicked players can rejoin with the invite code; banned players are blocked from rejoining. Banned players list is viewable in GM Tools with unban functionality.
 **Security**: Hashed passwords, session cookies with 7-day expiry, CSRF protection, environment-based session secrets, PII sanitization in API responses.
 
 ## External Dependencies
