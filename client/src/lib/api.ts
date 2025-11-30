@@ -701,6 +701,25 @@ export class GameWebSocket {
     }
     this.send({ type: 'character_update', campaignId: this.campaignId, characterId });
   }
+
+  sendDiceRoll(dieType: string, result: number, modifier: number = 0, purpose?: string, positionX: number = 0, positionY: number = 0, seed: string = '', characterId?: string) {
+    if (!this.campaignId) {
+      console.error('Cannot send dice roll: not connected to a campaign');
+      return;
+    }
+    this.send({ 
+      type: 'dice_roll', 
+      campaignId: this.campaignId, 
+      dieType,
+      result,
+      modifier,
+      purpose,
+      positionX,
+      positionY,
+      seed,
+      characterId
+    });
+  }
 }
 
 export const gameWs = new GameWebSocket();

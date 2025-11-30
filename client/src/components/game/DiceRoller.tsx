@@ -304,7 +304,17 @@ const DiceScene: React.FC<{
   seed: string;
   onRollComplete: (result: number) => void;
 }> = ({ dieType, texture, seed, onRollComplete }) => {
+  const worldRef = useRef<CANNON.World | null>(null);
+  const bodiesRef = useRef<CANNON.Body[]>([]);
+
   const world = useMemo(() => {
+    if (worldRef.current) {
+      bodiesRef.current.forEach(body => {
+        worldRef.current!.removeBody(body);
+      });
+      bodiesRef.current = [];
+    }
+
     const w = new CANNON.World();
     w.gravity.set(0, -20, 0);
     w.broadphase = new CANNON.NaiveBroadphase();
@@ -318,6 +328,7 @@ const DiceScene: React.FC<{
     groundBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
     groundBody.position.set(0, -2, 0);
     w.addBody(groundBody);
+    bodiesRef.current.push(groundBody);
     
     const wallMaterial = new CANNON.Material('wall');
     const walls = [
@@ -336,9 +347,23 @@ const DiceScene: React.FC<{
       wallBody.quaternion.setFromEuler(...rotation as [number, number, number]);
       wallBody.position.set(...position as [number, number, number]);
       w.addBody(wallBody);
+      bodiesRef.current.push(wallBody);
     });
     
+    worldRef.current = w;
     return w;
+  }, [seed]);
+
+  useEffect(() => {
+    return () => {
+      if (worldRef.current) {
+        bodiesRef.current.forEach(body => {
+          worldRef.current!.removeBody(body);
+        });
+        bodiesRef.current = [];
+        worldRef.current = null;
+      }
+    };
   }, []);
 
   useFrame(() => {
