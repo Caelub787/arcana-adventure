@@ -580,11 +580,14 @@ export default function Campaign() {
     }
   };
 
-  // Handler for mode changes - clear targeting when switching away from Target mode
+  // Handler for mode changes - clear targeting and selection when switching modes
   const handleModeChange = (mode: SelectionMode) => {
+    // Clear targeted token when switching away from Target mode
     if (selectionMode === 'target' && mode !== 'target') {
       setTargetedTokenId(null);
     }
+    // Clear selected token when switching modes for a clean slate
+    setSelectedTokenId(null);
     setSelectionMode(mode);
   };
 
