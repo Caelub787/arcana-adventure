@@ -19,7 +19,7 @@ import {
   Sword, Shield, Scroll, Map as MapIcon, Settings, 
   Users, User, Plus, LogOut, Menu, ChevronRight, ChevronLeft, ChevronDown,
   Heart, Zap, Backpack, Sparkles, Dice5, MessageSquare, RefreshCw, X, Trash2, Package, FolderOpen, Lock, Unlock, Camera,
-  BarChart3, Grid3X3, ScrollText, Upload, Image as ImageIcon, Layers, Search, TrendingUp
+  BarChart3, Grid3X3, ScrollText, Upload, Image as ImageIcon, Layers, Search, TrendingUp, UserMinus, Ban
 } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { type Scene, type Hotbar, api } from "@/lib/api";
@@ -1907,6 +1907,7 @@ function SceneSettingsDialog({ open, onOpenChange, scene, onUpdateScene }: Scene
 
 // 5. Campaign Menu & Chat
 interface CampaignMenuProps {
+  campaignId?: string;
   role: Role;
   inviteCode?: string;
   inspectedChar?: Character;
@@ -1920,7 +1921,7 @@ interface CampaignMenuProps {
   onLevelUpAll?: (mode: 'set' | 'add', targetLevel?: number) => void;
 }
 
-export function CampaignMenu({ role, inviteCode, inspectedChar, onInspectChar, onAddCharacterToken, onChangeMap, characters, members, onAddCharacter, onViewCharacter, onLevelUpAll }: CampaignMenuProps) {
+export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onInspectChar, onAddCharacterToken, onChangeMap, characters, members, onAddCharacter, onViewCharacter, onLevelUpAll }: CampaignMenuProps) {
   const [chatOpen, setChatOpen] = useState(false);
   const [addCharacterOpen, setAddCharacterOpen] = useState(false);
   const [showLevelUpDialog, setShowLevelUpDialog] = useState(false);
@@ -1936,6 +1937,93 @@ export function CampaignMenu({ role, inviteCode, inspectedChar, onInspectChar, o
   const [selectedCharForAccess, setSelectedCharForAccess] = useState<any>(null);
   const [accessLevels, setAccessLevels] = useState<Record<string, string>>({});
   const [loadingAccess, setLoadingAccess] = useState(false);
+  const queryClient = useQueryClient();
+
+  // Fetch banned players (only for GMs)
+  const { data: bannedPlayers = [] } = useQuery({
+    queryKey: [`/api/campaigns/${campaignId}/bans`],
+    queryFn: () => api.getCampaignBans(campaignId!),
+    enabled: !!campaignId && role === 'gm',
+  });
+
+  // Kick mutation
+  const kickMutation = useMutation({
+    mutationFn: (userId: string) => api.kickMember(campaignId!, userId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${campaignId}/members`] });
+      toast({
+        title: "Member Kicked",
+        description: "The player has been removed from the campaign",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to kick member",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Ban mutation
+  const banMutation = useMutation({
+    mutationFn: ({ userId, reason }: { userId: string; reason?: string }) => 
+      api.banMember(campaignId!, userId, reason),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${campaignId}/members`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${campaignId}/bans`] });
+      toast({
+        title: "Member Banned",
+        description: "The player has been banned from the campaign",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to ban member",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Unban mutation
+  const unbanMutation = useMutation({
+    mutationFn: (userId: string) => api.unbanMember(campaignId!, userId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${campaignId}/members`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${campaignId}/bans`] });
+      toast({
+        title: "Member Unbanned",
+        description: "The player can now rejoin the campaign",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to unban member",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleKick = (member: any) => {
+    if (confirm(`Are you sure you want to kick ${member.username || 'this player'}?`)) {
+      kickMutation.mutate(member.userId);
+    }
+  };
+
+  const handleBan = (member: any) => {
+    const reason = prompt(`Enter a reason for banning ${member.username || 'this player'} (optional):`);
+    if (reason !== null) {
+      banMutation.mutate({ userId: member.userId, reason: reason || undefined });
+    }
+  };
+
+  const handleUnban = (ban: any) => {
+    if (confirm(`Are you sure you want to unban ${ban.username || 'this player'}?`)) {
+      unbanMutation.mutate(ban.userId);
+    }
+  };
 
   useEffect(() => {
     if (showAccessDialog && selectedCharForAccess) {
@@ -2088,6 +2176,48 @@ export function CampaignMenu({ role, inviteCode, inspectedChar, onInspectChar, o
                             <div className="text-xs text-stone-500">{member.role === 'gm' ? 'GM' : 'Player'}</div>
                           </div>
                         </div>
+                        {role === 'gm' && member.role !== 'gm' && campaignId && (
+                          <div className="flex items-center gap-1">
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => handleKick(member)}
+                                    disabled={kickMutation.isPending}
+                                    className="h-8 w-8 p-0 text-red-400 hover:text-red-300 hover:bg-red-900/30"
+                                    data-testid={`button-kick-${member.userId}`}
+                                  >
+                                    <UserMinus className="h-4 w-4" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent side="top" className="bg-stone-800 border-stone-700">
+                                  <p>Kick Player</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => handleBan(member)}
+                                    disabled={banMutation.isPending}
+                                    className="h-8 w-8 p-0 text-red-500 hover:text-red-400 hover:bg-red-900/30"
+                                    data-testid={`button-ban-${member.userId}`}
+                                  >
+                                    <Ban className="h-4 w-4" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent side="top" className="bg-stone-800 border-stone-700">
+                                  <p>Ban Player</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          </div>
+                        )}
                       </div>
                     ))
                   ) : (
@@ -2207,6 +2337,41 @@ export function CampaignMenu({ role, inviteCode, inspectedChar, onInspectChar, o
                   <TrendingUp className="mr-2 h-4 w-4" /> Level Up All
                 </Button>
               </div>
+
+              {/* Banned Players Section */}
+              {bannedPlayers && bannedPlayers.length > 0 && (
+                <div className="mt-6 p-4 bg-red-950/20 border border-red-900/30 rounded-lg">
+                  <h4 className="text-sm font-bold text-red-400 uppercase mb-3 flex items-center gap-2">
+                    <Ban className="h-4 w-4" /> Banned Players
+                  </h4>
+                  <div className="space-y-2">
+                    {bannedPlayers.map((ban: any) => (
+                      <div 
+                        key={ban.id}
+                        className="flex items-center justify-between p-2 bg-stone-900/50 rounded border border-stone-800"
+                        data-testid={`banned-player-${ban.userId}`}
+                      >
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium text-stone-200 truncate">{ban.username}</div>
+                          {ban.reason && (
+                            <div className="text-xs text-stone-500 truncate">Reason: {ban.reason}</div>
+                          )}
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleUnban(ban)}
+                          disabled={unbanMutation.isPending}
+                          className="bg-green-900/30 hover:bg-green-800/50 border-green-700 text-green-200 text-xs ml-2"
+                          data-testid={`button-unban-${ban.userId}`}
+                        >
+                          Unban
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

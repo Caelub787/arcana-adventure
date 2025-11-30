@@ -173,6 +173,15 @@ export interface CharacterPermission {
   accessLevel: string;
 }
 
+export interface CampaignBan {
+  id: string;
+  campaignId: string;
+  userId: string;
+  bannedAt: string;
+  reason?: string;
+  username: string;
+}
+
 class ApiClient {
   private baseUrl = '/api';
 
@@ -309,6 +318,26 @@ class ApiClient {
   // Members
   async getCampaignMembers(campaignId: string): Promise<CampaignMember[]> {
     return this.request(`/campaigns/${campaignId}/members`);
+  }
+
+  // Member management (kick/ban)
+  async kickMember(campaignId: string, userId: string): Promise<void> {
+    return this.request(`/campaigns/${campaignId}/kick/${userId}`, { method: 'POST' });
+  }
+
+  async banMember(campaignId: string, userId: string, reason?: string): Promise<void> {
+    return this.request(`/campaigns/${campaignId}/ban/${userId}`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    });
+  }
+
+  async unbanMember(campaignId: string, userId: string): Promise<void> {
+    return this.request(`/campaigns/${campaignId}/bans/${userId}`, { method: 'DELETE' });
+  }
+
+  async getCampaignBans(campaignId: string): Promise<CampaignBan[]> {
+    return this.request(`/campaigns/${campaignId}/bans`);
   }
 
   // Scenes

@@ -752,6 +752,7 @@ export default function Campaign() {
         {/* Settings / Menu Button for ALL Roles */}
         <div className="pointer-events-auto flex flex-col gap-2">
           <CampaignMenu 
+            campaignId={effectiveCampaignId}
             role={role} 
             inviteCode={(campaign && typeof campaign === 'object' && 'inviteCode' in campaign ? campaign.inviteCode as string : "") || ""}
             inspectedChar={inspectedChar}
