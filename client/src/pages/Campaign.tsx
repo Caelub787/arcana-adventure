@@ -504,6 +504,21 @@ export default function Campaign() {
             queryClient.invalidateQueries({ queryKey: [`/api/characters/${data.characterId}`] });
           }
         }
+        if (data.type === 'permission_update') {
+          // Invalidate permissions cache so UI updates immediately
+          queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${effectiveCampaignId}/my-permissions`] });
+          
+          // If permission was changed for the current user, show a toast
+          if (data.targetUserId === user?.id) {
+            const accessDesc = data.accessLevel === 'edit' ? 'edit' : 
+                               data.accessLevel === 'view' ? 'view only' : 'no';
+            toast({ 
+              title: "Access Changed", 
+              description: `Your access to ${data.characterName || 'a character'} is now ${accessDesc}`,
+              variant: data.accessLevel === 'none' ? 'destructive' : 'default'
+            });
+          }
+        }
       });
 
       return () => {
