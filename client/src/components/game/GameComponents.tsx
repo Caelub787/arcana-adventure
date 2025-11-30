@@ -1919,10 +1919,12 @@ interface CampaignMenuProps {
   onAddCharacter?: (characterData: any) => void;
   onViewCharacter?: (char: any) => void;
   onLevelUpAll?: (mode: 'set' | 'add', targetLevel?: number) => void;
+  chatOpen?: boolean;
+  onChatOpenChange?: (open: boolean) => void;
 }
 
-export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onInspectChar, onAddCharacterToken, onChangeMap, characters, members, onAddCharacter, onViewCharacter, onLevelUpAll }: CampaignMenuProps) {
-  const [chatOpen, setChatOpen] = useState(false);
+export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onInspectChar, onAddCharacterToken, onChangeMap, characters, members, onAddCharacter, onViewCharacter, onLevelUpAll, chatOpen = false, onChatOpenChange }: CampaignMenuProps) {
+  const setChatOpen = onChatOpenChange || (() => {});
   const [addCharacterOpen, setAddCharacterOpen] = useState(false);
   const [showLevelUpDialog, setShowLevelUpDialog] = useState(false);
   const [levelUpMode, setLevelUpMode] = useState<'set' | 'add'>('add');
@@ -2133,12 +2135,6 @@ export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onIn
           <div className="mb-6">
             <h2 className="font-display text-2xl text-amber-500 mb-1">Campaign Settings</h2>
             <p className="text-xs text-stone-500">Manage adventure details</p>
-          </div>
-
-          <div className="flex gap-2 mb-6">
-             <Button className="flex-1 bg-stone-800 hover:bg-stone-700" onClick={() => setChatOpen(true)}>
-               <MessageSquare className="mr-2 h-4 w-4" /> Open Chat
-             </Button>
           </div>
           
           {/* Invite Code Section */}

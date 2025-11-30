@@ -247,6 +247,7 @@ export default function Campaign() {
   const [currentView, setCurrentView] = useState({ x: 0, y: 0, zoom: 1 });
   const [scenesManagementOpen, setScenesManagementOpen] = useState(false);
   const [newSceneName, setNewSceneName] = useState("");
+  const [chatOpen, setChatOpen] = useState(false);
   const [viewingCharacterSheet, setViewingCharacterSheet] = useState<any>(null);
   const [characterSheetDefaultTab, setCharacterSheetDefaultTab] = useState("overview");
   
@@ -764,6 +765,8 @@ export default function Campaign() {
             onAddCharacter={handleAddCharacter}
             onViewCharacter={handleViewCharacter}
             onLevelUpAll={handleLevelUpAll}
+            chatOpen={chatOpen}
+            onChatOpenChange={setChatOpen}
           />
           
           {/* Scenes Button (GM Only) - Icon only, directly under Settings */}
@@ -795,6 +798,7 @@ export default function Campaign() {
                 <Button
                   variant="ghost"
                   size="icon"
+                  onClick={() => setChatOpen(true)}
                   className="text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto"
                   data-testid="button-chat"
                 >
