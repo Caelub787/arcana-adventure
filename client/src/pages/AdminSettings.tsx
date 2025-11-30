@@ -301,7 +301,7 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
     damageType: initialData?.damageType || '',
     mod: initialData?.mod || 0,
     range: initialData?.range || 0,
-    aoe: '',
+    aoe: initialData?.aoe || 'none',
     attribute: initialData?.attribute || '',
     size: initialData?.size || '',
     isHeavy: false,
@@ -344,7 +344,7 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
       price: Number(formData.price) || 0,
       carryCapacity: Number(formData.carryCapacity) || 0,
       quantity: Number(formData.quantity) || 1,
-      aoe: formData.aoe || undefined, // Convert empty string to undefined
+      aoe: formData.aoe === 'none' ? undefined : formData.aoe, // Convert "none" to undefined
     };
     onSave(cleanedData);
   };
@@ -539,7 +539,7 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
                         <SelectValue placeholder="None" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">None</SelectItem>
+                        <SelectItem value="none">None</SelectItem>
                         <SelectItem value="cone">Cone</SelectItem>
                         <SelectItem value="sphere">Sphere</SelectItem>
                         <SelectItem value="line">Line</SelectItem>

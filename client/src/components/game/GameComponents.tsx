@@ -4875,11 +4875,11 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                     image: formData.get('image') || undefined,
                     description: formData.get('description') || undefined,
                     level: parseInt(formData.get('level') as string),
-                    school: formData.get('school') || undefined,
+                    school: formData.get('school') === 'none' ? undefined : (formData.get('school') || undefined),
                     damage: formData.get('damage') || undefined,
                     damageType: formData.get('damageType') || undefined,
                     range: formData.get('range') ? parseInt(formData.get('range') as string) : undefined,
-                    aoe: formData.get('aoe') || undefined,
+                    aoe: formData.get('aoe') === 'none' ? undefined : (formData.get('aoe') || undefined),
                     castingTime: formData.get('castingTime') || undefined,
                     duration: formData.get('duration') || undefined,
                   };
@@ -4945,12 +4945,12 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                           </TooltipProvider>
                         )}
                       </div>
-                      <Select name="school" defaultValue={editSpellData?.school || ""} disabled={!isGM}>
+                      <Select name="school" defaultValue={editSpellData?.school || "none"} disabled={!isGM}>
                         <SelectTrigger className={`bg-stone-800 ${isGM ? 'border-amber-700' : 'border-stone-700'}`}>
                           <SelectValue placeholder="Select school" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="">None</SelectItem>
+                          <SelectItem value="none">None</SelectItem>
                           <SelectItem value="evocation">Evocation</SelectItem>
                           <SelectItem value="abjuration">Abjuration</SelectItem>
                           <SelectItem value="conjuration">Conjuration</SelectItem>
