@@ -925,28 +925,28 @@ export default function Campaign() {
         </Sheet>
       )}
 
-      {/* Game View */}
-      {character && (
-        <div className="flex flex-col h-full w-full">
-          
-          {/* Map Area - Takes full space, but HUD overlays it */}
-          <div className="relative flex-grow w-full bg-stone-900 z-0 overflow-hidden">
-             <BattleMap 
-               tokens={tokens} 
-               onMoveToken={handleMoveToken} 
-               onTokenClick={handleTokenClick}
-               onDeleteToken={handleDeleteToken}
-               role={role} 
-               gridSize={50}
-               backgroundImage={currentMap}
-               scene={activeScene}
-               onViewChange={setCurrentView}
-               characters={characters as any[]}
-             />
-             
-             {/* Hotbars Display for all users - use inspectedChar for GM, character for players */}
+      {/* Game View - Always visible for all campaign members */}
+      <div className="flex flex-col h-full w-full">
+        
+        {/* Map Area - Takes full space, but HUD overlays it */}
+        <div className="relative flex-grow w-full bg-stone-900 z-0 overflow-hidden">
+           <BattleMap 
+             tokens={tokens} 
+             onMoveToken={handleMoveToken} 
+             onTokenClick={handleTokenClick}
+             onDeleteToken={handleDeleteToken}
+             role={role} 
+             gridSize={50}
+             backgroundImage={currentMap}
+             scene={activeScene}
+             onViewChange={setCurrentView}
+             characters={characters as any[]}
+           />
+           
+           {/* Hotbars Display - only show when there's a character to display */}
+           {(role === 'gm' ? inspectedChar : character) && (
              <BattleMapHotbars character={role === 'gm' ? inspectedChar : character} />
-          </div>
+           )}
           
           {/* Character Sheet Tab Buttons - Right side, aligned with hotbar buttons (visible when character/inspectedChar exists) */}
           {((role === 'player' && character) || (role === 'gm' && inspectedChar)) && (
@@ -996,7 +996,7 @@ export default function Campaign() {
           )}
 
         </div>
-      )}
+      </div>
 
       {/* Character Sheet Dialog - Full screen on mobile */}
       <Dialog open={!!viewingCharacterSheet} onOpenChange={(open) => !open && setViewingCharacterSheet(null)}>
