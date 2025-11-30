@@ -86,6 +86,19 @@ Preferred communication style: Simple, everyday language.
 -   **Real-time Sync**: WebSocket broadcasts `initiative_update` and `combat_update` messages for instant cross-player synchronization
 -   **Database Schema**: `initiativeEntries` table with sceneId, characterId, value, isHidden fields
 
+**3D Dice Rolling System**:
+-   **Die Types**: Full set of polyhedral dice - d4, d6, d8, d10, d12, d20
+-   **Physics-Based Rolling**: Cannon-es physics engine for realistic dice tumbling with deterministic seeds
+-   **3D Rendering**: Three.js with @react-three/fiber for WebGL-accelerated 3D dice visualization
+-   **Custom Textures**: Per-user dice customization stored in `diceTextures` table (base64 images per die type)
+-   **Quick Colors**: Preset color schemes (Obsidian, Ruby, Sapphire, Emerald, Amber, Amethyst, Pearl, Gold)
+-   **UV Guides**: Built-in UV mapping templates for each die type to help create custom textures
+-   **Real-time Sync**: Dice rolls broadcast via WebSocket so all campaign players see each other's rolls
+-   **Roll Notifications**: Floating notifications display other players' roll results with username and die type
+-   **Modifiers**: Optional modifiers can be added to rolls (e.g., +5 for skill bonuses)
+-   **Roll History**: Recent rolls displayed with result, modifier, and total
+-   **HUD Integration**: Dice roller accessible via HUD button in Campaign page
+
 ### Backend Architecture
 
 **Technology Stack**: Express.js with TypeScript, `express-session` for session management.
@@ -95,7 +108,7 @@ Preferred communication style: Simple, everyday language.
 ### Data Storage
 
 **Database**: PostgreSQL via Neon serverless, managed with Drizzle ORM for type-safe queries.
-**Schema**: Includes `users`, `campaigns`, `scenes`, `campaignMembers`, `campaignBans`, `characters`, `tokens`, `chatMessages`, and `initiativeEntries`.
+**Schema**: Includes `users`, `campaigns`, `scenes`, `campaignMembers`, `campaignBans`, `characters`, `tokens`, `chatMessages`, `initiativeEntries`, `diceTextures`, and `diceRolls`.
 **Validation**: Zod schemas generated from Drizzle for client/server input validation.
 
 ### Authentication & Authorization
@@ -120,6 +133,7 @@ Preferred communication style: Simple, everyday language.
 -   **Forms**: `react-hook-form`, `zod`.
 -   **Database**: `drizzle-orm`, `@neondatabase/serverless`.
 -   **Real-time**: `ws` library.
+-   **3D Graphics**: `three`, `@react-three/fiber`, `@react-three/drei`, `cannon-es` for physics-based dice rolling.
 -   **Utilities**: `date-fns`, `nanoid`, `bcryptjs`.
 
 ### Environment Configuration
