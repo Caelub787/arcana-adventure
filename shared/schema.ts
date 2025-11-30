@@ -87,6 +87,23 @@ export const insertCampaignMemberSchema = createInsertSchema(campaignMembers).om
 export type InsertCampaignMember = z.infer<typeof insertCampaignMemberSchema>;
 export type CampaignMember = typeof campaignMembers.$inferSelect;
 
+// Campaign Bans (banned players who cannot rejoin)
+export const campaignBans = pgTable("campaign_bans", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  campaignId: varchar("campaign_id").notNull().references(() => campaigns.id, { onDelete: "cascade" }),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  bannedAt: timestamp("banned_at").defaultNow().notNull(),
+  reason: text("reason"),
+});
+
+export const insertCampaignBanSchema = createInsertSchema(campaignBans).omit({
+  id: true,
+  bannedAt: true,
+});
+
+export type InsertCampaignBan = z.infer<typeof insertCampaignBanSchema>;
+export type CampaignBan = typeof campaignBans.$inferSelect;
+
 // Characters table (expanded for RPG features)
 export const characters = pgTable("characters", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

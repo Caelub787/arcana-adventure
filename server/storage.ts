@@ -2,6 +2,7 @@ import {
   type User, type InsertUser,
   type Campaign, type InsertCampaign,
   type CampaignMember, type InsertCampaignMember,
+  type CampaignBan,
   type Character, type InsertCharacter,
   type Token, type InsertToken,
   type ChatMessage, type InsertChatMessage,
@@ -11,7 +12,7 @@ import {
   type Item, type InsertItem,
   type Spell, type InsertSpell,
   type CharacterPermission, type InsertCharacterPermission,
-  users, campaigns, campaignMembers, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, items, spells, characterPermissions
+  users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, items, spells, characterPermissions
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql, inArray } from "drizzle-orm";
@@ -104,6 +105,13 @@ export interface IStorage {
 
   // Campaign Membership Check
   isCampaignMember(campaignId: string, userId: string): Promise<boolean>;
+
+  // Campaign Ban operations
+  kickMember(campaignId: string, userId: string): Promise<void>;
+  banMember(campaignId: string, userId: string, reason?: string): Promise<CampaignBan>;
+  unbanMember(campaignId: string, userId: string): Promise<void>;
+  getCampaignBans(campaignId: string): Promise<any[]>;
+  isUserBanned(campaignId: string, userId: string): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -635,6 +643,63 @@ export class DatabaseStorage implements IStorage {
       ))
       .limit(1);
     return !!member;
+  }
+
+  async kickMember(campaignId: string, userId: string): Promise<void> {
+    await db.delete(campaignMembers)
+      .where(and(
+        eq(campaignMembers.campaignId, campaignId),
+        eq(campaignMembers.userId, userId)
+      ));
+  }
+
+  async banMember(campaignId: string, userId: string, reason?: string): Promise<CampaignBan> {
+    await this.kickMember(campaignId, userId);
+    
+    const [ban] = await db.insert(campaignBans)
+      .values({
+        campaignId,
+        userId,
+        reason: reason || null
+      })
+      .returning();
+    
+    return ban;
+  }
+
+  async unbanMember(campaignId: string, userId: string): Promise<void> {
+    await db.delete(campaignBans)
+      .where(and(
+        eq(campaignBans.campaignId, campaignId),
+        eq(campaignBans.userId, userId)
+      ));
+  }
+
+  async getCampaignBans(campaignId: string): Promise<any[]> {
+    const bansData = await db.select()
+      .from(campaignBans)
+      .innerJoin(users, eq(campaignBans.userId, users.id))
+      .where(eq(campaignBans.campaignId, campaignId));
+
+    return bansData.map((row: any) => ({
+      id: row.campaign_bans.id,
+      campaignId: row.campaign_bans.campaignId,
+      userId: row.campaign_bans.userId,
+      bannedAt: row.campaign_bans.bannedAt,
+      reason: row.campaign_bans.reason,
+      username: row.users.username
+    }));
+  }
+
+  async isUserBanned(campaignId: string, userId: string): Promise<boolean> {
+    const [ban] = await db.select()
+      .from(campaignBans)
+      .where(and(
+        eq(campaignBans.campaignId, campaignId),
+        eq(campaignBans.userId, userId)
+      ))
+      .limit(1);
+    return !!ban;
   }
 }
 

@@ -898,6 +898,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Invalid invite code" });
       }
 
+      // Check if user is banned from this campaign
+      const isBanned = await storage.isUserBanned(campaign.id, req.session.userId!);
+      if (isBanned) {
+        return res.status(403).json({ error: "You have been banned from this campaign" });
+      }
+
       // Check if already a member
       const members = await storage.getCampaignMembers(campaign.id);
       const alreadyMember = members.some(m => m.userId === req.session.userId);
@@ -1315,6 +1321,99 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(members);
     } catch (err) {
       res.status(500).json({ error: "Failed to fetch members" });
+    }
+  });
+
+  // Kick a player (GM only)
+  app.post("/api/campaigns/:campaignId/kick/:userId", requireAuth, async (req, res) => {
+    try {
+      const { campaignId, userId } = req.params;
+      
+      const campaign = await storage.getCampaign(campaignId);
+      if (!campaign) {
+        return res.status(404).json({ error: "Campaign not found" });
+      }
+
+      if (campaign.gmUserId !== req.session.userId) {
+        return res.status(403).json({ error: "Only the GM can kick players" });
+      }
+
+      if (userId === campaign.gmUserId) {
+        return res.status(400).json({ error: "Cannot kick the GM" });
+      }
+
+      await storage.kickMember(campaignId, userId);
+      res.json({ success: true });
+    } catch (err) {
+      res.status(400).json({ error: "Failed to kick player" });
+    }
+  });
+
+  // Ban a player (GM only)
+  app.post("/api/campaigns/:campaignId/ban/:userId", requireAuth, async (req, res) => {
+    try {
+      const { campaignId, userId } = req.params;
+      const { reason } = req.body;
+      
+      const campaign = await storage.getCampaign(campaignId);
+      if (!campaign) {
+        return res.status(404).json({ error: "Campaign not found" });
+      }
+
+      if (campaign.gmUserId !== req.session.userId) {
+        return res.status(403).json({ error: "Only the GM can ban players" });
+      }
+
+      if (userId === campaign.gmUserId) {
+        return res.status(400).json({ error: "Cannot ban the GM" });
+      }
+
+      const ban = await storage.banMember(campaignId, userId, reason);
+      res.json(ban);
+    } catch (err) {
+      res.status(400).json({ error: "Failed to ban player" });
+    }
+  });
+
+  // Unban a player (GM only)
+  app.delete("/api/campaigns/:campaignId/bans/:userId", requireAuth, async (req, res) => {
+    try {
+      const { campaignId, userId } = req.params;
+      
+      const campaign = await storage.getCampaign(campaignId);
+      if (!campaign) {
+        return res.status(404).json({ error: "Campaign not found" });
+      }
+
+      if (campaign.gmUserId !== req.session.userId) {
+        return res.status(403).json({ error: "Only the GM can unban players" });
+      }
+
+      await storage.unbanMember(campaignId, userId);
+      res.json({ success: true });
+    } catch (err) {
+      res.status(400).json({ error: "Failed to unban player" });
+    }
+  });
+
+  // Get banned players list (GM only)
+  app.get("/api/campaigns/:campaignId/bans", requireAuth, async (req, res) => {
+    try {
+      const { campaignId } = req.params;
+      
+      const campaign = await storage.getCampaign(campaignId);
+      if (!campaign) {
+        return res.status(404).json({ error: "Campaign not found" });
+      }
+
+      if (campaign.gmUserId !== req.session.userId) {
+        return res.status(403).json({ error: "Only the GM can view banned players" });
+      }
+
+      const bans = await storage.getCampaignBans(campaignId);
+      res.json(bans);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch banned players" });
     }
   });
 
