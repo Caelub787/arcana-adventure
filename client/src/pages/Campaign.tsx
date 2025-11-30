@@ -2,8 +2,9 @@ import React, { useState, useEffect, useRef } from "react";
 import { useLocation, useSearch, useRoute } from "wouter";
 import { motion } from "framer-motion";
 import { CharacterCreation, BattleMap, CampaignMenu, CharacterSheet, BattleMapHotbars, SelectionModeButtons, InitiativeTracker, type SelectionMode } from "@/components/game/GameComponents";
+import { DiceRoller, DiceRollNotification, type DiceRollerHandle } from "@/components/game/DiceRoller";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Loader2, Settings, Map as MapIcon, Layers, Trash2, MessageSquare, User, BarChart3, Zap, Backpack, Sparkles, Grid3X3, ScrollText, Swords } from "lucide-react";
+import { ArrowLeft, Loader2, Settings, Map as MapIcon, Layers, Trash2, MessageSquare, User, BarChart3, Zap, Backpack, Sparkles, Grid3X3, ScrollText, Swords, Dices } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -262,6 +263,11 @@ export default function Campaign() {
   
   // Initiative tracker state
   const [initiativeTrackerOpen, setInitiativeTrackerOpen] = useState(false);
+  
+  // Dice roller state
+  const [diceRollerOpen, setDiceRollerOpen] = useState(false);
+  const [diceRollNotifications, setDiceRollNotifications] = useState<Array<{id: string; roll: any}>>([]);
+  const diceRollerRef = useRef<DiceRollerHandle>(null);
 
   // Determine effective campaign ID (from URL or newly created)
   const effectiveCampaignId = campaignId || createdCampaignId;
@@ -913,6 +919,26 @@ export default function Campaign() {
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
+          
+          {/* Dice Roller Button */}
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setDiceRollerOpen(true)}
+                  className="text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto"
+                  data-testid="button-dice-roller"
+                >
+                  <Dices className="h-5 w-5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="left" className="bg-stone-800 border-stone-700 text-stone-200">
+                <p>Roll Dice</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         </div>
       </div>
 
@@ -1162,6 +1188,31 @@ export default function Campaign() {
         isGM={role === 'gm'}
         characters={characters as any[]}
       />
+      
+      {/* Dice Roller */}
+      {diceRollerOpen && (
+        <DiceRoller
+          ref={diceRollerRef}
+          onRollComplete={(result) => {
+            const id = `roll-${Date.now()}`;
+            setDiceRollNotifications(prev => [...prev, { id, roll: { ...result, username: user?.username } }]);
+          }}
+          characterName={character?.name}
+          onClose={() => setDiceRollerOpen(false)}
+        />
+      )}
+      
+      {/* Dice Roll Notifications */}
+      <div className="fixed top-20 right-4 z-50 flex flex-col gap-2 pointer-events-none">
+        {diceRollNotifications.map(({ id, roll }) => (
+          <div key={id} className="pointer-events-auto">
+            <DiceRollNotification
+              roll={roll}
+              onDismiss={() => setDiceRollNotifications(prev => prev.filter(n => n.id !== id))}
+            />
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
