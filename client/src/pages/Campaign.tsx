@@ -544,6 +544,22 @@ export default function Campaign() {
             queryClientRef.current.invalidateQueries({ queryKey: [`/api/scenes/${data.sceneId}/initiative`] });
           }
         }
+        if (data.type === 'dice_roll' && data.userId !== user?.id) {
+          // Show notification for other players' dice rolls
+          const id = `roll-${Date.now()}-${data.userId}`;
+          setDiceRollNotifications(prev => [...prev, {
+            id,
+            roll: {
+              dieType: data.dieType,
+              result: data.result,
+              modifier: data.modifier || 0,
+              total: data.result + (data.modifier || 0),
+              userId: data.userId,
+              username: data.username,
+              purpose: data.purpose,
+            }
+          }]);
+        }
       });
 
       return () => {
@@ -1193,9 +1209,27 @@ export default function Campaign() {
       {diceRollerOpen && (
         <DiceRoller
           ref={diceRollerRef}
-          onRollComplete={(result) => {
+          onRollComplete={async (result) => {
             const id = `roll-${Date.now()}`;
             setDiceRollNotifications(prev => [...prev, { id, roll: { ...result, username: user?.username } }]);
+            
+            // Broadcast to other players via API/WebSocket
+            if (effectiveCampaignId) {
+              try {
+                await api.recordDiceRoll(effectiveCampaignId, {
+                  dieType: result.dieType,
+                  result: result.result,
+                  modifier: result.modifier,
+                  purpose: result.purpose,
+                  positionX: 0,
+                  positionY: 0,
+                  seed: `${Date.now()}`,
+                  characterId: character?.id,
+                });
+              } catch (error) {
+                console.error('Failed to broadcast dice roll:', error);
+              }
+            }
           }}
           characterName={character?.name}
           onClose={() => setDiceRollerOpen(false)}

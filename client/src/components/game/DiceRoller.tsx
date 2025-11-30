@@ -5,8 +5,12 @@ import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
-import { Dice1, Dice3, Dice5, Dice6, X } from 'lucide-react';
+import { Dice1, Dice3, Dice5, Dice6, X, Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { DiceTextureSettings } from './DiceTextureSettings';
+import { api, type DiceTexture } from '@/lib/api';
+import { useQuery } from '@tanstack/react-query';
+import { useAuth } from '@/lib/AuthContext';
 
 type DieType = 'd4' | 'd6' | 'd8' | 'd10' | 'd12' | 'd20';
 
@@ -384,17 +388,33 @@ export interface DiceRollerHandle {
 
 export const DiceRoller = forwardRef<DiceRollerHandle, DiceRollerProps>(({
   onRollComplete,
-  userTextures = {},
+  userTextures: propTextures = {},
   modifier = 0,
   purpose,
   characterName,
   onClose,
 }, ref) => {
+  const { user } = useAuth();
   const [isRolling, setIsRolling] = useState(false);
   const [currentDie, setCurrentDie] = useState<DieType | null>(null);
   const [seed, setSeed] = useState('');
   const [result, setResult] = useState<number | null>(null);
   const [showResult, setShowResult] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+
+  const { data: userTexturesData = [] } = useQuery({
+    queryKey: [`/api/users/${user?.id}/dice-textures`],
+    queryFn: () => api.getUserDiceTextures(user!.id),
+    enabled: !!user?.id,
+  });
+
+  const userTextures = useMemo(() => {
+    const textures: Record<DieType, string> = { ...propTextures } as Record<DieType, string>;
+    userTexturesData.forEach((t: DiceTexture) => {
+      textures[t.dieType as DieType] = t.textureData;
+    });
+    return textures;
+  }, [userTexturesData, propTextures]);
 
   const handleRoll = useCallback((dieType: DieType) => {
     setIsRolling(true);
@@ -450,17 +470,28 @@ export const DiceRoller = forwardRef<DiceRollerHandle, DiceRollerProps>(({
         <div className="bg-gradient-to-b from-stone-900 to-stone-950 rounded-xl border border-amber-900/50 shadow-2xl overflow-hidden">
           <div className="flex items-center justify-between p-4 border-b border-amber-900/30">
             <h2 className="text-xl font-bold text-amber-100">Roll Dice</h2>
-            {onClose && (
+            <div className="flex items-center gap-2">
               <Button
                 variant="ghost"
                 size="icon"
-                onClick={onClose}
+                onClick={() => setSettingsOpen(true)}
                 className="text-amber-100/70 hover:text-amber-100 hover:bg-amber-900/20"
-                data-testid="dice-roller-close"
+                data-testid="dice-roller-settings"
               >
-                <X className="h-5 w-5" />
+                <Settings className="h-5 w-5" />
               </Button>
-            )}
+              {onClose && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={onClose}
+                  className="text-amber-100/70 hover:text-amber-100 hover:bg-amber-900/20"
+                  data-testid="dice-roller-close"
+                >
+                  <X className="h-5 w-5" />
+                </Button>
+              )}
+            </div>
           </div>
 
           <div className="aspect-video relative bg-stone-950">
@@ -552,6 +583,11 @@ export const DiceRoller = forwardRef<DiceRollerHandle, DiceRollerProps>(({
           </div>
         </div>
       </motion.div>
+      
+      <DiceTextureSettings
+        open={settingsOpen}
+        onOpenChange={setSettingsOpen}
+      />
     </div>
   );
 });
