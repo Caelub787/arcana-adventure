@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -19,7 +19,7 @@ import {
   Sword, Shield, Scroll, Map as MapIcon, Settings, 
   Users, User, Plus, LogOut, Menu, ChevronRight, ChevronLeft, ChevronDown,
   Heart, Zap, Backpack, Sparkles, Dice5, MessageSquare, RefreshCw, X, Trash2, Package, FolderOpen, Lock, Unlock, Camera,
-  BarChart3, Grid3X3, ScrollText, Upload, Image as ImageIcon, Layers, Search
+  BarChart3, Grid3X3, ScrollText, Upload, Image as ImageIcon, Layers, Search, TrendingUp
 } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { type Scene, type Hotbar, api } from "@/lib/api";
@@ -1917,17 +1917,67 @@ interface CampaignMenuProps {
   members?: any[];
   onAddCharacter?: (characterData: any) => void;
   onViewCharacter?: (char: any) => void;
+  onLevelUpAll?: (mode: 'set' | 'add', targetLevel?: number) => void;
 }
 
-export function CampaignMenu({ role, inviteCode, inspectedChar, onInspectChar, onAddCharacterToken, onChangeMap, characters, members, onAddCharacter, onViewCharacter }: CampaignMenuProps) {
+export function CampaignMenu({ role, inviteCode, inspectedChar, onInspectChar, onAddCharacterToken, onChangeMap, characters, members, onAddCharacter, onViewCharacter, onLevelUpAll }: CampaignMenuProps) {
   const [chatOpen, setChatOpen] = useState(false);
   const [addCharacterOpen, setAddCharacterOpen] = useState(false);
+  const [showLevelUpDialog, setShowLevelUpDialog] = useState(false);
+  const [levelUpMode, setLevelUpMode] = useState<'set' | 'add'>('add');
+  const [targetLevel, setTargetLevel] = useState(1);
   const [addTokenDialogOpen, setAddTokenDialogOpen] = useState(false);
   const [messages, setMessages] = useState([
     { sender: "System", text: "Welcome to Arcana Adventure!", type: "system" },
     { sender: "GM", text: "Roll for initiative!", type: "chat" }
   ]);
   const [chatInput, setChatInput] = useState("");
+  const [showAccessDialog, setShowAccessDialog] = useState(false);
+  const [selectedCharForAccess, setSelectedCharForAccess] = useState<any>(null);
+  const [accessLevels, setAccessLevels] = useState<Record<string, string>>({});
+  const [loadingAccess, setLoadingAccess] = useState(false);
+
+  useEffect(() => {
+    if (showAccessDialog && selectedCharForAccess) {
+      setLoadingAccess(true);
+      api.getCharacterPermissions(selectedCharForAccess.id)
+        .then((permissions) => {
+          const levels: Record<string, string> = {};
+          permissions.forEach((p: any) => {
+            levels[p.userId] = p.accessLevel;
+          });
+          setAccessLevels(levels);
+        })
+        .catch((err) => {
+          console.error("Failed to load permissions:", err);
+          toast({
+            title: "Error",
+            description: "Failed to load character permissions",
+            variant: "destructive"
+          });
+        })
+        .finally(() => setLoadingAccess(false));
+    }
+  }, [showAccessDialog, selectedCharForAccess]);
+
+  const handleSetAccess = async (userId: string, accessLevel: string) => {
+    if (!selectedCharForAccess) return;
+    try {
+      await api.setCharacterPermission(selectedCharForAccess.id, userId, accessLevel);
+      setAccessLevels(prev => ({ ...prev, [userId]: accessLevel }));
+      toast({
+        title: "Access Updated",
+        description: `Permission set to ${accessLevel}`,
+      });
+    } catch (err) {
+      console.error("Failed to set permission:", err);
+      toast({
+        title: "Error",
+        description: "Failed to update access level",
+        variant: "destructive"
+      });
+    }
+  };
 
   const handleSend = (e: React.FormEvent) => {
     e.preventDefault();
@@ -2096,6 +2146,20 @@ export function CampaignMenu({ role, inviteCode, inspectedChar, onInspectChar, o
                               View Sheet
                             </Button>
                           )}
+                          {role === 'gm' && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                setSelectedCharForAccess(char);
+                                setShowAccessDialog(true);
+                              }}
+                              className="bg-purple-900/30 hover:bg-purple-800/50 border-purple-700 text-purple-200 text-xs"
+                              data-testid={`button-manage-access-${char.id}`}
+                            >
+                              Access
+                            </Button>
+                          )}
                         </div>
                       </div>
                     ))
@@ -2133,6 +2197,14 @@ export function CampaignMenu({ role, inviteCode, inspectedChar, onInspectChar, o
                 </Button>
                 <Button variant="secondary" className="bg-stone-800 hover:bg-stone-700" onClick={onChangeMap}>
                   <MapIcon className="mr-2 h-4 w-4" /> Change Map
+                </Button>
+                <Button 
+                  variant="secondary" 
+                  className="bg-amber-800 hover:bg-amber-700 col-span-2" 
+                  onClick={() => setShowLevelUpDialog(true)}
+                  data-testid="button-level-up-all"
+                >
+                  <TrendingUp className="mr-2 h-4 w-4" /> Level Up All
                 </Button>
               </div>
             </div>
@@ -2225,6 +2297,100 @@ export function CampaignMenu({ role, inviteCode, inspectedChar, onInspectChar, o
             >
               Cancel
             </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Level Up All Dialog */}
+      <Dialog open={showLevelUpDialog} onOpenChange={setShowLevelUpDialog}>
+        <DialogContent className="bg-stone-900 border-stone-700">
+          <DialogHeader>
+            <DialogTitle className="text-amber-500">Level Up All Characters</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="flex gap-2">
+              <Button 
+                variant={levelUpMode === 'add' ? 'default' : 'outline'}
+                onClick={() => setLevelUpMode('add')}
+                className="flex-1"
+                data-testid="button-level-mode-add"
+              >
+                Add +1 Level
+              </Button>
+              <Button 
+                variant={levelUpMode === 'set' ? 'default' : 'outline'}
+                onClick={() => setLevelUpMode('set')}
+                className="flex-1"
+                data-testid="button-level-mode-set"
+              >
+                Set Level
+              </Button>
+            </div>
+            {levelUpMode === 'set' && (
+              <Select value={targetLevel.toString()} onValueChange={(v) => setTargetLevel(parseInt(v))}>
+                <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-target-level">
+                  <SelectValue placeholder="Select level" />
+                </SelectTrigger>
+                <SelectContent>
+                  {Array.from({ length: 20 }, (_, i) => i + 1).map(level => (
+                    <SelectItem key={level} value={level.toString()}>Level {level}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowLevelUpDialog(false)} data-testid="button-cancel-level-up">Cancel</Button>
+            <Button onClick={() => {
+              onLevelUpAll?.(levelUpMode, levelUpMode === 'set' ? targetLevel : undefined);
+              setShowLevelUpDialog(false);
+            }} data-testid="button-apply-level-up">
+              Apply
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Access Management Dialog */}
+      <Dialog open={showAccessDialog} onOpenChange={setShowAccessDialog}>
+        <DialogContent className="bg-stone-900 border-stone-700">
+          <DialogHeader>
+            <DialogTitle className="text-amber-500">
+              Manage Access: {selectedCharForAccess?.name}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 mt-4">
+            {loadingAccess ? (
+              <div className="text-center py-4 text-stone-400">Loading...</div>
+            ) : members?.filter((m: any) => m.role !== 'gm').length === 0 ? (
+              <div className="text-center py-4 text-stone-400">No players in this campaign</div>
+            ) : (
+              members?.filter((m: any) => m.role !== 'gm').map((member: any) => {
+                const isOwner = member.userId === selectedCharForAccess?.userId;
+                return (
+                  <div key={member.id} className="flex items-center justify-between p-2 bg-stone-800 rounded" data-testid={`access-row-${member.userId}`}>
+                    <div className="flex items-center gap-2">
+                      <span className="text-stone-200">{member.username}</span>
+                      {isOwner && <Badge className="bg-amber-600 text-xs">Owner</Badge>}
+                    </div>
+                    <Select
+                      value={isOwner ? "edit" : (accessLevels[member.userId] || "none")}
+                      onValueChange={(val) => handleSetAccess(member.userId, val)}
+                      disabled={isOwner}
+                    >
+                      <SelectTrigger className="w-24 bg-stone-700 border-stone-600" data-testid={`select-access-${member.userId}`}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">None</SelectItem>
+                        <SelectItem value="view">View</SelectItem>
+                        <SelectItem value="edit">Edit</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                );
+              })
+            )}
           </div>
         </DialogContent>
       </Dialog>
@@ -3215,6 +3381,9 @@ function InventoryItemRow({ item, depth, expandedContainers, toggleContainer, se
   const [showQuantityDialog, setShowQuantityDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showStackedItems, setShowStackedItems] = useState(false);
+  const [showSingleDeleteConfirm, setShowSingleDeleteConfirm] = useState(false);
+  const [pendingDeleteItemId, setPendingDeleteItemId] = useState<string | null>(null);
+  const [pendingDeleteItemName, setPendingDeleteItemName] = useState<string>("");
   
   const rarityColors: Record<string, string> = {
     common: 'text-stone-400 border-stone-600',
@@ -3415,8 +3584,10 @@ function InventoryItemRow({ item, depth, expandedContainers, toggleContainer, se
                 e.stopPropagation();
                 if (totalQuantity > 1 && onDeleteMultiple) {
                   setShowDeleteDialog(true);
-                } else if (confirm(`Delete "${item.name}"?`)) {
-                  onDeleteItem(item.id);
+                } else {
+                  setPendingDeleteItemId(item.id);
+                  setPendingDeleteItemName(item.name);
+                  setShowSingleDeleteConfirm(true);
                 }
               }}
               className="shrink-0 p-1.5 hover:bg-red-900/50 rounded text-stone-400 hover:text-red-400"
@@ -3446,38 +3617,73 @@ function InventoryItemRow({ item, depth, expandedContainers, toggleContainer, se
 
       {/* Stacked Items Dropdown */}
       {showStackedItems && totalQuantity > 1 && stackedItems.length > 1 && (
-        <div className="mt-2 ml-4 space-y-1 border-l-2 border-amber-700/50 pl-2">
-          <div className="text-xs text-stone-500 mb-1">Individual items in stack:</div>
-          {stackedItems.map((stackedItem: any, index: number) => {
-            const itemDurabilityColor = stackedItem.durability >= 7 ? 'bg-green-500' : stackedItem.durability >= 4 ? 'bg-yellow-500' : 'bg-red-500';
+        <div className="ml-4 mt-2 space-y-1 border-l-2 border-stone-700 pl-3">
+          <div className="text-xs text-stone-500 mb-1 flex items-center gap-2">
+            <span>Individual items in stack</span>
+            <span className="text-stone-600">• Double-click to view details</span>
+          </div>
+          {stackedItems.map((stackedItem: any, idx: number) => {
+            const stackedItemRarityClass = rarityColors[stackedItem.rarity] || 'border-stone-600';
             return (
               <div 
-                key={stackedItem.id} 
-                className="flex items-center gap-2 p-2 bg-stone-800/50 rounded text-sm"
+                key={stackedItem.id}
+                className={`p-2 bg-stone-800 border ${stackedItemRarityClass} rounded cursor-pointer hover:bg-stone-750 transition-colors`}
+                onDoubleClick={() => {
+                  setSelectedItem(stackedItem);
+                  setShowItemDetail(true);
+                }}
+                data-testid={`stacked-item-${stackedItem.id}`}
               >
-                <span className="text-stone-400">#{index + 1}</span>
-                <span className="text-stone-200">{stackedItem.name}</span>
-                <div className="flex items-center gap-1 ml-auto">
-                  <span className="text-xs text-stone-400">Dur:</span>
-                  <div className="w-12 h-1.5 bg-stone-700 rounded overflow-hidden">
-                    <div className={`h-full ${itemDurabilityColor}`} style={{ width: `${(stackedItem.durability / 10) * 100}%` }} />
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    {/* Item image if exists */}
+                    {stackedItem.image && (
+                      <img 
+                        src={stackedItem.image} 
+                        alt={stackedItem.name}
+                        className="h-8 w-8 rounded object-cover border border-stone-600"
+                      />
+                    )}
+                    {!stackedItem.image && (
+                      <div className="h-8 w-8 bg-black/50 rounded flex items-center justify-center border border-stone-700">
+                        <span className="text-sm font-bold text-stone-500">{stackedItem.name?.[0] || '?'}</span>
+                      </div>
+                    )}
+                    <div>
+                      <span className="text-sm text-stone-200">{stackedItem.name}</span>
+                      <div className="flex items-center gap-2 text-xs text-stone-400">
+                        <span>{stackedItem.itemWeight}lbs</span>
+                        <span>Qty: {stackedItem.quantity || 1}</span>
+                        <Badge variant="outline" className={`text-[10px] px-1 py-0 ${stackedItemRarityClass}`}>{stackedItem.rarity}</Badge>
+                      </div>
+                    </div>
                   </div>
-                  <span className="text-[10px] text-stone-400">{stackedItem.durability}/10</span>
+                  {/* Durability bar and delete button */}
+                  <div className="flex items-center gap-2">
+                    <div className="w-16 h-2 bg-stone-900 rounded overflow-hidden">
+                      <div 
+                        className={`h-full ${stackedItem.durability >= 7 ? 'bg-green-500' : stackedItem.durability >= 4 ? 'bg-yellow-500' : 'bg-red-500'}`}
+                        style={{ width: `${(stackedItem.durability / 10) * 100}%` }}
+                      />
+                    </div>
+                    <span className="text-xs text-stone-400">{stackedItem.durability}/10</span>
+                    {canEdit && onDeleteItem && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setPendingDeleteItemId(stackedItem.id);
+                          setPendingDeleteItemName(stackedItem.name || "this item");
+                          setShowSingleDeleteConfirm(true);
+                        }}
+                        className="p-1 hover:bg-red-900/50 rounded text-stone-500 hover:text-red-400"
+                        title="Delete this item"
+                        data-testid={`button-delete-stacked-item-${stackedItem.id}`}
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </button>
+                    )}
+                  </div>
                 </div>
-                {canEdit && onDeleteItem && (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (confirm(`Delete this individual item?`)) {
-                        onDeleteItem(stackedItem.id);
-                      }
-                    }}
-                    className="p-1 hover:bg-red-900/50 rounded text-stone-500 hover:text-red-400"
-                    title="Delete this item"
-                  >
-                    <Trash2 className="h-3 w-3" />
-                  </button>
-                )}
               </div>
             );
           })}
@@ -3543,6 +3749,36 @@ function InventoryItemRow({ item, depth, expandedContainers, toggleContainer, se
           setShowDeleteDialog(false);
         }}
       />
+
+      {/* Single Item Delete Confirmation Dialog */}
+      <AlertDialog open={showSingleDeleteConfirm} onOpenChange={setShowSingleDeleteConfirm}>
+        <AlertDialogContent className="bg-stone-900 border-stone-700">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-stone-200">Delete Item</AlertDialogTitle>
+            <AlertDialogDescription className="text-stone-400">
+              Are you sure you want to delete "{pendingDeleteItemName}"? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="bg-stone-800 hover:bg-stone-700 text-stone-200 border-stone-600">
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction 
+              className="bg-red-600 hover:bg-red-700 text-white"
+              onClick={() => {
+                if (pendingDeleteItemId && onDeleteItem) {
+                  onDeleteItem(pendingDeleteItemId);
+                }
+                setPendingDeleteItemId(null);
+                setPendingDeleteItemName("");
+              }}
+              data-testid="button-confirm-delete-item"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
@@ -3711,6 +3947,7 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
   const [showSpellDetail, setShowSpellDetail] = useState(false);
   const [isEditingSpell, setIsEditingSpell] = useState(false);
   const [editSpellData, setEditSpellData] = useState<any>(null);
+  const [showSpellDeleteConfirm, setShowSpellDeleteConfirm] = useState(false);
   
   const canEdit = isOwner || isGM;
 
@@ -4447,6 +4684,13 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                     )}
                   </div>
                   {!editingOverview && <Progress value={Math.round((liveCharacter.hp / liveCharacter.maxHp) * 100)} className="h-3" data-testid="progress-hp" />}
+                  
+                  {/* Level Progression Info */}
+                  {!editingOverview && (
+                    <div className="text-xs text-stone-500 mt-2" data-testid="text-level-progression">
+                      Level {liveCharacter.level || 1} provides {(liveCharacter.level || 1) + Math.floor((liveCharacter.level || 1) / 3)}d12 base HP ({liveCharacter.level || 1}d12 + {Math.floor((liveCharacter.level || 1) / 3)}d12 bonus at levels 3,6,9...)
+                    </div>
+                  )}
                 </div>
 
                 {/* Energy Bar */}
@@ -4561,21 +4805,63 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                   </div>
                 )}
                 <p className="text-xs text-stone-500 mb-4">Attributes range from -2 to 5. The modifier equals the value.</p>
+                {(() => {
+                  const level = liveCharacter.level || 1;
+                  const maxPositiveAttrPoints = 6 + Math.floor(level / 3);
+                  const maxNegativeAttrPoints = 4;
+                  
+                  const attrValues = editingAttributes 
+                    ? [
+                        attributesData.might === '' ? 0 : Number(attributesData.might),
+                        attributesData.finesse === '' ? 0 : Number(attributesData.finesse),
+                        attributesData.wit === '' ? 0 : Number(attributesData.wit),
+                        attributesData.presence === '' ? 0 : Number(attributesData.presence),
+                        attributesData.will === '' ? 0 : Number(attributesData.will),
+                        attributesData.craft === '' ? 0 : Number(attributesData.craft)
+                      ]
+                    : [
+                        liveCharacter.might || 0,
+                        liveCharacter.finesse || 0,
+                        liveCharacter.wit || 0,
+                        liveCharacter.presence || 0,
+                        liveCharacter.will || 0,
+                        liveCharacter.craft || 0
+                      ];
+                  
+                  const positiveAttrUsed = attrValues.filter(v => v > 0).reduce((sum, v) => sum + v, 0);
+                  const negativeAttrUsed = Math.abs(attrValues.filter(v => v < 0).reduce((sum, v) => sum + v, 0));
+                  
+                  return (
+                    <div className="mb-4 p-3 bg-stone-900 rounded border border-stone-700" data-testid="validation-attributes">
+                      <div className="flex justify-between items-center text-sm">
+                        <span className="text-stone-400">Positive Points:</span>
+                        <span className={positiveAttrUsed === maxPositiveAttrPoints ? 'text-green-400' : 'text-amber-400'} data-testid="text-positive-attr-points">
+                          {positiveAttrUsed} / {maxPositiveAttrPoints} {positiveAttrUsed !== maxPositiveAttrPoints && (positiveAttrUsed < maxPositiveAttrPoints ? '(need more)' : '(too many)')}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center text-sm mt-1">
+                        <span className="text-stone-400">Negative Points:</span>
+                        <span className={negativeAttrUsed === maxNegativeAttrPoints ? 'text-green-400' : 'text-amber-400'} data-testid="text-negative-attr-points">
+                          {negativeAttrUsed} / {maxNegativeAttrPoints} {negativeAttrUsed !== maxNegativeAttrPoints && (negativeAttrUsed < maxNegativeAttrPoints ? '(need more)' : '(too many)')}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })()}
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
                   {[
-                    { key: 'might', name: 'Might', icon: '💪', description: 'Physical power and endurance' },
-                    { key: 'finesse', name: 'Finesse', icon: '🎯', description: 'Agility and precision' },
-                    { key: 'wit', name: 'Wit', icon: '🧠', description: 'Intelligence and perception' },
-                    { key: 'presence', name: 'Presence', icon: '✨', description: 'Charisma and influence' },
-                    { key: 'will', name: 'Will', icon: '🔮', description: 'Mental fortitude and magic' },
-                    { key: 'craft', name: 'Craft', icon: '🔧', description: 'Technical skill and creativity' },
+                    { key: 'might', name: 'Might', description: 'Physical power and endurance' },
+                    { key: 'finesse', name: 'Finesse', description: 'Agility and precision' },
+                    { key: 'wit', name: 'Wit', description: 'Intelligence and perception' },
+                    { key: 'presence', name: 'Presence', description: 'Charisma and influence' },
+                    { key: 'will', name: 'Will', description: 'Mental fortitude and magic' },
+                    { key: 'craft', name: 'Craft', description: 'Technical skill and creativity' },
                   ].map(attr => {
                     const value = editingAttributes ? attributesData[attr.key as keyof typeof attributesData] : (liveCharacter[attr.key] || 0);
                     return (
                       <Card key={attr.key} className={`bg-stone-900 ${editingAttributes ? 'border-amber-700' : 'border-stone-600'}`}>
                         <CardContent className="p-4 text-center">
                           <div className="flex items-center justify-center gap-1 mb-1">
-                            <span className="text-lg">{attr.icon}</span>
                             <Label className="text-xs text-stone-400">{attr.name}</Label>
                           </div>
                           {editingAttributes ? (
@@ -4680,6 +4966,67 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                   </div>
                 )}
                 <p className="text-xs text-stone-500 mb-4">Skills range from -2 to 5. The modifier equals the value.</p>
+                {(() => {
+                  const level = liveCharacter.level || 1;
+                  const maxPositiveSkillPoints = 12 + ((level - 1) * 2);
+                  const maxNegativeSkillPoints = 6;
+                  
+                  const skillValues = editingSkills 
+                    ? [
+                        skillsData.skillAgility === '' ? 0 : Number(skillsData.skillAgility),
+                        skillsData.skillArcana === '' ? 0 : Number(skillsData.skillArcana),
+                        skillsData.skillCharisma === '' ? 0 : Number(skillsData.skillCharisma),
+                        skillsData.skillConcentration === '' ? 0 : Number(skillsData.skillConcentration),
+                        skillsData.skillCulture === '' ? 0 : Number(skillsData.skillCulture),
+                        skillsData.skillDeception === '' ? 0 : Number(skillsData.skillDeception),
+                        skillsData.skillHistory === '' ? 0 : Number(skillsData.skillHistory),
+                        skillsData.skillIntimidation === '' ? 0 : Number(skillsData.skillIntimidation),
+                        skillsData.skillInvestigation === '' ? 0 : Number(skillsData.skillInvestigation),
+                        skillsData.skillMedicine === '' ? 0 : Number(skillsData.skillMedicine),
+                        skillsData.skillPerception === '' ? 0 : Number(skillsData.skillPerception),
+                        skillsData.skillSleightOfHand === '' ? 0 : Number(skillsData.skillSleightOfHand),
+                        skillsData.skillStealth === '' ? 0 : Number(skillsData.skillStealth),
+                        skillsData.skillStrength === '' ? 0 : Number(skillsData.skillStrength),
+                        skillsData.skillWisdom === '' ? 0 : Number(skillsData.skillWisdom)
+                      ]
+                    : [
+                        liveCharacter.skillAgility || 0,
+                        liveCharacter.skillArcana || 0,
+                        liveCharacter.skillCharisma || 0,
+                        liveCharacter.skillConcentration || 0,
+                        liveCharacter.skillCulture || 0,
+                        liveCharacter.skillDeception || 0,
+                        liveCharacter.skillHistory || 0,
+                        liveCharacter.skillIntimidation || 0,
+                        liveCharacter.skillInvestigation || 0,
+                        liveCharacter.skillMedicine || 0,
+                        liveCharacter.skillPerception || 0,
+                        liveCharacter.skillSleightOfHand || 0,
+                        liveCharacter.skillStealth || 0,
+                        liveCharacter.skillStrength || 0,
+                        liveCharacter.skillWisdom || 0
+                      ];
+                  
+                  const positiveSkillUsed = skillValues.filter(v => v > 0).reduce((sum, v) => sum + v, 0);
+                  const negativeSkillUsed = Math.abs(skillValues.filter(v => v < 0).reduce((sum, v) => sum + v, 0));
+                  
+                  return (
+                    <div className="mb-4 p-3 bg-stone-900 rounded border border-stone-700" data-testid="validation-skills">
+                      <div className="flex justify-between items-center text-sm">
+                        <span className="text-stone-400">Positive Points:</span>
+                        <span className={positiveSkillUsed === maxPositiveSkillPoints ? 'text-green-400' : 'text-amber-400'} data-testid="text-positive-skill-points">
+                          {positiveSkillUsed} / {maxPositiveSkillPoints} {positiveSkillUsed !== maxPositiveSkillPoints && (positiveSkillUsed < maxPositiveSkillPoints ? '(need more)' : '(too many)')}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center text-sm mt-1">
+                        <span className="text-stone-400">Negative Points:</span>
+                        <span className={negativeSkillUsed === maxNegativeSkillPoints ? 'text-green-400' : 'text-amber-400'} data-testid="text-negative-skill-points">
+                          {negativeSkillUsed} / {maxNegativeSkillPoints} {negativeSkillUsed !== maxNegativeSkillPoints && (negativeSkillUsed < maxNegativeSkillPoints ? '(need more)' : '(too many)')}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })()}
                 {/* All Skills - Alphabetical Order */}
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                   {[
@@ -5543,11 +5890,7 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                               variant="outline"
                               size="sm"
                               className="text-red-400 hover:text-red-300"
-                              onClick={() => {
-                                if (confirm(`Delete ${selectedSpell.name}?`)) {
-                                  deleteSpellMutation.mutate(selectedSpell.id);
-                                }
-                              }}
+                              onClick={() => setShowSpellDeleteConfirm(true)}
                               data-testid="button-delete-spell"
                             >
                               <Trash2 className="h-4 w-4 mr-1" />
@@ -5569,6 +5912,34 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                 )}
               </DialogContent>
             </Dialog>
+
+            {/* Spell Delete Confirmation Dialog */}
+            <AlertDialog open={showSpellDeleteConfirm} onOpenChange={setShowSpellDeleteConfirm}>
+              <AlertDialogContent className="bg-stone-900 border-stone-700">
+                <AlertDialogHeader>
+                  <AlertDialogTitle className="text-stone-200">Delete Spell</AlertDialogTitle>
+                  <AlertDialogDescription className="text-stone-400">
+                    Are you sure you want to delete "{selectedSpell?.name}"? This action cannot be undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel className="bg-stone-800 hover:bg-stone-700 text-stone-200 border-stone-600">
+                    Cancel
+                  </AlertDialogCancel>
+                  <AlertDialogAction 
+                    className="bg-red-600 hover:bg-red-700 text-white"
+                    onClick={() => {
+                      if (selectedSpell) {
+                        deleteSpellMutation.mutate(selectedSpell.id);
+                      }
+                    }}
+                    data-testid="button-confirm-delete-spell"
+                  >
+                    Delete
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           </TabsContent>
 
           {/* HOTBARS TAB */}
@@ -6927,17 +7298,17 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="bg-stone-900 border-stone-700 max-w-2xl">
         <DialogHeader>
-          <div className="flex justify-between items-center">
-            <DialogTitle className="text-amber-500">Item Details</DialogTitle>
-            {canEditItem && !isEditing && (
-              <Button size="sm" variant="outline" onClick={handleEditToggle} data-testid="button-edit-item">
-                Edit
-              </Button>
-            )}
-          </div>
+          <DialogTitle className="text-amber-500">Item Details</DialogTitle>
         </DialogHeader>
         <ScrollArea className="max-h-[500px] pr-4">
           <div className="space-y-4">
+            {canEditItem && !isEditing && (
+              <div className="flex justify-end">
+                <Button size="sm" variant="outline" onClick={handleEditToggle} data-testid="button-edit-item">
+                  Edit
+                </Button>
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label className="text-xs text-stone-400">Name</Label>

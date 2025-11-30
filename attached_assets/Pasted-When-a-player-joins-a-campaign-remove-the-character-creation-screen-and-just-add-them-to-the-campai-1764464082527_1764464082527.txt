@@ -1,0 +1,27 @@
+When a player joins a campaign, remove the character creation screen and just add them to the campaign without a character.
+
+Add a button next to "View Sheet" button in the character section in campaign settings that opens up a pop up that showcases a list of all players and whether or not they have access to the sheet, "None" - They cannot see or access the character sheet (they can see tokens for that character on the battlemap if placed but cannot click on them to see their stats or move them around) | "View" - They can see their health on the battlemap (underneath the character token) but they cannot access the character sheet or move the token on the battlemap) | "Ownership" - They can view and control their character sheet and token on the battlemap.
+
+Remove the weird pop up confirmation button when deleting an item from the character sheet and replace it with one that matches the system and ui.
+
+Add a button only the GM can see in campaign settings and if clicked he can set all character sheets to a specific level (or just click add 1) to level everyone up.
+
+Edits for character sheets:
+
+Attributes
+There should be a total of +6 and -4 between all attributes
+
+Skills
+There should be a total of +12 and -6 between all skills
+
+remove all icons in the attributes section ex (💪Might) make (Might)
+
+For every level players should be able to add 1d12 worth of hp to their total hp, and +2 points to their total skills.
+
+At every level multiple of 3 (3,6,9,etc) players should get to add an additional 1d12 worth of hp to their total hp, and +1 points to their total attributes.
+
+In the attributes and skills section, it should show if their points add up to what they should be dependent on level, or if they need to add or subtract more.
+
+I want the individual display to show the items themselves, including the ability to double click and open up their sheets.  I want to see them fully in that section as if they were being displayed as normal items in the sheet just in that dropdown.  
+
+also the close button overlaps with the edit button when I open an item sheet.

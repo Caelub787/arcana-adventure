@@ -10,10 +10,11 @@ import {
   type Hotbar, type InsertHotbar,
   type Item, type InsertItem,
   type Spell, type InsertSpell,
-  users, campaigns, campaignMembers, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, items, spells
+  type CharacterPermission, type InsertCharacterPermission,
+  users, campaigns, campaignMembers, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, items, spells, characterPermissions
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, desc, sql } from "drizzle-orm";
+import { eq, and, desc, sql, inArray } from "drizzle-orm";
 
 export interface IStorage {
   // User operations
@@ -93,6 +94,16 @@ export interface IStorage {
   createSpell(spell: InsertSpell): Promise<Spell>;
   updateSpell(id: string, updates: Partial<InsertSpell>): Promise<Spell | undefined>;
   deleteSpell(id: string): Promise<void>;
+
+  // Character Permission operations
+  getCharacterPermissions(characterId: string): Promise<CharacterPermission[]>;
+  setCharacterPermission(characterId: string, userId: string, accessLevel: string): Promise<CharacterPermission>;
+  getCharacterPermission(characterId: string, userId: string): Promise<CharacterPermission | undefined>;
+  getUserPermissionsForCharacters(userId: string, characterIds: string[]): Promise<CharacterPermission[]>;
+  getCharacterPermissionsForUsers(characterId: string, userIds: string[]): Promise<CharacterPermission[]>;
+
+  // Campaign Membership Check
+  isCampaignMember(campaignId: string, userId: string): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -556,6 +567,74 @@ export class DatabaseStorage implements IStorage {
 
   async deleteSpell(id: string): Promise<void> {
     await db.delete(spells).where(eq(spells.id, id));
+  }
+
+  // Character Permission operations
+  async getCharacterPermissions(characterId: string): Promise<CharacterPermission[]> {
+    return await db.select().from(characterPermissions).where(eq(characterPermissions.characterId, characterId));
+  }
+
+  async setCharacterPermission(characterId: string, userId: string, accessLevel: string): Promise<CharacterPermission> {
+    const existing = await db.select().from(characterPermissions)
+      .where(and(
+        eq(characterPermissions.characterId, characterId),
+        eq(characterPermissions.userId, userId)
+      ))
+      .limit(1);
+    
+    if (existing.length > 0) {
+      const [result] = await db.update(characterPermissions)
+        .set({ accessLevel })
+        .where(eq(characterPermissions.id, existing[0].id))
+        .returning();
+      return result;
+    } else {
+      const [result] = await db.insert(characterPermissions)
+        .values({ characterId, userId, accessLevel })
+        .returning();
+      return result;
+    }
+  }
+
+  async getCharacterPermission(characterId: string, userId: string): Promise<CharacterPermission | undefined> {
+    const [result] = await db.select().from(characterPermissions)
+      .where(and(
+        eq(characterPermissions.characterId, characterId),
+        eq(characterPermissions.userId, userId)
+      ))
+      .limit(1);
+    return result;
+  }
+
+  async getUserPermissionsForCharacters(userId: string, characterIds: string[]): Promise<CharacterPermission[]> {
+    if (characterIds.length === 0) return [];
+    return db.select()
+      .from(characterPermissions)
+      .where(and(
+        eq(characterPermissions.userId, userId),
+        inArray(characterPermissions.characterId, characterIds)
+      ));
+  }
+
+  async getCharacterPermissionsForUsers(characterId: string, userIds: string[]): Promise<CharacterPermission[]> {
+    if (userIds.length === 0) return [];
+    return db.select()
+      .from(characterPermissions)
+      .where(and(
+        eq(characterPermissions.characterId, characterId),
+        inArray(characterPermissions.userId, userIds)
+      ));
+  }
+
+  async isCampaignMember(campaignId: string, userId: string): Promise<boolean> {
+    const [member] = await db.select()
+      .from(campaignMembers)
+      .where(and(
+        eq(campaignMembers.campaignId, campaignId),
+        eq(campaignMembers.userId, userId)
+      ))
+      .limit(1);
+    return !!member;
   }
 }
 

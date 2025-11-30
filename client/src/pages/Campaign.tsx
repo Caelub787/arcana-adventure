@@ -412,9 +412,10 @@ export default function Campaign() {
   // Update character mutation
   const updateCharacterMutation = useMutation({
     mutationFn: ({ id, data }: { id: string; data: any }) => api.updateCharacter(id, data),
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${effectiveCampaignId}/characters`] });
       toast({ title: "Success", description: "Character updated successfully" });
+      gameWs.sendCharacterUpdate(variables.id);
     },
     onError: (error: any) => {
       toast({ title: "Error", description: error.message || "Failed to update character", variant: "destructive" });
@@ -483,6 +484,12 @@ export default function Campaign() {
             t.id === data.tokenId ? { ...t, x: data.x, y: data.y } : t
           ));
         }
+        if (data.type === 'character_changed') {
+          queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${effectiveCampaignId}/characters`] });
+          if (data.characterId) {
+            queryClient.invalidateQueries({ queryKey: [`/api/characters/${data.characterId}`] });
+          }
+        }
       });
 
       return () => {
@@ -545,6 +552,39 @@ export default function Campaign() {
   const handleUpdateScene = (settings: Partial<Scene>) => {
     if (activeScene) {
       updateSceneMutation.mutate(settings);
+    }
+  };
+
+  const handleLevelUpAll = async (mode: 'set' | 'add', targetLevel?: number) => {
+    if (!effectiveCampaignId) {
+      toast({ title: "Error", description: "No campaign ID", variant: "destructive" });
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/campaigns/${effectiveCampaignId}/level-up-all`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ mode, targetLevel })
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to level up characters');
+      }
+
+      const result = await response.json();
+      queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${effectiveCampaignId}/characters`] });
+      
+      toast({ 
+        title: "Success", 
+        description: mode === 'set' 
+          ? `All characters set to level ${targetLevel}` 
+          : `${result.updates?.length || 0} characters leveled up by 1` 
+      });
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message || "Failed to level up characters", variant: "destructive" });
     }
   };
 
@@ -705,6 +745,7 @@ export default function Campaign() {
             members={members as any[]}
             onAddCharacter={handleAddCharacter}
             onViewCharacter={handleViewCharacter}
+            onLevelUpAll={handleLevelUpAll}
           />
           
           {/* Scenes Button (GM Only) - Icon only, directly under Settings */}
@@ -750,9 +791,11 @@ export default function Campaign() {
         </div>
       </div>
 
-      {/* Character Creation Modal */}
+      {/* Show message when player has no character assigned */}
       {!character && role === 'player' && (
-        <CharacterCreation onComplete={handleCharacterCreated} />
+        <div className="fixed bottom-4 left-4 z-40 bg-stone-900/90 border border-stone-700 rounded-lg p-3 text-stone-300 text-sm">
+          No character assigned
+        </div>
       )}
 
       {/* Scenes Management Sheet (GM Only) */}

@@ -166,6 +166,13 @@ export interface Spell {
   isEquipped: boolean;
 }
 
+export interface CharacterPermission {
+  id: string;
+  characterId: string;
+  userId: string;
+  accessLevel: string;
+}
+
 class ApiClient {
   private baseUrl = '/api';
 
@@ -445,6 +452,18 @@ class ApiClient {
   async deleteCampaignTemplateItem(campaignId: string, id: string): Promise<void> {
     return this.request(`/campaigns/${campaignId}/template-items/${id}`, { method: 'DELETE' });
   }
+
+  // Character Permissions
+  async getCharacterPermissions(characterId: string): Promise<CharacterPermission[]> {
+    return this.request(`/characters/${characterId}/permissions`);
+  }
+
+  async setCharacterPermission(characterId: string, userId: string, accessLevel: string): Promise<CharacterPermission> {
+    return this.request(`/characters/${characterId}/permissions/${userId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ accessLevel }),
+    });
+  }
 }
 
 export const api = new ApiClient();
@@ -524,6 +543,14 @@ export class GameWebSocket {
       return;
     }
     this.send({ type: 'chat_message', campaignId: this.campaignId, text, messageType });
+  }
+
+  sendCharacterUpdate(characterId: string) {
+    if (!this.campaignId) {
+      console.error('Cannot send character update: not connected to a campaign');
+      return;
+    }
+    this.send({ type: 'character_update', campaignId: this.campaignId, characterId });
   }
 }
 

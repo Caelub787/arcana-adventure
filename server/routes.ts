@@ -48,6 +48,82 @@ export async function registerRoutes(app: Express): Promise<Server> {
     return true;
   }
 
+  /**
+   * broadcastToAuthorizedUsers - Permission-filtered WebSocket broadcast for character updates
+   * 
+   * This function broadcasts character-related updates only to users who have permission
+   * to view the character. It uses batch permission lookups to avoid N+1 queries.
+   * 
+   * Access is granted if:
+   * - User is the character owner
+   * - User is the campaign GM
+   * - User has explicit 'view' or 'edit' permission
+   */
+  async function broadcastToAuthorizedUsers(
+    campaignId: string,
+    characterId: string,
+    message: any
+  ): Promise<void> {
+    const room = campaignRooms.get(campaignId);
+    if (!room || room.size === 0) return;
+
+    // Get character and campaign data once
+    const character = await storage.getCharacter(characterId);
+    if (!character) return;
+
+    const campaign = await storage.getCampaign(campaignId);
+    if (!campaign) return;
+
+    // Gather all userIds from connected clients in this campaign room
+    const connectedClients = Array.from(room).filter(
+      (client) => client.readyState === 1 // OPEN
+    );
+
+    const userIds: string[] = [];
+    const userClientMap = new Map<string, any[]>(); // userId -> [clients]
+
+    for (const client of connectedClients) {
+      const userId = (client as any).userId;
+      if (userId) {
+        if (!userClientMap.has(userId)) {
+          userClientMap.set(userId, []);
+          userIds.push(userId);
+        }
+        userClientMap.get(userId)!.push(client);
+      }
+    }
+
+    if (userIds.length === 0) return;
+
+    // Batch query: get all permissions for this character for all connected users
+    const permissions = await storage.getCharacterPermissionsForUsers(characterId, userIds);
+    const permissionMap = new Map(permissions.map(p => [p.userId, p.accessLevel]));
+
+    // Prepare the message string once
+    const messageString = JSON.stringify(message);
+
+    // Send to authorized users only
+    for (const userId of userIds) {
+      const isOwner = character.userId === userId;
+      const isGM = campaign.gmUserId === userId;
+      
+      // Owner and GM always have access
+      if (isOwner || isGM) {
+        const clients = userClientMap.get(userId);
+        clients?.forEach(client => client.send(messageString));
+        continue;
+      }
+
+      // Check explicit permission
+      const accessLevel = permissionMap.get(userId);
+      if (accessLevel === 'view' || accessLevel === 'edit') {
+        const clients = userClientMap.get(userId);
+        clients?.forEach(client => client.send(messageString));
+      }
+      // Else: Don't send - user has no permission (accessLevel is 'none' or undefined)
+    }
+  }
+
   wss.on("connection", async (ws, req) => {
     // Validate Origin header to prevent CSRF attacks
     const origin = req.headers.origin;
@@ -307,6 +383,78 @@ export async function registerRoutes(app: Express): Promise<Server> {
             });
           }
         }
+
+        // Character update handler - broadcasts only to authorized users
+        if (message.type === "character_update") {
+          const { campaignId, characterId, updates } = message;
+          
+          // Verify user has joined this campaign
+          const userCampaign = (ws as any).campaigns.get(campaignId);
+          if (!userCampaign) {
+            ws.send(JSON.stringify({
+              type: "error",
+              message: "Not authorized - You have not joined this campaign"
+            }));
+            return;
+          }
+          
+          // Validate required fields
+          if (!characterId) {
+            ws.send(JSON.stringify({
+              type: "error",
+              message: "characterId is required"
+            }));
+            return;
+          }
+          
+          // Verify the sender has permission to edit this character
+          const character = await storage.getCharacter(characterId);
+          if (!character) {
+            ws.send(JSON.stringify({
+              type: "error",
+              message: "Character not found"
+            }));
+            return;
+          }
+          
+          // Check if character belongs to this campaign
+          if (character.campaignId !== campaignId) {
+            ws.send(JSON.stringify({
+              type: "error",
+              message: "Character does not belong to this campaign"
+            }));
+            return;
+          }
+          
+          const userRole = userCampaign.role;
+          const isOwner = character.userId === authenticatedUserId;
+          const isGM = userRole === "gm";
+          
+          // Only owner or GM can broadcast character updates
+          // Other users with edit permission can edit via REST but not broadcast
+          if (!isOwner && !isGM) {
+            // Check if user has edit permission
+            const permission = await storage.getCharacterPermission(characterId, authenticatedUserId);
+            if (!permission || permission.accessLevel !== 'edit') {
+              ws.send(JSON.stringify({
+                type: "error",
+                message: "Not authorized to update this character"
+              }));
+              return;
+            }
+          }
+          
+          // Broadcast to authorized users only (permission-filtered)
+          // This uses the simpler approach: send a notification that triggers client refetch
+          // The client will then fetch via REST which enforces permissions
+          await broadcastToAuthorizedUsers(campaignId, characterId, {
+            type: "character_changed",
+            characterId,
+            updatedBy: authenticatedUserId
+          });
+          
+          console.log(`[WebSocket] Character ${characterId} update broadcast by ${username}`);
+        }
       } catch (err) {
         console.error("WebSocket error:", err);
         ws.send(JSON.stringify({
@@ -440,6 +588,71 @@ export async function registerRoutes(app: Express): Promise<Server> {
           `Forbidden: Only GMs can edit spell properties: ${restrictedFields.join(', ')}`
         );
       }
+    }
+  }
+
+  /**
+   * checkCharacterAccess - Helper function to check character permissions
+   * 
+   * Returns whether the user has access to a character based on:
+   * - Character ownership
+   * - GM status in the campaign
+   * - Campaign membership verification
+   * - Explicit permissions granted by the GM
+   */
+  async function checkCharacterAccess(
+    characterId: string,
+    userId: string,
+    requiredLevel: 'view' | 'edit'
+  ): Promise<{ allowed: boolean; isOwner: boolean; isGM: boolean; character?: any; campaign?: any; permission?: any }> {
+    const character = await storage.getCharacter(characterId);
+    if (!character) {
+      return { allowed: false, isOwner: false, isGM: false };
+    }
+    
+    const campaign = await storage.getCampaign(character.campaignId);
+    if (!campaign) {
+      return { allowed: false, isOwner: false, isGM: false };
+    }
+    
+    const isOwner = character.userId === userId;
+    const isGM = campaign.gmUserId === userId;
+    
+    // Verify user is still a member of the campaign (skip for GM)
+    if (!isGM) {
+      const isMember = await storage.isCampaignMember(campaign.id, userId);
+      if (!isMember) {
+        return { allowed: false, isOwner: false, isGM: false, character, campaign };
+      }
+    }
+    
+    if (isOwner || isGM) {
+      return { allowed: true, isOwner, isGM, character, campaign };
+    }
+    
+    const permission = await storage.getCharacterPermission(characterId, userId);
+    if (!permission) {
+      return { allowed: false, isOwner, isGM, character, campaign };
+    }
+    
+    if (requiredLevel === 'view') {
+      return { 
+        allowed: permission.accessLevel === 'view' || permission.accessLevel === 'edit', 
+        isOwner, 
+        isGM, 
+        character, 
+        campaign,
+        permission
+      };
+    } else {
+      return { 
+        allowed: permission.accessLevel === 'edit', 
+        isOwner, 
+        isGM, 
+        character, 
+        campaign,
+        permission
+      };
     }
   }
 
@@ -765,40 +978,120 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/campaigns/:campaignId/characters", requireAuth, async (req, res) => {
+  app.get("/api/campaigns/:campaignId/characters", async (req, res) => {
     try {
-      const characters = await storage.getCampaignCharacters(req.params.campaignId);
-      res.json(characters);
+      if (!req.session.userId) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+      
+      const campaign = await storage.getCampaign(req.params.campaignId);
+      if (!campaign) {
+        return res.status(404).json({ error: "Campaign not found" });
+      }
+      
+      const isGM = campaign.gmUserId === req.session.userId;
+      const allCharacters = await storage.getCampaignCharacters(req.params.campaignId);
+      
+      // If GM, return all characters
+      if (isGM) {
+        return res.json(allCharacters);
+      }
+      
+      // Get all permissions for this user in this campaign in one query
+      const userId = req.session.userId;
+      const characterIds = allCharacters.map(c => c.id);
+      
+      // Batch query: get all permissions for these characters for this user
+      const allPermissions = await storage.getUserPermissionsForCharacters(userId, characterIds);
+      const permissionMap = new Map(allPermissions.map(p => [p.characterId, p.accessLevel]));
+      
+      // Filter characters based on ownership or permissions
+      const filteredCharacters = allCharacters.filter(char => {
+        // Character owner always has access
+        if (char.userId === userId) {
+          return true;
+        }
+        
+        // Check permission from map
+        const accessLevel = permissionMap.get(char.id);
+        return accessLevel === 'view' || accessLevel === 'edit';
+      });
+      
+      res.json(filteredCharacters);
+    } catch (e) {
+      res.status(500).json({ error: "Failed to get characters" });
+    }
+  });
+
+  app.get("/api/characters/:id", requireAuth, async (req, res) => {
+    try {
+      const access = await checkCharacterAccess(req.params.id, req.session.userId!, 'view');
+      
+      if (!access.character) {
+        return res.status(404).json({ error: "Character not found" });
+      }
+      
+      if (!access.allowed) {
+        return res.status(403).json({ error: "You don't have permission to view this character" });
+      }
+      
+      res.json(access.character);
     } catch (err) {
-      res.status(500).json({ error: "Failed to fetch characters" });
+      res.status(500).json({ error: "Failed to get character" });
     }
   });
 
   app.patch("/api/characters/:id", requireAuth, async (req, res) => {
     try {
-      const character = await storage.getCharacter(req.params.id);
-      if (!character) {
+      const access = await checkCharacterAccess(req.params.id, req.session.userId!, 'edit');
+      
+      if (!access.character) {
         return res.status(404).json({ error: "Character not found" });
       }
-
-      const campaign = await storage.getCampaign(character.campaignId);
-      if (!campaign) {
+      
+      if (!access.campaign) {
         return res.status(404).json({ error: "Campaign not found" });
       }
-
-      const isOwner = character.userId === req.session.userId;
-      const isGM = campaign.gmUserId === req.session.userId;
-
-      // Must be either owner or GM
-      if (!isOwner && !isGM) {
-        return res.status(403).json({ error: "Unauthorized: You must own this character or be the GM" });
+      
+      if (!access.allowed) {
+        return res.status(403).json({ error: "You don't have permission to edit this character" });
       }
 
       // Validate update based on GM status
       try {
-        validateCharacterUpdate(req.body, isGM);
+        validateCharacterUpdate(req.body, access.isGM);
       } catch (validationErr: any) {
         return res.status(403).json({ error: validationErr.message });
+      }
+
+      // Validate attribute and skill point totals based on level
+      const character = access.character;
+      const updates = req.body;
+      const level = updates.level ?? character.level ?? 1;
+      const maxPositiveAttrPoints = 6 + Math.floor(level / 3);
+      const maxNegativeAttrPoints = 4;
+      const maxPositiveSkillPoints = 12 + ((level - 1) * 2);
+      const maxNegativeSkillPoints = 6;
+
+      const attrs = ['might', 'finesse', 'wit', 'presence', 'will', 'craft'];
+      const attrValues = attrs.map(a => updates[a] ?? character[a] ?? 0);
+      const positiveAttr = attrValues.filter((v: number) => v > 0).reduce((s: number, v: number) => s + v, 0);
+      const negativeAttr = Math.abs(attrValues.filter((v: number) => v < 0).reduce((s: number, v: number) => s + v, 0));
+
+      const skills = ['skillAgility', 'skillArcana', 'skillCharisma', 'skillConcentration', 'skillCulture', 'skillDeception', 'skillHistory', 'skillIntimidation', 'skillInvestigation', 'skillMedicine', 'skillPerception', 'skillSleightOfHand', 'skillStealth', 'skillStrength', 'skillWisdom'];
+      const skillValues = skills.map(s => updates[s] ?? character[s] ?? 0);
+      const positiveSkill = skillValues.filter((v: number) => v > 0).reduce((s: number, v: number) => s + v, 0);
+      const negativeSkill = Math.abs(skillValues.filter((v: number) => v < 0).reduce((s: number, v: number) => s + v, 0));
+
+      if (positiveAttr > maxPositiveAttrPoints || negativeAttr > maxNegativeAttrPoints) {
+        return res.status(400).json({ 
+          error: `Invalid attribute points: +${positiveAttr}/-${negativeAttr} (expected +${maxPositiveAttrPoints}/-${maxNegativeAttrPoints} for level ${level})` 
+        });
+      }
+      if (positiveSkill > maxPositiveSkillPoints || negativeSkill > maxNegativeSkillPoints) {
+        return res.status(400).json({ 
+          error: `Invalid skill points: +${positiveSkill}/-${negativeSkill} (expected +${maxPositiveSkillPoints}/-${maxNegativeSkillPoints} for level ${level})` 
+        });
       }
 
       const updatedCharacter = await storage.updateCharacter(req.params.id, req.body);
@@ -811,19 +1104,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Hotbar routes
   app.get("/api/characters/:characterId/hotbars", requireAuth, async (req, res) => {
     try {
-      const character = await storage.getCharacter(req.params.characterId);
-      if (!character) {
+      const access = await checkCharacterAccess(req.params.characterId, req.session.userId!, 'view');
+      
+      if (!access.character) {
         return res.status(404).json({ error: "Character not found" });
       }
-
-      const campaign = await storage.getCampaign(character.campaignId);
-      if (!campaign) {
-        return res.status(404).json({ error: "Campaign not found" });
-      }
-
-      const isOwnerOrGM = character.userId === req.session.userId || campaign.gmUserId === req.session.userId;
-      if (!isOwnerOrGM) {
-        return res.status(403).json({ error: "Unauthorized" });
+      
+      if (!access.allowed) {
+        return res.status(403).json({ error: "You don't have permission to view this character's hotbars" });
       }
 
       const hotbars = await storage.getHotbarsByCharacter(req.params.characterId);
@@ -835,19 +1123,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/characters/:characterId/hotbars", requireAuth, async (req, res) => {
     try {
-      const character = await storage.getCharacter(req.params.characterId);
-      if (!character) {
+      const access = await checkCharacterAccess(req.params.characterId, req.session.userId!, 'edit');
+      
+      if (!access.character) {
         return res.status(404).json({ error: "Character not found" });
       }
-
-      const campaign = await storage.getCampaign(character.campaignId);
-      if (!campaign) {
-        return res.status(404).json({ error: "Campaign not found" });
-      }
-
-      const isOwnerOrGM = character.userId === req.session.userId || campaign.gmUserId === req.session.userId;
-      if (!isOwnerOrGM) {
-        return res.status(403).json({ error: "Unauthorized" });
+      
+      if (!access.allowed) {
+        return res.status(403).json({ error: "You don't have permission to edit this character's hotbars" });
       }
 
       const hotbarData = insertHotbarSchema.parse({
@@ -874,19 +1157,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Spell routes
   app.get("/api/characters/:characterId/spells", requireAuth, async (req, res) => {
     try {
-      const character = await storage.getCharacter(req.params.characterId);
-      if (!character) {
+      const access = await checkCharacterAccess(req.params.characterId, req.session.userId!, 'view');
+      
+      if (!access.character) {
         return res.status(404).json({ error: "Character not found" });
       }
-
-      const campaign = await storage.getCampaign(character.campaignId);
-      if (!campaign) {
-        return res.status(404).json({ error: "Campaign not found" });
-      }
-
-      const isOwnerOrGM = character.userId === req.session.userId || campaign.gmUserId === req.session.userId;
-      if (!isOwnerOrGM) {
-        return res.status(403).json({ error: "Unauthorized" });
+      
+      if (!access.allowed) {
+        return res.status(403).json({ error: "You don't have permission to view this character's spells" });
       }
 
       const spells = await storage.getSpellsByCharacter(req.params.characterId);
@@ -898,19 +1176,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/characters/:characterId/spells", requireAuth, async (req, res) => {
     try {
-      const character = await storage.getCharacter(req.params.characterId);
-      if (!character) {
+      const access = await checkCharacterAccess(req.params.characterId, req.session.userId!, 'edit');
+      
+      if (!access.character) {
         return res.status(404).json({ error: "Character not found" });
       }
-
-      const campaign = await storage.getCampaign(character.campaignId);
-      if (!campaign) {
-        return res.status(404).json({ error: "Campaign not found" });
-      }
-
-      const isOwnerOrGM = character.userId === req.session.userId || campaign.gmUserId === req.session.userId;
-      if (!isOwnerOrGM) {
-        return res.status(403).json({ error: "Unauthorized" });
+      
+      if (!access.allowed) {
+        return res.status(403).json({ error: "You don't have permission to add spells to this character" });
       }
 
       const spellData = insertSpellSchema.parse({
@@ -933,27 +1206,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Spell not found" });
       }
 
-      const character = await storage.getCharacter(currentSpell.characterId);
-      if (!character) {
+      const access = await checkCharacterAccess(currentSpell.characterId, req.session.userId!, 'edit');
+      
+      if (!access.character) {
         return res.status(404).json({ error: "Character not found" });
       }
-
-      const campaign = await storage.getCampaign(character.campaignId);
-      if (!campaign) {
-        return res.status(404).json({ error: "Campaign not found" });
-      }
-
-      const isOwner = character.userId === req.session.userId;
-      const isGM = campaign.gmUserId === req.session.userId;
-
-      // Must be either owner or GM
-      if (!isOwner && !isGM) {
-        return res.status(403).json({ error: "Unauthorized: You must own this character or be the GM" });
+      
+      if (!access.allowed) {
+        return res.status(403).json({ error: "You don't have permission to edit this character's spells" });
       }
 
       // Validate update based on GM status
       try {
-        validateSpellUpdate(req.body, isGM);
+        validateSpellUpdate(req.body, access.isGM);
       } catch (validationErr: any) {
         return res.status(403).json({ error: validationErr.message });
       }
@@ -967,6 +1232,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.delete("/api/spells/:id", requireAuth, async (req, res) => {
     try {
+      // First fetch the spell to get its character
+      const currentSpell = await storage.updateSpell(req.params.id, {});
+      if (!currentSpell) {
+        return res.status(404).json({ error: "Spell not found" });
+      }
+
+      const access = await checkCharacterAccess(currentSpell.characterId, req.session.userId!, 'edit');
+      
+      if (!access.character) {
+        return res.status(404).json({ error: "Character not found" });
+      }
+      
+      if (!access.allowed) {
+        return res.status(403).json({ error: "You don't have permission to delete this character's spells" });
+      }
+
       await storage.deleteSpell(req.params.id);
       res.json({ success: true });
     } catch (err) {
@@ -1034,6 +1315,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(members);
     } catch (err) {
       res.status(500).json({ error: "Failed to fetch members" });
+    }
+  });
+
+  // GM level-up all characters route
+  app.post("/api/campaigns/:campaignId/level-up-all", async (req, res) => {
+    try {
+      if (!req.session.userId) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+      
+      const campaign = await storage.getCampaign(req.params.campaignId);
+      if (!campaign) {
+        return res.status(404).json({ error: "Campaign not found" });
+      }
+      
+      if (campaign.gmUserId !== req.session.userId) {
+        return res.status(403).json({ error: "Only GM can level up all characters" });
+      }
+      
+      const { mode, targetLevel } = req.body;
+      const characters = await storage.getCampaignCharacters(req.params.campaignId);
+      
+      const updates = [];
+      for (const char of characters) {
+        let newLevel = char.level;
+        if (mode === 'set' && targetLevel) {
+          newLevel = Math.min(20, Math.max(1, targetLevel));
+        } else if (mode === 'add') {
+          newLevel = Math.min(20, (char.level || 1) + 1);
+        }
+        
+        if (newLevel !== char.level) {
+          await storage.updateCharacter(char.id, { level: newLevel });
+          updates.push({ id: char.id, name: char.name, newLevel });
+        }
+      }
+      
+      res.json({ message: "Characters leveled up", updates });
+    } catch (e) {
+      console.error("Level up error:", e);
+      res.status(500).json({ error: "Failed to level up characters" });
     }
   });
 
@@ -1322,19 +1644,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Item routes
   app.get("/api/characters/:characterId/items", requireAuth, async (req, res) => {
     try {
-      const character = await storage.getCharacter(req.params.characterId);
-      if (!character) {
+      const access = await checkCharacterAccess(req.params.characterId, req.session.userId!, 'view');
+      
+      if (!access.character) {
         return res.status(404).json({ error: "Character not found" });
       }
-
-      const campaign = await storage.getCampaign(character.campaignId);
-      if (!campaign) {
-        return res.status(404).json({ error: "Campaign not found" });
-      }
-
-      const isOwnerOrGM = character.userId === req.session.userId || campaign.gmUserId === req.session.userId;
-      if (!isOwnerOrGM) {
-        return res.status(403).json({ error: "Unauthorized" });
+      
+      if (!access.allowed) {
+        return res.status(403).json({ error: "You don't have permission to view this character's items" });
       }
 
       const items = await storage.getItemsByCharacter(req.params.characterId);
@@ -1346,19 +1663,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/characters/:characterId/items", requireAuth, async (req, res) => {
     try {
-      const character = await storage.getCharacter(req.params.characterId);
-      if (!character) {
+      const access = await checkCharacterAccess(req.params.characterId, req.session.userId!, 'edit');
+      
+      if (!access.character) {
         return res.status(404).json({ error: "Character not found" });
       }
-
-      const campaign = await storage.getCampaign(character.campaignId);
-      if (!campaign) {
-        return res.status(404).json({ error: "Campaign not found" });
-      }
-
-      const isOwnerOrGM = character.userId === req.session.userId || campaign.gmUserId === req.session.userId;
-      if (!isOwnerOrGM) {
-        return res.status(403).json({ error: "Unauthorized" });
+      
+      if (!access.allowed) {
+        return res.status(403).json({ error: "You don't have permission to add items to this character" });
       }
 
       const itemData = insertItemSchema.parse({
@@ -1381,27 +1693,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Item not found" });
       }
 
-      const character = await storage.getCharacter(currentItem.characterId);
-      if (!character) {
+      const access = await checkCharacterAccess(currentItem.characterId, req.session.userId!, 'edit');
+      
+      if (!access.character) {
         return res.status(404).json({ error: "Character not found" });
       }
-
-      const campaign = await storage.getCampaign(character.campaignId);
-      if (!campaign) {
-        return res.status(404).json({ error: "Campaign not found" });
-      }
-
-      const isOwner = character.userId === req.session.userId;
-      const isGM = campaign.gmUserId === req.session.userId;
-
-      // Must be either owner or GM
-      if (!isOwner && !isGM) {
-        return res.status(403).json({ error: "Unauthorized: You must own this character or be the GM" });
+      
+      if (!access.allowed) {
+        return res.status(403).json({ error: "You don't have permission to edit this character's items" });
       }
 
       // Validate update based on GM status
       try {
-        validateItemUpdate(req.body, isGM);
+        validateItemUpdate(req.body, access.isGM);
       } catch (validationErr: any) {
         return res.status(403).json({ error: validationErr.message });
       }
@@ -1461,18 +1765,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Item not found" });
       }
 
-      const character = await storage.getCharacter(item.characterId);
-      if (!character) {
+      const access = await checkCharacterAccess(item.characterId, req.session.userId!, 'edit');
+      
+      if (!access.character) {
         return res.status(404).json({ error: "Character not found" });
       }
-
-      const campaign = await storage.getCampaign(character.campaignId);
-      if (!campaign) {
-        return res.status(404).json({ error: "Campaign not found" });
-      }
-
-      if (campaign.gmUserId !== req.session.userId && character.userId !== req.session.userId) {
-        return res.status(403).json({ error: "Not authorized" });
+      
+      if (!access.allowed) {
+        return res.status(403).json({ error: "You don't have permission to damage this character's items" });
       }
 
       res.json(item);
@@ -1489,25 +1789,68 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Item not found" });
       }
       
-      const character = await storage.getCharacter(item.characterId);
-      if (!character) {
+      const access = await checkCharacterAccess(item.characterId, req.session.userId!, 'edit');
+      
+      if (!access.character) {
         return res.status(404).json({ error: "Character not found" });
       }
-
-      const campaign = await storage.getCampaign(character.campaignId);
-      if (!campaign) {
-        return res.status(404).json({ error: "Campaign not found" });
-      }
-
-      const isOwnerOrGM = character.userId === req.session.userId || campaign.gmUserId === req.session.userId;
-      if (!isOwnerOrGM) {
-        return res.status(403).json({ error: "Unauthorized" });
+      
+      if (!access.allowed) {
+        return res.status(403).json({ error: "You don't have permission to delete this character's items" });
       }
 
       await storage.deleteItem(req.params.id);
       res.json({ success: true });
     } catch (err) {
       res.status(400).json({ error: "Failed to delete item" });
+    }
+  });
+
+  // Character Permissions routes
+  app.get("/api/characters/:id/permissions", requireAuth, async (req, res) => {
+    try {
+      const character = await storage.getCharacter(req.params.id);
+      if (!character) {
+        return res.status(404).json({ error: "Character not found" });
+      }
+      
+      const campaign = await storage.getCampaign(character.campaignId);
+      if (!campaign || campaign.gmUserId !== req.session.userId) {
+        return res.status(403).json({ error: "Only GMs can view character permissions" });
+      }
+      
+      const permissions = await storage.getCharacterPermissions(req.params.id);
+      res.json(permissions);
+    } catch (e) {
+      res.status(500).json({ error: "Failed to get permissions" });
+    }
+  });
+
+  app.put("/api/characters/:id/permissions/:userId", requireAuth, async (req, res) => {
+    try {
+      const { accessLevel } = req.body;
+      if (!["none", "view", "edit"].includes(accessLevel)) {
+        return res.status(400).json({ error: "Invalid access level" });
+      }
+      
+      const character = await storage.getCharacter(req.params.id);
+      if (!character) {
+        return res.status(404).json({ error: "Character not found" });
+      }
+      
+      const campaign = await storage.getCampaign(character.campaignId);
+      if (!campaign || campaign.gmUserId !== req.session.userId) {
+        return res.status(403).json({ error: "Only GMs can set character permissions" });
+      }
+      
+      const result = await storage.setCharacterPermission(
+        req.params.id,
+        req.params.userId,
+        accessLevel
+      );
+      res.json(result);
+    } catch (e) {
+      res.status(500).json({ error: "Failed to set permission" });
     }
   });
 

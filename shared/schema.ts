@@ -304,3 +304,23 @@ export const insertHotbarSchema = createInsertSchema(hotbars).omit({
 
 export type InsertHotbar = z.infer<typeof insertHotbarSchema>;
 export type Hotbar = typeof hotbars.$inferSelect;
+
+// Character Permissions table (for managing who can view/edit characters)
+export const characterPermissions = pgTable("character_permissions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  characterId: varchar("character_id").notNull().references(() => characters.id, { onDelete: "cascade" }),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  accessLevel: text("access_level").notNull().default("none"), // "none", "view", "edit"
+}, (table) => ({
+  uniqueCharacterUser: uniqueIndex("character_permissions_char_user_unique").on(
+    table.characterId,
+    table.userId
+  ),
+}));
+
+export const insertCharacterPermissionSchema = createInsertSchema(characterPermissions).omit({
+  id: true,
+});
+
+export type InsertCharacterPermission = z.infer<typeof insertCharacterPermissionSchema>;
+export type CharacterPermission = typeof characterPermissions.$inferSelect;
