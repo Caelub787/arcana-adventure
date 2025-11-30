@@ -241,7 +241,7 @@ export default function Campaign() {
   const [character, setCharacter] = useState<any>(null);
   const [tokens, setTokens] = useState<any[]>([]);
   const [inspectedChar, setInspectedChar] = useState<any>(null);
-  const [selectedChar, setSelectedChar] = useState<any>(null); // For players with edit access to other characters
+  // Note: Player character display is now handled solely by 'character' state (set via Assign button)
   const [currentMap, setCurrentMap] = useState(battleMapImage1);
   const [createdCampaignId, setCreatedCampaignId] = useState<string | null>(null);
   const [currentView, setCurrentView] = useState({ x: 0, y: 0, zoom: 1 });
@@ -539,15 +539,11 @@ export default function Campaign() {
       const charData = characters.find((c: any) => c.id === token.characterId);
       if (charData) {
         if (role === 'gm') {
-          // GMs can select any character
+          // GMs can select any character to view/inspect
           setInspectedChar(charData);
-        } else if (role === 'player') {
-          // Players can select characters they own or have edit access to
-          const permission = myPermissions?.permissions?.[charData.id];
-          if (permission === 'owner' || permission === 'edit') {
-            setSelectedChar(charData);
-          }
         }
+        // Players no longer change display on token click - they use the Assign button instead
+        // Token clicking for players is only for moving tokens on the map
       }
     }
   };
@@ -656,9 +652,9 @@ export default function Campaign() {
 
   // Open character sheet to a specific tab
   const openCharacterSheetToTab = (tab: string) => {
-    // For players: use selectedChar (clicked token) or their own character
+    // For players: use ONLY their assigned character (not changed by token clicks)
     // For GMs: use inspectedChar (clicked token)
-    const charToView = role === 'player' ? (selectedChar || character) : inspectedChar;
+    const charToView = role === 'player' ? character : inspectedChar;
     if (charToView) {
       setCharacterSheetDefaultTab(tab);
       setViewingCharacterSheet(charToView);
@@ -973,14 +969,15 @@ export default function Campaign() {
            />
            
            {/* Hotbars Display - only show when there's a character to display */}
-           {/* For players: show selectedChar (clicked token) or their own character */}
+           {/* For players: show ONLY their assigned character (not changed by token clicks) */}
            {/* For GMs: show inspectedChar (clicked token) */}
-           {(role === 'gm' ? inspectedChar : (selectedChar || character)) && (
-             <BattleMapHotbars character={role === 'gm' ? inspectedChar : (selectedChar || character)} />
+           {(role === 'gm' ? inspectedChar : character) && (
+             <BattleMapHotbars character={role === 'gm' ? inspectedChar : character} />
            )}
           
           {/* Character Sheet Tab Buttons - Right side, aligned with hotbar buttons (visible when character/inspectedChar exists) */}
-          {((role === 'player' && (selectedChar || character)) || (role === 'gm' && inspectedChar)) && (
+          {/* For players: show ONLY when they have an assigned character */}
+          {((role === 'player' && character) || (role === 'gm' && inspectedChar)) && (
             <div className="absolute right-3 top-44 z-20 flex flex-col gap-2">
               {[
                 { tab: 'overview', icon: User, color: 'stone' },
