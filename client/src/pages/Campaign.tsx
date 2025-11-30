@@ -532,6 +532,12 @@ export default function Campaign() {
             variant: data.accessLevel === 'none' ? 'destructive' : 'default'
           });
         }
+        if (data.type === 'initiative_update' || data.type === 'combat_update') {
+          // Invalidate initiative queries for real-time sync
+          if (data.sceneId) {
+            queryClientRef.current.invalidateQueries({ queryKey: [`/api/scenes/${data.sceneId}/initiative`] });
+          }
+        }
       });
 
       return () => {
