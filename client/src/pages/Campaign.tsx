@@ -818,17 +818,40 @@ export default function Campaign() {
       
       {/* Top Bar: Nav & Settings */}
       <div className="absolute top-0 left-0 right-0 z-50 p-4 flex justify-between items-start pointer-events-none">
-        <Button 
-          variant="ghost" 
-          size="icon" 
-          onClick={() => setLocation("/")} 
-          className="text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto"
-          data-testid="button-back-home"
-        >
-          <ArrowLeft />
-        </Button>
+        {/* Left Side: Back button and Chat */}
+        <div className="pointer-events-auto flex flex-col gap-2">
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            onClick={() => setLocation("/")} 
+            className="text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto"
+            data-testid="button-back-home"
+          >
+            <ArrowLeft />
+          </Button>
+          
+          {/* Chat Button - Left side, mirrored to settings */}
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setChatOpen(true)}
+                  className="text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto"
+                  data-testid="button-chat"
+                >
+                  <MessageSquare className="h-5 w-5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="right" className="bg-stone-800 border-stone-700 text-stone-200">
+                <p>Chat</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
         
-        {/* Settings / Menu Button for ALL Roles */}
+        {/* Right Side: Settings / Menu Button for ALL Roles */}
         <div className="pointer-events-auto flex flex-col gap-2">
           <CampaignMenu 
             campaignId={effectiveCampaignId || undefined}
@@ -871,27 +894,7 @@ export default function Campaign() {
             </TooltipProvider>
           )}
           
-          {/* Chat Button - Under scenes/settings */}
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => setChatOpen(true)}
-                  className="text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto"
-                  data-testid="button-chat"
-                >
-                  <MessageSquare className="h-5 w-5" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="left" className="bg-stone-800 border-stone-700 text-stone-200">
-                <p>Chat</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-          
-          {/* Initiative Button - Under chat */}
+          {/* Initiative Button - Under scenes/settings */}
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
