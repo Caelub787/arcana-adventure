@@ -6228,7 +6228,8 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
     .reduce((sum: number, item: any) => sum + (item.carryCapacity || 0), 0);
   
   const mightMod = character.might || 0; // Use new attribute system
-  const carryCapacity = 50 + (mightMod * 10) + equippedContainerBonus;
+  const baseCarryWeight = currentSpecies?.carryWeight || 50; // Get from species or default to 50
+  const carryCapacity = baseCarryWeight + (mightMod * 10) + equippedContainerBonus;
   const weightPercentage = (totalWeight / carryCapacity) * 100;
 
   const totalCurrency = items.reduce((acc: any, item: any) => {
