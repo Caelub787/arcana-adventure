@@ -872,6 +872,51 @@ export default function Campaign() {
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
+          
+          {/* Dice Roller Button with Menu - Left side under chat */}
+          <div className="relative">
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setDiceMenuOpen(!diceMenuOpen)}
+                    className="text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto"
+                    data-testid="button-dice-roller"
+                  >
+                    <Dices className="h-5 w-5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="right" className="bg-stone-800 border-stone-700 text-stone-200">
+                  <p>Roll Dice</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+            
+            {/* Dice Quick Menu */}
+            {diceMenuOpen && (
+              <div className="absolute left-full ml-2 top-0 bg-stone-900/95 border border-stone-700 rounded-lg p-2 pointer-events-auto shadow-xl z-50">
+                <div className="flex flex-col gap-1 min-w-[80px]">
+                  {['d4', 'd6', 'd8', 'd10', 'd12', 'd20'].map((die) => (
+                    <Button
+                      key={die}
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        gameWs.sendDiceRoll(die, 0, undefined, character?.id);
+                        setDiceMenuOpen(false);
+                      }}
+                      className="text-white/80 hover:text-white hover:bg-white/10 justify-start font-mono"
+                      data-testid={`button-roll-${die}`}
+                    >
+                      {die.toUpperCase()}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
         
         {/* Right Side: Settings / Menu Button for ALL Roles */}
@@ -936,51 +981,6 @@ export default function Campaign() {
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
-          
-          {/* Dice Roller Button with Menu */}
-          <div className="relative">
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => setDiceMenuOpen(!diceMenuOpen)}
-                    className="text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto"
-                    data-testid="button-dice-roller"
-                  >
-                    <Dices className="h-5 w-5" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="left" className="bg-stone-800 border-stone-700 text-stone-200">
-                  <p>Roll Dice</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-            
-            {/* Dice Quick Menu */}
-            {diceMenuOpen && (
-              <div className="absolute right-full mr-2 top-0 bg-stone-900/95 border border-stone-700 rounded-lg p-2 pointer-events-auto shadow-xl z-50">
-                <div className="flex flex-col gap-1 min-w-[80px]">
-                  {['d4', 'd6', 'd8', 'd10', 'd12', 'd20'].map((die) => (
-                    <Button
-                      key={die}
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        gameWs.sendDiceRoll(die, 0, undefined, character?.id);
-                        setDiceMenuOpen(false);
-                      }}
-                      className="text-white/80 hover:text-white hover:bg-white/10 justify-start font-mono"
-                      data-testid={`button-roll-${die}`}
-                    >
-                      {die.toUpperCase()}
-                    </Button>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
         </div>
       </div>
 

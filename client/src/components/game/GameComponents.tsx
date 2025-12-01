@@ -1573,53 +1573,158 @@ export function BattleMapHotbars({ character }: BattleMapHotbarsProps) {
   );
 }
 
-// Selection Mode Buttons Component
+// Selection Mode Buttons Component with hold-to-reveal behavior
 interface SelectionModeButtonsProps {
   selectionMode: SelectionMode;
   onModeChange: (mode: SelectionMode) => void;
 }
 
 export function SelectionModeButtons({ selectionMode, onModeChange }: SelectionModeButtonsProps) {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  
   const modes = [
     { mode: 'select' as SelectionMode, icon: MousePointer, label: 'Select', color: 'stone' },
     { mode: 'target' as SelectionMode, icon: Target, label: 'Target', color: 'red' },
     { mode: 'assign' as SelectionMode, icon: UserCheck, label: 'Assign', color: 'green' },
   ];
+  
+  const currentModeData = modes.find(m => m.mode === selectionMode) || modes[0];
+  const CurrentIcon = currentModeData.icon;
+  const altModes = modes.filter(m => m.mode !== selectionMode);
+
+  const handlePointerDown = (e: React.PointerEvent) => {
+    e.preventDefault();
+    longPressTimerRef.current = setTimeout(() => {
+      setIsExpanded(true);
+    }, 300);
+  };
+  
+  const handlePointerUp = () => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  };
+  
+  const handlePointerLeave = () => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  };
+  
+  const handleModeSelect = (mode: SelectionMode) => {
+    onModeChange(mode);
+    setIsExpanded(false);
+  };
+  
+  useEffect(() => {
+    const handleClick = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setIsExpanded(false);
+      }
+    };
+    
+    if (isExpanded) {
+      document.addEventListener('mousedown', handleClick);
+      return () => document.removeEventListener('mousedown', handleClick);
+    }
+  }, [isExpanded]);
+  
+  useEffect(() => {
+    return () => {
+      if (longPressTimerRef.current) {
+        clearTimeout(longPressTimerRef.current);
+      }
+    };
+  }, []);
+  
+  const getColorClasses = (color: string, isActive: boolean) => {
+    const colorClasses: Record<string, string> = {
+      stone: isActive ? 'bg-stone-600 border-stone-400 text-stone-100' : 'bg-stone-800/80 border-stone-600 text-stone-400 hover:bg-stone-700/50',
+      red: isActive ? 'bg-red-600 border-red-400 text-red-100' : 'bg-stone-800/80 border-stone-600 text-red-400 hover:bg-red-900/50',
+      green: isActive ? 'bg-green-600 border-green-400 text-green-100' : 'bg-stone-800/80 border-stone-600 text-green-400 hover:bg-green-900/50',
+    };
+    return colorClasses[color] || colorClasses.stone;
+  };
 
   return (
-    <div className="absolute left-2 md:left-4 top-44 flex flex-col gap-2 z-30 pointer-events-auto">
-      {modes.map(({ mode, icon: Icon, label, color }) => {
-        const isActive = selectionMode === mode;
-        const colorClasses: Record<string, string> = {
-          stone: isActive ? 'bg-stone-600 border-stone-400 text-stone-100' : 'bg-stone-800/80 border-stone-600 text-stone-400 hover:bg-stone-700/50',
-          red: isActive ? 'bg-red-600 border-red-400 text-red-100' : 'bg-stone-800/80 border-stone-600 text-red-400 hover:bg-red-900/50',
-          green: isActive ? 'bg-green-600 border-green-400 text-green-100' : 'bg-stone-800/80 border-stone-600 text-green-400 hover:bg-green-900/50',
-        };
+    <div 
+      ref={containerRef}
+      className="absolute left-2 md:left-4 top-44 z-30 pointer-events-auto"
+    >
+      <div className="flex items-center gap-2">
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onPointerDown={handlePointerDown}
+                onPointerUp={handlePointerUp}
+                onPointerLeave={handlePointerLeave}
+                onPointerCancel={handlePointerUp}
+                onClick={() => !isExpanded && onModeChange('select')}
+                className={`
+                  w-9 h-9 md:w-10 md:h-10 rounded-lg border-2 flex items-center justify-center
+                  transition-all duration-200 shadow-lg backdrop-blur-sm touch-none
+                  ${getColorClasses(currentModeData.color, true)}
+                  scale-110 ring-2 ring-white/20
+                `}
+                aria-expanded={isExpanded}
+                aria-label={`Current mode: ${currentModeData.label}. Hold to reveal other modes.`}
+                data-testid={`selection-mode-${selectionMode}`}
+              >
+                <CurrentIcon className="h-4 w-4 md:h-5 md:w-5" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="right">
+              <p className="font-bold">{currentModeData.label}</p>
+              <p className="text-xs text-stone-400">Hold to change mode</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
         
-        return (
-          <TooltipProvider key={mode}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  onClick={() => onModeChange(mode)}
-                  className={`
-                    w-9 h-9 md:w-10 md:h-10 rounded-lg border-2 flex items-center justify-center
-                    transition-all duration-200 shadow-lg backdrop-blur-sm
-                    ${colorClasses[color]}
-                    ${isActive ? 'scale-110 ring-2 ring-white/20' : 'hover:scale-105'}
-                  `}
-                  data-testid={`selection-mode-${mode}`}
-                >
-                  <Icon className="h-4 w-4 md:h-5 md:w-5" />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="right">
-                <p className="font-bold">{label}</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        );
-      })}
+        <AnimatePresence>
+          {isExpanded && (
+            <motion.div
+              initial={{ opacity: 0, x: -10, width: 0 }}
+              animate={{ opacity: 1, x: 0, width: 'auto' }}
+              exit={{ opacity: 0, x: -10, width: 0 }}
+              transition={{ duration: 0.15 }}
+              className="flex items-center gap-2 overflow-hidden"
+            >
+              {altModes.map(({ mode, icon: Icon, label, color }) => (
+                <TooltipProvider key={mode}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <motion.button
+                        initial={{ opacity: 0, scale: 0.8 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.8 }}
+                        transition={{ duration: 0.1 }}
+                        onClick={() => handleModeSelect(mode)}
+                        className={`
+                          w-9 h-9 md:w-10 md:h-10 rounded-lg border-2 flex items-center justify-center
+                          transition-all duration-200 shadow-lg backdrop-blur-sm
+                          ${getColorClasses(color, false)}
+                          hover:scale-105
+                        `}
+                        data-testid={`selection-mode-${mode}`}
+                      >
+                        <Icon className="h-4 w-4 md:h-5 md:w-5" />
+                      </motion.button>
+                    </TooltipTrigger>
+                    <TooltipContent side="right">
+                      <p className="font-bold">{label}</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              ))}
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
     </div>
   );
 }
@@ -3018,6 +3123,22 @@ function HotbarsTabContent({ character, isGM, isOwner }: HotbarsTabContentProps)
     enabled: !!character.id
   });
 
+  const { data: items = [] } = useQuery({
+    queryKey: ['items', character.id],
+    queryFn: () => api.getItems(character.id),
+    enabled: !!character.id
+  });
+
+  const { data: spells = [] } = useQuery({
+    queryKey: ['spells', character.id],
+    queryFn: () => api.getSpells(character.id),
+    enabled: !!character.id
+  });
+
+  const weaponItems = items.filter((item: any) => item.itemType === 'weapon');
+  const consumableItems = items.filter((item: any) => item.itemType === 'consumable');
+  const utilityItems = items.filter((item: any) => item.itemType === 'utility');
+
   const upsertMutation = useMutation({
     mutationFn: (data: { hotbarType: string; slotNumber: number; itemId?: string; spellId?: string; skillName?: string }) =>
       api.upsertHotbar(character.id, data),
@@ -3303,6 +3424,28 @@ function HotbarsTabContent({ character, isGM, isOwner }: HotbarsTabContentProps)
           <p className="text-xs text-stone-500 mt-3">
             Left/Right for weapons, Far-right for ammunition. Heavy weapons occupy both side slots.
           </p>
+          
+          {canEdit && weaponItems.length > 0 && (
+            <div className="pt-4 border-t border-stone-700 mt-4">
+              <Label className="text-xs text-stone-400 mb-2 block">Drag weapons to hotbar slots:</Label>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-48 overflow-y-auto">
+                {weaponItems.map((item: any) => (
+                  <div
+                    key={item.id}
+                    draggable
+                    onDragStart={(e) => handleDragStart(e, { type: 'item', item, itemId: item.id })}
+                    className="px-2 py-1 bg-stone-900 rounded border border-stone-700 cursor-move hover:border-amber-500 hover:bg-stone-800 transition-all text-xs"
+                    data-testid={`drag-weapon-${item.id}`}
+                  >
+                    <div className="flex justify-between items-center">
+                      <span className="font-medium text-amber-400 truncate">{item.name}</span>
+                      {item.damage && <span className="text-red-400 text-xs">{item.damage}</span>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -3346,8 +3489,30 @@ function HotbarsTabContent({ character, isGM, isOwner }: HotbarsTabContentProps)
             ))}
           </div>
           <p className="text-xs text-stone-500 mt-3">
-            Drag spells from your spell list to equip them.
+            Drag spells from below to equip them.
           </p>
+          
+          {canEdit && spells.length > 0 && (
+            <div className="pt-4 border-t border-stone-700 mt-4">
+              <Label className="text-xs text-stone-400 mb-2 block">Drag spells to hotbar slots:</Label>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-48 overflow-y-auto">
+                {spells.map((spell: any) => (
+                  <div
+                    key={spell.id}
+                    draggable
+                    onDragStart={(e) => handleDragStart(e, { type: 'spell', id: spell.id, name: spell.name })}
+                    className={`px-2 py-1 bg-stone-900 rounded border cursor-move hover:border-purple-500 hover:bg-stone-800 transition-all text-xs ${spell.isEquipped ? 'border-purple-500 opacity-60' : 'border-stone-700'}`}
+                    data-testid={`drag-spell-${spell.id}`}
+                  >
+                    <div className="flex justify-between items-center">
+                      <span className="font-medium text-purple-400 truncate">{spell.name}</span>
+                      <span className="text-stone-500 text-xs">{spell.level === 0 ? 'C' : `L${spell.level}`}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -3459,8 +3624,30 @@ function HotbarsTabContent({ character, isGM, isOwner }: HotbarsTabContentProps)
             ))}
           </div>
           <p className="text-xs text-stone-500 mt-3">
-            Consumable items will appear here when the inventory system is implemented (Phase 5).
+            Drag consumable items from below to equip them.
           </p>
+          
+          {canEdit && consumableItems.length > 0 && (
+            <div className="pt-4 border-t border-stone-700 mt-4">
+              <Label className="text-xs text-stone-400 mb-2 block">Drag consumables to hotbar slots:</Label>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-48 overflow-y-auto">
+                {consumableItems.map((item: any) => (
+                  <div
+                    key={item.id}
+                    draggable
+                    onDragStart={(e) => handleDragStart(e, { type: 'item', item, itemId: item.id })}
+                    className="px-2 py-1 bg-stone-900 rounded border border-stone-700 cursor-move hover:border-green-500 hover:bg-stone-800 transition-all text-xs"
+                    data-testid={`drag-consumable-${item.id}`}
+                  >
+                    <div className="flex justify-between items-center">
+                      <span className="font-medium text-green-400 truncate">{item.name}</span>
+                      <span className="text-stone-500 text-xs">x{item.quantity}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -3504,8 +3691,30 @@ function HotbarsTabContent({ character, isGM, isOwner }: HotbarsTabContentProps)
             ))}
           </div>
           <p className="text-xs text-stone-500 mt-3">
-            Utility items will appear here when the inventory system is implemented (Phase 5).
+            Drag utility items from below to equip them. Containers grant carry capacity bonus when equipped.
           </p>
+          
+          {canEdit && utilityItems.length > 0 && (
+            <div className="pt-4 border-t border-stone-700 mt-4">
+              <Label className="text-xs text-stone-400 mb-2 block">Drag utility items to hotbar slots:</Label>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-48 overflow-y-auto">
+                {utilityItems.map((item: any) => (
+                  <div
+                    key={item.id}
+                    draggable
+                    onDragStart={(e) => handleDragStart(e, { type: 'item', item, itemId: item.id })}
+                    className="px-2 py-1 bg-stone-900 rounded border border-stone-700 cursor-move hover:border-orange-500 hover:bg-stone-800 transition-all text-xs"
+                    data-testid={`drag-utility-${item.id}`}
+                  >
+                    <div className="flex justify-between items-center">
+                      <span className="font-medium text-orange-400 truncate">{item.name}</span>
+                      {item.isContainer && <span className="text-stone-500 text-xs">+{item.carryCapacity}lb</span>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
