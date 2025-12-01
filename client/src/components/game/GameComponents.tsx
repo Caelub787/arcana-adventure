@@ -5117,23 +5117,8 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                           size="sm"
                           variant="outline"
                           className="border-amber-600 text-amber-500 hover:bg-amber-600/20"
-                          onClick={async () => {
-                            const finesse = liveCharacter.finesse || 0;
-                            const d20 = Math.floor(Math.random() * 20) + 1;
-                            const total = d20 + finesse;
-                            try {
-                              await api.rollInitiative(sceneId, liveCharacter.id, total);
-                              toast({
-                                title: "Initiative Rolled",
-                                description: `${liveCharacter.name}: ${d20} + ${finesse} (Finesse) = ${total}`,
-                              });
-                            } catch (e: any) {
-                              toast({
-                                title: "Failed to roll initiative",
-                                description: e.message || "An error occurred",
-                                variant: "destructive",
-                              });
-                            }
+                          onClick={() => {
+                            gameWs.sendInitiativeRoll(sceneId, liveCharacter.id);
                           }}
                           data-testid="button-roll-initiative"
                         >

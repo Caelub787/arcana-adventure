@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef } from "react";
 import { useLocation, useSearch, useRoute } from "wouter";
 import { motion } from "framer-motion";
 import { CharacterCreation, BattleMap, CampaignMenu, CharacterSheet, BattleMapHotbars, SelectionModeButtons, InitiativeTracker, type SelectionMode } from "@/components/game/GameComponents";
-import { BattlemapDiceOverlay, triggerBattlemapDiceRoll, create2DDiceAnimation } from "@/components/game/BattlemapDiceOverlay";
+import { BattlemapDiceOverlay, triggerBattlemapDiceRoll } from "@/components/game/BattlemapDiceOverlay";
+import { RollNotificationContainer, triggerInitiativeNotification } from "@/components/game/RollNotification";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Loader2, Settings, Map as MapIcon, Layers, Trash2, MessageSquare, User, BarChart3, Zap, Backpack, Sparkles, Grid3X3, ScrollText, Swords, Dices } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -544,8 +545,18 @@ export default function Campaign() {
           }
         }
         if (data.type === 'dice_roll' && data.roll) {
-          // Trigger battlemap dice animation
+          // Trigger battlemap dice notification
           triggerBattlemapDiceRoll(data.roll);
+        }
+        if (data.type === 'initiative_roll') {
+          // Trigger initiative roll notification
+          triggerInitiativeNotification(
+            data.result,
+            data.modifier,
+            data.total,
+            data.username,
+            data.characterName
+          );
         }
       });
 
@@ -824,6 +835,9 @@ export default function Campaign() {
 
   return (
     <div className="relative h-screen w-screen overflow-hidden bg-black text-white select-none flex flex-col">
+      
+      {/* Roll Notification Container */}
+      <RollNotificationContainer />
       
       {/* Top Bar: Nav & Settings */}
       <div className="absolute top-0 left-0 right-0 z-50 p-4 flex justify-between items-start pointer-events-none">

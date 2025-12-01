@@ -721,6 +721,29 @@ export class GameWebSocket {
     
     this.send(message);
   }
+  
+  sendInitiativeRoll(sceneId: string, characterId: string) {
+    if (!this.campaignId) {
+      console.error('Cannot send initiative roll: not connected to a campaign');
+      return;
+    }
+    
+    const message = { 
+      type: 'request_initiative_roll', 
+      campaignId: this.campaignId, 
+      sceneId,
+      characterId
+    };
+    
+    // If not yet joined, queue the message
+    if (!this.joinedCampaign) {
+      console.log('WebSocket: Queueing initiative roll until campaign join is confirmed');
+      this.pendingMessages.push(message);
+      return;
+    }
+    
+    this.send(message);
+  }
 }
 
 export const gameWs = new GameWebSocket();

@@ -581,6 +581,121 @@ export async function registerRoutes(app: Express): Promise<Server> {
           
           console.log(`[WebSocket] Dice roll by ${username}: ${dieType} = ${rollResult.result} (total: ${rollResult.total})`);
         }
+        
+        // Handle initiative roll requests - server-authoritative
+        if (message.type === "request_initiative_roll") {
+          const { campaignId, sceneId, characterId } = message;
+          
+          // Verify user has joined this campaign
+          const userCampaign = (ws as any).campaigns.get(campaignId);
+          if (!userCampaign) {
+            ws.send(JSON.stringify({
+              type: "error",
+              message: "Not authorized - You have not joined this campaign"
+            }));
+            return;
+          }
+          
+          // Verify scene exists
+          const scene = await storage.getScene(sceneId);
+          if (!scene) {
+            ws.send(JSON.stringify({
+              type: "error",
+              message: "Scene not found"
+            }));
+            return;
+          }
+          
+          // Get the character
+          const character = await storage.getCharacter(characterId);
+          if (!character) {
+            ws.send(JSON.stringify({
+              type: "error",
+              message: "Character not found"
+            }));
+            return;
+          }
+          
+          // Check authorization
+          const campaign = await storage.getCampaign(scene.campaignId);
+          const isGM = campaign?.gmUserId === authenticatedUserId;
+          const isOwner = character.userId === authenticatedUserId;
+          
+          if (!isGM && !isOwner) {
+            ws.send(JSON.stringify({
+              type: "error",
+              message: "Not authorized to roll initiative for this character"
+            }));
+            return;
+          }
+          
+          // Server-authoritative d20 roll using crypto.randomInt
+          const d20Roll = crypto.randomInt(1, 21);
+          const finesse = character.finesse || 0;
+          const total = d20Roll + finesse;
+          
+          // Create initiative entry
+          const entry = await storage.createInitiativeEntry({
+            sceneId,
+            characterId,
+            value: total,
+            isHidden: false
+          });
+          
+          // Format initiative roll for chat
+          const modifierText = finesse !== 0 
+            ? (finesse > 0 ? ` + ${finesse}` : ` - ${Math.abs(finesse)}`)
+            : "";
+          const rollText = `Initiative - ${character.name}: ${d20Roll}${modifierText} = ${total}`;
+          
+          // Save to chat as a "roll" type message
+          const chatMessage = await storage.createChatMessage({
+            campaignId,
+            userId: authenticatedUserId,
+            sender: username,
+            text: rollText,
+            type: "roll"
+          });
+          
+          // Broadcast initiative update, dice roll, and chat message to all clients
+          const room = campaignRooms.get(campaignId);
+          if (room) {
+            // Send initiative roll notification (for animation)
+            const initiativeRollBroadcast = JSON.stringify({
+              type: 'initiative_roll',
+              sceneId,
+              characterId,
+              characterName: character.name,
+              result: d20Roll,
+              modifier: finesse,
+              total,
+              username
+            });
+            
+            // Send initiative update (to refresh initiative tracker)
+            const initiativeUpdateBroadcast = JSON.stringify({
+              type: 'initiative_update',
+              sceneId,
+              campaignId
+            });
+            
+            // Send chat message
+            const chatBroadcast = JSON.stringify({ 
+              type: "chat_message", 
+              message: chatMessage 
+            });
+            
+            room.forEach((client) => {
+              if (client.readyState === 1) {
+                client.send(initiativeRollBroadcast);
+                client.send(initiativeUpdateBroadcast);
+                client.send(chatBroadcast);
+              }
+            });
+          }
+          
+          console.log(`[WebSocket] Initiative roll by ${username} for ${character.name}: ${d20Roll} + ${finesse} = ${total}`);
+        }
       } catch (err) {
         console.error("WebSocket error:", err);
         ws.send(JSON.stringify({
