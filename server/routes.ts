@@ -2043,6 +2043,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Public system species route (for character creation)
+  app.get("/api/species", requireAuth, async (req, res) => {
+    try {
+      const systemName = req.query.system as string || "Arcana Adventure";
+      const species = await storage.getSystemSpecies(systemName);
+      res.json(species);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch species" });
+    }
+  });
+
   // Campaign template item routes (GM only)
   app.get("/api/campaigns/:campaignId/template-items", requireAuth, async (req, res) => {
     try {

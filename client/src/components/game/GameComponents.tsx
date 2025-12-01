@@ -23,7 +23,7 @@ import {
   MousePointer, Target, UserCheck, Swords, ArrowRight, Eye, EyeOff, Check
 } from "lucide-react";
 import { useForm } from "react-hook-form";
-import { type Scene, type Hotbar, api, gameWs } from "@/lib/api";
+import { type Scene, type Hotbar, type SystemSpecies, api, gameWs } from "@/lib/api";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -6043,9 +6043,15 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
     skillWisdom: character?.skillWisdom || 0
   });
   
+  // Fetch species from database
+  const { data: systemSpecies = [] } = useQuery({
+    queryKey: ['species'],
+    queryFn: () => api.getSpecies('Arcana Adventure'),
+  });
+
   // Handle race selection - auto-fill race stats
   const handleRaceChange = (raceName: string) => {
-    const raceData = ARCANA_RACES.find(r => r.name === raceName);
+    const raceData = systemSpecies.find((r: SystemSpecies) => r.name === raceName);
     if (raceData) {
       setOverviewData(prev => ({
         ...prev,
@@ -6053,7 +6059,7 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
         size: raceData.size,
         naturalArmor: raceData.naturalArmor,
         sizeBonus: raceData.sizeBonus,
-        featTree: raceData.featTree,
+        featTree: raceData.featTree || '',
         speed: raceData.speed,
         flySpeed: raceData.flySpeed
       }));
@@ -6799,8 +6805,8 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                               <SelectValue placeholder="Select race" />
                             </SelectTrigger>
                             <SelectContent>
-                              {ARCANA_RACES.map(race => (
-                                <SelectItem key={race.name} value={race.name}>{race.name}</SelectItem>
+                              {systemSpecies.map((species: SystemSpecies) => (
+                                <SelectItem key={species.name} value={species.name}>{species.name}</SelectItem>
                               ))}
                             </SelectContent>
                           </Select>

@@ -164,6 +164,14 @@ export interface Item {
   isContainer: boolean;
   carryCapacity?: number;
   isEquipped: boolean;
+  weaponCategory?: string;
+  isHeavy?: boolean;
+  ammunitionType?: string;
+  armorBonus?: number;
+  breakChance?: number;
+  armorSlot?: string;
+  damageReduction?: number;
+  damageReductionType?: string;
 }
 
 export interface Spell {
@@ -540,6 +548,12 @@ class ApiClient {
 
   async deleteSystemSpecies(id: string): Promise<void> {
     return this.request(`/admin/system-species/${id}`, { method: 'DELETE' });
+  }
+
+  // Public species (for character creation)
+  async getSpecies(systemName?: string): Promise<SystemSpecies[]> {
+    const params = systemName ? `?system=${encodeURIComponent(systemName)}` : '';
+    return this.request(`/species${params}`);
   }
 
   // Campaign Template Items
