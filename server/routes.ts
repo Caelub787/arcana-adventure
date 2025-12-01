@@ -1997,6 +1997,52 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Admin system species routes
+  app.get("/api/admin/system-species", requireAdmin, async (req, res) => {
+    try {
+      const systemName = req.query.system as string | undefined;
+      const species = await storage.getSystemSpecies(systemName);
+      res.json(species);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch system species" });
+    }
+  });
+
+  app.post("/api/admin/system-species", requireAdmin, async (req, res) => {
+    try {
+      const species = await storage.createSystemSpecies(req.body);
+      res.json(species);
+    } catch (err) {
+      res.status(400).json({ error: "Failed to create species" });
+    }
+  });
+
+  app.patch("/api/admin/system-species/:id", requireAdmin, async (req, res) => {
+    try {
+      const species = await storage.getSystemSpeciesById(req.params.id);
+      if (!species) {
+        return res.status(404).json({ error: "Species not found" });
+      }
+      const updated = await storage.updateSystemSpecies(req.params.id, req.body);
+      res.json(updated);
+    } catch (err) {
+      res.status(400).json({ error: "Failed to update species" });
+    }
+  });
+
+  app.delete("/api/admin/system-species/:id", requireAdmin, async (req, res) => {
+    try {
+      const species = await storage.getSystemSpeciesById(req.params.id);
+      if (!species) {
+        return res.status(404).json({ error: "Species not found" });
+      }
+      await storage.deleteSystemSpecies(req.params.id);
+      res.json({ success: true });
+    } catch (err) {
+      res.status(400).json({ error: "Failed to delete species" });
+    }
+  });
+
   // Campaign template item routes (GM only)
   app.get("/api/campaigns/:campaignId/template-items", requireAuth, async (req, res) => {
     try {
