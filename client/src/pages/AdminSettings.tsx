@@ -594,6 +594,19 @@ interface SpeciesFormDialogProps {
   isLoading?: boolean;
 }
 
+// Calculate size bonus based on size
+const getSizeBonusFromSize = (size: string): number => {
+  const sizeBonusMap: Record<string, number> = {
+    'Tiny': 2,
+    'Small': 1,
+    'Medium': 0,
+    'Large': -1,
+    'Giant': -2,
+    'Colossal': -3,
+  };
+  return sizeBonusMap[size] ?? 0;
+};
+
 function SpeciesFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: SpeciesFormDialogProps) {
   const [formData, setFormData] = useState({
     name: initialData?.name || '',
@@ -603,7 +616,7 @@ function SpeciesFormDialog({ open, onOpenChange, onSave, initialData, isLoading 
     flySpeed: initialData?.flySpeed || 0,
     size: initialData?.size || 'Medium',
     naturalArmor: initialData?.naturalArmor || 5,
-    sizeBonus: initialData?.sizeBonus || 0,
+    sizeBonus: initialData?.sizeBonus ?? getSizeBonusFromSize(initialData?.size || 'Medium'),
     startingHp: initialData?.startingHp || 10,
     startingMaxHp: initialData?.startingMaxHp || 10,
     hpPerLevel: initialData?.hpPerLevel || 5,
@@ -611,6 +624,15 @@ function SpeciesFormDialog({ open, onOpenChange, onSave, initialData, isLoading 
     startingMaxEnergy: initialData?.startingMaxEnergy || 10,
     featTree: initialData?.featTree || '',
   });
+  
+  // Auto-update size bonus when size changes
+  const handleSizeChange = (newSize: string) => {
+    setFormData({ 
+      ...formData, 
+      size: newSize, 
+      sizeBonus: getSizeBonusFromSize(newSize) 
+    });
+  };
 
   const handleSubmit = () => {
     if (!formData.name.trim()) {
@@ -654,7 +676,7 @@ function SpeciesFormDialog({ open, onOpenChange, onSave, initialData, isLoading 
 
               <div>
                 <Label>Size</Label>
-                <Select value={formData.size} onValueChange={(v) => setFormData({ ...formData, size: v })}>
+                <Select value={formData.size} onValueChange={handleSizeChange}>
                   <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-species-size">
                     <SelectValue />
                   </SelectTrigger>
@@ -711,12 +733,12 @@ function SpeciesFormDialog({ open, onOpenChange, onSave, initialData, isLoading 
               </div>
 
               <div>
-                <Label>Size Bonus</Label>
+                <Label>Size Bonus (auto-calculated)</Label>
                 <Input
                   type="number"
                   value={formData.sizeBonus}
-                  onChange={(e) => setFormData({ ...formData, sizeBonus: parseInt(e.target.value) || 0 })}
-                  className="bg-stone-800 border-stone-700"
+                  readOnly
+                  className="bg-stone-800 border-stone-700 opacity-70"
                   data-testid="input-species-sizebonus"
                 />
               </div>
