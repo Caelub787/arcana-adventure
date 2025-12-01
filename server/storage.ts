@@ -13,7 +13,8 @@ import {
   type Spell, type InsertSpell,
   type CharacterPermission, type InsertCharacterPermission,
   type InitiativeEntry, type InsertInitiativeEntry,
-  users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, items, spells, characterPermissions, initiativeEntries
+  type SystemSpecies, type InsertSystemSpecies,
+  users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, items, spells, characterPermissions, initiativeEntries, systemSpecies
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql, inArray } from "drizzle-orm";
@@ -126,6 +127,13 @@ export interface IStorage {
   deleteInitiativeEntry(id: string): Promise<void>;
   clearSceneInitiative(sceneId: string): Promise<void>;
   getInitiativeEntryByCharacter(sceneId: string, characterId: string): Promise<InitiativeEntry | undefined>;
+
+  // System Species operations
+  getSystemSpecies(systemName?: string): Promise<SystemSpecies[]>;
+  getSystemSpeciesById(id: string): Promise<SystemSpecies | undefined>;
+  createSystemSpecies(species: InsertSystemSpecies): Promise<SystemSpecies>;
+  updateSystemSpecies(id: string, data: Partial<InsertSystemSpecies>): Promise<SystemSpecies | undefined>;
+  deleteSystemSpecies(id: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -824,6 +832,46 @@ export class DatabaseStorage implements IStorage {
       ))
       .limit(1);
     return entry;
+  }
+
+  // System Species operations
+  async getSystemSpecies(systemName?: string): Promise<SystemSpecies[]> {
+    if (systemName) {
+      return await db.select()
+        .from(systemSpecies)
+        .where(eq(systemSpecies.systemName, systemName))
+        .orderBy(systemSpecies.name);
+    }
+    return await db.select()
+      .from(systemSpecies)
+      .orderBy(systemSpecies.name);
+  }
+
+  async getSystemSpeciesById(id: string): Promise<SystemSpecies | undefined> {
+    const [species] = await db.select()
+      .from(systemSpecies)
+      .where(eq(systemSpecies.id, id))
+      .limit(1);
+    return species;
+  }
+
+  async createSystemSpecies(species: InsertSystemSpecies): Promise<SystemSpecies> {
+    const [created] = await db.insert(systemSpecies)
+      .values(species)
+      .returning();
+    return created;
+  }
+
+  async updateSystemSpecies(id: string, data: Partial<InsertSystemSpecies>): Promise<SystemSpecies | undefined> {
+    const [updated] = await db.update(systemSpecies)
+      .set(data)
+      .where(eq(systemSpecies.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteSystemSpecies(id: string): Promise<void> {
+    await db.delete(systemSpecies).where(eq(systemSpecies.id, id));
   }
 }
 

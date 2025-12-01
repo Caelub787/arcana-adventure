@@ -295,6 +295,35 @@ export const insertItemSchema = createInsertSchema(items).omit({
 export type InsertItem = z.infer<typeof insertItemSchema>;
 export type Item = typeof items.$inferSelect;
 
+// System Species table (for race/species definitions in game systems)
+export const systemSpecies = pgTable("system_species", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  systemName: text("system_name").notNull().default("Arcana Adventure"), // Which game system this species belongs to
+  name: text("name").notNull(),
+  description: text("description"),
+  lifespan: integer("lifespan").default(100).notNull(),
+  speed: integer("speed").default(30).notNull(),
+  flySpeed: integer("fly_speed").default(0).notNull(),
+  size: text("size").default("Medium").notNull(), // Tiny, Small, Medium, Large, Huge, Gargantuan
+  naturalArmor: integer("natural_armor").default(5).notNull(),
+  sizeBonus: integer("size_bonus").default(0).notNull(),
+  startingHp: integer("starting_hp").default(10).notNull(),
+  startingMaxHp: integer("starting_max_hp").default(10).notNull(),
+  hpPerLevel: integer("hp_per_level").default(5).notNull(),
+  startingEnergy: integer("starting_energy").default(10).notNull(),
+  startingMaxEnergy: integer("starting_max_energy").default(10).notNull(),
+  featTree: text("feat_tree").default(""), // Reference to the feat tree for this species
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertSystemSpeciesSchema = createInsertSchema(systemSpecies).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertSystemSpecies = z.infer<typeof insertSystemSpeciesSchema>;
+export type SystemSpecies = typeof systemSpecies.$inferSelect;
+
 // Spells table (for magic system) - MUST be before hotbars to avoid TDZ error
 export const spells = pgTable("spells", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
