@@ -29,7 +29,7 @@ interface ImageBrowserProps {
 export function ImageBrowser({ open, onOpenChange, onSelect, title = "Browse Image Library" }: ImageBrowserProps) {
   const [currentFolderId, setCurrentFolderId] = useState<string | undefined>(undefined);
   const [folderStack, setFolderStack] = useState<{ id: string | undefined; name: string }[]>([
-    { id: undefined, name: 'My Drive' }
+    { id: undefined, name: 'Image Library' }
   ]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedImageId, setSelectedImageId] = useState<string | null>(null);
@@ -96,7 +96,7 @@ export function ImageBrowser({ open, onOpenChange, onSelect, title = "Browse Ima
 
   // Navigate to root
   const navigateToRoot = () => {
-    setFolderStack([{ id: undefined, name: 'My Drive' }]);
+    setFolderStack([{ id: undefined, name: 'Image Library' }]);
     setCurrentFolderId(undefined);
     setSelectedImageId(null);
   };

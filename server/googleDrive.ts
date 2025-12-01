@@ -50,16 +50,17 @@ async function getGoogleDriveClient() {
   return google.drive({ version: 'v3', auth: oauth2Client });
 }
 
+// Root folder ID for the image library - restricts browsing to this folder only
+export const IMAGE_LIBRARY_ROOT_FOLDER_ID = '1XIIbXfkyJhClfACBa-G6B53n14sVSVUb';
+
 // List folders in a directory
 export async function listFolders(parentId?: string): Promise<{ id: string; name: string; }[]> {
   const drive = await getGoogleDriveClient();
   
-  let query = "mimeType='application/vnd.google-apps.folder' and trashed=false";
-  if (parentId) {
-    query += ` and '${parentId}' in parents`;
-  } else {
-    query += " and 'root' in parents";
-  }
+  // Use the image library root folder if no parent specified
+  const effectiveParentId = parentId || IMAGE_LIBRARY_ROOT_FOLDER_ID;
+  
+  let query = `mimeType='application/vnd.google-apps.folder' and trashed=false and '${effectiveParentId}' in parents`;
 
   const response = await drive.files.list({
     q: query,
@@ -78,12 +79,10 @@ export async function listFolders(parentId?: string): Promise<{ id: string; name
 export async function listImages(folderId?: string): Promise<{ id: string; name: string; thumbnailLink?: string; webContentLink?: string; }[]> {
   const drive = await getGoogleDriveClient();
   
-  let query = "(mimeType contains 'image/') and trashed=false";
-  if (folderId) {
-    query += ` and '${folderId}' in parents`;
-  } else {
-    query += " and 'root' in parents";
-  }
+  // Use the image library root folder if no folder specified
+  const effectiveFolderId = folderId || IMAGE_LIBRARY_ROOT_FOLDER_ID;
+  
+  let query = `(mimeType contains 'image/') and trashed=false and '${effectiveFolderId}' in parents`;
 
   const response = await drive.files.list({
     q: query,
