@@ -1344,10 +1344,11 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     enabled: !!hotbar?.spellId
   });
 
-  // Function to check if ammunition breaks (10% chance) and update quantity
+  // Function to check if ammunition breaks (configurable chance) and update quantity
   const checkAmmunitionBreak = async (ammo: any) => {
+    const breakChance = (ammo.breakChance ?? 10) / 100; // Convert percentage to probability
     const breakRoll = Math.random();
-    if (breakRoll < 0.1) {
+    if (breakRoll < breakChance) {
       const newQuantity = (ammo.quantity || 1) - 1;
       
       if (newQuantity <= 0) {
