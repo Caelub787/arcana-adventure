@@ -5012,6 +5012,7 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
   const [rollPanelOpen, setRollPanelOpen] = useState(false);
   const [rollPanelData, setRollPanelData] = useState<{name: string, modifier: number, type: 'skill' | 'attribute'} | null>(null);
   const [extraModifier, setExtraModifier] = useState(0);
+  const rollDataRef = useRef<{name: string, modifier: number} | null>(null);
   
   const canEdit = isOwner || isGM;
   
@@ -5023,7 +5024,15 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
     setExtraModifier(0);
   };
   
+  const confirmRollFromPanel = () => {
+    if (rollDataRef.current) {
+      const { name, modifier } = rollDataRef.current;
+      handleRoll(name, modifier, extraModifier);
+    }
+  };
+  
   const openRollPanel = (name: string, modifier: number, type: 'skill' | 'attribute') => {
+    rollDataRef.current = { name, modifier };
     setRollPanelData({ name, modifier, type });
     setExtraModifier(0);
     setRollPanelOpen(true);
@@ -7389,7 +7398,11 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
       )}
 
       {/* Roll Modifier Panel */}
-      <Dialog open={rollPanelOpen} onOpenChange={setRollPanelOpen}>
+      <Dialog open={rollPanelOpen} onOpenChange={(open) => {
+        if (!open) {
+          setRollPanelOpen(false);
+        }
+      }}>
         <DialogContent className="sm:max-w-[300px] bg-stone-900 border-stone-700">
           <DialogHeader>
             <DialogTitle className="text-amber-500">{rollPanelData?.name} Roll</DialogTitle>
@@ -7415,7 +7428,10 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setRollPanelOpen(false)} data-testid="button-cancel-roll">Cancel</Button>
-            <Button onClick={() => rollPanelData && handleRoll(rollPanelData.name, rollPanelData.modifier, extraModifier)} data-testid="button-confirm-roll">
+            <Button 
+              onClick={confirmRollFromPanel} 
+              data-testid="button-confirm-roll"
+            >
               Roll
             </Button>
           </DialogFooter>
