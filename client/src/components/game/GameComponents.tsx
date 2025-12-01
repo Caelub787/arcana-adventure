@@ -1410,9 +1410,16 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
       }
     }
     
-    const attrMod = getAttributeModifier(itemData.attribute || 'might');
+    const attrName = itemData.attribute || 'might';
+    const attrMod = getAttributeModifier(attrName);
     const roll = Math.floor(Math.random() * 20) + 1;
     const total = roll + attrMod;
+    
+    // Build calculation breakdown like "1d20 = 11 + Might (2)"
+    const attrDisplayName = attrName.charAt(0).toUpperCase() + attrName.slice(1);
+    const calculationBreakdown = attrMod !== 0 
+      ? `1d20 = ${roll} + ${attrDisplayName} (${attrMod >= 0 ? '+' : ''}${attrMod})`
+      : `1d20 = ${roll}`;
     
     triggerRollNotification({
       type: 'attack',
@@ -1423,6 +1430,7 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
       total,
       username: character.name || 'Unknown',
       characterName: character.name,
+      calculationBreakdown,
     });
   };
 
@@ -1430,7 +1438,7 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
   const handleDamageRoll = () => {
     if (!itemData) return;
     
-    // For ranged weapons, use ammunition damage
+    // For ranged weapons, use ammunition damage + both weapon mod and ammo mod
     if (isRangedWeapon(itemData)) {
       const ammo = getEquippedAmmunition();
       if (!ammo || !ammo.damage) {
@@ -1448,18 +1456,29 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
       }
       
       const { result, dieType } = rollDice(ammo.damage);
-      const mod = ammo.mod || 0;
-      const total = result + mod;
+      const weaponMod = itemData.mod || 0;
+      const ammoMod = ammo.mod || 0;
+      const totalMod = weaponMod + ammoMod;
+      const total = result + totalMod;
+      
+      // Build calculation breakdown
+      const modParts: string[] = [];
+      if (weaponMod !== 0) modParts.push(`${itemData.name} (${weaponMod >= 0 ? '+' : ''}${weaponMod})`);
+      if (ammoMod !== 0) modParts.push(`${ammo.name} (${ammoMod >= 0 ? '+' : ''}${ammoMod})`);
+      const calculationBreakdown = modParts.length > 0
+        ? `${ammo.damage} = ${result} + ${modParts.join(' + ')}`
+        : `${ammo.damage} = ${result}`;
       
       triggerRollNotification({
         type: 'attack',
         dieType: dieType as any,
-        label: `${ammo.name} Damage`,
+        label: `${itemData.name} Damage`,
         result,
-        modifier: mod,
+        modifier: totalMod,
         total,
         username: character.name || 'Unknown',
         characterName: character.name,
+        calculationBreakdown,
       });
       return;
     }
@@ -1471,6 +1490,11 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     const mod = itemData.mod || 0;
     const total = result + mod;
     
+    // Build calculation breakdown
+    const calculationBreakdown = mod !== 0 
+      ? `${itemData.damage} = ${result} + Mod (${mod >= 0 ? '+' : ''}${mod})`
+      : `${itemData.damage} = ${result}`;
+    
     triggerRollNotification({
       type: 'attack',
       dieType: dieType as any,
@@ -1480,6 +1504,7 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
       total,
       username: character.name || 'Unknown',
       characterName: character.name,
+      calculationBreakdown,
     });
   };
 
@@ -4519,9 +4544,16 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
       }
     }
     
-    const attrMod = getAttributeModifier(itemData.attribute || 'might');
+    const attrName = itemData.attribute || 'might';
+    const attrMod = getAttributeModifier(attrName);
     const roll = Math.floor(Math.random() * 20) + 1;
     const total = roll + attrMod;
+    
+    // Build calculation breakdown like "1d20 = 11 + Might (2)"
+    const attrDisplayName = attrName.charAt(0).toUpperCase() + attrName.slice(1);
+    const calculationBreakdown = attrMod !== 0 
+      ? `1d20 = ${roll} + ${attrDisplayName} (${attrMod >= 0 ? '+' : ''}${attrMod})`
+      : `1d20 = ${roll}`;
     
     triggerRollNotification({
       type: 'attack',
@@ -4532,6 +4564,7 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
       total,
       username: character.name || 'Unknown',
       characterName: character.name,
+      calculationBreakdown,
     });
   };
 
@@ -4539,7 +4572,7 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
   const handleDamageRoll = () => {
     if (!itemData) return;
     
-    // For ranged weapons, use ammunition damage
+    // For ranged weapons, use ammunition damage + both weapon mod and ammo mod
     if (isRangedWeapon(itemData)) {
       const ammo = getEquippedAmmunition();
       if (!ammo || !ammo.damage) {
@@ -4557,18 +4590,29 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
       }
       
       const { result, dieType } = rollDice(ammo.damage);
-      const mod = ammo.mod || 0;
-      const total = result + mod;
+      const weaponMod = itemData.mod || 0;
+      const ammoMod = ammo.mod || 0;
+      const totalMod = weaponMod + ammoMod;
+      const total = result + totalMod;
+      
+      // Build calculation breakdown
+      const modParts: string[] = [];
+      if (weaponMod !== 0) modParts.push(`${itemData.name} (${weaponMod >= 0 ? '+' : ''}${weaponMod})`);
+      if (ammoMod !== 0) modParts.push(`${ammo.name} (${ammoMod >= 0 ? '+' : ''}${ammoMod})`);
+      const calculationBreakdown = modParts.length > 0
+        ? `${ammo.damage} = ${result} + ${modParts.join(' + ')}`
+        : `${ammo.damage} = ${result}`;
       
       triggerRollNotification({
         type: 'attack',
         dieType: dieType as any,
-        label: `${ammo.name} Damage`,
+        label: `${itemData.name} Damage`,
         result,
-        modifier: mod,
+        modifier: totalMod,
         total,
         username: character.name || 'Unknown',
         characterName: character.name,
+        calculationBreakdown,
       });
       return;
     }
@@ -4580,6 +4624,11 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
     const mod = itemData.mod || 0;
     const total = result + mod;
     
+    // Build calculation breakdown
+    const calculationBreakdown = mod !== 0 
+      ? `${itemData.damage} = ${result} + Mod (${mod >= 0 ? '+' : ''}${mod})`
+      : `${itemData.damage} = ${result}`;
+    
     triggerRollNotification({
       type: 'attack',
       dieType: dieType as any,
@@ -4589,6 +4638,7 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
       total,
       username: character.name || 'Unknown',
       characterName: character.name,
+      calculationBreakdown,
     });
   };
 
