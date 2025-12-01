@@ -1774,7 +1774,7 @@ export function SelectionModeButtons({ selectionMode, onModeChange }: SelectionM
   );
 }
 
-// 4. Add Character Dialog
+// 4. Add Character Dialog - Simplified to only name, all other stats editable in character sheet
 interface AddCharacterDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -1782,97 +1782,78 @@ interface AddCharacterDialogProps {
 }
 
 function AddCharacterDialog({ open, onOpenChange, onAddCharacter }: AddCharacterDialogProps) {
-  const { register, handleSubmit, reset, formState: { errors } } = useForm({
-    defaultValues: {
-      name: "",
-      level: 1,
-      hp: 100,
-      maxHp: 100,
-      energy: 50,
-      maxEnergy: 50,
-    }
-  });
+  const [name, setName] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const onSubmit = (data: any) => {
-    onAddCharacter(data);
-    reset();
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim() || isSubmitting) return;
+    
+    setIsSubmitting(true);
+    
+    // Create character with just the name - all other values will use defaults
+    // HP/Energy will be set from the Human species defaults on the server
+    onAddCharacter({
+      name: name.trim(),
+      level: 1,
+      race: "Human",
+      size: "Medium",
+      naturalArmor: 5,
+      sizeBonus: 0,
+      speed: 30,
+      flySpeed: 0,
+      might: 10,
+      agility: 10,
+      resilience: 10,
+      wit: 10,
+      charm: 10,
+      concentration: 10,
+      skillAgility: 0,
+      skillArcana: 0,
+      skillCharisma: 0,
+      skillConcentration: 0,
+      skillDeception: 0,
+      skillHistory: 0,
+      skillIntimidation: 0,
+      skillInvestigation: 0,
+      skillMedicine: 0,
+      skillPerception: 0,
+      skillSleightOfHand: 0,
+      skillStealth: 0,
+      skillStrength: 0,
+      skillWisdom: 0,
+      skillCulture: 0,
+      inventory: []
+    });
+    
+    setName("");
+    setIsSubmitting(false);
     onOpenChange(false);
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={(open) => {
+      if (!open) setName("");
+      onOpenChange(open);
+    }}>
       <DialogContent className="bg-stone-900 border-stone-700 text-stone-200 sm:max-w-md">
         <DialogHeader>
-          <DialogTitle className="text-amber-500 font-display text-2xl">Add Character</DialogTitle>
+          <DialogTitle className="text-amber-500 font-display text-2xl">Create Character</DialogTitle>
+          <DialogDescription className="text-stone-400">
+            Enter a name for your new character. You can customize everything else in the character sheet.
+          </DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="name" className="text-stone-300">Character Name</Label>
+            <Label htmlFor="char-name" className="text-stone-300">Character Name</Label>
             <Input
-              id="name"
+              id="char-name"
               data-testid="input-character-name"
-              {...register("name", { required: true })}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
               className="bg-stone-800 border-stone-700 text-stone-200"
-              placeholder="Enter character name"
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="level" className="text-stone-300">Level</Label>
-              <Input
-                id="level"
-                data-testid="input-character-level"
-                type="number"
-                {...register("level", { required: true, valueAsNumber: true, min: 1 })}
-                className="bg-stone-800 border-stone-700 text-stone-200"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="hp" className="text-stone-300">HP</Label>
-              <Input
-                id="hp"
-                data-testid="input-character-hp"
-                type="number"
-                {...register("hp", { required: true, valueAsNumber: true, min: 1 })}
-                className="bg-stone-800 border-stone-700 text-stone-200"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="maxHp" className="text-stone-300">Max HP</Label>
-              <Input
-                id="maxHp"
-                data-testid="input-character-maxhp"
-                type="number"
-                {...register("maxHp", { required: true, valueAsNumber: true, min: 1 })}
-                className="bg-stone-800 border-stone-700 text-stone-200"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="energy" className="text-stone-300">Energy</Label>
-              <Input
-                id="energy"
-                data-testid="input-character-energy"
-                type="number"
-                {...register("energy", { required: true, valueAsNumber: true, min: 0 })}
-                className="bg-stone-800 border-stone-700 text-stone-200"
-              />
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="maxEnergy" className="text-stone-300">Max Energy</Label>
-            <Input
-              id="maxEnergy"
-              data-testid="input-character-maxenergy"
-              type="number"
-              {...register("maxEnergy", { required: true, valueAsNumber: true, min: 0 })}
-              className="bg-stone-800 border-stone-700 text-stone-200"
+              placeholder="Enter character name..."
+              autoFocus
             />
           </div>
 
@@ -1888,9 +1869,10 @@ function AddCharacterDialog({ open, onOpenChange, onAddCharacter }: AddCharacter
             <Button
               type="submit"
               data-testid="button-submit-character"
+              disabled={!name.trim() || isSubmitting}
               className="flex-1 bg-amber-700 hover:bg-amber-600 text-white"
             >
-              Create Character
+              {isSubmitting ? "Creating..." : "Create Character"}
             </Button>
           </div>
         </form>
