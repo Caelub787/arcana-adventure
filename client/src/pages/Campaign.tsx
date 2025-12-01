@@ -623,6 +623,10 @@ export default function Campaign() {
 
   const handleAssignCharacter = (char: any) => {
     setCharacter(char);
+    // For GMs, also update the inspected character so the UI shows the right character
+    if (role === 'gm') {
+      setInspectedChar(char);
+    }
     // Persist the assignment to the backend so it survives page reload
     if (effectiveCampaignId) {
       api.setAssignedCharacter(effectiveCampaignId, char.id).catch(() => {

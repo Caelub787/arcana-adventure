@@ -3308,6 +3308,14 @@ function HotbarsTabContent({ character, isGM, isOwner }: HotbarsTabContentProps)
   const [clearDialogOpen, setClearDialogOpen] = useState(false);
   const [clearHotbarType, setClearHotbarType] = useState<string>('');
   const [pendingHeavyWeaponEquip, setPendingHeavyWeaponEquip] = useState(false);
+  
+  // Mobile tap-to-equip state
+  const [equipPickerOpen, setEquipPickerOpen] = useState(false);
+  const [equipPickerData, setEquipPickerData] = useState<{
+    hotbarType: 'weapons' | 'magic' | 'skills' | 'consumables' | 'utility';
+    payload: any;
+    itemName: string;
+  } | null>(null);
 
   const { data: hotbars = [], isLoading } = useQuery({
     queryKey: ['hotbars', character.id],
@@ -3386,6 +3394,14 @@ function HotbarsTabContent({ character, isGM, isOwner }: HotbarsTabContentProps)
       api.upsertHotbar(character.id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['hotbars', character.id] });
+    },
+    onError: (error: any) => {
+      console.error('Hotbar upsert failed:', error);
+      toast({
+        title: "Equip Failed",
+        description: error?.message || "Failed to save hotbar",
+        variant: "destructive"
+      });
     }
   });
 
@@ -3393,6 +3409,14 @@ function HotbarsTabContent({ character, isGM, isOwner }: HotbarsTabContentProps)
     mutationFn: (id: string) => api.deleteHotbar(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['hotbars', character.id] });
+    },
+    onError: (error: any) => {
+      console.error('Hotbar delete failed:', error);
+      toast({
+        title: "Remove Failed",
+        description: error?.message || "Failed to remove from hotbar",
+        variant: "destructive"
+      });
     }
   });
 
@@ -3656,6 +3680,39 @@ function HotbarsTabContent({ character, isGM, isOwner }: HotbarsTabContentProps)
     e.dataTransfer.effectAllowed = 'copy';
   };
 
+  // Handler for tap-to-equip on mobile/touch devices
+  const openEquipPicker = (
+    hotbarType: 'weapons' | 'magic' | 'skills' | 'consumables' | 'utility',
+    payload: any,
+    itemName: string
+  ) => {
+    if (!canEdit) return;
+    setEquipPickerData({ hotbarType, payload, itemName });
+    setEquipPickerOpen(true);
+  };
+
+  // Helper to get slot display name
+  const getSlotLabel = (hotbarType: string, slotNum: number): string => {
+    if (hotbarType === 'weapons') {
+      return slotNum === 0 ? 'Left Hand' : slotNum === 1 ? 'Right Hand' : 'Ammunition';
+    }
+    return `Slot ${slotNum + 1}`;
+  };
+
+  // Helper to get max slots for hotbar type
+  const getMaxSlots = (hotbarType: string): number => {
+    if (hotbarType === 'weapons') return 3;
+    return 5;
+  };
+
+  // Equip to selected slot from picker dialog
+  const handlePickerEquip = (slotNumber: number) => {
+    if (!equipPickerData) return;
+    handleDrop(equipPickerData.hotbarType, slotNumber, equipPickerData.payload);
+    setEquipPickerOpen(false);
+    setEquipPickerData(null);
+  };
+
   const skillsList = [
     { key: 'skillAgility', name: 'Agility', category: 'Physical' },
     { key: 'skillStrength', name: 'Strength', category: 'Physical' },
@@ -3745,14 +3802,15 @@ function HotbarsTabContent({ character, isGM, isOwner }: HotbarsTabContentProps)
           {/* Draggable Weapons */}
           {canEdit && weaponItems.length > 0 && (
             <div className="pt-4 border-t border-stone-700 mt-4">
-              <Label className="text-xs text-stone-400 mb-2 block">Drag weapons to hotbar slots:</Label>
+              <Label className="text-xs text-stone-400 mb-2 block">Tap or drag weapons to equip:</Label>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-48 overflow-y-auto">
                 {weaponItems.map((item: any) => (
                   <div
                     key={item.id}
                     draggable
                     onDragStart={(e) => handleDragStart(e, { type: 'item', item, itemId: item.id })}
-                    className="px-2 py-1 bg-stone-900 rounded border border-stone-700 cursor-move hover:border-amber-500 hover:bg-stone-800 transition-all text-xs"
+                    onClick={() => openEquipPicker('weapons', { type: 'item', item, itemId: item.id }, item.name)}
+                    className="px-2 py-1 bg-stone-900 rounded border border-stone-700 cursor-pointer hover:border-amber-500 hover:bg-stone-800 active:bg-amber-900/30 transition-all text-xs touch-target"
                     data-testid={`drag-weapon-${item.id}`}
                   >
                     <div className="flex justify-between items-center">
@@ -3769,7 +3827,7 @@ function HotbarsTabContent({ character, isGM, isOwner }: HotbarsTabContentProps)
           {canEdit && ammunitionItems.length > 0 && (
             <div className="pt-4 border-t border-stone-700 mt-4">
               <Label className="text-xs text-stone-400 mb-2 block">
-                Drag ammunition to Ammo slot:
+                Tap or drag ammunition to equip:
                 {compatibleAmmoType && (
                   <span className="text-amber-400 ml-1">(Compatible: {compatibleAmmoType}s)</span>
                 )}
@@ -3782,11 +3840,12 @@ function HotbarsTabContent({ character, isGM, isOwner }: HotbarsTabContentProps)
                       key={item.id}
                       draggable={isCompatible}
                       onDragStart={(e) => isCompatible && handleDragStart(e, { type: 'item', item, itemId: item.id })}
+                      onClick={() => isCompatible && openEquipPicker('weapons', { type: 'item', item, itemId: item.id }, item.name)}
                       className={`px-2 py-1 bg-stone-900 rounded border text-xs ${
                         isCompatible 
-                          ? 'border-stone-700 cursor-move hover:border-amber-500 hover:bg-stone-800' 
+                          ? 'border-stone-700 cursor-pointer hover:border-amber-500 hover:bg-stone-800 active:bg-amber-900/30' 
                           : 'border-stone-800 opacity-50 cursor-not-allowed'
-                      } transition-all`}
+                      } transition-all touch-target`}
                       data-testid={`drag-ammo-${item.id}`}
                     >
                       <div className="flex justify-between items-center">
@@ -3846,19 +3905,20 @@ function HotbarsTabContent({ character, isGM, isOwner }: HotbarsTabContentProps)
             ))}
           </div>
           <p className="text-xs text-stone-500 mt-3">
-            Drag spells from below to equip them.
+            Tap or drag spells to equip them.
           </p>
           
           {canEdit && spells.length > 0 && (
             <div className="pt-4 border-t border-stone-700 mt-4">
-              <Label className="text-xs text-stone-400 mb-2 block">Drag spells to hotbar slots:</Label>
+              <Label className="text-xs text-stone-400 mb-2 block">Tap or drag spells to equip:</Label>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-48 overflow-y-auto">
                 {spells.map((spell: any) => (
                   <div
                     key={spell.id}
                     draggable
                     onDragStart={(e) => handleDragStart(e, { type: 'spell', id: spell.id, name: spell.name })}
-                    className={`px-2 py-1 bg-stone-900 rounded border cursor-move hover:border-purple-500 hover:bg-stone-800 transition-all text-xs ${spell.isEquipped ? 'border-purple-500 opacity-60' : 'border-stone-700'}`}
+                    onClick={() => openEquipPicker('magic', { type: 'spell', id: spell.id, name: spell.name }, spell.name)}
+                    className={`px-2 py-1 bg-stone-900 rounded border cursor-pointer hover:border-purple-500 hover:bg-stone-800 active:bg-purple-900/30 transition-all text-xs touch-target ${spell.isEquipped ? 'border-purple-500 opacity-60' : 'border-stone-700'}`}
                     data-testid={`drag-spell-${spell.id}`}
                   >
                     <div className="flex justify-between items-center">
@@ -3917,7 +3977,7 @@ function HotbarsTabContent({ character, isGM, isOwner }: HotbarsTabContentProps)
           
           {canEdit && (
             <div className="pt-4 border-t border-stone-700">
-              <Label className="text-xs text-stone-400 mb-2 block">Drag skills to hotbar slots:</Label>
+              <Label className="text-xs text-stone-400 mb-2 block">Tap or drag skills to equip:</Label>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-48 overflow-y-auto">
                 {skillsList.map(skill => {
                   const skillValue = character[skill.key as keyof typeof character] || 0;
@@ -3927,7 +3987,8 @@ function HotbarsTabContent({ character, isGM, isOwner }: HotbarsTabContentProps)
                       key={skill.key}
                       draggable
                       onDragStart={(e) => handleDragStart(e, { type: 'skill', skillName: skill.name })}
-                      className="px-2 py-1 bg-stone-900 rounded border border-stone-700 cursor-move hover:border-blue-500 hover:bg-stone-800 transition-all text-xs"
+                      onClick={() => openEquipPicker('skills', { type: 'skill', skillName: skill.name }, skill.name)}
+                      className="px-2 py-1 bg-stone-900 rounded border border-stone-700 cursor-pointer hover:border-blue-500 hover:bg-stone-800 active:bg-blue-900/30 transition-all text-xs touch-target"
                       data-testid={`drag-skill-${skill.name.toLowerCase().replace(/ /g, '-')}`}
                     >
                       <div className="flex justify-between items-center">
@@ -3985,19 +4046,20 @@ function HotbarsTabContent({ character, isGM, isOwner }: HotbarsTabContentProps)
             ))}
           </div>
           <p className="text-xs text-stone-500 mt-3">
-            Drag consumable items from below to equip them.
+            Tap or drag consumable items to equip them.
           </p>
           
           {canEdit && consumableItems.length > 0 && (
             <div className="pt-4 border-t border-stone-700 mt-4">
-              <Label className="text-xs text-stone-400 mb-2 block">Drag consumables to hotbar slots:</Label>
+              <Label className="text-xs text-stone-400 mb-2 block">Tap or drag consumables to equip:</Label>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-48 overflow-y-auto">
                 {consumableItems.map((item: any) => (
                   <div
                     key={item.id}
                     draggable
                     onDragStart={(e) => handleDragStart(e, { type: 'item', item, itemId: item.id })}
-                    className="px-2 py-1 bg-stone-900 rounded border border-stone-700 cursor-move hover:border-green-500 hover:bg-stone-800 transition-all text-xs"
+                    onClick={() => openEquipPicker('consumables', { type: 'item', item, itemId: item.id }, item.name)}
+                    className="px-2 py-1 bg-stone-900 rounded border border-stone-700 cursor-pointer hover:border-green-500 hover:bg-stone-800 active:bg-green-900/30 transition-all text-xs touch-target"
                     data-testid={`drag-consumable-${item.id}`}
                   >
                     <div className="flex justify-between items-center">
@@ -4054,19 +4116,20 @@ function HotbarsTabContent({ character, isGM, isOwner }: HotbarsTabContentProps)
             ))}
           </div>
           <p className="text-xs text-stone-500 mt-3">
-            Drag utility items from below to equip them. Containers grant carry capacity bonus when equipped.
+            Tap or drag utility items to equip them. Containers grant carry capacity bonus when equipped.
           </p>
           
           {canEdit && utilityItems.length > 0 && (
             <div className="pt-4 border-t border-stone-700 mt-4">
-              <Label className="text-xs text-stone-400 mb-2 block">Drag utility items to hotbar slots:</Label>
+              <Label className="text-xs text-stone-400 mb-2 block">Tap or drag utility items to equip:</Label>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-48 overflow-y-auto">
                 {utilityItems.map((item: any) => (
                   <div
                     key={item.id}
                     draggable
                     onDragStart={(e) => handleDragStart(e, { type: 'item', item, itemId: item.id })}
-                    className="px-2 py-1 bg-stone-900 rounded border border-stone-700 cursor-move hover:border-orange-500 hover:bg-stone-800 transition-all text-xs"
+                    onClick={() => openEquipPicker('utility', { type: 'item', item, itemId: item.id }, item.name)}
+                    className="px-2 py-1 bg-stone-900 rounded border border-stone-700 cursor-pointer hover:border-orange-500 hover:bg-stone-800 active:bg-orange-900/30 transition-all text-xs touch-target"
                     data-testid={`drag-utility-${item.id}`}
                   >
                     <div className="flex justify-between items-center">
@@ -4098,6 +4161,58 @@ function HotbarsTabContent({ character, isGM, isOwner }: HotbarsTabContentProps)
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Equip Slot Picker Dialog - for mobile/touch devices */}
+      <Dialog open={equipPickerOpen} onOpenChange={(open) => {
+        setEquipPickerOpen(open);
+        if (!open) setEquipPickerData(null);
+      }}>
+        <DialogContent className="bg-stone-900 border-stone-700 max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-amber-500">
+              Equip {equipPickerData?.itemName}
+            </DialogTitle>
+            <DialogDescription className="text-stone-400">
+              Select a slot to equip this item
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-3 gap-2 py-4">
+            {equipPickerData && Array.from({ length: getMaxSlots(equipPickerData.hotbarType) }).map((_, slotNum) => {
+              const existingHotbar = getHotbarForSlot(equipPickerData.hotbarType, slotNum);
+              const isSlot1Blocked = equipPickerData.hotbarType === 'weapons' && slotNum === 1 && heavyEquipped;
+              
+              return (
+                <Button
+                  key={slotNum}
+                  variant={existingHotbar ? "secondary" : "outline"}
+                  className={`h-16 flex flex-col items-center justify-center gap-1 ${
+                    isSlot1Blocked ? 'opacity-50 cursor-not-allowed' : ''
+                  }`}
+                  onClick={() => !isSlot1Blocked && handlePickerEquip(slotNum)}
+                  disabled={isSlot1Blocked}
+                  data-testid={`equip-picker-slot-${slotNum}`}
+                >
+                  <span className="text-xs text-stone-400">
+                    {getSlotLabel(equipPickerData.hotbarType, slotNum)}
+                  </span>
+                  {existingHotbar ? (
+                    <span className="text-xs text-amber-400 truncate max-w-full">
+                      (Replace)
+                    </span>
+                  ) : (
+                    <span className="text-xs text-stone-500">Empty</span>
+                  )}
+                </Button>
+              );
+            })}
+          </div>
+          <div className="flex justify-end">
+            <Button variant="ghost" onClick={() => setEquipPickerOpen(false)}>
+              Cancel
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
