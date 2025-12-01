@@ -317,8 +317,8 @@ export function CharacterCreation({ onComplete, onCancel }: CharacterCreationPro
                         id="energy" 
                         type="number"
                         min="0"
-                        value={energy} 
-                        onChange={(e) => setEnergy(parseInt(e.target.value) || 0)} 
+                        value={energy === 0 ? '' : energy} 
+                        onChange={(e) => setEnergy(e.target.value === '' ? 0 : parseInt(e.target.value))} 
                         className="border-stone-400 bg-white/50 text-stone-900"
                         required
                         data-testid="input-energy"
@@ -331,8 +331,8 @@ export function CharacterCreation({ onComplete, onCancel }: CharacterCreationPro
                         id="maxEnergy" 
                         type="number"
                         min="0"
-                        value={maxEnergy} 
-                        onChange={(e) => setMaxEnergy(parseInt(e.target.value) || 0)} 
+                        value={maxEnergy === 0 ? '' : maxEnergy} 
+                        onChange={(e) => setMaxEnergy(e.target.value === '' ? 0 : parseInt(e.target.value))} 
                         className="border-stone-400 bg-white/50 text-stone-900"
                         required
                         data-testid="input-max-energy"
@@ -2592,8 +2592,8 @@ export function InitiativeTracker({ open, onOpenChange, sceneId, campaignId, isG
                       <div className="flex items-center gap-1">
                         <Input
                           type="number"
-                          value={editValue}
-                          onChange={(e) => setEditValue(parseInt(e.target.value) || 0)}
+                          value={editValue === 0 ? '' : editValue}
+                          onChange={(e) => setEditValue(e.target.value === '' ? 0 : parseInt(e.target.value))}
                           className="w-16 h-8 bg-stone-700 border-stone-600 text-center"
                           autoFocus
                           onKeyDown={(e) => {
