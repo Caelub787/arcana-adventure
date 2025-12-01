@@ -100,17 +100,26 @@ export async function listImages(folderId?: string): Promise<{ id: string; name:
   }));
 }
 
+// Maximum file size for image downloads (10MB)
+const MAX_IMAGE_SIZE = 10 * 1024 * 1024;
+
 // Get a direct image URL (base64 encoded for use in app)
 export async function getImageBase64(fileId: string): Promise<string> {
   const drive = await getGoogleDriveClient();
   
-  // First get file metadata to check mime type
+  // First get file metadata to check mime type and size
   const metadata = await drive.files.get({
     fileId,
-    fields: 'mimeType',
+    fields: 'mimeType,size',
   });
   
   const mimeType = metadata.data.mimeType || 'image/png';
+  const fileSize = parseInt(metadata.data.size || '0', 10);
+  
+  // Check file size to prevent memory issues
+  if (fileSize > MAX_IMAGE_SIZE) {
+    throw new Error(`Image file is too large (${Math.round(fileSize / 1024 / 1024)}MB). Maximum size is 10MB.`);
+  }
   
   // Download the file content
   const response = await drive.files.get({

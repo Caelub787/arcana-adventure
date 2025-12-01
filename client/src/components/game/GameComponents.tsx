@@ -34,6 +34,7 @@ import battleMapImage1 from "@/assets/rocky_coast_battlemap.jpg";
 import warriorToken from "@assets/generated_images/top_down_warrior_token.png";
 import goblinToken from "@assets/generated_images/top_down_goblin_token.png";
 import { triggerSkillRollNotification, triggerRollNotification } from './RollNotification';
+import { ImageBrowser } from '@/components/ImageBrowser';
 
 
 // --- Types & Mock Data ---
@@ -5656,6 +5657,9 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
   const portraitInputRef = useRef<HTMLInputElement>(null);
   const cropImageRef = useRef<HTMLImageElement>(null);
   const [imageDimensions, setImageDimensions] = useState({ width: 0, height: 0 });
+  
+  // Image browser state
+  const [showImageBrowser, setShowImageBrowser] = useState(false);
 
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const clickTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
@@ -8130,15 +8134,26 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                   <div className="flex justify-between items-center mb-2">
                     <Label className="text-sm text-stone-300">Character Portrait</Label>
                     {canEdit && onUpdate && (
-                      <Button 
-                        size="sm" 
-                        variant="outline"
-                        onClick={() => portraitInputRef.current?.click()}
-                        data-testid="button-upload-portrait"
-                      >
-                        <Camera className="h-4 w-4 mr-1" />
-                        Upload
-                      </Button>
+                      <div className="flex gap-2">
+                        <Button 
+                          size="sm" 
+                          variant="outline"
+                          onClick={() => setShowImageBrowser(true)}
+                          data-testid="button-browse-library"
+                        >
+                          <FolderOpen className="h-4 w-4 mr-1" />
+                          Library
+                        </Button>
+                        <Button 
+                          size="sm" 
+                          variant="outline"
+                          onClick={() => portraitInputRef.current?.click()}
+                          data-testid="button-upload-portrait"
+                        >
+                          <Camera className="h-4 w-4 mr-1" />
+                          Upload
+                        </Button>
+                      </div>
                     )}
                   </div>
                   <input
@@ -8166,6 +8181,18 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                     )}
                   </div>
                 </div>
+                
+                {/* Image Browser Dialog */}
+                <ImageBrowser
+                  open={showImageBrowser}
+                  onOpenChange={setShowImageBrowser}
+                  onSelect={(imageBase64) => {
+                    if (onUpdate) {
+                      onUpdate({ portrait: imageBase64 });
+                    }
+                  }}
+                  title="Select Character Portrait"
+                />
 
                 {/* Portrait Cropping Dialog */}
                 <Dialog open={showPortraitCrop} onOpenChange={setShowPortraitCrop}>
@@ -8722,6 +8749,9 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
   const [imageDimensions, setImageDimensions] = useState({ width: 0, height: 0 });
   const imageInputRef = useRef<HTMLInputElement>(null);
   const cropImageRef = useRef<HTMLImageElement>(null);
+  
+  // Image browser state for item images
+  const [showItemImageBrowser, setShowItemImageBrowser] = useState(false);
 
   const handleAddFromTemplate = (template: any, quantity: number = 1) => {
     const itemData = {
@@ -9098,6 +9128,16 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
                     type="button" 
                     variant="outline" 
                     size="sm"
+                    onClick={() => setShowItemImageBrowser(true)}
+                    className="bg-stone-800 border-stone-600 hover:bg-stone-700"
+                    data-testid="button-browse-item-library"
+                  >
+                    <FolderOpen className="h-4 w-4 mr-1" /> Library
+                  </Button>
+                  <Button 
+                    type="button" 
+                    variant="outline" 
+                    size="sm"
                     onClick={() => imageInputRef.current?.click()}
                     className="bg-stone-800 border-stone-600 hover:bg-stone-700"
                     data-testid="button-upload-item-image"
@@ -9105,6 +9145,16 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
                     <Upload className="h-4 w-4 mr-1" /> Upload
                   </Button>
                 </div>
+                
+                {/* Image Browser Dialog for Item Images */}
+                <ImageBrowser
+                  open={showItemImageBrowser}
+                  onOpenChange={setShowItemImageBrowser}
+                  onSelect={(imageBase64) => {
+                    setFormData({...formData, image: imageBase64});
+                  }}
+                  title="Select Item Image"
+                />
               </div>
               <div>
                 <Label>Item Type</Label>
