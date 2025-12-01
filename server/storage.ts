@@ -387,15 +387,13 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteCharacterWithTokens(id: string): Promise<void> {
-    await db.transaction(async (tx) => {
-      await tx.delete(tokens).where(eq(tokens.characterId, id));
-      await tx.delete(items).where(eq(items.characterId, id));
-      await tx.delete(hotbars).where(eq(hotbars.characterId, id));
-      await tx.delete(spells).where(eq(spells.characterId, id));
-      await tx.delete(characterPermissions).where(eq(characterPermissions.characterId, id));
-      await tx.delete(initiativeEntries).where(eq(initiativeEntries.characterId, id));
-      await tx.delete(characters).where(eq(characters.id, id));
-    });
+    await db.delete(tokens).where(eq(tokens.characterId, id));
+    await db.delete(items).where(eq(items.characterId, id));
+    await db.delete(hotbars).where(eq(hotbars.characterId, id));
+    await db.delete(spells).where(eq(spells.characterId, id));
+    await db.delete(characterPermissions).where(eq(characterPermissions.characterId, id));
+    await db.delete(initiativeEntries).where(eq(initiativeEntries.characterId, id));
+    await db.delete(characters).where(eq(characters.id, id));
   }
 
   // Token operations
