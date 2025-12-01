@@ -88,16 +88,15 @@ Preferred communication style: Simple, everyday language.
 
 **3D Dice Rolling System**:
 -   **Die Types**: Full set of polyhedral dice - d4, d6, d8, d10, d12, d20
--   **Physics-Based Rolling**: Cannon-es physics engine for realistic dice tumbling with deterministic seeds
--   **3D Rendering**: Three.js with @react-three/fiber for WebGL-accelerated 3D dice visualization
+-   **HUD Integration**: Dice roller accessible via HUD button in Campaign page (Dices icon). Click to reveal die type selector popup.
+-   **Battlemap Overlay**: 3D dice render directly on the battlemap using BattlemapDiceOverlay component with Three.js/React Three Fiber
+-   **Server-Authoritative Rolls**: Server uses `crypto.randomInt()` for fair, verifiable rolls. Client never generates random numbers.
+-   **Chat Integration**: All dice rolls are automatically saved to chat with type "roll". Results show "[Username] rolled D20: Result = Total" format.
+-   **Real-time Sync**: WebSocket broadcasts `dice_roll` (for 3D animation) and `chat_message` (for chat display) to all campaign players
+-   **WebSocket Message Buffering**: Server buffers messages during async setup (session parsing, user lookup) to prevent race conditions
+-   **Roll Styling**: Roll messages in chat have distinctive cyan/purple gradient background with dice icon
 -   **Custom Textures**: Per-user dice customization stored in `diceTextures` table (base64 images per die type)
 -   **Quick Colors**: Preset color schemes (Obsidian, Ruby, Sapphire, Emerald, Amber, Amethyst, Pearl, Gold)
--   **UV Guides**: Built-in UV mapping templates for each die type to help create custom textures
--   **Real-time Sync**: Dice rolls broadcast via WebSocket so all campaign players see each other's rolls
--   **Roll Notifications**: Floating notifications display other players' roll results with username and die type
--   **Modifiers**: Optional modifiers can be added to rolls (e.g., +5 for skill bonuses)
--   **Roll History**: Recent rolls displayed with result, modifier, and total
--   **HUD Integration**: Dice roller accessible via HUD button in Campaign page
 
 ### Backend Architecture
 

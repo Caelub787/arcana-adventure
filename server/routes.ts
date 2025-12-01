@@ -128,6 +128,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
   }
 
   wss.on("connection", async (ws, req) => {
+    // Buffer messages received during async setup
+    const messageBuffer: any[] = [];
+    let setupComplete = false;
+    
+    // Attach message handler IMMEDIATELY to capture early messages
+    ws.on("message", async (data) => {
+      if (!setupComplete) {
+        // Buffer messages until setup is complete
+        messageBuffer.push(data);
+        console.log(`[WebSocket] Buffering message during setup`);
+        return;
+      }
+      await handleMessage(ws, data);
+    });
+    
     // Validate Origin header to prevent CSRF attacks
     const origin = req.headers.origin;
     const allowedOrigins = [
@@ -145,9 +160,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       allowedOrigins.push(`https://${process.env.REPLIT_DEV_DOMAIN}`);
     }
     
-    // Check if origin matches any allowed origin (with partial match support)
+    // Check if origin matches any allowed origin (with partial match support for Replit domains)
     const isAllowed = !origin || allowedOrigins.some(allowed => 
-      origin === allowed || origin.startsWith(allowed) || (allowed.includes('.repl.co') && origin.includes('.repl.co'))
+      origin === allowed || 
+      origin.startsWith(allowed) || 
+      (allowed.includes('.repl.co') && origin.includes('.repl.co')) ||
+      origin.includes('.picard.replit.dev') ||
+      origin.includes('.replit.dev')
     );
     
     if (!isAllowed) {
@@ -194,12 +213,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
     (ws as any).userId = userId;
     (ws as any).username = user.username;
     (ws as any).campaigns = new Map<string, { role: string }>(); // Track joined campaigns with roles
-
-    ws.on("message", async (data) => {
+    
+    console.log(`[WebSocket] User ${user.username} (${userId}) connected successfully`);
+    
+    // Mark setup as complete and process buffered messages
+    setupComplete = true;
+    if (messageBuffer.length > 0) {
+      console.log(`[WebSocket] Processing ${messageBuffer.length} buffered messages`);
+      for (const bufferedData of messageBuffer) {
+        await handleMessage(ws, bufferedData);
+      }
+    }
+    
+    // Define message handler function
+    async function handleMessage(ws: any, data: any) {
       try {
         const message = JSON.parse(data.toString());
         const authenticatedUserId = (ws as any).userId;
         const username = (ws as any).username;
+        
+        console.log(`[WebSocket] Received message from ${username}:`, message.type);
         
         // Rate limiting check
         if (!checkRateLimit(authenticatedUserId)) {
@@ -555,7 +588,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           message: "An error occurred processing your message"
         }));
       }
-    });
+    }
 
     ws.on("close", () => {
       // Remove from all campaign rooms
