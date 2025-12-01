@@ -5296,31 +5296,6 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
   );
 }
 
-
-// Race data with stats for Arcana Adventure
-const ARCANA_RACES = [
-  { name: 'Human', size: 'Medium', naturalArmor: 5, sizeBonus: 0, featTree: 'Versatile', speed: 30, flySpeed: 0 },
-  { name: 'Elf', size: 'Medium', naturalArmor: 5, sizeBonus: 0, featTree: 'Elven Heritage', speed: 35, flySpeed: 0 },
-  { name: 'Dwarf', size: 'Medium', naturalArmor: 6, sizeBonus: 0, featTree: 'Dwarven Resilience', speed: 25, flySpeed: 0 },
-  { name: 'Halfling', size: 'Small', naturalArmor: 5, sizeBonus: 1, featTree: 'Lucky', speed: 25, flySpeed: 0 },
-  { name: 'Orc', size: 'Medium', naturalArmor: 6, sizeBonus: 0, featTree: 'Savage Attacks', speed: 30, flySpeed: 0 },
-  { name: 'Tiefling', size: 'Medium', naturalArmor: 5, sizeBonus: 0, featTree: 'Infernal Legacy', speed: 30, flySpeed: 0 },
-  { name: 'Dragonborn', size: 'Medium', naturalArmor: 6, sizeBonus: 0, featTree: 'Draconic Ancestry', speed: 30, flySpeed: 0 },
-  { name: 'Gnome', size: 'Small', naturalArmor: 5, sizeBonus: 1, featTree: 'Gnome Cunning', speed: 25, flySpeed: 0 },
-  { name: 'Half-Elf', size: 'Medium', naturalArmor: 5, sizeBonus: 0, featTree: 'Dual Heritage', speed: 30, flySpeed: 0 },
-  { name: 'Half-Orc', size: 'Medium', naturalArmor: 6, sizeBonus: 0, featTree: 'Relentless Endurance', speed: 30, flySpeed: 0 },
-  { name: 'Aasimar', size: 'Medium', naturalArmor: 5, sizeBonus: 0, featTree: 'Celestial Legacy', speed: 30, flySpeed: 0 },
-  { name: 'Goliath', size: 'Large', naturalArmor: 7, sizeBonus: -1, featTree: "Stone's Endurance", speed: 30, flySpeed: 0 },
-  { name: 'Tabaxi', size: 'Medium', naturalArmor: 5, sizeBonus: 0, featTree: 'Feline Agility', speed: 35, flySpeed: 0 },
-  { name: 'Kenku', size: 'Medium', naturalArmor: 5, sizeBonus: 0, featTree: 'Mimicry', speed: 30, flySpeed: 0 },
-  { name: 'Aarakocra', size: 'Medium', naturalArmor: 5, sizeBonus: 0, featTree: 'Flight', speed: 25, flySpeed: 50 },
-  { name: 'Firbolg', size: 'Large', naturalArmor: 6, sizeBonus: -1, featTree: 'Hidden Step', speed: 30, flySpeed: 0 },
-  { name: 'Kobold', size: 'Small', naturalArmor: 4, sizeBonus: 1, featTree: 'Pack Tactics', speed: 30, flySpeed: 0 },
-  { name: 'Lizardfolk', size: 'Medium', naturalArmor: 7, sizeBonus: 0, featTree: 'Natural Armor', speed: 30, flySpeed: 0 },
-  { name: 'Changeling', size: 'Medium', naturalArmor: 5, sizeBonus: 0, featTree: 'Shapechanger', speed: 30, flySpeed: 0 },
-  { name: 'Warforged', size: 'Medium', naturalArmor: 8, sizeBonus: 0, featTree: 'Constructed Resilience', speed: 30, flySpeed: 0 },
-];
-
 // Shared state for drag and drop (works on mobile unlike dataTransfer)
 let globalDraggedItem: { id: string; item: any } | null = null;
 
