@@ -3818,18 +3818,41 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
         if (level <= 6) return 'text-purple-400';
         return 'text-amber-400';
       };
+
+      const getLevelBgColor = (level: number) => {
+        if (level === 0) return 'bg-gray-600';
+        if (level <= 3) return 'bg-blue-600';
+        if (level <= 6) return 'bg-purple-600';
+        return 'bg-amber-600';
+      };
       
       return (
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
-              <div className="text-xs font-bold text-center w-full">
-                <div className="text-purple-400 truncate text-[10px]">{spellData.name}</div>
-                <div className={`text-[9px] ${getLevelColor(spellData.level)}`}>
-                  {spellData.level === 0 ? 'Cantrip' : `Lvl ${spellData.level}`}
-                </div>
-                {spellData.damage && (
-                  <div className="text-red-400 text-[8px]">{spellData.damage}</div>
+              <div className="w-full h-full flex flex-col items-center justify-center p-0.5">
+                {spellData.image ? (
+                  <div className="relative w-full h-full flex items-center justify-center">
+                    <img 
+                      src={spellData.image} 
+                      alt={spellData.name}
+                      className="w-10 h-10 sm:w-12 sm:h-12 md:w-14 md:h-14 object-cover rounded"
+                    />
+                    {/* Level badge */}
+                    <div className={`absolute top-0 right-0 ${getLevelBgColor(spellData.level)} text-white text-[8px] px-1 rounded-bl font-bold`}>
+                      {spellData.level === 0 ? 'C' : spellData.level}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-xs font-bold text-center w-full">
+                    <div className="text-purple-400 truncate text-[10px]">{spellData.name}</div>
+                    <div className={`text-[9px] ${getLevelColor(spellData.level)}`}>
+                      {spellData.level === 0 ? 'Cantrip' : `Lvl ${spellData.level}`}
+                    </div>
+                    {spellData.damage && (
+                      <div className="text-red-400 text-[8px]">{spellData.damage}</div>
+                    )}
+                  </div>
                 )}
               </div>
             </TooltipTrigger>
@@ -3855,24 +3878,50 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
-              <div className="text-xs font-bold text-center w-full">
-                <div className="text-amber-400 truncate text-[10px]">{itemData.name}</div>
-                {itemData.damage && (
-                  <div className="text-stone-400 text-[9px]">{itemData.damage}</div>
+              <div className="w-full h-full flex flex-col items-center justify-center p-0.5">
+                {itemData.image ? (
+                  <div className="relative w-full h-full flex items-center justify-center">
+                    <img 
+                      src={itemData.image} 
+                      alt={itemData.name}
+                      className="w-10 h-10 sm:w-12 sm:h-12 md:w-14 md:h-14 object-cover rounded"
+                    />
+                    {/* Durability bar overlay at bottom */}
+                    <div className="absolute bottom-0.5 left-0.5 right-0.5 h-1 bg-stone-900/80 rounded-full overflow-hidden">
+                      <div 
+                        className={`h-full ${durabilityColor} transition-all`} 
+                        style={{ width: `${durabilityWidth}%` }}
+                      />
+                    </div>
+                    {/* Quantity badge for ammunition */}
+                    {itemData.isAmmunition && itemData.quantity > 1 && (
+                      <div className="absolute top-0 right-0 bg-stone-900/90 text-amber-400 text-[8px] px-1 rounded-bl font-bold">
+                        x{itemData.quantity}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="text-xs font-bold text-center w-full">
+                    <div className="text-amber-400 truncate text-[10px]">{itemData.name}</div>
+                    {itemData.damage && (
+                      <div className="text-stone-400 text-[9px]">{itemData.damage}</div>
+                    )}
+                    {/* Durability bar */}
+                    <div className="w-full h-1 bg-stone-700 rounded-full overflow-hidden mt-1">
+                      <div 
+                        className={`h-full ${durabilityColor} transition-all`} 
+                        style={{ width: `${durabilityWidth}%` }}
+                      />
+                    </div>
+                  </div>
                 )}
-                {/* Durability bar */}
-                <div className="w-full h-1 bg-stone-700 rounded-full overflow-hidden mt-1">
-                  <div 
-                    className={`h-full ${durabilityColor} transition-all`} 
-                    style={{ width: `${durabilityWidth}%` }}
-                  />
-                </div>
               </div>
             </TooltipTrigger>
             <TooltipContent>
               <p className="font-bold">{itemData.name}</p>
               {itemData.damage && <p className="text-sm">Damage: {itemData.damage}</p>}
               {itemData.damageType && <p className="text-sm">Type: {itemData.damageType}</p>}
+              {itemData.isAmmunition && <p className="text-sm text-amber-400">Ammunition ({itemData.quantity})</p>}
               <p className={`text-sm ${itemData.durability <= 3 ? 'text-red-400 font-bold' : ''}`}>
                 Durability: {itemData.durability}/10
                 {itemData.durability <= 3 && ' ⚠️'}
