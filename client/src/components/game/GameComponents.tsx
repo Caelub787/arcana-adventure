@@ -2748,12 +2748,15 @@ export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onIn
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${campaignId}/characters`] });
       queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${campaignId}/tokens`] });
+      setPendingDeleteChar(null);
       toast({
         title: "Character Deleted",
         description: "The character and all associated tokens have been removed",
       });
     },
     onError: (error: Error) => {
+      console.error("Delete character error:", error);
+      setPendingDeleteChar(null);
       toast({
         title: "Error",
         description: error.message || "Failed to delete character",
@@ -2769,7 +2772,6 @@ export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onIn
   const confirmDeleteCharacter = () => {
     if (pendingDeleteChar) {
       deleteCharacterMutation.mutate(pendingDeleteChar.id);
-      setPendingDeleteChar(null);
     }
   };
 
@@ -5895,7 +5897,10 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
     mutationFn: (itemData: any) => api.createItem(character.id, itemData),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['items', character.id] });
-      setShowAddItem(false);
+      toast({
+        title: "Item Added",
+        description: "Item has been added to inventory",
+      });
     }
   });
 
@@ -10010,6 +10015,143 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
               </div>
             )}
 
+            {currentData.itemType === 'armor' && (
+              <div className="pt-4 border-t border-stone-700">
+                <h3 className="text-sm font-bold text-stone-300 mb-2">Armor Settings</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <Label className="text-xs text-stone-400">Armor Slot</Label>
+                      {isEditing && !canEditAllFields && (
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger>
+                              <Lock className="h-3 w-3 text-amber-600" />
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Only GMs can edit this field</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      )}
+                    </div>
+                    {isEditing && canEditAllFields ? (
+                      <Select value={currentData.armorSlot || ''} onValueChange={(v) => setEditData({ ...editData, armorSlot: v })}>
+                        <SelectTrigger className="bg-stone-800 border-amber-700" data-testid="select-armor-slot">
+                          <SelectValue placeholder="Select slot..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="helm">Helm</SelectItem>
+                          <SelectItem value="chest">Chest</SelectItem>
+                          <SelectItem value="arm">Arm</SelectItem>
+                          <SelectItem value="legs">Legs</SelectItem>
+                          <SelectItem value="boots">Boots</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <p className="text-stone-200 capitalize">{currentData.armorSlot || 'Not specified'}</p>
+                    )}
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <Label className="text-xs text-stone-400">Armor Bonus</Label>
+                      {isEditing && !canEditAllFields && (
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger>
+                              <Lock className="h-3 w-3 text-amber-600" />
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Only GMs can edit this field</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      )}
+                    </div>
+                    {isEditing && canEditAllFields ? (
+                      <Input 
+                        type="number"
+                        value={currentData.armorBonus || ''} 
+                        onChange={(e) => setEditData({ ...editData, armorBonus: e.target.value === '' ? '' : parseInt(e.target.value) })}
+                        className="bg-stone-800 border-amber-700"
+                        data-testid="input-armor-bonus"
+                      />
+                    ) : (
+                      <p className="text-stone-200">{currentData.armorBonus >= 0 ? `+${currentData.armorBonus || 0}` : currentData.armorBonus}</p>
+                    )}
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <Label className="text-xs text-stone-400">Damage Reduction</Label>
+                      {isEditing && !canEditAllFields && (
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger>
+                              <Lock className="h-3 w-3 text-amber-600" />
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Only GMs can edit this field</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      )}
+                    </div>
+                    {isEditing && canEditAllFields ? (
+                      <Input 
+                        type="number"
+                        value={currentData.damageReduction || ''} 
+                        onChange={(e) => setEditData({ ...editData, damageReduction: e.target.value === '' ? '' : parseInt(e.target.value) })}
+                        className="bg-stone-800 border-amber-700"
+                        data-testid="input-damage-reduction"
+                      />
+                    ) : (
+                      <p className="text-stone-200">{currentData.damageReduction || 0}</p>
+                    )}
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <Label className="text-xs text-stone-400">Reduction Type</Label>
+                      {isEditing && !canEditAllFields && (
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger>
+                              <Lock className="h-3 w-3 text-amber-600" />
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Only GMs can edit this field</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      )}
+                    </div>
+                    {isEditing && canEditAllFields ? (
+                      <Select value={currentData.damageReductionType || ''} onValueChange={(v) => setEditData({ ...editData, damageReductionType: v })}>
+                        <SelectTrigger className="bg-stone-800 border-amber-700" data-testid="select-damage-reduction-type">
+                          <SelectValue placeholder="Select type..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Sharp">Sharp</SelectItem>
+                          <SelectItem value="Blunt">Blunt</SelectItem>
+                          <SelectItem value="Piercing">Piercing</SelectItem>
+                          <SelectItem value="Flame">Flame</SelectItem>
+                          <SelectItem value="Frost">Frost</SelectItem>
+                          <SelectItem value="Storm">Storm</SelectItem>
+                          <SelectItem value="Tide">Tide</SelectItem>
+                          <SelectItem value="Stone">Stone</SelectItem>
+                          <SelectItem value="Flux">Flux</SelectItem>
+                          <SelectItem value="Light">Light</SelectItem>
+                          <SelectItem value="Dark">Dark</SelectItem>
+                          <SelectItem value="Sound">Sound</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <p className="text-stone-200">{currentData.damageReductionType || 'None'}</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="pt-4 border-t border-stone-700">
               <h3 className="text-sm font-bold text-stone-300 mb-2">Physical</h3>
               <div className="grid grid-cols-2 gap-4">
@@ -10092,68 +10234,70 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
                   )}
                 </div>
                 {/* Price Display */}
-                <div className="col-span-2">
-                  <Label className="text-xs text-stone-400">Value</Label>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <Label className="text-xs text-stone-400">Price</Label>
+                    {isEditing && !canEditAllFields && (
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger>
+                            <Lock className="h-3 w-3 text-amber-600" />
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Only GMs can edit this field</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    )}
+                  </div>
                   {isEditing && canEditAllFields ? (
-                    <div className="grid grid-cols-4 gap-2 mt-1">
-                      <div>
-                        <Label className="text-[10px] text-stone-500">Copper</Label>
-                        <Input 
-                          type="number"
-                          min="0"
-                          value={currentData.priceCopper || ''} 
-                          onChange={(e) => setEditData({ ...editData, priceCopper: e.target.value === '' ? '' : parseInt(e.target.value) })}
-                          className="bg-stone-800 border-amber-700 h-8 text-sm"
-                          data-testid="input-price-copper"
-                        />
-                      </div>
-                      <div>
-                        <Label className="text-[10px] text-stone-500">Silver</Label>
-                        <Input 
-                          type="number"
-                          min="0"
-                          value={currentData.priceSilver || ''} 
-                          onChange={(e) => setEditData({ ...editData, priceSilver: e.target.value === '' ? '' : parseInt(e.target.value) })}
-                          className="bg-stone-800 border-amber-700 h-8 text-sm"
-                          data-testid="input-price-silver"
-                        />
-                      </div>
-                      <div>
-                        <Label className="text-[10px] text-stone-500">Gold</Label>
-                        <Input 
-                          type="number"
-                          min="0"
-                          value={currentData.priceGold || ''} 
-                          onChange={(e) => setEditData({ ...editData, priceGold: e.target.value === '' ? '' : parseInt(e.target.value) })}
-                          className="bg-stone-800 border-amber-700 h-8 text-sm"
-                          data-testid="input-price-gold"
-                        />
-                      </div>
-                      <div>
-                        <Label className="text-[10px] text-stone-500">Platinum</Label>
-                        <Input 
-                          type="number"
-                          min="0"
-                          value={currentData.pricePlatinum || ''} 
-                          onChange={(e) => setEditData({ ...editData, pricePlatinum: e.target.value === '' ? '' : parseInt(e.target.value) })}
-                          className="bg-stone-800 border-amber-700 h-8 text-sm"
-                          data-testid="input-price-platinum"
-                        />
-                      </div>
-                    </div>
+                    <Input 
+                      type="number"
+                      min="0"
+                      value={currentData.price || ''} 
+                      onChange={(e) => setEditData({ ...editData, price: e.target.value === '' ? '' : parseInt(e.target.value) })}
+                      className="bg-stone-800 border-amber-700"
+                      data-testid="input-price"
+                    />
                   ) : (
-                    <div className="flex flex-wrap gap-2 mt-1">
-                      {(currentData.pricePlatinum > 0 || currentData.priceGold > 0 || currentData.priceSilver > 0 || currentData.priceCopper > 0) ? (
-                        <>
-                          {currentData.pricePlatinum > 0 && <span className="text-cyan-400 text-sm">{currentData.pricePlatinum} pp</span>}
-                          {currentData.priceGold > 0 && <span className="text-amber-400 text-sm">{currentData.priceGold} gp</span>}
-                          {currentData.priceSilver > 0 && <span className="text-stone-300 text-sm">{currentData.priceSilver} sp</span>}
-                          {currentData.priceCopper > 0 && <span className="text-orange-400 text-sm">{currentData.priceCopper} cp</span>}
-                        </>
-                      ) : (
-                        <span className="text-stone-500 text-sm">No value set</span>
-                      )}
-                    </div>
+                    <p className="text-stone-200">{currentData.price || 0}</p>
+                  )}
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <Label className="text-xs text-stone-400">Currency</Label>
+                    {isEditing && !canEditAllFields && (
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger>
+                            <Lock className="h-3 w-3 text-amber-600" />
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Only GMs can edit this field</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    )}
+                  </div>
+                  {isEditing && canEditAllFields ? (
+                    <Select value={currentData.currency || 'copper'} onValueChange={(v) => setEditData({ ...editData, currency: v })}>
+                      <SelectTrigger className="bg-stone-800 border-amber-700" data-testid="select-currency">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="copper">Copper</SelectItem>
+                        <SelectItem value="silver">Silver</SelectItem>
+                        <SelectItem value="gold">Gold</SelectItem>
+                        <SelectItem value="platinum">Platinum</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <p className={`text-sm capitalize ${
+                      currentData.currency === 'platinum' ? 'text-cyan-400' :
+                      currentData.currency === 'gold' ? 'text-amber-400' :
+                      currentData.currency === 'silver' ? 'text-stone-300' :
+                      'text-orange-400'
+                    }`}>{currentData.currency || 'copper'}</p>
                   )}
                 </div>
               </div>
