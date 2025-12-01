@@ -1546,7 +1546,7 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
           alt={itemData.name}
           className="w-9 h-9 md:w-14 md:h-14 object-cover rounded"
         />
-        {(itemData.itemType === 'ammunition' || itemData.isAmmunition) && itemData.quantity > 1 && (
+        {itemData.itemType === 'ammunition' && itemData.quantity > 1 && (
           <div className="absolute top-0 right-0 bg-stone-900/90 text-amber-400 text-[6px] px-0.5 rounded-bl font-bold">
             x{itemData.quantity}
           </div>
@@ -3369,7 +3369,6 @@ interface ItemWithWeaponFields {
   weight?: string;
   damage?: string;
   quantity?: number;
-  isAmmunition?: boolean;
   ammunitionType?: string;
   weaponCategory?: string;
   imageData?: string;
@@ -4379,7 +4378,7 @@ function HotbarsTabContent({ character, isGM, isOwner }: HotbarsTabContentProps)
             {equipPickerData && Array.from({ length: getMaxSlots(equipPickerData.hotbarType) }).map((_, slotNum) => {
               const existingHotbar = getHotbarForSlot(equipPickerData.hotbarType, slotNum);
               const isSlot1Blocked = equipPickerData.hotbarType === 'weapons' && slotNum === 1 && heavyEquipped;
-              const isSlot2AmmoOnly = equipPickerData.hotbarType === 'weapons' && slotNum === 2 && equipPickerData.payload?.item?.itemType !== 'ammunition' && !equipPickerData.payload?.isAmmunition;
+              const isSlot2AmmoOnly = equipPickerData.hotbarType === 'weapons' && slotNum === 2 && equipPickerData.payload?.item?.itemType !== 'ammunition';
               
               // For armor hotbar, only allow armor to go in its matching slot
               const armorSlotMapping: Record<string, number> = { helm: 0, chest: 1, arm: 2, legs: 3, boots: 4 };
@@ -4761,7 +4760,7 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
                       />
                     </div>
                     {/* Quantity badge for ammunition */}
-                    {(itemData.itemType === 'ammunition' || itemData.isAmmunition) && itemData.quantity > 1 && (
+                    {itemData.itemType === 'ammunition' && itemData.quantity > 1 && (
                       <div className="absolute top-0 right-0 bg-stone-900/90 text-amber-400 text-[8px] px-1 rounded-bl font-bold">
                         x{itemData.quantity}
                       </div>
@@ -4774,7 +4773,7 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
                       {itemData.itemType === 'weapon' && (
                         <Sword className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-amber-500" />
                       )}
-                      {(itemData.itemType === 'ammunition' || itemData.isAmmunition) && (
+                      {itemData.itemType === 'ammunition' && (
                         <Target className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-amber-500" />
                       )}
                       {itemData.itemType === 'consumable' && (
@@ -4783,7 +4782,7 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
                       {itemData.itemType === 'utility' && (
                         <Backpack className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-orange-500" />
                       )}
-                      {!['weapon', 'consumable', 'utility', 'ammunition'].includes(itemData.itemType) && !itemData.isAmmunition && (
+                      {!['weapon', 'consumable', 'utility', 'ammunition'].includes(itemData.itemType) && (
                         <Package className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-stone-400" />
                       )}
                     </div>
@@ -4795,13 +4794,13 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
                       />
                     </div>
                     {/* Quantity badge for ammunition */}
-                    {(itemData.itemType === 'ammunition' || itemData.isAmmunition) && itemData.quantity > 1 && (
+                    {itemData.itemType === 'ammunition' && itemData.quantity > 1 && (
                       <div className="absolute top-0 right-0 bg-stone-900/90 text-amber-400 text-[8px] px-1 rounded-bl font-bold">
                         x{itemData.quantity}
                       </div>
                     )}
                     {/* Damage badge for weapons */}
-                    {itemData.damage && itemData.itemType !== 'ammunition' && !itemData.isAmmunition && (
+                    {itemData.damage && itemData.itemType !== 'ammunition' && (
                       <div className="absolute top-0 left-0 bg-red-900/90 text-red-300 text-[7px] px-0.5 rounded-br font-bold">
                         {itemData.damage}
                       </div>
@@ -4815,7 +4814,7 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
               {itemData.damage && <p className="text-sm">Damage: {itemData.damage}{itemData.mod ? ` +${itemData.mod}` : ''}</p>}
               {itemData.damageType && <p className="text-sm">Type: {itemData.damageType}</p>}
               {itemData.attribute && <p className="text-sm">Attack: {itemData.attribute}</p>}
-              {(itemData.itemType === 'ammunition' || itemData.isAmmunition) && <p className="text-sm text-amber-400">Ammunition ({itemData.quantity})</p>}
+              {itemData.itemType === 'ammunition' && <p className="text-sm text-amber-400">Ammunition ({itemData.quantity})</p>}
               <p className={`text-sm ${itemData.durability <= 3 ? 'text-red-400 font-bold' : ''}`}>
                 Durability: {itemData.durability}/10
                 {itemData.durability <= 3 && ' ⚠️'}
@@ -8328,7 +8327,6 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
     durability: number;
     isContainer: boolean;
     carryCapacity: number | string;
-    isAmmunition: boolean;
     ammunitionType: string;
     weaponCategory: string;
     isHeavy: boolean;
@@ -8359,7 +8357,6 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
     durability: 10,
     isContainer: false,
     carryCapacity: '',
-    isAmmunition: false,
     ammunitionType: '',
     weaponCategory: '',
     isHeavy: false,
@@ -8400,7 +8397,6 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
       durability: template.durability || 10,
       isContainer: template.isContainer || false,
       carryCapacity: template.carryCapacity || 0,
-      isAmmunition: template.isAmmunition || false,
       ammunitionType: template.ammunitionType || '',
       weaponCategory: template.weaponCategory || '',
       isHeavy: template.isHeavy || false,
@@ -8548,7 +8544,6 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
       durability: 10,
       isContainer: false,
       carryCapacity: '',
-      isAmmunition: false,
       ammunitionType: '',
       weaponCategory: '',
       isHeavy: false,
@@ -9046,7 +9041,6 @@ function ManageTemplatesDialog({ open, onOpenChange, campaignId }: { open: boole
     priceGold: number | string;
     pricePlatinum: number | string;
     durability: number;
-    isAmmunition: boolean;
     ammunitionType: string;
     weaponCategory: string;
   }>({
@@ -9065,7 +9059,6 @@ function ManageTemplatesDialog({ open, onOpenChange, campaignId }: { open: boole
     priceGold: '',
     pricePlatinum: '',
     durability: 10,
-    isAmmunition: false,
     ammunitionType: '',
     weaponCategory: '',
   });
@@ -9103,7 +9096,7 @@ function ManageTemplatesDialog({ open, onOpenChange, campaignId }: { open: boole
         name: '', description: '', itemType: 'utility', rarity: 'common',
         damage: '', damageType: '', mod: '', range: '', weight: 'light',
         itemWeight: '', priceCopper: '', priceSilver: '', priceGold: '', pricePlatinum: '', durability: 10,
-        isAmmunition: false, ammunitionType: '', weaponCategory: '',
+        ammunitionType: '', weaponCategory: '',
       });
       toast({ title: "Template Created", description: "Campaign item template created successfully" });
     }

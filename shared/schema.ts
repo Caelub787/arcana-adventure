@@ -251,8 +251,7 @@ export const items = pgTable("items", {
   attribute: text("attribute"), // Attribute used for attack rolls (might, finesse, wit, presence, will, craft)
   size: text("size"), // Item size
   isHeavy: boolean("is_heavy").default(false).notNull(), // Heavy or Light - if heavy, cannot carry another weapon
-  isAmmunition: boolean("is_ammunition").default(false).notNull(), // If true, can be equipped in ammunition slot
-  ammunitionType: text("ammunition_type"), // Type of ammunition: "arrow", "bolt", "bullet", "dart", etc.
+  ammunitionType: text("ammunition_type"), // Type of ammunition: "arrow", "bolt", "bullet", "dart", etc. (only for itemType === 'ammunition')
   weaponCategory: text("weapon_category"), // Category for ranged weapons: "bow", "crossbow", "sling", "firearm", etc.
   price: integer("price").default(0).notNull(), // Price value
   currency: text("currency").default("copper").notNull(), // copper, silver, gold, platinum
