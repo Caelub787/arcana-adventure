@@ -1774,7 +1774,7 @@ export function SelectionModeButtons({ selectionMode, onModeChange }: SelectionM
   );
 }
 
-// 4. Add Character Dialog - Simplified to only name, all other stats editable in character sheet
+// 4. Add Character Dialog - Name and Race selection, all other stats editable in character sheet
 interface AddCharacterDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -1783,7 +1783,30 @@ interface AddCharacterDialogProps {
 
 function AddCharacterDialog({ open, onOpenChange, onAddCharacter }: AddCharacterDialogProps) {
   const [name, setName] = useState("");
+  const [selectedRace, setSelectedRace] = useState("Human");
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Fetch species from database
+  const { data: speciesList = [] } = useQuery({
+    queryKey: ['species'],
+    queryFn: () => api.getSpecies('Arcana Adventure'),
+    enabled: open,
+  });
+
+  // Get the selected species data
+  const selectedSpecies = speciesList.find((s: any) => s.name === selectedRace) || {
+    name: "Human",
+    size: "Medium",
+    naturalArmor: 5,
+    sizeBonus: 0,
+    speed: 30,
+    flySpeed: 0,
+    startingHp: 10,
+    startingMaxHp: 10,
+    startingEnergy: 10,
+    startingMaxEnergy: 10,
+    featTree: ""
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -1791,21 +1814,22 @@ function AddCharacterDialog({ open, onOpenChange, onAddCharacter }: AddCharacter
     
     setIsSubmitting(true);
     
-    // Create character with just the name - using Human species defaults
+    // Create character with name and selected race stats
     onAddCharacter({
       name: name.trim(),
       level: 1,
-      race: "Human",
-      size: "Medium",
-      naturalArmor: 5,
-      sizeBonus: 0,
-      speed: 30,
-      flySpeed: 0,
-      // Human species defaults for HP/Energy
-      hp: 10,
-      maxHp: 10,
-      energy: 10,
-      maxEnergy: 10,
+      race: selectedSpecies.name,
+      size: selectedSpecies.size || "Medium",
+      naturalArmor: selectedSpecies.naturalArmor || 5,
+      sizeBonus: selectedSpecies.sizeBonus || 0,
+      speed: selectedSpecies.speed || 30,
+      flySpeed: selectedSpecies.flySpeed || 0,
+      featTree: selectedSpecies.featTree || "",
+      // HP/Energy from selected species
+      hp: selectedSpecies.startingHp || 10,
+      maxHp: selectedSpecies.startingMaxHp || 10,
+      energy: selectedSpecies.startingEnergy || 10,
+      maxEnergy: selectedSpecies.startingMaxEnergy || 10,
       // Bonus HP tracking for level-up system
       bonusHpFromLevelUps: 0,
       lastLevelUpRolled: 1,
@@ -1836,20 +1860,24 @@ function AddCharacterDialog({ open, onOpenChange, onAddCharacter }: AddCharacter
     });
     
     setName("");
+    setSelectedRace("Human");
     setIsSubmitting(false);
     onOpenChange(false);
   };
 
   return (
     <Dialog open={open} onOpenChange={(open) => {
-      if (!open) setName("");
+      if (!open) {
+        setName("");
+        setSelectedRace("Human");
+      }
       onOpenChange(open);
     }}>
       <DialogContent className="bg-stone-900 border-stone-700 text-stone-200 sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="text-amber-500 font-display text-2xl">Create Character</DialogTitle>
           <DialogDescription className="text-stone-400">
-            Enter a name for your new character. You can customize everything else in the character sheet.
+            Enter a name and select a race. You can customize everything else in the character sheet.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -1864,6 +1892,31 @@ function AddCharacterDialog({ open, onOpenChange, onAddCharacter }: AddCharacter
               placeholder="Enter character name..."
               autoFocus
             />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="char-race" className="text-stone-300">Race</Label>
+            <Select value={selectedRace} onValueChange={setSelectedRace}>
+              <SelectTrigger className="bg-stone-800 border-stone-700 text-stone-200" data-testid="select-character-race">
+                <SelectValue placeholder="Select a race" />
+              </SelectTrigger>
+              <SelectContent className="bg-stone-800 border-stone-700">
+                {speciesList.length > 0 ? (
+                  speciesList.map((species: any) => (
+                    <SelectItem key={species.id} value={species.name} className="text-stone-200">
+                      {species.name}
+                    </SelectItem>
+                  ))
+                ) : (
+                  <SelectItem value="Human" className="text-stone-200">Human</SelectItem>
+                )}
+              </SelectContent>
+            </Select>
+            {selectedSpecies && (
+              <p className="text-xs text-stone-500">
+                HP: {selectedSpecies.startingMaxHp || 10} | Energy: {selectedSpecies.startingMaxEnergy || 10} | Speed: {selectedSpecies.speed || 30}ft
+              </p>
+            )}
           </div>
 
           <div className="flex gap-2 pt-4">

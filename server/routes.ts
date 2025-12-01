@@ -1248,14 +1248,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Character routes
   app.post("/api/campaigns/:campaignId/characters", requireAuth, async (req, res) => {
     try {
+      console.log("[Character Create] Request body:", JSON.stringify(req.body, null, 2));
       const character = await storage.createCharacter({
         ...req.body,
         campaignId: req.params.campaignId,
         userId: req.session.userId!
       });
+      console.log("[Character Create] Success:", character.id);
       res.json(character);
-    } catch (err) {
-      res.status(400).json({ error: "Failed to create character" });
+    } catch (err: any) {
+      console.error("[Character Create] Error:", err.message, err.stack);
+      res.status(400).json({ error: "Failed to create character", details: err.message });
     }
   });
 
