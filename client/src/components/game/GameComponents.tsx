@@ -1818,6 +1818,7 @@ function AddCharacterDialog({ open, onOpenChange, onAddCharacter }: AddCharacter
     onAddCharacter({
       name: name.trim(),
       level: 1,
+      class: "", // Required field, kept for backwards compatibility
       race: selectedSpecies.name,
       size: selectedSpecies.size || "Medium",
       naturalArmor: selectedSpecies.naturalArmor || 5,

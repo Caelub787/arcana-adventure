@@ -339,6 +339,7 @@ export default function Campaign() {
     onSuccess: (newCharacter) => {
       setCharacter(newCharacter);
       queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${effectiveCampaignId}/characters`] });
+      toast({ title: "Success", description: "Character created successfully" });
     },
     onError: (error: any) => {
       toast({ title: "Error", description: error.message || "Failed to create character", variant: "destructive" });
@@ -618,7 +619,6 @@ export default function Campaign() {
 
   const handleAddCharacter = (characterData: any) => {
     createCharacterMutation.mutate(characterData);
-    toast({ title: "Success", description: "Character created successfully" });
   };
 
   const handleAssignCharacter = (char: any) => {
