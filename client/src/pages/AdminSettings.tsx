@@ -608,22 +608,42 @@ const getSizeBonusFromSize = (size: string): number => {
 };
 
 function SpeciesFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: SpeciesFormDialogProps) {
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<{
+    name: string;
+    description: string;
+    lifespan: number | string;
+    speed: number | string;
+    flySpeed: number | string;
+    size: string;
+    naturalArmor: number | string;
+    sizeBonus: number;
+    startingHp: number | string;
+    startingMaxHp: number | string;
+    hpPerLevel: number | string;
+    startingEnergy: number | string;
+    startingMaxEnergy: number | string;
+    featTree: string;
+  }>({
     name: initialData?.name || '',
     description: initialData?.description || '',
-    lifespan: initialData?.lifespan || 100,
-    speed: initialData?.speed || 30,
-    flySpeed: initialData?.flySpeed || 0,
+    lifespan: initialData?.lifespan ?? '',
+    speed: initialData?.speed ?? '',
+    flySpeed: initialData?.flySpeed ?? '',
     size: initialData?.size || 'Medium',
-    naturalArmor: initialData?.naturalArmor || 5,
+    naturalArmor: initialData?.naturalArmor ?? '',
     sizeBonus: initialData?.sizeBonus ?? getSizeBonusFromSize(initialData?.size || 'Medium'),
-    startingHp: initialData?.startingHp || 10,
-    startingMaxHp: initialData?.startingMaxHp || 10,
-    hpPerLevel: initialData?.hpPerLevel || 5,
-    startingEnergy: initialData?.startingEnergy || 10,
-    startingMaxEnergy: initialData?.startingMaxEnergy || 10,
+    startingHp: initialData?.startingHp ?? '',
+    startingMaxHp: initialData?.startingMaxHp ?? '',
+    hpPerLevel: initialData?.hpPerLevel ?? '',
+    startingEnergy: initialData?.startingEnergy ?? '',
+    startingMaxEnergy: initialData?.startingMaxEnergy ?? '',
     featTree: initialData?.featTree || '',
   });
+  
+  // Helper to handle numeric input - allows empty string
+  const handleNumericChange = (field: string, value: string) => {
+    setFormData({ ...formData, [field]: value === '' ? '' : parseInt(value) });
+  };
   
   // Auto-update size bonus when size changes
   const handleSizeChange = (newSize: string) => {
@@ -639,7 +659,19 @@ function SpeciesFormDialog({ open, onOpenChange, onSave, initialData, isLoading 
       toast({ title: 'Error', description: 'Species name is required', variant: 'destructive' });
       return;
     }
-    onSave(formData);
+    // Convert string values to numbers, using defaults for empty strings
+    onSave({
+      ...formData,
+      lifespan: Number(formData.lifespan) || 100,
+      speed: Number(formData.speed) || 30,
+      flySpeed: Number(formData.flySpeed) || 0,
+      naturalArmor: Number(formData.naturalArmor) || 5,
+      startingHp: Number(formData.startingHp) || 10,
+      startingMaxHp: Number(formData.startingMaxHp) || 10,
+      hpPerLevel: Number(formData.hpPerLevel) || 5,
+      startingEnergy: Number(formData.startingEnergy) || 10,
+      startingMaxEnergy: Number(formData.startingMaxEnergy) || 10,
+    });
   };
 
   return (
@@ -693,7 +725,7 @@ function SpeciesFormDialog({ open, onOpenChange, onSave, initialData, isLoading 
                 <Input
                   type="number"
                   value={formData.lifespan}
-                  onChange={(e) => setFormData({ ...formData, lifespan: parseInt(e.target.value) || 0 })}
+                  onChange={(e) => handleNumericChange('lifespan', e.target.value)}
                   className="bg-stone-800 border-stone-700"
                   data-testid="input-species-lifespan"
                 />
@@ -704,7 +736,7 @@ function SpeciesFormDialog({ open, onOpenChange, onSave, initialData, isLoading 
                 <Input
                   type="number"
                   value={formData.speed}
-                  onChange={(e) => setFormData({ ...formData, speed: parseInt(e.target.value) || 0 })}
+                  onChange={(e) => handleNumericChange('speed', e.target.value)}
                   className="bg-stone-800 border-stone-700"
                   data-testid="input-species-speed"
                 />
@@ -715,7 +747,7 @@ function SpeciesFormDialog({ open, onOpenChange, onSave, initialData, isLoading 
                 <Input
                   type="number"
                   value={formData.flySpeed}
-                  onChange={(e) => setFormData({ ...formData, flySpeed: parseInt(e.target.value) || 0 })}
+                  onChange={(e) => handleNumericChange('flySpeed', e.target.value)}
                   className="bg-stone-800 border-stone-700"
                   data-testid="input-species-flyspeed"
                 />
@@ -726,7 +758,7 @@ function SpeciesFormDialog({ open, onOpenChange, onSave, initialData, isLoading 
                 <Input
                   type="number"
                   value={formData.naturalArmor}
-                  onChange={(e) => setFormData({ ...formData, naturalArmor: parseInt(e.target.value) || 0 })}
+                  onChange={(e) => handleNumericChange('naturalArmor', e.target.value)}
                   className="bg-stone-800 border-stone-700"
                   data-testid="input-species-armor"
                 />
@@ -748,7 +780,7 @@ function SpeciesFormDialog({ open, onOpenChange, onSave, initialData, isLoading 
                 <Input
                   type="number"
                   value={formData.startingHp}
-                  onChange={(e) => setFormData({ ...formData, startingHp: parseInt(e.target.value) || 0 })}
+                  onChange={(e) => handleNumericChange('startingHp', e.target.value)}
                   className="bg-stone-800 border-stone-700"
                   data-testid="input-species-startinghp"
                 />
@@ -759,7 +791,7 @@ function SpeciesFormDialog({ open, onOpenChange, onSave, initialData, isLoading 
                 <Input
                   type="number"
                   value={formData.startingMaxHp}
-                  onChange={(e) => setFormData({ ...formData, startingMaxHp: parseInt(e.target.value) || 0 })}
+                  onChange={(e) => handleNumericChange('startingMaxHp', e.target.value)}
                   className="bg-stone-800 border-stone-700"
                   data-testid="input-species-startingmaxhp"
                 />
@@ -770,7 +802,7 @@ function SpeciesFormDialog({ open, onOpenChange, onSave, initialData, isLoading 
                 <Input
                   type="number"
                   value={formData.hpPerLevel}
-                  onChange={(e) => setFormData({ ...formData, hpPerLevel: parseInt(e.target.value) || 0 })}
+                  onChange={(e) => handleNumericChange('hpPerLevel', e.target.value)}
                   className="bg-stone-800 border-stone-700"
                   data-testid="input-species-hpperlevel"
                 />
@@ -781,7 +813,7 @@ function SpeciesFormDialog({ open, onOpenChange, onSave, initialData, isLoading 
                 <Input
                   type="number"
                   value={formData.startingEnergy}
-                  onChange={(e) => setFormData({ ...formData, startingEnergy: parseInt(e.target.value) || 0 })}
+                  onChange={(e) => handleNumericChange('startingEnergy', e.target.value)}
                   className="bg-stone-800 border-stone-700"
                   data-testid="input-species-startingenergy"
                 />
@@ -792,7 +824,7 @@ function SpeciesFormDialog({ open, onOpenChange, onSave, initialData, isLoading 
                 <Input
                   type="number"
                   value={formData.startingMaxEnergy}
-                  onChange={(e) => setFormData({ ...formData, startingMaxEnergy: parseInt(e.target.value) || 0 })}
+                  onChange={(e) => handleNumericChange('startingMaxEnergy', e.target.value)}
                   className="bg-stone-800 border-stone-700"
                   data-testid="input-species-startingmaxenergy"
                 />
@@ -847,7 +879,7 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
     rulesVisible: boolean;
     itemType: string;
     rarity: string;
-    quantity: number;
+    quantity: number | string;
     damage: string;
     damageType: string;
     mod: number | string;
@@ -858,7 +890,7 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
     isHeavy: boolean;
     ammunitionType: string;
     weaponCategory: string;
-    breakChance: number;
+    breakChance: number | string;
     itemWeight: number | string;
     price: number | string;
     currency: string;
@@ -873,25 +905,29 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
     rulesVisible: true,
     itemType: initialData?.itemType || 'utility',
     rarity: initialData?.rarity || 'common',
-    quantity: initialData?.quantity || 1,
+    quantity: initialData?.quantity ?? '',
     damage: initialData?.damage || '',
     damageType: initialData?.damageType || '',
-    mod: initialData?.mod || 0,
-    range: initialData?.range || 0,
+    mod: initialData?.mod ?? '',
+    range: initialData?.range ?? '',
     aoe: initialData?.aoe || 'none',
     attribute: initialData?.attribute || '',
     size: initialData?.size || '',
     isHeavy: (initialData as any)?.isHeavy || false,
     ammunitionType: (initialData as any)?.ammunitionType || '',
     weaponCategory: (initialData as any)?.weaponCategory || '',
-    breakChance: (initialData as any)?.breakChance ?? 10,
-    itemWeight: initialData?.itemWeight || 0,
-    price: 0,
+    breakChance: (initialData as any)?.breakChance ?? '',
+    itemWeight: initialData?.itemWeight ?? '',
+    price: '',
     currency: 'copper',
-    durability: initialData?.durability || 10,
+    durability: initialData?.durability ?? '',
     isContainer: initialData?.isContainer || false,
-    carryCapacity: initialData?.carryCapacity || 0,
+    carryCapacity: initialData?.carryCapacity ?? '',
   });
+  
+  const handleItemNumericChange = (field: string, value: string) => {
+    setFormData({ ...formData, [field]: value === '' ? '' : parseInt(value) });
+  };
 
   const imageInputRef = useRef<HTMLInputElement>(null);
 
@@ -920,7 +956,7 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
       price: Number(formData.price) || 0,
       carryCapacity: Number(formData.carryCapacity) || 0,
       quantity: Number(formData.quantity) || 1,
-      breakChance: formData.itemType === 'ammunition' ? formData.breakChance : 10,
+      breakChance: formData.itemType === 'ammunition' ? Number(formData.breakChance) || 10 : 10,
       aoe: formData.aoe === 'none' ? undefined : formData.aoe,
     };
     onSave(cleanedData);
@@ -1050,9 +1086,9 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
                     </Select>
                   </div>
                   <div className="col-span-2">
-                    <Label>Break Chance: {formData.breakChance}%</Label>
+                    <Label>Break Chance: {Number(formData.breakChance) || 10}%</Label>
                     <Slider
-                      value={[formData.breakChance]}
+                      value={[Number(formData.breakChance) || 10]}
                       onValueChange={(v) => setFormData({ ...formData, breakChance: v[0] })}
                       min={0}
                       max={100}
@@ -1103,8 +1139,8 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
                     <Label>Modifier</Label>
                     <Input
                       type="number"
-                      value={formData.mod || ''}
-                      onChange={(e) => setFormData({ ...formData, mod: e.target.value === '' ? '' : parseInt(e.target.value) })}
+                      value={formData.mod}
+                      onChange={(e) => handleItemNumericChange('mod', e.target.value)}
                       className="bg-stone-800 border-stone-700"
                       data-testid="input-modifier"
                     />
@@ -1113,8 +1149,8 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
                     <Label>Range (ft)</Label>
                     <Input
                       type="number"
-                      value={formData.range || ''}
-                      onChange={(e) => setFormData({ ...formData, range: e.target.value === '' ? '' : parseInt(e.target.value) })}
+                      value={formData.range}
+                      onChange={(e) => handleItemNumericChange('range', e.target.value)}
                       className="bg-stone-800 border-stone-700"
                       data-testid="input-range"
                     />
@@ -1172,7 +1208,7 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
                 <Input
                   type="number"
                   step="0.1"
-                  value={formData.itemWeight || ''}
+                  value={formData.itemWeight}
                   onChange={(e) => setFormData({ ...formData, itemWeight: e.target.value === '' ? '' : parseFloat(e.target.value) })}
                   className="bg-stone-800 border-stone-700"
                   data-testid="input-weight"
@@ -1185,7 +1221,7 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
                   type="number"
                   min="0"
                   max="10"
-                  value={formData.durability || ''}
+                  value={formData.durability}
                   onChange={(e) => setFormData({ ...formData, durability: e.target.value === '' ? '' : Math.min(10, Math.max(0, parseInt(e.target.value))) })}
                   className="bg-stone-800 border-stone-700"
                   data-testid="input-durability"
@@ -1196,8 +1232,8 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
                 <Label>Price</Label>
                 <Input
                   type="number"
-                  value={formData.price || ''}
-                  onChange={(e) => setFormData({ ...formData, price: e.target.value === '' ? '' : parseInt(e.target.value) })}
+                  value={formData.price}
+                  onChange={(e) => handleItemNumericChange('price', e.target.value)}
                   className="bg-stone-800 border-stone-700"
                   data-testid="input-price"
                 />
@@ -1233,8 +1269,8 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
                       <Label>Carry Capacity (lbs)</Label>
                       <Input
                         type="number"
-                        value={formData.carryCapacity || ''}
-                        onChange={(e) => setFormData({ ...formData, carryCapacity: e.target.value === '' ? '' : parseInt(e.target.value) })}
+                        value={formData.carryCapacity}
+                        onChange={(e) => handleItemNumericChange('carryCapacity', e.target.value)}
                         className="bg-stone-800 border-stone-700"
                         data-testid="input-carry-capacity"
                       />

@@ -9143,7 +9143,7 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
               </div>
               <div>
                 <Label>Weight (lbs)</Label>
-                <Input type="number" min="0" step="0.1" value={formData.itemWeight || ''} onChange={(e) => setFormData({...formData, itemWeight: e.target.value === '' ? '' : parseFloat(e.target.value)})} className="bg-stone-800 border-stone-700" />
+                <Input type="number" min="0" step="0.1" value={formData.itemWeight} onChange={(e) => setFormData({...formData, itemWeight: e.target.value === '' ? '' : parseFloat(e.target.value)})} className="bg-stone-800 border-stone-700" />
               </div>
             </div>
             <div>
@@ -9163,11 +9163,11 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
                 </div>
                 <div>
                   <Label>Modifier</Label>
-                  <Input type="number" value={formData.mod || ''} onChange={(e) => setFormData({...formData, mod: e.target.value === '' ? '' : parseInt(e.target.value)})} className="bg-stone-800 border-stone-700" />
+                  <Input type="number" value={formData.mod} onChange={(e) => setFormData({...formData, mod: e.target.value === '' ? '' : parseInt(e.target.value)})} className="bg-stone-800 border-stone-700" />
                 </div>
                 <div>
                   <Label>Range (feet)</Label>
-                  <Input type="number" min="0" value={formData.range || ''} onChange={(e) => setFormData({...formData, range: e.target.value === '' ? '' : parseInt(e.target.value)})} className="bg-stone-800 border-stone-700" />
+                  <Input type="number" min="0" value={formData.range} onChange={(e) => setFormData({...formData, range: e.target.value === '' ? '' : parseInt(e.target.value)})} className="bg-stone-800 border-stone-700" />
                 </div>
               </div>
             </div>
@@ -9176,19 +9176,19 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
               <div className="grid grid-cols-4 gap-4">
                 <div>
                   <Label>Platinum</Label>
-                  <Input type="number" min="0" value={formData.pricePlatinum || ''} onChange={(e) => setFormData({...formData, pricePlatinum: e.target.value === '' ? '' : parseInt(e.target.value)})} className="bg-stone-800 border-stone-700" />
+                  <Input type="number" min="0" value={formData.pricePlatinum} onChange={(e) => setFormData({...formData, pricePlatinum: e.target.value === '' ? '' : parseInt(e.target.value)})} className="bg-stone-800 border-stone-700" />
                 </div>
                 <div>
                   <Label>Gold</Label>
-                  <Input type="number" min="0" value={formData.priceGold || ''} onChange={(e) => setFormData({...formData, priceGold: e.target.value === '' ? '' : parseInt(e.target.value)})} className="bg-stone-800 border-stone-700" />
+                  <Input type="number" min="0" value={formData.priceGold} onChange={(e) => setFormData({...formData, priceGold: e.target.value === '' ? '' : parseInt(e.target.value)})} className="bg-stone-800 border-stone-700" />
                 </div>
                 <div>
                   <Label>Silver</Label>
-                  <Input type="number" min="0" value={formData.priceSilver || ''} onChange={(e) => setFormData({...formData, priceSilver: e.target.value === '' ? '' : parseInt(e.target.value)})} className="bg-stone-800 border-stone-700" />
+                  <Input type="number" min="0" value={formData.priceSilver} onChange={(e) => setFormData({...formData, priceSilver: e.target.value === '' ? '' : parseInt(e.target.value)})} className="bg-stone-800 border-stone-700" />
                 </div>
                 <div>
                   <Label>Copper</Label>
-                  <Input type="number" min="0" value={formData.priceCopper || ''} onChange={(e) => setFormData({...formData, priceCopper: e.target.value === '' ? '' : parseInt(e.target.value)})} className="bg-stone-800 border-stone-700" />
+                  <Input type="number" min="0" value={formData.priceCopper} onChange={(e) => setFormData({...formData, priceCopper: e.target.value === '' ? '' : parseInt(e.target.value)})} className="bg-stone-800 border-stone-700" />
                 </div>
               </div>
             </div>
@@ -9287,7 +9287,7 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
                     <Input 
                       type="number" 
                       min="0" 
-                      value={formData.armorBonus || ''} 
+                      value={formData.armorBonus} 
                       onChange={(e) => setFormData({...formData, armorBonus: e.target.value === '' ? '' : parseInt(e.target.value)})} 
                       className="bg-stone-800 border-stone-700"
                       placeholder="0"
@@ -9321,7 +9321,7 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
                     <Input 
                       type="number" 
                       min="0" 
-                      value={formData.damageReduction || ''} 
+                      value={formData.damageReduction} 
                       onChange={(e) => setFormData({...formData, damageReduction: e.target.value === '' ? '' : parseInt(e.target.value)})} 
                       className="bg-stone-800 border-stone-700"
                       placeholder="0"
@@ -9349,7 +9349,7 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
                     <Input 
                       type="number" 
                       min="0" 
-                      value={formData.carryCapacity || ''} 
+                      value={formData.carryCapacity} 
                       onChange={(e) => setFormData({...formData, carryCapacity: e.target.value === '' ? '' : parseInt(e.target.value)})} 
                       className="w-20 bg-stone-800 border-stone-700"
                       data-testid="input-carry-capacity"
@@ -9642,7 +9642,7 @@ function ManageTemplatesDialog({ open, onOpenChange, campaignId }: { open: boole
                   </div>
                   <div>
                     <Label>Weight (lbs)</Label>
-                    <Input type="number" min="0" step="0.1" value={newItem.itemWeight || ''} onChange={(e) => setNewItem({...newItem, itemWeight: e.target.value === '' ? '' : parseFloat(e.target.value)})} className="bg-stone-800 border-stone-700" />
+                    <Input type="number" min="0" step="0.1" value={newItem.itemWeight} onChange={(e) => setNewItem({...newItem, itemWeight: e.target.value === '' ? '' : parseFloat(e.target.value)})} className="bg-stone-800 border-stone-700" />
                   </div>
                 </div>
                 <div>
@@ -9723,19 +9723,19 @@ function ManageTemplatesDialog({ open, onOpenChange, campaignId }: { open: boole
                   <div className="grid grid-cols-4 gap-4">
                     <div>
                       <Label>Platinum</Label>
-                      <Input type="number" min="0" value={newItem.pricePlatinum || ''} onChange={(e) => setNewItem({...newItem, pricePlatinum: e.target.value === '' ? '' : parseInt(e.target.value)})} className="bg-stone-800 border-stone-700" />
+                      <Input type="number" min="0" value={newItem.pricePlatinum} onChange={(e) => setNewItem({...newItem, pricePlatinum: e.target.value === '' ? '' : parseInt(e.target.value)})} className="bg-stone-800 border-stone-700" />
                     </div>
                     <div>
                       <Label>Gold</Label>
-                      <Input type="number" min="0" value={newItem.priceGold || ''} onChange={(e) => setNewItem({...newItem, priceGold: e.target.value === '' ? '' : parseInt(e.target.value)})} className="bg-stone-800 border-stone-700" />
+                      <Input type="number" min="0" value={newItem.priceGold} onChange={(e) => setNewItem({...newItem, priceGold: e.target.value === '' ? '' : parseInt(e.target.value)})} className="bg-stone-800 border-stone-700" />
                     </div>
                     <div>
                       <Label>Silver</Label>
-                      <Input type="number" min="0" value={newItem.priceSilver || ''} onChange={(e) => setNewItem({...newItem, priceSilver: e.target.value === '' ? '' : parseInt(e.target.value)})} className="bg-stone-800 border-stone-700" />
+                      <Input type="number" min="0" value={newItem.priceSilver} onChange={(e) => setNewItem({...newItem, priceSilver: e.target.value === '' ? '' : parseInt(e.target.value)})} className="bg-stone-800 border-stone-700" />
                     </div>
                     <div>
                       <Label>Copper</Label>
-                      <Input type="number" min="0" value={newItem.priceCopper || ''} onChange={(e) => setNewItem({...newItem, priceCopper: e.target.value === '' ? '' : parseInt(e.target.value)})} className="bg-stone-800 border-stone-700" />
+                      <Input type="number" min="0" value={newItem.priceCopper} onChange={(e) => setNewItem({...newItem, priceCopper: e.target.value === '' ? '' : parseInt(e.target.value)})} className="bg-stone-800 border-stone-700" />
                     </div>
                   </div>
                 </div>
@@ -10169,7 +10169,7 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
                     {isEditing && canEditAllFields ? (
                       <Input 
                         type="number"
-                        value={currentData.mod || ''} 
+                        value={currentData.mod ?? ''} 
                         onChange={(e) => setEditData({ ...editData, mod: e.target.value === '' ? '' : parseInt(e.target.value) })}
                         className="bg-stone-800 border-amber-700"
                       />
@@ -10196,7 +10196,7 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
                     {isEditing && canEditAllFields ? (
                       <Input 
                         type="number"
-                        value={currentData.range || ''} 
+                        value={currentData.range ?? ''} 
                         onChange={(e) => setEditData({ ...editData, range: e.target.value === '' ? '' : parseInt(e.target.value) })}
                         className="bg-stone-800 border-amber-700"
                         placeholder="Range in feet"
@@ -10434,7 +10434,7 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
                     {isEditing && canEditAllFields ? (
                       <Input 
                         type="number"
-                        value={currentData.armorBonus || ''} 
+                        value={currentData.armorBonus ?? ''} 
                         onChange={(e) => setEditData({ ...editData, armorBonus: e.target.value === '' ? '' : parseInt(e.target.value) })}
                         className="bg-stone-800 border-amber-700"
                         data-testid="input-armor-bonus"
@@ -10462,7 +10462,7 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
                     {isEditing && canEditAllFields ? (
                       <Input 
                         type="number"
-                        value={currentData.damageReduction || ''} 
+                        value={currentData.damageReduction ?? ''} 
                         onChange={(e) => setEditData({ ...editData, damageReduction: e.target.value === '' ? '' : parseInt(e.target.value) })}
                         className="bg-stone-800 border-amber-700"
                         data-testid="input-damage-reduction"
@@ -10539,7 +10539,7 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
                       type="number"
                       step="0.1"
                       min="0"
-                      value={currentData.itemWeight || ''} 
+                      value={currentData.itemWeight ?? ''} 
                       onChange={(e) => setEditData({ ...editData, itemWeight: e.target.value === '' ? '' : parseFloat(e.target.value) })}
                       className="bg-stone-800 border-amber-700"
                     />
@@ -10617,7 +10617,7 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
                     <Input 
                       type="number"
                       min="0"
-                      value={currentData.price || ''} 
+                      value={currentData.price ?? ''} 
                       onChange={(e) => setEditData({ ...editData, price: e.target.value === '' ? '' : parseInt(e.target.value) })}
                       className="bg-stone-800 border-amber-700"
                       data-testid="input-price"
