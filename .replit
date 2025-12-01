@@ -100,4 +100,4 @@ waitForPort = 5000
 
 [agent]
 mockupState = "FULLSTACK"
-integrations = ["resend:1.0.0"]
+integrations = ["resend:1.0.0", "google-drive:1.0.0"]

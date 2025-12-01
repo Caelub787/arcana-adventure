@@ -9,6 +9,7 @@ import crypto from "crypto";
 import { db } from "./db";
 import { eq } from "drizzle-orm";
 import { createRollResult, createWebSocketDiceRollMessage, type RollRequest } from "./dice/serverRollHandler";
+import { listFolders, listImages, getImageBase64, searchImages } from "./googleDrive";
 
 declare module "express-session" {
   interface SessionData {
@@ -2705,6 +2706,61 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (e) {
       console.error("Failed to clear initiative:", e);
       res.status(500).json({ error: "Failed to clear initiative" });
+    }
+  });
+
+  // ======== GOOGLE DRIVE IMAGE LIBRARY ROUTES ========
+  
+  // List folders in Google Drive
+  app.get("/api/drive/folders", requireAuth, async (req, res) => {
+    try {
+      const parentId = req.query.parentId as string | undefined;
+      const folders = await listFolders(parentId);
+      res.json(folders);
+    } catch (e) {
+      console.error("Failed to list Drive folders:", e);
+      res.status(500).json({ error: "Failed to list folders from Google Drive" });
+    }
+  });
+  
+  // List images in a Google Drive folder
+  app.get("/api/drive/images", requireAuth, async (req, res) => {
+    try {
+      const folderId = req.query.folderId as string | undefined;
+      const images = await listImages(folderId);
+      res.json(images);
+    } catch (e) {
+      console.error("Failed to list Drive images:", e);
+      res.status(500).json({ error: "Failed to list images from Google Drive" });
+    }
+  });
+  
+  // Get a specific image as base64
+  app.get("/api/drive/image/:fileId", requireAuth, async (req, res) => {
+    try {
+      const base64Data = await getImageBase64(req.params.fileId);
+      res.json({ data: base64Data });
+    } catch (e) {
+      console.error("Failed to get Drive image:", e);
+      res.status(500).json({ error: "Failed to get image from Google Drive" });
+    }
+  });
+  
+  // Search images in Google Drive
+  app.get("/api/drive/search", requireAuth, async (req, res) => {
+    try {
+      const searchTerm = req.query.q as string;
+      const folderId = req.query.folderId as string | undefined;
+      
+      if (!searchTerm) {
+        return res.status(400).json({ error: "Search term required" });
+      }
+      
+      const results = await searchImages(searchTerm, folderId);
+      res.json(results);
+    } catch (e) {
+      console.error("Failed to search Drive images:", e);
+      res.status(500).json({ error: "Failed to search images in Google Drive" });
     }
   });
 
