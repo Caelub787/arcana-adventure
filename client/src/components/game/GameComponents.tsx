@@ -3323,7 +3323,7 @@ function HotbarsTabContent({ character, isGM, isOwner }: HotbarsTabContentProps)
   // Mobile tap-to-equip state
   const [equipPickerOpen, setEquipPickerOpen] = useState(false);
   const [equipPickerData, setEquipPickerData] = useState<{
-    hotbarType: 'weapons' | 'magic' | 'skills' | 'consumables' | 'utility';
+    hotbarType: 'weapons' | 'magic' | 'skills' | 'consumables' | 'utility' | 'armor';
     payload: any;
     itemName: string;
   } | null>(null);
@@ -3349,7 +3349,8 @@ function HotbarsTabContent({ character, isGM, isOwner }: HotbarsTabContentProps)
   const weaponItems = items.filter((item: any) => item.itemType === 'weapon' && !item.isAmmunition);
   const ammunitionItems = items.filter((item: any) => item.isAmmunition);
   const consumableItems = items.filter((item: any) => item.itemType === 'consumable');
-  const utilityItems = items.filter((item: any) => item.itemType === 'utility');
+  const utilityItems = items.filter((item: any) => item.itemType === 'utility' || item.itemType === 'container');
+  const armorItems = items.filter((item: any) => item.itemType === 'armor');
 
   // Helper: Map weapon category to compatible ammunition type
   // Thrown and melee weapons don't use ammunition from the ammo slot
@@ -3480,8 +3481,41 @@ function HotbarsTabContent({ character, isGM, isOwner }: HotbarsTabContentProps)
       const validTypeMapping: Record<string, string[]> = {
         weapons: ['weapon'],
         consumables: ['consumable'],
-        utility: ['utility']
+        utility: ['utility', 'container'],
+        armor: ['armor']
       };
+      
+      // Special handling for armor hotbar - enforce matching slot
+      if (hotbarType === 'armor') {
+        if (item.itemType !== 'armor') {
+          toast({
+            title: "Invalid Item Type",
+            description: "Only armor can be equipped in armor slots",
+            variant: "destructive"
+          });
+          return;
+        }
+        
+        // Map slot numbers to armor slot names
+        const slotToArmorType: Record<number, string> = {
+          0: 'helm',
+          1: 'chest',
+          2: 'arm',
+          3: 'legs',
+          4: 'boots'
+        };
+        
+        const requiredSlot = slotToArmorType[slotNumber];
+        if (item.armorSlot !== requiredSlot) {
+          const slotLabels: Record<string, string> = { helm: 'Helm', chest: 'Chest', arm: 'Arm', legs: 'Legs', boots: 'Boots' };
+          toast({
+            title: "Wrong Armor Slot",
+            description: `${item.name} is ${slotLabels[item.armorSlot] || 'Unknown'} armor - it can only go in the ${slotLabels[requiredSlot]} slot`,
+            variant: "destructive"
+          });
+          return;
+        }
+      }
       
       // Special handling for weapons hotbar
       if (hotbarType === 'weapons') {
@@ -3702,7 +3736,7 @@ function HotbarsTabContent({ character, isGM, isOwner }: HotbarsTabContentProps)
 
   // Handler for tap-to-equip on mobile/touch devices
   const openEquipPicker = (
-    hotbarType: 'weapons' | 'magic' | 'skills' | 'consumables' | 'utility',
+    hotbarType: 'weapons' | 'magic' | 'skills' | 'consumables' | 'utility' | 'armor',
     payload: any,
     itemName: string
   ) => {
@@ -3716,12 +3750,17 @@ function HotbarsTabContent({ character, isGM, isOwner }: HotbarsTabContentProps)
     if (hotbarType === 'weapons') {
       return slotNum === 0 ? 'Left Hand' : slotNum === 1 ? 'Right Hand' : 'Ammunition';
     }
+    if (hotbarType === 'armor') {
+      const armorSlotLabels = ['Helm', 'Chest', 'Arm', 'Legs', 'Boots'];
+      return armorSlotLabels[slotNum] || `Slot ${slotNum + 1}`;
+    }
     return `Slot ${slotNum + 1}`;
   };
 
   // Helper to get max slots for hotbar type
   const getMaxSlots = (hotbarType: string): number => {
     if (hotbarType === 'weapons') return 3;
+    if (hotbarType === 'armor') return 5;
     return 5;
   };
 
@@ -4164,6 +4203,89 @@ function HotbarsTabContent({ character, isGM, isOwner }: HotbarsTabContentProps)
         </CardContent>
       </Card>
 
+      {/* Armor Hotbar */}
+      <Card className="bg-stone-800 border-stone-700">
+        <CardHeader>
+          <div className="flex justify-between items-center">
+            <CardTitle className="text-blue-500 flex items-center gap-2">
+              <Shield className="h-5 w-5" />
+              Armor Hotbar (5 slots)
+            </CardTitle>
+            {canEdit && getHotbarsByType('armor').length > 0 && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setClearHotbarType('armor');
+                  setClearDialogOpen(true);
+                }}
+                data-testid="button-clear-armor"
+              >
+                <Trash2 className="h-3 w-3 mr-1" />
+                Clear All
+              </Button>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="flex gap-2 flex-wrap">
+            {[0, 1, 2, 3, 4].map(slotNum => (
+              <div key={slotNum} className="flex flex-col items-center gap-1">
+                <Label className="text-xs text-stone-400">
+                  {['Helm', 'Chest', 'Arm', 'Legs', 'Boots'][slotNum]}
+                </Label>
+                <HotbarSlot
+                  type="armor"
+                  slotNumber={slotNum}
+                  hotbar={getHotbarForSlot('armor', slotNum)}
+                  character={character}
+                  allHotbars={hotbars}
+                  allItems={items}
+                  canEdit={canEdit}
+                  onDrop={(slot, data) => handleDrop('armor', slot, data)}
+                  onRemove={handleRemove}
+                />
+              </div>
+            ))}
+          </div>
+          <p className="text-xs text-stone-500 mt-3">
+            Equip armor to increase your DC. Each slot corresponds to a body part.
+          </p>
+          
+          {canEdit && armorItems.length > 0 && (
+            <div className="pt-4 border-t border-stone-700 mt-4">
+              <Label className="text-xs text-stone-400 mb-2 block">Tap or drag armor to equip:</Label>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-48 overflow-y-auto">
+                {armorItems.map((item: any) => {
+                  const slotName = item.armorSlot ? item.armorSlot.charAt(0).toUpperCase() + item.armorSlot.slice(1) : 'Unknown';
+                  return (
+                    <div
+                      key={item.id}
+                      draggable
+                      onDragStart={(e) => handleDragStart(e, { type: 'item', item, itemId: item.id })}
+                      onClick={() => openEquipPicker('armor', { type: 'item', item, itemId: item.id }, item.name)}
+                      className="px-2 py-1 bg-stone-900 rounded border border-stone-700 cursor-pointer hover:border-blue-500 hover:bg-stone-800 active:bg-blue-900/30 transition-all text-xs touch-target"
+                      data-testid={`drag-armor-${item.id}`}
+                    >
+                      <div className="flex justify-between items-center">
+                        <span className="font-medium text-blue-400 truncate">{item.name}</span>
+                        <span className="text-stone-500 text-xs">{slotName}</span>
+                      </div>
+                      {(item.armorBonus || item.damageReduction) && (
+                        <div className="flex justify-between text-xs mt-1">
+                          {item.armorBonus > 0 && <span className="text-cyan-400">+{item.armorBonus} DC</span>}
+                          {item.damageReduction > 0 && <span className="text-green-400">-{item.damageReduction} {item.damageReductionType}</span>}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Clear All Confirmation Dialog */}
       <AlertDialog open={clearDialogOpen} onOpenChange={setClearDialogOpen}>
         <AlertDialogContent>
@@ -4201,7 +4323,14 @@ function HotbarsTabContent({ character, isGM, isOwner }: HotbarsTabContentProps)
               const existingHotbar = getHotbarForSlot(equipPickerData.hotbarType, slotNum);
               const isSlot1Blocked = equipPickerData.hotbarType === 'weapons' && slotNum === 1 && heavyEquipped;
               const isSlot2AmmoOnly = equipPickerData.hotbarType === 'weapons' && slotNum === 2 && !equipPickerData.payload?.isAmmunition;
-              const isBlocked = isSlot1Blocked || isSlot2AmmoOnly;
+              
+              // For armor hotbar, only allow armor to go in its matching slot
+              const armorSlotMapping: Record<string, number> = { helm: 0, chest: 1, arm: 2, legs: 3, boots: 4 };
+              const isArmorSlotMismatch = equipPickerData.hotbarType === 'armor' && 
+                equipPickerData.payload?.item?.armorSlot && 
+                armorSlotMapping[equipPickerData.payload.item.armorSlot] !== slotNum;
+              
+              const isBlocked = isSlot1Blocked || isSlot2AmmoOnly || isArmorSlotMismatch;
               
               return (
                 <Button
@@ -5580,6 +5709,22 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
     enabled: !!character.id
   });
 
+  // Calculate total DC from equipped armor
+  const calculateArmorBonus = () => {
+    const armorHotbars = hotbars.filter((h: any) => h.hotbarType === 'armor' && h.itemId);
+    let totalArmorBonus = 0;
+    armorHotbars.forEach((hotbar: any) => {
+      const armorItem = items.find((item: any) => item.id === hotbar.itemId);
+      if (armorItem?.armorBonus) {
+        totalArmorBonus += armorItem.armorBonus;
+      }
+    });
+    return totalArmorBonus;
+  };
+
+  const equippedArmorBonus = calculateArmorBonus();
+  const totalDC = (liveCharacter.sizeBonus || 0) + (liveCharacter.naturalArmor || 5) + equippedArmorBonus;
+
   // Item mutations
   const createItemMutation = useMutation({
     mutationFn: (itemData: any) => api.createItem(character.id, itemData),
@@ -6261,6 +6406,24 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                         </p>
                       </div>
                     </div>
+                  </div>
+                </div>
+
+                {/* Defense Class (DC) Display */}
+                <div className="bg-gradient-to-r from-cyan-900/40 to-blue-900/40 rounded-lg p-3 border border-cyan-700/50">
+                  <div className="flex justify-between items-center">
+                    <Label className="text-sm text-cyan-300 flex items-center gap-2">
+                      <Shield className="h-4 w-4 text-cyan-400" />
+                      Defense Class (DC)
+                    </Label>
+                    <span className="text-2xl font-bold text-cyan-400" data-testid="text-total-dc">
+                      {totalDC}
+                    </span>
+                  </div>
+                  <div className="flex gap-3 mt-2 text-xs text-stone-400">
+                    <span>Size: {liveCharacter.sizeBonus >= 0 ? `+${liveCharacter.sizeBonus}` : liveCharacter.sizeBonus}</span>
+                    <span>Natural: +{liveCharacter.naturalArmor || 5}</span>
+                    <span>Armor: +{equippedArmorBonus}</span>
                   </div>
                 </div>
 
@@ -8088,6 +8251,10 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
     ammunitionType: string;
     weaponCategory: string;
     isHeavy: boolean;
+    armorSlot: string;
+    armorBonus: number | string;
+    damageReduction: number | string;
+    damageReductionType: string;
   }>({
     name: '',
     image: '',
@@ -8115,6 +8282,10 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
     ammunitionType: '',
     weaponCategory: '',
     isHeavy: false,
+    armorSlot: '',
+    armorBonus: '',
+    damageReduction: '',
+    damageReductionType: '',
   });
 
   const [showImageCrop, setShowImageCrop] = useState(false);
@@ -8152,6 +8323,10 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
       ammunitionType: template.ammunitionType || '',
       weaponCategory: template.weaponCategory || '',
       isHeavy: template.isHeavy || false,
+      armorSlot: template.armorSlot || '',
+      armorBonus: template.armorBonus || 0,
+      damageReduction: template.damageReduction || 0,
+      damageReductionType: template.damageReductionType || '',
     };
     onSave(itemData);
   };
@@ -8265,6 +8440,8 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
       pricePlatinum: Number(formData.pricePlatinum) || 0,
       quantity: Number(formData.quantity) || 1,
       carryCapacity: Number(formData.carryCapacity) || 0,
+      armorBonus: Number(formData.armorBonus) || 0,
+      damageReduction: Number(formData.damageReduction) || 0,
     };
     onSave(cleanedData);
     setFormData({
@@ -8294,6 +8471,10 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
       ammunitionType: '',
       weaponCategory: '',
       isHeavy: false,
+      armorSlot: '',
+      armorBonus: '',
+      damageReduction: '',
+      damageReductionType: '',
     });
   };
 
@@ -8594,6 +8775,74 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
                 )}
               </div>
             </div>
+            {formData.itemType === 'armor' && (
+              <div className="border-t border-stone-700 pt-4">
+                <h3 className="text-sm font-bold text-stone-300 mb-3">Armor Settings</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label>Body Part *</Label>
+                    <Select value={formData.armorSlot || ''} onValueChange={(v) => setFormData({...formData, armorSlot: v})}>
+                      <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-armor-slot">
+                        <SelectValue placeholder="Select body part..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="helm">Helm</SelectItem>
+                        <SelectItem value="chest">Chest</SelectItem>
+                        <SelectItem value="arm">Arm</SelectItem>
+                        <SelectItem value="legs">Legs</SelectItem>
+                        <SelectItem value="boots">Boots</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label>Armor Bonus (DC)</Label>
+                    <Input 
+                      type="number" 
+                      min="0" 
+                      value={formData.armorBonus || ''} 
+                      onChange={(e) => setFormData({...formData, armorBonus: e.target.value === '' ? '' : parseInt(e.target.value)})} 
+                      className="bg-stone-800 border-stone-700"
+                      placeholder="0"
+                      data-testid="input-armor-bonus"
+                    />
+                  </div>
+                  <div>
+                    <Label>Damage Reduction Type</Label>
+                    <Select value={formData.damageReductionType || ''} onValueChange={(v) => setFormData({...formData, damageReductionType: v})}>
+                      <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-damage-reduction-type">
+                        <SelectValue placeholder="Select damage type..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Sharp">Sharp</SelectItem>
+                        <SelectItem value="Blunt">Blunt</SelectItem>
+                        <SelectItem value="Piercing">Piercing</SelectItem>
+                        <SelectItem value="Flame">Flame</SelectItem>
+                        <SelectItem value="Frost">Frost</SelectItem>
+                        <SelectItem value="Storm">Storm</SelectItem>
+                        <SelectItem value="Tide">Tide</SelectItem>
+                        <SelectItem value="Stone">Stone</SelectItem>
+                        <SelectItem value="Flux">Flux</SelectItem>
+                        <SelectItem value="Light">Light</SelectItem>
+                        <SelectItem value="Dark">Dark</SelectItem>
+                        <SelectItem value="Sound">Sound</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label>Damage Reduction Amount</Label>
+                    <Input 
+                      type="number" 
+                      min="0" 
+                      value={formData.damageReduction || ''} 
+                      onChange={(e) => setFormData({...formData, damageReduction: e.target.value === '' ? '' : parseInt(e.target.value)})} 
+                      className="bg-stone-800 border-stone-700"
+                      placeholder="0"
+                      data-testid="input-damage-reduction"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
             <div className="border-t border-stone-700 pt-4">
               <h3 className="text-sm font-bold text-stone-300 mb-3">Container Settings</h3>
               <div className="flex items-center gap-4">

@@ -1461,6 +1461,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
         characterId: req.params.characterId
       });
 
+      // Server-side armor slot validation
+      if (hotbarData.hotbarType === 'armor' && hotbarData.itemId) {
+        const item = await storage.getItem(hotbarData.itemId);
+        if (!item) {
+          return res.status(400).json({ error: "Item not found" });
+        }
+        if (item.itemType !== 'armor') {
+          return res.status(400).json({ error: "Only armor items can be equipped in armor slots" });
+        }
+        
+        // Map slot numbers to required armor slot types
+        const slotToArmorType: Record<number, string> = {
+          0: 'helm',
+          1: 'chest',
+          2: 'arm',
+          3: 'legs',
+          4: 'boots'
+        };
+        const requiredSlot = slotToArmorType[hotbarData.slotNumber];
+        if (item.armorSlot !== requiredSlot) {
+          const slotLabels: Record<string, string> = { helm: 'Helm', chest: 'Chest', arm: 'Arm', legs: 'Legs', boots: 'Boots' };
+          return res.status(400).json({ 
+            error: `${item.name} is ${slotLabels[item.armorSlot || ''] || 'Unknown'} armor - it can only go in the ${slotLabels[requiredSlot]} slot` 
+          });
+        }
+      }
+
       const hotbar = await storage.upsertHotbar(hotbarData);
       res.json(hotbar);
     } catch (err) {
