@@ -1432,6 +1432,12 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
       characterName: character.name,
       calculationBreakdown,
     });
+    
+    // Send roll to chat
+    if (character.campaignId) {
+      const chatText = `${itemData.name} Attack: ${calculationBreakdown} = ${total}`;
+      gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', chatText, 'roll');
+    }
   };
 
   // Handle damage roll (weapon damage dice + mod, or ammunition damage for ranged weapons)
@@ -1480,6 +1486,12 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
         characterName: character.name,
         calculationBreakdown,
       });
+      
+      // Send roll to chat
+      if (character.campaignId) {
+        const chatText = `${itemData.name} Damage: ${calculationBreakdown} = ${total}`;
+        gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', chatText, 'roll');
+      }
       return;
     }
     
@@ -1506,6 +1518,12 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
       characterName: character.name,
       calculationBreakdown,
     });
+    
+    // Send roll to chat
+    if (character.campaignId) {
+      const chatText = `${itemData.name} Damage: ${calculationBreakdown} = ${total}`;
+      gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', chatText, 'roll');
+    }
   };
 
   // Handle click with single/double click detection
@@ -4566,6 +4584,12 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
       characterName: character.name,
       calculationBreakdown,
     });
+    
+    // Send roll to chat
+    if (character.campaignId) {
+      const chatText = `${itemData.name} Attack: ${calculationBreakdown} = ${total}`;
+      gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', chatText, 'roll');
+    }
   };
 
   // Handle damage roll (weapon damage dice + mod, or ammunition damage for ranged weapons)
@@ -4614,6 +4638,12 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
         characterName: character.name,
         calculationBreakdown,
       });
+      
+      // Send roll to chat
+      if (character.campaignId) {
+        const chatText = `${itemData.name} Damage: ${calculationBreakdown} = ${total}`;
+        gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', chatText, 'roll');
+      }
       return;
     }
     
@@ -4640,6 +4670,12 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
       characterName: character.name,
       calculationBreakdown,
     });
+    
+    // Send roll to chat
+    if (character.campaignId) {
+      const chatText = `${itemData.name} Damage: ${calculationBreakdown} = ${total}`;
+      gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', chatText, 'roll');
+    }
   };
 
   // Handle click with single/double click detection for weapons
