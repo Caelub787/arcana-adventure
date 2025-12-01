@@ -1383,9 +1383,32 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     return allItems.find((i: any) => i.id === ammoHotbar.itemId);
   };
 
+  // Check if weapon requires ammunition to attack
+  const requiresAmmunitionForRoll = (weaponCategory: string): boolean => {
+    return ['bow', 'crossbow', 'sling', 'firearm'].includes(weaponCategory?.toLowerCase() || '');
+  };
+
   // Handle attack roll (1d20 + attribute modifier)
   const handleAttackRoll = () => {
     if (!itemData || itemData.itemType !== 'weapon') return;
+    
+    // Check if ranged weapon requires ammunition
+    if (isRangedWeapon(itemData) && requiresAmmunitionForRoll(itemData.weaponCategory)) {
+      const ammo = getEquippedAmmunition();
+      if (!ammo) {
+        triggerRollNotification({
+          type: 'attack',
+          dieType: 'd20',
+          label: `${itemData.name} - No Ammo!`,
+          result: 0,
+          modifier: 0,
+          total: 0,
+          username: character.name || 'Unknown',
+          characterName: character.name,
+        });
+        return;
+      }
+    }
     
     const attrMod = getAttributeModifier(itemData.attribute || 'might');
     const roll = Math.floor(Math.random() * 20) + 1;
@@ -1523,7 +1546,7 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
           alt={itemData.name}
           className="w-9 h-9 md:w-14 md:h-14 object-cover rounded"
         />
-        {itemData.isAmmunition && itemData.quantity > 1 && (
+        {(itemData.itemType === 'ammunition' || itemData.isAmmunition) && itemData.quantity > 1 && (
           <div className="absolute top-0 right-0 bg-stone-900/90 text-amber-400 text-[6px] px-0.5 rounded-bl font-bold">
             x{itemData.quantity}
           </div>
@@ -3561,7 +3584,7 @@ function HotbarsTabContent({ character, isGM, isOwner }: HotbarsTabContentProps)
       if (hotbarType === 'weapons') {
         // Slot 2 is reserved for ammunition only
         if (slotNumber === 2) {
-          if (!item.isAmmunition) {
+          if (item.itemType !== 'ammunition') {
             toast({
               title: "Ammunition Only",
               description: "The ammo slot only accepts ammunition items",
@@ -3585,7 +3608,7 @@ function HotbarsTabContent({ character, isGM, isOwner }: HotbarsTabContentProps)
           // If no ranged weapon or weapon doesn't require ammo, allow any ammunition type
         } else {
           // Slots 0 and 1 are for weapons, not ammunition
-          if (item.isAmmunition) {
+          if (item.itemType === 'ammunition') {
             toast({
               title: "Wrong Slot",
               description: "Ammunition goes in the Ammo slot (far-right)",
@@ -4356,7 +4379,7 @@ function HotbarsTabContent({ character, isGM, isOwner }: HotbarsTabContentProps)
             {equipPickerData && Array.from({ length: getMaxSlots(equipPickerData.hotbarType) }).map((_, slotNum) => {
               const existingHotbar = getHotbarForSlot(equipPickerData.hotbarType, slotNum);
               const isSlot1Blocked = equipPickerData.hotbarType === 'weapons' && slotNum === 1 && heavyEquipped;
-              const isSlot2AmmoOnly = equipPickerData.hotbarType === 'weapons' && slotNum === 2 && !equipPickerData.payload?.isAmmunition;
+              const isSlot2AmmoOnly = equipPickerData.hotbarType === 'weapons' && slotNum === 2 && equipPickerData.payload?.item?.itemType !== 'ammunition' && !equipPickerData.payload?.isAmmunition;
               
               // For armor hotbar, only allow armor to go in its matching slot
               const armorSlotMapping: Record<string, number> = { helm: 0, chest: 1, arm: 2, legs: 3, boots: 4 };
@@ -4470,9 +4493,32 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
     return allItems.find((i: any) => i.id === ammoHotbar.itemId);
   };
 
+  // Check if weapon requires ammunition to attack
+  const requiresAmmunitionForRoll = (weaponCategory: string): boolean => {
+    return ['bow', 'crossbow', 'sling', 'firearm'].includes(weaponCategory?.toLowerCase() || '');
+  };
+
   // Handle attack roll (1d20 + attribute modifier)
   const handleAttackRoll = () => {
     if (!itemData || itemData.itemType !== 'weapon') return;
+    
+    // Check if ranged weapon requires ammunition
+    if (isRangedWeapon(itemData) && requiresAmmunitionForRoll(itemData.weaponCategory)) {
+      const ammo = getEquippedAmmunition();
+      if (!ammo) {
+        triggerRollNotification({
+          type: 'attack',
+          dieType: 'd20',
+          label: `${itemData.name} - No Ammo!`,
+          result: 0,
+          modifier: 0,
+          total: 0,
+          username: character.name || 'Unknown',
+          characterName: character.name,
+        });
+        return;
+      }
+    }
     
     const attrMod = getAttributeModifier(itemData.attribute || 'might');
     const roll = Math.floor(Math.random() * 20) + 1;
@@ -4715,7 +4761,7 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
                       />
                     </div>
                     {/* Quantity badge for ammunition */}
-                    {itemData.isAmmunition && itemData.quantity > 1 && (
+                    {(itemData.itemType === 'ammunition' || itemData.isAmmunition) && itemData.quantity > 1 && (
                       <div className="absolute top-0 right-0 bg-stone-900/90 text-amber-400 text-[8px] px-1 rounded-bl font-bold">
                         x{itemData.quantity}
                       </div>
@@ -4725,10 +4771,10 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
                   <div className="relative w-full h-full flex items-center justify-center">
                     {/* Type-based placeholder icon */}
                     <div className="w-10 h-10 sm:w-12 sm:h-12 md:w-14 md:h-14 rounded bg-stone-700/50 flex items-center justify-center">
-                      {itemData.itemType === 'weapon' && !itemData.isAmmunition && (
+                      {itemData.itemType === 'weapon' && (
                         <Sword className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-amber-500" />
                       )}
-                      {itemData.isAmmunition && (
+                      {(itemData.itemType === 'ammunition' || itemData.isAmmunition) && (
                         <Target className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-amber-500" />
                       )}
                       {itemData.itemType === 'consumable' && (
@@ -4737,7 +4783,7 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
                       {itemData.itemType === 'utility' && (
                         <Backpack className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-orange-500" />
                       )}
-                      {!['weapon', 'consumable', 'utility'].includes(itemData.itemType) && !itemData.isAmmunition && (
+                      {!['weapon', 'consumable', 'utility', 'ammunition'].includes(itemData.itemType) && !itemData.isAmmunition && (
                         <Package className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-stone-400" />
                       )}
                     </div>
@@ -4749,13 +4795,13 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
                       />
                     </div>
                     {/* Quantity badge for ammunition */}
-                    {itemData.isAmmunition && itemData.quantity > 1 && (
+                    {(itemData.itemType === 'ammunition' || itemData.isAmmunition) && itemData.quantity > 1 && (
                       <div className="absolute top-0 right-0 bg-stone-900/90 text-amber-400 text-[8px] px-1 rounded-bl font-bold">
                         x{itemData.quantity}
                       </div>
                     )}
                     {/* Damage badge for weapons */}
-                    {itemData.damage && !itemData.isAmmunition && (
+                    {itemData.damage && itemData.itemType !== 'ammunition' && !itemData.isAmmunition && (
                       <div className="absolute top-0 left-0 bg-red-900/90 text-red-300 text-[7px] px-0.5 rounded-br font-bold">
                         {itemData.damage}
                       </div>
@@ -4769,7 +4815,7 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
               {itemData.damage && <p className="text-sm">Damage: {itemData.damage}{itemData.mod ? ` +${itemData.mod}` : ''}</p>}
               {itemData.damageType && <p className="text-sm">Type: {itemData.damageType}</p>}
               {itemData.attribute && <p className="text-sm">Attack: {itemData.attribute}</p>}
-              {itemData.isAmmunition && <p className="text-sm text-amber-400">Ammunition ({itemData.quantity})</p>}
+              {(itemData.itemType === 'ammunition' || itemData.isAmmunition) && <p className="text-sm text-amber-400">Ammunition ({itemData.quantity})</p>}
               <p className={`text-sm ${itemData.durability <= 3 ? 'text-red-400 font-bold' : ''}`}>
                 Durability: {itemData.durability}/10
                 {itemData.durability <= 3 && ' ⚠️'}
@@ -9673,109 +9719,80 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
               </div>
             )}
 
-            {(currentData.isAmmunition || currentData.weaponCategory || currentData.itemType === 'weapon' || isEditing) && (
+            {currentData.itemType === 'ammunition' && (
               <div className="pt-4 border-t border-stone-700">
                 <h3 className="text-sm font-bold text-stone-300 mb-2">Ammunition Settings</h3>
                 <div className="space-y-4">
-                  <div className="flex items-center gap-2">
-                    <div className="flex items-center gap-2">
-                      <Label className="text-xs text-stone-400">Ammunition</Label>
-                      {isEditing && !canEditAllFields && (
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger>
-                              <Lock className="h-3 w-3 text-amber-600" />
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p>Only GMs can edit this field</p>
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                      )}
+                  {isEditing && canEditAllFields ? (
+                    <div>
+                      <Label>Ammunition Type</Label>
+                      <Select value={currentData.ammunitionType || ''} onValueChange={(v) => setEditData({ ...editData, ammunitionType: v })}>
+                        <SelectTrigger className="bg-stone-800 border-amber-700" data-testid="select-edit-ammunition-type">
+                          <SelectValue placeholder="Select ammunition type..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="arrow">Arrow</SelectItem>
+                          <SelectItem value="bolt">Bolt</SelectItem>
+                          <SelectItem value="bullet">Bullet</SelectItem>
+                          <SelectItem value="dart">Dart</SelectItem>
+                          <SelectItem value="stone">Stone</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
-                  </div>
+                  ) : (
+                    <div>
+                      <Label className="text-xs text-stone-400">Ammunition Type</Label>
+                      <p className="text-stone-200 capitalize">{currentData.ammunitionType || 'Not specified'}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+            
+            {currentData.itemType === 'weapon' && (
+              <div className="pt-4 border-t border-stone-700">
+                <h3 className="text-sm font-bold text-stone-300 mb-2">Weapon Settings</h3>
+                <div className="space-y-4">
                   {isEditing && canEditAllFields ? (
                     <>
+                      <div>
+                        <Label>Weapon Category</Label>
+                        <Select value={currentData.weaponCategory || ''} onValueChange={(v) => setEditData({ ...editData, weaponCategory: v })}>
+                          <SelectTrigger className="bg-stone-800 border-amber-700" data-testid="select-edit-weapon-category">
+                            <SelectValue placeholder="Select weapon category..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="melee">Melee</SelectItem>
+                            <SelectItem value="bow">Bow (uses Arrows)</SelectItem>
+                            <SelectItem value="crossbow">Crossbow (uses Bolts)</SelectItem>
+                            <SelectItem value="sling">Sling (uses Stones)</SelectItem>
+                            <SelectItem value="firearm">Firearm (uses Bullets)</SelectItem>
+                            <SelectItem value="thrown">Thrown (uses Darts)</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
                       <div className="flex items-center gap-2">
                         <Checkbox 
-                          id="editIsAmmunition" 
-                          checked={currentData.isAmmunition || false} 
-                          onCheckedChange={(checked) => setEditData({ ...editData, isAmmunition: !!checked, ammunitionType: '', weaponCategory: '' })}
-                          data-testid="checkbox-edit-is-ammunition"
+                          id="editIsHeavy" 
+                          checked={currentData.isHeavy || false} 
+                          onCheckedChange={(checked) => setEditData({ ...editData, isHeavy: !!checked })}
+                          data-testid="checkbox-edit-is-heavy"
                         />
-                        <Label htmlFor="editIsAmmunition" className="cursor-pointer">Ammunition</Label>
+                        <Label htmlFor="editIsHeavy" className="cursor-pointer">Two-Handed Weapon (blocks right hand slot)</Label>
                       </div>
-                      {currentData.isAmmunition && (
-                        <div>
-                          <Label>Ammunition Type</Label>
-                          <Select value={currentData.ammunitionType || ''} onValueChange={(v) => setEditData({ ...editData, ammunitionType: v })}>
-                            <SelectTrigger className="bg-stone-800 border-amber-700" data-testid="select-edit-ammunition-type">
-                              <SelectValue placeholder="Select ammunition type..." />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="arrow">Arrow</SelectItem>
-                              <SelectItem value="bolt">Bolt</SelectItem>
-                              <SelectItem value="bullet">Bullet</SelectItem>
-                              <SelectItem value="dart">Dart</SelectItem>
-                              <SelectItem value="stone">Stone</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      )}
-                      {!currentData.isAmmunition && currentData.itemType === 'weapon' && (
-                        <>
-                          <div>
-                            <Label>Weapon Category</Label>
-                            <Select value={currentData.weaponCategory || ''} onValueChange={(v) => setEditData({ ...editData, weaponCategory: v })}>
-                              <SelectTrigger className="bg-stone-800 border-amber-700" data-testid="select-edit-weapon-category">
-                                <SelectValue placeholder="Select weapon category..." />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="melee">Melee</SelectItem>
-                                <SelectItem value="bow">Bow (uses Arrows)</SelectItem>
-                                <SelectItem value="crossbow">Crossbow (uses Bolts)</SelectItem>
-                                <SelectItem value="sling">Sling (uses Stones)</SelectItem>
-                                <SelectItem value="firearm">Firearm (uses Bullets)</SelectItem>
-                                <SelectItem value="thrown">Thrown (uses Darts)</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div className="flex items-center gap-2 mt-2">
-                            <Checkbox 
-                              id="editIsHeavy" 
-                              checked={currentData.isHeavy || false} 
-                              onCheckedChange={(checked) => setEditData({ ...editData, isHeavy: !!checked })}
-                              data-testid="checkbox-edit-is-heavy"
-                            />
-                            <Label htmlFor="editIsHeavy" className="cursor-pointer">Two-Handed Weapon (occupies 2 hotbar slots)</Label>
-                          </div>
-                        </>
-                      )}
                     </>
                   ) : (
                     <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <Label className="text-xs text-stone-400">Is Ammunition</Label>
-                        <p className="text-stone-200">{currentData.isAmmunition ? 'Yes' : 'No'}</p>
-                      </div>
-                      {currentData.isAmmunition && currentData.ammunitionType && (
-                        <div>
-                          <Label className="text-xs text-stone-400">Ammunition Type</Label>
-                          <p className="text-stone-200 capitalize">{currentData.ammunitionType}</p>
-                        </div>
-                      )}
-                      {!currentData.isAmmunition && currentData.weaponCategory && (
+                      {currentData.weaponCategory && (
                         <div>
                           <Label className="text-xs text-stone-400">Weapon Category</Label>
                           <p className="text-stone-200 capitalize">{currentData.weaponCategory}</p>
                         </div>
                       )}
-                      {!currentData.isAmmunition && currentData.itemType === 'weapon' && (
-                        <div>
-                          <Label className="text-xs text-stone-400">Two-Handed</Label>
-                          <p className="text-stone-200">{currentData.isHeavy ? 'Yes' : 'No'}</p>
-                        </div>
-                      )}
+                      <div>
+                        <Label className="text-xs text-stone-400">Two-Handed</Label>
+                        <p className="text-stone-200">{currentData.isHeavy ? 'Yes' : 'No'}</p>
+                      </div>
                     </div>
                   )}
                 </div>
