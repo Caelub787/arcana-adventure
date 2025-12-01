@@ -13,6 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Slider } from '@/components/ui/slider';
 import { toast } from '@/hooks/use-toast';
 import { ArrowLeft, Plus, Pencil, Trash2, Sword, Shield, Package, Sparkles, Box, Coins, Search } from 'lucide-react';
 
@@ -284,6 +285,7 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
     isHeavy: boolean;
     ammunitionType: string;
     weaponCategory: string;
+    breakChance: number;
     itemWeight: number | string;
     price: number | string;
     currency: string;
@@ -309,6 +311,7 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
     isHeavy: (initialData as any)?.isHeavy || false,
     ammunitionType: (initialData as any)?.ammunitionType || '',
     weaponCategory: (initialData as any)?.weaponCategory || '',
+    breakChance: (initialData as any)?.breakChance ?? 10,
     itemWeight: initialData?.itemWeight || 0,
     price: 0,
     currency: 'copper',
@@ -348,6 +351,7 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
       price: Number(formData.price) || 0,
       carryCapacity: Number(formData.carryCapacity) || 0,
       quantity: Number(formData.quantity) || 1,
+      breakChance: formData.itemType === 'ammunition' ? formData.breakChance : 10,
       aoe: formData.aoe === 'none' ? undefined : formData.aoe, // Convert "none" to undefined
     };
     onSave(cleanedData);
@@ -460,21 +464,36 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
               </div>
 
               {formData.itemType === 'ammunition' && (
-                <div className="col-span-2">
-                  <Label>Ammunition Type</Label>
-                  <Select value={formData.ammunitionType} onValueChange={(v) => setFormData({ ...formData, ammunitionType: v })}>
-                    <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-ammunition-type">
-                      <SelectValue placeholder="Select type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="arrow">Arrow</SelectItem>
-                      <SelectItem value="bolt">Bolt</SelectItem>
-                      <SelectItem value="bullet">Bullet</SelectItem>
-                      <SelectItem value="dart">Dart</SelectItem>
-                      <SelectItem value="stone">Stone</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+                <>
+                  <div className="col-span-2">
+                    <Label>Ammunition Type</Label>
+                    <Select value={formData.ammunitionType} onValueChange={(v) => setFormData({ ...formData, ammunitionType: v })}>
+                      <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-ammunition-type">
+                        <SelectValue placeholder="Select type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="arrow">Arrow</SelectItem>
+                        <SelectItem value="bolt">Bolt</SelectItem>
+                        <SelectItem value="bullet">Bullet</SelectItem>
+                        <SelectItem value="dart">Dart</SelectItem>
+                        <SelectItem value="stone">Stone</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="col-span-2">
+                    <Label>Break Chance: {formData.breakChance}%</Label>
+                    <Slider
+                      value={[formData.breakChance]}
+                      onValueChange={(v) => setFormData({ ...formData, breakChance: v[0] })}
+                      min={0}
+                      max={100}
+                      step={1}
+                      className="mt-2"
+                      data-testid="slider-break-chance"
+                    />
+                    <p className="text-xs text-stone-500 mt-1">Chance of ammunition breaking on each attack roll</p>
+                  </div>
+                </>
               )}
 
               {(formData.itemType === 'weapon' || formData.itemType === 'consumable' || formData.itemType === 'ammunition') && (
