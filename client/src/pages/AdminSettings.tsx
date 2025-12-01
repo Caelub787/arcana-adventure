@@ -282,6 +282,9 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
     attribute: string;
     size: string;
     isHeavy: boolean;
+    isAmmunition: boolean;
+    ammunitionType: string;
+    weaponCategory: string;
     itemWeight: number | string;
     price: number | string;
     currency: string;
@@ -304,7 +307,10 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
     aoe: initialData?.aoe || 'none',
     attribute: initialData?.attribute || '',
     size: initialData?.size || '',
-    isHeavy: false,
+    isHeavy: (initialData as any)?.isHeavy || false,
+    isAmmunition: (initialData as any)?.isAmmunition || false,
+    ammunitionType: (initialData as any)?.ammunitionType || '',
+    weaponCategory: (initialData as any)?.weaponCategory || '',
     itemWeight: initialData?.itemWeight || 0,
     price: 0,
     currency: 'copper',
@@ -532,6 +538,49 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
                     />
                     <Label>Heavy (Two-Handed)</Label>
                   </div>
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      checked={formData.isAmmunition}
+                      onCheckedChange={(checked) => setFormData({ ...formData, isAmmunition: !!checked })}
+                      data-testid="checkbox-ammunition"
+                    />
+                    <Label>Ammunition</Label>
+                  </div>
+                  {formData.isAmmunition && (
+                    <div>
+                      <Label>Ammunition Type</Label>
+                      <Select value={formData.ammunitionType} onValueChange={(v) => setFormData({ ...formData, ammunitionType: v })}>
+                        <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-ammunition-type">
+                          <SelectValue placeholder="Select type" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="arrow">Arrow</SelectItem>
+                          <SelectItem value="bolt">Bolt</SelectItem>
+                          <SelectItem value="bullet">Bullet</SelectItem>
+                          <SelectItem value="dart">Dart</SelectItem>
+                          <SelectItem value="stone">Stone</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                  {!formData.isAmmunition && (
+                    <div>
+                      <Label>Weapon Category</Label>
+                      <Select value={formData.weaponCategory} onValueChange={(v) => setFormData({ ...formData, weaponCategory: v })}>
+                        <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-weapon-category">
+                          <SelectValue placeholder="Select category" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="melee">Melee</SelectItem>
+                          <SelectItem value="bow">Bow (uses Arrows)</SelectItem>
+                          <SelectItem value="crossbow">Crossbow (uses Bolts)</SelectItem>
+                          <SelectItem value="sling">Sling (uses Stones)</SelectItem>
+                          <SelectItem value="firearm">Firearm (uses Bullets)</SelectItem>
+                          <SelectItem value="thrown">Thrown (uses Darts)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
                   <div>
                     <Label>Area of Effect</Label>
                     <Select value={formData.aoe} onValueChange={(v) => setFormData({ ...formData, aoe: v })}>
