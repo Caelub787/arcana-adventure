@@ -484,33 +484,41 @@ export default function Campaign() {
     }
   }, [campaign]);
 
-  // If GM, no character creation needed. For players, load assigned character from persistence.
+  // Load assigned character from persistence for both GMs and players
   useEffect(() => {
-    if (role === 'gm') {
-      setCharacter({ name: 'GM', class: 'admin' });
-    } else if (role === 'player' && effectiveCampaignId && characters && Array.isArray(characters) && characters.length > 0) {
-      // Try to load persisted assigned character first
-      api.getAssignedCharacter(effectiveCampaignId).then(({ characterId }) => {
-        if (characterId) {
-          const assignedChar = characters.find((c: any) => c.id === characterId);
-          if (assignedChar) {
-            setCharacter(assignedChar);
-            return;
-          }
+    if (!effectiveCampaignId || !characters || !Array.isArray(characters)) return;
+    
+    // Try to load persisted assigned character first
+    api.getAssignedCharacter(effectiveCampaignId).then(({ characterId }) => {
+      if (characterId) {
+        const assignedChar = characters.find((c: any) => c.id === characterId);
+        if (assignedChar) {
+          setCharacter(assignedChar);
+          return;
         }
-        // Fall back to finding player's own character
+      }
+      // No persisted assignment found - use role-based fallback
+      if (role === 'gm') {
+        // GMs default to GM view mode if no character assigned
+        setCharacter({ name: 'GM', class: 'admin' });
+      } else if (role === 'player' && characters.length > 0) {
+        // Players fall back to finding their own character
         const playerChar = characters.find((c: any) => c.userId === user?.id);
         if (playerChar) {
           setCharacter(playerChar);
         }
-      }).catch(() => {
-        // On error, fall back to finding player's own character
+      }
+    }).catch(() => {
+      // On error, use role-based fallback
+      if (role === 'gm') {
+        setCharacter({ name: 'GM', class: 'admin' });
+      } else if (role === 'player' && characters.length > 0) {
         const playerChar = characters.find((c: any) => c.userId === user?.id);
         if (playerChar) {
           setCharacter(playerChar);
         }
-      });
-    }
+      }
+    });
   }, [role, characters, user, effectiveCampaignId]);
 
   // Store refs for stable closures in WebSocket handler
@@ -632,6 +640,12 @@ export default function Campaign() {
               // GMs can assign any character
               setCharacter(charData);
               setInspectedChar(charData);
+              // Persist the assignment so it survives page reload
+              if (effectiveCampaignId) {
+                api.setAssignedCharacter(effectiveCampaignId, charData.id).catch(() => {
+                  // Silently fail - assignment will still work for this session
+                });
+              }
               toast({ title: "Character Assigned", description: `${charData.name} is now your active character` });
             } else if (role === 'player') {
               // Players can only assign characters they have edit access to
