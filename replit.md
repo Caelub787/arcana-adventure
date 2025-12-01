@@ -87,16 +87,20 @@ Preferred communication style: Simple, everyday language.
 -   **Database Schema**: `initiativeEntries` table with sceneId, characterId, value, isHidden fields
 
 **3D Dice Rolling System**:
--   **Die Types**: Full set of polyhedral dice - d4, d6, d8, d10, d12, d20
+-   **Die Types**: Full set of polyhedral dice - d4 (tetrahedron), d6 (cube), d8 (octahedron), d10 (elongated dodecahedron), d12 (dodecahedron), d20 (icosahedron)
 -   **HUD Integration**: Dice roller accessible via HUD button in Campaign page (Dices icon). Click to reveal die type selector popup.
--   **Battlemap Overlay**: 3D dice render directly on the battlemap using BattlemapDiceOverlay component with Three.js/React Three Fiber
+-   **3D Physics Dice**: Real 3D polyhedral dice with cannon-es physics that tumble and roll on the battlemap
+-   **Physics Engine**: Uses @react-three/cannon for physics simulation with ground plane and invisible walls
+-   **Natural Rolling**: Dice spawn at height, fall with gravity (-15 m/s²), bounce off ground/walls, and settle naturally
+-   **Position Tracking**: Die position tracked continuously; result badge appears at actual settled location
+-   **Result Display**: Rounded badge with result number appears above die when it stops (velocity < 0.08 for 25+ frames)
+-   **Fade Animation**: Die and result badge fade out together after 2 seconds
 -   **Server-Authoritative Rolls**: Server uses `crypto.randomInt()` for fair, verifiable rolls. Client never generates random numbers.
 -   **Chat Integration**: All dice rolls are automatically saved to chat with type "roll". Results show "[Username] rolled D20: Result = Total" format.
 -   **Real-time Sync**: WebSocket broadcasts `dice_roll` (for 3D animation) and `chat_message` (for chat display) to all campaign players
 -   **WebSocket Message Buffering**: Server buffers messages during async setup (session parsing, user lookup) to prevent race conditions
 -   **Roll Styling**: Roll messages in chat have distinctive cyan/purple gradient background with dice icon
--   **Custom Textures**: Per-user dice customization stored in `diceTextures` table (base64 images per die type)
--   **Quick Colors**: Preset color schemes (Obsidian, Ruby, Sapphire, Emerald, Amber, Amethyst, Pearl, Gold)
+-   **Die Colors**: D4 (red), D6 (blue), D8 (green), D10 (purple), D12 (orange), D20 (cyan)
 
 ### Backend Architecture
 
