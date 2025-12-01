@@ -484,16 +484,33 @@ export default function Campaign() {
     }
   }, [campaign]);
 
+  // Store characters ref for stable closure access in async callbacks
+  const charactersRef = useRef<any[]>([]);
+  useEffect(() => {
+    if (characters && Array.isArray(characters)) {
+      charactersRef.current = characters;
+    }
+  }, [characters]);
+
   // Load assigned character from persistence for both GMs and players
   useEffect(() => {
-    if (!effectiveCampaignId || !characters || !Array.isArray(characters)) return;
+    // Wait for characters to be loaded (not just available but populated)
+    if (!effectiveCampaignId || charactersLoading) return;
+    if (!characters || !Array.isArray(characters)) return;
     
     // Try to load persisted assigned character first
     api.getAssignedCharacter(effectiveCampaignId).then(({ characterId }) => {
+      // Use ref to get latest characters to avoid stale closure
+      const currentCharacters = charactersRef.current;
+      
       if (characterId) {
-        const assignedChar = characters.find((c: any) => c.id === characterId);
+        const assignedChar = currentCharacters.find((c: any) => c.id === characterId);
         if (assignedChar) {
           setCharacter(assignedChar);
+          // For GMs, also set inspectedChar so the UI shows (hotbars, tabs, etc.)
+          if (role === 'gm') {
+            setInspectedChar(assignedChar);
+          }
           return;
         }
       }
@@ -501,25 +518,28 @@ export default function Campaign() {
       if (role === 'gm') {
         // GMs default to GM view mode if no character assigned
         setCharacter({ name: 'GM', class: 'admin' });
-      } else if (role === 'player' && characters.length > 0) {
+      } else if (role === 'player' && currentCharacters.length > 0) {
         // Players fall back to finding their own character
-        const playerChar = characters.find((c: any) => c.userId === user?.id);
+        const playerChar = currentCharacters.find((c: any) => c.userId === user?.id);
         if (playerChar) {
           setCharacter(playerChar);
         }
       }
     }).catch(() => {
+      // Use ref to get latest characters to avoid stale closure
+      const currentCharacters = charactersRef.current;
+      
       // On error, use role-based fallback
       if (role === 'gm') {
         setCharacter({ name: 'GM', class: 'admin' });
-      } else if (role === 'player' && characters.length > 0) {
-        const playerChar = characters.find((c: any) => c.userId === user?.id);
+      } else if (role === 'player' && currentCharacters.length > 0) {
+        const playerChar = currentCharacters.find((c: any) => c.userId === user?.id);
         if (playerChar) {
           setCharacter(playerChar);
         }
       }
     });
-  }, [role, characters, user, effectiveCampaignId]);
+  }, [role, characters, charactersLoading, user, effectiveCampaignId]);
 
   // Store refs for stable closures in WebSocket handler
   const queryClientRef = useRef(queryClient);

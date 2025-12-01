@@ -304,6 +304,18 @@ export class DatabaseStorage implements IStorage {
       await db.update(campaignMembers)
         .set({ assignedCharacterId: characterId })
         .where(eq(campaignMembers.id, member.id));
+    } else {
+      // Create a member record if one doesn't exist (e.g., for GM who created campaign)
+      const campaign = await this.getCampaign(campaignId);
+      if (campaign) {
+        const role = campaign.gmUserId === userId ? 'gm' : 'player';
+        await db.insert(campaignMembers).values({
+          campaignId,
+          userId,
+          role,
+          assignedCharacterId: characterId,
+        });
+      }
     }
   }
 
