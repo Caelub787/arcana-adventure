@@ -33,7 +33,7 @@ import parchmentTexture from "@assets/generated_images/aged_parchment_paper_text
 import battleMapImage1 from "@/assets/rocky_coast_battlemap.jpg";
 import warriorToken from "@assets/generated_images/top_down_warrior_token.png";
 import goblinToken from "@assets/generated_images/top_down_goblin_token.png";
-import { triggerSkillRollNotification } from './RollNotification';
+import { triggerSkillRollNotification, triggerRollNotification } from './RollNotification';
 
 
 // --- Types & Mock Data ---
@@ -1345,6 +1345,9 @@ interface BattleMapHotbarSlotProps {
 }
 
 function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character }: BattleMapHotbarSlotProps) {
+  const clickTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const clickCountRef = useRef(0);
+  
   // Fetch item data if itemId exists (same pattern as HotbarSlot)
   const { data: itemData } = useQuery({
     queryKey: ['item', hotbar?.itemId],
@@ -1366,12 +1369,104 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character }: Batt
     return 'text-amber-400';
   };
 
+  // Parse dice notation like "1d8" or "2d6" and roll it
+  const rollDice = (notation: string): { result: number; dieType: string } => {
+    const match = notation.match(/(\d+)d(\d+)/i);
+    if (!match) return { result: 0, dieType: 'd20' };
+    const count = parseInt(match[1]);
+    const sides = parseInt(match[2]);
+    let total = 0;
+    for (let i = 0; i < count; i++) {
+      total += Math.floor(Math.random() * sides) + 1;
+    }
+    return { result: total, dieType: `d${sides}` };
+  };
+
+  // Get attribute modifier from character
+  const getAttributeModifier = (attrName: string): number => {
+    if (!attrName || !character) return 0;
+    const attrKey = attrName.toLowerCase() as keyof typeof character;
+    return typeof character[attrKey] === 'number' ? character[attrKey] : 0;
+  };
+
+  // Handle attack roll (1d20 + attribute modifier)
+  const handleAttackRoll = () => {
+    if (!itemData || itemData.itemType !== 'weapon') return;
+    
+    const attrMod = getAttributeModifier(itemData.attribute || 'might');
+    const roll = Math.floor(Math.random() * 20) + 1;
+    const total = roll + attrMod;
+    
+    triggerRollNotification({
+      type: 'attack',
+      dieType: 'd20',
+      label: `${itemData.name} Attack`,
+      result: roll,
+      modifier: attrMod,
+      total,
+      username: character.name || 'Unknown',
+      characterName: character.name,
+    });
+  };
+
+  // Handle damage roll (weapon damage dice + mod)
+  const handleDamageRoll = () => {
+    if (!itemData || !itemData.damage) return;
+    
+    const { result, dieType } = rollDice(itemData.damage);
+    const mod = itemData.mod || 0;
+    const total = result + mod;
+    
+    triggerRollNotification({
+      type: 'attack',
+      dieType: dieType as any,
+      label: `${itemData.name} Damage`,
+      result,
+      modifier: mod,
+      total,
+      username: character.name || 'Unknown',
+      characterName: character.name,
+    });
+  };
+
+  // Handle click with single/double click detection
+  const handleClick = () => {
+    if (!itemData || itemData.itemType !== 'weapon') return;
+    
+    clickCountRef.current += 1;
+    
+    if (clickTimerRef.current) {
+      clearTimeout(clickTimerRef.current);
+    }
+    
+    clickTimerRef.current = setTimeout(() => {
+      if (clickCountRef.current === 1) {
+        handleAttackRoll();
+      } else if (clickCountRef.current >= 2) {
+        handleDamageRoll();
+      }
+      clickCountRef.current = 0;
+    }, 250);
+  };
+
   // Determine what to display
   let content = null;
   let tooltipContent = null;
+  const isClickable = itemData && itemData.itemType === 'weapon';
 
   if (hotbar?.spellId && spellData) {
-    content = (
+    content = spellData.image ? (
+      <div className="relative w-full h-full flex items-center justify-center">
+        <img 
+          src={spellData.image} 
+          alt={spellData.name}
+          className="w-9 h-9 md:w-14 md:h-14 object-cover rounded"
+        />
+        <div className={`absolute top-0 right-0 ${spellData.level === 0 ? 'bg-gray-600' : spellData.level <= 3 ? 'bg-blue-600' : spellData.level <= 6 ? 'bg-purple-600' : 'bg-amber-600'} text-white text-[6px] px-0.5 rounded-bl font-bold`}>
+          {spellData.level === 0 ? 'C' : spellData.level}
+        </div>
+      </div>
+    ) : (
       <>
         <div className={`font-bold truncate ${getSpellLevelColor(spellData.level)}`}>
           {spellData.name.substring(0, 3)}
@@ -1390,7 +1485,20 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character }: Batt
       </>
     );
   } else if (hotbar?.itemId && itemData) {
-    content = (
+    content = itemData.image ? (
+      <div className="relative w-full h-full flex items-center justify-center">
+        <img 
+          src={itemData.image} 
+          alt={itemData.name}
+          className="w-9 h-9 md:w-14 md:h-14 object-cover rounded"
+        />
+        {itemData.isAmmunition && itemData.quantity > 1 && (
+          <div className="absolute top-0 right-0 bg-stone-900/90 text-amber-400 text-[6px] px-0.5 rounded-bl font-bold">
+            x{itemData.quantity}
+          </div>
+        )}
+      </div>
+    ) : (
       <>
         <div className="text-amber-400 font-bold truncate">
           {itemData.name.substring(0, 4)}
@@ -1403,8 +1511,10 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character }: Batt
     tooltipContent = (
       <>
         <p className="font-bold">{itemData.name}</p>
-        {itemData.damage && <p className="text-sm">Damage: {itemData.damage}</p>}
+        {itemData.damage && <p className="text-sm">Damage: {itemData.damage}{itemData.mod ? ` +${itemData.mod}` : ''}</p>}
+        {itemData.attribute && <p className="text-sm">Attack: {itemData.attribute}</p>}
         {itemData.durability !== undefined && <p className="text-sm">Durability: {itemData.durability}/10</p>}
+        {isClickable && <p className="text-xs text-stone-400 mt-1">Click: Attack | Double-click: Damage</p>}
       </>
     );
   } else if (hotbar?.skillName) {
@@ -1421,17 +1531,19 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character }: Batt
       <Tooltip>
         <TooltipTrigger asChild>
           <div
+            onClick={isClickable ? handleClick : undefined}
             className={`
               w-11 h-11 md:w-16 md:h-16 rounded border flex items-center justify-center text-[9px] md:text-[12px]
               ${content 
                 ? `bg-stone-800 border-${color}-600/50 hover:border-${color}-500` 
                 : 'bg-stone-900/50 border-stone-700 border-dashed'
               }
+              ${isClickable ? 'cursor-pointer hover:bg-stone-700/50 active:bg-stone-600/50' : ''}
             `}
             data-testid={`battlemap-hotbar-${type}-${slotIndex}`}
           >
             {content ? (
-              <div className="text-center w-full px-1">{content}</div>
+              <div className="text-center w-full h-full flex items-center justify-center">{content}</div>
             ) : (
               <span className="text-[6px] text-stone-600">{slotIndex + 1}</span>
             )}
@@ -3933,6 +4045,8 @@ interface HotbarSlotProps {
 function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRemove, isBlocked, blockReason }: HotbarSlotProps) {
   const [isDragOver, setIsDragOver] = useState(false);
   const [showRemoveDialog, setShowRemoveDialog] = useState(false);
+  const clickTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const clickCountRef = useRef(0);
 
   // Fetch item data if itemId exists
   const { data: itemData } = useQuery({
@@ -3947,6 +4061,89 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
     queryFn: () => api.getSpells(character.id).then(spells => spells.find((s: any) => s.id === hotbar?.spellId)),
     enabled: !!hotbar?.spellId
   });
+
+  // Parse dice notation like "1d8" or "2d6" and roll it
+  const rollDice = (notation: string): { result: number; dieType: string } => {
+    const match = notation.match(/(\d+)d(\d+)/i);
+    if (!match) return { result: 0, dieType: 'd20' };
+    const count = parseInt(match[1]);
+    const sides = parseInt(match[2]);
+    let total = 0;
+    for (let i = 0; i < count; i++) {
+      total += Math.floor(Math.random() * sides) + 1;
+    }
+    return { result: total, dieType: `d${sides}` };
+  };
+
+  // Get attribute modifier from character
+  const getAttributeModifier = (attrName: string): number => {
+    if (!attrName || !character) return 0;
+    const attrKey = attrName.toLowerCase() as keyof typeof character;
+    return typeof character[attrKey] === 'number' ? character[attrKey] : 0;
+  };
+
+  // Handle attack roll (1d20 + attribute modifier)
+  const handleAttackRoll = () => {
+    if (!itemData || itemData.itemType !== 'weapon') return;
+    
+    const attrMod = getAttributeModifier(itemData.attribute || 'might');
+    const roll = Math.floor(Math.random() * 20) + 1;
+    const total = roll + attrMod;
+    
+    triggerRollNotification({
+      type: 'attack',
+      dieType: 'd20',
+      label: `${itemData.name} Attack`,
+      result: roll,
+      modifier: attrMod,
+      total,
+      username: character.name || 'Unknown',
+      characterName: character.name,
+    });
+  };
+
+  // Handle damage roll (weapon damage dice + mod)
+  const handleDamageRoll = () => {
+    if (!itemData || !itemData.damage) return;
+    
+    const { result, dieType } = rollDice(itemData.damage);
+    const mod = itemData.mod || 0;
+    const total = result + mod;
+    
+    triggerRollNotification({
+      type: 'attack',
+      dieType: dieType as any,
+      label: `${itemData.name} Damage`,
+      result,
+      modifier: mod,
+      total,
+      username: character.name || 'Unknown',
+      characterName: character.name,
+    });
+  };
+
+  // Handle click with single/double click detection for weapons
+  const handleWeaponClick = (e: React.MouseEvent) => {
+    if (!itemData || itemData.itemType !== 'weapon') return;
+    e.stopPropagation();
+    
+    clickCountRef.current += 1;
+    
+    if (clickTimerRef.current) {
+      clearTimeout(clickTimerRef.current);
+    }
+    
+    clickTimerRef.current = setTimeout(() => {
+      if (clickCountRef.current === 1) {
+        handleAttackRoll();
+      } else if (clickCountRef.current >= 2) {
+        handleDamageRoll();
+      }
+      clickCountRef.current = 0;
+    }, 250);
+  };
+
+  const isWeaponClickable = itemData && itemData.itemType === 'weapon';
 
   const handleDragOver = (e: React.DragEvent) => {
     if (!canEdit || isBlocked) return;
@@ -4063,12 +4260,16 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
     if (hotbar.itemId && itemData) {
       const durabilityColor = itemData.durability >= 8 ? 'bg-green-500' : itemData.durability >= 4 ? 'bg-yellow-500' : 'bg-red-500';
       const durabilityWidth = (itemData.durability / 10) * 100;
+      const isClickableWeapon = itemData.itemType === 'weapon';
       
       return (
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
-              <div className="w-full h-full flex flex-col items-center justify-center p-0.5">
+              <div 
+                onClick={isClickableWeapon ? handleWeaponClick : undefined}
+                className={`w-full h-full flex flex-col items-center justify-center p-0.5 ${isClickableWeapon ? 'cursor-pointer hover:bg-stone-700/30 active:bg-stone-600/30 rounded' : ''}`}
+              >
                 {itemData.image ? (
                   <div className="relative w-full h-full flex items-center justify-center">
                     <img 
@@ -4109,13 +4310,15 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
             </TooltipTrigger>
             <TooltipContent>
               <p className="font-bold">{itemData.name}</p>
-              {itemData.damage && <p className="text-sm">Damage: {itemData.damage}</p>}
+              {itemData.damage && <p className="text-sm">Damage: {itemData.damage}{itemData.mod ? ` +${itemData.mod}` : ''}</p>}
               {itemData.damageType && <p className="text-sm">Type: {itemData.damageType}</p>}
+              {itemData.attribute && <p className="text-sm">Attack: {itemData.attribute}</p>}
               {itemData.isAmmunition && <p className="text-sm text-amber-400">Ammunition ({itemData.quantity})</p>}
               <p className={`text-sm ${itemData.durability <= 3 ? 'text-red-400 font-bold' : ''}`}>
                 Durability: {itemData.durability}/10
                 {itemData.durability <= 3 && ' ⚠️'}
               </p>
+              {isClickableWeapon && <p className="text-xs text-stone-400 mt-1">Click: Attack | Double-click: Damage</p>}
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>
