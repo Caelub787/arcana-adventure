@@ -1349,34 +1349,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ error: validationErr.message });
       }
 
-      // Validate attribute and skill point totals based on level
+      // Only validate attribute and skill point totals when those fields are being updated
       const character = access.character;
       const updates = req.body;
-      const level = updates.level ?? character.level ?? 1;
-      const maxPositiveAttrPoints = 6 + Math.floor(level / 3);
-      const maxNegativeAttrPoints = 4;
-      const maxPositiveSkillPoints = 12 + ((level - 1) * 2);
-      const maxNegativeSkillPoints = 6;
-
+      
       const attrs = ['might', 'finesse', 'wit', 'presence', 'will', 'craft'];
-      const attrValues = attrs.map(a => updates[a] ?? character[a] ?? 0);
-      const positiveAttr = attrValues.filter((v: number) => v > 0).reduce((s: number, v: number) => s + v, 0);
-      const negativeAttr = Math.abs(attrValues.filter((v: number) => v < 0).reduce((s: number, v: number) => s + v, 0));
-
       const skills = ['skillAgility', 'skillArcana', 'skillCharisma', 'skillConcentration', 'skillCulture', 'skillDeception', 'skillHistory', 'skillIntimidation', 'skillInvestigation', 'skillMedicine', 'skillPerception', 'skillSleightOfHand', 'skillStealth', 'skillStrength', 'skillWisdom'];
-      const skillValues = skills.map(s => updates[s] ?? character[s] ?? 0);
-      const positiveSkill = skillValues.filter((v: number) => v > 0).reduce((s: number, v: number) => s + v, 0);
-      const negativeSkill = Math.abs(skillValues.filter((v: number) => v < 0).reduce((s: number, v: number) => s + v, 0));
+      
+      // Check if any stat-related fields are being updated
+      const isUpdatingStats = attrs.some(a => a in updates) || skills.some(s => s in updates) || 'level' in updates;
+      
+      if (isUpdatingStats) {
+        const level = updates.level ?? character.level ?? 1;
+        const maxPositiveAttrPoints = 6 + Math.floor(level / 3);
+        const maxNegativeAttrPoints = 4;
+        const maxPositiveSkillPoints = 12 + ((level - 1) * 2);
+        const maxNegativeSkillPoints = 6;
 
-      if (positiveAttr > maxPositiveAttrPoints || negativeAttr > maxNegativeAttrPoints) {
-        return res.status(400).json({ 
-          error: `Invalid attribute points: +${positiveAttr}/-${negativeAttr} (expected +${maxPositiveAttrPoints}/-${maxNegativeAttrPoints} for level ${level})` 
-        });
-      }
-      if (positiveSkill > maxPositiveSkillPoints || negativeSkill > maxNegativeSkillPoints) {
-        return res.status(400).json({ 
-          error: `Invalid skill points: +${positiveSkill}/-${negativeSkill} (expected +${maxPositiveSkillPoints}/-${maxNegativeSkillPoints} for level ${level})` 
-        });
+        const attrValues = attrs.map(a => updates[a] ?? character[a] ?? 0);
+        const positiveAttr = attrValues.filter((v: number) => v > 0).reduce((s: number, v: number) => s + v, 0);
+        const negativeAttr = Math.abs(attrValues.filter((v: number) => v < 0).reduce((s: number, v: number) => s + v, 0));
+
+        const skillValues = skills.map(s => updates[s] ?? character[s] ?? 0);
+        const positiveSkill = skillValues.filter((v: number) => v > 0).reduce((s: number, v: number) => s + v, 0);
+        const negativeSkill = Math.abs(skillValues.filter((v: number) => v < 0).reduce((s: number, v: number) => s + v, 0));
+
+        if (positiveAttr > maxPositiveAttrPoints || negativeAttr > maxNegativeAttrPoints) {
+          return res.status(400).json({ 
+            error: `Invalid attribute points: +${positiveAttr}/-${negativeAttr} (expected +${maxPositiveAttrPoints}/-${maxNegativeAttrPoints} for level ${level})` 
+          });
+        }
+        if (positiveSkill > maxPositiveSkillPoints || negativeSkill > maxNegativeSkillPoints) {
+          return res.status(400).json({ 
+            error: `Invalid skill points: +${positiveSkill}/-${negativeSkill} (expected +${maxPositiveSkillPoints}/-${maxNegativeSkillPoints} for level ${level})` 
+          });
+        }
       }
 
       const updatedCharacter = await storage.updateCharacter(req.params.id, req.body);
