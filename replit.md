@@ -86,21 +86,21 @@ Preferred communication style: Simple, everyday language.
 -   **Real-time Sync**: WebSocket broadcasts `initiative_update` and `combat_update` messages for instant cross-player synchronization
 -   **Database Schema**: `initiativeEntries` table with sceneId, characterId, value, isHidden fields
 
-**3D Dice Rolling System**:
--   **Die Types**: Full set of polyhedral dice - d4 (tetrahedron), d6 (cube), d8 (octahedron), d10 (elongated dodecahedron), d12 (dodecahedron), d20 (icosahedron)
+**Roll Notification System**:
+-   **Die Types**: Full set of polyhedral dice - d4, d6, d8, d10, d12, d20
 -   **HUD Integration**: Dice roller accessible via HUD button in Campaign page (Dices icon). Click to reveal die type selector popup.
--   **3D Physics Dice**: Real 3D polyhedral dice with cannon-es physics that tumble and roll on the battlemap
--   **Physics Engine**: Uses @react-three/cannon for physics simulation with ground plane and invisible walls
--   **Natural Rolling**: Dice spawn at height, fall with gravity (-15 m/s²), bounce off ground/walls, and settle naturally
--   **Position Tracking**: Die position tracked continuously; result badge appears at actual settled location
--   **Result Display**: Rounded badge with result number appears above die when it stops (velocity < 0.08 for 25+ frames)
--   **Fade Animation**: Die and result badge fade out together after 2 seconds
+-   **Visual Notifications**: Roll results appear as animated notifications at the top of the screen with Framer Motion animations
+-   **Roll Type Styling**: Different roll types have distinct gradient colors:
+    - Dice rolls: cyan/blue gradient
+    - Initiative rolls: amber/orange gradient
+    - Critical hits (Natural 20): Yellow ring with "Critical!" label
+    - Fumbles (Natural 1): Red ring with "Fumble!" label
+-   **Notification Features**: Animated entrance (slide down), 3.5 second duration with progress bar, animated exit
 -   **Server-Authoritative Rolls**: Server uses `crypto.randomInt()` for fair, verifiable rolls. Client never generates random numbers.
--   **Chat Integration**: All dice rolls are automatically saved to chat with type "roll". Results show "[Username] rolled D20: Result = Total" format.
--   **Real-time Sync**: WebSocket broadcasts `dice_roll` (for 3D animation) and `chat_message` (for chat display) to all campaign players
+-   **Initiative Integration**: Initiative rolls are now server-authoritative via WebSocket. Click "Initiative" button in character sheet Overview tab to roll 1d20 + Finesse.
+-   **Chat Integration**: All rolls (dice and initiative) are automatically saved to chat with type "roll". Roll messages have distinctive gradient background with dice icon.
+-   **Real-time Sync**: WebSocket broadcasts `dice_roll`, `initiative_roll`, and `chat_message` for instant cross-player synchronization
 -   **WebSocket Message Buffering**: Server buffers messages during async setup (session parsing, user lookup) to prevent race conditions
--   **Roll Styling**: Roll messages in chat have distinctive cyan/purple gradient background with dice icon
--   **Die Colors**: D4 (red), D6 (blue), D8 (green), D10 (purple), D12 (orange), D20 (cyan)
 
 ### Backend Architecture
 
