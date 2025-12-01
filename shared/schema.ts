@@ -279,6 +279,17 @@ export const items = pgTable("items", {
 
 export const insertItemSchema = createInsertSchema(items).omit({
   id: true,
+}).refine((data) => {
+  // Validate breakChance is between 0 and 100
+  if (data.breakChance !== undefined && data.breakChance !== null) {
+    if (data.breakChance < 0 || data.breakChance > 100) {
+      return false;
+    }
+  }
+  return true;
+}, {
+  message: "Break chance must be between 0 and 100",
+  path: ["breakChance"],
 });
 
 export type InsertItem = z.infer<typeof insertItemSchema>;
