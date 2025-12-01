@@ -51,11 +51,22 @@ Preferred communication style: Simple, everyday language.
 -   Might (physical power), Finesse (agility), Wit (intelligence), Presence (charisma), Will (mental fortitude), Craft (technical skill)
 -   Modifier equals the attribute value (no (value-10)/2 calculation)
 -   Both players and GMs can edit their own character's attributes
+-   **Click-to-Roll**: Clicking an attribute card triggers a 1d20+modifier roll (or 1d30 if modifier is +5)
+-   **Long-Press Modifier**: Holding an attribute card for 500ms opens a Roll Modifier Panel dialog to add extra modifiers before rolling
 
 **Skills System** (15 skills, alphabetically ordered, range -2 to 5):
 -   Skills: Agility, Arcana, Charisma, Concentration, Culture, Deception, History, Intimidation, Investigation, Medicine, Perception, Sleight of Hand, Stealth, Strength, Wisdom
 -   Modifier equals the skill value
 -   Both players and GMs can edit their own character's skills
+-   **Click-to-Roll**: Clicking a skill card triggers a 1d20+modifier roll (or 1d30 if modifier is +5)
+-   **Long-Press Modifier**: Holding a skill card for 500ms opens a Roll Modifier Panel dialog to add extra modifiers before rolling
+
+**Character Assignment Persistence**:
+-   Players' assigned characters persist across sessions in the database
+-   Character assignment is stored in `campaignMembers.assignedCharacterId`
+-   On page load, the system loads the persisted assigned character first
+-   Falls back to finding the player's own character if no persisted assignment exists
+-   Assignment only changes when manually reassigning via the battlemap Assign mode
 
 **Campaign Creation**:
 -   Dialog with campaign name input and game system dropdown (currently "Arcana Adventure" only).
