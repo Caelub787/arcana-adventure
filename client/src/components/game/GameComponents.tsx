@@ -3388,11 +3388,11 @@ function HotbarsTabContent({ character, isGM, isOwner }: HotbarsTabContentProps)
     return null;
   };
 
-  // Check if a heavy weapon is equipped (same item in both slot 0 and slot 2)
+  // Check if a heavy weapon is equipped (same item in both slot 0 and slot 1)
   const isHeavyWeaponEquipped = () => {
     const slot0Hotbar = hotbars.find((h: any) => h.hotbarType === 'weapons' && h.slotNumber === 0);
-    const slot2Hotbar = hotbars.find((h: any) => h.hotbarType === 'weapons' && h.slotNumber === 2);
-    return slot0Hotbar?.itemId && slot0Hotbar.itemId === slot2Hotbar?.itemId;
+    const slot1Hotbar = hotbars.find((h: any) => h.hotbarType === 'weapons' && h.slotNumber === 1);
+    return slot0Hotbar?.itemId && slot0Hotbar.itemId === slot1Hotbar?.itemId;
   };
 
   // Include pendingHeavyWeaponEquip to block slot 1 during mutation
@@ -3548,18 +3548,19 @@ function HotbarsTabContent({ character, isGM, isOwner }: HotbarsTabContentProps)
         return;
       }
 
-      // For weapons hotbar slots 0 and 2, check if heavy weapon is already equipped
-      if (hotbarType === 'weapons' && (slotNumber === 0 || slotNumber === 2)) {
+      // For weapons hotbar slots 0 and 1, check if heavy weapon is already equipped
+      if (hotbarType === 'weapons' && (slotNumber === 0 || slotNumber === 1)) {
         const existingHeavy = hotbars.find(h => 
           h.hotbarType === 'weapons' && 
-          (h.slotNumber === 0 || h.slotNumber === 2) &&
+          (h.slotNumber === 0 || h.slotNumber === 1) &&
           h.itemId
         );
         
-        // Check if the existing weapon is heavy by checking if it appears in both slots
+        // Check if the existing weapon is heavy by checking if it appears in both slots 0 and 1
         if (existingHeavy) {
-          const bothSlots = hotbars.filter(h => h.itemId === existingHeavy.itemId && h.hotbarType === 'weapons');
-          if (bothSlots.length === 2) {
+          const slot0 = hotbars.find(h => h.hotbarType === 'weapons' && h.slotNumber === 0);
+          const slot1 = hotbars.find(h => h.hotbarType === 'weapons' && h.slotNumber === 1);
+          if (slot0?.itemId && slot0.itemId === slot1?.itemId) {
             toast({
               title: "Heavy Weapon Equipped",
               description: "Remove the heavy weapon first before equipping another weapon",
@@ -3570,35 +3571,33 @@ function HotbarsTabContent({ character, isGM, isOwner }: HotbarsTabContentProps)
         }
       }
 
-      // Two-handed weapon logic - occupy both slots 0 and 2 (blocking slot 1)
+      // Two-handed weapon logic - occupy both slots 0 and 1, slot 2 is for ammunition only
       // Check both isHeavy (new) and weight === 'heavy' (legacy) for backward compatibility
       if (hotbarType === 'weapons' && (item.isHeavy || item.weight === 'heavy')) {
-        // Heavy weapons can only go in slots 0 or 2
-        if (slotNumber === 1) {
+        // Heavy weapons can only go in slots 0 or 1 (not slot 2 - that's for ammo)
+        if (slotNumber === 2) {
           toast({
             title: "Invalid Slot",
-            description: "Heavy weapons cannot be equipped in the right-hand slot",
+            description: "Heavy weapons cannot be equipped in the ammunition slot",
             variant: "destructive"
           });
           return;
         }
 
-        // Set pending state immediately to block slot 1 during mutation
+        // Set pending state immediately to block slots during mutation
         setPendingHeavyWeaponEquip(true);
 
         // Execute heavy weapon equip with proper cleanup
         const executeHeavyEquip = async () => {
           try {
-            // Clear any existing weapons in all weapon slots
+            // Clear any existing weapons in slots 0 and 1 only (preserve slot 2 for ammunition)
             const existingSlot0 = hotbars.find(h => h.hotbarType === 'weapons' && h.slotNumber === 0);
             const existingSlot1 = hotbars.find(h => h.hotbarType === 'weapons' && h.slotNumber === 1);
-            const existingSlot2 = hotbars.find(h => h.hotbarType === 'weapons' && h.slotNumber === 2);
             
             if (existingSlot0) await deleteMutation.mutateAsync(existingSlot0.id);
             if (existingSlot1) await deleteMutation.mutateAsync(existingSlot1.id);
-            if (existingSlot2) await deleteMutation.mutateAsync(existingSlot2.id);
 
-            // Equip heavy weapon to both slots 0 and 2
+            // Equip heavy weapon to both slots 0 and 1
             await upsertMutation.mutateAsync({
               hotbarType: 'weapons',
               slotNumber: 0,
@@ -3606,7 +3605,7 @@ function HotbarsTabContent({ character, isGM, isOwner }: HotbarsTabContentProps)
             });
             await upsertMutation.mutateAsync({
               hotbarType: 'weapons',
-              slotNumber: 2,
+              slotNumber: 1,
               itemId: item.id
             });
             
@@ -3627,6 +3626,16 @@ function HotbarsTabContent({ character, isGM, isOwner }: HotbarsTabContentProps)
         };
 
         executeHeavyEquip();
+        return;
+      }
+
+      // Slot 2 in weapons hotbar is for ammunition only
+      if (hotbarType === 'weapons' && slotNumber === 2 && !item.isAmmunition) {
+        toast({
+          title: "Invalid Slot",
+          description: "Only ammunition can be equipped in the third slot",
+          variant: "destructive"
+        });
         return;
       }
 
@@ -4191,16 +4200,18 @@ function HotbarsTabContent({ character, isGM, isOwner }: HotbarsTabContentProps)
             {equipPickerData && Array.from({ length: getMaxSlots(equipPickerData.hotbarType) }).map((_, slotNum) => {
               const existingHotbar = getHotbarForSlot(equipPickerData.hotbarType, slotNum);
               const isSlot1Blocked = equipPickerData.hotbarType === 'weapons' && slotNum === 1 && heavyEquipped;
+              const isSlot2AmmoOnly = equipPickerData.hotbarType === 'weapons' && slotNum === 2 && !equipPickerData.payload?.isAmmunition;
+              const isBlocked = isSlot1Blocked || isSlot2AmmoOnly;
               
               return (
                 <Button
                   key={slotNum}
                   variant={existingHotbar ? "secondary" : "outline"}
                   className={`h-16 flex flex-col items-center justify-center gap-1 ${
-                    isSlot1Blocked ? 'opacity-50 cursor-not-allowed' : ''
+                    isBlocked ? 'opacity-50 cursor-not-allowed' : ''
                   }`}
-                  onClick={() => !isSlot1Blocked && handlePickerEquip(slotNum)}
-                  disabled={isSlot1Blocked}
+                  onClick={() => !isBlocked && handlePickerEquip(slotNum)}
+                  disabled={isBlocked}
                   data-testid={`equip-picker-slot-${slotNum}`}
                 >
                   <span className="text-xs text-stone-400">
@@ -4518,15 +4529,13 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
     if (hotbar.itemId && itemData) {
       const durabilityColor = itemData.durability >= 8 ? 'bg-green-500' : itemData.durability >= 4 ? 'bg-yellow-500' : 'bg-red-500';
       const durabilityWidth = (itemData.durability / 10) * 100;
-      const isClickableWeapon = itemData.itemType === 'weapon';
       
       return (
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
               <div 
-                onClick={isClickableWeapon ? handleWeaponClick : undefined}
-                className={`w-full h-full flex flex-col items-center justify-center p-0.5 ${isClickableWeapon ? 'cursor-pointer hover:bg-stone-700/30 active:bg-stone-600/30 rounded' : ''}`}
+                className="w-full h-full flex flex-col items-center justify-center p-0.5"
               >
                 {itemData.image ? (
                   <div className="relative w-full h-full flex items-center justify-center">
@@ -4602,7 +4611,6 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
                 Durability: {itemData.durability}/10
                 {itemData.durability <= 3 && ' ⚠️'}
               </p>
-              {isClickableWeapon && <p className="text-xs text-stone-400 mt-1">Click: Attack | Double-click: Damage</p>}
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>
