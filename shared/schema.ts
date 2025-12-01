@@ -129,6 +129,9 @@ export const characters = pgTable("characters", {
   flySpeed: integer("fly_speed").notNull().default(0),
   lifespan: integer("lifespan").notNull().default(100),
   featTree: text("feat_tree").default(""), // Race-specific feat tree
+  // Level-up HP tracking
+  bonusHpFromLevelUps: integer("bonus_hp_from_level_ups").notNull().default(0), // Extra HP gained from level-up dice rolls
+  lastLevelUpRolled: integer("last_level_up_rolled").notNull().default(1), // Last level at which HP was rolled
   // New Attributes (range -2 to 5, mod equals value)
   might: integer("might").notNull().default(0),
   finesse: integer("finesse").notNull().default(0),
