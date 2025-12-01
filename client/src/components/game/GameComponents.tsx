@@ -9709,7 +9709,43 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
               </div>
             </div>
 
-            {(currentData.damage || currentData.damageType || currentData.mod !== undefined || isEditing) && (
+            {/* Description */}
+            <div>
+              <Label className="text-xs text-stone-400">Description</Label>
+              {isEditing ? (
+                <Textarea 
+                  value={currentData.description || ''} 
+                  onChange={(e) => setEditData({ ...editData, description: e.target.value })}
+                  className="bg-stone-800 border-stone-700 min-h-[60px]"
+                  placeholder="Item description..."
+                  data-testid="textarea-edit-description"
+                />
+              ) : (
+                <p className="text-stone-200 text-sm">{currentData.description || 'No description'}</p>
+              )}
+            </div>
+
+            {/* Item Image */}
+            {(currentData.image || isEditing) && (
+              <div>
+                <Label className="text-xs text-stone-400">Image</Label>
+                {currentData.image ? (
+                  <div className="mt-1">
+                    <img 
+                      src={currentData.image} 
+                      alt={currentData.name} 
+                      className="h-20 w-20 rounded object-cover border border-stone-600" 
+                    />
+                  </div>
+                ) : (
+                  <div className="h-20 w-20 rounded bg-stone-700 flex items-center justify-center border border-stone-600 mt-1">
+                    <Package className="h-8 w-8 text-stone-500" />
+                  </div>
+                )}
+              </div>
+            )}
+
+            {(currentData.damage || currentData.damageType || currentData.mod !== undefined || currentData.range || currentData.attribute || currentData.aoe || isEditing) && (
               <div className="pt-4 border-t border-stone-700">
                 <h3 className="text-sm font-bold text-stone-300 mb-2">Combat Stats</h3>
                 <div className="grid grid-cols-2 gap-4">
@@ -9792,6 +9828,102 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
                       />
                     ) : (
                       <p className="text-stone-200">{currentData.mod >= 0 ? `+${currentData.mod}` : currentData.mod}</p>
+                    )}
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <Label className="text-xs text-stone-400">Range (ft)</Label>
+                      {isEditing && !canEditAllFields && (
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger>
+                              <Lock className="h-3 w-3 text-amber-600" />
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Only GMs can edit this field</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      )}
+                    </div>
+                    {isEditing && canEditAllFields ? (
+                      <Input 
+                        type="number"
+                        value={currentData.range || ''} 
+                        onChange={(e) => setEditData({ ...editData, range: e.target.value === '' ? '' : parseInt(e.target.value) })}
+                        className="bg-stone-800 border-amber-700"
+                        placeholder="Range in feet"
+                      />
+                    ) : (
+                      <p className="text-stone-200">{currentData.range ? `${currentData.range} ft` : 'N/A'}</p>
+                    )}
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <Label className="text-xs text-stone-400">Attribute</Label>
+                      {isEditing && !canEditAllFields && (
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger>
+                              <Lock className="h-3 w-3 text-amber-600" />
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Only GMs can edit this field</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      )}
+                    </div>
+                    {isEditing && canEditAllFields ? (
+                      <Select value={currentData.attribute || ''} onValueChange={(v) => setEditData({ ...editData, attribute: v })}>
+                        <SelectTrigger className="bg-stone-800 border-amber-700" data-testid="select-edit-attribute">
+                          <SelectValue placeholder="Select attribute..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="might">Might</SelectItem>
+                          <SelectItem value="finesse">Finesse</SelectItem>
+                          <SelectItem value="wit">Wit</SelectItem>
+                          <SelectItem value="presence">Presence</SelectItem>
+                          <SelectItem value="will">Will</SelectItem>
+                          <SelectItem value="craft">Craft</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <p className="text-stone-200 capitalize">{currentData.attribute || 'N/A'}</p>
+                    )}
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <Label className="text-xs text-stone-400">Area of Effect</Label>
+                      {isEditing && !canEditAllFields && (
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger>
+                              <Lock className="h-3 w-3 text-amber-600" />
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Only GMs can edit this field</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      )}
+                    </div>
+                    {isEditing && canEditAllFields ? (
+                      <Select value={currentData.aoe || 'none'} onValueChange={(v) => setEditData({ ...editData, aoe: v })}>
+                        <SelectTrigger className="bg-stone-800 border-amber-700" data-testid="select-edit-aoe">
+                          <SelectValue placeholder="None" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">None</SelectItem>
+                          <SelectItem value="cone">Cone</SelectItem>
+                          <SelectItem value="sphere">Sphere</SelectItem>
+                          <SelectItem value="line">Line</SelectItem>
+                          <SelectItem value="cube">Cube</SelectItem>
+                          <SelectItem value="cylinder">Cylinder</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <p className="text-stone-200 capitalize">{currentData.aoe && currentData.aoe !== 'none' ? currentData.aoe : 'N/A'}</p>
                     )}
                   </div>
                 </div>
@@ -9956,6 +10088,71 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
                         />
                       </div>
                       <span className="text-sm text-stone-200">{currentData.durability}/10</span>
+                    </div>
+                  )}
+                </div>
+                {/* Price Display */}
+                <div className="col-span-2">
+                  <Label className="text-xs text-stone-400">Value</Label>
+                  {isEditing && canEditAllFields ? (
+                    <div className="grid grid-cols-4 gap-2 mt-1">
+                      <div>
+                        <Label className="text-[10px] text-stone-500">Copper</Label>
+                        <Input 
+                          type="number"
+                          min="0"
+                          value={currentData.priceCopper || ''} 
+                          onChange={(e) => setEditData({ ...editData, priceCopper: e.target.value === '' ? '' : parseInt(e.target.value) })}
+                          className="bg-stone-800 border-amber-700 h-8 text-sm"
+                          data-testid="input-price-copper"
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-[10px] text-stone-500">Silver</Label>
+                        <Input 
+                          type="number"
+                          min="0"
+                          value={currentData.priceSilver || ''} 
+                          onChange={(e) => setEditData({ ...editData, priceSilver: e.target.value === '' ? '' : parseInt(e.target.value) })}
+                          className="bg-stone-800 border-amber-700 h-8 text-sm"
+                          data-testid="input-price-silver"
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-[10px] text-stone-500">Gold</Label>
+                        <Input 
+                          type="number"
+                          min="0"
+                          value={currentData.priceGold || ''} 
+                          onChange={(e) => setEditData({ ...editData, priceGold: e.target.value === '' ? '' : parseInt(e.target.value) })}
+                          className="bg-stone-800 border-amber-700 h-8 text-sm"
+                          data-testid="input-price-gold"
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-[10px] text-stone-500">Platinum</Label>
+                        <Input 
+                          type="number"
+                          min="0"
+                          value={currentData.pricePlatinum || ''} 
+                          onChange={(e) => setEditData({ ...editData, pricePlatinum: e.target.value === '' ? '' : parseInt(e.target.value) })}
+                          className="bg-stone-800 border-amber-700 h-8 text-sm"
+                          data-testid="input-price-platinum"
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex flex-wrap gap-2 mt-1">
+                      {(currentData.pricePlatinum > 0 || currentData.priceGold > 0 || currentData.priceSilver > 0 || currentData.priceCopper > 0) ? (
+                        <>
+                          {currentData.pricePlatinum > 0 && <span className="text-cyan-400 text-sm">{currentData.pricePlatinum} pp</span>}
+                          {currentData.priceGold > 0 && <span className="text-amber-400 text-sm">{currentData.priceGold} gp</span>}
+                          {currentData.priceSilver > 0 && <span className="text-stone-300 text-sm">{currentData.priceSilver} sp</span>}
+                          {currentData.priceCopper > 0 && <span className="text-orange-400 text-sm">{currentData.priceCopper} cp</span>}
+                        </>
+                      ) : (
+                        <span className="text-stone-500 text-sm">No value set</span>
+                      )}
                     </div>
                   )}
                 </div>
