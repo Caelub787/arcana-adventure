@@ -133,7 +133,7 @@ export function ImageBrowser({ open, onOpenChange, onSelect, title = "Browse Ima
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-stone-950 border-stone-800 text-stone-200 max-w-2xl max-h-[85vh] flex flex-col">
+      <DialogContent className="bg-stone-950 border-stone-800 text-stone-200 max-w-2xl h-[85vh] flex flex-col overflow-hidden">
         <DialogHeader>
           <DialogTitle className="text-amber-500 font-display text-xl">{title}</DialogTitle>
           <DialogDescription className="text-stone-400">
@@ -201,7 +201,7 @@ export function ImageBrowser({ open, onOpenChange, onSelect, title = "Browse Ima
         )}
 
         {/* Content Area */}
-        <ScrollArea className="flex-1 min-h-[300px] max-h-[400px]">
+        <ScrollArea className="flex-1 min-h-0">
           {isLoading ? (
             <div className="flex items-center justify-center h-[300px]">
               <Loader2 className="h-8 w-8 animate-spin text-amber-500" />
