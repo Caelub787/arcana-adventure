@@ -43,16 +43,18 @@ const DIE_COLORS: Partial<Record<DieType, string>> = {
   d20: 'from-cyan-500 to-cyan-700',
 };
 
-function RollCard({ notification, onComplete }: { notification: RollNotification; onComplete: () => void }) {
+function RollCard({ notification, onComplete }: { notification: RollNotification; onComplete: (id: string) => void }) {
   const Icon = ROLL_ICONS[notification.type] || Dices;
   const colorClass = notification.dieType 
     ? DIE_COLORS[notification.dieType] || ROLL_COLORS[notification.type]
     : ROLL_COLORS[notification.type];
   
   useEffect(() => {
-    const timer = setTimeout(onComplete, 3500);
+    const timer = setTimeout(() => {
+      onComplete(notification.id);
+    }, 3500);
     return () => clearTimeout(timer);
-  }, [onComplete]);
+  }, [notification.id, onComplete]);
   
   const displayName = notification.characterName || notification.username;
   const isNat20 = notification.dieType === 'd20' && notification.result === 20;
@@ -181,7 +183,7 @@ export function RollNotificationContainer() {
           <RollCard
             key={notification.id}
             notification={notification}
-            onComplete={() => removeNotification(notification.id)}
+            onComplete={removeNotification}
           />
         ))}
       </AnimatePresence>
