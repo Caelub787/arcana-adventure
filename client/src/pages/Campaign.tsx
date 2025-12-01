@@ -623,6 +623,12 @@ export default function Campaign() {
 
   const handleAssignCharacter = (char: any) => {
     setCharacter(char);
+    // Persist the assignment to the backend so it survives page reload
+    if (effectiveCampaignId) {
+      api.setAssignedCharacter(effectiveCampaignId, char.id).catch(() => {
+        // Silently fail - assignment will still work for this session
+      });
+    }
     toast({ title: "Character Assigned", description: `${char.name} is now your active character` });
   };
 
