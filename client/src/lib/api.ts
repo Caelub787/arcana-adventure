@@ -183,6 +183,26 @@ export interface Spell {
   isEquipped: boolean;
 }
 
+export interface SystemSpecies {
+  id: string;
+  systemName: string;
+  name: string;
+  description?: string;
+  lifespan: number;
+  speed: number;
+  flySpeed: number;
+  size: string;
+  naturalArmor: number;
+  sizeBonus: number;
+  startingHp: number;
+  startingMaxHp: number;
+  hpPerLevel: number;
+  startingEnergy: number;
+  startingMaxEnergy: number;
+  featTree?: string;
+  createdAt: string;
+}
+
 export interface CharacterPermission {
   id: string;
   characterId: string;
@@ -496,6 +516,30 @@ class ApiClient {
 
   async deleteSystemItem(id: string): Promise<void> {
     return this.request(`/admin/system-items/${id}`, { method: 'DELETE' });
+  }
+
+  // Admin System Species
+  async getSystemSpecies(systemName?: string): Promise<SystemSpecies[]> {
+    const params = systemName ? `?system=${encodeURIComponent(systemName)}` : '';
+    return this.request(`/admin/system-species${params}`);
+  }
+
+  async createSystemSpecies(species: Partial<SystemSpecies>): Promise<SystemSpecies> {
+    return this.request('/admin/system-species', {
+      method: 'POST',
+      body: JSON.stringify(species),
+    });
+  }
+
+  async updateSystemSpecies(id: string, data: Partial<SystemSpecies>): Promise<SystemSpecies> {
+    return this.request(`/admin/system-species/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteSystemSpecies(id: string): Promise<void> {
+    return this.request(`/admin/system-species/${id}`, { method: 'DELETE' });
   }
 
   // Campaign Template Items

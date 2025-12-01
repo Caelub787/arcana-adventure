@@ -1,7 +1,7 @@
 import { useState, useRef, useMemo } from 'react';
 import { useLocation } from 'wouter';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { api, type Item } from '@/lib/api';
+import { api, type Item, type SystemSpecies } from '@/lib/api';
 import { useAuth } from '@/lib/AuthContext';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { Button } from '@/components/ui/button';
@@ -10,13 +10,15 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Slider } from '@/components/ui/slider';
 import { toast } from '@/hooks/use-toast';
-import { ArrowLeft, Plus, Pencil, Trash2, Sword, Shield, Package, Sparkles, Box, Coins, Search } from 'lucide-react';
+import { ArrowLeft, Plus, Pencil, Trash2, Sword, Shield, Package, Sparkles, Box, Coins, Search, Users, GitBranch } from 'lucide-react';
+
+type AdminView = 'dashboard' | 'items' | 'species' | 'feat-trees';
 
 const itemTypeIcons: Record<string, any> = {
   weapon: Sword,
@@ -35,20 +37,35 @@ const rarityColors: Record<string, string> = {
   legendary: 'bg-amber-600',
 };
 
+const sizeOptions = ['Tiny', 'Small', 'Medium', 'Large', 'Huge', 'Gargantuan'];
+
 export default function AdminSettings() {
   const [, setLocation] = useLocation();
-  const { user, isAdmin } = useAuth();
+  const { isAdmin } = useAuth();
   const queryClient = useQueryClient();
+  
+  const [currentView, setCurrentView] = useState<AdminView>('dashboard');
+  const [selectedSystem, setSelectedSystem] = useState('Arcana Adventure');
   
   const [showAddItem, setShowAddItem] = useState(false);
   const [editingItem, setEditingItem] = useState<Item | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
 
-  const { data: systemItems = [], isLoading } = useQuery({
+  const [showAddSpecies, setShowAddSpecies] = useState(false);
+  const [editingSpecies, setEditingSpecies] = useState<SystemSpecies | null>(null);
+  const [speciesSearchQuery, setSpeciesSearchQuery] = useState('');
+
+  const { data: systemItems = [], isLoading: itemsLoading } = useQuery({
     queryKey: ['system-items'],
     queryFn: () => api.getSystemItems(),
-    enabled: isAdmin,
+    enabled: isAdmin && currentView === 'items',
+  });
+
+  const { data: systemSpecies = [], isLoading: speciesLoading } = useQuery({
+    queryKey: ['system-species', selectedSystem],
+    queryFn: () => api.getSystemSpecies(selectedSystem),
+    enabled: isAdmin && currentView === 'species',
   });
 
   const createItemMutation = useMutation({
@@ -86,6 +103,41 @@ export default function AdminSettings() {
     },
   });
 
+  const createSpeciesMutation = useMutation({
+    mutationFn: (species: Partial<SystemSpecies>) => api.createSystemSpecies({ ...species, systemName: selectedSystem }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['system-species'] });
+      setShowAddSpecies(false);
+      toast({ title: 'Species Created', description: 'Species created successfully' });
+    },
+    onError: (error: any) => {
+      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    },
+  });
+
+  const updateSpeciesMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Partial<SystemSpecies> }) => api.updateSystemSpecies(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['system-species'] });
+      setEditingSpecies(null);
+      toast({ title: 'Species Updated', description: 'Species updated successfully' });
+    },
+    onError: (error: any) => {
+      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    },
+  });
+
+  const deleteSpeciesMutation = useMutation({
+    mutationFn: (id: string) => api.deleteSystemSpecies(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['system-species'] });
+      toast({ title: 'Species Deleted', description: 'Species deleted successfully' });
+    },
+    onError: (error: any) => {
+      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    },
+  });
+
   if (!isAdmin) {
     return (
       <div className="min-h-screen bg-stone-950 text-stone-200 flex items-center justify-center">
@@ -101,6 +153,7 @@ export default function AdminSettings() {
   }
 
   const debouncedSearchQuery = useDebouncedValue(searchQuery, 150);
+  const debouncedSpeciesSearchQuery = useDebouncedValue(speciesSearchQuery, 150);
   
   const filteredItems = useMemo(() => {
     return systemItems.filter((item: Item) => {
@@ -111,6 +164,21 @@ export default function AdminSettings() {
     });
   }, [systemItems, debouncedSearchQuery, typeFilter]);
 
+  const filteredSpecies = useMemo(() => {
+    return systemSpecies.filter((species: SystemSpecies) => {
+      return species.name.toLowerCase().includes(debouncedSpeciesSearchQuery.toLowerCase()) ||
+             (species.description?.toLowerCase().includes(debouncedSpeciesSearchQuery.toLowerCase()));
+    });
+  }, [systemSpecies, debouncedSpeciesSearchQuery]);
+
+  const handleBackNavigation = () => {
+    if (currentView === 'dashboard') {
+      setLocation('/');
+    } else {
+      setCurrentView('dashboard');
+    }
+  };
+
   return (
     <div className="min-h-screen bg-stone-950 text-stone-200">
       <div className="container mx-auto px-4 py-6 max-w-6xl">
@@ -118,128 +186,73 @@ export default function AdminSettings() {
           <Button
             variant="ghost"
             size="icon"
-            onClick={() => setLocation('/')}
+            onClick={handleBackNavigation}
             className="text-stone-400 hover:text-stone-200"
             data-testid="button-back"
           >
             <ArrowLeft className="h-5 w-5" />
           </Button>
-          <div>
+          <div className="flex-1">
             <h1 className="text-2xl font-bold text-amber-500">Admin Settings</h1>
-            <p className="text-stone-400 text-sm">Manage system-wide items for Arcana Adventure</p>
+            <p className="text-stone-400 text-sm">
+              {currentView === 'dashboard' ? 'Manage game system settings' : 
+               currentView === 'items' ? 'System Items' :
+               currentView === 'species' ? 'Species / Races' : 'Feat Trees'}
+            </p>
+          </div>
+          <div className="w-[200px]">
+            <Select value={selectedSystem} onValueChange={setSelectedSystem}>
+              <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-system">
+                <SelectValue placeholder="Select System" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="Arcana Adventure">Arcana Adventure</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </div>
 
-        <Card className="bg-stone-900 border-stone-700">
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="text-amber-500">System Items</CardTitle>
-            <Button
-              onClick={() => setShowAddItem(true)}
-              className="bg-amber-700 hover:bg-amber-600"
-              data-testid="button-add-system-item"
-            >
-              <Plus className="h-4 w-4 mr-2" />
-              Add Item
-            </Button>
-          </CardHeader>
-          <CardContent>
-            <div className="flex gap-4 mb-4">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-500" />
-                <Input
-                  placeholder="Search items..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9 bg-stone-800 border-stone-700"
-                  data-testid="input-search-items"
-                />
-              </div>
-              <Select value={typeFilter} onValueChange={setTypeFilter}>
-                <SelectTrigger className="w-[180px] bg-stone-800 border-stone-700" data-testid="select-type-filter">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Types</SelectItem>
-                  <SelectItem value="weapon">Weapons</SelectItem>
-                  <SelectItem value="armor">Armor</SelectItem>
-                  <SelectItem value="consumable">Consumables</SelectItem>
-                  <SelectItem value="utility">Utilities</SelectItem>
-                  <SelectItem value="container">Containers</SelectItem>
-                  <SelectItem value="currency">Currency</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+        {currentView === 'dashboard' && (
+          <DashboardView onNavigate={setCurrentView} />
+        )}
 
-            {isLoading ? (
-              <div className="text-center py-12 text-stone-400">Loading items...</div>
-            ) : filteredItems.length === 0 ? (
-              <div className="text-center py-12 text-stone-400">
-                <Package className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                <p className="font-bold">No system items found</p>
-                <p className="text-sm mt-2">Create items that will be available across all campaigns</p>
-              </div>
-            ) : (
-              <ScrollArea className="h-[500px]">
-                <div className="space-y-2">
-                  {filteredItems.map((item: Item) => {
-                    const Icon = itemTypeIcons[item.itemType] || Package;
-                    return (
-                      <div
-                        key={item.id}
-                        className="flex items-center gap-4 p-3 rounded-lg bg-stone-800 border border-stone-700 hover:border-stone-600"
-                        data-testid={`item-row-${item.id}`}
-                      >
-                        {item.image ? (
-                          <img src={item.image} alt={item.name} className="h-12 w-12 rounded object-cover" />
-                        ) : (
-                          <div className="h-12 w-12 rounded bg-stone-700 flex items-center justify-center">
-                            <Icon className="h-6 w-6 text-stone-400" />
-                          </div>
-                        )}
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className="font-medium truncate">{item.name}</span>
-                            <Badge className={`${rarityColors[item.rarity]} text-xs`}>
-                              {item.rarity}
-                            </Badge>
-                          </div>
-                          <div className="text-sm text-stone-400 flex items-center gap-2">
-                            <span className="capitalize">{item.itemType}</span>
-                            {item.damage && <span>| {item.damage} {item.damageType}</span>}
-                          </div>
-                        </div>
-                        <div className="flex gap-2">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => setEditingItem(item)}
-                            className="text-stone-400 hover:text-amber-500"
-                            data-testid={`button-edit-${item.id}`}
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => {
-                              if (confirm('Are you sure you want to delete this item?')) {
-                                deleteItemMutation.mutate(item.id);
-                              }
-                            }}
-                            className="text-stone-400 hover:text-red-500"
-                            data-testid={`button-delete-${item.id}`}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </ScrollArea>
-            )}
-          </CardContent>
-        </Card>
+        {currentView === 'items' && (
+          <ItemsView
+            items={filteredItems}
+            isLoading={itemsLoading}
+            searchQuery={searchQuery}
+            setSearchQuery={setSearchQuery}
+            typeFilter={typeFilter}
+            setTypeFilter={setTypeFilter}
+            onAddItem={() => setShowAddItem(true)}
+            onEditItem={setEditingItem}
+            onDeleteItem={(id) => {
+              if (confirm('Are you sure you want to delete this item?')) {
+                deleteItemMutation.mutate(id);
+              }
+            }}
+          />
+        )}
+
+        {currentView === 'species' && (
+          <SpeciesView
+            species={filteredSpecies}
+            isLoading={speciesLoading}
+            searchQuery={speciesSearchQuery}
+            setSearchQuery={setSpeciesSearchQuery}
+            onAddSpecies={() => setShowAddSpecies(true)}
+            onEditSpecies={setEditingSpecies}
+            onDeleteSpecies={(id) => {
+              if (confirm('Are you sure you want to delete this species?')) {
+                deleteSpeciesMutation.mutate(id);
+              }
+            }}
+          />
+        )}
+
+        {currentView === 'feat-trees' && (
+          <FeatTreesView />
+        )}
 
         <ItemFormDialog
           open={showAddItem}
@@ -257,8 +270,541 @@ export default function AdminSettings() {
             isLoading={updateItemMutation.isPending}
           />
         )}
+
+        <SpeciesFormDialog
+          open={showAddSpecies}
+          onOpenChange={setShowAddSpecies}
+          onSave={(data) => createSpeciesMutation.mutate(data)}
+          isLoading={createSpeciesMutation.isPending}
+        />
+
+        {editingSpecies && (
+          <SpeciesFormDialog
+            open={!!editingSpecies}
+            onOpenChange={() => setEditingSpecies(null)}
+            onSave={(data) => updateSpeciesMutation.mutate({ id: editingSpecies.id, data })}
+            initialData={editingSpecies}
+            isLoading={updateSpeciesMutation.isPending}
+          />
+        )}
       </div>
     </div>
+  );
+}
+
+function DashboardView({ onNavigate }: { onNavigate: (view: AdminView) => void }) {
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <Card 
+        className="bg-stone-900 border-stone-700 cursor-pointer hover:border-amber-600 transition-colors"
+        onClick={() => onNavigate('items')}
+        data-testid="card-system-items"
+      >
+        <CardHeader>
+          <div className="h-12 w-12 rounded-lg bg-amber-700/20 flex items-center justify-center mb-2">
+            <Package className="h-6 w-6 text-amber-500" />
+          </div>
+          <CardTitle className="text-amber-500">System Items</CardTitle>
+          <CardDescription className="text-stone-400">
+            Manage weapons, armor, consumables, and other items available across all campaigns
+          </CardDescription>
+        </CardHeader>
+      </Card>
+
+      <Card 
+        className="bg-stone-900 border-stone-700 cursor-pointer hover:border-amber-600 transition-colors"
+        onClick={() => onNavigate('species')}
+        data-testid="card-system-species"
+      >
+        <CardHeader>
+          <div className="h-12 w-12 rounded-lg bg-emerald-700/20 flex items-center justify-center mb-2">
+            <Users className="h-6 w-6 text-emerald-500" />
+          </div>
+          <CardTitle className="text-emerald-500">System Species</CardTitle>
+          <CardDescription className="text-stone-400">
+            Define playable races and species with their unique traits and abilities
+          </CardDescription>
+        </CardHeader>
+      </Card>
+
+      <Card 
+        className="bg-stone-900 border-stone-700 cursor-pointer hover:border-amber-600 transition-colors"
+        onClick={() => onNavigate('feat-trees')}
+        data-testid="card-feat-trees"
+      >
+        <CardHeader>
+          <div className="h-12 w-12 rounded-lg bg-purple-700/20 flex items-center justify-center mb-2">
+            <GitBranch className="h-6 w-6 text-purple-500" />
+          </div>
+          <CardTitle className="text-purple-500">Feat Trees</CardTitle>
+          <CardDescription className="text-stone-400">
+            Create and manage feat progression trees for characters
+          </CardDescription>
+        </CardHeader>
+      </Card>
+    </div>
+  );
+}
+
+interface ItemsViewProps {
+  items: Item[];
+  isLoading: boolean;
+  searchQuery: string;
+  setSearchQuery: (q: string) => void;
+  typeFilter: string;
+  setTypeFilter: (t: string) => void;
+  onAddItem: () => void;
+  onEditItem: (item: Item) => void;
+  onDeleteItem: (id: string) => void;
+}
+
+function ItemsView({ items, isLoading, searchQuery, setSearchQuery, typeFilter, setTypeFilter, onAddItem, onEditItem, onDeleteItem }: ItemsViewProps) {
+  return (
+    <Card className="bg-stone-900 border-stone-700">
+      <CardHeader className="flex flex-row items-center justify-between">
+        <CardTitle className="text-amber-500">System Items</CardTitle>
+        <Button
+          onClick={onAddItem}
+          className="bg-amber-700 hover:bg-amber-600"
+          data-testid="button-add-system-item"
+        >
+          <Plus className="h-4 w-4 mr-2" />
+          Add Item
+        </Button>
+      </CardHeader>
+      <CardContent>
+        <div className="flex gap-4 mb-4">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-500" />
+            <Input
+              placeholder="Search items..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9 bg-stone-800 border-stone-700"
+              data-testid="input-search-items"
+            />
+          </div>
+          <Select value={typeFilter} onValueChange={setTypeFilter}>
+            <SelectTrigger className="w-[180px] bg-stone-800 border-stone-700" data-testid="select-type-filter">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Types</SelectItem>
+              <SelectItem value="weapon">Weapons</SelectItem>
+              <SelectItem value="armor">Armor</SelectItem>
+              <SelectItem value="consumable">Consumables</SelectItem>
+              <SelectItem value="utility">Utilities</SelectItem>
+              <SelectItem value="container">Containers</SelectItem>
+              <SelectItem value="currency">Currency</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        {isLoading ? (
+          <div className="text-center py-12 text-stone-400">Loading items...</div>
+        ) : items.length === 0 ? (
+          <div className="text-center py-12 text-stone-400">
+            <Package className="h-12 w-12 mx-auto mb-3 opacity-50" />
+            <p className="font-bold">No system items found</p>
+            <p className="text-sm mt-2">Create items that will be available across all campaigns</p>
+          </div>
+        ) : (
+          <ScrollArea className="h-[500px]">
+            <div className="space-y-2">
+              {items.map((item: Item) => {
+                const Icon = itemTypeIcons[item.itemType] || Package;
+                return (
+                  <div
+                    key={item.id}
+                    className="flex items-center gap-4 p-3 rounded-lg bg-stone-800 border border-stone-700 hover:border-stone-600"
+                    data-testid={`item-row-${item.id}`}
+                  >
+                    {item.image ? (
+                      <img src={item.image} alt={item.name} className="h-12 w-12 rounded object-cover" />
+                    ) : (
+                      <div className="h-12 w-12 rounded bg-stone-700 flex items-center justify-center">
+                        <Icon className="h-6 w-6 text-stone-400" />
+                      </div>
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium truncate">{item.name}</span>
+                        <Badge className={`${rarityColors[item.rarity]} text-xs`}>
+                          {item.rarity}
+                        </Badge>
+                      </div>
+                      <div className="text-sm text-stone-400 flex items-center gap-2">
+                        <span className="capitalize">{item.itemType}</span>
+                        {item.damage && <span>| {item.damage} {item.damageType}</span>}
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => onEditItem(item)}
+                        className="text-stone-400 hover:text-amber-500"
+                        data-testid={`button-edit-${item.id}`}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => onDeleteItem(item.id)}
+                        className="text-stone-400 hover:text-red-500"
+                        data-testid={`button-delete-${item.id}`}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </ScrollArea>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+interface SpeciesViewProps {
+  species: SystemSpecies[];
+  isLoading: boolean;
+  searchQuery: string;
+  setSearchQuery: (q: string) => void;
+  onAddSpecies: () => void;
+  onEditSpecies: (species: SystemSpecies) => void;
+  onDeleteSpecies: (id: string) => void;
+}
+
+function SpeciesView({ species, isLoading, searchQuery, setSearchQuery, onAddSpecies, onEditSpecies, onDeleteSpecies }: SpeciesViewProps) {
+  return (
+    <Card className="bg-stone-900 border-stone-700">
+      <CardHeader className="flex flex-row items-center justify-between">
+        <CardTitle className="text-emerald-500">System Species</CardTitle>
+        <Button
+          onClick={onAddSpecies}
+          className="bg-emerald-700 hover:bg-emerald-600"
+          data-testid="button-add-species"
+        >
+          <Plus className="h-4 w-4 mr-2" />
+          Add Species
+        </Button>
+      </CardHeader>
+      <CardContent>
+        <div className="mb-4">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-500" />
+            <Input
+              placeholder="Search species..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9 bg-stone-800 border-stone-700"
+              data-testid="input-search-species"
+            />
+          </div>
+        </div>
+
+        {isLoading ? (
+          <div className="text-center py-12 text-stone-400">Loading species...</div>
+        ) : species.length === 0 ? (
+          <div className="text-center py-12 text-stone-400">
+            <Users className="h-12 w-12 mx-auto mb-3 opacity-50" />
+            <p className="font-bold">No species found</p>
+            <p className="text-sm mt-2">Create playable species for character creation</p>
+          </div>
+        ) : (
+          <ScrollArea className="h-[500px]">
+            <div className="space-y-2">
+              {species.map((s: SystemSpecies) => (
+                <div
+                  key={s.id}
+                  className="flex items-center gap-4 p-3 rounded-lg bg-stone-800 border border-stone-700 hover:border-stone-600"
+                  data-testid={`species-row-${s.id}`}
+                >
+                  <div className="h-12 w-12 rounded bg-stone-700 flex items-center justify-center">
+                    <Users className="h-6 w-6 text-emerald-400" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium truncate">{s.name}</span>
+                      <Badge className="bg-stone-600 text-xs">{s.size}</Badge>
+                    </div>
+                    <div className="text-sm text-stone-400 flex flex-wrap gap-2">
+                      <span>HP: {s.startingHp}</span>
+                      <span>| Speed: {s.speed}ft</span>
+                      {s.flySpeed > 0 && <span>| Fly: {s.flySpeed}ft</span>}
+                      <span>| Armor: {s.naturalArmor}</span>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => onEditSpecies(s)}
+                      className="text-stone-400 hover:text-emerald-500"
+                      data-testid={`button-edit-species-${s.id}`}
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => onDeleteSpecies(s.id)}
+                      className="text-stone-400 hover:text-red-500"
+                      data-testid={`button-delete-species-${s.id}`}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </ScrollArea>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function FeatTreesView() {
+  return (
+    <Card className="bg-stone-900 border-stone-700">
+      <CardHeader>
+        <CardTitle className="text-purple-500">Feat Trees</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="text-center py-12 text-stone-400">
+          <GitBranch className="h-12 w-12 mx-auto mb-3 opacity-50" />
+          <p className="font-bold">Coming Soon</p>
+          <p className="text-sm mt-2">Feat tree management will be available in a future update</p>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+interface SpeciesFormDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onSave: (data: Partial<SystemSpecies>) => void;
+  initialData?: SystemSpecies;
+  isLoading?: boolean;
+}
+
+function SpeciesFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: SpeciesFormDialogProps) {
+  const [formData, setFormData] = useState({
+    name: initialData?.name || '',
+    description: initialData?.description || '',
+    lifespan: initialData?.lifespan || 100,
+    speed: initialData?.speed || 30,
+    flySpeed: initialData?.flySpeed || 0,
+    size: initialData?.size || 'Medium',
+    naturalArmor: initialData?.naturalArmor || 5,
+    sizeBonus: initialData?.sizeBonus || 0,
+    startingHp: initialData?.startingHp || 10,
+    startingMaxHp: initialData?.startingMaxHp || 10,
+    hpPerLevel: initialData?.hpPerLevel || 5,
+    startingEnergy: initialData?.startingEnergy || 10,
+    startingMaxEnergy: initialData?.startingMaxEnergy || 10,
+    featTree: initialData?.featTree || '',
+  });
+
+  const handleSubmit = () => {
+    if (!formData.name.trim()) {
+      toast({ title: 'Error', description: 'Species name is required', variant: 'destructive' });
+      return;
+    }
+    onSave(formData);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="bg-stone-900 border-stone-700 text-stone-200 max-w-2xl max-h-[90vh] flex flex-col">
+        <DialogHeader className="shrink-0">
+          <DialogTitle className="text-emerald-500">
+            {initialData ? 'Edit Species' : 'Create Species'}
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="flex-1 overflow-y-auto pr-4 min-h-0">
+          <div className="space-y-4 py-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="col-span-2">
+                <Label>Name *</Label>
+                <Input
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  className="bg-stone-800 border-stone-700"
+                  data-testid="input-species-name"
+                />
+              </div>
+
+              <div className="col-span-2">
+                <Label>Description</Label>
+                <Textarea
+                  value={formData.description}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  className="bg-stone-800 border-stone-700 min-h-[80px]"
+                  data-testid="textarea-species-description"
+                />
+              </div>
+
+              <div>
+                <Label>Size</Label>
+                <Select value={formData.size} onValueChange={(v) => setFormData({ ...formData, size: v })}>
+                  <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-species-size">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {sizeOptions.map((size) => (
+                      <SelectItem key={size} value={size}>{size}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <Label>Lifespan (years)</Label>
+                <Input
+                  type="number"
+                  value={formData.lifespan}
+                  onChange={(e) => setFormData({ ...formData, lifespan: parseInt(e.target.value) || 0 })}
+                  className="bg-stone-800 border-stone-700"
+                  data-testid="input-species-lifespan"
+                />
+              </div>
+
+              <div>
+                <Label>Speed (ft)</Label>
+                <Input
+                  type="number"
+                  value={formData.speed}
+                  onChange={(e) => setFormData({ ...formData, speed: parseInt(e.target.value) || 0 })}
+                  className="bg-stone-800 border-stone-700"
+                  data-testid="input-species-speed"
+                />
+              </div>
+
+              <div>
+                <Label>Fly Speed (ft)</Label>
+                <Input
+                  type="number"
+                  value={formData.flySpeed}
+                  onChange={(e) => setFormData({ ...formData, flySpeed: parseInt(e.target.value) || 0 })}
+                  className="bg-stone-800 border-stone-700"
+                  data-testid="input-species-flyspeed"
+                />
+              </div>
+
+              <div>
+                <Label>Natural Armor</Label>
+                <Input
+                  type="number"
+                  value={formData.naturalArmor}
+                  onChange={(e) => setFormData({ ...formData, naturalArmor: parseInt(e.target.value) || 0 })}
+                  className="bg-stone-800 border-stone-700"
+                  data-testid="input-species-armor"
+                />
+              </div>
+
+              <div>
+                <Label>Size Bonus</Label>
+                <Input
+                  type="number"
+                  value={formData.sizeBonus}
+                  onChange={(e) => setFormData({ ...formData, sizeBonus: parseInt(e.target.value) || 0 })}
+                  className="bg-stone-800 border-stone-700"
+                  data-testid="input-species-sizebonus"
+                />
+              </div>
+
+              <div>
+                <Label>Starting HP</Label>
+                <Input
+                  type="number"
+                  value={formData.startingHp}
+                  onChange={(e) => setFormData({ ...formData, startingHp: parseInt(e.target.value) || 0 })}
+                  className="bg-stone-800 border-stone-700"
+                  data-testid="input-species-startinghp"
+                />
+              </div>
+
+              <div>
+                <Label>Starting Max HP</Label>
+                <Input
+                  type="number"
+                  value={formData.startingMaxHp}
+                  onChange={(e) => setFormData({ ...formData, startingMaxHp: parseInt(e.target.value) || 0 })}
+                  className="bg-stone-800 border-stone-700"
+                  data-testid="input-species-startingmaxhp"
+                />
+              </div>
+
+              <div>
+                <Label>HP Per Level</Label>
+                <Input
+                  type="number"
+                  value={formData.hpPerLevel}
+                  onChange={(e) => setFormData({ ...formData, hpPerLevel: parseInt(e.target.value) || 0 })}
+                  className="bg-stone-800 border-stone-700"
+                  data-testid="input-species-hpperlevel"
+                />
+              </div>
+
+              <div>
+                <Label>Starting Energy</Label>
+                <Input
+                  type="number"
+                  value={formData.startingEnergy}
+                  onChange={(e) => setFormData({ ...formData, startingEnergy: parseInt(e.target.value) || 0 })}
+                  className="bg-stone-800 border-stone-700"
+                  data-testid="input-species-startingenergy"
+                />
+              </div>
+
+              <div>
+                <Label>Starting Max Energy</Label>
+                <Input
+                  type="number"
+                  value={formData.startingMaxEnergy}
+                  onChange={(e) => setFormData({ ...formData, startingMaxEnergy: parseInt(e.target.value) || 0 })}
+                  className="bg-stone-800 border-stone-700"
+                  data-testid="input-species-startingmaxenergy"
+                />
+              </div>
+
+              <div className="col-span-2">
+                <Label>Feat Tree (Reference)</Label>
+                <Input
+                  value={formData.featTree}
+                  onChange={(e) => setFormData({ ...formData, featTree: e.target.value })}
+                  placeholder="e.g., Versatile, Draconic Heritage"
+                  className="bg-stone-800 border-stone-700"
+                  data-testid="input-species-feattree"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <DialogFooter className="shrink-0">
+          <Button variant="outline" onClick={() => onOpenChange(false)} className="border-stone-600">
+            Cancel
+          </Button>
+          <Button
+            onClick={handleSubmit}
+            disabled={isLoading}
+            className="bg-emerald-700 hover:bg-emerald-600"
+            data-testid="button-save-species"
+          >
+            {isLoading ? 'Saving...' : initialData ? 'Update Species' : 'Create Species'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -325,8 +871,6 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
     carryCapacity: initialData?.carryCapacity || 0,
   });
 
-  const [showImageCrop, setShowImageCrop] = useState(false);
-  const [uploadedImage, setUploadedImage] = useState<string | null>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -334,7 +878,6 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
     if (file) {
       const reader = new FileReader();
       reader.onload = (event) => {
-        setUploadedImage(event.target?.result as string);
         setFormData({ ...formData, image: event.target?.result as string });
       };
       reader.readAsDataURL(file);
@@ -346,7 +889,6 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
       toast({ title: 'Error', description: 'Item name is required', variant: 'destructive' });
       return;
     }
-    // Convert empty strings to proper values before saving
     const cleanedData = {
       ...formData,
       mod: Number(formData.mod) || 0,
@@ -357,7 +899,7 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
       carryCapacity: Number(formData.carryCapacity) || 0,
       quantity: Number(formData.quantity) || 1,
       breakChance: formData.itemType === 'ammunition' ? formData.breakChance : 10,
-      aoe: formData.aoe === 'none' ? undefined : formData.aoe, // Convert "none" to undefined
+      aoe: formData.aoe === 'none' ? undefined : formData.aoe,
     };
     onSave(cleanedData);
   };
@@ -542,7 +1084,7 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
                       value={formData.mod || ''}
                       onChange={(e) => setFormData({ ...formData, mod: e.target.value === '' ? '' : parseInt(e.target.value) })}
                       className="bg-stone-800 border-stone-700"
-                      data-testid="input-mod"
+                      data-testid="input-modifier"
                     />
                   </div>
                   <div>
@@ -555,65 +1097,50 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
                       data-testid="input-range"
                     />
                   </div>
+                </>
+              )}
+
+              {formData.itemType === 'weapon' && (
+                <>
                   <div>
-                    <Label>Attribute</Label>
-                    <Select value={formData.attribute} onValueChange={(v) => setFormData({ ...formData, attribute: v })}>
-                      <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-attribute">
-                        <SelectValue placeholder="Select attribute" />
+                    <Label>Weapon Category</Label>
+                    <Select value={formData.weaponCategory} onValueChange={(v) => setFormData({ ...formData, weaponCategory: v })}>
+                      <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-weapon-category">
+                        <SelectValue placeholder="Select category" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="might">Might</SelectItem>
-                        <SelectItem value="finesse">Finesse</SelectItem>
-                        <SelectItem value="wit">Wit</SelectItem>
-                        <SelectItem value="presence">Presence</SelectItem>
-                        <SelectItem value="will">Will</SelectItem>
-                        <SelectItem value="craft">Craft</SelectItem>
+                        <SelectItem value="melee">Melee</SelectItem>
+                        <SelectItem value="ranged">Ranged</SelectItem>
+                        <SelectItem value="thrown">Thrown</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
-                  {formData.itemType === 'weapon' && (
-                    <>
-                      <div className="flex items-center gap-2">
-                        <Checkbox
-                          checked={formData.isHeavy}
-                          onCheckedChange={(checked) => setFormData({ ...formData, isHeavy: !!checked })}
-                          data-testid="checkbox-heavy"
-                        />
-                        <Label>Heavy (Two-Handed)</Label>
-                      </div>
-                      <div>
-                        <Label>Weapon Category</Label>
-                        <Select value={formData.weaponCategory} onValueChange={(v) => setFormData({ ...formData, weaponCategory: v })}>
-                          <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-weapon-category">
-                            <SelectValue placeholder="Select category" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="melee">Melee</SelectItem>
-                            <SelectItem value="bow">Bow (uses Arrows)</SelectItem>
-                            <SelectItem value="crossbow">Crossbow (uses Bolts)</SelectItem>
-                            <SelectItem value="sling">Sling (uses Stones)</SelectItem>
-                            <SelectItem value="firearm">Firearm (uses Bullets)</SelectItem>
-                            <SelectItem value="thrown">Thrown (uses Darts)</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </>
-                  )}
                   <div>
-                    <Label>Area of Effect</Label>
-                    <Select value={formData.aoe} onValueChange={(v) => setFormData({ ...formData, aoe: v })}>
-                      <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-aoe">
+                    <Label>Ammunition Required</Label>
+                    <Select value={formData.ammunitionType} onValueChange={(v) => setFormData({ ...formData, ammunitionType: v })}>
+                      <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-weapon-ammo">
                         <SelectValue placeholder="None" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="none">None</SelectItem>
-                        <SelectItem value="cone">Cone</SelectItem>
-                        <SelectItem value="sphere">Sphere</SelectItem>
-                        <SelectItem value="line">Line</SelectItem>
-                        <SelectItem value="cube">Cube</SelectItem>
-                        <SelectItem value="cylinder">Cylinder</SelectItem>
+                        <SelectItem value="">None</SelectItem>
+                        <SelectItem value="arrow">Arrow</SelectItem>
+                        <SelectItem value="bolt">Bolt</SelectItem>
+                        <SelectItem value="bullet">Bullet</SelectItem>
+                        <SelectItem value="dart">Dart</SelectItem>
+                        <SelectItem value="stone">Stone</SelectItem>
                       </SelectContent>
                     </Select>
+                  </div>
+                  <div className="col-span-2">
+                    <div className="flex items-center gap-2">
+                      <Checkbox
+                        checked={formData.isHeavy}
+                        onCheckedChange={(checked) => setFormData({ ...formData, isHeavy: !!checked })}
+                        data-testid="checkbox-heavy"
+                      />
+                      <Label>Two-Handed / Heavy Weapon</Label>
+                    </div>
+                    <p className="text-xs text-stone-500 mt-1">Two-handed weapons require both hands and occupy both weapon slots</p>
                   </div>
                 </>
               )}
