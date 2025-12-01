@@ -119,7 +119,7 @@ function RollCard({ notification, onComplete }: { notification: RollNotification
                   animate={{ opacity: 1, x: 0 }}
                   className="text-yellow-200 font-bold text-sm uppercase tracking-wider"
                 >
-                  Critical!
+                  Crit Success
                 </motion.span>
               )}
               {isNat1 && (
@@ -128,7 +128,7 @@ function RollCard({ notification, onComplete }: { notification: RollNotification
                   animate={{ opacity: 1, x: 0 }}
                   className="text-red-200 font-bold text-sm uppercase tracking-wider"
                 >
-                  Fumble!
+                  Crit Failure
                 </motion.span>
               )}
             </div>

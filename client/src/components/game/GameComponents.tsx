@@ -17,7 +17,7 @@ import { Progress } from "@/components/ui/progress";
 import { Textarea } from "@/components/ui/textarea";
 import { 
   Sword, Shield, Scroll, Map as MapIcon, Settings, 
-  Users, User, Plus, LogOut, Menu, ChevronRight, ChevronLeft, ChevronDown,
+  Users, User, Plus, Minus, LogOut, Menu, ChevronRight, ChevronLeft, ChevronDown, ChevronUp,
   Heart, Zap, Backpack, Sparkles, Dice5, MessageSquare, RefreshCw, X, Trash2, Package, FolderOpen, Lock, Unlock, Camera,
   BarChart3, Grid3X3, ScrollText, Upload, Image as ImageIcon, Layers, Search, TrendingUp, UserMinus, Ban,
   MousePointer, Target, UserCheck, Swords, ArrowRight, Eye, EyeOff, Check
@@ -4866,7 +4866,11 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
   const [imageDimensions, setImageDimensions] = useState({ width: 0, height: 0 });
 
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const clickTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const isLongPressRef = useRef(false);
+  const lastClickTimeRef = useRef(0);
+  const lastClickedCardRef = useRef<string | null>(null);
+  const doubleClickDetectedRef = useRef(false);
 
   // Edit mode states
   const [editingOverview, setEditingOverview] = useState(false);
@@ -5973,12 +5977,39 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                         } : undefined}
                         onPointerUp={!editingAttributes ? () => {
                           clearTimeout(longPressTimerRef.current);
-                          if (!isLongPressRef.current) {
-                            handleRoll(attr.name, numericValue);
-                          }
                         } : undefined}
                         onPointerLeave={!editingAttributes ? () => {
                           clearTimeout(longPressTimerRef.current);
+                        } : undefined}
+                        onClick={!editingAttributes ? () => {
+                          const cardKey = `attr-${attr.key}`;
+                          const now = Date.now();
+                          const timeSinceLastClick = now - lastClickTimeRef.current;
+                          const sameCard = lastClickedCardRef.current === cardKey;
+                          
+                          if (timeSinceLastClick < 400 && timeSinceLastClick > 0 && sameCard) {
+                            const existingTimer = clickTimersRef.current.get(cardKey);
+                            if (existingTimer) clearTimeout(existingTimer);
+                            clickTimersRef.current.delete(cardKey);
+                            lastClickTimeRef.current = 0;
+                            lastClickedCardRef.current = null;
+                            doubleClickDetectedRef.current = true;
+                            openRollPanel(attr.name, numericValue, 'attribute');
+                            setTimeout(() => { doubleClickDetectedRef.current = false; }, 100);
+                          } else {
+                            lastClickTimeRef.current = now;
+                            lastClickedCardRef.current = cardKey;
+                            doubleClickDetectedRef.current = false;
+                            const existingTimer = clickTimersRef.current.get(cardKey);
+                            if (existingTimer) clearTimeout(existingTimer);
+                            const timer = setTimeout(() => {
+                              if (!isLongPressRef.current && !doubleClickDetectedRef.current) {
+                                handleRoll(attr.name, numericValue);
+                              }
+                              clickTimersRef.current.delete(cardKey);
+                            }, 400);
+                            clickTimersRef.current.set(cardKey, timer);
+                          }
                         } : undefined}
                         data-testid={`card-attribute-${attr.key}`}
                       >
@@ -6213,12 +6244,39 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                             }}
                             onPointerUp={() => {
                               clearTimeout(longPressTimerRef.current);
-                              if (!isLongPressRef.current) {
-                                handleRoll(skill.name, numericValue);
-                              }
                             }}
                             onPointerLeave={() => {
                               clearTimeout(longPressTimerRef.current);
+                            }}
+                            onClick={() => {
+                              const cardKey = `skill-${skill.key}`;
+                              const now = Date.now();
+                              const timeSinceLastClick = now - lastClickTimeRef.current;
+                              const sameCard = lastClickedCardRef.current === cardKey;
+                              
+                              if (timeSinceLastClick < 400 && timeSinceLastClick > 0 && sameCard) {
+                                const existingTimer = clickTimersRef.current.get(cardKey);
+                                if (existingTimer) clearTimeout(existingTimer);
+                                clickTimersRef.current.delete(cardKey);
+                                lastClickTimeRef.current = 0;
+                                lastClickedCardRef.current = null;
+                                doubleClickDetectedRef.current = true;
+                                openRollPanel(skill.name, numericValue, 'skill');
+                                setTimeout(() => { doubleClickDetectedRef.current = false; }, 100);
+                              } else {
+                                lastClickTimeRef.current = now;
+                                lastClickedCardRef.current = cardKey;
+                                doubleClickDetectedRef.current = false;
+                                const existingTimer = clickTimersRef.current.get(cardKey);
+                                if (existingTimer) clearTimeout(existingTimer);
+                                const timer = setTimeout(() => {
+                                  if (!isLongPressRef.current && !doubleClickDetectedRef.current) {
+                                    handleRoll(skill.name, numericValue);
+                                  }
+                                  clickTimersRef.current.delete(cardKey);
+                                }, 400);
+                                clickTimersRef.current.set(cardKey, timer);
+                              }
                             }}
                             data-testid={`badge-skill-${skill.key}`}
                           >
@@ -7412,18 +7470,37 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
-            <div className="flex items-center gap-2">
-              <Label>Extra Modifier:</Label>
-              <Input 
-                type="number" 
-                value={extraModifier} 
-                onChange={(e) => setExtraModifier(parseInt(e.target.value) || 0)}
-                className="w-20 text-center bg-stone-800 border-stone-600"
-                data-testid="input-extra-modifier"
-              />
+            <div className="flex items-center justify-center gap-3">
+              <Label className="text-stone-400">Extra Modifier:</Label>
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-10 w-10 p-0 border-stone-600 hover:bg-stone-700"
+                  onClick={() => setExtraModifier(prev => prev - 1)}
+                  data-testid="button-decrease-modifier"
+                >
+                  <Minus className="h-4 w-4" />
+                </Button>
+                <div 
+                  className="w-14 h-10 flex items-center justify-center text-xl font-bold text-amber-500 bg-stone-800 border border-stone-600 rounded-md"
+                  data-testid="text-extra-modifier"
+                >
+                  {extraModifier >= 0 ? `+${extraModifier}` : extraModifier}
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-10 w-10 p-0 border-stone-600 hover:bg-stone-700"
+                  onClick={() => setExtraModifier(prev => prev + 1)}
+                  data-testid="button-increase-modifier"
+                >
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
-            <div className="text-sm text-stone-400">
-              Total: {(rollPanelData?.modifier || 0) + extraModifier >= 0 ? '+' : ''}{(rollPanelData?.modifier || 0) + extraModifier}
+            <div className="text-center text-sm text-stone-400">
+              Total: <span className="text-amber-500 font-semibold">{(rollPanelData?.modifier || 0) + extraModifier >= 0 ? '+' : ''}{(rollPanelData?.modifier || 0) + extraModifier}</span>
             </div>
           </div>
           <DialogFooter>
