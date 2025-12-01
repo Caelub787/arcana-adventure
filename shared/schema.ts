@@ -253,6 +253,7 @@ export const items = pgTable("items", {
   isHeavy: boolean("is_heavy").default(false).notNull(), // Heavy or Light - if heavy, cannot carry another weapon
   ammunitionType: text("ammunition_type"), // Type of ammunition: "arrow", "bolt", "bullet", "dart", etc. (only for itemType === 'ammunition')
   weaponCategory: text("weapon_category"), // Category for ranged weapons: "bow", "crossbow", "sling", "firearm", etc.
+  breakChance: integer("break_chance").default(10).notNull(), // 0-100 percentage chance ammunition breaks on use
   price: integer("price").default(0).notNull(), // Price value
   currency: text("currency").default("copper").notNull(), // copper, silver, gold, platinum
   itemWeight: real("item_weight").default(0).notNull(), // In pounds

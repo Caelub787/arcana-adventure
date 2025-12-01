@@ -8998,20 +8998,35 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
             {formData.itemType === 'ammunition' && (
               <div className="border-t border-stone-700 pt-4">
                 <h3 className="text-sm font-bold text-stone-300 mb-3">Ammunition Settings</h3>
-                <div>
-                  <Label>Ammunition Type</Label>
-                  <Select value={formData.ammunitionType} onValueChange={(v) => setFormData({...formData, ammunitionType: v})}>
-                    <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-ammunition-type">
-                      <SelectValue placeholder="Select ammunition type..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="arrow">Arrow</SelectItem>
-                      <SelectItem value="bolt">Bolt</SelectItem>
-                      <SelectItem value="bullet">Bullet</SelectItem>
-                      <SelectItem value="dart">Dart</SelectItem>
-                      <SelectItem value="stone">Stone</SelectItem>
-                    </SelectContent>
-                  </Select>
+                <div className="space-y-4">
+                  <div>
+                    <Label>Ammunition Type</Label>
+                    <Select value={formData.ammunitionType} onValueChange={(v) => setFormData({...formData, ammunitionType: v})}>
+                      <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-ammunition-type">
+                        <SelectValue placeholder="Select ammunition type..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="arrow">Arrow</SelectItem>
+                        <SelectItem value="bolt">Bolt</SelectItem>
+                        <SelectItem value="bullet">Bullet</SelectItem>
+                        <SelectItem value="dart">Dart</SelectItem>
+                        <SelectItem value="stone">Stone</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label>Break Chance: {formData.breakChance ?? 10}%</Label>
+                    <Slider 
+                      value={[formData.breakChance ?? 10]} 
+                      onValueChange={(v) => setFormData({...formData, breakChance: v[0]})} 
+                      min={0} 
+                      max={100} 
+                      step={1} 
+                      className="mt-2"
+                      data-testid="slider-break-chance"
+                    />
+                    <p className="text-xs text-stone-500 mt-1">Chance of ammunition breaking on each attack roll</p>
+                  </div>
                 </div>
               </div>
             )}
@@ -9449,20 +9464,35 @@ function ManageTemplatesDialog({ open, onOpenChange, campaignId }: { open: boole
                 {newItem.itemType === 'ammunition' && (
                   <div className="border-t border-stone-700 pt-4">
                     <h3 className="text-sm font-bold text-stone-300 mb-3">Ammunition Settings</h3>
-                    <div>
-                      <Label>Ammunition Type</Label>
-                      <Select value={newItem.ammunitionType} onValueChange={(v) => setNewItem({...newItem, ammunitionType: v})}>
-                        <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-template-ammunition-type">
-                          <SelectValue placeholder="Select ammunition type..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="arrow">Arrow</SelectItem>
-                          <SelectItem value="bolt">Bolt</SelectItem>
-                          <SelectItem value="bullet">Bullet</SelectItem>
-                          <SelectItem value="dart">Dart</SelectItem>
-                          <SelectItem value="stone">Stone</SelectItem>
-                        </SelectContent>
-                      </Select>
+                    <div className="space-y-4">
+                      <div>
+                        <Label>Ammunition Type</Label>
+                        <Select value={newItem.ammunitionType} onValueChange={(v) => setNewItem({...newItem, ammunitionType: v})}>
+                          <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-template-ammunition-type">
+                            <SelectValue placeholder="Select ammunition type..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="arrow">Arrow</SelectItem>
+                            <SelectItem value="bolt">Bolt</SelectItem>
+                            <SelectItem value="bullet">Bullet</SelectItem>
+                            <SelectItem value="dart">Dart</SelectItem>
+                            <SelectItem value="stone">Stone</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <Label>Break Chance: {newItem.breakChance ?? 10}%</Label>
+                        <Slider 
+                          value={[newItem.breakChance ?? 10]} 
+                          onValueChange={(v) => setNewItem({...newItem, breakChance: v[0]})} 
+                          min={0} 
+                          max={100} 
+                          step={1} 
+                          className="mt-2"
+                          data-testid="slider-template-break-chance"
+                        />
+                        <p className="text-xs text-stone-500 mt-1">Chance of ammunition breaking on each attack roll</p>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -10051,26 +10081,47 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
                 <h3 className="text-sm font-bold text-stone-300 mb-2">Ammunition Settings</h3>
                 <div className="space-y-4">
                   {isEditing && canEditAllFields ? (
-                    <div>
-                      <Label>Ammunition Type</Label>
-                      <Select value={currentData.ammunitionType || ''} onValueChange={(v) => setEditData({ ...editData, ammunitionType: v })}>
-                        <SelectTrigger className="bg-stone-800 border-amber-700" data-testid="select-edit-ammunition-type">
-                          <SelectValue placeholder="Select ammunition type..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="arrow">Arrow</SelectItem>
-                          <SelectItem value="bolt">Bolt</SelectItem>
-                          <SelectItem value="bullet">Bullet</SelectItem>
-                          <SelectItem value="dart">Dart</SelectItem>
-                          <SelectItem value="stone">Stone</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
+                    <>
+                      <div>
+                        <Label>Ammunition Type</Label>
+                        <Select value={currentData.ammunitionType || ''} onValueChange={(v) => setEditData({ ...editData, ammunitionType: v })}>
+                          <SelectTrigger className="bg-stone-800 border-amber-700" data-testid="select-edit-ammunition-type">
+                            <SelectValue placeholder="Select ammunition type..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="arrow">Arrow</SelectItem>
+                            <SelectItem value="bolt">Bolt</SelectItem>
+                            <SelectItem value="bullet">Bullet</SelectItem>
+                            <SelectItem value="dart">Dart</SelectItem>
+                            <SelectItem value="stone">Stone</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <Label>Break Chance: {currentData.breakChance ?? 10}%</Label>
+                        <Slider 
+                          value={[currentData.breakChance ?? 10]} 
+                          onValueChange={(v) => setEditData({ ...editData, breakChance: v[0] })} 
+                          min={0} 
+                          max={100} 
+                          step={1} 
+                          className="mt-2"
+                          data-testid="slider-edit-break-chance"
+                        />
+                        <p className="text-xs text-stone-500 mt-1">Chance of ammunition breaking on each attack roll</p>
+                      </div>
+                    </>
                   ) : (
-                    <div>
-                      <Label className="text-xs text-stone-400">Ammunition Type</Label>
-                      <p className="text-stone-200 capitalize">{currentData.ammunitionType || 'Not specified'}</p>
-                    </div>
+                    <>
+                      <div>
+                        <Label className="text-xs text-stone-400">Ammunition Type</Label>
+                        <p className="text-stone-200 capitalize">{currentData.ammunitionType || 'Not specified'}</p>
+                      </div>
+                      <div>
+                        <Label className="text-xs text-stone-400">Break Chance</Label>
+                        <p className="text-stone-200">{currentData.breakChance ?? 10}%</p>
+                      </div>
+                    </>
                   )}
                 </div>
               </div>
