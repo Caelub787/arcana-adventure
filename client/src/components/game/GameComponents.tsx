@@ -1342,9 +1342,14 @@ interface BattleMapHotbarSlotProps {
   type: string;
   color: string;
   character: any;
+  allHotbars?: Hotbar[];
+  allItems?: any[];
 }
 
-function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character }: BattleMapHotbarSlotProps) {
+// Ranged weapon categories that use ammunition
+const RANGED_WEAPON_CATEGORIES = ['bow', 'crossbow', 'sling', 'firearm'];
+
+function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHotbars, allItems }: BattleMapHotbarSlotProps) {
   const clickTimerRef = useRef<NodeJS.Timeout | null>(null);
   const clickCountRef = useRef(0);
   
@@ -1389,6 +1394,19 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character }: Batt
     return typeof character[attrKey] === 'number' ? character[attrKey] : 0;
   };
 
+  // Check if weapon is a ranged weapon that uses ammunition
+  const isRangedWeapon = (weapon: any): boolean => {
+    return weapon?.weaponCategory && RANGED_WEAPON_CATEGORIES.includes(weapon.weaponCategory.toLowerCase());
+  };
+
+  // Get equipped ammunition from slot 2 of weapons hotbar
+  const getEquippedAmmunition = (): any | null => {
+    if (!allHotbars || !allItems) return null;
+    const ammoHotbar = allHotbars.find((h: Hotbar) => h.hotbarType === 'weapons' && h.slotNumber === 2);
+    if (!ammoHotbar?.itemId) return null;
+    return allItems.find((i: any) => i.id === ammoHotbar.itemId);
+  };
+
   // Handle attack roll (1d20 + attribute modifier)
   const handleAttackRoll = () => {
     if (!itemData || itemData.itemType !== 'weapon') return;
@@ -1409,9 +1427,46 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character }: Batt
     });
   };
 
-  // Handle damage roll (weapon damage dice + mod)
+  // Handle damage roll (weapon damage dice + mod, or ammunition damage for ranged weapons)
   const handleDamageRoll = () => {
-    if (!itemData || !itemData.damage) return;
+    if (!itemData) return;
+    
+    // For ranged weapons, use ammunition damage
+    if (isRangedWeapon(itemData)) {
+      const ammo = getEquippedAmmunition();
+      if (!ammo || !ammo.damage) {
+        triggerRollNotification({
+          type: 'attack',
+          dieType: 'd20',
+          label: 'No Ammunition!',
+          result: 0,
+          modifier: 0,
+          total: 0,
+          username: character.name || 'Unknown',
+          characterName: character.name,
+        });
+        return;
+      }
+      
+      const { result, dieType } = rollDice(ammo.damage);
+      const mod = ammo.mod || 0;
+      const total = result + mod;
+      
+      triggerRollNotification({
+        type: 'attack',
+        dieType: dieType as any,
+        label: `${ammo.name} Damage`,
+        result,
+        modifier: mod,
+        total,
+        username: character.name || 'Unknown',
+        characterName: character.name,
+      });
+      return;
+    }
+    
+    // For melee/thrown weapons, use weapon damage
+    if (!itemData.damage) return;
     
     const { result, dieType } = rollDice(itemData.damage);
     const mod = itemData.mod || 0;
@@ -1568,6 +1623,12 @@ export function BattleMapHotbars({ character }: BattleMapHotbarsProps) {
     enabled: !!character?.id
   });
 
+  const { data: items = [] } = useQuery({
+    queryKey: ['items', character?.id],
+    queryFn: () => api.getItems(character.id),
+    enabled: !!character?.id
+  });
+
   // Don't render if no character selected
   if (!character) return null;
 
@@ -1675,6 +1736,8 @@ export function BattleMapHotbars({ character }: BattleMapHotbarsProps) {
                       type={activeHotbarConfig.type}
                       color={activeHotbarConfig.color}
                       character={character}
+                      allHotbars={hotbars}
+                      allItems={items}
                     />
                   );
                 })}
@@ -3664,6 +3727,8 @@ function HotbarsTabContent({ character, isGM, isOwner }: HotbarsTabContentProps)
                     hotbar={getHotbarForSlot('weapons', slotNum)}
                     character={character}
                     canEdit={canEdit}
+                    allHotbars={hotbars}
+                    allItems={items}
                     onDrop={(slot, data) => handleDrop('weapons', slot, data)}
                     onRemove={handleRemove}
                     isBlocked={isSlot1Blocked}
@@ -3772,6 +3837,8 @@ function HotbarsTabContent({ character, isGM, isOwner }: HotbarsTabContentProps)
                 slotNumber={slotNum}
                 hotbar={getHotbarForSlot('magic', slotNum)}
                 character={character}
+                allHotbars={hotbars}
+                allItems={items}
                 canEdit={canEdit}
                 onDrop={(slot, data) => handleDrop('magic', slot, data)}
                 onRemove={handleRemove}
@@ -3839,6 +3906,8 @@ function HotbarsTabContent({ character, isGM, isOwner }: HotbarsTabContentProps)
                 slotNumber={slotNum}
                 hotbar={getHotbarForSlot('skills', slotNum)}
                 character={character}
+                allHotbars={hotbars}
+                allItems={items}
                 canEdit={canEdit}
                 onDrop={(slot, data) => handleDrop('skills', slot, data)}
                 onRemove={handleRemove}
@@ -3907,6 +3976,8 @@ function HotbarsTabContent({ character, isGM, isOwner }: HotbarsTabContentProps)
                 slotNumber={slotNum}
                 hotbar={getHotbarForSlot('consumables', slotNum)}
                 character={character}
+                allHotbars={hotbars}
+                allItems={items}
                 canEdit={canEdit}
                 onDrop={(slot, data) => handleDrop('consumables', slot, data)}
                 onRemove={handleRemove}
@@ -3974,6 +4045,8 @@ function HotbarsTabContent({ character, isGM, isOwner }: HotbarsTabContentProps)
                 slotNumber={slotNum}
                 hotbar={getHotbarForSlot('utility', slotNum)}
                 character={character}
+                allHotbars={hotbars}
+                allItems={items}
                 canEdit={canEdit}
                 onDrop={(slot, data) => handleDrop('utility', slot, data)}
                 onRemove={handleRemove}
@@ -4040,9 +4113,11 @@ interface HotbarSlotProps {
   onRemove: (hotbarId: string) => void;
   isBlocked?: boolean;
   blockReason?: string;
+  allHotbars?: Hotbar[];
+  allItems?: any[];
 }
 
-function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRemove, isBlocked, blockReason }: HotbarSlotProps) {
+function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRemove, isBlocked, blockReason, allHotbars, allItems }: HotbarSlotProps) {
   const [isDragOver, setIsDragOver] = useState(false);
   const [showRemoveDialog, setShowRemoveDialog] = useState(false);
   const clickTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -4082,6 +4157,19 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
     return typeof character[attrKey] === 'number' ? character[attrKey] : 0;
   };
 
+  // Check if weapon is a ranged weapon that uses ammunition
+  const isRangedWeapon = (weapon: any): boolean => {
+    return weapon?.weaponCategory && RANGED_WEAPON_CATEGORIES.includes(weapon.weaponCategory.toLowerCase());
+  };
+
+  // Get equipped ammunition from slot 2 of weapons hotbar
+  const getEquippedAmmunition = (): any | null => {
+    if (!allHotbars || !allItems) return null;
+    const ammoHotbar = allHotbars.find((h: Hotbar) => h.hotbarType === 'weapons' && h.slotNumber === 2);
+    if (!ammoHotbar?.itemId) return null;
+    return allItems.find((i: any) => i.id === ammoHotbar.itemId);
+  };
+
   // Handle attack roll (1d20 + attribute modifier)
   const handleAttackRoll = () => {
     if (!itemData || itemData.itemType !== 'weapon') return;
@@ -4102,9 +4190,46 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
     });
   };
 
-  // Handle damage roll (weapon damage dice + mod)
+  // Handle damage roll (weapon damage dice + mod, or ammunition damage for ranged weapons)
   const handleDamageRoll = () => {
-    if (!itemData || !itemData.damage) return;
+    if (!itemData) return;
+    
+    // For ranged weapons, use ammunition damage
+    if (isRangedWeapon(itemData)) {
+      const ammo = getEquippedAmmunition();
+      if (!ammo || !ammo.damage) {
+        triggerRollNotification({
+          type: 'attack',
+          dieType: 'd20',
+          label: 'No Ammunition!',
+          result: 0,
+          modifier: 0,
+          total: 0,
+          username: character.name || 'Unknown',
+          characterName: character.name,
+        });
+        return;
+      }
+      
+      const { result, dieType } = rollDice(ammo.damage);
+      const mod = ammo.mod || 0;
+      const total = result + mod;
+      
+      triggerRollNotification({
+        type: 'attack',
+        dieType: dieType as any,
+        label: `${ammo.name} Damage`,
+        result,
+        modifier: mod,
+        total,
+        username: character.name || 'Unknown',
+        characterName: character.name,
+      });
+      return;
+    }
+    
+    // For melee/thrown weapons, use weapon damage
+    if (!itemData.damage) return;
     
     const { result, dieType } = rollDice(itemData.damage);
     const mod = itemData.mod || 0;
