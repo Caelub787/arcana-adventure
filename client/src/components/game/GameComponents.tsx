@@ -3111,11 +3111,26 @@ interface HotbarsTabContentProps {
   isOwner: boolean;
 }
 
+// Type guard for items with weapon fields
+interface ItemWithWeaponFields {
+  id: string;
+  name: string;
+  itemType: string;
+  weight?: string;
+  damage?: string;
+  quantity?: number;
+  isAmmunition?: boolean;
+  ammunitionType?: string;
+  weaponCategory?: string;
+  imageData?: string;
+}
+
 function HotbarsTabContent({ character, isGM, isOwner }: HotbarsTabContentProps) {
   const queryClient = useQueryClient();
   const canEdit = isOwner || isGM;
   const [clearDialogOpen, setClearDialogOpen] = useState(false);
   const [clearHotbarType, setClearHotbarType] = useState<string>('');
+  const [pendingHeavyWeaponEquip, setPendingHeavyWeaponEquip] = useState(false);
 
   const { data: hotbars = [], isLoading } = useQuery({
     queryKey: ['hotbars', character.id],
@@ -3135,9 +3150,59 @@ function HotbarsTabContent({ character, isGM, isOwner }: HotbarsTabContentProps)
     enabled: !!character.id
   });
 
-  const weaponItems = items.filter((item: any) => item.itemType === 'weapon');
+  const weaponItems = items.filter((item: any) => item.itemType === 'weapon' && !item.isAmmunition);
+  const ammunitionItems = items.filter((item: any) => item.isAmmunition);
   const consumableItems = items.filter((item: any) => item.itemType === 'consumable');
   const utilityItems = items.filter((item: any) => item.itemType === 'utility');
+
+  // Helper: Map weapon category to compatible ammunition type
+  // Thrown and melee weapons don't use ammunition from the ammo slot
+  const getCompatibleAmmoType = (weaponCategory: string): string | null => {
+    const mapping: Record<string, string> = {
+      bow: 'arrow',
+      crossbow: 'bolt',
+      sling: 'stone',
+      firearm: 'bullet',
+    };
+    return mapping[weaponCategory] || null;
+  };
+
+  // Check if weapon category requires ammunition
+  const requiresAmmunition = (weaponCategory: string): boolean => {
+    return ['bow', 'crossbow', 'sling', 'firearm'].includes(weaponCategory);
+  };
+
+  // Get weapon in slot 0 to check for heavy weapon blocking
+  const getWeaponSlot0 = () => {
+    const slot0Hotbar = hotbars.find((h: any) => h.hotbarType === 'weapons' && h.slotNumber === 0);
+    if (!slot0Hotbar?.itemId) return null;
+    return items.find((i: any) => i.id === slot0Hotbar.itemId);
+  };
+
+  // Get primary ranged weapon (prefer slot 0, else slot 1)
+  const getPrimaryRangedWeapon = () => {
+    const slot0 = getWeaponSlot0();
+    if (slot0?.weaponCategory && slot0.weaponCategory !== 'melee') return slot0;
+    
+    const slot1Hotbar = hotbars.find((h: any) => h.hotbarType === 'weapons' && h.slotNumber === 1);
+    if (!slot1Hotbar?.itemId) return null;
+    const slot1Weapon = items.find((i: any) => i.id === slot1Hotbar.itemId);
+    if (slot1Weapon?.weaponCategory && slot1Weapon.weaponCategory !== 'melee') return slot1Weapon;
+    
+    return null;
+  };
+
+  // Check if a heavy weapon is equipped (same item in both slot 0 and slot 2)
+  const isHeavyWeaponEquipped = () => {
+    const slot0Hotbar = hotbars.find((h: any) => h.hotbarType === 'weapons' && h.slotNumber === 0);
+    const slot2Hotbar = hotbars.find((h: any) => h.hotbarType === 'weapons' && h.slotNumber === 2);
+    return slot0Hotbar?.itemId && slot0Hotbar.itemId === slot2Hotbar?.itemId;
+  };
+
+  // Include pendingHeavyWeaponEquip to block slot 1 during mutation
+  const heavyEquipped = isHeavyWeaponEquipped() || pendingHeavyWeaponEquip;
+  const primaryRangedWeapon = getPrimaryRangedWeapon();
+  const compatibleAmmoType = primaryRangedWeapon?.weaponCategory ? getCompatibleAmmoType(primaryRangedWeapon.weaponCategory) : null;
 
   const upsertMutation = useMutation({
     mutationFn: (data: { hotbarType: string; slotNumber: number; itemId?: string; spellId?: string; skillName?: string }) =>
@@ -3199,14 +3264,60 @@ function HotbarsTabContent({ character, isGM, isOwner }: HotbarsTabContentProps)
     if (data.type === 'item') {
       const item = data.item;
       
-      // Validate item type matches hotbar type
+      // Validate item type matches hotbar type (allow ammunition as weapon type)
       const validTypeMapping: Record<string, string[]> = {
         weapons: ['weapon'],
         consumables: ['consumable'],
         utility: ['utility']
       };
       
-      if (hotbarType in validTypeMapping && !validTypeMapping[hotbarType].includes(item.itemType)) {
+      // Special handling for weapons hotbar
+      if (hotbarType === 'weapons') {
+        // Slot 2 is reserved for ammunition only
+        if (slotNumber === 2) {
+          if (!item.isAmmunition) {
+            toast({
+              title: "Ammunition Only",
+              description: "The ammo slot only accepts ammunition items",
+              variant: "destructive"
+            });
+            return;
+          }
+          // Check compatibility with equipped ranged weapon (only if weapon requires ammo)
+          const rangedWeapon = getPrimaryRangedWeapon();
+          if (rangedWeapon?.weaponCategory && requiresAmmunition(rangedWeapon.weaponCategory)) {
+            const requiredAmmoType = getCompatibleAmmoType(rangedWeapon.weaponCategory);
+            if (requiredAmmoType && item.ammunitionType !== requiredAmmoType) {
+              toast({
+                title: "Incompatible Ammunition",
+                description: `Your ${rangedWeapon.name} requires ${requiredAmmoType}s, but this is ${item.ammunitionType || 'unknown type'}`,
+                variant: "destructive"
+              });
+              return;
+            }
+          }
+          // If no ranged weapon or weapon doesn't require ammo, allow any ammunition type
+        } else {
+          // Slots 0 and 1 are for weapons, not ammunition
+          if (item.isAmmunition) {
+            toast({
+              title: "Wrong Slot",
+              description: "Ammunition goes in the Ammo slot (far-right)",
+              variant: "destructive"
+            });
+            return;
+          }
+          // Check if it's a valid weapon
+          if (item.itemType !== 'weapon') {
+            toast({
+              title: "Invalid Item Type",
+              description: `Only weapons can be equipped in weapon slots`,
+              variant: "destructive"
+            });
+            return;
+          }
+        }
+      } else if (hotbarType in validTypeMapping && !validTypeMapping[hotbarType].includes(item.itemType)) {
         toast({
           title: "Invalid Item Type",
           description: `${item.itemType} items cannot be equipped to ${hotbarType} hotbar`,
@@ -3215,58 +3326,18 @@ function HotbarsTabContent({ character, isGM, isOwner }: HotbarsTabContentProps)
         return;
       }
 
-      // Heavy weapon logic - occupy both slots 0 and 2
-      if (hotbarType === 'weapons' && item.weight === 'heavy') {
-        // Check if trying to drop on middle slot
-        if (slotNumber === 1) {
-          toast({
-            title: "Invalid Slot",
-            description: "Heavy weapons cannot be equipped in the ammunition slot",
-            variant: "destructive"
-          });
-          return;
-        }
-
-        // Clear any existing weapons in slots 0 and 2
-        const existingSlot0 = hotbars.find(h => h.hotbarType === 'weapons' && h.slotNumber === 0);
-        const existingSlot2 = hotbars.find(h => h.hotbarType === 'weapons' && h.slotNumber === 2);
-        
-        if (existingSlot0) {
-          await deleteMutation.mutateAsync(existingSlot0.id);
-        }
-        if (existingSlot2) {
-          await deleteMutation.mutateAsync(existingSlot2.id);
-        }
-
-        // Equip heavy weapon to both slots
-        try {
-          await upsertMutation.mutateAsync({
-            hotbarType: 'weapons',
-            slotNumber: 0,
-            itemId: item.id
-          });
-          await upsertMutation.mutateAsync({
-            hotbarType: 'weapons',
-            slotNumber: 2,
-            itemId: item.id
-          });
-          
-          toast({
-            title: "Heavy Weapon Equipped",
-            description: `${item.name} equipped to both hands`,
-          });
-        } catch (err) {
-          toast({
-            title: "Equip Failed",
-            description: "Failed to equip heavy weapon",
-            variant: "destructive"
-          });
-        }
+      // Block slot 1 (Right hand) if heavy weapon is equipped or being equipped
+      if (hotbarType === 'weapons' && slotNumber === 1 && heavyEquipped) {
+        toast({
+          title: "Slot Blocked",
+          description: "Two-handed weapon is equipped - this slot is blocked",
+          variant: "destructive"
+        });
         return;
       }
 
-      // For weapons hotbar, check if heavy weapon is equipped
-      if (hotbarType === 'weapons' && slotNumber !== 1) {
+      // For weapons hotbar slots 0 and 2, check if heavy weapon is already equipped
+      if (hotbarType === 'weapons' && (slotNumber === 0 || slotNumber === 2)) {
         const existingHeavy = hotbars.find(h => 
           h.hotbarType === 'weapons' && 
           (h.slotNumber === 0 || h.slotNumber === 2) &&
@@ -3285,6 +3356,65 @@ function HotbarsTabContent({ character, isGM, isOwner }: HotbarsTabContentProps)
             return;
           }
         }
+      }
+
+      // Heavy weapon logic - occupy both slots 0 and 2 (blocking slot 1)
+      if (hotbarType === 'weapons' && item.weight === 'heavy') {
+        // Heavy weapons can only go in slots 0 or 2
+        if (slotNumber === 1) {
+          toast({
+            title: "Invalid Slot",
+            description: "Heavy weapons cannot be equipped in the right-hand slot",
+            variant: "destructive"
+          });
+          return;
+        }
+
+        // Set pending state immediately to block slot 1 during mutation
+        setPendingHeavyWeaponEquip(true);
+
+        // Execute heavy weapon equip with proper cleanup
+        const executeHeavyEquip = async () => {
+          try {
+            // Clear any existing weapons in all weapon slots
+            const existingSlot0 = hotbars.find(h => h.hotbarType === 'weapons' && h.slotNumber === 0);
+            const existingSlot1 = hotbars.find(h => h.hotbarType === 'weapons' && h.slotNumber === 1);
+            const existingSlot2 = hotbars.find(h => h.hotbarType === 'weapons' && h.slotNumber === 2);
+            
+            if (existingSlot0) await deleteMutation.mutateAsync(existingSlot0.id);
+            if (existingSlot1) await deleteMutation.mutateAsync(existingSlot1.id);
+            if (existingSlot2) await deleteMutation.mutateAsync(existingSlot2.id);
+
+            // Equip heavy weapon to both slots 0 and 2
+            await upsertMutation.mutateAsync({
+              hotbarType: 'weapons',
+              slotNumber: 0,
+              itemId: item.id
+            });
+            await upsertMutation.mutateAsync({
+              hotbarType: 'weapons',
+              slotNumber: 2,
+              itemId: item.id
+            });
+            
+            toast({
+              title: "Heavy Weapon Equipped",
+              description: `${item.name} equipped to both hands`,
+            });
+          } catch (err) {
+            toast({
+              title: "Equip Failed",
+              description: "Failed to equip heavy weapon",
+              variant: "destructive"
+            });
+          } finally {
+            // Always clear pending state
+            setPendingHeavyWeaponEquip(false);
+          }
+        };
+
+        executeHeavyEquip();
+        return;
       }
 
       // Standard item equip
@@ -3404,27 +3534,35 @@ function HotbarsTabContent({ character, isGM, isOwner }: HotbarsTabContentProps)
         </CardHeader>
         <CardContent>
           <div className="flex gap-2 flex-wrap">
-            {[0, 1, 2].map(slotNum => (
-              <div key={slotNum} className="flex flex-col items-center gap-1">
-                <Label className="text-xs text-stone-400">
-                  {slotNum === 0 ? 'Left' : slotNum === 1 ? 'Right' : 'Ammo'}
-                </Label>
-                <HotbarSlot
-                  type="weapons"
-                  slotNumber={slotNum}
-                  hotbar={getHotbarForSlot('weapons', slotNum)}
-                  character={character}
-                  canEdit={canEdit}
-                  onDrop={(slot, data) => handleDrop('weapons', slot, data)}
-                  onRemove={handleRemove}
-                />
-              </div>
-            ))}
+            {[0, 1, 2].map(slotNum => {
+              // Slot 1 is blocked when a heavy (2-handed) weapon is equipped
+              const isSlot1Blocked = slotNum === 1 && heavyEquipped;
+              
+              return (
+                <div key={slotNum} className="flex flex-col items-center gap-1">
+                  <Label className="text-xs text-stone-400">
+                    {slotNum === 0 ? 'Left' : slotNum === 1 ? 'Right' : 'Ammo'}
+                  </Label>
+                  <HotbarSlot
+                    type="weapons"
+                    slotNumber={slotNum}
+                    hotbar={getHotbarForSlot('weapons', slotNum)}
+                    character={character}
+                    canEdit={canEdit}
+                    onDrop={(slot, data) => handleDrop('weapons', slot, data)}
+                    onRemove={handleRemove}
+                    isBlocked={isSlot1Blocked}
+                    blockReason="Two-handed weapon equipped - this slot is blocked"
+                  />
+                </div>
+              );
+            })}
           </div>
           <p className="text-xs text-stone-500 mt-3">
             Left/Right for weapons, Far-right for ammunition. Heavy weapons occupy both side slots.
           </p>
           
+          {/* Draggable Weapons */}
           {canEdit && weaponItems.length > 0 && (
             <div className="pt-4 border-t border-stone-700 mt-4">
               <Label className="text-xs text-stone-400 mb-2 block">Drag weapons to hotbar slots:</Label>
@@ -3443,6 +3581,43 @@ function HotbarsTabContent({ character, isGM, isOwner }: HotbarsTabContentProps)
                     </div>
                   </div>
                 ))}
+              </div>
+            </div>
+          )}
+          
+          {/* Draggable Ammunition for slot 2 */}
+          {canEdit && ammunitionItems.length > 0 && (
+            <div className="pt-4 border-t border-stone-700 mt-4">
+              <Label className="text-xs text-stone-400 mb-2 block">
+                Drag ammunition to Ammo slot:
+                {compatibleAmmoType && (
+                  <span className="text-amber-400 ml-1">(Compatible: {compatibleAmmoType}s)</span>
+                )}
+              </Label>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-32 overflow-y-auto">
+                {ammunitionItems.map((item: any) => {
+                  const isCompatible = !compatibleAmmoType || item.ammunitionType === compatibleAmmoType;
+                  return (
+                    <div
+                      key={item.id}
+                      draggable={isCompatible}
+                      onDragStart={(e) => isCompatible && handleDragStart(e, { type: 'item', item, itemId: item.id })}
+                      className={`px-2 py-1 bg-stone-900 rounded border text-xs ${
+                        isCompatible 
+                          ? 'border-stone-700 cursor-move hover:border-amber-500 hover:bg-stone-800' 
+                          : 'border-stone-800 opacity-50 cursor-not-allowed'
+                      } transition-all`}
+                      data-testid={`drag-ammo-${item.id}`}
+                    >
+                      <div className="flex justify-between items-center">
+                        <span className={`font-medium truncate ${isCompatible ? 'text-amber-400' : 'text-stone-500'}`}>
+                          {item.name}
+                        </span>
+                        <span className="text-stone-400 text-xs">x{item.quantity}</span>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -3748,9 +3923,11 @@ interface HotbarSlotProps {
   canEdit: boolean;
   onDrop: (slotNumber: number, data: any) => void;
   onRemove: (hotbarId: string) => void;
+  isBlocked?: boolean;
+  blockReason?: string;
 }
 
-function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRemove }: HotbarSlotProps) {
+function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRemove, isBlocked, blockReason }: HotbarSlotProps) {
   const [isDragOver, setIsDragOver] = useState(false);
   const [showRemoveDialog, setShowRemoveDialog] = useState(false);
 
@@ -3769,7 +3946,7 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
   });
 
   const handleDragOver = (e: React.DragEvent) => {
-    if (!canEdit) return;
+    if (!canEdit || isBlocked) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
     setIsDragOver(true);
@@ -3783,6 +3960,16 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
     if (!canEdit) return;
     e.preventDefault();
     setIsDragOver(false);
+    
+    // Block drops on blocked slots
+    if (isBlocked) {
+      toast({
+        title: "Slot Blocked",
+        description: blockReason || "This slot is currently blocked",
+        variant: "destructive"
+      });
+      return;
+    }
     
     try {
       // Try spell data first for magic hotbar
@@ -3976,17 +4163,25 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
             : 'bg-stone-900 border-dashed border-stone-700 hover:border-stone-600'
           }
           ${isDragOver ? 'border-amber-500 bg-amber-900/20 scale-105 glow-amber' : ''}
-          ${canEdit && !hotbar ? 'cursor-pointer' : ''}
+          ${canEdit && !hotbar && !isBlocked ? 'cursor-pointer' : ''}
+          ${isBlocked ? 'opacity-60 cursor-not-allowed' : ''}
         `}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
         data-testid={`hotbar-slot-${type}-${slotNumber}`}
-        aria-label={`${type} slot ${slotNumber}`}
-        role={canEdit ? "button" : "presentation"}
-        tabIndex={canEdit ? 0 : -1}
+        aria-label={`${type} slot ${slotNumber}${isBlocked ? ' (blocked)' : ''}`}
+        role={canEdit && !isBlocked ? "button" : "presentation"}
+        tabIndex={canEdit && !isBlocked ? 0 : -1}
       >
-        {hotbar ? (
+        {/* Blocked slot overlay with X */}
+        {isBlocked && (
+          <div className="absolute inset-0 flex items-center justify-center z-10">
+            <div className="absolute inset-0 bg-stone-900/70 rounded" />
+            <X className="w-8 h-8 text-red-500 relative z-20" />
+          </div>
+        )}
+        {hotbar && !isBlocked ? (
           <div className="relative w-full h-full flex items-center justify-center p-1">
             {slotContent}
             {canEdit && (
@@ -3999,9 +4194,9 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
               </button>
             )}
           </div>
-        ) : (
+        ) : !isBlocked ? (
           <span className="text-stone-600 text-xs font-medium">{slotNumber}</span>
-        )}
+        ) : null}
       </div>
 
       <AlertDialog open={showRemoveDialog} onOpenChange={setShowRemoveDialog}>
