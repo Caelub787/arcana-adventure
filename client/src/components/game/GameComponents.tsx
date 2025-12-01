@@ -1371,7 +1371,11 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
           // Update hotbar to point to next matching ammunition
           const ammoHotbar = allHotbars?.find((h: Hotbar) => h.hotbarType === 'weapons' && h.slotNumber === 2);
           if (ammoHotbar) {
-            await api.updateHotbar(ammoHotbar.id, { itemId: nextAmmo.id });
+            await api.upsertHotbar(character.id, { 
+              hotbarType: 'weapons', 
+              slotNumber: 2, 
+              itemId: nextAmmo.id 
+            });
           }
           
           triggerRollNotification({
