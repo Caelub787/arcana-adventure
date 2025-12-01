@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { useLocation, useSearch, useRoute } from "wouter";
 import { motion } from "framer-motion";
 import { CharacterCreation, BattleMap, CampaignMenu, CharacterSheet, BattleMapHotbars, SelectionModeButtons, InitiativeTracker, type SelectionMode } from "@/components/game/GameComponents";
+import { BattlemapDiceOverlay, triggerBattlemapDiceRoll, create2DDiceAnimation } from "@/components/game/BattlemapDiceOverlay";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Loader2, Settings, Map as MapIcon, Layers, Trash2, MessageSquare, User, BarChart3, Zap, Backpack, Sparkles, Grid3X3, ScrollText, Swords, Dices } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -262,6 +263,10 @@ export default function Campaign() {
   
   // Initiative tracker state
   const [initiativeTrackerOpen, setInitiativeTrackerOpen] = useState(false);
+  
+  // Dice roller state
+  const [diceMenuOpen, setDiceMenuOpen] = useState(false);
+  const battlemapContainerRef = useRef<HTMLDivElement>(null);
 
   // Determine effective campaign ID (from URL or newly created)
   const effectiveCampaignId = campaignId || createdCampaignId;
@@ -537,6 +542,10 @@ export default function Campaign() {
           if (data.sceneId) {
             queryClientRef.current.invalidateQueries({ queryKey: [`/api/scenes/${data.sceneId}/initiative`] });
           }
+        }
+        if (data.type === 'dice_roll' && data.roll) {
+          // Trigger battlemap dice animation
+          triggerBattlemapDiceRoll(data.roll);
         }
       });
 
@@ -913,6 +922,49 @@ export default function Campaign() {
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
+          
+          {/* Dice Roller Button */}
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setDiceMenuOpen(!diceMenuOpen)}
+                  className="text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto relative"
+                  data-testid="button-dice-roller"
+                >
+                  <Dices className="h-5 w-5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="left" className="bg-stone-800 border-stone-700 text-stone-200">
+                <p>Roll Dice</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+          
+          {/* Dice Quick Menu */}
+          {diceMenuOpen && (
+            <div className="absolute right-full mr-2 top-0 bg-stone-900/95 border border-stone-700 rounded-lg p-2 pointer-events-auto shadow-xl">
+              <div className="flex flex-col gap-1 min-w-[80px]">
+                {['d4', 'd6', 'd8', 'd10', 'd12', 'd20'].map((die) => (
+                  <Button
+                    key={die}
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      gameWs.sendDiceRoll(die, 0, undefined, character?.id);
+                      setDiceMenuOpen(false);
+                    }}
+                    className="text-white/80 hover:text-white hover:bg-white/10 justify-start font-mono"
+                    data-testid={`button-roll-${die}`}
+                  >
+                    {die.toUpperCase()}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -1054,7 +1106,7 @@ export default function Campaign() {
       <div className="flex flex-col h-full w-full">
         
         {/* Map Area - Takes full space, but HUD overlays it */}
-        <div className="relative flex-grow w-full bg-stone-900 z-0 overflow-hidden">
+        <div ref={battlemapContainerRef} className="relative flex-grow w-full bg-stone-900 z-0 overflow-hidden">
            <BattleMap 
              tokens={tokens} 
              onMoveToken={handleMoveToken} 
@@ -1070,6 +1122,9 @@ export default function Campaign() {
              targetedTokenId={targetedTokenId}
              selectedTokenId={selectedTokenId}
            />
+           
+           {/* Battlemap Dice Overlay for 3D dice rolling */}
+           <BattlemapDiceOverlay />
            
            {/* Selection Mode Buttons - Left side of screen */}
            <SelectionModeButtons 
