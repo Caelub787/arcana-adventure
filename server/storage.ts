@@ -39,6 +39,8 @@ export interface IStorage {
   getCampaignMembership(userId: string, campaignId: string): Promise<CampaignMember | null>;
   removeCampaignMember(campaignId: string, userId: string): Promise<void>;
   toggleFavorite(campaignId: string, userId: string): Promise<void>;
+  setAssignedCharacter(campaignId: string, userId: string, characterId: string | null): Promise<void>;
+  getAssignedCharacter(campaignId: string, userId: string): Promise<string | null>;
   isGM(userId: string, campaignId: string): Promise<boolean>;
 
   // Character operations
@@ -287,6 +289,34 @@ export class DatabaseStorage implements IStorage {
         .set({ favorite: !member.favorite })
         .where(eq(campaignMembers.id, member.id));
     }
+  }
+
+  async setAssignedCharacter(campaignId: string, userId: string, characterId: string | null): Promise<void> {
+    const [member] = await db.select()
+      .from(campaignMembers)
+      .where(and(
+        eq(campaignMembers.campaignId, campaignId),
+        eq(campaignMembers.userId, userId)
+      ))
+      .limit(1);
+
+    if (member) {
+      await db.update(campaignMembers)
+        .set({ assignedCharacterId: characterId })
+        .where(eq(campaignMembers.id, member.id));
+    }
+  }
+
+  async getAssignedCharacter(campaignId: string, userId: string): Promise<string | null> {
+    const [member] = await db.select()
+      .from(campaignMembers)
+      .where(and(
+        eq(campaignMembers.campaignId, campaignId),
+        eq(campaignMembers.userId, userId)
+      ))
+      .limit(1);
+
+    return member?.assignedCharacterId || null;
   }
 
   async isGM(userId: string, campaignId: string): Promise<boolean> {

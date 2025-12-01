@@ -484,18 +484,34 @@ export default function Campaign() {
     }
   }, [campaign]);
 
-  // If GM, no character creation needed
+  // If GM, no character creation needed. For players, load assigned character from persistence.
   useEffect(() => {
     if (role === 'gm') {
       setCharacter({ name: 'GM', class: 'admin' });
-    } else if (characters && Array.isArray(characters) && characters.length > 0) {
-      // Find player's character
-      const playerChar = characters.find((c: any) => c.userId === user?.id);
-      if (playerChar) {
-        setCharacter(playerChar);
-      }
+    } else if (role === 'player' && effectiveCampaignId && characters && Array.isArray(characters) && characters.length > 0) {
+      // Try to load persisted assigned character first
+      api.getAssignedCharacter(effectiveCampaignId).then(({ characterId }) => {
+        if (characterId) {
+          const assignedChar = characters.find((c: any) => c.id === characterId);
+          if (assignedChar) {
+            setCharacter(assignedChar);
+            return;
+          }
+        }
+        // Fall back to finding player's own character
+        const playerChar = characters.find((c: any) => c.userId === user?.id);
+        if (playerChar) {
+          setCharacter(playerChar);
+        }
+      }).catch(() => {
+        // On error, fall back to finding player's own character
+        const playerChar = characters.find((c: any) => c.userId === user?.id);
+        if (playerChar) {
+          setCharacter(playerChar);
+        }
+      });
     }
-  }, [role, characters, user]);
+  }, [role, characters, user, effectiveCampaignId]);
 
   // Store refs for stable closures in WebSocket handler
   const queryClientRef = useRef(queryClient);
@@ -622,6 +638,12 @@ export default function Campaign() {
               const permission = myPermissions?.permissions?.[charData.id];
               if (permission === 'owner' || permission === 'edit') {
                 setCharacter(charData);
+                // Persist the assignment
+                if (effectiveCampaignId) {
+                  api.setAssignedCharacter(effectiveCampaignId, charData.id).catch(() => {
+                    // Silently fail - assignment will still work for this session
+                  });
+                }
                 toast({ title: "Character Assigned", description: `${charData.name} is now your active character` });
               } else {
                 toast({ title: "No Access", description: "You don't have edit access to this character", variant: "destructive" });

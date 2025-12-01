@@ -240,3 +240,24 @@ export function triggerInitiativeNotification(
     characterName,
   });
 }
+
+export function triggerSkillRollNotification(
+  skillName: string,
+  dieType: DieType,
+  result: number,
+  modifier: number,
+  total: number,
+  username: string,
+  characterName?: string
+) {
+  triggerRollNotification({
+    type: 'skill',
+    dieType,
+    label: skillName,
+    result,
+    modifier,
+    total,
+    username,
+    characterName,
+  });
+}

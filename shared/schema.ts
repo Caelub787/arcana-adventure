@@ -78,6 +78,7 @@ export const campaignMembers = pgTable("campaign_members", {
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   role: text("role").notNull().default("player"), // "gm" or "player"
   favorite: boolean("favorite").default(false).notNull(),
+  assignedCharacterId: varchar("assigned_character_id"), // Character auto-assigned to player on load
   joinedAt: timestamp("joined_at").defaultNow().notNull(),
 });
 

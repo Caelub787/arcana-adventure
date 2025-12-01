@@ -33,6 +33,8 @@ import parchmentTexture from "@assets/generated_images/aged_parchment_paper_text
 import battleMapImage1 from "@/assets/rocky_coast_battlemap.jpg";
 import warriorToken from "@assets/generated_images/top_down_warrior_token.png";
 import goblinToken from "@assets/generated_images/top_down_goblin_token.png";
+import { triggerSkillRollNotification } from './RollNotification';
+
 
 // --- Types & Mock Data ---
 
@@ -4863,6 +4865,9 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
   const cropImageRef = useRef<HTMLImageElement>(null);
   const [imageDimensions, setImageDimensions] = useState({ width: 0, height: 0 });
 
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const isLongPressRef = useRef(false);
+
   // Edit mode states
   const [editingOverview, setEditingOverview] = useState(false);
   const [editingAttributes, setEditingAttributes] = useState(false);
@@ -5004,7 +5009,25 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
   const [editSpellData, setEditSpellData] = useState<any>(null);
   const [showSpellDeleteConfirm, setShowSpellDeleteConfirm] = useState(false);
   
+  const [rollPanelOpen, setRollPanelOpen] = useState(false);
+  const [rollPanelData, setRollPanelData] = useState<{name: string, modifier: number, type: 'skill' | 'attribute'} | null>(null);
+  const [extraModifier, setExtraModifier] = useState(0);
+  
   const canEdit = isOwner || isGM;
+  
+  const handleRoll = (name: string, modifier: number, extraMod: number = 0) => {
+    const dieType = modifier === 5 ? 'd30' : 'd20';
+    const totalMod = modifier + extraMod;
+    gameWs.sendDiceRoll(dieType, totalMod, name, liveCharacter.id);
+    setRollPanelOpen(false);
+    setExtraModifier(0);
+  };
+  
+  const openRollPanel = (name: string, modifier: number, type: 'skill' | 'attribute') => {
+    setRollPanelData({ name, modifier, type });
+    setExtraModifier(0);
+    setRollPanelOpen(true);
+  };
 
   // Fetch items
   const { data: items = [] } = useQuery({
@@ -5927,8 +5950,29 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                     { key: 'craft', name: 'Craft', description: 'Technical skill and creativity' },
                   ].map(attr => {
                     const value = editingAttributes ? attributesData[attr.key as keyof typeof attributesData] : (liveCharacter[attr.key] || 0);
+                    const numericValue = typeof value === 'string' ? (parseInt(value) || 0) : value;
                     return (
-                      <Card key={attr.key} className={`bg-stone-900 ${editingAttributes ? 'border-amber-700' : 'border-stone-600'}`}>
+                      <Card 
+                        key={attr.key} 
+                        className={`bg-stone-900 ${editingAttributes ? 'border-amber-700' : 'border-stone-600 cursor-pointer hover:bg-stone-800 transition-colors'}`}
+                        onPointerDown={!editingAttributes ? () => {
+                          isLongPressRef.current = false;
+                          longPressTimerRef.current = setTimeout(() => {
+                            isLongPressRef.current = true;
+                            openRollPanel(attr.name, numericValue, 'attribute');
+                          }, 500);
+                        } : undefined}
+                        onPointerUp={!editingAttributes ? () => {
+                          clearTimeout(longPressTimerRef.current);
+                          if (!isLongPressRef.current) {
+                            handleRoll(attr.name, numericValue);
+                          }
+                        } : undefined}
+                        onPointerLeave={!editingAttributes ? () => {
+                          clearTimeout(longPressTimerRef.current);
+                        } : undefined}
+                        data-testid={`card-attribute-${attr.key}`}
+                      >
                         <CardContent className="p-4 text-center">
                           <div className="flex items-center justify-center gap-1 mb-1">
                             <Label className="text-xs text-stone-400">{attr.name}</Label>
@@ -5959,7 +6003,7 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                             />
                           ) : (
                             <div className="text-2xl font-bold text-amber-500 mt-1" data-testid={`text-attribute-${attr.key}`}>
-                              {value >= 0 ? `+${value}` : value}
+                              {numericValue >= 0 ? `+${numericValue}` : numericValue}
                             </div>
                           )}
                           <p className="text-[10px] text-stone-500 mt-1">{attr.description}</p>
@@ -6144,15 +6188,36 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                         />
                       </div>
                     ) : (
-                      <Badge 
-                        key={skill.key} 
-                        variant="outline" 
-                        className="justify-between p-3 bg-stone-900 border-stone-600"
-                        data-testid={`badge-skill-${skill.key}`}
-                      >
-                        <span className="text-xs">{skill.name}</span>
-                        <span className="font-bold ml-2">{value >= 0 ? `+${value}` : value}</span>
-                      </Badge>
+                      (() => {
+                        const numericValue = typeof value === 'string' ? (parseInt(value) || 0) : value;
+                        return (
+                          <Badge 
+                            key={skill.key} 
+                            variant="outline" 
+                            className="justify-between p-3 bg-stone-900 border-stone-600 cursor-pointer hover:bg-stone-800 transition-colors"
+                            onPointerDown={() => {
+                              isLongPressRef.current = false;
+                              longPressTimerRef.current = setTimeout(() => {
+                                isLongPressRef.current = true;
+                                openRollPanel(skill.name, numericValue, 'skill');
+                              }, 500);
+                            }}
+                            onPointerUp={() => {
+                              clearTimeout(longPressTimerRef.current);
+                              if (!isLongPressRef.current) {
+                                handleRoll(skill.name, numericValue);
+                              }
+                            }}
+                            onPointerLeave={() => {
+                              clearTimeout(longPressTimerRef.current);
+                            }}
+                            data-testid={`badge-skill-${skill.key}`}
+                          >
+                            <span className="text-xs">{skill.name}</span>
+                            <span className="font-bold ml-2">{numericValue >= 0 ? `+${numericValue}` : numericValue}</span>
+                          </Badge>
+                        );
+                      })()
                     );
                   })}
                 </div>
@@ -7322,6 +7387,40 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
           campaignId={campaignId}
         />
       )}
+
+      {/* Roll Modifier Panel */}
+      <Dialog open={rollPanelOpen} onOpenChange={setRollPanelOpen}>
+        <DialogContent className="sm:max-w-[300px] bg-stone-900 border-stone-700">
+          <DialogHeader>
+            <DialogTitle className="text-amber-500">{rollPanelData?.name} Roll</DialogTitle>
+            <DialogDescription>
+              Base modifier: {(rollPanelData?.modifier ?? 0) >= 0 ? '+' : ''}{rollPanelData?.modifier ?? 0}
+              {rollPanelData?.modifier === 5 ? ' (d30)' : ' (d20)'}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="flex items-center gap-2">
+              <Label>Extra Modifier:</Label>
+              <Input 
+                type="number" 
+                value={extraModifier} 
+                onChange={(e) => setExtraModifier(parseInt(e.target.value) || 0)}
+                className="w-20 text-center bg-stone-800 border-stone-600"
+                data-testid="input-extra-modifier"
+              />
+            </div>
+            <div className="text-sm text-stone-400">
+              Total: {(rollPanelData?.modifier || 0) + extraModifier >= 0 ? '+' : ''}{(rollPanelData?.modifier || 0) + extraModifier}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRollPanelOpen(false)} data-testid="button-cancel-roll">Cancel</Button>
+            <Button onClick={() => rollPanelData && handleRoll(rollPanelData.name, rollPanelData.modifier, extraModifier)} data-testid="button-confirm-roll">
+              Roll
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

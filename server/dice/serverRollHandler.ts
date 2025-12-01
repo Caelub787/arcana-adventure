@@ -1,6 +1,6 @@
 import crypto from 'crypto';
 
-export type DieType = 'd4' | 'd6' | 'd8' | 'd10' | 'd12' | 'd20';
+export type DieType = 'd4' | 'd6' | 'd8' | 'd10' | 'd12' | 'd20' | 'd30';
 
 export interface DiceRollResult {
   id: string;
@@ -30,6 +30,7 @@ const DIE_MAX_VALUES: Record<DieType, number> = {
   d10: 10,
   d12: 12,
   d20: 20,
+  d30: 30,
 };
 
 export function rollDie(dieType: DieType): { result: number; seed: string } {

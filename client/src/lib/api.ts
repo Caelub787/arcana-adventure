@@ -285,6 +285,17 @@ class ApiClient {
     return this.request(`/campaigns/${id}/favorite`, { method: 'POST' });
   }
 
+  async getAssignedCharacter(campaignId: string): Promise<{ characterId: string | null }> {
+    return this.request(`/campaigns/${campaignId}/assigned-character`);
+  }
+
+  async setAssignedCharacter(campaignId: string, characterId: string | null): Promise<void> {
+    return this.request(`/campaigns/${campaignId}/assigned-character`, {
+      method: 'POST',
+      body: JSON.stringify({ characterId }),
+    });
+  }
+
   // Characters
   async createCharacter(campaignId: string, character: Omit<Character, 'id' | 'userId' | 'campaignId'>): Promise<Character> {
     return this.request(`/campaigns/${campaignId}/characters`, {

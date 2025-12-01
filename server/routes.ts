@@ -513,8 +513,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
             return;
           }
           
-          // Validate die type
-          const validDieTypes = ['d4', 'd6', 'd8', 'd10', 'd12', 'd20'];
+          // Validate die type (d30 for attribute rolls with +5 modifier)
+          const validDieTypes = ['d4', 'd6', 'd8', 'd10', 'd12', 'd20', 'd30'];
           if (!validDieTypes.includes(dieType)) {
             ws.send(JSON.stringify({
               type: "error",
@@ -1106,6 +1106,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const campaigns = await storage.getUserCampaigns(req.session.userId!);
       res.json(campaigns);
     } catch (err) {
+      console.error('[GET /api/campaigns] Error:', err);
       res.status(500).json({ error: "Failed to fetch campaigns" });
     }
   });
@@ -1220,6 +1221,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ error: err.message });
       }
       res.status(400).json({ error: "Failed to toggle favorite" });
+    }
+  });
+
+  // Get assigned character for current user in campaign
+  app.get("/api/campaigns/:id/assigned-character", requireAuth, async (req, res) => {
+    try {
+      const characterId = await storage.getAssignedCharacter(req.params.id, req.session.userId!);
+      res.json({ characterId });
+    } catch (err) {
+      res.status(400).json({ error: "Failed to get assigned character" });
+    }
+  });
+
+  // Set assigned character for current user in campaign
+  app.post("/api/campaigns/:id/assigned-character", requireAuth, async (req, res) => {
+    try {
+      const { characterId } = req.body;
+      await storage.setAssignedCharacter(req.params.id, req.session.userId!, characterId);
+      res.json({ success: true });
+    } catch (err) {
+      res.status(400).json({ error: "Failed to set assigned character" });
     }
   });
 
