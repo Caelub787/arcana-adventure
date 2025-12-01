@@ -5,7 +5,7 @@ import { type DieType } from '@/lib/diceSystem';
 
 export interface RollNotification {
   id: string;
-  type: 'dice' | 'initiative' | 'attack' | 'skill' | 'save' | 'custom';
+  type: 'dice' | 'initiative' | 'attack' | 'skill' | 'save' | 'custom' | 'system';
   dieType?: DieType;
   label: string;
   result: number;
@@ -15,6 +15,7 @@ export interface RollNotification {
   characterName?: string;
   timestamp: number;
   calculationBreakdown?: string;
+  duration?: number;
 }
 
 const ROLL_ICONS = {
@@ -24,6 +25,7 @@ const ROLL_ICONS = {
   skill: Zap,
   save: Shield,
   custom: Sparkles,
+  system: Sparkles,
 };
 
 const ROLL_COLORS = {
@@ -33,6 +35,7 @@ const ROLL_COLORS = {
   skill: 'from-green-500 to-emerald-600',
   save: 'from-purple-500 to-violet-600',
   custom: 'from-pink-500 to-fuchsia-600',
+  system: 'from-stone-500 to-stone-600',
 };
 
 const DIE_COLORS: Partial<Record<DieType, string>> = {
@@ -50,12 +53,14 @@ function RollCard({ notification, onComplete }: { notification: RollNotification
     ? DIE_COLORS[notification.dieType] || ROLL_COLORS[notification.type]
     : ROLL_COLORS[notification.type];
   
+  const notificationDuration = notification.duration ?? (notification.type === 'system' ? 2000 : 3500);
+  
   useEffect(() => {
     const timer = setTimeout(() => {
       onComplete(notification.id);
-    }, 3500);
+    }, notificationDuration);
     return () => clearTimeout(timer);
-  }, [notification.id, onComplete]);
+  }, [notification.id, onComplete, notificationDuration]);
   
   const displayName = notification.characterName || notification.username;
   const isNat20 = notification.dieType === 'd20' && notification.result === 20;
@@ -140,7 +145,7 @@ function RollCard({ notification, onComplete }: { notification: RollNotification
         <motion.div
           initial={{ scaleX: 1 }}
           animate={{ scaleX: 0 }}
-          transition={{ duration: 3.5, ease: 'linear' }}
+          transition={{ duration: notificationDuration / 1000, ease: 'linear' }}
           className="h-1 bg-white/30 origin-left"
         />
       </div>

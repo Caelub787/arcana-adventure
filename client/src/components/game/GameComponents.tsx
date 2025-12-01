@@ -4645,6 +4645,7 @@ interface HotbarSlotProps {
 }
 
 function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRemove, isBlocked, blockReason, allHotbars, allItems }: HotbarSlotProps) {
+  const queryClient = useQueryClient();
   const [isDragOver, setIsDragOver] = useState(false);
   const [showRemoveDialog, setShowRemoveDialog] = useState(false);
   const clickTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -4702,8 +4703,91 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
     return ['bow', 'crossbow', 'sling', 'firearm'].includes(weaponCategory?.toLowerCase() || '');
   };
 
+  // Get total quantity of all matching ammunition items (by name and type)
+  const getTotalAmmunitionQuantity = (ammoItem: any): number => {
+    if (!allItems || !ammoItem) return ammoItem?.quantity || 1;
+    const matchingAmmo = allItems.filter((item: any) => 
+      item.itemType === 'ammunition' && 
+      item.name === ammoItem.name &&
+      item.ammunitionType === ammoItem.ammunitionType
+    );
+    return matchingAmmo.reduce((total: number, item: any) => total + (item.quantity || 1), 0);
+  };
+
+  // Check ammunition break chance and handle quantity reduction
+  const checkAmmunitionBreak = async (ammo: any) => {
+    const breakChance = (ammo.breakChance ?? 10) / 100;
+    const breakRoll = Math.random();
+    if (breakRoll < breakChance) {
+      const newQuantity = (ammo.quantity || 1) - 1;
+      const totalRemaining = getTotalAmmunitionQuantity(ammo) - 1;
+      
+      if (newQuantity <= 0) {
+        await api.deleteItem(ammo.id);
+        
+        const nextAmmo = allItems?.find((item: any) => 
+          item.id !== ammo.id &&
+          item.itemType === 'ammunition' && 
+          item.name === ammo.name &&
+          item.ammunitionType === ammo.ammunitionType &&
+          (item.quantity || 1) > 0
+        );
+        
+        if (nextAmmo) {
+          await api.upsertHotbar(character.id, { 
+            hotbarType: 'weapons', 
+            slotNumber: 2, 
+            itemId: nextAmmo.id 
+          });
+        }
+        
+        triggerRollNotification({
+          type: 'system',
+          label: `${ammo.name} Broke!`,
+          result: totalRemaining,
+          modifier: 0,
+          total: totalRemaining,
+          username: character.name || 'Unknown',
+          characterName: character.name,
+          calculationBreakdown: nextAmmo 
+            ? `Stack depleted! ${totalRemaining} ${ammo.name} remaining`
+            : 'Last arrow used and broke!',
+        });
+        
+        if (character.campaignId) {
+          gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', 
+            nextAmmo 
+              ? `An arrow broke! ${totalRemaining} ${ammo.name} remaining.`
+              : `${ammo.name} broke! No ammunition remaining.`, 
+            'system');
+        }
+      } else {
+        await api.updateItem(ammo.id, { quantity: newQuantity });
+        
+        triggerRollNotification({
+          type: 'system',
+          label: `${ammo.name} Broke!`,
+          result: totalRemaining,
+          modifier: 0,
+          total: totalRemaining,
+          username: character.name || 'Unknown',
+          characterName: character.name,
+          calculationBreakdown: `Arrow broke! ${totalRemaining} remaining`,
+        });
+        
+        if (character.campaignId) {
+          gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', 
+            `An arrow broke! ${totalRemaining} ${ammo.name} remaining.`, 'system');
+        }
+      }
+      
+      queryClient.invalidateQueries({ queryKey: ['items', character.id] });
+      queryClient.invalidateQueries({ queryKey: ['hotbars', character.id] });
+    }
+  };
+
   // Handle attack roll (1d20 + attribute modifier)
-  const handleAttackRoll = () => {
+  const handleAttackRoll = async () => {
     if (!itemData || itemData.itemType !== 'weapon') return;
     
     // Check if ranged weapon requires ammunition
@@ -4751,6 +4835,14 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
     if (character.campaignId) {
       const chatText = `${itemData.name} Attack: ${calculationBreakdown} = ${total}`;
       gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', chatText, 'roll');
+    }
+    
+    // Check ammunition break for ranged weapons
+    if (isRangedWeapon(itemData) && requiresAmmunitionForRoll(itemData.weaponCategory)) {
+      const ammo = getEquippedAmmunition();
+      if (ammo) {
+        await checkAmmunitionBreak(ammo);
+      }
     }
   };
 
