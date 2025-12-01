@@ -17,7 +17,7 @@ Preferred communication style: Simple, everyday language.
 - **Character Sheet**: Mobile-optimized design with icon-based tabs, responsive layout, single-scroll interface, touch-friendly elements, and real-time updates via optimistic UI.
 - **Race System**: Supports 20 playable races with auto-filled attributes like size, natural armor, and speed.
 - **Attributes & Skills**: Six attributes and fifteen skills, all with modifiers equal to their value. Features single-click rolls and double-click/long-press for a Roll Modifier Panel.
-- **Inventory & Hotbars**: Includes a comprehensive inventory with weight calculation (base carry capacity + Might modifier), quantity management, and item stacking. Hotbars support weapons (left hand, right hand, ammunition slots with compatibility checks), magic, skills, consumables, and utility items.
+- **Inventory & Hotbars**: Includes a comprehensive inventory with weight calculation (base carry capacity + Might modifier), quantity management, and item stacking. Hotbars support weapons (left hand, right hand, ammunition slots with compatibility checks), magic, skills, consumables, and utility items. Two-handed weapons (marked with `isHeavy` or legacy `weight === 'heavy'`) automatically occupy both weapon slots (0 and 2), blocking the right-hand slot (1).
 - **Initiative Tracking**: Real-time initiative system accessible to all users, with GM controls for combat management, turn advancement, and visibility.
 - **Roll Notification System**: Visual, animated notifications for all dice rolls (d4-d20) with distinct styling for different roll types (dice, initiative, "Crit Success" on natural 20, "Crit Failure" on natural 1). All rolls are server-authoritative and integrated into the chat.
 
