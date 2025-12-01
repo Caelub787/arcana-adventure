@@ -5831,6 +5831,8 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
   const [rollPanelOpen, setRollPanelOpen] = useState(false);
   const [rollPanelData, setRollPanelData] = useState<{name: string, modifier: number, type: 'skill' | 'attribute'} | null>(null);
   const [extraModifier, setExtraModifier] = useState(0);
+  const [hasAdvantage, setHasAdvantage] = useState(false);
+  const [hasDisadvantage, setHasDisadvantage] = useState(false);
   const rollDataRef = useRef<{name: string, modifier: number} | null>(null);
   
   // Level-up HP state
@@ -5895,18 +5897,28 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
   
   const canEdit = isOwner || isGM;
   
-  const handleRoll = (name: string, modifier: number, extraMod: number = 0) => {
+  // Calculate advantage type: if both ADV and DIS are checked, they cancel out
+  const getAdvantageType = (): 'none' | 'advantage' | 'disadvantage' => {
+    if (hasAdvantage && hasDisadvantage) return 'none'; // Cancel out
+    if (hasAdvantage) return 'advantage';
+    if (hasDisadvantage) return 'disadvantage';
+    return 'none';
+  };
+  
+  const handleRoll = (name: string, modifier: number, extraMod: number = 0, advantage: 'none' | 'advantage' | 'disadvantage' = 'none') => {
     const dieType = modifier === 5 ? 'd30' : 'd20';
     const totalMod = modifier + extraMod;
-    gameWs.sendDiceRoll(dieType, totalMod, name, liveCharacter.id);
+    gameWs.sendDiceRoll(dieType, totalMod, name, liveCharacter.id, advantage);
     setRollPanelOpen(false);
     setExtraModifier(0);
+    setHasAdvantage(false);
+    setHasDisadvantage(false);
   };
   
   const confirmRollFromPanel = () => {
     if (rollDataRef.current) {
       const { name, modifier } = rollDataRef.current;
-      handleRoll(name, modifier, extraModifier);
+      handleRoll(name, modifier, extraModifier, getAdvantageType());
     }
   };
   
@@ -5914,6 +5926,8 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
     rollDataRef.current = { name, modifier };
     setRollPanelData({ name, modifier, type });
     setExtraModifier(0);
+    setHasAdvantage(false);
+    setHasDisadvantage(false);
     setRollPanelOpen(true);
   };
 
@@ -8460,6 +8474,8 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
       <Dialog open={rollPanelOpen} onOpenChange={(open) => {
         if (!open) {
           setRollPanelOpen(false);
+          setHasAdvantage(false);
+          setHasDisadvantage(false);
         }
       }}>
         <DialogContent className="sm:max-w-[300px] bg-stone-900 border-stone-700">
@@ -8500,8 +8516,46 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                 </Button>
               </div>
             </div>
+            
+            {/* Advantage/Disadvantage Checkboxes */}
+            <div className="flex items-center justify-center gap-6">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={hasAdvantage}
+                  onChange={(e) => setHasAdvantage(e.target.checked)}
+                  className="w-5 h-5 rounded border-stone-600 bg-stone-800 text-green-500 focus:ring-green-500 focus:ring-offset-stone-900"
+                  data-testid="checkbox-advantage"
+                />
+                <span className={`text-sm font-medium ${hasAdvantage ? 'text-green-400' : 'text-stone-400'}`}>
+                  ADV
+                </span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={hasDisadvantage}
+                  onChange={(e) => setHasDisadvantage(e.target.checked)}
+                  className="w-5 h-5 rounded border-stone-600 bg-stone-800 text-red-500 focus:ring-red-500 focus:ring-offset-stone-900"
+                  data-testid="checkbox-disadvantage"
+                />
+                <span className={`text-sm font-medium ${hasDisadvantage ? 'text-red-400' : 'text-stone-400'}`}>
+                  DIS
+                </span>
+              </label>
+            </div>
+            
+            {/* Info text when both are checked */}
+            {hasAdvantage && hasDisadvantage && (
+              <div className="text-center text-xs text-stone-500">
+                ADV and DIS cancel out - rolling normally
+              </div>
+            )}
+            
             <div className="text-center text-sm text-stone-400">
               Total: <span className="text-amber-500 font-semibold">{(rollPanelData?.modifier || 0) + extraModifier >= 0 ? '+' : ''}{(rollPanelData?.modifier || 0) + extraModifier}</span>
+              {hasAdvantage && !hasDisadvantage && <span className="text-green-400 ml-2">[ADV]</span>}
+              {hasDisadvantage && !hasAdvantage && <span className="text-red-400 ml-2">[DIS]</span>}
             </div>
           </div>
           <DialogFooter>

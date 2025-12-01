@@ -772,7 +772,7 @@ export class GameWebSocket {
     this.send({ type: 'character_update', campaignId: this.campaignId, characterId });
   }
   
-  sendDiceRoll(dieType: string, modifier: number = 0, purpose?: string, characterId?: string) {
+  sendDiceRoll(dieType: string, modifier: number = 0, purpose?: string, characterId?: string, advantage?: 'none' | 'advantage' | 'disadvantage') {
     if (!this.campaignId) {
       console.error('Cannot send dice roll: not connected to a campaign');
       return;
@@ -784,7 +784,8 @@ export class GameWebSocket {
       dieType,
       modifier,
       purpose,
-      characterId
+      characterId,
+      advantage: advantage || 'none'
     };
     
     // If not yet joined, queue the message

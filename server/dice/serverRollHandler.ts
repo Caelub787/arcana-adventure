@@ -2,6 +2,8 @@ import crypto from 'crypto';
 
 export type DieType = 'd4' | 'd6' | 'd8' | 'd10' | 'd12' | 'd20' | 'd30';
 
+export type AdvantageType = 'none' | 'advantage' | 'disadvantage';
+
 export interface DiceRollResult {
   id: string;
   dieType: DieType;
@@ -14,6 +16,8 @@ export interface DiceRollResult {
   username: string;
   characterId?: string;
   purpose?: string;
+  advantage?: AdvantageType;
+  rolls?: number[]; // Individual dice results when rolling with advantage/disadvantage
 }
 
 export interface RollRequest {
@@ -21,6 +25,7 @@ export interface RollRequest {
   modifier?: number;
   purpose?: string;
   characterId?: string;
+  advantage?: AdvantageType;
 }
 
 const DIE_MAX_VALUES: Record<DieType, number> = {
@@ -50,8 +55,31 @@ export function createRollResult(
   userId: string,
   username: string
 ): DiceRollResult {
-  const { result, seed } = rollDie(request.dieType);
   const modifier = request.modifier || 0;
+  const advantage = request.advantage || 'none';
+  
+  let result: number;
+  let seed: string;
+  let rolls: number[] | undefined;
+  
+  if (advantage === 'advantage' || advantage === 'disadvantage') {
+    // Roll 2 dice, keep highest (advantage) or lowest (disadvantage)
+    const roll1 = rollDie(request.dieType);
+    const roll2 = rollDie(request.dieType);
+    rolls = [roll1.result, roll2.result];
+    
+    if (advantage === 'advantage') {
+      result = Math.max(roll1.result, roll2.result);
+    } else {
+      result = Math.min(roll1.result, roll2.result);
+    }
+    seed = roll1.seed + roll2.seed.slice(0, 8); // Combine seeds
+  } else {
+    // Normal single die roll
+    const roll = rollDie(request.dieType);
+    result = roll.result;
+    seed = roll.seed;
+  }
   
   return {
     id: crypto.randomUUID(),
@@ -65,6 +93,8 @@ export function createRollResult(
     username,
     characterId: request.characterId,
     purpose: request.purpose,
+    advantage: advantage !== 'none' ? advantage : undefined,
+    rolls,
   };
 }
 

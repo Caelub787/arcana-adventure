@@ -502,7 +502,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         
         // Handle dice roll requests - server-authoritative
         if (message.type === "request_dice_roll") {
-          const { campaignId, dieType, modifier, purpose, characterId } = message;
+          const { campaignId, dieType, modifier, purpose, characterId, advantage } = message;
           
           // Verify user has joined this campaign
           const userCampaign = (ws as any).campaigns.get(campaignId);
@@ -530,6 +530,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             modifier: modifier || 0,
             purpose,
             characterId,
+            advantage: advantage || 'none',
           };
           
           const rollResult = createRollResult(rollRequest, authenticatedUserId, username);
@@ -550,7 +551,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
             : "";
           const purposeText = purpose ? ` - ${purpose}` : "";
           const characterText = characterName ? ` (${characterName})` : "";
-          const rollText = `${dieType.toUpperCase()}${purposeText}${characterText}: ${rollResult.result}${modifierText} = ${rollResult.total}`;
+          const advantageText = rollResult.advantage === 'advantage' ? ' [ADV]' : 
+                               rollResult.advantage === 'disadvantage' ? ' [DIS]' : '';
+          const rollsText = rollResult.rolls ? ` (${rollResult.rolls.join(', ')})` : '';
+          const rollText = `${dieType.toUpperCase()}${advantageText}${purposeText}${characterText}: ${rollResult.result}${rollsText}${modifierText} = ${rollResult.total}`;
           
           // Save dice roll to chat as a "roll" type message
           const chatMessage = await storage.createChatMessage({
