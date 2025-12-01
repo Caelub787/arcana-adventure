@@ -14,6 +14,7 @@ export interface RollNotification {
   username: string;
   characterName?: string;
   timestamp: number;
+  calculationBreakdown?: string;
 }
 
 const ROLL_ICONS = {
@@ -96,12 +97,13 @@ function RollCard({ notification, onComplete }: { notification: RollNotification
               <span className="text-white/70">{notification.label}</span>
             </div>
             
+            {notification.calculationBreakdown && (
+              <div className="text-white/60 text-xs mt-0.5">
+                {notification.calculationBreakdown}
+              </div>
+            )}
+            
             <div className="flex items-baseline gap-2 mt-0.5">
-              {notification.modifier !== undefined && notification.modifier !== 0 && (
-                <span className="text-white/60 text-sm">
-                  {notification.result} {notification.modifier >= 0 ? '+' : ''}{notification.modifier} =
-                </span>
-              )}
               <motion.span
                 initial={{ scale: 0 }}
                 animate={{ scale: 1 }}
