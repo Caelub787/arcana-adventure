@@ -1434,6 +1434,21 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     return allItems.find((i: any) => i.id === ammoHotbar.itemId);
   };
 
+  // Get total quantity of all matching ammunition items (by name and type)
+  const getTotalAmmunitionQuantity = (ammoItem: any): number => {
+    if (!allItems || !ammoItem) return ammoItem?.quantity || 1;
+    
+    // Find all ammunition items that match by name and ammunition type
+    const matchingAmmo = allItems.filter((item: any) => 
+      item.itemType === 'ammunition' && 
+      item.name === ammoItem.name &&
+      item.ammunitionType === ammoItem.ammunitionType
+    );
+    
+    // Sum up all quantities
+    return matchingAmmo.reduce((total: number, item: any) => total + (item.quantity || 1), 0);
+  };
+
   // Check if weapon requires ammunition to attack
   const requiresAmmunitionForRoll = (weaponCategory: string): boolean => {
     return ['bow', 'crossbow', 'sling', 'firearm'].includes(weaponCategory?.toLowerCase() || '');
@@ -1639,6 +1654,11 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
       </>
     );
   } else if (hotbar?.itemId && itemData) {
+    // For ammunition, show grouped total quantity
+    const displayQuantity = itemData.itemType === 'ammunition' 
+      ? getTotalAmmunitionQuantity(itemData) 
+      : null;
+      
     content = itemData.image ? (
       <div className="relative w-full h-full flex items-center justify-center">
         <img 
@@ -1646,9 +1666,9 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
           alt={itemData.name}
           className="w-9 h-9 md:w-14 md:h-14 object-cover rounded"
         />
-        {itemData.itemType === 'ammunition' && (
+        {displayQuantity !== null && (
           <div className="absolute top-0 right-0 bg-stone-900/90 text-amber-400 text-[6px] px-0.5 rounded-bl font-bold">
-            x{itemData.quantity || 1}
+            x{displayQuantity}
           </div>
         )}
       </div>
@@ -1660,9 +1680,9 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
         {itemData.damage && (
           <div className="text-red-400 text-[7px]">{itemData.damage}</div>
         )}
-        {itemData.itemType === 'ammunition' && (
+        {displayQuantity !== null && (
           <div className="absolute top-0 right-0 bg-stone-900/90 text-amber-400 text-[6px] px-0.5 rounded-bl font-bold">
-            x{itemData.quantity || 1}
+            x{displayQuantity}
           </div>
         )}
       </div>
@@ -1672,7 +1692,7 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
         <p className="font-bold">{itemData.name}</p>
         {itemData.damage && <p className="text-sm">Damage: {itemData.damage}{itemData.mod ? ` +${itemData.mod}` : ''}</p>}
         {itemData.attribute && <p className="text-sm">Attack: {itemData.attribute}</p>}
-        {itemData.itemType === 'ammunition' && <p className="text-sm text-amber-400">Quantity: x{itemData.quantity || 1}</p>}
+        {displayQuantity !== null && <p className="text-sm text-amber-400">Total Quantity: x{displayQuantity}</p>}
         {itemData.durability !== undefined && <p className="text-sm">Durability: {itemData.durability}/10</p>}
         {isClickable && <p className="text-xs text-stone-400 mt-1">Click: Attack | Double-click: Damage</p>}
       </>
