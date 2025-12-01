@@ -2542,6 +2542,7 @@ export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onIn
   const [selectedCharForAccess, setSelectedCharForAccess] = useState<any>(null);
   const [accessLevels, setAccessLevels] = useState<Record<string, string>>({});
   const [loadingAccess, setLoadingAccess] = useState(false);
+  const [pendingDeleteChar, setPendingDeleteChar] = useState<any>(null);
   const queryClient = useQueryClient();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
@@ -2696,8 +2697,13 @@ export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onIn
   });
 
   const handleDeleteCharacter = (char: any) => {
-    if (confirm(`Are you sure you want to delete "${char.name}"? This will also remove all tokens for this character from the battlemap. This action cannot be undone.`)) {
-      deleteCharacterMutation.mutate(char.id);
+    setPendingDeleteChar(char);
+  };
+  
+  const confirmDeleteCharacter = () => {
+    if (pendingDeleteChar) {
+      deleteCharacterMutation.mutate(pendingDeleteChar.id);
+      setPendingDeleteChar(null);
     }
   };
 
@@ -3288,6 +3294,39 @@ export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onIn
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Character Confirmation Dialog */}
+      <AlertDialog open={!!pendingDeleteChar} onOpenChange={(open) => !open && setPendingDeleteChar(null)}>
+        <AlertDialogContent className="bg-stone-900 border-stone-700">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-red-500 flex items-center gap-2">
+              <Trash2 className="h-5 w-5" />
+              Delete Character
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-stone-300">
+              Are you sure you want to delete <span className="font-bold text-amber-400">"{pendingDeleteChar?.name}"</span>? 
+              This will permanently remove the character along with all their items, spells, hotbars, and tokens from the battlemap.
+              <span className="block mt-2 text-red-400 font-medium">This action cannot be undone.</span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel 
+              className="bg-stone-800 border-stone-700 hover:bg-stone-700"
+              data-testid="button-cancel-delete-character"
+            >
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction 
+              className="bg-red-600 hover:bg-red-700 text-white"
+              onClick={confirmDeleteCharacter}
+              disabled={deleteCharacterMutation.isPending}
+              data-testid="button-confirm-delete-character"
+            >
+              {deleteCharacterMutation.isPending ? "Deleting..." : "Delete Character"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }
@@ -3346,8 +3385,8 @@ function HotbarsTabContent({ character, isGM, isOwner }: HotbarsTabContentProps)
     enabled: !!character.id
   });
 
-  const weaponItems = items.filter((item: any) => item.itemType === 'weapon' && !item.isAmmunition);
-  const ammunitionItems = items.filter((item: any) => item.isAmmunition);
+  const weaponItems = items.filter((item: any) => item.itemType === 'weapon');
+  const ammunitionItems = items.filter((item: any) => item.itemType === 'ammunition');
   const consumableItems = items.filter((item: any) => item.itemType === 'consumable');
   const utilityItems = items.filter((item: any) => item.itemType === 'utility' || item.itemType === 'container');
   const armorItems = items.filter((item: any) => item.itemType === 'armor');
@@ -3389,11 +3428,12 @@ function HotbarsTabContent({ character, isGM, isOwner }: HotbarsTabContentProps)
     return null;
   };
 
-  // Check if a heavy weapon is equipped (same item in both slot 0 and slot 1)
+  // Check if a heavy weapon is equipped (item in slot 0 that is marked as heavy)
   const isHeavyWeaponEquipped = () => {
     const slot0Hotbar = hotbars.find((h: any) => h.hotbarType === 'weapons' && h.slotNumber === 0);
-    const slot1Hotbar = hotbars.find((h: any) => h.hotbarType === 'weapons' && h.slotNumber === 1);
-    return slot0Hotbar?.itemId && slot0Hotbar.itemId === slot1Hotbar?.itemId;
+    if (!slot0Hotbar?.itemId) return false;
+    const slot0Item = items.find((i: any) => i.id === slot0Hotbar.itemId);
+    return slot0Item?.isHeavy || slot0Item?.weight === 'heavy';
   };
 
   // Include pendingHeavyWeaponEquip to block slot 1 during mutation
@@ -3584,35 +3624,34 @@ function HotbarsTabContent({ character, isGM, isOwner }: HotbarsTabContentProps)
 
       // For weapons hotbar slots 0 and 1, check if heavy weapon is already equipped
       if (hotbarType === 'weapons' && (slotNumber === 0 || slotNumber === 1)) {
-        const existingHeavy = hotbars.find(h => 
-          h.hotbarType === 'weapons' && 
-          (h.slotNumber === 0 || h.slotNumber === 1) &&
-          h.itemId
-        );
-        
-        // Check if the existing weapon is heavy by checking if it appears in both slots 0 and 1
-        if (existingHeavy) {
-          const slot0 = hotbars.find(h => h.hotbarType === 'weapons' && h.slotNumber === 0);
-          const slot1 = hotbars.find(h => h.hotbarType === 'weapons' && h.slotNumber === 1);
-          if (slot0?.itemId && slot0.itemId === slot1?.itemId) {
-            toast({
-              title: "Heavy Weapon Equipped",
-              description: "Remove the heavy weapon first before equipping another weapon",
-              variant: "destructive"
-            });
-            return;
-          }
+        // Check if the item in slot 0 is a heavy weapon
+        if (heavyEquipped) {
+          toast({
+            title: "Heavy Weapon Equipped",
+            description: "Remove the heavy weapon first before equipping another weapon",
+            variant: "destructive"
+          });
+          return;
         }
       }
 
-      // Two-handed weapon logic - occupy both slots 0 and 1, slot 2 is for ammunition only
+      // Two-handed weapon logic - occupy slot 0 only, slot 1 becomes blocked
       // Check both isHeavy (new) and weight === 'heavy' (legacy) for backward compatibility
       if (hotbarType === 'weapons' && (item.isHeavy || item.weight === 'heavy')) {
-        // Heavy weapons can only go in slots 0 or 1 (not slot 2 - that's for ammo)
+        // Heavy weapons can only go in slot 0 (left hand), blocks slot 1
         if (slotNumber === 2) {
           toast({
             title: "Invalid Slot",
             description: "Heavy weapons cannot be equipped in the ammunition slot",
+            variant: "destructive"
+          });
+          return;
+        }
+        
+        if (slotNumber === 1) {
+          toast({
+            title: "Invalid Slot",
+            description: "Heavy weapons can only be equipped in the left hand slot",
             variant: "destructive"
           });
           return;
@@ -3631,21 +3670,16 @@ function HotbarsTabContent({ character, isGM, isOwner }: HotbarsTabContentProps)
             if (existingSlot0) await deleteMutation.mutateAsync(existingSlot0.id);
             if (existingSlot1) await deleteMutation.mutateAsync(existingSlot1.id);
 
-            // Equip heavy weapon to both slots 0 and 1
+            // Equip heavy weapon to slot 0 only (slot 1 will be blocked visually)
             await upsertMutation.mutateAsync({
               hotbarType: 'weapons',
               slotNumber: 0,
               itemId: item.id
             });
-            await upsertMutation.mutateAsync({
-              hotbarType: 'weapons',
-              slotNumber: 1,
-              itemId: item.id
-            });
             
             toast({
               title: "Heavy Weapon Equipped",
-              description: `${item.name} equipped to both hands`,
+              description: `${item.name} equipped (two-handed)`,
             });
           } catch (err) {
             toast({
@@ -3664,7 +3698,7 @@ function HotbarsTabContent({ character, isGM, isOwner }: HotbarsTabContentProps)
       }
 
       // Slot 2 in weapons hotbar is for ammunition only
-      if (hotbarType === 'weapons' && slotNumber === 2 && !item.isAmmunition) {
+      if (hotbarType === 'weapons' && slotNumber === 2 && item.itemType !== 'ammunition') {
         toast({
           title: "Invalid Slot",
           description: "Only ammunition can be equipped in the third slot",
@@ -3855,7 +3889,7 @@ function HotbarsTabContent({ character, isGM, isOwner }: HotbarsTabContentProps)
             })}
           </div>
           <p className="text-xs text-stone-500 mt-3">
-            Left/Right for weapons, Far-right for ammunition. Heavy weapons occupy both side slots.
+            Left/Right for weapons, Far-right for ammunition. Heavy (two-handed) weapons use the left slot and block the right.
           </p>
           
           {/* Draggable Weapons */}
@@ -7072,6 +7106,7 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                     <SelectContent>
                       <SelectItem value="all">All Types</SelectItem>
                       <SelectItem value="weapon">Weapons</SelectItem>
+                      <SelectItem value="ammunition">Ammunition</SelectItem>
                       <SelectItem value="armor">Armor</SelectItem>
                       <SelectItem value="consumable">Consumables</SelectItem>
                       <SelectItem value="utility">Utilities</SelectItem>
@@ -8533,6 +8568,7 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
                   <SelectContent>
                     <SelectItem value="all">All Types</SelectItem>
                     <SelectItem value="weapon">Weapons</SelectItem>
+                    <SelectItem value="ammunition">Ammunition</SelectItem>
                     <SelectItem value="armor">Armor</SelectItem>
                     <SelectItem value="consumable">Consumables</SelectItem>
                     <SelectItem value="utility">Utilities</SelectItem>
@@ -8634,6 +8670,7 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="weapon">Weapon</SelectItem>
+                    <SelectItem value="ammunition">Ammunition</SelectItem>
                     <SelectItem value="armor">Armor</SelectItem>
                     <SelectItem value="consumable">Consumable</SelectItem>
                     <SelectItem value="utility">Utility</SelectItem>
@@ -8715,66 +8752,58 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
               <Label>Durability: {formData.durability}/10</Label>
               <Slider value={[formData.durability]} onValueChange={(v) => setFormData({...formData, durability: v[0]})} min={0} max={10} step={1} className="mt-2" />
             </div>
-            <div className="border-t border-stone-700 pt-4">
-              <h3 className="text-sm font-bold text-stone-300 mb-3">Ammunition Settings</h3>
-              <div className="space-y-4">
-                <div className="flex items-center gap-2">
-                  <Checkbox 
-                    id="isAmmunition" 
-                    checked={formData.isAmmunition} 
-                    onCheckedChange={(checked) => setFormData({...formData, isAmmunition: !!checked, ammunitionType: '', weaponCategory: ''})}
-                    data-testid="checkbox-is-ammunition"
-                  />
-                  <Label htmlFor="isAmmunition" className="cursor-pointer">Ammunition</Label>
+            {formData.itemType === 'ammunition' && (
+              <div className="border-t border-stone-700 pt-4">
+                <h3 className="text-sm font-bold text-stone-300 mb-3">Ammunition Settings</h3>
+                <div>
+                  <Label>Ammunition Type</Label>
+                  <Select value={formData.ammunitionType} onValueChange={(v) => setFormData({...formData, ammunitionType: v})}>
+                    <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-ammunition-type">
+                      <SelectValue placeholder="Select ammunition type..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="arrow">Arrow</SelectItem>
+                      <SelectItem value="bolt">Bolt</SelectItem>
+                      <SelectItem value="bullet">Bullet</SelectItem>
+                      <SelectItem value="dart">Dart</SelectItem>
+                      <SelectItem value="stone">Stone</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
-                {formData.isAmmunition && (
+              </div>
+            )}
+            {formData.itemType === 'weapon' && (
+              <div className="border-t border-stone-700 pt-4">
+                <h3 className="text-sm font-bold text-stone-300 mb-3">Weapon Settings</h3>
+                <div className="space-y-4">
                   <div>
-                    <Label>Ammunition Type</Label>
-                    <Select value={formData.ammunitionType} onValueChange={(v) => setFormData({...formData, ammunitionType: v})}>
-                      <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-ammunition-type">
-                        <SelectValue placeholder="Select ammunition type..." />
+                    <Label>Weapon Category</Label>
+                    <Select value={formData.weaponCategory} onValueChange={(v) => setFormData({...formData, weaponCategory: v})}>
+                      <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-weapon-category">
+                        <SelectValue placeholder="Select weapon category..." />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="arrow">Arrow</SelectItem>
-                        <SelectItem value="bolt">Bolt</SelectItem>
-                        <SelectItem value="bullet">Bullet</SelectItem>
-                        <SelectItem value="dart">Dart</SelectItem>
-                        <SelectItem value="stone">Stone</SelectItem>
+                        <SelectItem value="melee">Melee</SelectItem>
+                        <SelectItem value="bow">Bow (uses Arrows)</SelectItem>
+                        <SelectItem value="crossbow">Crossbow (uses Bolts)</SelectItem>
+                        <SelectItem value="sling">Sling (uses Stones)</SelectItem>
+                        <SelectItem value="firearm">Firearm (uses Bullets)</SelectItem>
+                        <SelectItem value="thrown">Thrown (uses Darts)</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
-                )}
-                {!formData.isAmmunition && formData.itemType === 'weapon' && (
-                  <>
-                    <div>
-                      <Label>Weapon Category</Label>
-                      <Select value={formData.weaponCategory} onValueChange={(v) => setFormData({...formData, weaponCategory: v})}>
-                        <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-weapon-category">
-                          <SelectValue placeholder="Select weapon category..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="melee">Melee</SelectItem>
-                          <SelectItem value="bow">Bow (uses Arrows)</SelectItem>
-                          <SelectItem value="crossbow">Crossbow (uses Bolts)</SelectItem>
-                          <SelectItem value="sling">Sling (uses Stones)</SelectItem>
-                          <SelectItem value="firearm">Firearm (uses Bullets)</SelectItem>
-                          <SelectItem value="thrown">Thrown (uses Darts)</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="flex items-center gap-2 mt-2">
-                      <Checkbox 
-                        id="isHeavy" 
-                        checked={formData.isHeavy || false} 
-                        onCheckedChange={(checked) => setFormData({...formData, isHeavy: !!checked})}
-                        data-testid="checkbox-is-heavy"
-                      />
-                      <Label htmlFor="isHeavy" className="cursor-pointer">Two-Handed Weapon (occupies 2 hotbar slots)</Label>
-                    </div>
-                  </>
-                )}
+                  <div className="flex items-center gap-2">
+                    <Checkbox 
+                      id="isHeavy" 
+                      checked={formData.isHeavy || false} 
+                      onCheckedChange={(checked) => setFormData({...formData, isHeavy: !!checked})}
+                      data-testid="checkbox-is-heavy"
+                    />
+                    <Label htmlFor="isHeavy" className="cursor-pointer">Two-Handed Weapon (blocks right hand slot)</Label>
+                  </div>
+                </div>
               </div>
-            </div>
+            )}
             {formData.itemType === 'armor' && (
               <div className="border-t border-stone-700 pt-4">
                 <h3 className="text-sm font-bold text-stone-300 mb-3">Armor Settings</h3>
@@ -9131,6 +9160,7 @@ function ManageTemplatesDialog({ open, onOpenChange, campaignId }: { open: boole
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="weapon">Weapon</SelectItem>
+                        <SelectItem value="ammunition">Ammunition</SelectItem>
                         <SelectItem value="armor">Armor</SelectItem>
                         <SelectItem value="consumable">Consumable</SelectItem>
                         <SelectItem value="utility">Utility</SelectItem>
@@ -9175,55 +9205,47 @@ function ManageTemplatesDialog({ open, onOpenChange, campaignId }: { open: boole
                     </div>
                   </div>
                 </div>
-                <div className="border-t border-stone-700 pt-4">
-                  <h3 className="text-sm font-bold text-stone-300 mb-3">Ammunition Settings</h3>
-                  <div className="space-y-4">
-                    <div className="flex items-center gap-2">
-                      <Checkbox 
-                        id="templateIsAmmunition" 
-                        checked={newItem.isAmmunition} 
-                        onCheckedChange={(checked) => setNewItem({...newItem, isAmmunition: !!checked, ammunitionType: '', weaponCategory: ''})}
-                        data-testid="checkbox-template-is-ammunition"
-                      />
-                      <Label htmlFor="templateIsAmmunition" className="cursor-pointer">Ammunition</Label>
+                {newItem.itemType === 'ammunition' && (
+                  <div className="border-t border-stone-700 pt-4">
+                    <h3 className="text-sm font-bold text-stone-300 mb-3">Ammunition Settings</h3>
+                    <div>
+                      <Label>Ammunition Type</Label>
+                      <Select value={newItem.ammunitionType} onValueChange={(v) => setNewItem({...newItem, ammunitionType: v})}>
+                        <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-template-ammunition-type">
+                          <SelectValue placeholder="Select ammunition type..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="arrow">Arrow</SelectItem>
+                          <SelectItem value="bolt">Bolt</SelectItem>
+                          <SelectItem value="bullet">Bullet</SelectItem>
+                          <SelectItem value="dart">Dart</SelectItem>
+                          <SelectItem value="stone">Stone</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
-                    {newItem.isAmmunition && (
-                      <div>
-                        <Label>Ammunition Type</Label>
-                        <Select value={newItem.ammunitionType} onValueChange={(v) => setNewItem({...newItem, ammunitionType: v})}>
-                          <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-template-ammunition-type">
-                            <SelectValue placeholder="Select ammunition type..." />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="arrow">Arrow</SelectItem>
-                            <SelectItem value="bolt">Bolt</SelectItem>
-                            <SelectItem value="bullet">Bullet</SelectItem>
-                            <SelectItem value="dart">Dart</SelectItem>
-                            <SelectItem value="stone">Stone</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    )}
-                    {!newItem.isAmmunition && newItem.itemType === 'weapon' && (
-                      <div>
-                        <Label>Weapon Category</Label>
-                        <Select value={newItem.weaponCategory} onValueChange={(v) => setNewItem({...newItem, weaponCategory: v})}>
-                          <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-template-weapon-category">
-                            <SelectValue placeholder="Select weapon category..." />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="melee">Melee</SelectItem>
-                            <SelectItem value="bow">Bow (uses Arrows)</SelectItem>
-                            <SelectItem value="crossbow">Crossbow (uses Bolts)</SelectItem>
-                            <SelectItem value="sling">Sling (uses Stones)</SelectItem>
-                            <SelectItem value="firearm">Firearm (uses Bullets)</SelectItem>
-                            <SelectItem value="thrown">Thrown (uses Darts)</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    )}
                   </div>
-                </div>
+                )}
+                {newItem.itemType === 'weapon' && (
+                  <div className="border-t border-stone-700 pt-4">
+                    <h3 className="text-sm font-bold text-stone-300 mb-3">Weapon Settings</h3>
+                    <div>
+                      <Label>Weapon Category</Label>
+                      <Select value={newItem.weaponCategory} onValueChange={(v) => setNewItem({...newItem, weaponCategory: v})}>
+                        <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-template-weapon-category">
+                          <SelectValue placeholder="Select weapon category..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="melee">Melee</SelectItem>
+                          <SelectItem value="bow">Bow (uses Arrows)</SelectItem>
+                          <SelectItem value="crossbow">Crossbow (uses Bolts)</SelectItem>
+                          <SelectItem value="sling">Sling (uses Stones)</SelectItem>
+                          <SelectItem value="firearm">Firearm (uses Bullets)</SelectItem>
+                          <SelectItem value="thrown">Thrown (uses Darts)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                )}
                 <div className="border-t border-stone-700 pt-4">
                   <h3 className="text-sm font-bold text-stone-300 mb-3">Price</h3>
                   <div className="grid grid-cols-4 gap-4">
@@ -9512,6 +9534,7 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="weapon">Weapon</SelectItem>
+                      <SelectItem value="ammunition">Ammunition</SelectItem>
                       <SelectItem value="armor">Armor</SelectItem>
                       <SelectItem value="consumable">Consumable</SelectItem>
                       <SelectItem value="utility">Utility</SelectItem>
