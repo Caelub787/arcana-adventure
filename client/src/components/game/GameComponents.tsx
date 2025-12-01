@@ -3360,8 +3360,9 @@ function HotbarsTabContent({ character, isGM, isOwner }: HotbarsTabContentProps)
         }
       }
 
-      // Heavy weapon logic - occupy both slots 0 and 2 (blocking slot 1)
-      if (hotbarType === 'weapons' && item.weight === 'heavy') {
+      // Two-handed weapon logic - occupy both slots 0 and 2 (blocking slot 1)
+      // Check both isHeavy (new) and weight === 'heavy' (legacy) for backward compatibility
+      if (hotbarType === 'weapons' && (item.isHeavy || item.weight === 'heavy')) {
         // Heavy weapons can only go in slots 0 or 2
         if (slotNumber === 1) {
           toast({
@@ -7563,6 +7564,7 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
     isAmmunition: boolean;
     ammunitionType: string;
     weaponCategory: string;
+    isHeavy: boolean;
   }>({
     name: '',
     image: '',
@@ -7589,6 +7591,7 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
     isAmmunition: false,
     ammunitionType: '',
     weaponCategory: '',
+    isHeavy: false,
   });
 
   const [showImageCrop, setShowImageCrop] = useState(false);
@@ -7625,6 +7628,7 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
       isAmmunition: template.isAmmunition || false,
       ammunitionType: template.ammunitionType || '',
       weaponCategory: template.weaponCategory || '',
+      isHeavy: template.isHeavy || false,
     };
     onSave(itemData);
   };
@@ -7766,6 +7770,7 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
       isAmmunition: false,
       ammunitionType: '',
       weaponCategory: '',
+      isHeavy: false,
     });
   };
 
@@ -8036,22 +8041,33 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
                   </div>
                 )}
                 {!formData.isAmmunition && formData.itemType === 'weapon' && (
-                  <div>
-                    <Label>Weapon Category</Label>
-                    <Select value={formData.weaponCategory} onValueChange={(v) => setFormData({...formData, weaponCategory: v})}>
-                      <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-weapon-category">
-                        <SelectValue placeholder="Select weapon category..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="melee">Melee</SelectItem>
-                        <SelectItem value="bow">Bow (uses Arrows)</SelectItem>
-                        <SelectItem value="crossbow">Crossbow (uses Bolts)</SelectItem>
-                        <SelectItem value="sling">Sling (uses Stones)</SelectItem>
-                        <SelectItem value="firearm">Firearm (uses Bullets)</SelectItem>
-                        <SelectItem value="thrown">Thrown (uses Darts)</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
+                  <>
+                    <div>
+                      <Label>Weapon Category</Label>
+                      <Select value={formData.weaponCategory} onValueChange={(v) => setFormData({...formData, weaponCategory: v})}>
+                        <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-weapon-category">
+                          <SelectValue placeholder="Select weapon category..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="melee">Melee</SelectItem>
+                          <SelectItem value="bow">Bow (uses Arrows)</SelectItem>
+                          <SelectItem value="crossbow">Crossbow (uses Bolts)</SelectItem>
+                          <SelectItem value="sling">Sling (uses Stones)</SelectItem>
+                          <SelectItem value="firearm">Firearm (uses Bullets)</SelectItem>
+                          <SelectItem value="thrown">Thrown (uses Darts)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="flex items-center gap-2 mt-2">
+                      <Checkbox 
+                        id="isHeavy" 
+                        checked={formData.isHeavy || false} 
+                        onCheckedChange={(checked) => setFormData({...formData, isHeavy: !!checked})}
+                        data-testid="checkbox-is-heavy"
+                      />
+                      <Label htmlFor="isHeavy" className="cursor-pointer">Two-Handed Weapon (occupies 2 hotbar slots)</Label>
+                    </div>
+                  </>
                 )}
               </div>
             </div>
@@ -8633,7 +8649,7 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
   const handleEquipToSlot = (hotbarType: string, slotNumber: number) => {
     if (!item) return;
 
-    if (hotbarType === 'weapons' && item.weight === 'heavy') {
+    if (hotbarType === 'weapons' && (item.isHeavy || item.weight === 'heavy')) {
       upsertHotbarMutation.mutate({ hotbarType, slotNumber: 0, itemId: item.id });
       upsertHotbarMutation.mutate({ hotbarType, slotNumber: 2, itemId: item.id });
     } else {
@@ -8647,7 +8663,7 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
     const slots: { label: string; hotbarType: string; slotNumber: number }[] = [];
     
     if (item.itemType === 'weapon') {
-      if (item.weight === 'heavy') {
+      if (item.isHeavy || item.weight === 'heavy') {
         slots.push({ label: 'Weapons (Both Hands)', hotbarType: 'weapons', slotNumber: 0 });
       } else {
         slots.push({ label: 'Weapons - Left Hand', hotbarType: 'weapons', slotNumber: 0 });
@@ -8912,22 +8928,33 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
                         </div>
                       )}
                       {!currentData.isAmmunition && currentData.itemType === 'weapon' && (
-                        <div>
-                          <Label>Weapon Category</Label>
-                          <Select value={currentData.weaponCategory || ''} onValueChange={(v) => setEditData({ ...editData, weaponCategory: v })}>
-                            <SelectTrigger className="bg-stone-800 border-amber-700" data-testid="select-edit-weapon-category">
-                              <SelectValue placeholder="Select weapon category..." />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="melee">Melee</SelectItem>
-                              <SelectItem value="bow">Bow (uses Arrows)</SelectItem>
-                              <SelectItem value="crossbow">Crossbow (uses Bolts)</SelectItem>
-                              <SelectItem value="sling">Sling (uses Stones)</SelectItem>
-                              <SelectItem value="firearm">Firearm (uses Bullets)</SelectItem>
-                              <SelectItem value="thrown">Thrown (uses Darts)</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
+                        <>
+                          <div>
+                            <Label>Weapon Category</Label>
+                            <Select value={currentData.weaponCategory || ''} onValueChange={(v) => setEditData({ ...editData, weaponCategory: v })}>
+                              <SelectTrigger className="bg-stone-800 border-amber-700" data-testid="select-edit-weapon-category">
+                                <SelectValue placeholder="Select weapon category..." />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="melee">Melee</SelectItem>
+                                <SelectItem value="bow">Bow (uses Arrows)</SelectItem>
+                                <SelectItem value="crossbow">Crossbow (uses Bolts)</SelectItem>
+                                <SelectItem value="sling">Sling (uses Stones)</SelectItem>
+                                <SelectItem value="firearm">Firearm (uses Bullets)</SelectItem>
+                                <SelectItem value="thrown">Thrown (uses Darts)</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="flex items-center gap-2 mt-2">
+                            <Checkbox 
+                              id="editIsHeavy" 
+                              checked={currentData.isHeavy || false} 
+                              onCheckedChange={(checked) => setEditData({ ...editData, isHeavy: !!checked })}
+                              data-testid="checkbox-edit-is-heavy"
+                            />
+                            <Label htmlFor="editIsHeavy" className="cursor-pointer">Two-Handed Weapon (occupies 2 hotbar slots)</Label>
+                          </div>
+                        </>
                       )}
                     </>
                   ) : (
@@ -8946,6 +8973,12 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
                         <div>
                           <Label className="text-xs text-stone-400">Weapon Category</Label>
                           <p className="text-stone-200 capitalize">{currentData.weaponCategory}</p>
+                        </div>
+                      )}
+                      {!currentData.isAmmunition && currentData.itemType === 'weapon' && (
+                        <div>
+                          <Label className="text-xs text-stone-400">Two-Handed</Label>
+                          <p className="text-stone-200">{currentData.isHeavy ? 'Yes' : 'No'}</p>
                         </div>
                       )}
                     </div>
