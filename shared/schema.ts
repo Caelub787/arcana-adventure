@@ -264,6 +264,11 @@ export const items = pgTable("items", {
   isContainer: boolean("is_container").default(false).notNull(),
   carryCapacity: integer("carry_capacity").default(0), // Additional carry capacity if container, affects max carry weight
   isEquipped: boolean("is_equipped").default(false).notNull(),
+  // Armor-specific fields
+  armorSlot: text("armor_slot"), // "helm", "chest", "arm", "legs", "boots" - which body part the armor covers
+  armorBonus: integer("armor_bonus").default(0), // Bonus to DC when equipped
+  damageReduction: integer("damage_reduction").default(0), // Amount of damage reduction
+  damageReductionType: text("damage_reduction_type"), // Damage type reduced: Sharp, Blunt, Piercing, Flame, Frost, Storm, Tide, Stone, Flux, Light, Dark, Sound
   // Legacy price fields (kept for backward compatibility)
   priceCopper: integer("price_copper").default(0).notNull(),
   priceSilver: integer("price_silver").default(0).notNull(),
@@ -308,8 +313,8 @@ export type Spell = typeof spells.$inferSelect;
 export const hotbars = pgTable("hotbars", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   characterId: varchar("character_id").notNull().references(() => characters.id, { onDelete: "cascade" }),
-  hotbarType: text("hotbar_type").notNull(), // "weapons", "magic", "skills", "consumables", "utility"
-  slotNumber: integer("slot_number").notNull(), // 0-4 for most, 0-2 for weapons, 0-1 for consumables
+  hotbarType: text("hotbar_type").notNull(), // "weapons", "magic", "skills", "consumables", "utility", "armor"
+  slotNumber: integer("slot_number").notNull(), // 0-4 for most, 0-2 for weapons, 0-1 for consumables, 0-4 for armor (helm/chest/arm/legs/boots)
   itemId: varchar("item_id").references(() => items.id, { onDelete: "set null" }), // For weapons, consumables, utility
   spellId: varchar("spell_id").references(() => spells.id, { onDelete: "set null" }), // For magic hotbar
   skillName: text("skill_name"), // For skills hotbar
