@@ -1351,24 +1351,63 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     if (breakRoll < breakChance) {
       const newQuantity = (ammo.quantity || 1) - 1;
       
+      // Calculate total remaining across all matching ammo (before this break)
+      const totalRemaining = getTotalAmmunitionQuantity(ammo) - 1;
+      
       if (newQuantity <= 0) {
-        triggerRollNotification({
-          type: 'attack',
-          dieType: 'd20',
-          label: `${ammo.name} Broke!`,
-          result: 0,
-          modifier: 0,
-          total: 0,
-          username: character.name || 'Unknown',
-          characterName: character.name,
-          calculationBreakdown: 'Last arrow used and broke!',
-        });
+        // Current stack is empty - delete this item
+        await api.deleteItem(ammo.id);
         
-        if (character.campaignId) {
-          gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', `${ammo.name} broke! No ammunition remaining.`, 'system');
+        // Find another matching ammunition item to equip
+        const nextAmmo = allItems?.find((item: any) => 
+          item.id !== ammo.id &&
+          item.itemType === 'ammunition' && 
+          item.name === ammo.name &&
+          item.ammunitionType === ammo.ammunitionType &&
+          (item.quantity || 1) > 0
+        );
+        
+        if (nextAmmo) {
+          // Update hotbar to point to next matching ammunition
+          const ammoHotbar = allHotbars?.find((h: Hotbar) => h.hotbarType === 'weapons' && h.slotNumber === 2);
+          if (ammoHotbar) {
+            await api.updateHotbar(ammoHotbar.id, { itemId: nextAmmo.id });
+          }
+          
+          triggerRollNotification({
+            type: 'attack',
+            dieType: 'd20',
+            label: `${ammo.name} Broke!`,
+            result: totalRemaining,
+            modifier: 0,
+            total: totalRemaining,
+            username: character.name || 'Unknown',
+            characterName: character.name,
+            calculationBreakdown: `Stack depleted! ${totalRemaining} ${ammo.name} remaining`,
+          });
+          
+          if (character.campaignId) {
+            gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', `An arrow broke! ${totalRemaining} ${ammo.name} remaining.`, 'system');
+          }
+        } else {
+          // No more matching ammunition
+          triggerRollNotification({
+            type: 'attack',
+            dieType: 'd20',
+            label: `${ammo.name} Broke!`,
+            result: 0,
+            modifier: 0,
+            total: 0,
+            username: character.name || 'Unknown',
+            characterName: character.name,
+            calculationBreakdown: 'Last arrow used and broke!',
+          });
+          
+          if (character.campaignId) {
+            gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', `${ammo.name} broke! No ammunition remaining.`, 'system');
+          }
         }
         
-        await api.deleteItem(ammo.id);
         queryClient.invalidateQueries({ queryKey: ['items', character.id] });
         queryClient.invalidateQueries({ queryKey: ['hotbars', character.id] });
       } else {
@@ -1376,16 +1415,16 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
           type: 'attack',
           dieType: 'd20',
           label: `${ammo.name} Broke!`,
-          result: newQuantity,
+          result: totalRemaining,
           modifier: 0,
-          total: newQuantity,
+          total: totalRemaining,
           username: character.name || 'Unknown',
           characterName: character.name,
-          calculationBreakdown: `Arrow broke! ${newQuantity} remaining`,
+          calculationBreakdown: `Arrow broke! ${totalRemaining} remaining`,
         });
         
         if (character.campaignId) {
-          gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', `An arrow broke! ${newQuantity} ${ammo.name} remaining.`, 'system');
+          gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', `An arrow broke! ${totalRemaining} ${ammo.name} remaining.`, 'system');
         }
         
         await api.updateItem(ammo.id, { quantity: newQuantity });
