@@ -1328,6 +1328,7 @@ const RANGED_WEAPON_CATEGORIES = ['bow', 'crossbow', 'sling', 'firearm'];
 function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHotbars, allItems }: BattleMapHotbarSlotProps) {
   const clickTimerRef = useRef<NodeJS.Timeout | null>(null);
   const clickCountRef = useRef(0);
+  const queryClient = useQueryClient();
   
   // Fetch item data if itemId exists (same pattern as HotbarSlot)
   const { data: itemData } = useQuery({
@@ -1342,6 +1343,55 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     queryFn: () => api.getSpells(character.id).then(spells => spells.find((s: any) => s.id === hotbar?.spellId)),
     enabled: !!hotbar?.spellId
   });
+
+  // Function to check if ammunition breaks (10% chance) and update quantity
+  const checkAmmunitionBreak = async (ammo: any) => {
+    const breakRoll = Math.random();
+    if (breakRoll < 0.1) {
+      const newQuantity = (ammo.quantity || 1) - 1;
+      
+      if (newQuantity <= 0) {
+        triggerRollNotification({
+          type: 'attack',
+          dieType: 'd20',
+          label: `${ammo.name} Broke!`,
+          result: 0,
+          modifier: 0,
+          total: 0,
+          username: character.name || 'Unknown',
+          characterName: character.name,
+          calculationBreakdown: 'Last arrow used and broke!',
+        });
+        
+        if (character.campaignId) {
+          gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', `${ammo.name} broke! No ammunition remaining.`, 'system');
+        }
+        
+        await api.deleteItem(ammo.id);
+        queryClient.invalidateQueries({ queryKey: ['items', character.id] });
+        queryClient.invalidateQueries({ queryKey: ['hotbars', character.id] });
+      } else {
+        triggerRollNotification({
+          type: 'attack',
+          dieType: 'd20',
+          label: `${ammo.name} Broke!`,
+          result: newQuantity,
+          modifier: 0,
+          total: newQuantity,
+          username: character.name || 'Unknown',
+          characterName: character.name,
+          calculationBreakdown: `Arrow broke! ${newQuantity} remaining`,
+        });
+        
+        if (character.campaignId) {
+          gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', `An arrow broke! ${newQuantity} ${ammo.name} remaining.`, 'system');
+        }
+        
+        await api.updateItem(ammo.id, { quantity: newQuantity });
+        queryClient.invalidateQueries({ queryKey: ['items', character.id] });
+      }
+    }
+  };
 
   const getSpellLevelColor = (level: number) => {
     if (level === 0) return 'text-gray-400';
@@ -1389,25 +1439,26 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
   };
 
   // Handle attack roll (1d20 + attribute modifier)
-  const handleAttackRoll = () => {
+  const handleAttackRoll = async () => {
     if (!itemData || itemData.itemType !== 'weapon') return;
     
     // Check if ranged weapon requires ammunition
-    if (isRangedWeapon(itemData) && requiresAmmunitionForRoll(itemData.weaponCategory)) {
-      const ammo = getEquippedAmmunition();
-      if (!ammo) {
-        triggerRollNotification({
-          type: 'attack',
-          dieType: 'd20',
-          label: `${itemData.name} - No Ammo!`,
-          result: 0,
-          modifier: 0,
-          total: 0,
-          username: character.name || 'Unknown',
-          characterName: character.name,
-        });
-        return;
-      }
+    const ammo = isRangedWeapon(itemData) && requiresAmmunitionForRoll(itemData.weaponCategory) 
+      ? getEquippedAmmunition() 
+      : null;
+    
+    if (isRangedWeapon(itemData) && requiresAmmunitionForRoll(itemData.weaponCategory) && !ammo) {
+      triggerRollNotification({
+        type: 'attack',
+        dieType: 'd20',
+        label: `${itemData.name} - No Ammo!`,
+        result: 0,
+        modifier: 0,
+        total: 0,
+        username: character.name || 'Unknown',
+        characterName: character.name,
+      });
+      return;
     }
     
     const attrName = itemData.attribute || 'might';
@@ -1437,6 +1488,11 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     if (character.campaignId) {
       const chatText = `${itemData.name} Attack: ${calculationBreakdown} = ${total}`;
       gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', chatText, 'roll');
+    }
+    
+    // Check for ammunition break (10% chance) for ranged weapons
+    if (ammo) {
+      await checkAmmunitionBreak(ammo);
     }
   };
 
@@ -1589,27 +1645,33 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
           alt={itemData.name}
           className="w-9 h-9 md:w-14 md:h-14 object-cover rounded"
         />
-        {itemData.itemType === 'ammunition' && itemData.quantity > 1 && (
+        {itemData.itemType === 'ammunition' && (
           <div className="absolute top-0 right-0 bg-stone-900/90 text-amber-400 text-[6px] px-0.5 rounded-bl font-bold">
-            x{itemData.quantity}
+            x{itemData.quantity || 1}
           </div>
         )}
       </div>
     ) : (
-      <>
+      <div className="relative w-full h-full flex flex-col items-center justify-center">
         <div className="text-amber-400 font-bold truncate">
           {itemData.name.substring(0, 4)}
         </div>
         {itemData.damage && (
           <div className="text-red-400 text-[7px]">{itemData.damage}</div>
         )}
-      </>
+        {itemData.itemType === 'ammunition' && (
+          <div className="absolute top-0 right-0 bg-stone-900/90 text-amber-400 text-[6px] px-0.5 rounded-bl font-bold">
+            x{itemData.quantity || 1}
+          </div>
+        )}
+      </div>
     );
     tooltipContent = (
       <>
         <p className="font-bold">{itemData.name}</p>
         {itemData.damage && <p className="text-sm">Damage: {itemData.damage}{itemData.mod ? ` +${itemData.mod}` : ''}</p>}
         {itemData.attribute && <p className="text-sm">Attack: {itemData.attribute}</p>}
+        {itemData.itemType === 'ammunition' && <p className="text-sm text-amber-400">Quantity: x{itemData.quantity || 1}</p>}
         {itemData.durability !== undefined && <p className="text-sm">Durability: {itemData.durability}/10</p>}
         {isClickable && <p className="text-xs text-stone-400 mt-1">Click: Attack | Double-click: Damage</p>}
       </>
@@ -4882,9 +4944,9 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
                       />
                     </div>
                     {/* Quantity badge for ammunition */}
-                    {itemData.itemType === 'ammunition' && itemData.quantity > 1 && (
+                    {itemData.itemType === 'ammunition' && (
                       <div className="absolute top-0 right-0 bg-stone-900/90 text-amber-400 text-[8px] px-1 rounded-bl font-bold">
-                        x{itemData.quantity}
+                        x{itemData.quantity || 1}
                       </div>
                     )}
                   </div>
@@ -4916,9 +4978,9 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
                       />
                     </div>
                     {/* Quantity badge for ammunition */}
-                    {itemData.itemType === 'ammunition' && itemData.quantity > 1 && (
+                    {itemData.itemType === 'ammunition' && (
                       <div className="absolute top-0 right-0 bg-stone-900/90 text-amber-400 text-[8px] px-1 rounded-bl font-bold">
-                        x{itemData.quantity}
+                        x{itemData.quantity || 1}
                       </div>
                     )}
                     {/* Damage badge for weapons */}
