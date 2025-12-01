@@ -1,8 +1,9 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useMemo } from 'react';
 import { useLocation } from 'wouter';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, type Item } from '@/lib/api';
 import { useAuth } from '@/lib/AuthContext';
+import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -99,12 +100,16 @@ export default function AdminSettings() {
     );
   }
 
-  const filteredItems = systemItems.filter((item: Item) => {
-    const matchesSearch = item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          (item.description?.toLowerCase().includes(searchQuery.toLowerCase()));
-    const matchesType = typeFilter === 'all' || item.itemType === typeFilter;
-    return matchesSearch && matchesType;
-  });
+  const debouncedSearchQuery = useDebouncedValue(searchQuery, 150);
+  
+  const filteredItems = useMemo(() => {
+    return systemItems.filter((item: Item) => {
+      const matchesSearch = item.name.toLowerCase().includes(debouncedSearchQuery.toLowerCase()) ||
+                            (item.description?.toLowerCase().includes(debouncedSearchQuery.toLowerCase()));
+      const matchesType = typeFilter === 'all' || item.itemType === typeFilter;
+      return matchesSearch && matchesType;
+    });
+  }, [systemItems, debouncedSearchQuery, typeFilter]);
 
   return (
     <div className="min-h-screen bg-stone-950 text-stone-200">

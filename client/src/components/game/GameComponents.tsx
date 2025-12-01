@@ -6051,6 +6051,31 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
   // Item mutations
   const createItemMutation = useMutation({
     mutationFn: (itemData: any) => api.createItem(character.id, itemData),
+    onMutate: async (newItemData: any) => {
+      await queryClient.cancelQueries({ queryKey: ['items', character.id] });
+      const previousItems = queryClient.getQueryData(['items', character.id]);
+      
+      const tempId = `temp-${Date.now()}`;
+      const optimisticItem = {
+        ...newItemData,
+        id: tempId,
+        characterId: character.id,
+      };
+      
+      queryClient.setQueryData(['items', character.id], (old: any[] = []) => [...old, optimisticItem]);
+      
+      return { previousItems, tempId };
+    },
+    onError: (_error, _variables, context) => {
+      if (context?.previousItems) {
+        queryClient.setQueryData(['items', character.id], context.previousItems);
+      }
+      toast({
+        title: "Error",
+        description: "Failed to add item",
+        variant: "destructive",
+      });
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['items', character.id] });
       toast({
@@ -8552,6 +8577,9 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
   const [activeTab, setActiveTab] = useState<'templates' | 'create'>('templates');
   const [templateSearch, setTemplateSearch] = useState('');
   const [templateTypeFilter, setTemplateTypeFilter] = useState('all');
+  const [quantityPickerTemplate, setQuantityPickerTemplate] = useState<any>(null);
+  const [addQuantity, setAddQuantity] = useState(1);
+  const holdTimerRef = useRef<NodeJS.Timeout | null>(null);
   
   const { data: templateData } = useQuery({
     queryKey: ['template-items', campaignId],
@@ -8565,6 +8593,38 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
     const matchesType = templateTypeFilter === 'all' || item.itemType === templateTypeFilter;
     return matchesSearch && matchesType;
   });
+
+  const handleTemplatePointerDown = (template: any) => {
+    holdTimerRef.current = setTimeout(() => {
+      setQuantityPickerTemplate(template);
+      setAddQuantity(1);
+    }, 400);
+  };
+
+  const handleTemplatePointerUp = (template: any) => {
+    if (holdTimerRef.current) {
+      clearTimeout(holdTimerRef.current);
+      holdTimerRef.current = null;
+      if (!quantityPickerTemplate) {
+        handleAddFromTemplate(template, 1);
+      }
+    }
+  };
+
+  const handleTemplatePointerLeave = () => {
+    if (holdTimerRef.current) {
+      clearTimeout(holdTimerRef.current);
+      holdTimerRef.current = null;
+    }
+  };
+
+  const handleConfirmQuantity = () => {
+    if (quantityPickerTemplate && addQuantity > 0) {
+      handleAddFromTemplate(quantityPickerTemplate, addQuantity);
+      setQuantityPickerTemplate(null);
+      setAddQuantity(1);
+    }
+  };
 
   const [formData, setFormData] = useState<{
     name: string;
@@ -8635,14 +8695,14 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
   const imageInputRef = useRef<HTMLInputElement>(null);
   const cropImageRef = useRef<HTMLImageElement>(null);
 
-  const handleAddFromTemplate = (template: any) => {
+  const handleAddFromTemplate = (template: any, quantity: number = 1) => {
     const itemData = {
       name: template.name,
       image: template.image || '',
       description: template.description || '',
       itemType: template.itemType,
       rarity: template.rarity,
-      quantity: 1,
+      quantity: quantity,
       damage: template.damage || '',
       damageType: template.damageType || '',
       mod: template.mod || 0,
@@ -8666,6 +8726,7 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
       armorBonus: template.armorBonus || 0,
       damageReduction: template.damageReduction || 0,
       damageReductionType: template.damageReductionType || '',
+      breakChance: template.breakChance ?? 10,
     };
     onSave(itemData);
   };
@@ -8889,21 +8950,25 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
                 </div>
               ) : (
                 <div className="space-y-2">
+                  <p className="text-xs text-stone-500">Tap to add 1. Hold to add multiple.</p>
                   {filteredTemplates.map((item: any) => (
                     <div
                       key={item.id}
-                      className="flex items-center gap-3 p-3 rounded-lg bg-stone-800 border border-stone-700 hover:border-amber-700 transition-colors cursor-pointer"
-                      onClick={() => handleAddFromTemplate(item)}
+                      className="flex items-center gap-3 p-3 rounded-lg bg-stone-800 border border-stone-700 hover:border-amber-700 transition-colors cursor-pointer select-none"
+                      onPointerDown={() => handleTemplatePointerDown(item)}
+                      onPointerUp={() => handleTemplatePointerUp(item)}
+                      onPointerLeave={handleTemplatePointerLeave}
+                      onPointerCancel={handleTemplatePointerLeave}
                       data-testid={`template-item-${item.id}`}
                     >
                       {item.image ? (
-                        <img src={item.image} alt={item.name} className="h-10 w-10 rounded object-cover" />
+                        <img src={item.image} alt={item.name} className="h-10 w-10 rounded object-cover pointer-events-none" />
                       ) : (
-                        <div className="h-10 w-10 rounded bg-stone-700 flex items-center justify-center">
+                        <div className="h-10 w-10 rounded bg-stone-700 flex items-center justify-center pointer-events-none">
                           <Package className="h-5 w-5 text-stone-500" />
                         </div>
                       )}
-                      <div className="flex-1 min-w-0">
+                      <div className="flex-1 min-w-0 pointer-events-none">
                         <div className="flex items-center gap-2">
                           <span className="font-medium truncate">{item.name}</span>
                           <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${rarityColors[item.rarity]}`}>
@@ -8915,10 +8980,58 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
                           {item.damage && <span>| {item.damage}</span>}
                         </div>
                       </div>
-                      <Plus className="h-5 w-5 text-amber-500" />
+                      <Plus className="h-5 w-5 text-amber-500 pointer-events-none" />
                     </div>
                   ))}
                 </div>
+              )}
+              
+              {/* Quantity Picker Dialog */}
+              {quantityPickerTemplate && (
+                <Dialog open={!!quantityPickerTemplate} onOpenChange={() => setQuantityPickerTemplate(null)}>
+                  <DialogContent className="bg-stone-900 border-stone-700 text-stone-200 max-w-sm">
+                    <DialogHeader>
+                      <DialogTitle className="text-amber-500">Add {quantityPickerTemplate.name}</DialogTitle>
+                    </DialogHeader>
+                    <div className="py-4">
+                      <Label>Quantity</Label>
+                      <div className="flex items-center gap-2 mt-2">
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          onClick={() => setAddQuantity(Math.max(1, addQuantity - 1))}
+                          className="border-stone-600"
+                          data-testid="button-decrease-quantity"
+                        >
+                          <Minus className="h-4 w-4" />
+                        </Button>
+                        <Input
+                          type="number"
+                          min="1"
+                          value={addQuantity === 0 ? '' : addQuantity}
+                          onChange={(e) => setAddQuantity(e.target.value === '' ? 0 : Math.max(1, parseInt(e.target.value) || 1))}
+                          className="bg-stone-800 border-stone-700 text-center w-20"
+                          data-testid="input-add-quantity"
+                        />
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          onClick={() => setAddQuantity(addQuantity + 1)}
+                          className="border-stone-600"
+                          data-testid="button-increase-quantity"
+                        >
+                          <Plus className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                    <DialogFooter>
+                      <Button variant="outline" onClick={() => setQuantityPickerTemplate(null)}>Cancel</Button>
+                      <Button onClick={handleConfirmQuantity} disabled={addQuantity < 1}>
+                        Add {addQuantity} Item{addQuantity !== 1 ? 's' : ''}
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
               )}
             </div>
           ) : (
