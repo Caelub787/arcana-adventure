@@ -5099,10 +5099,10 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
                         style={{ width: `${durabilityWidth}%` }}
                       />
                     </div>
-                    {/* Quantity badge for ammunition */}
+                    {/* Quantity badge for ammunition - shows total of all matching ammo */}
                     {itemData.itemType === 'ammunition' && (
                       <div className="absolute top-0 right-0 bg-stone-900/90 text-amber-400 text-[8px] px-1 rounded-bl font-bold">
-                        x{itemData.quantity || 1}
+                        x{getTotalAmmunitionQuantity(itemData)}
                       </div>
                     )}
                   </div>
@@ -5133,10 +5133,10 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
                         style={{ width: `${durabilityWidth}%` }}
                       />
                     </div>
-                    {/* Quantity badge for ammunition */}
+                    {/* Quantity badge for ammunition - shows total of all matching ammo */}
                     {itemData.itemType === 'ammunition' && (
                       <div className="absolute top-0 right-0 bg-stone-900/90 text-amber-400 text-[8px] px-1 rounded-bl font-bold">
-                        x{itemData.quantity || 1}
+                        x{getTotalAmmunitionQuantity(itemData)}
                       </div>
                     )}
                     {/* Damage badge for weapons */}
