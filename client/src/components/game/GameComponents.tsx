@@ -23,7 +23,7 @@ import {
   MousePointer, Target, UserCheck, Swords, ArrowRight, Eye, EyeOff, Check
 } from "lucide-react";
 import { useForm } from "react-hook-form";
-import { type Scene, type Hotbar, api } from "@/lib/api";
+import { type Scene, type Hotbar, api, gameWs } from "@/lib/api";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -2288,9 +2288,8 @@ export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onIn
   const [levelUpMode, setLevelUpMode] = useState<'set' | 'add'>('add');
   const [targetLevel, setTargetLevel] = useState(1);
   const [addTokenDialogOpen, setAddTokenDialogOpen] = useState(false);
-  const [messages, setMessages] = useState([
+  const [messages, setMessages] = useState<{ sender: string; text: string; type: string }[]>([
     { sender: "System", text: "Welcome to Arcana Adventure!", type: "system" },
-    { sender: "GM", text: "Roll for initiative!", type: "chat" }
   ]);
   const [chatInput, setChatInput] = useState("");
   const [showAccessDialog, setShowAccessDialog] = useState(false);
@@ -2298,6 +2297,51 @@ export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onIn
   const [accessLevels, setAccessLevels] = useState<Record<string, string>>({});
   const [loadingAccess, setLoadingAccess] = useState(false);
   const queryClient = useQueryClient();
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  
+  // Fetch existing chat messages from API
+  const { data: chatMessagesData } = useQuery({
+    queryKey: [`/api/campaigns/${campaignId}/chat`],
+    queryFn: () => api.getChatMessages(campaignId!),
+    enabled: !!campaignId,
+  });
+  
+  // Update messages when chat data is loaded
+  useEffect(() => {
+    if (chatMessagesData && Array.isArray(chatMessagesData)) {
+      const loadedMessages = chatMessagesData.map((msg: any) => ({
+        sender: msg.sender,
+        text: msg.text,
+        type: msg.type || 'chat',
+      }));
+      setMessages([
+        { sender: "System", text: "Welcome to Arcana Adventure!", type: "system" },
+        ...loadedMessages,
+      ]);
+    }
+  }, [chatMessagesData]);
+  
+  // Listen for new chat messages via WebSocket
+  useEffect(() => {
+    if (!campaignId) return;
+    
+    const unsubscribe = gameWs.onMessage((data) => {
+      if (data.type === 'chat_message' && data.message) {
+        setMessages(prev => [...prev, {
+          sender: data.message.sender,
+          text: data.message.text,
+          type: data.message.type || 'chat',
+        }]);
+      }
+    });
+    
+    return () => { unsubscribe(); };
+  }, [campaignId]);
+  
+  // Auto-scroll to bottom when new messages arrive
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
 
   // Fetch banned players (only for GMs)
   const { data: bannedPlayers = [] } = useQuery({
@@ -2438,8 +2482,9 @@ export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onIn
   };
 
   const handleRoll = () => {
-    const roll = Math.floor(Math.random() * 20) + 1;
-    setMessages([...messages, { sender: "System", text: `Rolled a d20: ${roll}`, type: "system" }]);
+    if (campaignId) {
+      gameWs.sendDiceRoll('d20', 0, undefined, undefined);
+    }
   };
 
   return (
@@ -2462,11 +2507,34 @@ export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onIn
           <ScrollArea className="flex-1 pr-4 mb-4 border border-stone-800 rounded bg-black/30 p-2">
             <div className="space-y-3">
               {messages.map((msg, i) => (
-                <div key={i} className={`text-sm ${msg.type === 'system' ? 'text-amber-400 italic' : 'text-stone-300'}`}>
-                  <span className="font-bold text-stone-500 mr-2">{msg.sender}:</span>
-                  {msg.text}
+                <div 
+                  key={i} 
+                  className={`text-sm ${
+                    msg.type === 'system' 
+                      ? 'text-amber-400 italic' 
+                      : msg.type === 'roll'
+                        ? 'bg-gradient-to-r from-cyan-900/40 to-purple-900/40 border border-cyan-700/50 rounded-lg px-3 py-2'
+                        : 'text-stone-300'
+                  }`}
+                >
+                  {msg.type === 'roll' ? (
+                    <div className="flex items-center gap-2">
+                      <Dice5 className="h-4 w-4 text-cyan-400 shrink-0" />
+                      <div>
+                        <span className="font-bold text-cyan-300">{msg.sender}</span>
+                        <span className="text-stone-400 mx-1">rolled</span>
+                        <span className="font-mono text-purple-300">{msg.text}</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <span className="font-bold text-stone-500 mr-2">{msg.sender}:</span>
+                      {msg.text}
+                    </>
+                  )}
                 </div>
               ))}
+              <div ref={messagesEndRef} />
             </div>
           </ScrollArea>
 

@@ -356,6 +356,11 @@ class ApiClient {
   async getCampaignBans(campaignId: string): Promise<CampaignBan[]> {
     return this.request(`/campaigns/${campaignId}/bans`);
   }
+  
+  // Chat
+  async getChatMessages(campaignId: string): Promise<ChatMessage[]> {
+    return this.request(`/campaigns/${campaignId}/chat`);
+  }
 
   // Scenes
   async getScenes(campaignId: string): Promise<Scene[]> {

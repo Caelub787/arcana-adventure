@@ -969,6 +969,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
     res.json(campaign);
   });
+  
+  // Get chat messages for a campaign
+  app.get("/api/campaigns/:id/chat", requireAuth, async (req, res) => {
+    try {
+      const messages = await storage.getCampaignMessages(req.params.id, 100);
+      // Return in chronological order (oldest first)
+      res.json(messages.reverse());
+    } catch (err) {
+      console.error('Error fetching chat messages:', err);
+      res.status(500).json({ error: "Failed to fetch chat messages" });
+    }
+  });
 
   app.patch("/api/campaigns/:id", requireAuth, async (req, res) => {
     try {
