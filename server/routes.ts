@@ -501,14 +501,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const rollResult = createRollResult(rollRequest, authenticatedUserId, username);
           const wsMessage = createWebSocketDiceRollMessage(rollResult);
           
-          // Broadcast to all clients in the campaign
+          // Get character name if characterId is provided
+          let characterName = "";
+          if (characterId) {
+            const character = await storage.getCharacter(characterId);
+            if (character) {
+              characterName = character.name;
+            }
+          }
+          
+          // Format dice roll result for chat
+          const modifierText = rollResult.modifier !== 0 
+            ? (rollResult.modifier > 0 ? ` + ${rollResult.modifier}` : ` - ${Math.abs(rollResult.modifier)}`)
+            : "";
+          const purposeText = purpose ? ` - ${purpose}` : "";
+          const characterText = characterName ? ` (${characterName})` : "";
+          const rollText = `${dieType.toUpperCase()}${purposeText}${characterText}: ${rollResult.result}${modifierText} = ${rollResult.total}`;
+          
+          // Save dice roll to chat as a "roll" type message
+          const chatMessage = await storage.createChatMessage({
+            campaignId,
+            userId: authenticatedUserId,
+            sender: username,
+            text: rollText,
+            type: "roll"
+          });
+          
+          // Broadcast dice roll result (for 3D animation) AND chat message to all clients
           const room = campaignRooms.get(campaignId);
           if (room) {
-            const broadcastMessage = JSON.stringify(wsMessage);
+            // Send dice roll for animation
+            const rollBroadcast = JSON.stringify(wsMessage);
+            // Send chat message for chat display
+            const chatBroadcast = JSON.stringify({ 
+              type: "chat_message", 
+              message: chatMessage 
+            });
             
             room.forEach((client) => {
               if (client.readyState === 1) {
-                client.send(broadcastMessage);
+                client.send(rollBroadcast);
+                client.send(chatBroadcast);
               }
             });
           }
