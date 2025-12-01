@@ -3511,31 +3511,65 @@ function HotbarsTabContent({ character, isGM, isOwner }: HotbarsTabContentProps)
   const upsertMutation = useMutation({
     mutationFn: (data: { hotbarType: string; slotNumber: number; itemId?: string; spellId?: string; skillName?: string }) =>
       api.upsertHotbar(character.id, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['hotbars', character.id] });
+    onMutate: async (newData) => {
+      await queryClient.cancelQueries({ queryKey: ['hotbars', character.id] });
+      const previousHotbars = queryClient.getQueryData(['hotbars', character.id]);
+      
+      queryClient.setQueryData(['hotbars', character.id], (old: any[] = []) => {
+        const existing = old.findIndex((h: any) => 
+          h.hotbarType === newData.hotbarType && h.slotNumber === newData.slotNumber
+        );
+        if (existing >= 0) {
+          const updated = [...old];
+          updated[existing] = { ...updated[existing], ...newData, id: updated[existing].id };
+          return updated;
+        }
+        return [...old, { ...newData, id: `temp-${Date.now()}`, characterId: character.id }];
+      });
+      
+      return { previousHotbars };
     },
-    onError: (error: any) => {
+    onError: (error: any, _newData, context) => {
+      if (context?.previousHotbars) {
+        queryClient.setQueryData(['hotbars', character.id], context.previousHotbars);
+      }
       console.error('Hotbar upsert failed:', error);
       toast({
         title: "Equip Failed",
         description: error?.message || "Failed to save hotbar",
         variant: "destructive"
       });
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['hotbars', character.id] });
     }
   });
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => api.deleteHotbar(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['hotbars', character.id] });
+    onMutate: async (deletedId) => {
+      await queryClient.cancelQueries({ queryKey: ['hotbars', character.id] });
+      const previousHotbars = queryClient.getQueryData(['hotbars', character.id]);
+      
+      queryClient.setQueryData(['hotbars', character.id], (old: any[] = []) => 
+        old.filter((h: any) => h.id !== deletedId)
+      );
+      
+      return { previousHotbars };
     },
-    onError: (error: any) => {
+    onError: (error: any, _deletedId, context) => {
+      if (context?.previousHotbars) {
+        queryClient.setQueryData(['hotbars', character.id], context.previousHotbars);
+      }
       console.error('Hotbar delete failed:', error);
       toast({
         title: "Remove Failed",
         description: error?.message || "Failed to remove from hotbar",
         variant: "destructive"
       });
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['hotbars', character.id] });
     }
   });
 
@@ -5906,7 +5940,22 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
 
   const updateItemMutation = useMutation({
     mutationFn: ({ id, data }: { id: string; data: any }) => api.updateItem(id, data),
-    onSuccess: () => {
+    onMutate: async ({ id, data }) => {
+      await queryClient.cancelQueries({ queryKey: ['items', character.id] });
+      const previousItems = queryClient.getQueryData(['items', character.id]);
+      
+      queryClient.setQueryData(['items', character.id], (old: any[] = []) => 
+        old.map((item: any) => item.id === id ? { ...item, ...data } : item)
+      );
+      
+      return { previousItems };
+    },
+    onError: (_error, _variables, context) => {
+      if (context?.previousItems) {
+        queryClient.setQueryData(['items', character.id], context.previousItems);
+      }
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['items', character.id] });
       setShowItemDetail(false);
       setSelectedItem(null);
