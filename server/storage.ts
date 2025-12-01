@@ -549,6 +549,9 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteItem(id: string): Promise<void> {
+    // Clean up any hotbar entries that reference this item
+    await db.delete(hotbars).where(eq(hotbars.itemId, id));
+    // Then delete the item
     await db.delete(items).where(eq(items.id, id));
   }
 
@@ -625,6 +628,9 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteSpell(id: string): Promise<void> {
+    // Clean up any hotbar entries that reference this spell
+    await db.delete(hotbars).where(eq(hotbars.spellId, id));
+    // Then delete the spell
     await db.delete(spells).where(eq(spells.id, id));
   }
 

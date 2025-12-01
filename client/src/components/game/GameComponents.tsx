@@ -4124,14 +4124,14 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
   const clickCountRef = useRef(0);
 
   // Fetch item data if itemId exists
-  const { data: itemData } = useQuery({
+  const { data: itemData, isLoading: itemLoading } = useQuery({
     queryKey: ['item', hotbar?.itemId],
     queryFn: () => api.getItems(character.id).then(items => items.find((i: any) => i.id === hotbar?.itemId)),
     enabled: !!hotbar?.itemId
   });
 
   // Fetch spell data if spellId exists
-  const { data: spellData } = useQuery({
+  const { data: spellData, isLoading: spellLoading } = useQuery({
     queryKey: ['spell', hotbar?.spellId],
     queryFn: () => api.getSpells(character.id).then(spells => spells.find((s: any) => s.id === hotbar?.spellId)),
     enabled: !!hotbar?.spellId
@@ -4471,6 +4471,24 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>
+      );
+    }
+
+    // Show loading state if item/spell is being fetched
+    if ((hotbar.itemId && itemLoading) || (hotbar.spellId && spellLoading)) {
+      return (
+        <div className="text-xs text-center text-stone-400 animate-pulse">
+          <div className="text-[10px]">Loading...</div>
+        </div>
+      );
+    }
+
+    // Show orphaned state if item/spell was deleted but hotbar entry remains
+    if ((hotbar.itemId && !itemData) || (hotbar.spellId && !spellData)) {
+      return (
+        <div className="text-xs text-center text-stone-500 italic">
+          <div className="text-[10px]">(Removed)</div>
+        </div>
       );
     }
 
