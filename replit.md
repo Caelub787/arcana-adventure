@@ -41,6 +41,7 @@ Preferred communication style: Simple, everyday language.
 
 ### Third-Party Services
 - **Neon Database**: Serverless PostgreSQL hosting.
+- **Google Drive Integration**: Image library browser for character portraits and item images. Restricted to a specific shared folder (ID: `1XIIbXfkyJhClfACBa-G6B53n14sVSVUb`) to protect other Drive contents. Features folder navigation, image thumbnails, search, and 10MB file size limit.
 
 ### Build & Development Tools
 - **Replit Integrations**: `@replit/vite-plugin-cartographer`, `@replit/vite-plugin-dev-banner`, `@replit/vite-plugin-runtime-error-modal`.
