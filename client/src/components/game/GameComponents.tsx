@@ -5724,10 +5724,19 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
     queryFn: () => api.getSpecies('Arcana Adventure'),
   });
 
-  // Handle race selection - auto-fill race stats
+  // Handle race selection - auto-fill race stats and recalculate HP based on new species
   const handleRaceChange = (raceName: string) => {
     const raceData = systemSpecies.find((r: SystemSpecies) => r.name === raceName);
     if (raceData) {
+      // Calculate new max HP = new species base HP + existing bonus HP from level ups
+      const bonusHp = liveCharacter.bonusHpFromLevelUps || 0;
+      const newMaxHp = (raceData.startingMaxHp || 10) + bonusHp;
+      const newHp = (raceData.startingHp || 10) + bonusHp;
+      
+      // Calculate new max/current energy from species
+      const newMaxEnergy = raceData.startingMaxEnergy || 10;
+      const newEnergy = raceData.startingEnergy || 10;
+      
       setOverviewData(prev => ({
         ...prev,
         race: raceName,
@@ -5736,7 +5745,11 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
         sizeBonus: raceData.sizeBonus,
         featTree: raceData.featTree || '',
         speed: raceData.speed,
-        flySpeed: raceData.flySpeed
+        flySpeed: raceData.flySpeed,
+        hp: newHp,
+        maxHp: newMaxHp,
+        energy: newEnergy,
+        maxEnergy: newMaxEnergy
       }));
     }
   };
@@ -5770,6 +5783,66 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
   const [rollPanelData, setRollPanelData] = useState<{name: string, modifier: number, type: 'skill' | 'attribute'} | null>(null);
   const [extraModifier, setExtraModifier] = useState(0);
   const rollDataRef = useRef<{name: string, modifier: number} | null>(null);
+  
+  // Level-up HP state
+  const [showLevelUpHpDialog, setShowLevelUpHpDialog] = useState(false);
+  const [levelUpHpResult, setLevelUpHpResult] = useState<{diceRolls: number[], total: number, diceCount: number, dieSize: number} | null>(null);
+  
+  // Calculate if character can level up HP (level > lastLevelUpRolled)
+  const canLevelUpHp = (liveCharacter.level || 1) > (liveCharacter.lastLevelUpRolled || 1);
+  
+  // Get current species for HP per level calculation
+  const currentSpecies = systemSpecies.find((s: SystemSpecies) => s.name === liveCharacter.race);
+  const hpPerLevel = currentSpecies?.hpPerLevel || 5; // Default to d5 if no species found
+  
+  // Calculate dice count: 1 base + 1 extra every 3 levels
+  const calculateDiceCount = (level: number) => {
+    return 1 + Math.floor((level - 1) / 3);
+  };
+  
+  // Handle level-up HP roll
+  const handleLevelUpHpRoll = () => {
+    const currentLevel = liveCharacter.level || 1;
+    const diceCount = calculateDiceCount(currentLevel);
+    
+    // Roll the dice
+    const diceRolls: number[] = [];
+    for (let i = 0; i < diceCount; i++) {
+      diceRolls.push(Math.floor(Math.random() * hpPerLevel) + 1);
+    }
+    const total = diceRolls.reduce((sum, roll) => sum + roll, 0);
+    
+    setLevelUpHpResult({
+      diceRolls,
+      total,
+      diceCount,
+      dieSize: hpPerLevel
+    });
+  };
+  
+  // Confirm level-up HP and save to database
+  const confirmLevelUpHp = () => {
+    if (!levelUpHpResult) return;
+    
+    const newBonusHp = (liveCharacter.bonusHpFromLevelUps || 0) + levelUpHpResult.total;
+    const newMaxHp = (currentSpecies?.startingMaxHp || 10) + newBonusHp;
+    const currentLevel = liveCharacter.level || 1;
+    
+    // Update character with new HP values
+    updateCharacterMutation.mutate({
+      bonusHpFromLevelUps: newBonusHp,
+      lastLevelUpRolled: currentLevel,
+      maxHp: newMaxHp,
+      hp: Math.min(liveCharacter.hp, newMaxHp) // Keep current HP but cap at new max
+    });
+    
+    // Close dialog and reset state
+    setShowLevelUpHpDialog(false);
+    setLevelUpHpResult(null);
+    
+    // Send to chat as a dice roll notification
+    gameWs.sendDiceRoll(`d${hpPerLevel}`, levelUpHpResult.total, `Level ${currentLevel} HP Roll`, liveCharacter.id);
+  };
   
   const canEdit = isOwner || isGM;
   
@@ -6620,10 +6693,34 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                   </div>
                   {!editingOverview && <Progress value={Math.round((liveCharacter.hp / liveCharacter.maxHp) * 100)} className="h-3" data-testid="progress-hp" />}
                   
-                  {/* Level Progression Info */}
+                  {/* HP Breakdown and Level-Up Button */}
                   {!editingOverview && (
-                    <div className="text-xs text-stone-500 mt-2" data-testid="text-level-progression">
-                      Level {liveCharacter.level || 1} provides {(liveCharacter.level || 1) + Math.floor((liveCharacter.level || 1) / 3)}d12 base HP ({liveCharacter.level || 1}d12 + {Math.floor((liveCharacter.level || 1) / 3)}d12 bonus at levels 3,6,9...)
+                    <div className="mt-2 space-y-2">
+                      {/* HP Breakdown */}
+                      <div className="text-xs text-stone-500 flex items-center justify-between" data-testid="text-hp-breakdown">
+                        <span>
+                          Base: {currentSpecies?.startingMaxHp || 10} | Bonus: +{liveCharacter.bonusHpFromLevelUps || 0}
+                        </span>
+                        <span className="text-stone-400">
+                          ({calculateDiceCount(liveCharacter.level || 1)}d{hpPerLevel} at level {liveCharacter.level || 1})
+                        </span>
+                      </div>
+                      
+                      {/* Level Up HP Button - shows when level > lastLevelUpRolled */}
+                      {canLevelUpHp && canEdit && (
+                        <Button
+                          size="sm"
+                          onClick={() => {
+                            setLevelUpHpResult(null);
+                            setShowLevelUpHpDialog(true);
+                          }}
+                          className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white"
+                          data-testid="button-level-up-hp"
+                        >
+                          <TrendingUp className="h-4 w-4 mr-2" />
+                          Roll Level {liveCharacter.level} HP ({calculateDiceCount(liveCharacter.level || 1)}d{hpPerLevel})
+                        </Button>
+                      )}
                     </div>
                   )}
                 </div>
@@ -8342,6 +8439,115 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
             >
               Roll
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Level-Up HP Dialog */}
+      <Dialog open={showLevelUpHpDialog} onOpenChange={(open) => {
+        if (!open) {
+          setShowLevelUpHpDialog(false);
+          setLevelUpHpResult(null);
+        }
+      }}>
+        <DialogContent className="sm:max-w-[400px] bg-stone-900 border-stone-700">
+          <DialogHeader>
+            <DialogTitle className="text-green-400 flex items-center gap-2">
+              <TrendingUp className="h-5 w-5" />
+              Level Up HP - Level {liveCharacter.level || 1}
+            </DialogTitle>
+            <DialogDescription>
+              Roll {calculateDiceCount(liveCharacter.level || 1)}d{hpPerLevel} to increase your maximum HP.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            {/* Current HP Info */}
+            <div className="bg-stone-800 rounded-lg p-3 border border-stone-700">
+              <div className="text-sm text-stone-400 space-y-1">
+                <div className="flex justify-between">
+                  <span>Base HP ({liveCharacter.race}):</span>
+                  <span className="text-stone-200">{currentSpecies?.startingMaxHp || 10}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Current Bonus HP:</span>
+                  <span className="text-green-400">+{liveCharacter.bonusHpFromLevelUps || 0}</span>
+                </div>
+                <div className="flex justify-between border-t border-stone-700 pt-1">
+                  <span>Current Max HP:</span>
+                  <span className="text-amber-400 font-bold">{liveCharacter.maxHp}</span>
+                </div>
+              </div>
+            </div>
+            
+            {/* Roll Button or Result */}
+            {!levelUpHpResult ? (
+              <Button
+                onClick={handleLevelUpHpRoll}
+                className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white h-14 text-lg"
+                data-testid="button-roll-hp"
+              >
+                <Dice5 className="h-6 w-6 mr-2" />
+                Roll {calculateDiceCount(liveCharacter.level || 1)}d{hpPerLevel}
+              </Button>
+            ) : (
+              <div className="space-y-3">
+                {/* Dice Roll Results */}
+                <div className="bg-gradient-to-r from-green-900/50 to-emerald-900/50 rounded-lg p-4 border border-green-700/50">
+                  <div className="text-center">
+                    <div className="text-sm text-stone-400 mb-2">
+                      Rolled {levelUpHpResult.diceCount}d{levelUpHpResult.dieSize}
+                    </div>
+                    <div className="flex items-center justify-center gap-2 flex-wrap mb-3">
+                      {levelUpHpResult.diceRolls.map((roll, index) => (
+                        <div 
+                          key={index} 
+                          className="w-10 h-10 bg-stone-800 rounded-lg border-2 border-green-500 flex items-center justify-center text-lg font-bold text-green-400"
+                        >
+                          {roll}
+                        </div>
+                      ))}
+                    </div>
+                    <div className="text-3xl font-bold text-green-400">
+                      +{levelUpHpResult.total} HP
+                    </div>
+                  </div>
+                </div>
+                
+                {/* New Max HP Preview */}
+                <div className="bg-stone-800 rounded-lg p-3 border border-stone-700">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-stone-400">New Max HP:</span>
+                    <span className="text-amber-400 font-bold">
+                      {(currentSpecies?.startingMaxHp || 10) + (liveCharacter.bonusHpFromLevelUps || 0) + levelUpHpResult.total}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+          
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              onClick={() => {
+                setShowLevelUpHpDialog(false);
+                setLevelUpHpResult(null);
+              }} 
+              data-testid="button-cancel-level-up"
+            >
+              Cancel
+            </Button>
+            {levelUpHpResult && (
+              <Button 
+                onClick={confirmLevelUpHp}
+                className="bg-green-600 hover:bg-green-500"
+                data-testid="button-confirm-level-up"
+              >
+                <Check className="h-4 w-4 mr-2" />
+                Confirm
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
