@@ -77,6 +77,17 @@ Preferred communication style: Simple, everyday language.
 -   **Partial Deletion**: Delete dialog includes slider to choose how many items to remove from a stack
 -   **Optimistic Updates**: Item deletions update UI immediately without waiting for server response
 
+**Weapons Hotbar System**:
+-   **3 Weapon Slots**: Left hand (slot 0), Right hand (slot 1), Ammunition (slot 2)
+-   **Heavy/Two-Handed Weapons**: Equip to both slots 0 and 2, blocking slot 1 with X overlay
+-   **Optimistic Blocking**: Slot 1 blocks immediately when heavy weapon equip starts (before server response)
+-   **Ammunition Slot**: Only accepts items marked as ammunition (isAmmunition=true)
+-   **Ammunition Compatibility**: Validates ammo type matches equipped ranged weapon category:
+    - Bow → arrow, Crossbow → bolt, Sling → stone, Firearm → bullet
+-   **Weapon Categories**: melee, bow, crossbow, sling, firearm, thrown
+-   **Thrown Weapons**: Self-consuming, don't require ammunition from ammo slot
+-   **Item Images in Slots**: Hotbar slots display item/spell images with fallback to text labels
+
 **Initiative Tracking System**:
 -   **Initiative Button**: Accessible from Campaign page HUD (Swords icon) for all users
 -   **Initiative Roll**: Characters roll 1d20 + Finesse attribute from character sheet Overview tab
