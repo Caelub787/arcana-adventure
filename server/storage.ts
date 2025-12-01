@@ -48,6 +48,8 @@ export interface IStorage {
   getCharacter(id: string): Promise<Character | undefined>;
   getCampaignCharacters(campaignId: string): Promise<Character[]>;
   updateCharacter(id: string, data: Partial<Character>): Promise<Character | undefined>;
+  deleteCharacter(id: string): Promise<void>;
+  deleteCharacterWithTokens(id: string): Promise<void>;
 
   // Token operations
   createToken(token: InsertToken): Promise<Token>;
@@ -55,6 +57,7 @@ export interface IStorage {
   getCampaignTokens(campaignId: string): Promise<Token[]>;
   updateToken(id: string, data: Partial<Token>): Promise<Token | undefined>;
   deleteToken(id: string): Promise<void>;
+  deleteTokensByCharacterId(characterId: string): Promise<void>;
 
   // Chat operations
   createChatMessage(message: InsertChatMessage): Promise<ChatMessage>;
@@ -379,6 +382,17 @@ export class DatabaseStorage implements IStorage {
     return character;
   }
 
+  async deleteCharacter(id: string): Promise<void> {
+    await db.delete(characters).where(eq(characters.id, id));
+  }
+
+  async deleteCharacterWithTokens(id: string): Promise<void> {
+    await db.transaction(async (tx) => {
+      await tx.delete(tokens).where(eq(tokens.characterId, id));
+      await tx.delete(characters).where(eq(characters.id, id));
+    });
+  }
+
   // Token operations
   async createToken(token: InsertToken): Promise<Token> {
     const [newToken] = await db.insert(tokens).values(token).returning();
@@ -406,6 +420,10 @@ export class DatabaseStorage implements IStorage {
 
   async deleteToken(id: string): Promise<void> {
     await db.delete(tokens).where(eq(tokens.id, id));
+  }
+
+  async deleteTokensByCharacterId(characterId: string): Promise<void> {
+    await db.delete(tokens).where(eq(tokens.characterId, characterId));
   }
 
   // Chat operations

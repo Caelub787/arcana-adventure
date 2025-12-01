@@ -315,6 +315,12 @@ class ApiClient {
     });
   }
 
+  async deleteCharacter(id: string): Promise<{ success: boolean }> {
+    return this.request(`/characters/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
   // Tokens
   async createToken(campaignId: string, token: Omit<Token, 'id' | 'campaignId'>): Promise<Token> {
     return this.request(`/campaigns/${campaignId}/tokens`, {

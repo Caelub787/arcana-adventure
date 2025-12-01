@@ -42,7 +42,7 @@ type Role = "gm" | "player";
 
 interface Character {
   name: string;
-  class: string;
+  class?: string;
   hp: number;
   maxHp: number;
   energy: number;
@@ -71,7 +71,6 @@ interface CharacterCreationProps {
 
 export function CharacterCreation({ onComplete, onCancel }: CharacterCreationProps) {
   const [name, setName] = useState("");
-  const [charClass, setCharClass] = useState("warrior");
   const [level, setLevel] = useState(1);
   const [race, setRace] = useState("Human");
   const [portrait, setPortrait] = useState("");
@@ -185,7 +184,6 @@ export function CharacterCreation({ onComplete, onCancel }: CharacterCreationPro
 
     onComplete({
       name,
-      class: charClass,
       level,
       race,
       ...raceStats,
@@ -264,28 +262,6 @@ export function CharacterCreation({ onComplete, onCancel }: CharacterCreationPro
                         required
                         data-testid="input-level"
                       />
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label className="text-stone-800 font-bold">Class *</Label>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                      {['warrior', 'mage', 'rogue'].map((c) => (
-                        <button
-                          key={c}
-                          type="button"
-                          onClick={() => setCharClass(c)}
-                          className={`rounded border p-3 sm:p-2 capitalize transition-all touch-target hover-scale focus-ring-amber ${
-                            charClass === c 
-                              ? 'border-stone-900 bg-stone-800 text-white shadow-md glow-amber' 
-                              : 'border-stone-300 bg-white/30 text-stone-700 hover:bg-white/50'
-                          }`}
-                          data-testid={`button-class-${c}`}
-                          aria-label={`Select ${c} class`}
-                        >
-                          {c}
-                        </button>
-                      ))}
                     </div>
                   </div>
 
@@ -1917,7 +1893,6 @@ function AddCharacterDialog({ open, onOpenChange, onAddCharacter }: AddCharacter
   const { register, handleSubmit, reset, formState: { errors } } = useForm({
     defaultValues: {
       name: "",
-      class: "warrior",
       level: 1,
       hp: 100,
       maxHp: 100,
@@ -1947,17 +1922,6 @@ function AddCharacterDialog({ open, onOpenChange, onAddCharacter }: AddCharacter
               {...register("name", { required: true })}
               className="bg-stone-800 border-stone-700 text-stone-200"
               placeholder="Enter character name"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="class" className="text-stone-300">Class</Label>
-            <Input
-              id="class"
-              data-testid="input-character-class"
-              {...register("class", { required: true })}
-              className="bg-stone-800 border-stone-700 text-stone-200"
-              placeholder="e.g., Warrior, Mage, Rogue"
             />
           </div>
 
@@ -2711,6 +2675,32 @@ export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onIn
     }
   };
 
+  // Delete character mutation
+  const deleteCharacterMutation = useMutation({
+    mutationFn: (characterId: string) => api.deleteCharacter(characterId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${campaignId}/characters`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${campaignId}/tokens`] });
+      toast({
+        title: "Character Deleted",
+        description: "The character and all associated tokens have been removed",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to delete character",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleDeleteCharacter = (char: any) => {
+    if (confirm(`Are you sure you want to delete "${char.name}"? This will also remove all tokens for this character from the battlemap. This action cannot be undone.`)) {
+      deleteCharacterMutation.mutate(char.id);
+    }
+  };
+
   useEffect(() => {
     if (showAccessDialog && selectedCharForAccess) {
       setLoadingAccess(true);
@@ -3007,6 +2997,27 @@ export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onIn
                             >
                               Access
                             </Button>
+                          )}
+                          {role === 'gm' && (
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => handleDeleteCharacter(char)}
+                                    disabled={deleteCharacterMutation.isPending}
+                                    className="h-8 w-8 p-0 text-red-500 hover:text-red-400 hover:bg-red-900/30"
+                                    data-testid={`button-delete-character-${char.id}`}
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent side="top" className="bg-stone-800 border-stone-700">
+                                  <p>Delete Character</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
                           )}
                         </div>
                       </div>
@@ -4471,13 +4482,20 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
                     </div>
                   </div>
                 ) : (
-                  <div className="text-xs font-bold text-center w-full">
-                    <div className="text-purple-400 truncate text-[10px]">{spellData.name}</div>
-                    <div className={`text-[9px] ${getLevelColor(spellData.level)}`}>
-                      {spellData.level === 0 ? 'Cantrip' : `Lvl ${spellData.level}`}
+                  <div className="relative w-full h-full flex items-center justify-center">
+                    {/* Spell placeholder icon */}
+                    <div className="w-10 h-10 sm:w-12 sm:h-12 md:w-14 md:h-14 rounded bg-purple-900/30 flex items-center justify-center">
+                      <Sparkles className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-purple-400" />
                     </div>
+                    {/* Level badge */}
+                    <div className={`absolute top-0 right-0 ${getLevelBgColor(spellData.level)} text-white text-[8px] px-1 rounded-bl font-bold`}>
+                      {spellData.level === 0 ? 'C' : spellData.level}
+                    </div>
+                    {/* Damage badge if spell has damage */}
                     {spellData.damage && (
-                      <div className="text-red-400 text-[8px]">{spellData.damage}</div>
+                      <div className="absolute bottom-0 left-0 bg-red-900/90 text-red-300 text-[7px] px-0.5 rounded-tr font-bold">
+                        {spellData.damage}
+                      </div>
                     )}
                   </div>
                 )}
@@ -4532,18 +4550,44 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
                     )}
                   </div>
                 ) : (
-                  <div className="text-xs font-bold text-center w-full">
-                    <div className="text-amber-400 truncate text-[10px]">{itemData.name}</div>
-                    {itemData.damage && (
-                      <div className="text-stone-400 text-[9px]">{itemData.damage}</div>
-                    )}
-                    {/* Durability bar */}
-                    <div className="w-full h-1 bg-stone-700 rounded-full overflow-hidden mt-1">
+                  <div className="relative w-full h-full flex items-center justify-center">
+                    {/* Type-based placeholder icon */}
+                    <div className="w-10 h-10 sm:w-12 sm:h-12 md:w-14 md:h-14 rounded bg-stone-700/50 flex items-center justify-center">
+                      {itemData.itemType === 'weapon' && !itemData.isAmmunition && (
+                        <Sword className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-amber-500" />
+                      )}
+                      {itemData.isAmmunition && (
+                        <Target className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-amber-500" />
+                      )}
+                      {itemData.itemType === 'consumable' && (
+                        <Heart className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-green-500" />
+                      )}
+                      {itemData.itemType === 'utility' && (
+                        <Backpack className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-orange-500" />
+                      )}
+                      {!['weapon', 'consumable', 'utility'].includes(itemData.itemType) && !itemData.isAmmunition && (
+                        <Package className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-stone-400" />
+                      )}
+                    </div>
+                    {/* Durability bar overlay at bottom */}
+                    <div className="absolute bottom-0.5 left-0.5 right-0.5 h-1 bg-stone-900/80 rounded-full overflow-hidden">
                       <div 
                         className={`h-full ${durabilityColor} transition-all`} 
                         style={{ width: `${durabilityWidth}%` }}
                       />
                     </div>
+                    {/* Quantity badge for ammunition */}
+                    {itemData.isAmmunition && itemData.quantity > 1 && (
+                      <div className="absolute top-0 right-0 bg-stone-900/90 text-amber-400 text-[8px] px-1 rounded-bl font-bold">
+                        x{itemData.quantity}
+                      </div>
+                    )}
+                    {/* Damage badge for weapons */}
+                    {itemData.damage && !itemData.isAmmunition && (
+                      <div className="absolute top-0 left-0 bg-red-900/90 text-red-300 text-[7px] px-0.5 rounded-br font-bold">
+                        {itemData.damage}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -4575,9 +4619,19 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
-              <div className="text-xs font-bold text-center">
-                <div className="text-amber-400 truncate">{hotbar.skillName}</div>
-                <div className="text-stone-400 text-[10px]">{modifier}</div>
+              <div className="relative w-full h-full flex items-center justify-center">
+                {/* Skill icon */}
+                <div className="w-10 h-10 sm:w-12 sm:h-12 md:w-14 md:h-14 rounded bg-blue-900/30 flex items-center justify-center">
+                  <Dice5 className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-blue-400" />
+                </div>
+                {/* Modifier badge */}
+                <div className="absolute top-0 right-0 bg-blue-600 text-white text-[8px] px-1 rounded-bl font-bold">
+                  {modifier}
+                </div>
+                {/* Skill name at bottom */}
+                <div className="absolute bottom-0 left-0 right-0 bg-stone-900/80 text-blue-300 text-[7px] text-center px-0.5 rounded-t truncate font-medium">
+                  {hotbar.skillName}
+                </div>
               </div>
             </TooltipTrigger>
             <TooltipContent>

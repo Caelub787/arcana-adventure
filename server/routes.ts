@@ -1382,6 +1382,48 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Delete character - GM only, also deletes associated tokens
+  app.delete("/api/characters/:id", requireAuth, async (req, res) => {
+    try {
+      const character = await storage.getCharacter(req.params.id);
+      if (!character) {
+        return res.status(404).json({ error: "Character not found" });
+      }
+      
+      const campaign = await storage.getCampaign(character.campaignId!);
+      if (!campaign) {
+        return res.status(404).json({ error: "Campaign not found" });
+      }
+      
+      // Only campaign GM can delete characters
+      if (campaign.gmUserId !== req.session.userId) {
+        return res.status(403).json({ error: "Only the GM can delete characters" });
+      }
+      
+      // Delete character and all associated tokens in a single transaction
+      await storage.deleteCharacterWithTokens(req.params.id);
+      
+      // Broadcast character deletion to campaign room
+      const room = campaignRooms.get(character.campaignId!);
+      if (room) {
+        const message = JSON.stringify({
+          type: 'character_deleted',
+          characterId: req.params.id,
+        });
+        room.forEach((ws) => {
+          if (ws.readyState === 1) {
+            ws.send(message);
+          }
+        });
+      }
+      
+      res.json({ success: true });
+    } catch (err) {
+      console.error("Failed to delete character:", err);
+      res.status(500).json({ error: "Failed to delete character" });
+    }
+  });
+
   // Hotbar routes
   app.get("/api/characters/:characterId/hotbars", requireAuth, async (req, res) => {
     try {
