@@ -1791,8 +1791,7 @@ function AddCharacterDialog({ open, onOpenChange, onAddCharacter }: AddCharacter
     
     setIsSubmitting(true);
     
-    // Create character with just the name - all other values will use defaults
-    // HP/Energy will be set from the Human species defaults on the server
+    // Create character with just the name - using Human species defaults
     onAddCharacter({
       name: name.trim(),
       level: 1,
@@ -1802,12 +1801,22 @@ function AddCharacterDialog({ open, onOpenChange, onAddCharacter }: AddCharacter
       sizeBonus: 0,
       speed: 30,
       flySpeed: 0,
+      // Human species defaults for HP/Energy
+      hp: 10,
+      maxHp: 10,
+      energy: 10,
+      maxEnergy: 10,
+      // Bonus HP tracking for level-up system
+      bonusHpFromLevelUps: 0,
+      lastLevelUpRolled: 1,
+      // Default attributes
       might: 10,
       agility: 10,
       resilience: 10,
       wit: 10,
       charm: 10,
       concentration: 10,
+      // Default skills
       skillAgility: 0,
       skillArcana: 0,
       skillCharisma: 0,
