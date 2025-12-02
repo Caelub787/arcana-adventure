@@ -1440,12 +1440,18 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     
     const finalDamage = Math.max(0, damageAmount - reduction);
     
-    // Apply damage to target's HP
+    // Apply damage to target's HP - fetch fresh HP from server to avoid stale data
     if (finalDamage > 0) {
-      const newHp = Math.max(0, (targetCharacter.hp || 0) - finalDamage);
       try {
-        await api.updateCharacter(targetCharacter.id, { hp: newHp });
-        queryClient.invalidateQueries({ queryKey: ['characters'] });
+        // Fetch current character data from server to get fresh HP value
+        const freshCharacterData = await api.getCharacter(targetCharacter.id);
+        if (freshCharacterData) {
+          const currentHp = freshCharacterData.hp || 0;
+          const newHp = Math.max(0, currentHp - finalDamage);
+          console.log('[Damage] Applying', finalDamage, 'damage to', targetCharacter.name, '- HP:', currentHp, '->', newHp);
+          await api.updateCharacter(targetCharacter.id, { hp: newHp });
+          queryClient.invalidateQueries({ queryKey: ['characters'] });
+        }
       } catch (error) {
         console.error('Failed to update target HP:', error);
       }
@@ -1900,9 +1906,17 @@ export function BattleMapHotbars({ character, tokens, targetedTokenId, character
 
   return (
     <>
-      {/* HP and Energy Bars - Bottom LEFT, stacked vertically */}
+      {/* DC, HP and Energy Bars - Bottom LEFT, stacked vertically */}
       <div className="absolute bottom-2 md:bottom-4 left-2 md:left-4 pointer-events-auto z-30">
         <div className="flex flex-col gap-1">
+          {/* DC Display */}
+          <div className="glass-panel p-1.5 md:p-2 rounded border-l-4 border-amber-600 relative overflow-hidden w-32 md:w-44">
+            <div className="flex justify-between text-[9px] md:text-xs uppercase tracking-wider font-bold text-amber-200">
+              <span>DC</span>
+              <span>{character.naturalArmor ?? 10}</span>
+            </div>
+          </div>
+
           {/* Health Bar */}
           <div className="glass-panel p-1.5 md:p-2 rounded border-l-4 border-red-600 relative overflow-hidden w-32 md:w-44">
             <div className="flex justify-between text-[9px] md:text-xs uppercase tracking-wider mb-1 font-bold text-red-200">

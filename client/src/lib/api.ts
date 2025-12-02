@@ -336,6 +336,10 @@ class ApiClient {
     return this.request(`/campaigns/${campaignId}/characters`);
   }
 
+  async getCharacter(id: string): Promise<Character> {
+    return this.request(`/characters/${id}`);
+  }
+
   async updateCharacter(id: string, data: Partial<Character>): Promise<Character> {
     return this.request(`/characters/${id}`, {
       method: 'PATCH',
