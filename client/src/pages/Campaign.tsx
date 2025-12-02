@@ -582,6 +582,27 @@ export default function Campaign() {
             queryClientRef.current.invalidateQueries({ queryKey: [`/api/characters/${data.characterId}`] });
           }
         }
+        // Handle real-time character updates - update local state if it matches current character
+        if (data.type === 'character_updated' && data.character) {
+          const updatedChar = data.character;
+          // Update the character state if it matches the currently active character
+          setCharacter((prev: any) => {
+            if (prev && prev.id === updatedChar.id) {
+              return updatedChar;
+            }
+            return prev;
+          });
+          // Update inspectedChar state if it matches
+          setInspectedChar((prev: any) => {
+            if (prev && prev.id === updatedChar.id) {
+              return updatedChar;
+            }
+            return prev;
+          });
+          // Also invalidate queries to keep cache in sync
+          queryClientRef.current.invalidateQueries({ queryKey: [`/api/campaigns/${effectiveCampaignId}/characters`] });
+          queryClientRef.current.invalidateQueries({ queryKey: [`/api/characters/${updatedChar.id}`] });
+        }
         if (data.type === 'permission_update') {
           console.log('Permission update received:', data);
           // Invalidate permissions cache so UI updates immediately
