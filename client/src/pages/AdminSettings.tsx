@@ -743,26 +743,33 @@ function FeatTreesView() {
     
     const existingFeat = treeData.feats.find((f: Feat) => f.gridX === x && f.gridY === y);
     
-    if (existingFeat) {
-      if (connectingFrom) {
-        if (connectingFrom !== existingFeat.id) {
-          createConnectionMutation.mutate({
-            treeId: selectedTreeId,
-            connection: { fromFeatId: connectingFrom, toFeatId: existingFeat.id, isOptional: false },
-          });
-        } else {
-          setConnectingFrom(null);
-        }
+    // Single click only handles connections for existing feats
+    if (existingFeat && connectingFrom) {
+      if (connectingFrom !== existingFeat.id) {
+        createConnectionMutation.mutate({
+          treeId: selectedTreeId,
+          connection: { fromFeatId: connectingFrom, toFeatId: existingFeat.id, isOptional: false },
+        });
+      } else {
+        setConnectingFrom(null);
       }
-    } else if (!connectingFrom) {
-      setEditingFeat({ gridX: x, gridY: y, tier: 1, cost: 1 } as Feat);
-      setShowFeatEditor(true);
     }
   };
 
-  const handleFeatDoubleClick = (feat: Feat) => {
-    setEditingFeat(feat);
-    setShowFeatEditor(true);
+  const handleGridCellDoubleClick = (x: number, y: number) => {
+    if (!selectedTreeId || !treeData) return;
+    
+    const existingFeat = treeData.feats.find((f: Feat) => f.gridX === x && f.gridY === y);
+    
+    if (existingFeat) {
+      // Double click on existing feat opens editor
+      setEditingFeat(existingFeat);
+      setShowFeatEditor(true);
+    } else if (!connectingFrom) {
+      // Double click on empty cell creates new feat
+      setEditingFeat({ gridX: x, gridY: y, tier: 1, cost: 1 } as Feat);
+      setShowFeatEditor(true);
+    }
   };
 
   const handleStartConnect = (featId: string, e: React.MouseEvent) => {
@@ -1113,9 +1120,6 @@ function FeatTreesView() {
           >
             <ZoomOut className="h-3 w-3" />
           </Button>
-          <div className="bg-black/50 px-2 py-1 rounded text-xs border border-white/10 backdrop-blur-sm flex items-center">
-            {Math.round(zoom * 100)}%
-          </div>
         </div>
 
         {connectingFrom && (
@@ -1246,7 +1250,7 @@ function FeatTreesView() {
                 }}
                 onDoubleClick={(e) => {
                   e.stopPropagation();
-                  if (feat) handleFeatDoubleClick(feat);
+                  handleGridCellDoubleClick(x, y);
                 }}
                 data-testid={`grid-cell-${x}-${y}`}
               >
@@ -1339,8 +1343,7 @@ function FeatTreesView() {
                   <div className="flex-1">
                     <div className="font-medium">{tree.name}</div>
                     <div className="text-sm text-stone-400">
-                      {tree.gridWidth}x{tree.gridHeight} grid
-                      {tree.description && ` · ${tree.description}`}
+                      {tree.description || 'No description'}
                     </div>
                   </div>
                   <div className="flex gap-2">
@@ -1542,32 +1545,6 @@ function FeatTreeFormDialog({ open, onOpenChange, onSave, initialData, isLoading
               className="bg-stone-800 border-stone-700"
               data-testid="input-tree-description"
             />
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <Label>Grid Width</Label>
-              <Input
-                type="number"
-                min={3}
-                max={15}
-                value={formData.gridWidth}
-                onChange={(e) => setFormData({ ...formData, gridWidth: parseInt(e.target.value) || 7 })}
-                className="bg-stone-800 border-stone-700"
-                data-testid="input-tree-width"
-              />
-            </div>
-            <div>
-              <Label>Grid Height</Label>
-              <Input
-                type="number"
-                min={3}
-                max={15}
-                value={formData.gridHeight}
-                onChange={(e) => setFormData({ ...formData, gridHeight: parseInt(e.target.value) || 5 })}
-                className="bg-stone-800 border-stone-700"
-                data-testid="input-tree-height"
-              />
-            </div>
           </div>
         </div>
         <DialogFooter>
