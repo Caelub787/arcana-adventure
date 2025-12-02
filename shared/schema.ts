@@ -547,16 +547,20 @@ export const systemSpells = pgTable("system_spells", {
   level: integer("level").default(1).notNull(),
   castingTime: text("casting_time").default("1 action").notNull(),
   range: text("range").default("30 ft").notNull(),
+  rangeNum: integer("range_num").default(30), // Numeric range in feet for distance calculations
   duration: text("duration").default("Instantaneous").notNull(),
   components: text("components").default("V, S").notNull(),
-  damageType: text("damage_type"),
-  damageDice: text("damage_dice"),
+  damageType: text("damage_type"), // Sharp, Blunt, Piercing, Flame, Frost, Storm, Tide, Stone, Flux, Light, Dark, Sound, Health
+  damageDice: text("damage_dice"), // Dice notation e.g. "2d6"
+  mod: integer("mod").default(0), // Flat bonus added after dice roll (like weapons)
+  attribute: text("attribute"), // Attribute used for attack rolls (might, finesse, wit, presence, will, craft)
   healingDice: text("healing_dice"),
   energyCost: integer("energy_cost").default(1).notNull(),
   concentration: boolean("concentration").default(false).notNull(),
   ritual: boolean("ritual").default(false).notNull(),
   targetType: text("target_type").default("single").notNull(),
   areaSize: text("area_size"),
+  aoe: text("aoe"), // Area of effect type: cone, sphere, line, cube, cylinder (like weapons)
   savingThrow: text("saving_throw"),
   effects: jsonb("effects").default([]).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),

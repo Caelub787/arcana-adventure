@@ -2678,9 +2678,11 @@ interface SpellFormDialogProps {
 }
 
 const spellSchools = ['Evocation', 'Conjuration', 'Abjuration', 'Transmutation', 'Divination', 'Enchantment', 'Illusion', 'Necromancy'];
-const damageTypes = ['Fire', 'Cold', 'Lightning', 'Thunder', 'Acid', 'Poison', 'Radiant', 'Necrotic', 'Force', 'Psychic', 'Bludgeoning', 'Piercing', 'Slashing'];
+const spellDamageTypes = ['Sharp', 'Blunt', 'Piercing', 'Flame', 'Frost', 'Storm', 'Tide', 'Stone', 'Flux', 'Light', 'Dark', 'Sound', 'Health'];
 const targetTypes = ['self', 'single', 'multiple', 'area', 'cone', 'line'];
 const savingThrows = ['Strength', 'Dexterity', 'Constitution', 'Intelligence', 'Wisdom', 'Charisma'];
+const spellAoeTypes = ['cone', 'sphere', 'line', 'cube', 'cylinder'];
+const spellAttributes = ['might', 'finesse', 'wit', 'presence', 'will', 'craft'];
 
 function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: SpellFormDialogProps) {
   const [formData, setFormData] = useState<{
@@ -2691,16 +2693,20 @@ function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading }:
     level: number | string;
     castingTime: string;
     range: string;
+    rangeNum: number | string;
     duration: string;
     components: string;
     damageType: string;
     damageDice: string;
+    mod: number | string;
+    attribute: string;
     healingDice: string;
     energyCost: number | string;
     concentration: boolean;
     ritual: boolean;
     targetType: string;
     areaSize: string;
+    aoe: string;
     savingThrow: string;
   }>({
     name: initialData?.name || '',
@@ -2710,16 +2716,20 @@ function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading }:
     level: initialData?.level ?? 1,
     castingTime: initialData?.castingTime || '1 action',
     range: initialData?.range || '30 ft',
+    rangeNum: initialData?.rangeNum ?? 30,
     duration: initialData?.duration || 'Instantaneous',
     components: initialData?.components || 'V, S',
     damageType: initialData?.damageType || '',
     damageDice: initialData?.damageDice || '',
+    mod: initialData?.mod ?? 0,
+    attribute: initialData?.attribute || '',
     healingDice: initialData?.healingDice || '',
     energyCost: initialData?.energyCost ?? 1,
     concentration: initialData?.concentration || false,
     ritual: initialData?.ritual || false,
     targetType: initialData?.targetType || 'single',
     areaSize: initialData?.areaSize || '',
+    aoe: initialData?.aoe || '',
     savingThrow: initialData?.savingThrow || '',
   });
 
@@ -2735,6 +2745,8 @@ function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading }:
     onSave({
       ...formData,
       level: Number(formData.level) || 1,
+      rangeNum: Number(formData.rangeNum) || 30,
+      mod: Number(formData.mod) || 0,
       energyCost: Number(formData.energyCost) || 1,
     });
   };
@@ -2810,13 +2822,26 @@ function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading }:
               </div>
 
               <div>
-                <Label>Range</Label>
+                <Label>Range (description)</Label>
                 <Input
                   value={formData.range}
                   onChange={(e) => setFormData({ ...formData, range: e.target.value })}
                   placeholder="30 ft"
                   className="bg-stone-800 border-stone-700"
                   data-testid="input-spell-range"
+                />
+              </div>
+
+              <div>
+                <Label>Range (feet)</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  value={formData.rangeNum}
+                  onChange={(e) => handleNumericChange('rangeNum', e.target.value)}
+                  placeholder="30"
+                  className="bg-stone-800 border-stone-700"
+                  data-testid="input-spell-range-num"
                 />
               </div>
 
@@ -2843,6 +2868,21 @@ function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading }:
               </div>
 
               <div>
+                <Label>Attribute (for rolls)</Label>
+                <Select value={formData.attribute} onValueChange={(v) => setFormData({ ...formData, attribute: v })}>
+                  <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-spell-attribute">
+                    <SelectValue placeholder="Select attribute" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">None</SelectItem>
+                    {spellAttributes.map((attr) => (
+                      <SelectItem key={attr} value={attr}>{attr.charAt(0).toUpperCase() + attr.slice(1)}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
                 <Label>Damage Dice</Label>
                 <Input
                   value={formData.damageDice}
@@ -2861,8 +2901,35 @@ function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading }:
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="">None</SelectItem>
-                    {damageTypes.map((type) => (
+                    {spellDamageTypes.map((type) => (
                       <SelectItem key={type} value={type}>{type}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <Label>Damage Mod (+/-)</Label>
+                <Input
+                  type="number"
+                  value={formData.mod}
+                  onChange={(e) => handleNumericChange('mod', e.target.value)}
+                  placeholder="0"
+                  className="bg-stone-800 border-stone-700"
+                  data-testid="input-spell-mod"
+                />
+              </div>
+
+              <div>
+                <Label>Area of Effect</Label>
+                <Select value={formData.aoe} onValueChange={(v) => setFormData({ ...formData, aoe: v })}>
+                  <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-spell-aoe">
+                    <SelectValue placeholder="None" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">None</SelectItem>
+                    {spellAoeTypes.map((aoe) => (
+                      <SelectItem key={aoe} value={aoe}>{aoe.charAt(0).toUpperCase() + aoe.slice(1)}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
