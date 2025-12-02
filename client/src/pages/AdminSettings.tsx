@@ -1096,6 +1096,20 @@ function FeatTreesView() {
           <Button 
             size="sm" 
             variant="secondary" 
+            className="bg-purple-600 hover:bg-purple-700 text-xs border border-purple-500 backdrop-blur-sm"
+            onClick={() => {
+              setEditingFeat({ gridX: 0, gridY: 0, tier: 1, cost: 1 } as Feat);
+              setShowFeatEditor(true);
+            }}
+            title="Add new feat"
+            data-testid="add-feat-button"
+          >
+            <Plus className="h-3 w-3 mr-1" />
+            Add Feat
+          </Button>
+          <Button 
+            size="sm" 
+            variant="secondary" 
             className="bg-black/50 hover:bg-black/80 text-xs border border-white/10 backdrop-blur-sm"
             onClick={resetView}
             title="Reset view"
@@ -1721,6 +1735,28 @@ function FeatFormDialog({ open, onOpenChange, onSave, initialData, isLoading, fe
               className="bg-stone-800 border-stone-700"
               data-testid="input-feat-description"
             />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Label>Grid X Position</Label>
+              <Input
+                type="number"
+                value={formData.gridX}
+                onChange={(e) => setFormData({ ...formData, gridX: parseInt(e.target.value) || 0 })}
+                className="bg-stone-800 border-stone-700"
+                data-testid="input-feat-gridx"
+              />
+            </div>
+            <div>
+              <Label>Grid Y Position</Label>
+              <Input
+                type="number"
+                value={formData.gridY}
+                onChange={(e) => setFormData({ ...formData, gridY: parseInt(e.target.value) || 0 })}
+                className="bg-stone-800 border-stone-700"
+                data-testid="input-feat-gridy"
+              />
+            </div>
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
