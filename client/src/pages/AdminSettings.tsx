@@ -1046,8 +1046,11 @@ function FeatTreesView() {
   useEffect(() => {
     if (selectedTreeId && viewportSize.width > 0) {
       // Center on origin (0,0)
-      const centerX = viewportSize.width / 2 - WORLD_OFFSET;
-      const centerY = viewportSize.height / 2 - WORLD_OFFSET;
+      // The motion.div has left:-WORLD_OFFSET, and cells are at WORLD_OFFSET + gridX*CELL_SIZE
+      // Final screen position = gridX * CELL_SIZE + panX (the offsets cancel out)
+      // For origin (0,0) to be at viewport center: panX = viewportWidth/2
+      const centerX = viewportSize.width / 2;
+      const centerY = viewportSize.height / 2;
       panRef.current = { x: centerX, y: centerY };
       zoomRef.current = 1;
       motionX.set(centerX);
@@ -1241,8 +1244,9 @@ function FeatTreesView() {
 
   const resetView = () => {
     if (viewportSize.width > 0) {
-      const centerX = viewportSize.width / 2 - WORLD_OFFSET;
-      const centerY = viewportSize.height / 2 - WORLD_OFFSET;
+      // Center on origin (0,0) - same formula as useEffect above
+      const centerX = viewportSize.width / 2;
+      const centerY = viewportSize.height / 2;
       panRef.current = { x: centerX, y: centerY };
       zoomRef.current = 1;
       motionX.set(centerX);

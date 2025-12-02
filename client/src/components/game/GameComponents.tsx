@@ -270,6 +270,14 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
     startPointerY: number;
   } | null>(null);
   
+  // Track pending drag - only becomes actual drag when pointer moves beyond threshold
+  const pendingDragRef = useRef<{
+    token: Token;
+    startPointerX: number;
+    startPointerY: number;
+  } | null>(null);
+  const DRAG_THRESHOLD = 5; // Minimum pixels moved before considering it a drag
+  
   // Lock state for preventing map movement
   const [isMapLocked, setIsMapLocked] = useState(false);
   const isMapLockedRef = useRef(false);
@@ -461,16 +469,12 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
   /**
    * startTokenDrag - Initiates custom pointer-based token dragging
    * Captures pointer and sets up drag state for precise grid snapping
+   * @param startPointerX - Initial pointer X position (from pointerdown event)
+   * @param startPointerY - Initial pointer Y position (from pointerdown event)
    */
-  const startTokenDrag = (e: React.PointerEvent, token: Token) => {
-    e.preventDefault();
-    e.stopPropagation();
-    
+  const startTokenDrag = (token: Token, startPointerX: number, startPointerY: number) => {
     // Set gesture mode to prevent map panning
     gestureModeRef.current = 'draggingToken';
-    
-    const target = e.currentTarget as HTMLElement;
-    target.setPointerCapture(e.pointerId);
     
     const effectiveGridSize = scene?.gridSize || gridSize;
     const gridEnabled = scene?.gridEnabled !== undefined ? scene.gridEnabled : true;
@@ -489,8 +493,8 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
       visualY,
       startX: token.x,
       startY: token.y,
-      startPointerX: e.clientX,
-      startPointerY: e.clientY
+      startPointerX,
+      startPointerY
     });
     
     // Clear any delete button
@@ -1011,8 +1015,17 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
           const handleTokenPointerDown = (e: React.PointerEvent) => {
             e.stopPropagation();
             
+            // Set up pending drag instead of starting immediately
+            // This allows clicks and double-clicks to work without triggering drag
             if (canDrag) {
-              startTokenDrag(e, token);
+              pendingDragRef.current = {
+                token,
+                startPointerX: e.clientX,
+                startPointerY: e.clientY
+              };
+              // Capture pointer for tracking moves
+              const target = e.currentTarget as HTMLElement;
+              target.setPointerCapture(e.pointerId);
             }
             
             if (role === 'gm') {
@@ -1028,12 +1041,31 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
               clearTimeout(holdTimerRef.current);
               holdTimerRef.current = null;
             }
+            // Clear pending drag if we never started actual drag
+            if (pendingDragRef.current) {
+              const target = e.currentTarget as HTMLElement;
+              target.releasePointerCapture(e.pointerId);
+              pendingDragRef.current = null;
+            }
             if (isDragging) {
               endTokenDrag(e, token);
             }
           };
           
           const handleTokenPointerMove = (e: React.PointerEvent) => {
+            // Check if pending drag should become actual drag
+            if (pendingDragRef.current && !isDragging) {
+              const pending = pendingDragRef.current;
+              const dx = Math.abs(e.clientX - pending.startPointerX);
+              const dy = Math.abs(e.clientY - pending.startPointerY);
+              
+              // If pointer moved beyond threshold, start actual drag using original start coordinates
+              if (dx > DRAG_THRESHOLD || dy > DRAG_THRESHOLD) {
+                startTokenDrag(pending.token, pending.startPointerX, pending.startPointerY);
+                pendingDragRef.current = null;
+              }
+            }
+            
             if (isDragging) {
               e.stopPropagation();
               e.preventDefault();
@@ -1046,6 +1078,8 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
               clearTimeout(holdTimerRef.current);
               holdTimerRef.current = null;
             }
+            // Clear pending drag
+            pendingDragRef.current = null;
             if (isDragging) {
               setDraggingToken(null);
             }
