@@ -787,37 +787,11 @@ function SpellsView({ spells, isLoading, searchQuery, setSearchQuery, onAddSpell
   );
 }
 
-const skillTreeTierStyles: Record<number, { border: string; bg: string; glow: string; badge: string }> = {
-  1: { 
-    border: 'border-amber-700', 
-    bg: 'bg-gradient-to-br from-amber-900/90 to-stone-900/90', 
-    glow: 'shadow-[0_0_15px_rgba(180,83,9,0.4)]',
-    badge: 'bg-amber-800 text-amber-200'
-  },
-  2: { 
-    border: 'border-slate-400', 
-    bg: 'bg-gradient-to-br from-slate-600/90 to-slate-800/90', 
-    glow: 'shadow-[0_0_15px_rgba(148,163,184,0.4)]',
-    badge: 'bg-slate-600 text-slate-200'
-  },
-  3: { 
-    border: 'border-yellow-400', 
-    bg: 'bg-gradient-to-br from-yellow-600/90 to-amber-800/90', 
-    glow: 'shadow-[0_0_20px_rgba(250,204,21,0.5)]',
-    badge: 'bg-yellow-600 text-yellow-100'
-  },
-  4: { 
-    border: 'border-purple-400', 
-    bg: 'bg-gradient-to-br from-purple-700/90 to-violet-900/90', 
-    glow: 'shadow-[0_0_20px_rgba(192,132,252,0.5)]',
-    badge: 'bg-purple-600 text-purple-100'
-  },
-  5: { 
-    border: 'border-orange-400', 
-    bg: 'bg-gradient-to-br from-orange-500/90 to-red-700/90', 
-    glow: 'shadow-[0_0_25px_rgba(251,146,60,0.6),0_0_50px_rgba(251,146,60,0.3)]',
-    badge: 'bg-orange-500 text-orange-100'
-  },
+// Feat node styling (uniform style without tiers)
+const featNodeStyle = {
+  border: 'border-purple-600',
+  bg: 'bg-gradient-to-br from-purple-900/90 to-stone-900/90',
+  glow: 'shadow-[0_0_15px_rgba(147,51,234,0.4)]',
 };
 
 const effectTypeIcons: Record<string, any> = {
@@ -828,8 +802,8 @@ const effectTypeIcons: Record<string, any> = {
   attribute_bonus: Zap,
 };
 
-const NODE_WIDTH = 140;
-const NODE_HEIGHT = 80;
+const NODE_WIDTH = 160;
+const NODE_HEIGHT = 100;
 
 function FeatTreesView() {
   const queryClient = useQueryClient();
@@ -1605,7 +1579,6 @@ function FeatTreesView() {
           
           {/* Feat nodes - free-form placement */}
           {feats.map((feat: Feat) => {
-            const tierStyle = skillTreeTierStyles[feat.tier] || skillTreeTierStyles[1];
             const isSelected = selectedFeatId === feat.id;
             const isConnectSource = connectingFrom === feat.id;
             
@@ -1623,7 +1596,7 @@ function FeatTreesView() {
                 data-feat-cell
                 className={`
                   absolute rounded-xl border-2 transition-all duration-200
-                  ${tierStyle.border} ${tierStyle.bg} ${tierStyle.glow}
+                  ${featNodeStyle.border} ${featNodeStyle.bg} ${featNodeStyle.glow}
                   ${isSelected ? 'ring-2 ring-white ring-offset-2 ring-offset-stone-900 scale-105' : ''}
                   ${isConnectSource ? 'animate-pulse ring-2 ring-purple-400' : ''}
                   ${connectionMode ? 'cursor-crosshair' : 'cursor-move'}
@@ -1643,13 +1616,15 @@ function FeatTreesView() {
                 onPointerUp={(e) => handleFeatPointerUp(feat, e)}
                 data-testid={`feat-node-${feat.id}`}
               >
-                <div className="h-full flex flex-col items-center justify-center p-2 text-center">
-                  <div className="text-xs font-bold text-white truncate w-full drop-shadow-lg">
+                <div className="h-full flex flex-col items-center justify-center p-2 text-center overflow-hidden">
+                  <div className="text-sm font-bold text-white truncate w-full drop-shadow-lg">
                     {feat.name}
                   </div>
-                  <Badge className={`text-[10px] mt-1 ${tierStyle.badge} border-0`}>
-                    Tier {feat.tier}
-                  </Badge>
+                  {feat.description && (
+                    <div className="text-[10px] text-stone-300 mt-1 line-clamp-2 w-full leading-tight">
+                      {feat.description}
+                    </div>
+                  )}
                   {(feat.effects as any[])?.length > 0 && (
                     <div className="flex gap-0.5 mt-1">
                       {(feat.effects as any[]).slice(0, 3).map((effect: any, idx: number) => {
@@ -1688,9 +1663,11 @@ function FeatTreesView() {
                 <h3 className="font-display text-lg text-amber-500">
                   {featById.get(featActionMenu)?.name || 'Feat Actions'}
                 </h3>
-                <p className="text-xs text-stone-400 mt-1">
-                  Tier {featById.get(featActionMenu)?.tier || 1}
-                </p>
+                {featById.get(featActionMenu)?.description && (
+                  <p className="text-xs text-stone-400 mt-1 line-clamp-2">
+                    {featById.get(featActionMenu)?.description}
+                  </p>
+                )}
               </div>
               
               <div className="space-y-2">
