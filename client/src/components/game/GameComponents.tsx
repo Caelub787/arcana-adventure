@@ -9804,7 +9804,7 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
   );
 }
 
-// Feat Tree Viewer Grid Component
+// Feat Tree Viewer Grid Component with infinite pan/zoom like battlemap
 function FeatTreeViewerGrid({ 
   treeData, 
   characterFeats, 
@@ -9818,6 +9818,25 @@ function FeatTreeViewerGrid({
 }) {
   const queryClient = useQueryClient();
   const [selectedFeat, setSelectedFeat] = useState<Feat | null>(null);
+  
+  // Pan/zoom refs (avoid re-renders during interaction)
+  const panRef = useRef({ x: 0, y: 0 });
+  const zoomRef = useRef(1);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
+  const initializedRef = useRef(false);
+  
+  // Motion values for smooth transforms
+  const motionX = useMotionValue(0);
+  const motionY = useMotionValue(0);
+  const motionZoom = useMotionValue(1);
+  
+  // Gesture state
+  type GestureMode = 'idle' | 'panning' | 'pinching';
+  const gestureModeRef = useRef<GestureMode>('idle');
+  const panStartRef = useRef<{ pointerX: number; pointerY: number; panX: number; panY: number } | null>(null);
+  const panPointerIdRef = useRef<number | null>(null);
+  const lastTouchDistanceRef = useRef<number | null>(null);
   
   const tierColors: Record<number, string> = {
     1: 'border-stone-500 bg-stone-700/50',
@@ -9848,96 +9867,347 @@ function FeatTreeViewerGrid({
     return connections.some(conn => unlockedFeatIds.has(conn.fromFeatId));
   };
   
-  const { tree, feats, connections } = treeData;
-  const gridWidth = tree.gridWidth || 7;
-  const gridHeight = tree.gridHeight || 5;
-  const cellSize = 70;
+  const { feats, connections } = treeData;
+  const cellSize = 80;
+  const WORLD_SIZE = 10000;
+  const WORLD_OFFSET = WORLD_SIZE / 2;
+  const [displayZoom, setDisplayZoom] = useState(100);
   
-  const featMap = new Map<string, Feat>();
-  feats.forEach((f: Feat) => featMap.set(`${f.gridX},${f.gridY}`, f));
   const featById = new Map<string, Feat>();
   feats.forEach((f: Feat) => featById.set(f.id, f));
   
-  return (
-    <div className="space-y-4">
-      <div className="relative overflow-auto bg-stone-800/50 rounded-lg p-4">
-        <svg 
-          className="absolute top-0 left-0 pointer-events-none"
-          style={{ width: gridWidth * cellSize + 40, height: gridHeight * cellSize + 40 }}
-        >
-          {connections.map((conn: FeatConnection) => {
-            const from = featById.get(conn.fromFeatId);
-            const to = featById.get(conn.toFeatId);
-            if (!from || !to) return null;
-            
-            const x1 = from.gridX * cellSize + cellSize / 2 + 16;
-            const y1 = from.gridY * cellSize + cellSize / 2 + 16;
-            const x2 = to.gridX * cellSize + cellSize / 2 + 16;
-            const y2 = to.gridY * cellSize + cellSize / 2 + 16;
-            
-            const fromUnlocked = unlockedFeatIds.has(conn.fromFeatId);
-            const toUnlocked = unlockedFeatIds.has(conn.toFeatId);
-            
-            return (
-              <line
-                key={conn.id}
-                x1={x1} y1={y1} x2={x2} y2={y2}
-                stroke={fromUnlocked && toUnlocked ? '#22c55e' : fromUnlocked ? '#eab308' : '#57534e'}
-                strokeWidth={2}
-                strokeDasharray={conn.isOptional ? '4,4' : undefined}
-              />
-            );
-          })}
-        </svg>
+  // Track viewport size with ResizeObserver
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setViewportSize({
+          width: entry.contentRect.width,
+          height: entry.contentRect.height
+        });
+      }
+    });
+    
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, []);
+  
+  // Center view on feat tree when first loaded
+  useEffect(() => {
+    if (initializedRef.current || viewportSize.width === 0 || feats.length === 0) return;
+    
+    // Calculate bounding box of all feats
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    feats.forEach((f: Feat) => {
+      const worldX = f.gridX * cellSize;
+      const worldY = f.gridY * cellSize;
+      minX = Math.min(minX, worldX);
+      maxX = Math.max(maxX, worldX + cellSize);
+      minY = Math.min(minY, worldY);
+      maxY = Math.max(maxY, worldY + cellSize);
+    });
+    
+    // Center of the bounding box
+    const centerX = (minX + maxX) / 2;
+    const centerY = (minY + maxY) / 2;
+    
+    // Calculate zoom to fit all feats with padding
+    const treeWidth = maxX - minX + 100;
+    const treeHeight = maxY - minY + 100;
+    const zoomX = viewportSize.width / treeWidth;
+    const zoomY = viewportSize.height / treeHeight;
+    const fitZoom = Math.min(zoomX, zoomY, 1.5); // Cap at 1.5x
+    const initialZoom = Math.max(0.3, fitZoom);
+    
+    // Calculate pan to center the tree
+    const panX = viewportSize.width / 2 - (centerX + WORLD_OFFSET) * initialZoom;
+    const panY = viewportSize.height / 2 - (centerY + WORLD_OFFSET) * initialZoom;
+    
+    panRef.current = { x: panX, y: panY };
+    zoomRef.current = initialZoom;
+    motionX.set(panX);
+    motionY.set(panY);
+    motionZoom.set(initialZoom);
+    setDisplayZoom(Math.round(initialZoom * 100));
+    
+    initializedRef.current = true;
+  }, [viewportSize, feats, motionX, motionY, motionZoom]);
+  
+  // Pointer-based panning
+  const handlePointerDown = (e: React.PointerEvent) => {
+    if (gestureModeRef.current !== 'idle') return;
+    if (e.button !== 0) return;
+    
+    gestureModeRef.current = 'panning';
+    panPointerIdRef.current = e.pointerId;
+    panStartRef.current = {
+      pointerX: e.clientX,
+      pointerY: e.clientY,
+      panX: panRef.current.x,
+      panY: panRef.current.y
+    };
+    
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  };
+  
+  const handlePointerMove = (e: React.PointerEvent) => {
+    if (gestureModeRef.current !== 'panning') return;
+    if (panPointerIdRef.current !== e.pointerId) return;
+    if (!panStartRef.current) return;
+    
+    const deltaX = e.clientX - panStartRef.current.pointerX;
+    const deltaY = e.clientY - panStartRef.current.pointerY;
+    
+    const newX = panStartRef.current.panX + deltaX;
+    const newY = panStartRef.current.panY + deltaY;
+    
+    panRef.current = { x: newX, y: newY };
+    motionX.set(newX);
+    motionY.set(newY);
+  };
+  
+  const handlePointerUp = (e: React.PointerEvent) => {
+    if (panPointerIdRef.current === e.pointerId) {
+      gestureModeRef.current = 'idle';
+      panPointerIdRef.current = null;
+      panStartRef.current = null;
+      (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+    }
+  };
+  
+  const handlePointerCancel = handlePointerUp;
+  
+  // Wheel zoom
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    
+    const handleWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      
+      const currentZoom = zoomRef.current;
+      const currentPan = panRef.current;
+      
+      const rect = container.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+      
+      // World point under cursor
+      const worldX = (mouseX - currentPan.x) / currentZoom;
+      const worldY = (mouseY - currentPan.y) / currentZoom;
+      
+      // Calculate new zoom
+      const zoomDelta = -e.deltaY * 0.001;
+      const newZoom = Math.max(0.2, Math.min(3, currentZoom + zoomDelta * currentZoom));
+      
+      // Adjust pan to keep world point under cursor
+      const newPan = {
+        x: mouseX - worldX * newZoom,
+        y: mouseY - worldY * newZoom
+      };
+      
+      zoomRef.current = newZoom;
+      panRef.current = newPan;
+      motionX.set(newPan.x);
+      motionY.set(newPan.y);
+      motionZoom.set(newZoom);
+      setDisplayZoom(Math.round(newZoom * 100));
+    };
+    
+    container.addEventListener('wheel', handleWheel, { passive: false });
+    return () => container.removeEventListener('wheel', handleWheel);
+  }, [motionX, motionY, motionZoom]);
+  
+  // Touch pinch-to-zoom
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    
+    const handleTouchStart = (e: TouchEvent) => {
+      if (e.touches.length === 2) {
+        if (gestureModeRef.current === 'panning') {
+          gestureModeRef.current = 'idle';
+          panPointerIdRef.current = null;
+          panStartRef.current = null;
+        }
+        gestureModeRef.current = 'pinching';
+      }
+    };
+    
+    const handleTouchMove = (e: TouchEvent) => {
+      if (e.touches.length === 2) {
+        e.preventDefault();
+        gestureModeRef.current = 'pinching';
         
-        <div 
-          className="grid gap-1 relative"
-          style={{ 
-            gridTemplateColumns: `repeat(${gridWidth}, ${cellSize}px)`,
-            gridTemplateRows: `repeat(${gridHeight}, ${cellSize}px)`,
+        const currentZoom = zoomRef.current;
+        const currentPan = panRef.current;
+        
+        const touch1 = e.touches[0];
+        const touch2 = e.touches[1];
+        const distance = Math.hypot(
+          touch2.clientX - touch1.clientX,
+          touch2.clientY - touch1.clientY
+        );
+        
+        const rect = container.getBoundingClientRect();
+        const centerX = ((touch1.clientX + touch2.clientX) / 2) - rect.left;
+        const centerY = ((touch1.clientY + touch2.clientY) / 2) - rect.top;
+        
+        if (lastTouchDistanceRef.current !== null) {
+          const delta = (distance - lastTouchDistanceRef.current) * 0.01;
+          const newZoom = Math.max(0.2, Math.min(3, currentZoom + delta));
+          
+          const worldX = (centerX - currentPan.x) / currentZoom;
+          const worldY = (centerY - currentPan.y) / currentZoom;
+          
+          const newPan = {
+            x: centerX - worldX * newZoom,
+            y: centerY - worldY * newZoom
+          };
+          
+          zoomRef.current = newZoom;
+          panRef.current = newPan;
+          motionX.set(newPan.x);
+          motionY.set(newPan.y);
+          motionZoom.set(newZoom);
+          setDisplayZoom(Math.round(newZoom * 100));
+        }
+        
+        lastTouchDistanceRef.current = distance;
+      }
+    };
+    
+    const handleTouchEnd = () => {
+      gestureModeRef.current = 'idle';
+      lastTouchDistanceRef.current = null;
+    };
+    
+    container.addEventListener('touchstart', handleTouchStart, { passive: true });
+    container.addEventListener('touchmove', handleTouchMove, { passive: false });
+    container.addEventListener('touchend', handleTouchEnd, { passive: true });
+    container.addEventListener('touchcancel', handleTouchEnd, { passive: true });
+    
+    return () => {
+      container.removeEventListener('touchstart', handleTouchStart);
+      container.removeEventListener('touchmove', handleTouchMove);
+      container.removeEventListener('touchend', handleTouchEnd);
+      container.removeEventListener('touchcancel', handleTouchEnd);
+    };
+  }, [motionX, motionY, motionZoom]);
+  
+  return (
+    <div className="flex flex-col h-full">
+      {/* Infinite canvas viewport */}
+      <div 
+        ref={containerRef}
+        className="relative flex-1 min-h-[300px] overflow-hidden bg-stone-900/80 rounded-lg touch-none cursor-grab active:cursor-grabbing"
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerCancel}
+      >
+        {/* World container */}
+        <motion.div
+          className="absolute"
+          style={{
+            width: `${WORLD_SIZE}px`,
+            height: `${WORLD_SIZE}px`,
+            x: motionX,
+            y: motionY,
+            scale: motionZoom,
+            left: `-${WORLD_OFFSET}px`,
+            top: `-${WORLD_OFFSET}px`,
+            transformOrigin: '0 0'
           }}
         >
-          {Array.from({ length: gridHeight }).map((_, y) =>
-            Array.from({ length: gridWidth }).map((_, x) => {
-              const feat = featMap.get(`${x},${y}`);
-              if (!feat) return <div key={`${x},${y}`} className="bg-transparent" />;
+          {/* Connection lines SVG */}
+          <svg 
+            className="absolute pointer-events-none"
+            style={{ 
+              width: `${WORLD_SIZE}px`, 
+              height: `${WORLD_SIZE}px`,
+              left: 0,
+              top: 0
+            }}
+          >
+            {connections.map((conn: FeatConnection) => {
+              const from = featById.get(conn.fromFeatId);
+              const to = featById.get(conn.toFeatId);
+              if (!from || !to) return null;
               
-              const isUnlocked = unlockedFeatIds.has(feat.id);
-              const canUnlock = canUnlockFeat(feat);
+              const x1 = from.gridX * cellSize + cellSize / 2 + WORLD_OFFSET;
+              const y1 = from.gridY * cellSize + cellSize / 2 + WORLD_OFFSET;
+              const x2 = to.gridX * cellSize + cellSize / 2 + WORLD_OFFSET;
+              const y2 = to.gridY * cellSize + cellSize / 2 + WORLD_OFFSET;
+              
+              const fromUnlocked = unlockedFeatIds.has(conn.fromFeatId);
+              const toUnlocked = unlockedFeatIds.has(conn.toFeatId);
               
               return (
-                <div
-                  key={`${x},${y}`}
-                  className={`
-                    border-2 rounded-lg cursor-pointer transition-all relative
-                    ${isUnlocked 
-                      ? 'border-green-500 bg-green-900/50 ring-2 ring-green-400/50' 
-                      : canUnlock 
-                        ? `${tierColors[feat.tier]} hover:ring-2 hover:ring-amber-400` 
-                        : 'border-stone-700 bg-stone-900/50 opacity-50'}
-                  `}
-                  onClick={() => setSelectedFeat(feat)}
-                  data-testid={`feat-cell-${x}-${y}`}
-                >
-                  <div className="absolute inset-1 flex flex-col items-center justify-center text-center p-0.5">
-                    {isUnlocked && (
-                      <Check className="absolute top-0 right-0 h-3 w-3 text-green-400" />
-                    )}
-                    <div className="text-[10px] font-bold truncate w-full leading-tight">{feat.name}</div>
-                    <Badge variant="secondary" className="text-[8px] mt-0.5 h-4 px-1">
-                      T{feat.tier}
-                    </Badge>
-                  </div>
-                </div>
+                <line
+                  key={conn.id}
+                  x1={x1} y1={y1} x2={x2} y2={y2}
+                  stroke={fromUnlocked && toUnlocked ? '#22c55e' : fromUnlocked ? '#eab308' : '#57534e'}
+                  strokeWidth={3}
+                  strokeDasharray={conn.isOptional ? '8,8' : undefined}
+                />
               );
-            })
-          )}
+            })}
+          </svg>
+          
+          {/* Feat nodes */}
+          {feats.map((feat: Feat) => {
+            const isUnlocked = unlockedFeatIds.has(feat.id);
+            const canUnlock = canUnlockFeat(feat);
+            
+            return (
+              <div
+                key={feat.id}
+                className={`
+                  absolute border-2 rounded-lg cursor-pointer transition-all
+                  ${isUnlocked 
+                    ? 'border-green-500 bg-green-900/80 ring-2 ring-green-400/50' 
+                    : canUnlock 
+                      ? `${tierColors[feat.tier]} hover:ring-2 hover:ring-amber-400` 
+                      : 'border-stone-700 bg-stone-900/80 opacity-50'}
+                `}
+                style={{
+                  left: feat.gridX * cellSize + WORLD_OFFSET,
+                  top: feat.gridY * cellSize + WORLD_OFFSET,
+                  width: cellSize - 4,
+                  height: cellSize - 4,
+                }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setSelectedFeat(feat);
+                }}
+                data-testid={`feat-node-${feat.id}`}
+              >
+                <div className="absolute inset-1 flex flex-col items-center justify-center text-center p-1">
+                  {isUnlocked && (
+                    <Check className="absolute top-0.5 right-0.5 h-4 w-4 text-green-400" />
+                  )}
+                  <div className="text-xs font-bold truncate w-full leading-tight">{feat.name}</div>
+                  <Badge variant="secondary" className="text-[9px] mt-1 h-4 px-1.5">
+                    T{feat.tier}
+                  </Badge>
+                </div>
+              </div>
+            );
+          })}
+        </motion.div>
+        
+        {/* Zoom indicator */}
+        <div className="absolute bottom-2 right-2 bg-stone-800/90 px-2 py-1 rounded text-xs text-stone-400">
+          {displayZoom}%
         </div>
       </div>
       
       {/* Feat Detail Panel */}
       {selectedFeat && (
-        <div className="bg-stone-800 rounded-lg p-4 border border-stone-700">
+        <div className="mt-3 bg-stone-800 rounded-lg p-4 border border-stone-700">
           <div className="flex items-start justify-between mb-3">
             <div>
               <h3 className="font-bold text-lg">{selectedFeat.name}</h3>
