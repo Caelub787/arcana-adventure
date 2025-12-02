@@ -788,11 +788,14 @@ export default function Campaign() {
 
   const handleSetDefaultView = () => {
     if (activeScene) {
+      // Save view as world center coordinates (version 1)
+      // currentView.x/y are already world coordinates from BattleMap's notifyViewChange
       updateSceneMutation.mutate({
         defaultViewX: Math.round(currentView.x),
         defaultViewY: Math.round(currentView.y),
         defaultViewZoom: currentView.zoom,
-      });
+        defaultViewVersion: 1, // Version 1 = world center coordinates
+      } as any);
       toast({ title: "Success", description: "Default view saved" });
     }
   };

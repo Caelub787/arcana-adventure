@@ -58,6 +58,7 @@ export const scenes = pgTable("scenes", {
   defaultViewX: integer("default_view_x").default(0).notNull(),
   defaultViewY: integer("default_view_y").default(0).notNull(),
   defaultViewZoom: real("default_view_zoom").default(1).notNull(),
+  defaultViewVersion: integer("default_view_version").default(0).notNull(), // 0 = legacy pixel offsets, 1 = world center coords
   inCombat: boolean("in_combat").default(false).notNull(), // Whether combat/initiative tracking is active
   currentTurnCharacterId: varchar("current_turn_character_id"), // Character whose turn it is
   createdAt: timestamp("created_at").defaultNow().notNull(),

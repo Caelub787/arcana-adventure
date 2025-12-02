@@ -284,33 +284,144 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onDeleteToken, ro
   const containerRef = useRef<HTMLDivElement>(null);
   const lastTouchDistanceRef = useRef<number | null>(null);
   
+  // Track viewport dimensions for viewport-independent centering
+  const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
+  
   // Motion values for smooth dragging without re-renders
   const motionX = useMotionValue(0);
   const motionY = useMotionValue(0);
   const motionZoom = useMotionValue(1);
   
-  // Initialize view from scene's default values when scene changes
+  // Conversion functions for viewport-independent view storage
+  // World coordinates = point on the map that should be at viewport center
+  // Pan offsets = pixel translation applied to the container
+  const MAP_OFFSET = 9000; // The container offset used in the CSS
+  
+  const worldToPixelOffset = (worldX: number, worldY: number, zoom: number, vpWidth: number, vpHeight: number) => {
+    // Convert world center coordinates to pixel offsets
+    // Formula: panX = viewportW/2 - (worldX + MAP_OFFSET) * zoom
+    return {
+      x: vpWidth / 2 - (worldX + MAP_OFFSET) * zoom,
+      y: vpHeight / 2 - (worldY + MAP_OFFSET) * zoom
+    };
+  };
+  
+  const pixelOffsetToWorld = (panX: number, panY: number, zoom: number, vpWidth: number, vpHeight: number) => {
+    // Convert pixel offsets to world center coordinates
+    // Formula: worldX = (viewportW/2 - panX) / zoom - MAP_OFFSET
+    return {
+      x: (vpWidth / 2 - panX) / zoom - MAP_OFFSET,
+      y: (vpHeight / 2 - panY) / zoom - MAP_OFFSET
+    };
+  };
+  
+  // Track stored world coordinates for recalculation on viewport changes
+  const storedWorldCoordsRef = useRef<{ x: number; y: number } | null>(null);
+  
+  // Update viewport size on mount and resize using ResizeObserver for accurate dimensions
   useEffect(() => {
-    if (scene && scene.id !== initializedSceneRef.current) {
-      const defaultX = scene.defaultViewX ?? 0;
-      const defaultY = scene.defaultViewY ?? 0;
+    if (!containerRef.current) return;
+    
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const { width, height } = entry.contentRect;
+        if (width > 0 && height > 0) {
+          setViewportSize(prev => {
+            // Only update if changed to avoid infinite loops
+            if (prev.width !== width || prev.height !== height) {
+              return { width, height };
+            }
+            return prev;
+          });
+        }
+      }
+    });
+    
+    observer.observe(containerRef.current);
+    return () => observer.disconnect();
+  }, []);
+  
+  // Initialize view from scene's default values when scene changes
+  // Version 0 (legacy): defaultViewX/Y are pixel offsets
+  // Version 1+: defaultViewX/Y are world center coordinates
+  useEffect(() => {
+    if (scene && scene.id !== initializedSceneRef.current && viewportSize.width > 0) {
       const defaultZoom = scene.defaultViewZoom ?? 1;
+      const viewVersion = (scene as any).defaultViewVersion ?? 0;
       
-      panRef.current = { x: defaultX, y: defaultY };
+      let pixelX: number, pixelY: number;
+      let worldX: number, worldY: number;
+      
+      if (viewVersion === 0) {
+        // Legacy: stored values are pixel offsets, use directly
+        pixelX = scene.defaultViewX ?? 0;
+        pixelY = scene.defaultViewY ?? 0;
+        // Calculate world coords for consistent parent notification
+        const worldCoords = pixelOffsetToWorld(pixelX, pixelY, defaultZoom, viewportSize.width, viewportSize.height);
+        worldX = worldCoords.x;
+        worldY = worldCoords.y;
+        // Don't store world coords for legacy - let user behavior determine future
+        storedWorldCoordsRef.current = null;
+        // But do set previousViewportRef so promotion path has a baseline
+        previousViewportRef.current = { ...viewportSize };
+      } else {
+        // Version 1+: stored values are world center coordinates
+        worldX = scene.defaultViewX ?? 0;
+        worldY = scene.defaultViewY ?? 0;
+        // Store world coords for recalculation on viewport changes
+        storedWorldCoordsRef.current = { x: worldX, y: worldY };
+        // Convert world center to pixel offsets based on current viewport
+        const pixelOffset = worldToPixelOffset(worldX, worldY, defaultZoom, viewportSize.width, viewportSize.height);
+        pixelX = pixelOffset.x;
+        pixelY = pixelOffset.y;
+      }
+      
+      panRef.current = { x: pixelX, y: pixelY };
       zoomRef.current = defaultZoom;
-      motionX.set(defaultX);
-      motionY.set(defaultY);
+      motionX.set(pixelX);
+      motionY.set(pixelY);
       motionZoom.set(defaultZoom);
       
       initializedSceneRef.current = scene.id;
       forceUpdate(n => n + 1);
       
-      // Notify parent of initial view
+      // Notify parent with world coordinates (for consistent save)
       if (onViewChange) {
-        onViewChange({ x: defaultX, y: defaultY, zoom: defaultZoom });
+        onViewChange({ x: worldX, y: worldY, zoom: defaultZoom });
       }
     }
-  }, [scene, motionX, motionY, motionZoom, onViewChange]);
+  }, [scene, motionX, motionY, motionZoom, onViewChange, viewportSize]);
+  
+  // Recalculate pan when viewport changes for version-1 scenes (keeps center consistent)
+  const previousViewportRef = useRef<{ width: number; height: number } | null>(null);
+  useEffect(() => {
+    // Skip if no stored world coords (legacy scene or not initialized)
+    if (!storedWorldCoordsRef.current) return;
+    // Skip if viewport not ready
+    if (viewportSize.width === 0 || viewportSize.height === 0) return;
+    // Skip if this is the first measurement (handled by initialization effect)
+    if (!previousViewportRef.current) {
+      previousViewportRef.current = { ...viewportSize };
+      return;
+    }
+    // Skip if viewport hasn't actually changed
+    if (previousViewportRef.current.width === viewportSize.width && 
+        previousViewportRef.current.height === viewportSize.height) {
+      return;
+    }
+    
+    // Recalculate pixel offsets from stored world coords
+    const { x: worldX, y: worldY } = storedWorldCoordsRef.current;
+    const currentZoom = zoomRef.current;
+    const pixelOffset = worldToPixelOffset(worldX, worldY, currentZoom, viewportSize.width, viewportSize.height);
+    
+    panRef.current = { x: pixelOffset.x, y: pixelOffset.y };
+    motionX.set(pixelOffset.x);
+    motionY.set(pixelOffset.y);
+    
+    previousViewportRef.current = { ...viewportSize };
+    forceUpdate(n => n + 1);
+  }, [viewportSize, motionX, motionY]);
 
   // Clear delete button if token no longer exists (after successful deletion)
   useEffect(() => {
@@ -320,12 +431,28 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onDeleteToken, ro
   }, [tokens, showDeleteButton]);
   
   // Throttled view change notification - only on significant changes
+  // Converts pixel offsets to world center coordinates for viewport-independent storage
   const notifyViewChangeRef = useRef<NodeJS.Timeout | null>(null);
   const notifyViewChange = () => {
     if (notifyViewChangeRef.current) clearTimeout(notifyViewChangeRef.current);
     notifyViewChangeRef.current = setTimeout(() => {
-      if (onViewChange) {
-        onViewChange({ x: panRef.current.x, y: panRef.current.y, zoom: zoomRef.current });
+      if (onViewChange && viewportSize.width > 0) {
+        // Convert current pixel offsets to world center coordinates
+        const worldCoords = pixelOffsetToWorld(
+          panRef.current.x, 
+          panRef.current.y, 
+          zoomRef.current, 
+          viewportSize.width, 
+          viewportSize.height
+        );
+        // If this is upgrading a legacy scene to world coords, seed previousViewportRef
+        // so subsequent resizes trigger recalculation
+        if (!storedWorldCoordsRef.current && !previousViewportRef.current) {
+          previousViewportRef.current = { ...viewportSize };
+        }
+        // Update stored world coords for viewport recalculation
+        storedWorldCoordsRef.current = { x: worldCoords.x, y: worldCoords.y };
+        onViewChange({ x: worldCoords.x, y: worldCoords.y, zoom: zoomRef.current });
       }
     }, 100);
   };
@@ -744,15 +871,32 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onDeleteToken, ro
            variant="secondary" 
            className="bg-black/50 hover:bg-black/80 text-xs border border-white/10 backdrop-blur-sm"
            onClick={() => { 
-             const defaultX = scene?.defaultViewX ?? 0;
-             const defaultY = scene?.defaultViewY ?? 0;
              const defaultZoom = scene?.defaultViewZoom ?? 1;
-             panRef.current = { x: defaultX, y: defaultY };
-             zoomRef.current = defaultZoom;
-             motionX.set(defaultX);
-             motionY.set(defaultY);
-             motionZoom.set(defaultZoom);
-             notifyViewChange();
+             const viewVersion = (scene as any)?.defaultViewVersion ?? 0;
+             
+             if (viewportSize.width > 0) {
+               let pixelX: number, pixelY: number;
+               
+               if (viewVersion === 0) {
+                 // Legacy: stored values are pixel offsets
+                 pixelX = scene?.defaultViewX ?? 0;
+                 pixelY = scene?.defaultViewY ?? 0;
+               } else {
+                 // Version 1+: stored values are world center coordinates
+                 const worldX = scene?.defaultViewX ?? 0;
+                 const worldY = scene?.defaultViewY ?? 0;
+                 const pixelOffset = worldToPixelOffset(worldX, worldY, defaultZoom, viewportSize.width, viewportSize.height);
+                 pixelX = pixelOffset.x;
+                 pixelY = pixelOffset.y;
+               }
+               
+               panRef.current = { x: pixelX, y: pixelY };
+               zoomRef.current = defaultZoom;
+               motionX.set(pixelX);
+               motionY.set(pixelY);
+               motionZoom.set(defaultZoom);
+               notifyViewChange();
+             }
            }}
            data-testid="button-reset-view"
         >
