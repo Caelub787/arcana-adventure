@@ -505,15 +505,21 @@ export default function Campaign() {
 
   // Load assigned character from persistence for both GMs and players
   useEffect(() => {
-    // Wait for characters to be loaded (not just available but populated)
+    // Wait for characters to be loaded AND populated
     if (!effectiveCampaignId || charactersLoading) return;
-    if (!characters || !Array.isArray(characters)) return;
+    if (!characters || !Array.isArray(characters) || characters.length === 0) {
+      // For GMs with no characters yet, still set GM mode
+      if (role === 'gm') {
+        setCharacter({ name: 'GM', class: 'admin' });
+      }
+      return;
+    }
+    
+    // Capture characters at effect run time (stable for async callback)
+    const currentCharacters = characters as any[];
     
     // Try to load persisted assigned character first
     api.getAssignedCharacter(effectiveCampaignId).then(({ characterId }) => {
-      // Use ref to get latest characters to avoid stale closure
-      const currentCharacters = charactersRef.current;
-      
       if (characterId) {
         const assignedChar = currentCharacters.find((c: any) => c.id === characterId);
         if (assignedChar) {
@@ -537,9 +543,6 @@ export default function Campaign() {
         }
       }
     }).catch(() => {
-      // Use ref to get latest characters to avoid stale closure
-      const currentCharacters = charactersRef.current;
-      
       // On error, use role-based fallback
       if (role === 'gm') {
         setCharacter({ name: 'GM', class: 'admin' });
@@ -661,8 +664,15 @@ export default function Campaign() {
     // Handle based on current selection mode
     switch (selectionMode) {
       case 'select':
-        // Select mode: just mark the token as selected, nothing else happens
+        // Select mode: mark the token as selected and show character info for GMs
         setSelectedTokenId(token.id);
+        // For GMs, also set the inspected character so hotbar and sheet tabs appear
+        if (role === 'gm' && token.characterId && characters && Array.isArray(characters)) {
+          const charData = characters.find((c: any) => c.id === token.characterId);
+          if (charData) {
+            setInspectedChar(charData);
+          }
+        }
         break;
         
       case 'target':

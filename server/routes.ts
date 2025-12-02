@@ -945,16 +945,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/login", async (req, res) => {
     try {
       const { email, password } = req.body;
+      console.log(`[LOGIN] Attempt for email: ${email}`);
       
       const user = await storage.getUserByEmail(email);
       if (!user) {
+        console.log(`[LOGIN] User not found for email: ${email}`);
         return res.status(401).json({ error: "Invalid credentials" });
       }
+      console.log(`[LOGIN] User found: ${user.username}, checking password...`);
 
       const validPassword = await bcrypt.compare(password, user.password);
       if (!validPassword) {
+        console.log(`[LOGIN] Password mismatch for user: ${user.username}`);
         return res.status(401).json({ error: "Invalid credentials" });
       }
+      console.log(`[LOGIN] Password valid for user: ${user.username}`);
 
       req.session.userId = user.id;
       // Only send safe user fields (never send password hash to client)

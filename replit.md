@@ -22,6 +22,7 @@ Preferred communication style: Simple, everyday language.
 - **Ammunition System**: Configurable break chance (0-100%) per ammunition item, battlemap hotbar displays grouped total quantity of matching ammunition (same name/type), automatic re-equip of next matching ammunition stack when current stack depletes.
 - **Initiative Tracking**: Real-time initiative system accessible to all users, with GM controls for combat management, turn advancement, and visibility.
 - **Roll Notification System**: Visual, animated notifications for all dice rolls (d4-d20) with distinct styling for different roll types (dice, initiative, "Crit Success" on natural 20, "Crit Failure" on natural 1). All rolls are server-authoritative and integrated into the chat.
+- **Targeting System**: Token targeting with range validation and hit detection. Selection modes (Select/Target/Assign) on the left side of battlemap. Target mode allows selecting enemy tokens for attacks. Range checking validates weapon range against target distance (50px grid = 5ft, melee default 5ft, ranged uses weapon.range). Hit detection compares attack roll to target's naturalArmor as DC, displaying HIT!/MISS!/Crit Success!/Crit Failure! in notifications. GMs see character hotbars when clicking any token in select mode.
 
 ### Backend
 - **Technology Stack**: Express.js with TypeScript, `express-session` for session management.
