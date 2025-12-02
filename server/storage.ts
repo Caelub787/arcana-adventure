@@ -19,7 +19,8 @@ import {
   type Feat, type InsertFeat,
   type FeatConnection, type InsertFeatConnection,
   type CharacterFeat, type InsertCharacterFeat,
-  users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, items, spells, characterPermissions, initiativeEntries, systemSpecies, featTemplates, featTrees, feats, featConnections, characterFeats
+  type SystemSpell, type InsertSystemSpell,
+  users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, items, spells, characterPermissions, initiativeEntries, systemSpecies, featTemplates, featTrees, feats, featConnections, characterFeats, systemSpells
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql, inArray } from "drizzle-orm";
@@ -174,6 +175,13 @@ export interface IStorage {
   unlockCharacterFeat(characterId: string, featId: string): Promise<CharacterFeat>;
   removeCharacterFeat(characterId: string, featId: string): Promise<void>;
   hasCharacterFeat(characterId: string, featId: string): Promise<boolean>;
+
+  // System Spell operations (global spell definitions)
+  getSystemSpells(): Promise<SystemSpell[]>;
+  getSystemSpell(id: string): Promise<SystemSpell | undefined>;
+  createSystemSpell(spell: InsertSystemSpell): Promise<SystemSpell>;
+  updateSystemSpell(id: string, data: Partial<InsertSystemSpell>): Promise<SystemSpell | undefined>;
+  deleteSystemSpell(id: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1079,6 +1087,38 @@ export class DatabaseStorage implements IStorage {
       ))
       .limit(1);
     return !!feat;
+  }
+
+  // System Spell operations
+  async getSystemSpells(): Promise<SystemSpell[]> {
+    return await db.select()
+      .from(systemSpells)
+      .orderBy(systemSpells.level, systemSpells.name);
+  }
+
+  async getSystemSpell(id: string): Promise<SystemSpell | undefined> {
+    const [spell] = await db.select()
+      .from(systemSpells)
+      .where(eq(systemSpells.id, id))
+      .limit(1);
+    return spell;
+  }
+
+  async createSystemSpell(spell: InsertSystemSpell): Promise<SystemSpell> {
+    const [created] = await db.insert(systemSpells).values(spell).returning();
+    return created;
+  }
+
+  async updateSystemSpell(id: string, data: Partial<InsertSystemSpell>): Promise<SystemSpell | undefined> {
+    const [updated] = await db.update(systemSpells)
+      .set(data)
+      .where(eq(systemSpells.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteSystemSpell(id: string): Promise<void> {
+    await db.delete(systemSpells).where(eq(systemSpells.id, id));
   }
 }
 
