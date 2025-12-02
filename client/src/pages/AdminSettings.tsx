@@ -985,7 +985,7 @@ function FeatTreesView() {
   // Selection and dragging state
   const [selectedFeatId, setSelectedFeatId] = useState<string | null>(null);
   const [connectionMode, setConnectionMode] = useState(false);
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; featId: string } | null>(null);
+  const [featActionMenu, setFeatActionMenu] = useState<string | null>(null); // featId for centered popup
   const draggingRef = useRef<{ featId: string; startX: number; startY: number; origX: number; origY: number } | null>(null);
   const [dragOffset, setDragOffset] = useState<{ id: string; dx: number; dy: number } | null>(null);
 
@@ -1011,18 +1011,18 @@ function FeatTreesView() {
     }
   };
 
-  // Handle feat node double click - open editor
+  // Handle feat node double click - open centered action menu
   const handleFeatDoubleClick = (feat: Feat, e: React.MouseEvent) => {
     e.stopPropagation();
-    setEditingFeat(feat);
-    setShowFeatEditor(true);
+    setFeatActionMenu(feat.id);
+    setSelectedFeatId(feat.id);
   };
 
-  // Handle right-click context menu
+  // Handle right-click - also open centered action menu
   const handleFeatContextMenu = (feat: Feat, e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    setContextMenu({ x: e.clientX, y: e.clientY, featId: feat.id });
+    setFeatActionMenu(feat.id);
     setSelectedFeatId(feat.id);
   };
 
@@ -1034,7 +1034,7 @@ function FeatTreesView() {
         setConnectingFrom(null);
       }
     }
-    setContextMenu(null);
+    setFeatActionMenu(null);
   };
 
   // Drag handlers for feat nodes
@@ -1696,48 +1696,76 @@ function FeatTreesView() {
           />
         </motion.div>
 
-        {/* Context Menu */}
-        {contextMenu && (
-          <div
-            className="absolute z-50 bg-stone-800 border border-stone-600 rounded-lg shadow-xl py-1 min-w-[150px]"
-            style={{ left: contextMenu.x, top: contextMenu.y }}
-            onClick={(e) => e.stopPropagation()}
+        {/* Centered Feat Action Menu */}
+        {featActionMenu && (
+          <div 
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+            onClick={() => setFeatActionMenu(null)}
           >
-            <button
-              className="w-full px-3 py-2 text-left text-sm hover:bg-stone-700 flex items-center gap-2"
-              onClick={() => {
-                const feat = featById.get(contextMenu.featId);
-                if (feat) {
-                  setEditingFeat(feat);
-                  setShowFeatEditor(true);
-                }
-                setContextMenu(null);
-              }}
+            <div
+              className="bg-stone-800 border border-stone-600 rounded-xl shadow-2xl p-4 min-w-[220px] transform"
+              onClick={(e) => e.stopPropagation()}
             >
-              <Pencil className="h-4 w-4" /> Edit Feat
-            </button>
-            <button
-              className="w-full px-3 py-2 text-left text-sm hover:bg-stone-700 flex items-center gap-2"
-              onClick={() => {
-                setConnectionMode(true);
-                setConnectingFrom(contextMenu.featId);
-                setContextMenu(null);
-              }}
-            >
-              <Link className="h-4 w-4" /> Start Connection
-            </button>
-            <div className="border-t border-stone-600 my-1" />
-            <button
-              className="w-full px-3 py-2 text-left text-sm hover:bg-red-900/50 text-red-400 flex items-center gap-2"
-              onClick={() => {
-                if (confirm('Delete this feat?')) {
-                  deleteFeatMutation.mutate(contextMenu.featId);
-                }
-                setContextMenu(null);
-              }}
-            >
-              <Trash2 className="h-4 w-4" /> Delete Feat
-            </button>
+              <div className="text-center mb-4">
+                <h3 className="font-display text-lg text-amber-500">
+                  {featById.get(featActionMenu)?.name || 'Feat Actions'}
+                </h3>
+                <p className="text-xs text-stone-400 mt-1">
+                  Tier {featById.get(featActionMenu)?.tier || 1}
+                </p>
+              </div>
+              
+              <div className="space-y-2">
+                <button
+                  className="w-full px-4 py-3 rounded-lg bg-stone-700 hover:bg-purple-700 transition-colors flex items-center gap-3 text-stone-200"
+                  onClick={() => {
+                    const feat = featById.get(featActionMenu);
+                    if (feat) {
+                      setEditingFeat(feat);
+                      setShowFeatEditor(true);
+                    }
+                    setFeatActionMenu(null);
+                  }}
+                >
+                  <Pencil className="h-5 w-5 text-purple-400" />
+                  <span>Edit Feat</span>
+                </button>
+                
+                <button
+                  className="w-full px-4 py-3 rounded-lg bg-stone-700 hover:bg-blue-700 transition-colors flex items-center gap-3 text-stone-200"
+                  onClick={() => {
+                    setConnectionMode(true);
+                    setConnectingFrom(featActionMenu);
+                    setFeatActionMenu(null);
+                  }}
+                >
+                  <Link className="h-5 w-5 text-blue-400" />
+                  <span>Start Connection</span>
+                </button>
+                
+                <div className="border-t border-stone-600 my-2" />
+                
+                <button
+                  className="w-full px-4 py-3 rounded-lg bg-red-900/30 hover:bg-red-700 transition-colors flex items-center gap-3 text-red-400 hover:text-white"
+                  onClick={() => {
+                    if (confirm('Delete this feat? This cannot be undone.')) {
+                      deleteFeatMutation.mutate(featActionMenu);
+                    }
+                    setFeatActionMenu(null);
+                  }}
+                >
+                  <Trash2 className="h-5 w-5" />
+                  <span>Delete Feat</span>
+                </button>
+              </div>
+              
+              <button
+                className="w-full mt-4 px-4 py-2 rounded-lg border border-stone-600 hover:bg-stone-700 transition-colors text-stone-400 text-sm"
+                onClick={() => setFeatActionMenu(null)}
+              >
+                Cancel
+              </button>
+            </div>
           </div>
         )}
       </div>
