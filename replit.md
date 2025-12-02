@@ -46,10 +46,13 @@ Preferred communication style: Simple, everyday language.
   - **Database Tables**: `feat_templates`, `feat_trees`, `feats` (with optional `templateId`), `feat_connections`, `character_feats` for storing templates, tree definitions, and character unlock progress.
 - **Spell Management System**: Comprehensive system for defining and managing spells that can be granted through feats.
   - **Admin Spells Interface**: Dedicated "Spells" section in Admin Settings with search, create, edit, and delete functionality.
-  - **Spell Properties**: Each spell includes name, description, damage formula, damage type, range, energy cost, cast time, and duration.
-  - **Damage Types**: 12 damage types matching armor reduction system (Sharp, Blunt, Piercing, Flame, Frost, Storm, Tide, Stone, Flux, Light, Dark, Sound).
+  - **Spell Properties**: Each spell includes name, description, damageDice (e.g., "2d6"), damage type, range, energy cost, cast time, duration, and attribute (for attack/damage modifiers).
+  - **Damage Types**: 13 damage types matching armor reduction system (Sharp, Blunt, Piercing, Flame, Frost, Storm, Tide, Stone, Flux, Light, Dark, Sound, Health). Health damage type heals targets instead of damaging them.
+  - **Spell Rolling**: Spells function like weapons on hotbar - single click triggers attack roll (d20 + attribute modifier), double click triggers damage roll (damageDice + attribute modifier). Attack rolls check against target's DC for HIT!/MISS! notifications.
+  - **Health Damage Type Healing**: When a spell or weapon has damageType "Health", the damage is applied as healing (adding HP to target, capped at maxHP) instead of subtraction.
   - **Feat Integration**: Spells are granted to characters via the `spell_grant` effect type on feats. Dropdown selector shows all available system spells.
   - **Database Table**: `system_spells` stores spell definitions with UUID primary keys for consistent reference.
+- **Feat Points System**: Characters earn feat points based on level using formula: level + (2 × floor(level/3)). This awards 1 point per level normally, but 3 points on levels divisible by 3 (levels 3, 6, 9, etc.). Example: Level 1 = 1 point, Level 3 = 5 total points, Level 6 = 10 total points.
 
 ### Backend
 - **Technology Stack**: Express.js with TypeScript, `express-session` for session management.
