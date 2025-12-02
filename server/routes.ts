@@ -2526,6 +2526,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get feat tree by ID (public route for character sheet)
+  app.get("/api/feat-trees/:id", requireAuth, async (req, res) => {
+    try {
+      const tree = await storage.getFeatTree(req.params.id);
+      if (!tree) {
+        return res.status(404).json({ error: "Feat tree not found" });
+      }
+      const [featsData, connections] = await Promise.all([
+        storage.getFeats(req.params.id),
+        storage.getFeatConnections(req.params.id)
+      ]);
+      res.json({ tree, feats: featsData, connections });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch feat tree" });
+    }
+  });
+
   // Get feat tree by name (for character sheet)
   app.get("/api/feat-trees/by-name/:name", requireAuth, async (req, res) => {
     try {

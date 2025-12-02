@@ -736,7 +736,7 @@ class ApiClient {
   }
 
   async getFeatTree(id: string): Promise<FeatTreeWithData> {
-    return this.request(`/admin/feat-trees/${id}`);
+    return this.request(`/feat-trees/${id}`);
   }
 
   async createFeatTree(tree: Partial<FeatTree>): Promise<FeatTree> {
