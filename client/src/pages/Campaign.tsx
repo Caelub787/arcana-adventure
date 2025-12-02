@@ -665,17 +665,10 @@ export default function Campaign() {
     // Handle based on current selection mode
     switch (selectionMode) {
       case 'select':
-        // Select mode: mark the token as selected and show character info for GMs
-        // This does NOT assign the character - only shows their info temporarily
+        // Select mode: mark the token as selected with white border only
+        // Do NOT change inspectedChar - the hotbar should stay on the user's assigned character
+        console.log('[TokenClick] Select mode - only selecting token, NOT changing hotbar');
         setSelectedTokenId(token.id);
-        // For GMs, also set the inspected character so hotbar and sheet tabs appear
-        if (role === 'gm' && token.characterId && characters && Array.isArray(characters)) {
-          const charData = characters.find((c: any) => c.id === token.characterId);
-          if (charData) {
-            console.log('[TokenClick] Inspecting character (not assigning):', charData.name);
-            setInspectedChar(charData);
-          }
-        }
         break;
         
       case 'target':
