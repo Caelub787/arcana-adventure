@@ -2255,7 +2255,7 @@ function FeatFormDialog({ open, onOpenChange, onSave, initialData, isLoading, fe
                       {systemItems.length === 0 ? (
                         <div className="p-2 text-xs text-stone-400">No system items available. Create items in campaign settings first.</div>
                       ) : (
-                        systemItems.map((item: any) => (
+                        systemItems.filter((item: any) => item.id).map((item: any) => (
                           <SelectItem key={item.id} value={item.id}>
                             <span className="flex items-center gap-2">
                               {item.image && (

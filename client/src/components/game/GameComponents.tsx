@@ -7649,25 +7649,6 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                           {editingOverview ? (overviewData.sizeBonus >= 0 ? `+${overviewData.sizeBonus}` : overviewData.sizeBonus) : (liveCharacter.sizeBonus >= 0 ? `+${liveCharacter.sizeBonus}` : liveCharacter.sizeBonus)}
                         </p>
                       </div>
-                      {/* Feat Tree (auto-filled from race) - clickable to open viewer */}
-                      <div>
-                        <Label className="text-xs text-stone-400">Feat Tree</Label>
-                        {!editingOverview && (liveCharacter.featTree) ? (
-                          <Button
-                            variant="link"
-                            className="p-0 h-auto text-purple-400 hover:text-purple-300 font-normal"
-                            onClick={() => setShowFeatTreeViewer(true)}
-                            data-testid="button-view-feat-tree"
-                          >
-                            <GitBranch className="h-3 w-3 mr-1" />
-                            {liveCharacter.featTree}
-                          </Button>
-                        ) : (
-                          <p className="text-stone-200" data-testid="text-feat-tree">
-                            {editingOverview ? overviewData.featTree : "None"}
-                          </p>
-                        )}
-                      </div>
                       {/* Speed (auto-filled from race) */}
                       <div>
                         <Label className="text-xs text-stone-400">Speed</Label>
@@ -7685,6 +7666,44 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                     </div>
                   </div>
                 </div>
+
+                {/* Feat Tree Section - Full width below overview grid */}
+                {liveCharacter.featTree && (
+                  <div className="bg-gradient-to-r from-purple-900/30 to-indigo-900/30 rounded-lg p-3 border border-purple-700/50">
+                    <div className="flex justify-between items-center mb-2">
+                      <Label className="text-sm text-purple-300 flex items-center gap-2">
+                        <GitBranch className="h-4 w-4 text-purple-400" />
+                        Feat Tree
+                      </Label>
+                      {(() => {
+                        // Calculate feat points: 1 point per level
+                        const totalPoints = liveCharacter.level || 1;
+                        // Calculate spent points from unlocked feats
+                        const spentPoints = characterFeats.reduce((sum, cf) => {
+                          const feat = featTreeData?.feats?.find((f: Feat) => f.id === cf.featId);
+                          return sum + (feat?.cost || 0);
+                        }, 0);
+                        const remainingPoints = totalPoints - spentPoints;
+                        
+                        return (
+                          <span className={`text-sm font-medium ${remainingPoints > 0 ? 'text-green-400' : 'text-stone-400'}`} data-testid="text-feat-points">
+                            {remainingPoints} / {totalPoints} points
+                          </span>
+                        );
+                      })()}
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full text-purple-400 border-purple-600 hover:bg-purple-900/30"
+                      onClick={() => setShowFeatTreeViewer(true)}
+                      data-testid="button-view-feat-tree"
+                    >
+                      <GitBranch className="h-4 w-4 mr-2" />
+                      View {liveCharacter.featTree}
+                    </Button>
+                  </div>
+                )}
 
                 {/* Defense Class (DC) Display */}
                 <div className="bg-gradient-to-r from-cyan-900/40 to-blue-900/40 rounded-lg p-3 border border-cyan-700/50">
