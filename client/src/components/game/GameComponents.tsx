@@ -20,7 +20,7 @@ import {
   Users, User, Plus, Minus, LogOut, Menu, ChevronRight, ChevronLeft, ChevronDown, ChevronUp,
   Heart, Zap, Backpack, Sparkles, Dice5, MessageSquare, RefreshCw, X, Trash2, Package, FolderOpen, Lock, Unlock, Camera,
   BarChart3, Grid3X3, ScrollText, Upload, Image as ImageIcon, Layers, Search, TrendingUp, UserMinus, Ban,
-  MousePointer, Target, UserCheck, Swords, ArrowRight, Eye, EyeOff, Check
+  MousePointer, Target, UserCheck, Swords, ArrowRight, Eye, EyeOff, Check, Moon, Coffee, AlertTriangle
 } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { type Scene, type Hotbar, type SystemSpecies, api, gameWs } from "@/lib/api";
@@ -1789,7 +1789,34 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     setHasDisadvantage(false);
   };
 
-  // Handle skill roll (1d20 + skill modifier)
+  // Skill to Attribute mapping
+  const SKILL_ATTRIBUTE_MAP: Record<string, keyof typeof character> = {
+    // Might (mig)
+    'Strength': 'might',
+    // Finesse (fin)
+    'Agility': 'finesse',
+    'Sleight of Hand': 'finesse',
+    'Stealth': 'finesse',
+    // Wit (wit)
+    'Arcana': 'wit',
+    'History': 'wit',
+    'Investigation': 'wit',
+    'Perception': 'wit',
+    'Wisdom': 'wit',
+    'Culture': 'wit',
+    // Presence (pre)
+    'Charisma': 'presence',
+    'Deception': 'presence',
+    'Intimidation': 'presence',
+    // Craft (cra)
+    'Medicine': 'craft',
+    // Will (wil)
+    'Concentration': 'will',
+    'Survival': 'will',
+    'Beast Handling': 'will',
+  };
+
+  // Handle skill roll (1d20/1d30 + skill modifier + attribute modifier)
   const handleSkillRoll = (options?: { extraMod?: number; advantage?: boolean; disadvantage?: boolean }) => {
     if (!hotbar?.skillName) return;
     
@@ -1799,13 +1826,24 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     const skillKey = `skill${skillName.split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()).join('')}` as keyof typeof character;
     const skillModifier = typeof character[skillKey] === 'number' ? character[skillKey] : 0;
     
+    // Get attribute modifier for this skill
+    const attributeKey = SKILL_ATTRIBUTE_MAP[skillName];
+    if (!attributeKey) {
+      console.warn(`[SkillRoll] Unknown skill "${skillName}" - no attribute mapping found, using 0 modifier`);
+    }
+    const attributeValue = attributeKey && typeof character[attributeKey] === 'number' ? character[attributeKey] as number : 0;
+    
+    // Determine die type: d30 if attribute >= 5, otherwise d20
+    const dieMax = attributeValue >= 5 ? 30 : 20;
+    const dieType = attributeValue >= 5 ? 'd30' : 'd20';
+    
     const extraMod = options?.extraMod || 0;
     const hasAdv = options?.advantage || false;
     const hasDisadv = options?.disadvantage || false;
     
-    // Roll 1d20 (or 2d20 for advantage/disadvantage)
-    let roll1 = Math.floor(Math.random() * 20) + 1;
-    let roll2 = Math.floor(Math.random() * 20) + 1;
+    // Roll dice (or 2 dice for advantage/disadvantage)
+    let roll1 = Math.floor(Math.random() * dieMax) + 1;
+    let roll2 = Math.floor(Math.random() * dieMax) + 1;
     let baseRoll = roll1;
     let advLabel = '';
     
@@ -1817,16 +1855,24 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
       advLabel = ` (Disadv: ${roll1}, ${roll2})`;
     }
     
-    const total = baseRoll + skillModifier + extraMod;
+    // Total = base roll + skill modifier + attribute modifier + extra mod
+    const totalModifier = skillModifier + attributeValue + extraMod;
+    const total = baseRoll + totalModifier;
     
-    let calculationBreakdown = `1d20 = ${baseRoll}`;
+    // Build calculation breakdown
+    let calculationBreakdown = `1${dieType} = ${baseRoll}`;
     if (skillModifier !== 0) calculationBreakdown += ` + ${skillName} (+${skillModifier})`;
+    if (attributeValue !== 0 && attributeKey) {
+      const attrName = String(attributeKey).charAt(0).toUpperCase() + String(attributeKey).slice(1);
+      calculationBreakdown += ` + ${attrName} (+${attributeValue})`;
+    }
     if (extraMod !== 0) calculationBreakdown += ` + Mod (+${extraMod})`;
     calculationBreakdown += advLabel;
     
-    // Check for crit success/failure
+    // Check for crit success/failure (nat 20 on d20, nat 30 on d30)
+    const critMax = dieMax;
     let resultLabel = `${skillName} Check`;
-    if (baseRoll === 20) {
+    if (baseRoll === critMax) {
       resultLabel = `${skillName} Check - Crit Success!`;
     } else if (baseRoll === 1) {
       resultLabel = `${skillName} Check - Crit Failure!`;
@@ -1834,10 +1880,10 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     
     triggerRollNotification({
       type: 'dice',
-      dieType: 'd20',
+      dieType: dieType as any,
       label: resultLabel,
       result: baseRoll,
-      modifier: skillModifier + extraMod,
+      modifier: totalModifier,
       total,
       username: character.name || 'Unknown',
       characterName: character.name,
@@ -6545,6 +6591,33 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
   
   const canEdit = isOwner || isGM;
   
+  // Skill to Attribute mapping for CharacterSheet
+  const SKILL_ATTRIBUTE_MAP: Record<string, keyof typeof liveCharacter> = {
+    // Might (mig)
+    'Strength': 'might',
+    // Finesse (fin)
+    'Agility': 'finesse',
+    'Sleight of Hand': 'finesse',
+    'Stealth': 'finesse',
+    // Wit (wit)
+    'Arcana': 'wit',
+    'History': 'wit',
+    'Investigation': 'wit',
+    'Perception': 'wit',
+    'Wisdom': 'wit',
+    'Culture': 'wit',
+    // Presence (pre)
+    'Charisma': 'presence',
+    'Deception': 'presence',
+    'Intimidation': 'presence',
+    // Craft (cra)
+    'Medicine': 'craft',
+    // Will (wil)
+    'Concentration': 'will',
+    'Survival': 'will',
+    'Beast Handling': 'will',
+  };
+  
   // Calculate advantage type: if both ADV and DIS are checked, they cancel out
   const getAdvantageType = (): 'none' | 'advantage' | 'disadvantage' => {
     if (hasAdvantage && hasDisadvantage) return 'none'; // Cancel out
@@ -6553,9 +6626,26 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
     return 'none';
   };
   
-  const handleRoll = (name: string, modifier: number, extraMod: number = 0, advantage: 'none' | 'advantage' | 'disadvantage' = 'none') => {
-    const dieType = modifier === 5 ? 'd30' : 'd20';
-    const totalMod = modifier + extraMod;
+  const handleRoll = (name: string, modifier: number, extraMod: number = 0, advantage: 'none' | 'advantage' | 'disadvantage' = 'none', isSkill: boolean = false) => {
+    // For skills, add the parent attribute modifier
+    let totalMod = modifier + extraMod;
+    let attributeValue = 0;
+    
+    if (isSkill) {
+      const attributeKey = SKILL_ATTRIBUTE_MAP[name];
+      if (!attributeKey) {
+        console.warn(`[CharacterSheet] Unknown skill "${name}" - no attribute mapping found, using 0 modifier`);
+      }
+      if (attributeKey && typeof liveCharacter[attributeKey] === 'number') {
+        attributeValue = liveCharacter[attributeKey] as number;
+        totalMod += attributeValue;
+      }
+    }
+    
+    // Use d30 if attribute >= 5 (for skills, use the parent attribute; for attributes, use the value itself)
+    const checkValue = isSkill ? attributeValue : modifier;
+    const dieType = checkValue >= 5 ? 'd30' : 'd20';
+    
     gameWs.sendDiceRoll(dieType, totalMod, name, liveCharacter.id, advantage);
     setRollPanelOpen(false);
     setExtraModifier(0);
@@ -6564,9 +6654,10 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
   };
   
   const confirmRollFromPanel = () => {
-    if (rollDataRef.current) {
+    if (rollDataRef.current && rollPanelData) {
       const { name, modifier } = rollDataRef.current;
-      handleRoll(name, modifier, extraModifier, getAdvantageType());
+      const isSkill = rollPanelData.type === 'skill';
+      handleRoll(name, modifier, extraModifier, getAdvantageType(), isSkill);
     }
   };
   
@@ -6784,6 +6875,57 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
       toast({ 
         title: "Update failed", 
         description: error.message || "Failed to update character",
+        variant: "destructive" 
+      });
+    }
+  });
+
+  // Short Rest mutation
+  const shortRestMutation = useMutation({
+    mutationFn: () => api.shortRest(character.id),
+    onSuccess: (result) => {
+      if (result.character) {
+        setLiveCharacter(result.character);
+      }
+      if (campaignId) {
+        queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${campaignId}/characters`] });
+        queryClient.invalidateQueries({ queryKey: ['items', character.id] });
+      }
+      toast({ 
+        title: "Short Rest Complete", 
+        description: `Restored ${result.hpRestored} HP. Consumed ${result.rationsConsumed} rations.` 
+      });
+    },
+    onError: (error: any) => {
+      toast({ 
+        title: "Short Rest Failed", 
+        description: error.message || "Failed to perform short rest",
+        variant: "destructive" 
+      });
+    }
+  });
+
+  // Long Rest mutation
+  const longRestMutation = useMutation({
+    mutationFn: () => api.longRest(character.id),
+    onSuccess: (result) => {
+      if (result.character) {
+        setLiveCharacter(result.character);
+      }
+      if (campaignId) {
+        queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${campaignId}/characters`] });
+        queryClient.invalidateQueries({ queryKey: ['items', character.id] });
+      }
+      const exhaustionMsg = result.exhaustionRecovered > 0 ? ` Exhaustion reduced by ${result.exhaustionRecovered}.` : '';
+      toast({ 
+        title: "Long Rest Complete", 
+        description: `Fully restored HP.${exhaustionMsg} Consumed ${result.rationsConsumed} rations.` 
+      });
+    },
+    onError: (error: any) => {
+      toast({ 
+        title: "Long Rest Failed", 
+        description: error.message || "Failed to perform long rest",
         variant: "destructive" 
       });
     }
@@ -7197,9 +7339,48 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                   )}
                   {!editingOverview ? (
                     <div className="flex items-center gap-2 flex-wrap">
-                      <Badge variant="outline" className="text-stone-300 border-stone-600" data-testid="badge-level">
-                        Level {liveCharacter.level}
-                      </Badge>
+                      {(isOwner || isGM) && (
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="border-cyan-600 text-cyan-400 hover:bg-cyan-600/20"
+                                onClick={() => shortRestMutation.mutate()}
+                                disabled={shortRestMutation.isPending}
+                                data-testid="button-short-rest"
+                              >
+                                <Coffee className="w-3 h-3" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent side="bottom">
+                              <p>Short Rest (2 rations, +{liveCharacter.level || 1} HP)</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      )}
+                      {(isOwner || isGM) && (
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="border-indigo-600 text-indigo-400 hover:bg-indigo-600/20"
+                                onClick={() => longRestMutation.mutate()}
+                                disabled={longRestMutation.isPending}
+                                data-testid="button-long-rest"
+                              >
+                                <Moon className="w-3 h-3" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent side="bottom">
+                              <p>Long Rest (4 rations, full HP, -1 exhaustion)</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      )}
                       {sceneId && (isOwner || isGM) && (
                         <Button
                           size="sm"
@@ -7356,6 +7537,87 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                     <span>Armor: +{equippedArmorBonus}</span>
                   </div>
                 </div>
+
+                {/* Exhaustion Display */}
+                {(() => {
+                  const exhaustion = liveCharacter.exhaustion || 0;
+                  const exhaustionEffects: Record<number, string> = {
+                    0: 'No effect',
+                    1: '-10ft movement speed',
+                    2: '-20ft movement speed, Disadvantage on skill checks',
+                    3: '-30ft movement speed, Disadvantage on skill & attack rolls',
+                    4: '-40ft movement speed, Disadvantage on all rolls, HP halved',
+                    5: '-50ft movement speed, All checks auto-fail, HP 1',
+                    6: 'Unconscious, cannot be revived until exhaustion is reduced',
+                    7: 'Death'
+                  };
+                  const exhaustionColors = [
+                    'bg-stone-700', 'bg-yellow-800', 'bg-orange-700', 'bg-red-700',
+                    'bg-red-800', 'bg-purple-800', 'bg-stone-900', 'bg-black'
+                  ];
+                  
+                  return (
+                    <div className={`rounded-lg p-3 border ${exhaustion > 0 ? 'border-red-700/50 bg-gradient-to-r from-red-900/30 to-orange-900/30' : 'border-stone-700/50 bg-stone-900/30'}`}>
+                      <div className="flex justify-between items-center">
+                        <Label className="text-sm text-stone-300 flex items-center gap-2">
+                          <AlertTriangle className={`h-4 w-4 ${exhaustion > 0 ? 'text-red-500' : 'text-stone-500'}`} />
+                          Exhaustion
+                        </Label>
+                        <div className="flex items-center gap-2">
+                          {(isOwner || isGM) && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-6 w-6 p-0"
+                              onClick={() => {
+                                if (exhaustion > 0) {
+                                  updateCharacterMutation.mutate({ exhaustion: exhaustion - 1 });
+                                }
+                              }}
+                              disabled={exhaustion === 0}
+                              data-testid="button-decrease-exhaustion"
+                            >
+                              <Minus className="h-3 w-3" />
+                            </Button>
+                          )}
+                          <span className={`text-xl font-bold ${exhaustion > 0 ? 'text-red-400' : 'text-stone-400'}`} data-testid="text-exhaustion">
+                            {exhaustion}
+                          </span>
+                          {(isOwner || isGM) && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-6 w-6 p-0"
+                              onClick={() => {
+                                if (exhaustion < 7) {
+                                  updateCharacterMutation.mutate({ exhaustion: exhaustion + 1 });
+                                }
+                              }}
+                              disabled={exhaustion === 7}
+                              data-testid="button-increase-exhaustion"
+                            >
+                              <Plus className="h-3 w-3" />
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex gap-1 mt-2">
+                        {[0, 1, 2, 3, 4, 5, 6, 7].map(level => (
+                          <div
+                            key={level}
+                            className={`flex-1 h-2 rounded ${level <= exhaustion ? exhaustionColors[level] : 'bg-stone-800'}`}
+                            data-testid={`exhaustion-level-${level}`}
+                          />
+                        ))}
+                      </div>
+                      {exhaustion > 0 && (
+                        <p className="text-xs text-red-400/80 mt-2" data-testid="text-exhaustion-effect">
+                          {exhaustionEffects[exhaustion]}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })()}
 
                 {/* HP Bar */}
                 <div className="space-y-2">
@@ -7912,7 +8174,7 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                                 if (existingTimer) clearTimeout(existingTimer);
                                 const timer = setTimeout(() => {
                                   if (!isLongPressRef.current && !doubleClickDetectedRef.current) {
-                                    handleRoll(skill.name, numericValue);
+                                    handleRoll(skill.name, numericValue, 0, 'none', true);
                                   }
                                   clickTimersRef.current.delete(cardKey);
                                 }, 400);
@@ -9416,6 +9678,7 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
     armorBonus: number | string;
     damageReduction: number | string;
     damageReductionType: string;
+    isRation: boolean;
   }>({
     name: '',
     image: '',
@@ -9446,6 +9709,7 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
     armorBonus: '',
     damageReduction: '',
     damageReductionType: '',
+    isRation: false,
   });
 
   const [showImageCrop, setShowImageCrop] = useState(false);
@@ -9490,6 +9754,7 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
       damageReduction: template.damageReduction || 0,
       damageReductionType: template.damageReductionType || '',
       breakChance: template.breakChance ?? 10,
+      isRation: template.isRation || false,
     };
     onSave(itemData);
   };
@@ -9951,6 +10216,25 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
               <Label>Durability: {formData.durability}/10</Label>
               <Slider value={[formData.durability]} onValueChange={(v) => setFormData({...formData, durability: v[0]})} min={0} max={10} step={1} className="mt-2" />
             </div>
+            {formData.itemType === 'consumable' && (
+              <div className="border-t border-stone-700 pt-4">
+                <h3 className="text-sm font-bold text-stone-300 mb-3">Consumable Settings</h3>
+                <div className="flex items-center gap-2">
+                  <Checkbox 
+                    id="isRation" 
+                    checked={formData.isRation || false}
+                    onCheckedChange={(checked) => setFormData({...formData, isRation: checked === true})}
+                    data-testid="checkbox-is-ration"
+                  />
+                  <Label htmlFor="isRation" className="cursor-pointer">
+                    This item is a ration (consumable for resting)
+                  </Label>
+                </div>
+                <p className="text-xs text-stone-500 mt-2">
+                  Ration items are consumed during rests. Short rest requires 2, long rest requires 4.
+                </p>
+              </div>
+            )}
             {formData.itemType === 'ammunition' && (
               <div className="border-t border-stone-700 pt-4">
                 <h3 className="text-sm font-bold text-stone-300 mb-3">Ammunition Settings</h3>

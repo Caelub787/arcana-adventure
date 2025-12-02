@@ -163,6 +163,10 @@ export const characters = pgTable("characters", {
   skillStrength: integer("skill_strength").notNull().default(0),
   skillWisdom: integer("skill_wisdom").notNull().default(0),
   skillCulture: integer("skill_culture").notNull().default(0),
+  skillSurvival: integer("skill_survival").notNull().default(0),
+  skillBeastHandling: integer("skill_beast_handling").notNull().default(0),
+  // Exhaustion (0-7 scale)
+  exhaustion: integer("exhaustion").notNull().default(0),
   // Background/notes
   biography: text("biography"),
   gmNotes: text("gm_notes"),
@@ -279,6 +283,8 @@ export const items = pgTable("items", {
   priceGold: integer("price_gold").default(0).notNull(),
   pricePlatinum: integer("price_platinum").default(0).notNull(),
   weight: text("weight").default("light"), // Legacy field
+  // Ration flag for consumables (used for rest mechanics)
+  isRation: boolean("is_ration").default(false).notNull(),
 });
 
 export const insertItemSchema = createInsertSchema(items).omit({

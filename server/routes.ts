@@ -1412,6 +1412,184 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Short Rest - Restores HP equal to level, requires 2 rations
+  app.post("/api/characters/:id/short-rest", requireAuth, async (req, res) => {
+    try {
+      const access = await checkCharacterAccess(req.params.id, req.session.userId!, 'edit');
+      
+      if (!access.character) {
+        return res.status(404).json({ error: "Character not found" });
+      }
+      
+      if (!access.allowed) {
+        return res.status(403).json({ error: "You don't have permission to rest this character" });
+      }
+      
+      const character = access.character;
+      const rationsRequired = 2;
+      
+      // Get all ration items for this character
+      const items = await storage.getItemsByCharacter(character.id);
+      const rationItems = items.filter((item) => item.isRation && (item.quantity || 0) > 0);
+      
+      // Count total rations available
+      let totalRations = rationItems.reduce((sum, item) => sum + (item.quantity || 0), 0);
+      
+      if (totalRations < rationsRequired) {
+        return res.status(400).json({ 
+          error: `Not enough rations. Need ${rationsRequired}, have ${totalRations}` 
+        });
+      }
+      
+      // Consume rations from inventory
+      let rationsToConsume = rationsRequired;
+      for (const item of rationItems) {
+        if (rationsToConsume <= 0) break;
+        
+        const consumeFromThis = Math.min(item.quantity || 0, rationsToConsume);
+        const newQuantity = (item.quantity || 0) - consumeFromThis;
+        
+        if (newQuantity <= 0) {
+          // Delete the item
+          await storage.deleteItem(item.id);
+        } else {
+          // Update quantity
+          await storage.updateItem(item.id, { quantity: newQuantity });
+        }
+        
+        rationsToConsume -= consumeFromThis;
+      }
+      
+      // Calculate new HP: current + level (capped at max)
+      const hpRestored = Math.min(character.level || 1, (character.maxHp || 10) - (character.hp || 0));
+      const newHp = Math.min((character.hp || 0) + (character.level || 1), character.maxHp || 10);
+      
+      // Update character HP
+      const updatedCharacter = await storage.updateCharacter(character.id, { hp: newHp });
+      
+      // Broadcast to campaign room
+      if (character.campaignId) {
+        const room = campaignRooms.get(character.campaignId);
+        if (room) {
+          const message = JSON.stringify({
+            type: 'character_updated',
+            character: updatedCharacter,
+          });
+          room.forEach((ws) => {
+            if (ws.readyState === 1) {
+              ws.send(message);
+            }
+          });
+        }
+      }
+      
+      res.json({ 
+        success: true, 
+        hpRestored,
+        newHp,
+        rationsConsumed: rationsRequired,
+        character: updatedCharacter 
+      });
+    } catch (err) {
+      console.error("Failed to perform short rest:", err);
+      res.status(500).json({ error: "Failed to perform short rest" });
+    }
+  });
+
+  // Long Rest - Restores ALL HP, recovers 1 exhaustion, requires 4 rations
+  app.post("/api/characters/:id/long-rest", requireAuth, async (req, res) => {
+    try {
+      const access = await checkCharacterAccess(req.params.id, req.session.userId!, 'edit');
+      
+      if (!access.character) {
+        return res.status(404).json({ error: "Character not found" });
+      }
+      
+      if (!access.allowed) {
+        return res.status(403).json({ error: "You don't have permission to rest this character" });
+      }
+      
+      const character = access.character;
+      const rationsRequired = 4;
+      
+      // Get all ration items for this character
+      const items = await storage.getItemsByCharacter(character.id);
+      const rationItems = items.filter((item) => item.isRation && (item.quantity || 0) > 0);
+      
+      // Count total rations available
+      let totalRations = rationItems.reduce((sum, item) => sum + (item.quantity || 0), 0);
+      
+      if (totalRations < rationsRequired) {
+        return res.status(400).json({ 
+          error: `Not enough rations. Need ${rationsRequired}, have ${totalRations}` 
+        });
+      }
+      
+      // Consume rations from inventory
+      let rationsToConsume = rationsRequired;
+      for (const item of rationItems) {
+        if (rationsToConsume <= 0) break;
+        
+        const consumeFromThis = Math.min(item.quantity || 0, rationsToConsume);
+        const newQuantity = (item.quantity || 0) - consumeFromThis;
+        
+        if (newQuantity <= 0) {
+          // Delete the item
+          await storage.deleteItem(item.id);
+        } else {
+          // Update quantity
+          await storage.updateItem(item.id, { quantity: newQuantity });
+        }
+        
+        rationsToConsume -= consumeFromThis;
+      }
+      
+      // Calculate HP restored: full HP
+      const hpRestored = (character.maxHp || 10) - (character.hp || 0);
+      const newHp = character.maxHp || 10;
+      
+      // Calculate exhaustion recovery: reduce by 1 (min 0)
+      const currentExhaustion = character.exhaustion || 0;
+      const newExhaustion = Math.max(0, currentExhaustion - 1);
+      const exhaustionRecovered = currentExhaustion - newExhaustion;
+      
+      // Update character HP and exhaustion
+      const updatedCharacter = await storage.updateCharacter(character.id, { 
+        hp: newHp,
+        exhaustion: newExhaustion
+      });
+      
+      // Broadcast to campaign room
+      if (character.campaignId) {
+        const room = campaignRooms.get(character.campaignId);
+        if (room) {
+          const message = JSON.stringify({
+            type: 'character_updated',
+            character: updatedCharacter,
+          });
+          room.forEach((ws) => {
+            if (ws.readyState === 1) {
+              ws.send(message);
+            }
+          });
+        }
+      }
+      
+      res.json({ 
+        success: true, 
+        hpRestored,
+        newHp,
+        exhaustionRecovered,
+        newExhaustion,
+        rationsConsumed: rationsRequired,
+        character: updatedCharacter 
+      });
+    } catch (err) {
+      console.error("Failed to perform long rest:", err);
+      res.status(500).json({ error: "Failed to perform long rest" });
+    }
+  });
+
   // Delete character - GM only, also deletes associated tokens
   app.delete("/api/characters/:id", requireAuth, async (req, res) => {
     try {

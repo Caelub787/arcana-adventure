@@ -353,6 +353,33 @@ class ApiClient {
     });
   }
 
+  // Rest actions
+  async shortRest(characterId: string): Promise<{
+    success: boolean;
+    hpRestored: number;
+    newHp: number;
+    rationsConsumed: number;
+    character: Character;
+  }> {
+    return this.request(`/characters/${characterId}/short-rest`, {
+      method: 'POST',
+    });
+  }
+
+  async longRest(characterId: string): Promise<{
+    success: boolean;
+    hpRestored: number;
+    newHp: number;
+    exhaustionRecovered: number;
+    newExhaustion: number;
+    rationsConsumed: number;
+    character: Character;
+  }> {
+    return this.request(`/characters/${characterId}/long-rest`, {
+      method: 'POST',
+    });
+  }
+
   // Tokens
   async createToken(campaignId: string, token: Omit<Token, 'id' | 'campaignId'>): Promise<Token> {
     return this.request(`/campaigns/${campaignId}/tokens`, {
