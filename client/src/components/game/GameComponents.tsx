@@ -6803,12 +6803,12 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
     queryFn: () => api.getSpecies('Arcana Adventure'),
   });
 
-  // Fetch feat tree for this character (based on species featTree name)
-  const featTreeName = character?.featTree || '';
+  // Fetch feat tree for this character (based on species featTree ID)
+  const featTreeId = character?.featTree || '';
   const { data: featTreeData } = useQuery({
-    queryKey: ['feat-tree-by-name', featTreeName],
-    queryFn: () => api.getFeatTreeByName(featTreeName),
-    enabled: !!featTreeName,
+    queryKey: ['feat-tree', featTreeId],
+    queryFn: () => api.getFeatTree(featTreeId),
+    enabled: !!featTreeId,
   });
 
   // Fetch character's unlocked feats
@@ -8001,7 +8001,7 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                       data-testid="button-view-feat-tree"
                     >
                       <GitBranch className="h-4 w-4 mr-2" />
-                      View {liveCharacter.featTree}
+                      View {featTreeData?.tree?.name || 'Feat Tree'}
                     </Button>
                   </div>
                 )}
@@ -10194,7 +10194,7 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
           <DialogHeader className="shrink-0">
             <DialogTitle className="text-purple-400 flex items-center gap-2">
               <GitBranch className="h-5 w-5" />
-              {featTreeData?.tree?.name || liveCharacter.featTree || 'Feat Tree'}
+              {featTreeData?.tree?.name || 'Feat Tree'}
             </DialogTitle>
             {featTreeData?.tree?.description && (
               <DialogDescription>{featTreeData.tree.description}</DialogDescription>
