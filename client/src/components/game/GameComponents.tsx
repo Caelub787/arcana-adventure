@@ -73,12 +73,30 @@ interface CharacterCreationProps {
 export function CharacterCreation({ onComplete, onCancel }: CharacterCreationProps) {
   const [name, setName] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [speciesTimeout, setSpeciesTimeout] = useState(false);
 
   // Fetch species to get default stats (Human baseline)
-  const { data: systemSpecies = [] } = useQuery({
+  const { data: systemSpecies = [], isLoading: isLoadingSpecies, isError: isSpeciesError } = useQuery({
     queryKey: ['species'],
     queryFn: () => api.getSpecies('Arcana Adventure'),
   });
+  
+  // Check if Human species data is available
+  const humanSpecies = systemSpecies.find((s: SystemSpecies) => s.name === 'Human');
+  
+  // Set a timeout to allow creation with fallback values if species fails to load
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (!humanSpecies) {
+        setSpeciesTimeout(true);
+      }
+    }, 3000); // 3 second timeout before allowing fallback
+    return () => clearTimeout(timer);
+  }, [humanSpecies]);
+  
+  // Can submit if species loaded OR timeout reached (fallback mode)
+  const canSubmit = !isSubmitting && name.trim() && (humanSpecies || speciesTimeout || isSpeciesError);
+  const isWaitingForSpecies = isLoadingSpecies && !speciesTimeout && !humanSpecies;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -86,9 +104,7 @@ export function CharacterCreation({ onComplete, onCancel }: CharacterCreationPro
     
     setIsSubmitting(true);
     
-    // Get Human species as default, or use fallback values
-    const humanSpecies = systemSpecies.find((s: SystemSpecies) => s.name === 'Human');
-    
+    // Use Human species stats if available, otherwise use fallback defaults
     const defaultStats = humanSpecies ? {
       race: humanSpecies.name,
       size: humanSpecies.size,
@@ -110,10 +126,10 @@ export function CharacterCreation({ onComplete, onCancel }: CharacterCreationPro
       speed: 30,
       flySpeed: 0,
       lifespan: 100,
-      hp: 10,
-      maxHp: 10,
-      energy: 10,
-      maxEnergy: 10,
+      hp: 20,
+      maxHp: 20,
+      energy: 12,
+      maxEnergy: 12,
       featTree: '',
     };
 
@@ -198,11 +214,11 @@ export function CharacterCreation({ onComplete, onCancel }: CharacterCreationPro
               )}
               <Button 
                 type="submit" 
-                disabled={!name.trim() || isSubmitting}
+                disabled={!canSubmit}
                 className="flex-1 bg-stone-900 text-stone-100 hover:bg-stone-800 font-display text-lg"
                 data-testid="button-create-character"
               >
-                {isSubmitting ? "Creating..." : "Create Character"}
+                {isWaitingForSpecies ? "Loading..." : isSubmitting ? "Creating..." : "Create Character"}
               </Button>
             </div>
           </form>
@@ -1087,12 +1103,10 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
           }
           
           triggerRollNotification({
-            type: 'attack',
-            dieType: 'd20',
+            type: 'system',
             label: `${ammo.name} Broke!`,
-            result: totalRemaining,
-            modifier: 0,
-            total: totalRemaining,
+            result: 0,
+            total: 0,
             username: character.name || 'Unknown',
             characterName: character.name,
             calculationBreakdown: `Stack depleted! ${totalRemaining} ${ammo.name} remaining`,
@@ -1104,11 +1118,9 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
         } else {
           // No more matching ammunition
           triggerRollNotification({
-            type: 'attack',
-            dieType: 'd20',
+            type: 'system',
             label: `${ammo.name} Broke!`,
             result: 0,
-            modifier: 0,
             total: 0,
             username: character.name || 'Unknown',
             characterName: character.name,
@@ -1124,12 +1136,10 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
         queryClient.invalidateQueries({ queryKey: ['hotbars', character.id] });
       } else {
         triggerRollNotification({
-          type: 'attack',
-          dieType: 'd20',
+          type: 'system',
           label: `${ammo.name} Broke!`,
-          result: totalRemaining,
-          modifier: 0,
-          total: totalRemaining,
+          result: 0,
+          total: 0,
           username: character.name || 'Unknown',
           characterName: character.name,
           calculationBreakdown: `Arrow broke! ${totalRemaining} remaining`,
@@ -6031,6 +6041,61 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
   // Get current species for HP per level calculation
   const currentSpecies = systemSpecies.find((s: SystemSpecies) => s.name === liveCharacter.race);
   const hpPerLevel = currentSpecies?.hpPerLevel || 5; // Default to d5 if no species found
+  
+  // Auto-correct character stats when species data loads and there's a mismatch
+  // This fixes characters created before species data was properly configured
+  const hasAutoCorrectRef = useRef(false);
+  useEffect(() => {
+    if (hasAutoCorrectRef.current || !currentSpecies || !liveCharacter.id) return;
+    
+    const bonusHp = liveCharacter.bonusHpFromLevelUps || 0;
+    const expectedMaxHp = currentSpecies.startingMaxHp + bonusHp;
+    const expectedMaxEnergy = currentSpecies.startingMaxEnergy;
+    
+    // Check if there's a mismatch that needs correction
+    const hpMismatch = liveCharacter.maxHp !== expectedMaxHp;
+    const energyMismatch = liveCharacter.maxEnergy !== expectedMaxEnergy;
+    
+    if (hpMismatch || energyMismatch) {
+      hasAutoCorrectRef.current = true;
+      
+      // Calculate corrected values
+      const correctedMaxHp = expectedMaxHp;
+      const correctedHp = Math.min(liveCharacter.hp || currentSpecies.startingHp, correctedMaxHp);
+      const correctedMaxEnergy = expectedMaxEnergy;
+      const correctedEnergy = Math.min(liveCharacter.energy || currentSpecies.startingEnergy, correctedMaxEnergy);
+      
+      // Update local state
+      setOverviewData(prev => ({
+        ...prev,
+        hp: correctedHp,
+        maxHp: correctedMaxHp,
+        energy: correctedEnergy,
+        maxEnergy: correctedMaxEnergy
+      }));
+      
+      // Also update liveCharacter
+      setLiveCharacter((prev: any) => ({
+        ...prev,
+        hp: correctedHp,
+        maxHp: correctedMaxHp,
+        energy: correctedEnergy,
+        maxEnergy: correctedMaxEnergy
+      }));
+      
+      // Save the corrected values to the database
+      api.updateCharacter(liveCharacter.id, {
+        hp: correctedHp,
+        maxHp: correctedMaxHp,
+        energy: correctedEnergy,
+        maxEnergy: correctedMaxEnergy
+      }).then(() => {
+        if (campaignId) {
+          queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${campaignId}/characters`] });
+        }
+      });
+    }
+  }, [currentSpecies, liveCharacter.id, liveCharacter.maxHp, liveCharacter.maxEnergy, liveCharacter.bonusHpFromLevelUps]);
   
   // Calculate dice count: 1 base + 1 extra every 3 levels
   const calculateDiceCount = (level: number) => {

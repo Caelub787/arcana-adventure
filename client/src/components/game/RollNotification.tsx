@@ -108,37 +108,39 @@ function RollCard({ notification, onComplete }: { notification: RollNotification
               </div>
             )}
             
-            <div className="flex items-baseline gap-2 mt-0.5">
-              <motion.span
-                initial={{ scale: 0 }}
-                animate={{ scale: 1 }}
-                transition={{ type: 'spring', damping: 8, delay: 0.2 }}
-                className={`text-3xl font-bold text-white drop-shadow-lg
-                  ${isNat20 ? 'text-yellow-200' : ''}
-                  ${isNat1 ? 'text-red-200' : ''}
-                `}
-              >
-                {notification.total}
-              </motion.span>
-              {isNat20 && (
+            {notification.type !== 'system' && (
+              <div className="flex items-baseline gap-2 mt-0.5">
                 <motion.span
-                  initial={{ opacity: 0, x: -10 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  className="text-yellow-200 font-bold text-sm uppercase tracking-wider"
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  transition={{ type: 'spring', damping: 8, delay: 0.2 }}
+                  className={`text-3xl font-bold text-white drop-shadow-lg
+                    ${isNat20 ? 'text-yellow-200' : ''}
+                    ${isNat1 ? 'text-red-200' : ''}
+                  `}
                 >
-                  Crit Success
+                  {notification.total}
                 </motion.span>
-              )}
-              {isNat1 && (
-                <motion.span
-                  initial={{ opacity: 0, x: -10 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  className="text-red-200 font-bold text-sm uppercase tracking-wider"
-                >
-                  Crit Failure
-                </motion.span>
-              )}
-            </div>
+                {isNat20 && (
+                  <motion.span
+                    initial={{ opacity: 0, x: -10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    className="text-yellow-200 font-bold text-sm uppercase tracking-wider"
+                  >
+                    Crit Success
+                  </motion.span>
+                )}
+                {isNat1 && (
+                  <motion.span
+                    initial={{ opacity: 0, x: -10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    className="text-red-200 font-bold text-sm uppercase tracking-wider"
+                  >
+                    Crit Failure
+                  </motion.span>
+                )}
+              </div>
+            )}
           </div>
         </div>
         
