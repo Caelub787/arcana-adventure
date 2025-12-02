@@ -450,7 +450,7 @@ export default function Campaign() {
     mutationFn: ({ id, data }: { id: string; data: any }) => api.updateCharacter(id, data),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${effectiveCampaignId}/characters`] });
-      toast({ title: "Success", description: "Character updated successfully" });
+      toast({ title: "Success", description: "Character updated successfully", duration: 1000 });
       gameWs.sendCharacterUpdate(variables.id);
     },
     onError: (error: any) => {

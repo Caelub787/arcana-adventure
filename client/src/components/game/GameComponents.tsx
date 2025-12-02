@@ -6867,7 +6867,7 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
       }
       // Also invalidate individual character query if it exists
       queryClient.invalidateQueries({ queryKey: [`/api/characters/${character.id}`] });
-      toast({ title: "Character updated successfully" });
+      toast({ title: "Character updated successfully", duration: 1000 });
     },
     onError: (error: any) => {
       // Revert to original character on error
@@ -7547,13 +7547,11 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                     2: '-20ft movement speed, Disadvantage on skill checks',
                     3: '-30ft movement speed, Disadvantage on skill & attack rolls',
                     4: '-40ft movement speed, Disadvantage on all rolls, HP halved',
-                    5: '-50ft movement speed, All checks auto-fail, HP 1',
-                    6: 'Unconscious, cannot be revived until exhaustion is reduced',
-                    7: 'Death'
+                    5: 'Death'
                   };
                   const exhaustionColors = [
                     'bg-stone-700', 'bg-yellow-800', 'bg-orange-700', 'bg-red-700',
-                    'bg-red-800', 'bg-purple-800', 'bg-stone-900', 'bg-black'
+                    'bg-red-800', 'bg-black'
                   ];
                   
                   return (
@@ -7589,11 +7587,11 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                               variant="ghost"
                               className="h-6 w-6 p-0"
                               onClick={() => {
-                                if (exhaustion < 7) {
+                                if (exhaustion < 5) {
                                   updateCharacterMutation.mutate({ exhaustion: exhaustion + 1 });
                                 }
                               }}
-                              disabled={exhaustion === 7}
+                              disabled={exhaustion === 5}
                               data-testid="button-increase-exhaustion"
                             >
                               <Plus className="h-3 w-3" />
@@ -7602,7 +7600,7 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                         </div>
                       </div>
                       <div className="flex gap-1 mt-2">
-                        {[0, 1, 2, 3, 4, 5, 6, 7].map(level => (
+                        {[0, 1, 2, 3, 4, 5].map(level => (
                           <div
                             key={level}
                             className={`flex-1 h-2 rounded ${level <= exhaustion ? exhaustionColors[level] : 'bg-stone-800'}`}
