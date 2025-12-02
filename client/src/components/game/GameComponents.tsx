@@ -1224,10 +1224,14 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
   };
 
   // Calculate distance between two points in feet (each grid = 5ft)
+  // Uses Chebyshev distance (grid-based) for TTRPG-style range - diagonal adjacent = 1 grid = 5ft
   const calculateDistanceInFeet = (x1: number, y1: number, x2: number, y2: number): number => {
-    const pixelDistance = Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2));
-    const grids = pixelDistance / gridSize;
-    return grids * 5; // Each grid = 5ft
+    // Calculate grid distance using Chebyshev distance (max of x and y grid difference)
+    // This treats diagonal movement as 1 grid, matching most TTRPG rules
+    const gridDiffX = Math.abs(x2 - x1) / gridSize;
+    const gridDiffY = Math.abs(y2 - y1) / gridSize;
+    const gridDistance = Math.max(gridDiffX, gridDiffY);
+    return Math.round(gridDistance * 5); // Each grid = 5ft, round for clean numbers
   };
 
   // Get attacker's token (the token linked to the character making the attack)
