@@ -1026,6 +1026,10 @@ export function HUD({ character, onOpenChat }: HUDProps) {
 // BattleMap Hotbars - Compact display for battlemap overlay
 interface BattleMapHotbarsProps {
   character: any;
+  tokens?: any[];
+  targetedTokenId?: string | null;
+  characters?: any[];
+  gridSize?: number;
 }
 
 // Sub-component for individual hotbar slot
@@ -1037,12 +1041,16 @@ interface BattleMapHotbarSlotProps {
   character: any;
   allHotbars?: Hotbar[];
   allItems?: any[];
+  tokens?: any[];
+  targetedTokenId?: string | null;
+  allCharacters?: any[];
+  gridSize?: number;
 }
 
 // Ranged weapon categories that use ammunition
 const RANGED_WEAPON_CATEGORIES = ['bow', 'crossbow', 'sling', 'firearm'];
 
-function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHotbars, allItems }: BattleMapHotbarSlotProps) {
+function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHotbars, allItems, tokens, targetedTokenId, allCharacters, gridSize = 50 }: BattleMapHotbarSlotProps) {
   const clickTimerRef = useRef<NodeJS.Timeout | null>(null);
   const clickCountRef = useRef(0);
   const queryClient = useQueryClient();
@@ -1215,6 +1223,30 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     return ['bow', 'crossbow', 'sling', 'firearm'].includes(weaponCategory?.toLowerCase() || '');
   };
 
+  // Calculate distance between two points in feet (each grid = 5ft)
+  const calculateDistanceInFeet = (x1: number, y1: number, x2: number, y2: number): number => {
+    const pixelDistance = Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2));
+    const grids = pixelDistance / gridSize;
+    return grids * 5; // Each grid = 5ft
+  };
+
+  // Get attacker's token (the token linked to the character making the attack)
+  const getAttackerToken = () => {
+    if (!tokens || !character?.id) return null;
+    return tokens.find((t: any) => t.characterId === character.id);
+  };
+
+  // Get target token and its character data
+  const getTargetData = () => {
+    if (!tokens || !targetedTokenId || !allCharacters) return null;
+    const targetToken = tokens.find((t: any) => t.id === targetedTokenId);
+    if (!targetToken) return null;
+    const targetCharacter = targetToken.characterId 
+      ? allCharacters.find((c: any) => c.id === targetToken.characterId)
+      : null;
+    return { token: targetToken, character: targetCharacter };
+  };
+
   // Handle attack roll (1d20 + attribute modifier)
   // Options allow for extra modifiers and advantage/disadvantage from the popup
   const handleAttackRoll = async (options?: { extraMod?: number; advantage?: boolean; disadvantage?: boolean }) => {
@@ -1237,6 +1269,36 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
         characterName: character.name,
       });
       return;
+    }
+    
+    // Get targeting data for range check and hit detection
+    const attackerToken = getAttackerToken();
+    const targetData = getTargetData();
+    
+    // If targeting a token, check range
+    if (targetedTokenId && targetData?.token && attackerToken) {
+      const distance = calculateDistanceInFeet(
+        attackerToken.x, attackerToken.y,
+        targetData.token.x, targetData.token.y
+      );
+      
+      // Determine weapon range (ranged weapons use their range, melee weapons default to 5ft)
+      const weaponRange = isRangedWeapon(itemData) 
+        ? (itemData.range || 60) // Default ranged range is 60ft if not specified
+        : (itemData.range || 5); // Melee default is 5ft (adjacent grid)
+      
+      if (distance > weaponRange) {
+        triggerRollNotification({
+          type: 'system',
+          label: `${itemData.name} - Out of Range!`,
+          result: 0,
+          total: 0,
+          username: character.name || 'Unknown',
+          characterName: character.name,
+          calculationBreakdown: `Target not within range (${Math.round(distance)}ft > ${weaponRange}ft)`,
+        });
+        return;
+      }
     }
     
     const attrName = itemData.attribute || 'might';
@@ -1278,21 +1340,46 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
       ? `${rollText} + ${modParts.join(' + ')}`
       : rollText;
     
+    // Determine hit/miss status if targeting
+    const isCritSuccess = roll === 20; // Natural 20
+    const isCritFailure = roll === 1;  // Natural 1
+    let hitStatus = '';
+    let hitLabel = '';
+    
+    if (targetedTokenId && targetData?.character) {
+      const targetDC = targetData.character.naturalArmor || 10; // Default DC is 10 if no naturalArmor
+      const targetName = targetData.character.name || 'Target';
+      
+      if (isCritSuccess) {
+        hitStatus = ' - Crit Success!';
+        hitLabel = `vs ${targetName} (DC ${targetDC}) - Crit Success!`;
+      } else if (isCritFailure) {
+        hitStatus = ' - Crit Failure!';
+        hitLabel = `vs ${targetName} (DC ${targetDC}) - Crit Failure!`;
+      } else if (total >= targetDC) {
+        hitStatus = ' - HIT!';
+        hitLabel = `vs ${targetName} (DC ${targetDC}) - HIT!`;
+      } else {
+        hitStatus = ' - MISS!';
+        hitLabel = `vs ${targetName} (DC ${targetDC}) - MISS!`;
+      }
+    }
+    
     triggerRollNotification({
       type: 'attack',
       dieType: 'd20',
-      label: `${itemData.name} Attack${hasAdv ? ' (ADV)' : hasDis ? ' (DIS)' : ''}`,
+      label: `${itemData.name} Attack${hasAdv ? ' (ADV)' : hasDis ? ' (DIS)' : ''}${hitStatus}`,
       result: roll,
       modifier: totalMod,
       total,
       username: character.name || 'Unknown',
       characterName: character.name,
-      calculationBreakdown,
+      calculationBreakdown: hitLabel ? `${calculationBreakdown} ${hitLabel}` : calculationBreakdown,
     });
     
     // Send roll to chat
     if (character.campaignId) {
-      const chatText = `${itemData.name} Attack${hasAdv ? ' (ADV)' : hasDis ? ' (DIS)' : ''}: ${calculationBreakdown} = ${total}`;
+      const chatText = `${itemData.name} Attack${hasAdv ? ' (ADV)' : hasDis ? ' (DIS)' : ''}: ${calculationBreakdown} = ${total}${hitStatus}`;
       gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', chatText, 'roll');
     }
     
@@ -1677,7 +1764,7 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
   );
 }
 
-export function BattleMapHotbars({ character }: BattleMapHotbarsProps) {
+export function BattleMapHotbars({ character, tokens, targetedTokenId, characters, gridSize }: BattleMapHotbarsProps) {
   const [activeHotbar, setActiveHotbar] = useState<string>('weapons');
   
   const { data: hotbars = [], isLoading: hotbarsLoading } = useQuery({
@@ -1803,6 +1890,10 @@ export function BattleMapHotbars({ character }: BattleMapHotbarsProps) {
                       character={character}
                       allHotbars={hotbars}
                       allItems={items}
+                      tokens={tokens}
+                      targetedTokenId={targetedTokenId}
+                      allCharacters={characters}
+                      gridSize={gridSize}
                     />
                   );
                 })}

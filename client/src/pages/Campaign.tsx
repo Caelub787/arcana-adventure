@@ -1228,7 +1228,13 @@ export default function Campaign() {
            {/* For players: show ONLY their assigned character (not changed by token clicks) */}
            {/* For GMs: show inspectedChar (clicked token) */}
            {(role === 'gm' ? inspectedChar : character) && (
-             <BattleMapHotbars character={role === 'gm' ? inspectedChar : character} />
+             <BattleMapHotbars 
+               character={role === 'gm' ? inspectedChar : character}
+               tokens={tokens}
+               targetedTokenId={targetedTokenId}
+               characters={characters as any[]}
+               gridSize={50}
+             />
            )}
           
           {/* Character Sheet Tab Buttons - Right side, aligned with hotbar buttons (visible when character/inspectedChar exists) */}
