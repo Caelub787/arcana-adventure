@@ -2,7 +2,7 @@ import { useState, useRef, useMemo, useCallback, useEffect } from 'react';
 import { useLocation } from 'wouter';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, useMotionValue } from 'framer-motion';
-import { api, type Item, type SystemSpecies, type FeatTree, type Feat, type FeatConnection, type FeatTreeWithData, type FeatTemplate } from '@/lib/api';
+import { api, type Item, type SystemSpecies, type FeatTree, type Feat, type FeatConnection, type FeatTreeWithData, type FeatTemplate, type SystemSpell } from '@/lib/api';
 import { useAuth } from '@/lib/AuthContext';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { Button } from '@/components/ui/button';
@@ -20,7 +20,7 @@ import { toast } from '@/hooks/use-toast';
 import { ArrowLeft, Plus, Pencil, Trash2, Sword, Shield, Package, Sparkles, Box, Coins, Search, Users, GitBranch, Library, Link, X, GripVertical, Star, Zap, Heart, ShieldCheck, BookOpen, RefreshCw, ZoomIn, ZoomOut } from 'lucide-react';
 import { ImageBrowser } from '@/components/ImageBrowser';
 
-type AdminView = 'dashboard' | 'items' | 'species' | 'feat-trees';
+type AdminView = 'dashboard' | 'items' | 'species' | 'spells' | 'feat-trees';
 
 const itemTypeIcons: Record<string, any> = {
   weapon: Sword,
@@ -58,6 +58,10 @@ export default function AdminSettings() {
   const [editingSpecies, setEditingSpecies] = useState<SystemSpecies | null>(null);
   const [speciesSearchQuery, setSpeciesSearchQuery] = useState('');
 
+  const [showAddSpell, setShowAddSpell] = useState(false);
+  const [editingSpell, setEditingSpell] = useState<SystemSpell | null>(null);
+  const [spellSearchQuery, setSpellSearchQuery] = useState('');
+
   const { data: systemItems = [], isLoading: itemsLoading } = useQuery({
     queryKey: ['system-items'],
     queryFn: () => api.getSystemItems(),
@@ -68,6 +72,12 @@ export default function AdminSettings() {
     queryKey: ['system-species', selectedSystem],
     queryFn: () => api.getSystemSpecies(selectedSystem),
     enabled: isAdmin && currentView === 'species',
+  });
+
+  const { data: systemSpells = [], isLoading: spellsLoading } = useQuery({
+    queryKey: ['system-spells'],
+    queryFn: () => api.getSystemSpells(),
+    enabled: isAdmin && currentView === 'spells',
   });
 
   const createItemMutation = useMutation({
@@ -140,6 +150,41 @@ export default function AdminSettings() {
     },
   });
 
+  const createSpellMutation = useMutation({
+    mutationFn: (spell: Partial<SystemSpell>) => api.createSystemSpell(spell),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['system-spells'] });
+      setShowAddSpell(false);
+      toast({ title: 'Spell Created', description: 'Spell created successfully' });
+    },
+    onError: (error: any) => {
+      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    },
+  });
+
+  const updateSpellMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Partial<SystemSpell> }) => api.updateSystemSpell(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['system-spells'] });
+      setEditingSpell(null);
+      toast({ title: 'Spell Updated', description: 'Spell updated successfully' });
+    },
+    onError: (error: any) => {
+      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    },
+  });
+
+  const deleteSpellMutation = useMutation({
+    mutationFn: (id: string) => api.deleteSystemSpell(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['system-spells'] });
+      toast({ title: 'Spell Deleted', description: 'Spell deleted successfully' });
+    },
+    onError: (error: any) => {
+      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    },
+  });
+
   if (!isAdmin) {
     return (
       <div className="min-h-screen bg-stone-950 text-stone-200 flex items-center justify-center">
@@ -156,6 +201,7 @@ export default function AdminSettings() {
 
   const debouncedSearchQuery = useDebouncedValue(searchQuery, 150);
   const debouncedSpeciesSearchQuery = useDebouncedValue(speciesSearchQuery, 150);
+  const debouncedSpellSearchQuery = useDebouncedValue(spellSearchQuery, 150);
   
   const filteredItems = useMemo(() => {
     return systemItems.filter((item: Item) => {
@@ -172,6 +218,14 @@ export default function AdminSettings() {
              (species.description?.toLowerCase().includes(debouncedSpeciesSearchQuery.toLowerCase()));
     });
   }, [systemSpecies, debouncedSpeciesSearchQuery]);
+
+  const filteredSpells = useMemo(() => {
+    return systemSpells.filter((spell: SystemSpell) => {
+      return spell.name.toLowerCase().includes(debouncedSpellSearchQuery.toLowerCase()) ||
+             (spell.description?.toLowerCase().includes(debouncedSpellSearchQuery.toLowerCase())) ||
+             spell.school.toLowerCase().includes(debouncedSpellSearchQuery.toLowerCase());
+    });
+  }, [systemSpells, debouncedSpellSearchQuery]);
 
   const handleBackNavigation = () => {
     if (currentView === 'dashboard') {
@@ -199,7 +253,8 @@ export default function AdminSettings() {
             <p className="text-stone-400 text-sm">
               {currentView === 'dashboard' ? 'Manage game system settings' : 
                currentView === 'items' ? 'System Items' :
-               currentView === 'species' ? 'Species / Races' : 'Feat Trees'}
+               currentView === 'species' ? 'Species / Races' : 
+               currentView === 'spells' ? 'Spells' : 'Feat Trees'}
             </p>
           </div>
           <div className="w-[200px]">
@@ -252,6 +307,22 @@ export default function AdminSettings() {
           />
         )}
 
+        {currentView === 'spells' && (
+          <SpellsView
+            spells={filteredSpells}
+            isLoading={spellsLoading}
+            searchQuery={spellSearchQuery}
+            setSearchQuery={setSpellSearchQuery}
+            onAddSpell={() => setShowAddSpell(true)}
+            onEditSpell={setEditingSpell}
+            onDeleteSpell={(id) => {
+              if (confirm('Are you sure you want to delete this spell?')) {
+                deleteSpellMutation.mutate(id);
+              }
+            }}
+          />
+        )}
+
         {currentView === 'feat-trees' && (
           <FeatTreesView />
         )}
@@ -287,6 +358,23 @@ export default function AdminSettings() {
             onSave={(data) => updateSpeciesMutation.mutate({ id: editingSpecies.id, data })}
             initialData={editingSpecies}
             isLoading={updateSpeciesMutation.isPending}
+          />
+        )}
+
+        <SpellFormDialog
+          open={showAddSpell}
+          onOpenChange={setShowAddSpell}
+          onSave={(data) => createSpellMutation.mutate(data)}
+          isLoading={createSpellMutation.isPending}
+        />
+
+        {editingSpell && (
+          <SpellFormDialog
+            open={!!editingSpell}
+            onOpenChange={() => setEditingSpell(null)}
+            onSave={(data) => updateSpellMutation.mutate({ id: editingSpell.id, data })}
+            initialData={editingSpell}
+            isLoading={updateSpellMutation.isPending}
           />
         )}
       </div>
@@ -325,6 +413,22 @@ function DashboardView({ onNavigate }: { onNavigate: (view: AdminView) => void }
           <CardTitle className="text-emerald-500">System Species</CardTitle>
           <CardDescription className="text-stone-400">
             Define playable races and species with their unique traits and abilities
+          </CardDescription>
+        </CardHeader>
+      </Card>
+
+      <Card 
+        className="bg-stone-900 border-stone-700 cursor-pointer hover:border-amber-600 transition-colors"
+        onClick={() => onNavigate('spells')}
+        data-testid="card-system-spells"
+      >
+        <CardHeader>
+          <div className="h-12 w-12 rounded-lg bg-blue-700/20 flex items-center justify-center mb-2">
+            <Sparkles className="h-6 w-6 text-blue-500" />
+          </div>
+          <CardTitle className="text-blue-500">System Spells</CardTitle>
+          <CardDescription className="text-stone-400">
+            Define spells that can be learned or granted through feats
           </CardDescription>
         </CardHeader>
       </Card>
@@ -557,6 +661,118 @@ function SpeciesView({ species, isLoading, searchQuery, setSearchQuery, onAddSpe
                       onClick={() => onDeleteSpecies(s.id)}
                       className="text-stone-400 hover:text-red-500"
                       data-testid={`button-delete-species-${s.id}`}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </ScrollArea>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+interface SpellsViewProps {
+  spells: SystemSpell[];
+  isLoading: boolean;
+  searchQuery: string;
+  setSearchQuery: (q: string) => void;
+  onAddSpell: () => void;
+  onEditSpell: (spell: SystemSpell) => void;
+  onDeleteSpell: (id: string) => void;
+}
+
+const spellSchoolColors: Record<string, string> = {
+  Evocation: 'bg-red-600',
+  Conjuration: 'bg-yellow-600',
+  Abjuration: 'bg-blue-600',
+  Transmutation: 'bg-green-600',
+  Divination: 'bg-purple-600',
+  Enchantment: 'bg-pink-600',
+  Illusion: 'bg-indigo-600',
+  Necromancy: 'bg-gray-600',
+};
+
+function SpellsView({ spells, isLoading, searchQuery, setSearchQuery, onAddSpell, onEditSpell, onDeleteSpell }: SpellsViewProps) {
+  return (
+    <Card className="bg-stone-900 border-stone-700">
+      <CardHeader className="flex flex-row items-center justify-between">
+        <CardTitle className="text-blue-500">System Spells</CardTitle>
+        <Button
+          onClick={onAddSpell}
+          className="bg-blue-700 hover:bg-blue-600"
+          data-testid="button-add-spell"
+        >
+          <Plus className="h-4 w-4 mr-2" />
+          Add Spell
+        </Button>
+      </CardHeader>
+      <CardContent>
+        <div className="mb-4">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-500" />
+            <Input
+              placeholder="Search spells..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9 bg-stone-800 border-stone-700"
+              data-testid="input-search-spells"
+            />
+          </div>
+        </div>
+
+        {isLoading ? (
+          <div className="text-center py-12 text-stone-400">Loading spells...</div>
+        ) : spells.length === 0 ? (
+          <div className="text-center py-12 text-stone-400">
+            <Sparkles className="h-12 w-12 mx-auto mb-3 opacity-50" />
+            <p className="font-bold">No spells found</p>
+            <p className="text-sm mt-2">Create spells that can be granted through feats</p>
+          </div>
+        ) : (
+          <ScrollArea className="h-[500px]">
+            <div className="space-y-2">
+              {spells.map((spell: SystemSpell) => (
+                <div
+                  key={spell.id}
+                  className="flex items-center gap-4 p-3 rounded-lg bg-stone-800 border border-stone-700 hover:border-stone-600"
+                  data-testid={`spell-row-${spell.id}`}
+                >
+                  <div className="h-12 w-12 rounded bg-stone-700 flex items-center justify-center">
+                    <Sparkles className="h-6 w-6 text-blue-400" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium truncate">{spell.name}</span>
+                      <Badge className={`${spellSchoolColors[spell.school] || 'bg-stone-600'} text-xs`}>{spell.school}</Badge>
+                      <Badge className="bg-stone-600 text-xs">Lvl {spell.level}</Badge>
+                    </div>
+                    <div className="text-sm text-stone-400 flex flex-wrap gap-2">
+                      <span>Range: {spell.range}</span>
+                      <span>| {spell.castingTime}</span>
+                      {spell.damageDice && <span>| Damage: {spell.damageDice} {spell.damageType}</span>}
+                      {spell.concentration && <span>| Concentration</span>}
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => onEditSpell(spell)}
+                      className="text-stone-400 hover:text-blue-500"
+                      data-testid={`button-edit-spell-${spell.id}`}
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => onDeleteSpell(spell.id)}
+                      className="text-stone-400 hover:text-red-500"
+                      data-testid={`button-delete-spell-${spell.id}`}
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>
@@ -2231,6 +2447,311 @@ function SpeciesFormDialog({ open, onOpenChange, onSave, initialData, isLoading 
             data-testid="button-save-species"
           >
             {isLoading ? 'Saving...' : initialData ? 'Update Species' : 'Create Species'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+interface SpellFormDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onSave: (data: Partial<SystemSpell>) => void;
+  initialData?: SystemSpell;
+  isLoading?: boolean;
+}
+
+const spellSchools = ['Evocation', 'Conjuration', 'Abjuration', 'Transmutation', 'Divination', 'Enchantment', 'Illusion', 'Necromancy'];
+const damageTypes = ['Fire', 'Cold', 'Lightning', 'Thunder', 'Acid', 'Poison', 'Radiant', 'Necrotic', 'Force', 'Psychic', 'Bludgeoning', 'Piercing', 'Slashing'];
+const targetTypes = ['self', 'single', 'multiple', 'area', 'cone', 'line'];
+const savingThrows = ['Strength', 'Dexterity', 'Constitution', 'Intelligence', 'Wisdom', 'Charisma'];
+
+function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: SpellFormDialogProps) {
+  const [formData, setFormData] = useState<{
+    name: string;
+    description: string;
+    icon: string;
+    school: string;
+    level: number | string;
+    castingTime: string;
+    range: string;
+    duration: string;
+    components: string;
+    damageType: string;
+    damageDice: string;
+    healingDice: string;
+    energyCost: number | string;
+    concentration: boolean;
+    ritual: boolean;
+    targetType: string;
+    areaSize: string;
+    savingThrow: string;
+  }>({
+    name: initialData?.name || '',
+    description: initialData?.description || '',
+    icon: initialData?.icon || '',
+    school: initialData?.school || 'Evocation',
+    level: initialData?.level ?? 1,
+    castingTime: initialData?.castingTime || '1 action',
+    range: initialData?.range || '30 ft',
+    duration: initialData?.duration || 'Instantaneous',
+    components: initialData?.components || 'V, S',
+    damageType: initialData?.damageType || '',
+    damageDice: initialData?.damageDice || '',
+    healingDice: initialData?.healingDice || '',
+    energyCost: initialData?.energyCost ?? 1,
+    concentration: initialData?.concentration || false,
+    ritual: initialData?.ritual || false,
+    targetType: initialData?.targetType || 'single',
+    areaSize: initialData?.areaSize || '',
+    savingThrow: initialData?.savingThrow || '',
+  });
+
+  const handleNumericChange = (field: string, value: string) => {
+    setFormData({ ...formData, [field]: value === '' ? '' : parseInt(value) });
+  };
+
+  const handleSubmit = () => {
+    if (!formData.name.trim()) {
+      toast({ title: 'Error', description: 'Spell name is required', variant: 'destructive' });
+      return;
+    }
+    onSave({
+      ...formData,
+      level: Number(formData.level) || 1,
+      energyCost: Number(formData.energyCost) || 1,
+    });
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="bg-stone-900 border-stone-700 text-stone-200 max-w-2xl max-h-[90vh] flex flex-col">
+        <DialogHeader className="shrink-0">
+          <DialogTitle className="text-blue-500">
+            {initialData ? 'Edit Spell' : 'Create Spell'}
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="flex-1 overflow-y-auto pr-4 min-h-0">
+          <div className="space-y-4 py-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="col-span-2">
+                <Label>Name *</Label>
+                <Input
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  className="bg-stone-800 border-stone-700"
+                  data-testid="input-spell-name"
+                />
+              </div>
+
+              <div className="col-span-2">
+                <Label>Description</Label>
+                <Textarea
+                  value={formData.description}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  className="bg-stone-800 border-stone-700 min-h-[80px]"
+                  data-testid="textarea-spell-description"
+                />
+              </div>
+
+              <div>
+                <Label>School</Label>
+                <Select value={formData.school} onValueChange={(v) => setFormData({ ...formData, school: v })}>
+                  <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-spell-school">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {spellSchools.map((school) => (
+                      <SelectItem key={school} value={school}>{school}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <Label>Level (0-9)</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  max="9"
+                  value={formData.level}
+                  onChange={(e) => handleNumericChange('level', e.target.value)}
+                  className="bg-stone-800 border-stone-700"
+                  data-testid="input-spell-level"
+                />
+              </div>
+
+              <div>
+                <Label>Casting Time</Label>
+                <Input
+                  value={formData.castingTime}
+                  onChange={(e) => setFormData({ ...formData, castingTime: e.target.value })}
+                  placeholder="1 action"
+                  className="bg-stone-800 border-stone-700"
+                  data-testid="input-spell-casting-time"
+                />
+              </div>
+
+              <div>
+                <Label>Range</Label>
+                <Input
+                  value={formData.range}
+                  onChange={(e) => setFormData({ ...formData, range: e.target.value })}
+                  placeholder="30 ft"
+                  className="bg-stone-800 border-stone-700"
+                  data-testid="input-spell-range"
+                />
+              </div>
+
+              <div>
+                <Label>Duration</Label>
+                <Input
+                  value={formData.duration}
+                  onChange={(e) => setFormData({ ...formData, duration: e.target.value })}
+                  placeholder="Instantaneous"
+                  className="bg-stone-800 border-stone-700"
+                  data-testid="input-spell-duration"
+                />
+              </div>
+
+              <div>
+                <Label>Components</Label>
+                <Input
+                  value={formData.components}
+                  onChange={(e) => setFormData({ ...formData, components: e.target.value })}
+                  placeholder="V, S, M"
+                  className="bg-stone-800 border-stone-700"
+                  data-testid="input-spell-components"
+                />
+              </div>
+
+              <div>
+                <Label>Damage Dice</Label>
+                <Input
+                  value={formData.damageDice}
+                  onChange={(e) => setFormData({ ...formData, damageDice: e.target.value })}
+                  placeholder="3d6"
+                  className="bg-stone-800 border-stone-700"
+                  data-testid="input-spell-damage-dice"
+                />
+              </div>
+
+              <div>
+                <Label>Damage Type</Label>
+                <Select value={formData.damageType} onValueChange={(v) => setFormData({ ...formData, damageType: v })}>
+                  <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-spell-damage-type">
+                    <SelectValue placeholder="Select type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">None</SelectItem>
+                    {damageTypes.map((type) => (
+                      <SelectItem key={type} value={type}>{type}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <Label>Healing Dice</Label>
+                <Input
+                  value={formData.healingDice}
+                  onChange={(e) => setFormData({ ...formData, healingDice: e.target.value })}
+                  placeholder="2d8+4"
+                  className="bg-stone-800 border-stone-700"
+                  data-testid="input-spell-healing-dice"
+                />
+              </div>
+
+              <div>
+                <Label>Energy Cost</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  value={formData.energyCost}
+                  onChange={(e) => handleNumericChange('energyCost', e.target.value)}
+                  className="bg-stone-800 border-stone-700"
+                  data-testid="input-spell-energy-cost"
+                />
+              </div>
+
+              <div>
+                <Label>Target Type</Label>
+                <Select value={formData.targetType} onValueChange={(v) => setFormData({ ...formData, targetType: v })}>
+                  <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-spell-target-type">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {targetTypes.map((type) => (
+                      <SelectItem key={type} value={type}>{type.charAt(0).toUpperCase() + type.slice(1)}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <Label>Area Size (if applicable)</Label>
+                <Input
+                  value={formData.areaSize}
+                  onChange={(e) => setFormData({ ...formData, areaSize: e.target.value })}
+                  placeholder="20 ft radius"
+                  className="bg-stone-800 border-stone-700"
+                  data-testid="input-spell-area-size"
+                />
+              </div>
+
+              <div>
+                <Label>Saving Throw</Label>
+                <Select value={formData.savingThrow} onValueChange={(v) => setFormData({ ...formData, savingThrow: v })}>
+                  <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-spell-saving-throw">
+                    <SelectValue placeholder="None" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">None</SelectItem>
+                    {savingThrows.map((save) => (
+                      <SelectItem key={save} value={save}>{save}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="col-span-2 flex gap-6">
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="concentration"
+                    checked={formData.concentration}
+                    onCheckedChange={(checked) => setFormData({ ...formData, concentration: !!checked })}
+                    data-testid="checkbox-spell-concentration"
+                  />
+                  <Label htmlFor="concentration" className="cursor-pointer">Concentration</Label>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="ritual"
+                    checked={formData.ritual}
+                    onCheckedChange={(checked) => setFormData({ ...formData, ritual: !!checked })}
+                    data-testid="checkbox-spell-ritual"
+                  />
+                  <Label htmlFor="ritual" className="cursor-pointer">Ritual</Label>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <DialogFooter className="shrink-0">
+          <Button variant="outline" onClick={() => onOpenChange(false)} className="border-stone-600">
+            Cancel
+          </Button>
+          <Button
+            onClick={handleSubmit}
+            disabled={isLoading}
+            className="bg-blue-700 hover:bg-blue-600"
+            data-testid="button-save-spell"
+          >
+            {isLoading ? 'Saving...' : initialData ? 'Update Spell' : 'Create Spell'}
           </Button>
         </DialogFooter>
       </DialogContent>

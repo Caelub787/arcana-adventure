@@ -268,6 +268,30 @@ export interface CharacterFeat {
   unlockedAt: string;
 }
 
+export interface SystemSpell {
+  id: string;
+  name: string;
+  description?: string;
+  icon?: string;
+  school: string;
+  level: number;
+  castingTime: string;
+  range: string;
+  duration: string;
+  components: string;
+  damageType?: string;
+  damageDice?: string;
+  healingDice?: string;
+  energyCost: number;
+  concentration: boolean;
+  ritual: boolean;
+  targetType: string;
+  areaSize?: string;
+  savingThrow?: string;
+  effects: any;
+  createdAt: string;
+}
+
 export interface FeatTreeWithData {
   tree: FeatTree;
   feats: Feat[];
@@ -672,6 +696,38 @@ class ApiClient {
 
   async deleteFeatTemplate(id: string): Promise<void> {
     return this.request(`/admin/feat-templates/${id}`, { method: 'DELETE' });
+  }
+
+  // Admin System Spells
+  async getSystemSpells(): Promise<SystemSpell[]> {
+    return this.request('/admin/spells');
+  }
+
+  async getSystemSpell(id: string): Promise<SystemSpell> {
+    return this.request(`/admin/spells/${id}`);
+  }
+
+  async createSystemSpell(spell: Partial<SystemSpell>): Promise<SystemSpell> {
+    return this.request('/admin/spells', {
+      method: 'POST',
+      body: JSON.stringify(spell),
+    });
+  }
+
+  async updateSystemSpell(id: string, data: Partial<SystemSpell>): Promise<SystemSpell> {
+    return this.request(`/admin/spells/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteSystemSpell(id: string): Promise<void> {
+    return this.request(`/admin/spells/${id}`, { method: 'DELETE' });
+  }
+
+  // Public spells (for character sheet and feat effects)
+  async getPublicSpells(): Promise<SystemSpell[]> {
+    return this.request('/spells');
   }
 
   // Admin Feat Trees
