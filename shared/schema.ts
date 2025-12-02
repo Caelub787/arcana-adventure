@@ -536,3 +536,36 @@ export const insertCharacterFeatSchema = createInsertSchema(characterFeats).omit
 
 export type InsertCharacterFeat = z.infer<typeof insertCharacterFeatSchema>;
 export type CharacterFeat = typeof characterFeats.$inferSelect;
+
+// System Spells table (global spell definitions that can be granted via feats, learned by characters)
+export const systemSpells = pgTable("system_spells", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  description: text("description"),
+  icon: text("icon"),
+  school: text("school").default("Evocation").notNull(),
+  level: integer("level").default(1).notNull(),
+  castingTime: text("casting_time").default("1 action").notNull(),
+  range: text("range").default("30 ft").notNull(),
+  duration: text("duration").default("Instantaneous").notNull(),
+  components: text("components").default("V, S").notNull(),
+  damageType: text("damage_type"),
+  damageDice: text("damage_dice"),
+  healingDice: text("healing_dice"),
+  energyCost: integer("energy_cost").default(1).notNull(),
+  concentration: boolean("concentration").default(false).notNull(),
+  ritual: boolean("ritual").default(false).notNull(),
+  targetType: text("target_type").default("single").notNull(),
+  areaSize: text("area_size"),
+  savingThrow: text("saving_throw"),
+  effects: jsonb("effects").default([]).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertSystemSpellSchema = createInsertSchema(systemSpells).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertSystemSpell = z.infer<typeof insertSystemSpellSchema>;
+export type SystemSpell = typeof systemSpells.$inferSelect;
