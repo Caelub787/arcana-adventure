@@ -6803,8 +6803,10 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
     queryFn: () => api.getSpecies('Arcana Adventure'),
   });
 
-  // Fetch feat tree for this character (based on species featTree ID)
-  const featTreeId = character?.featTree || '';
+  // Get feat tree ID from the character's species (race), not from the character directly
+  const characterSpecies = systemSpecies.find((s: SystemSpecies) => s.name === character?.race);
+  const featTreeId = characterSpecies?.featTree || character?.featTree || '';
+  
   const { data: featTreeData } = useQuery({
     queryKey: ['feat-tree', featTreeId],
     queryFn: () => api.getFeatTree(featTreeId),
@@ -7966,7 +7968,7 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                 </div>
 
                 {/* Feat Tree Section - Full width below overview grid */}
-                {liveCharacter.featTree && (
+                {featTreeId && (
                   <div className="bg-gradient-to-r from-purple-900/30 to-indigo-900/30 rounded-lg p-3 border border-purple-700/50">
                     <div className="flex justify-between items-center mb-2">
                       <Label className="text-sm text-purple-300 flex items-center gap-2">
