@@ -8243,7 +8243,7 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                   <div>
                     <Label className="text-xs text-stone-400">Weight Carried</Label>
                     <p className={`text-lg font-bold ${weightPercentage > 100 ? 'text-red-500' : weightPercentage > 75 ? 'text-yellow-500' : 'text-green-500'}`} data-testid="text-weight">
-                      {totalWeight.toFixed(1)} / {carryCapacity} lbs
+                      {totalWeight.toFixed(2)} / {carryCapacity} lbs
                     </p>
                   </div>
                   <div>
@@ -9678,7 +9678,8 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
     armorBonus: number | string;
     damageReduction: number | string;
     damageReductionType: string;
-    isRation: boolean;
+    rationServings: number | string;
+    breakChance: number | string;
   }>({
     name: '',
     image: '',
@@ -9709,7 +9710,8 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
     armorBonus: '',
     damageReduction: '',
     damageReductionType: '',
-    isRation: false,
+    rationServings: '',
+    breakChance: 10,
   });
 
   const [showImageCrop, setShowImageCrop] = useState(false);
@@ -9754,7 +9756,7 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
       damageReduction: template.damageReduction || 0,
       damageReductionType: template.damageReductionType || '',
       breakChance: template.breakChance ?? 10,
-      isRation: template.isRation || false,
+      rationServings: template.rationServings || 0,
     };
     onSave(itemData);
   };
@@ -9870,6 +9872,8 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
       carryCapacity: Number(formData.carryCapacity) || 0,
       armorBonus: Number(formData.armorBonus) || 0,
       damageReduction: Number(formData.damageReduction) || 0,
+      rationServings: Number(formData.rationServings) || 0,
+      breakChance: Number(formData.breakChance) ?? 10,
     };
     onSave(cleanedData);
     setFormData({
@@ -9902,6 +9906,8 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
       armorBonus: '',
       damageReduction: '',
       damageReductionType: '',
+      rationServings: '',
+      breakChance: 10,
     });
   };
 
@@ -10163,7 +10169,7 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
               </div>
               <div>
                 <Label>Weight (lbs)</Label>
-                <Input type="number" min="0" step="0.1" value={formData.itemWeight} onChange={(e) => setFormData({...formData, itemWeight: e.target.value === '' ? '' : parseFloat(e.target.value)})} className="bg-stone-800 border-stone-700" />
+                <Input type="number" min="0" step="0.01" value={formData.itemWeight} onChange={(e) => setFormData({...formData, itemWeight: e.target.value === '' ? '' : parseFloat(e.target.value)})} className="bg-stone-800 border-stone-700" />
               </div>
             </div>
             <div>
@@ -10222,14 +10228,31 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
                 <div className="flex items-center gap-2">
                   <Checkbox 
                     id="isRation" 
-                    checked={formData.isRation || false}
-                    onCheckedChange={(checked) => setFormData({...formData, isRation: checked === true})}
+                    checked={(formData.rationServings !== '' && Number(formData.rationServings) > 0)}
+                    onCheckedChange={(checked) => setFormData({...formData, rationServings: checked ? 1 : ''})}
                     data-testid="checkbox-is-ration"
                   />
                   <Label htmlFor="isRation" className="cursor-pointer">
                     This item is a ration (consumable for resting)
                   </Label>
                 </div>
+                {(formData.rationServings !== '' && Number(formData.rationServings) > 0) && (
+                  <div className="mt-3">
+                    <Label>Ration Servings</Label>
+                    <Input 
+                      type="number" 
+                      min="1" 
+                      step="1"
+                      value={formData.rationServings} 
+                      onChange={(e) => setFormData({...formData, rationServings: e.target.value === '' ? '' : parseInt(e.target.value)})} 
+                      className="bg-stone-800 border-stone-700 w-32"
+                      data-testid="input-ration-servings"
+                    />
+                    <p className="text-xs text-stone-500 mt-1">
+                      How many rations this item provides when consumed
+                    </p>
+                  </div>
+                )}
                 <p className="text-xs text-stone-500 mt-2">
                   Ration items are consumed during rests. Short rest requires 2, long rest requires 4.
                 </p>
@@ -10681,7 +10704,7 @@ function ManageTemplatesDialog({ open, onOpenChange, campaignId }: { open: boole
                   </div>
                   <div>
                     <Label>Weight (lbs)</Label>
-                    <Input type="number" min="0" step="0.1" value={newItem.itemWeight} onChange={(e) => setNewItem({...newItem, itemWeight: e.target.value === '' ? '' : parseFloat(e.target.value)})} className="bg-stone-800 border-stone-700" />
+                    <Input type="number" min="0" step="0.01" value={newItem.itemWeight} onChange={(e) => setNewItem({...newItem, itemWeight: e.target.value === '' ? '' : parseFloat(e.target.value)})} className="bg-stone-800 border-stone-700" />
                   </div>
                 </div>
                 <div>
@@ -11576,7 +11599,7 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
                   {isEditing && canEditAllFields ? (
                     <Input 
                       type="number"
-                      step="0.1"
+                      step="0.01"
                       min="0"
                       value={currentData.itemWeight ?? ''} 
                       onChange={(e) => setEditData({ ...editData, itemWeight: e.target.value === '' ? '' : parseFloat(e.target.value) })}
@@ -11589,7 +11612,7 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
                 <div>
                   <Label className="text-xs text-stone-400">Total Weight</Label>
                   <p className="text-stone-200">
-                    {(currentData.itemWeight * (currentData.totalQuantity || currentData.quantity)).toFixed(1)} lbs
+                    {(currentData.itemWeight * (currentData.totalQuantity || currentData.quantity)).toFixed(2)} lbs
                   </p>
                 </div>
                 <div className="col-span-2">
