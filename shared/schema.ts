@@ -427,3 +427,90 @@ export const insertInitiativeEntrySchema = createInsertSchema(initiativeEntries)
 
 export type InsertInitiativeEntry = z.infer<typeof insertInitiativeEntrySchema>;
 export type InitiativeEntry = typeof initiativeEntries.$inferSelect;
+
+// Feat Trees table (for skill trees/talent trees)
+export const featTrees = pgTable("feat_trees", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  description: text("description"),
+  gridWidth: integer("grid_width").default(7).notNull(), // Grid columns
+  gridHeight: integer("grid_height").default(10).notNull(), // Grid rows
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertFeatTreeSchema = createInsertSchema(featTrees).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertFeatTree = z.infer<typeof insertFeatTreeSchema>;
+export type FeatTree = typeof featTrees.$inferSelect;
+
+// Feats table (individual nodes in feat trees)
+export const feats = pgTable("feats", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  treeId: varchar("tree_id").notNull().references(() => featTrees.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  description: text("description"),
+  icon: text("icon"), // Icon name or image URL
+  gridX: integer("grid_x").notNull().default(0), // X position in grid
+  gridY: integer("grid_y").notNull().default(0), // Y position in grid
+  tier: integer("tier").default(1).notNull(), // Tier level (for unlocking requirements)
+  cost: integer("cost").default(1).notNull(), // Points required to unlock
+  effects: jsonb("effects").default([]).notNull(), // Array of effect objects
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertFeatSchema = createInsertSchema(feats).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertFeat = z.infer<typeof insertFeatSchema>;
+export type Feat = typeof feats.$inferSelect;
+
+// Feat effect types for reference:
+// { type: "hp_bonus", value: 5 }
+// { type: "max_hp_bonus", value: 10 }
+// { type: "dc_bonus", value: 2 }
+// { type: "speed_bonus", value: 10 }
+// { type: "attribute_bonus", attribute: "might", value: 1 }
+// { type: "skill_bonus", skill: "perception", value: 1 }
+// { type: "spell_grant", spellName: "Fireball", spellLevel: 3 }
+// { type: "ability_grant", abilityName: "Dark Vision", description: "..." }
+
+// Feat Connections table (lines between feats showing prerequisites)
+export const featConnections = pgTable("feat_connections", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  treeId: varchar("tree_id").notNull().references(() => featTrees.id, { onDelete: "cascade" }),
+  fromFeatId: varchar("from_feat_id").notNull().references(() => feats.id, { onDelete: "cascade" }),
+  toFeatId: varchar("to_feat_id").notNull().references(() => feats.id, { onDelete: "cascade" }),
+});
+
+export const insertFeatConnectionSchema = createInsertSchema(featConnections).omit({
+  id: true,
+});
+
+export type InsertFeatConnection = z.infer<typeof insertFeatConnectionSchema>;
+export type FeatConnection = typeof featConnections.$inferSelect;
+
+// Character Feats table (tracking which feats characters have unlocked)
+export const characterFeats = pgTable("character_feats", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  characterId: varchar("character_id").notNull().references(() => characters.id, { onDelete: "cascade" }),
+  featId: varchar("feat_id").notNull().references(() => feats.id, { onDelete: "cascade" }),
+  unlockedAt: timestamp("unlocked_at").defaultNow().notNull(),
+}, (table) => ({
+  uniqueCharacterFeat: uniqueIndex("character_feats_char_feat_unique").on(
+    table.characterId,
+    table.featId
+  ),
+}));
+
+export const insertCharacterFeatSchema = createInsertSchema(characterFeats).omit({
+  id: true,
+  unlockedAt: true,
+});
+
+export type InsertCharacterFeat = z.infer<typeof insertCharacterFeatSchema>;
+export type CharacterFeat = typeof characterFeats.$inferSelect;
