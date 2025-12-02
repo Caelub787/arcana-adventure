@@ -1925,13 +1925,115 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
   
   const isWeaponClickable = itemData && itemData.itemType === 'weapon';
   const isSkillClickable = !!hotbar?.skillName;
-  const isClickable = isWeaponClickable || isSkillClickable;
+  const isSpellClickable = !!spellData;
+  const isClickable = isWeaponClickable || isSkillClickable || isSpellClickable;
+
+  // Handle spell attack roll (1d20 + attribute modifier)
+  const handleSpellAttackRoll = () => {
+    if (!spellData) return;
+    
+    const attrName = spellData.attribute || 'wit';
+    const attrMod = getAttributeModifier(attrName);
+    const roll = Math.floor(Math.random() * 20) + 1;
+    const total = roll + attrMod;
+    
+    const attrDisplayName = attrName.charAt(0).toUpperCase() + attrName.slice(1);
+    const calculationBreakdown = attrMod !== 0 
+      ? `1d20 = ${roll} + ${attrDisplayName} (${attrMod >= 0 ? '+' : ''}${attrMod})`
+      : `1d20 = ${roll}`;
+    
+    triggerRollNotification({
+      type: 'attack',
+      dieType: 'd20',
+      label: `${spellData.name} Attack`,
+      result: roll,
+      modifier: attrMod,
+      total,
+      username: character.name || 'Unknown',
+      characterName: character.name,
+      calculationBreakdown,
+    });
+    
+    if (character.campaignId) {
+      const chatText = `${spellData.name} Attack: ${calculationBreakdown} = ${total}`;
+      gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', chatText, 'roll');
+    }
+  };
+
+  // Handle spell damage roll (damage dice + mod)
+  const handleSpellDamageRoll = () => {
+    if (!spellData) return;
+    
+    const isHealing = spellData.damageType === 'Health';
+    const diceNotation = isHealing ? (spellData.healingDice || spellData.damageDice) : spellData.damageDice;
+    
+    if (!diceNotation) {
+      triggerRollNotification({
+        type: 'attack',
+        dieType: 'd20',
+        label: `${spellData.name} - No damage dice!`,
+        result: 0,
+        modifier: 0,
+        total: 0,
+        username: character.name || 'Unknown',
+        characterName: character.name,
+      });
+      return;
+    }
+    
+    const { result, dieType } = rollDice(diceNotation);
+    const mod = spellData.mod || 0;
+    const total = result + mod;
+    
+    const calculationBreakdown = mod !== 0 
+      ? `${diceNotation} = ${result} + Mod (${mod >= 0 ? '+' : ''}${mod})`
+      : `${diceNotation} = ${result}`;
+    
+    const label = isHealing ? `${spellData.name} Healing` : `${spellData.name} Damage`;
+    const damageTypeDisplay = spellData.damageType ? ` (${spellData.damageType})` : '';
+    
+    triggerRollNotification({
+      type: 'attack',
+      dieType: dieType as any,
+      label,
+      result,
+      modifier: mod,
+      total,
+      username: character.name || 'Unknown',
+      characterName: character.name,
+      calculationBreakdown,
+    });
+    
+    if (character.campaignId) {
+      const chatText = `${label}: ${calculationBreakdown} = ${total}${damageTypeDisplay}`;
+      gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', chatText, 'roll');
+    }
+  };
 
   // Handle click with single/double click detection
   const handleClick = () => {
     // Handle skill clicks
     if (isSkillClickable) {
       handleSkillRoll();
+      return;
+    }
+    
+    // Handle spell clicks (single = attack, double = damage)
+    if (isSpellClickable) {
+      clickCountRef.current += 1;
+      
+      if (clickTimerRef.current) {
+        clearTimeout(clickTimerRef.current);
+      }
+      
+      clickTimerRef.current = setTimeout(() => {
+        if (clickCountRef.current === 1) {
+          handleSpellAttackRoll();
+        } else if (clickCountRef.current >= 2) {
+          handleSpellDamageRoll();
+        }
+        clickCountRef.current = 0;
+      }, 250);
       return;
     }
     
@@ -1984,7 +2086,10 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
         <p className="font-bold">{spellData.name}</p>
         <p className="text-sm">Level: {spellData.level === 0 ? 'Cantrip' : spellData.level}</p>
         {spellData.school && <p className="text-sm">School: {spellData.school}</p>}
-        {spellData.damage && <p className="text-sm">Damage: {spellData.damage} {spellData.damageType || ''}</p>}
+        {spellData.damageDice && <p className="text-sm">Damage: {spellData.damageDice}{spellData.mod ? ` +${spellData.mod}` : ''} {spellData.damageType || ''}</p>}
+        {spellData.attribute && <p className="text-sm">Attack: {spellData.attribute}</p>}
+        {spellData.rangeNum && <p className="text-sm">Range: {spellData.rangeNum}ft</p>}
+        <p className="text-xs text-stone-400 mt-1">Click: Attack | Double-click: Damage</p>
       </>
     );
   } else if (hotbar?.itemId && itemData) {
@@ -5410,6 +5515,110 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
     }
   };
 
+  // Handle spell attack roll (1d20 + attribute modifier)
+  const handleSpellAttackRoll = () => {
+    if (!spellData) return;
+    
+    const attrName = spellData.attribute || 'wit';
+    const attrMod = getAttributeModifier(attrName);
+    const roll = Math.floor(Math.random() * 20) + 1;
+    const total = roll + attrMod;
+    
+    const attrDisplayName = attrName.charAt(0).toUpperCase() + attrName.slice(1);
+    const calculationBreakdown = attrMod !== 0 
+      ? `1d20 = ${roll} + ${attrDisplayName} (${attrMod >= 0 ? '+' : ''}${attrMod})`
+      : `1d20 = ${roll}`;
+    
+    triggerRollNotification({
+      type: 'attack',
+      dieType: 'd20',
+      label: `${spellData.name} Attack`,
+      result: roll,
+      modifier: attrMod,
+      total,
+      username: character.name || 'Unknown',
+      characterName: character.name,
+      calculationBreakdown,
+    });
+    
+    if (character.campaignId) {
+      const chatText = `${spellData.name} Attack: ${calculationBreakdown} = ${total}`;
+      gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', chatText, 'roll');
+    }
+  };
+
+  // Handle spell damage roll (damage dice + mod)
+  const handleSpellDamageRoll = () => {
+    if (!spellData) return;
+    
+    // Check if spell has healing (Health damage type heals instead of damages)
+    const isHealing = spellData.damageType === 'Health';
+    const diceNotation = isHealing ? (spellData.healingDice || spellData.damageDice) : spellData.damageDice;
+    
+    if (!diceNotation) {
+      triggerRollNotification({
+        type: 'attack',
+        dieType: 'd20',
+        label: `${spellData.name} - No damage dice!`,
+        result: 0,
+        modifier: 0,
+        total: 0,
+        username: character.name || 'Unknown',
+        characterName: character.name,
+      });
+      return;
+    }
+    
+    const { result, dieType } = rollDice(diceNotation);
+    const mod = spellData.mod || 0;
+    const total = result + mod;
+    
+    const calculationBreakdown = mod !== 0 
+      ? `${diceNotation} = ${result} + Mod (${mod >= 0 ? '+' : ''}${mod})`
+      : `${diceNotation} = ${result}`;
+    
+    const label = isHealing ? `${spellData.name} Healing` : `${spellData.name} Damage`;
+    const damageTypeDisplay = spellData.damageType ? ` (${spellData.damageType})` : '';
+    
+    triggerRollNotification({
+      type: 'attack',
+      dieType: dieType as any,
+      label,
+      result,
+      modifier: mod,
+      total,
+      username: character.name || 'Unknown',
+      characterName: character.name,
+      calculationBreakdown,
+    });
+    
+    if (character.campaignId) {
+      const chatText = `${label}: ${calculationBreakdown} = ${total}${damageTypeDisplay}`;
+      gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', chatText, 'roll');
+    }
+  };
+
+  // Handle click with single/double click detection for spells
+  const handleSpellClick = (e: React.MouseEvent) => {
+    if (!spellData) return;
+    e.stopPropagation();
+    
+    clickCountRef.current += 1;
+    
+    if (clickTimerRef.current) {
+      clearTimeout(clickTimerRef.current);
+    }
+    
+    clickTimerRef.current = setTimeout(() => {
+      if (clickCountRef.current === 1) {
+        handleSpellAttackRoll();
+      } else if (clickCountRef.current >= 2) {
+        handleSpellDamageRoll();
+      }
+      clickCountRef.current = 0;
+    }, 250);
+  };
+
   // Handle click with single/double click detection for weapons
   const handleWeaponClick = (e: React.MouseEvent) => {
     if (!itemData || itemData.itemType !== 'weapon') return;
@@ -5432,6 +5641,7 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
   };
 
   const isWeaponClickable = itemData && itemData.itemType === 'weapon';
+  const isSpellClickable = !!spellData;
 
   const handleDragOver = (e: React.DragEvent) => {
     if (!canEdit || isBlocked) return;
@@ -5505,7 +5715,10 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
-              <div className="w-full h-full flex flex-col items-center justify-center p-0.5">
+              <div 
+                className="w-full h-full flex flex-col items-center justify-center p-0.5 cursor-pointer hover:bg-stone-700/30 rounded"
+                onClick={handleSpellClick}
+              >
                 {spellData.image ? (
                   <div className="relative w-full h-full flex items-center justify-center">
                     <img 
@@ -5529,9 +5742,9 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
                       {spellData.level === 0 ? 'C' : spellData.level}
                     </div>
                     {/* Damage badge if spell has damage */}
-                    {spellData.damage && (
+                    {spellData.damageDice && (
                       <div className="absolute bottom-0 left-0 bg-red-900/90 text-red-300 text-[7px] px-0.5 rounded-tr font-bold">
-                        {spellData.damage}
+                        {spellData.damageDice}
                       </div>
                     )}
                   </div>
@@ -5542,9 +5755,11 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
               <p className="font-bold">{spellData.name}</p>
               <p className="text-sm">Level: {spellData.level === 0 ? 'Cantrip' : spellData.level}</p>
               {spellData.school && <p className="text-sm">School: {spellData.school}</p>}
-              {spellData.damage && <p className="text-sm">Damage: {spellData.damage} {spellData.damageType || ''}</p>}
-              {spellData.range && <p className="text-sm">Range: {spellData.range}ft</p>}
+              {spellData.damageDice && <p className="text-sm">Damage: {spellData.damageDice}{spellData.mod ? ` +${spellData.mod}` : ''} {spellData.damageType || ''}</p>}
+              {spellData.attribute && <p className="text-sm">Attack: {spellData.attribute}</p>}
+              {spellData.rangeNum && <p className="text-sm">Range: {spellData.rangeNum}ft</p>}
               {spellData.castingTime && <p className="text-sm">Casting: {spellData.castingTime}</p>}
+              <p className="text-xs text-stone-400 mt-1">Click: Attack | Double-click: Damage</p>
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>
@@ -9173,7 +9388,106 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                         )}
                       </div>
 
+                      {/* Roll Buttons */}
                       <div className="flex gap-2 pt-4 border-t border-stone-700">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="bg-purple-900/50 hover:bg-purple-800/50 border-purple-700 text-purple-300"
+                          onClick={() => {
+                            const attrName = selectedSpell.attribute || 'wit';
+                            const attrKey = attrName.toLowerCase() as keyof typeof character;
+                            const attrMod = typeof character[attrKey] === 'number' ? (character[attrKey] as number) : 0;
+                            const roll = Math.floor(Math.random() * 20) + 1;
+                            const total = roll + attrMod;
+                            
+                            const attrDisplayName = attrName.charAt(0).toUpperCase() + attrName.slice(1);
+                            const calculationBreakdown = attrMod !== 0 
+                              ? `1d20 = ${roll} + ${attrDisplayName} (${attrMod >= 0 ? '+' : ''}${attrMod})`
+                              : `1d20 = ${roll}`;
+                            
+                            triggerRollNotification({
+                              type: 'attack',
+                              dieType: 'd20',
+                              label: `${selectedSpell.name} Attack`,
+                              result: roll,
+                              modifier: attrMod,
+                              total,
+                              username: character.name || 'Unknown',
+                              characterName: character.name,
+                              calculationBreakdown,
+                            });
+                            
+                            if (character.campaignId) {
+                              const chatText = `${selectedSpell.name} Attack: ${calculationBreakdown} = ${total}`;
+                              gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', chatText, 'roll');
+                            }
+                          }}
+                          data-testid="button-spell-attack-roll"
+                        >
+                          <Dice5 className="h-4 w-4 mr-1" />
+                          Attack
+                        </Button>
+                        {(selectedSpell.damageDice || selectedSpell.damage) && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="bg-red-900/50 hover:bg-red-800/50 border-red-700 text-red-300"
+                            onClick={() => {
+                              const isHealing = selectedSpell.damageType === 'Health';
+                              const diceNotation = isHealing ? (selectedSpell.healingDice || selectedSpell.damageDice || selectedSpell.damage) : (selectedSpell.damageDice || selectedSpell.damage);
+                              
+                              if (!diceNotation) return;
+                              
+                              const match = diceNotation.match(/(\d+)d(\d+)/i);
+                              let result = 0;
+                              let dieType = 'd20';
+                              if (match) {
+                                const count = parseInt(match[1]);
+                                const sides = parseInt(match[2]);
+                                for (let i = 0; i < count; i++) {
+                                  result += Math.floor(Math.random() * sides) + 1;
+                                }
+                                dieType = `d${sides}`;
+                              }
+                              
+                              const mod = selectedSpell.mod || 0;
+                              const total = result + mod;
+                              
+                              const calculationBreakdown = mod !== 0 
+                                ? `${diceNotation} = ${result} + Mod (${mod >= 0 ? '+' : ''}${mod})`
+                                : `${diceNotation} = ${result}`;
+                              
+                              const label = isHealing ? `${selectedSpell.name} Healing` : `${selectedSpell.name} Damage`;
+                              const damageTypeDisplay = selectedSpell.damageType ? ` (${selectedSpell.damageType})` : '';
+                              
+                              triggerRollNotification({
+                                type: 'attack',
+                                dieType: dieType as any,
+                                label,
+                                result,
+                                modifier: mod,
+                                total,
+                                username: character.name || 'Unknown',
+                                characterName: character.name,
+                                calculationBreakdown,
+                              });
+                              
+                              if (character.campaignId) {
+                                const chatText = `${label}: ${calculationBreakdown} = ${total}${damageTypeDisplay}`;
+                                gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', chatText, 'roll');
+                              }
+                            }}
+                            data-testid="button-spell-damage-roll"
+                          >
+                            <Zap className="h-4 w-4 mr-1" />
+                            {selectedSpell.damageType === 'Health' ? 'Heal' : 'Damage'}
+                          </Button>
+                        )}
+                      </div>
+
+                      {/* Action Buttons */}
+                      <div className="flex gap-2 pt-2">
                         {isGM && (
                           <>
                             <Button
