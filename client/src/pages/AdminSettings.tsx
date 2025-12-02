@@ -2746,8 +2746,14 @@ function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading }:
       toast({ title: 'Error', description: 'Spell name is required', variant: 'destructive' });
       return;
     }
+    // Convert _none sentinel values back to empty strings for storage
+    const normalizeNone = (val: string) => val === '_none' ? '' : val;
     onSave({
       ...formData,
+      attribute: normalizeNone(formData.attribute),
+      damageType: normalizeNone(formData.damageType),
+      aoe: normalizeNone(formData.aoe),
+      savingThrow: normalizeNone(formData.savingThrow),
       level: Number(formData.level) || 1,
       rangeNum: Number(formData.rangeNum) || 30,
       mod: Number(formData.mod) || 0,
@@ -2873,12 +2879,12 @@ function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading }:
 
               <div>
                 <Label>Attribute (for rolls)</Label>
-                <Select value={formData.attribute} onValueChange={(v) => setFormData({ ...formData, attribute: v })}>
+                <Select value={formData.attribute || '_none'} onValueChange={(v) => setFormData({ ...formData, attribute: v === '_none' ? '' : v })}>
                   <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-spell-attribute">
                     <SelectValue placeholder="Select attribute" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">None</SelectItem>
+                    <SelectItem value="_none">None</SelectItem>
                     {spellAttributes.map((attr) => (
                       <SelectItem key={attr} value={attr}>{attr.charAt(0).toUpperCase() + attr.slice(1)}</SelectItem>
                     ))}
@@ -2899,12 +2905,12 @@ function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading }:
 
               <div>
                 <Label>Damage Type</Label>
-                <Select value={formData.damageType} onValueChange={(v) => setFormData({ ...formData, damageType: v })}>
+                <Select value={formData.damageType || '_none'} onValueChange={(v) => setFormData({ ...formData, damageType: v === '_none' ? '' : v })}>
                   <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-spell-damage-type">
                     <SelectValue placeholder="Select type" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">None</SelectItem>
+                    <SelectItem value="_none">None</SelectItem>
                     {spellDamageTypes.map((type) => (
                       <SelectItem key={type} value={type}>{type}</SelectItem>
                     ))}
@@ -2926,12 +2932,12 @@ function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading }:
 
               <div>
                 <Label>Area of Effect</Label>
-                <Select value={formData.aoe} onValueChange={(v) => setFormData({ ...formData, aoe: v })}>
+                <Select value={formData.aoe || '_none'} onValueChange={(v) => setFormData({ ...formData, aoe: v === '_none' ? '' : v })}>
                   <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-spell-aoe">
                     <SelectValue placeholder="None" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">None</SelectItem>
+                    <SelectItem value="_none">None</SelectItem>
                     {spellAoeTypes.map((aoe) => (
                       <SelectItem key={aoe} value={aoe}>{aoe.charAt(0).toUpperCase() + aoe.slice(1)}</SelectItem>
                     ))}
@@ -2989,12 +2995,12 @@ function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading }:
 
               <div>
                 <Label>Saving Throw</Label>
-                <Select value={formData.savingThrow} onValueChange={(v) => setFormData({ ...formData, savingThrow: v })}>
+                <Select value={formData.savingThrow || '_none'} onValueChange={(v) => setFormData({ ...formData, savingThrow: v === '_none' ? '' : v })}>
                   <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-spell-saving-throw">
                     <SelectValue placeholder="None" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">None</SelectItem>
+                    <SelectItem value="_none">None</SelectItem>
                     {savingThrows.map((save) => (
                       <SelectItem key={save} value={save}>{save}</SelectItem>
                     ))}
@@ -3142,8 +3148,11 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
       toast({ title: 'Error', description: 'Item name is required', variant: 'destructive' });
       return;
     }
+    // Convert _none sentinel values back to empty strings for storage
+    const normalizeNone = (val: string) => val === '_none' ? '' : val;
     const cleanedData = {
       ...formData,
+      ammunitionType: normalizeNone(formData.ammunitionType),
       mod: Number(formData.mod) || 0,
       range: Number(formData.range) || 0,
       itemWeight: Number(formData.itemWeight) || 0,
@@ -3425,12 +3434,12 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
                   </div>
                   <div>
                     <Label>Ammunition Required</Label>
-                    <Select value={formData.ammunitionType} onValueChange={(v) => setFormData({ ...formData, ammunitionType: v })}>
+                    <Select value={formData.ammunitionType || '_none'} onValueChange={(v) => setFormData({ ...formData, ammunitionType: v === '_none' ? '' : v })}>
                       <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-weapon-ammo">
                         <SelectValue placeholder="None" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">None</SelectItem>
+                        <SelectItem value="_none">None</SelectItem>
                         <SelectItem value="arrow">Arrow</SelectItem>
                         <SelectItem value="bolt">Bolt</SelectItem>
                         <SelectItem value="bullet">Bullet</SelectItem>
