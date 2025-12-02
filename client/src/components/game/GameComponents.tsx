@@ -1281,18 +1281,28 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     const attackerToken = getAttackerToken();
     const targetData = getTargetData();
     
-    // If targeting a token, check range
+    // If targeting a token, check range (skip range check if attacker or target data is missing)
     if (targetedTokenId && targetData?.token && attackerToken) {
       const distance = calculateDistanceInFeet(
         attackerToken.x, attackerToken.y,
         targetData.token.x, targetData.token.y
       );
       
-      // Determine weapon range (ranged weapons use their range, melee weapons default to 10ft for adjacent + diagonal)
-      // Melee uses 10ft to allow for token positioning variance and reach weapons
+      // Determine weapon range - use 10ft minimum for all melee, and check weapon's explicit range
+      // For ranged weapons, default to 120ft (standard longbow range)
       const weaponRange = isRangedWeapon(itemData) 
-        ? (itemData.range || 60) // Default ranged range is 60ft if not specified
-        : (itemData.range || 10); // Melee default is 10ft (allows adjacent + slight positioning variance)
+        ? (itemData.range || 120) // Default ranged range is 120ft if not specified
+        : Math.max(10, itemData.range || 10); // Melee minimum 10ft (2 squares)
+      
+      console.log('[Range Check]', {
+        attacker: { x: attackerToken.x, y: attackerToken.y },
+        target: { x: targetData.token.x, y: targetData.token.y },
+        gridSize,
+        distance,
+        weaponRange,
+        isRanged: isRangedWeapon(itemData),
+        itemRange: itemData.range
+      });
       
       if (distance > weaponRange) {
         triggerRollNotification({
@@ -1302,7 +1312,7 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
           total: 0,
           username: character.name || 'Unknown',
           characterName: character.name,
-          calculationBreakdown: `Target not within range (${Math.round(distance)}ft > ${weaponRange}ft)`,
+          calculationBreakdown: `Target not within range (${distance}ft > ${weaponRange}ft)`,
         });
         return;
       }
