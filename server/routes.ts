@@ -2608,6 +2608,68 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // System Spell routes (admin)
+  app.get("/api/admin/spells", requireAdmin, async (req, res) => {
+    try {
+      const spellList = await storage.getSystemSpells();
+      res.json(spellList);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch spells" });
+    }
+  });
+
+  app.get("/api/admin/spells/:id", requireAdmin, async (req, res) => {
+    try {
+      const spell = await storage.getSystemSpell(req.params.id);
+      if (!spell) {
+        return res.status(404).json({ error: "Spell not found" });
+      }
+      res.json(spell);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch spell" });
+    }
+  });
+
+  app.post("/api/admin/spells", requireAdmin, async (req, res) => {
+    try {
+      const spell = await storage.createSystemSpell(req.body);
+      res.json(spell);
+    } catch (err) {
+      res.status(400).json({ error: "Failed to create spell" });
+    }
+  });
+
+  app.patch("/api/admin/spells/:id", requireAdmin, async (req, res) => {
+    try {
+      const spell = await storage.updateSystemSpell(req.params.id, req.body);
+      if (!spell) {
+        return res.status(404).json({ error: "Spell not found" });
+      }
+      res.json(spell);
+    } catch (err) {
+      res.status(400).json({ error: "Failed to update spell" });
+    }
+  });
+
+  app.delete("/api/admin/spells/:id", requireAdmin, async (req, res) => {
+    try {
+      await storage.deleteSystemSpell(req.params.id);
+      res.json({ success: true });
+    } catch (err) {
+      res.status(400).json({ error: "Failed to delete spell" });
+    }
+  });
+
+  // Public spell routes (for character sheet and feat effects)
+  app.get("/api/spells", requireAuth, async (req, res) => {
+    try {
+      const spellList = await storage.getSystemSpells();
+      res.json(spellList);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch spells" });
+    }
+  });
+
   // Campaign template item routes (GM only)
   app.get("/api/campaigns/:campaignId/template-items", requireAuth, async (req, res) => {
     try {
