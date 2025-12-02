@@ -787,12 +787,37 @@ function SpellsView({ spells, isLoading, searchQuery, setSearchQuery, onAddSpell
   );
 }
 
-const tierColors: Record<number, string> = {
-  1: 'border-stone-500 bg-stone-700/50',
-  2: 'border-green-500 bg-green-700/30',
-  3: 'border-blue-500 bg-blue-700/30',
-  4: 'border-purple-500 bg-purple-700/30',
-  5: 'border-amber-500 bg-amber-700/30',
+const skillTreeTierStyles: Record<number, { border: string; bg: string; glow: string; badge: string }> = {
+  1: { 
+    border: 'border-amber-700', 
+    bg: 'bg-gradient-to-br from-amber-900/90 to-stone-900/90', 
+    glow: 'shadow-[0_0_15px_rgba(180,83,9,0.4)]',
+    badge: 'bg-amber-800 text-amber-200'
+  },
+  2: { 
+    border: 'border-slate-400', 
+    bg: 'bg-gradient-to-br from-slate-600/90 to-slate-800/90', 
+    glow: 'shadow-[0_0_15px_rgba(148,163,184,0.4)]',
+    badge: 'bg-slate-600 text-slate-200'
+  },
+  3: { 
+    border: 'border-yellow-400', 
+    bg: 'bg-gradient-to-br from-yellow-600/90 to-amber-800/90', 
+    glow: 'shadow-[0_0_20px_rgba(250,204,21,0.5)]',
+    badge: 'bg-yellow-600 text-yellow-100'
+  },
+  4: { 
+    border: 'border-purple-400', 
+    bg: 'bg-gradient-to-br from-purple-700/90 to-violet-900/90', 
+    glow: 'shadow-[0_0_20px_rgba(192,132,252,0.5)]',
+    badge: 'bg-purple-600 text-purple-100'
+  },
+  5: { 
+    border: 'border-orange-400', 
+    bg: 'bg-gradient-to-br from-orange-500/90 to-red-700/90', 
+    glow: 'shadow-[0_0_25px_rgba(251,146,60,0.6),0_0_50px_rgba(251,146,60,0.3)]',
+    badge: 'bg-orange-500 text-orange-100'
+  },
 };
 
 const effectTypeIcons: Record<string, any> = {
@@ -802,6 +827,9 @@ const effectTypeIcons: Record<string, any> = {
   skill_bonus: Star,
   attribute_bonus: Zap,
 };
+
+const NODE_WIDTH = 140;
+const NODE_HEIGHT = 80;
 
 function FeatTreesView() {
   const queryClient = useQueryClient();
@@ -954,43 +982,132 @@ function FeatTreesView() {
     },
   });
 
-  const handleGridCellClick = (x: number, y: number) => {
-    if (!selectedTreeId || !treeData) return;
+  // Selection and dragging state
+  const [selectedFeatId, setSelectedFeatId] = useState<string | null>(null);
+  const [connectionMode, setConnectionMode] = useState(false);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; featId: string } | null>(null);
+  const draggingRef = useRef<{ featId: string; startX: number; startY: number; origX: number; origY: number } | null>(null);
+  const [dragOffset, setDragOffset] = useState<{ id: string; dx: number; dy: number } | null>(null);
+
+  // Handle feat node click
+  const handleFeatClick = (feat: Feat, e: React.MouseEvent | React.PointerEvent) => {
+    e.stopPropagation();
     
-    const existingFeat = treeData.feats.find((f: Feat) => f.gridX === x && f.gridY === y);
-    
-    // Single click only handles connections for existing feats
-    if (existingFeat && connectingFrom) {
-      if (connectingFrom !== existingFeat.id) {
+    if (connectionMode && connectingFrom) {
+      // Complete connection
+      if (connectingFrom !== feat.id) {
         createConnectionMutation.mutate({
-          treeId: selectedTreeId,
-          connection: { fromFeatId: connectingFrom, toFeatId: existingFeat.id, isOptional: false },
+          treeId: selectedTreeId!,
+          connection: { fromFeatId: connectingFrom, toFeatId: feat.id, isOptional: false },
         });
-      } else {
+      }
+      setConnectingFrom(null);
+    } else if (connectionMode) {
+      // Start connection
+      setConnectingFrom(feat.id);
+    } else {
+      // Select feat
+      setSelectedFeatId(feat.id);
+    }
+  };
+
+  // Handle feat node double click - open editor
+  const handleFeatDoubleClick = (feat: Feat, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditingFeat(feat);
+    setShowFeatEditor(true);
+  };
+
+  // Handle right-click context menu
+  const handleFeatContextMenu = (feat: Feat, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({ x: e.clientX, y: e.clientY, featId: feat.id });
+    setSelectedFeatId(feat.id);
+  };
+
+  // Handle canvas click (deselect)
+  const handleCanvasClick = () => {
+    if (!draggingRef.current) {
+      setSelectedFeatId(null);
+      if (connectionMode) {
         setConnectingFrom(null);
       }
     }
+    setContextMenu(null);
   };
 
-  const handleGridCellDoubleClick = (x: number, y: number) => {
-    if (!selectedTreeId || !treeData) return;
+  // Drag handlers for feat nodes
+  const handleFeatPointerDown = (feat: Feat, e: React.PointerEvent) => {
+    if (connectionMode) return;
     
-    const existingFeat = treeData.feats.find((f: Feat) => f.gridX === x && f.gridY === y);
-    
-    if (existingFeat) {
-      // Double click on existing feat opens editor
-      setEditingFeat(existingFeat);
-      setShowFeatEditor(true);
-    } else if (!connectingFrom) {
-      // Double click on empty cell creates new feat
-      setEditingFeat({ gridX: x, gridY: y, tier: 1, cost: 1 } as Feat);
-      setShowFeatEditor(true);
-    }
-  };
-
-  const handleStartConnect = (featId: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    setConnectingFrom(featId);
+    e.currentTarget.setPointerCapture(e.pointerId);
+    
+    draggingRef.current = {
+      featId: feat.id,
+      startX: e.clientX,
+      startY: e.clientY,
+      origX: feat.gridX * CELL_SIZE,
+      origY: feat.gridY * CELL_SIZE,
+    };
+  };
+
+  const handleFeatPointerMove = (e: React.PointerEvent) => {
+    if (!draggingRef.current) return;
+    
+    const zoom = zoomRef.current;
+    const dx = (e.clientX - draggingRef.current.startX) / zoom;
+    const dy = (e.clientY - draggingRef.current.startY) / zoom;
+    
+    setDragOffset({ id: draggingRef.current.featId, dx, dy });
+  };
+
+  const handleFeatPointerUp = (feat: Feat, e: React.PointerEvent) => {
+    if (!draggingRef.current || draggingRef.current.featId !== feat.id) return;
+    
+    const zoom = zoomRef.current;
+    const dx = (e.clientX - draggingRef.current.startX) / zoom;
+    const dy = (e.clientY - draggingRef.current.startY) / zoom;
+    
+    // Only save if moved significantly
+    if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
+      const newX = draggingRef.current.origX + dx;
+      const newY = draggingRef.current.origY + dy;
+      
+      updateFeatMutation.mutate({
+        id: feat.id,
+        data: { 
+          gridX: Math.round(newX / CELL_SIZE),
+          gridY: Math.round(newY / CELL_SIZE),
+        },
+      });
+    }
+    
+    draggingRef.current = null;
+    setDragOffset(null);
+    
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {}
+  };
+
+  // Add new feat at center of viewport
+  const handleAddFeat = () => {
+    const zoom = zoomRef.current;
+    const pan = panRef.current;
+    
+    // Calculate world position at viewport center (in pixels), then convert to grid indices
+    const centerX = Math.round((viewportSize.width / 2 - pan.x) / zoom);
+    const centerY = Math.round((viewportSize.height / 2 - pan.y) / zoom);
+    
+    setEditingFeat({ 
+      gridX: Math.round(centerX / CELL_SIZE), 
+      gridY: Math.round(centerY / CELL_SIZE), 
+      tier: 1, 
+      cost: 1 
+    } as Feat);
+    setShowFeatEditor(true);
   };
 
   // Infinite canvas state - use refs to avoid re-renders during pan/zoom
@@ -1015,8 +1132,8 @@ function FeatTreesView() {
   // Track viewport size
   const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
   
-  // Cell size for the grid
-  const CELL_SIZE = 90;
+  // Cell size for the grid (must match the old system's grid cell size for backward compatibility)
+  const CELL_SIZE = 100;
   const WORLD_SIZE = 20000;
   const WORLD_OFFSET = 10000;
 
@@ -1270,82 +1387,116 @@ function FeatTreesView() {
     forceUpdate(n => n + 1);
   };
 
-  const renderGrid = () => {
+  // Helper to generate bezier curve path between two points
+  const generateCurvePath = (x1: number, y1: number, x2: number, y2: number) => {
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    const curvature = Math.min(distance * 0.3, 100);
+    
+    // Control points for bezier curve
+    const cx1 = x1 + dx * 0.25;
+    const cy1 = y1 + curvature * (dy > 0 ? 0.5 : -0.5);
+    const cx2 = x2 - dx * 0.25;
+    const cy2 = y2 - curvature * (dy > 0 ? 0.5 : -0.5);
+    
+    return `M ${x1} ${y1} C ${cx1} ${cy1}, ${cx2} ${cy2}, ${x2} ${y2}`;
+  };
+
+  const renderSkillTree = () => {
     if (!treeData) return null;
     
     const { feats, connections } = treeData;
-    
-    const featMap = new Map<string, Feat>();
-    feats.forEach((f: Feat) => {
-      featMap.set(`${f.gridX},${f.gridY}`, f);
-    });
     const featById = new Map<string, Feat>();
     feats.forEach((f: Feat) => featById.set(f.id, f));
-
-    // Calculate visible grid range based on viewport and current pan/zoom
-    const zoom = zoomRef.current;
-    const pan = panRef.current;
-    const cellSizeScaled = CELL_SIZE * zoom;
-    
-    // Calculate which cells are visible in the viewport
-    const startX = Math.floor((-pan.x - WORLD_OFFSET) / cellSizeScaled) - 2;
-    const endX = Math.ceil((-pan.x - WORLD_OFFSET + viewportSize.width) / cellSizeScaled) + 2;
-    const startY = Math.floor((-pan.y - WORLD_OFFSET) / cellSizeScaled) - 2;
-    const endY = Math.ceil((-pan.y - WORLD_OFFSET + viewportSize.height) / cellSizeScaled) + 2;
-
-    // Generate visible cells
-    const visibleCells = [];
-    for (let y = startY; y <= endY; y++) {
-      for (let x = startX; x <= endX; x++) {
-        visibleCells.push({ x, y });
-      }
-    }
 
     return (
       <div 
         ref={canvasContainerRef}
-        className="relative w-full h-[500px] overflow-hidden bg-stone-900 rounded-lg border border-stone-700 cursor-grab active:cursor-grabbing"
+        className={`relative w-full h-[600px] overflow-hidden rounded-lg border border-stone-700 ${
+          connectionMode ? 'cursor-crosshair' : 'cursor-grab active:cursor-grabbing'
+        }`}
+        style={{ 
+          touchAction: 'none',
+          background: 'radial-gradient(ellipse at center, #1c1917 0%, #0c0a09 100%)'
+        }}
         onPointerDown={handleCanvasPointerDown}
         onPointerMove={handleCanvasPointerMove}
         onPointerUp={handleCanvasPointerUp}
         onPointerCancel={handleCanvasPointerUp}
-        style={{ touchAction: 'none' }}
+        onClick={handleCanvasClick}
       >
-        {/* Controls overlay */}
-        <div className="absolute top-3 left-3 z-30 flex gap-1">
+        {/* Toolbar */}
+        <div className="absolute top-3 left-3 z-30 flex gap-2">
           <Button 
             size="sm" 
-            variant="secondary" 
-            className="bg-black/50 hover:bg-black/80 text-xs border border-white/10 backdrop-blur-sm"
-            onClick={resetView}
-            title="Reset view"
+            onClick={handleAddFeat}
+            className="bg-purple-600 hover:bg-purple-700 text-xs"
+            data-testid="add-feat-canvas-button"
           >
-            <RefreshCw className="h-3 w-3" />
+            <Plus className="h-3 w-3 mr-1" />
+            Add Feat
           </Button>
           <Button 
             size="sm" 
-            variant="secondary" 
-            className="bg-black/50 hover:bg-black/80 text-xs border border-white/10 backdrop-blur-sm"
-            onClick={zoomIn}
-            title="Zoom in"
+            variant={connectionMode ? "default" : "secondary"}
+            onClick={() => {
+              setConnectionMode(!connectionMode);
+              if (!connectionMode) setConnectingFrom(null);
+            }}
+            className={connectionMode 
+              ? "bg-purple-600 hover:bg-purple-700 text-xs animate-pulse" 
+              : "bg-stone-700 hover:bg-stone-600 text-xs border border-stone-600"
+            }
           >
-            <ZoomIn className="h-3 w-3" />
+            <Link className="h-3 w-3 mr-1" />
+            {connectionMode ? 'Exit Connection Mode' : 'Connect'}
           </Button>
-          <Button 
-            size="sm" 
-            variant="secondary" 
-            className="bg-black/50 hover:bg-black/80 text-xs border border-white/10 backdrop-blur-sm"
-            onClick={zoomOut}
-            title="Zoom out"
-          >
-            <ZoomOut className="h-3 w-3" />
-          </Button>
+          <div className="flex gap-1 ml-2">
+            <Button 
+              size="sm" 
+              variant="secondary" 
+              className="bg-stone-800/80 hover:bg-stone-700 text-xs border border-stone-600"
+              onClick={resetView}
+              title="Reset view"
+            >
+              <RefreshCw className="h-3 w-3" />
+            </Button>
+            <Button 
+              size="sm" 
+              variant="secondary" 
+              className="bg-stone-800/80 hover:bg-stone-700 text-xs border border-stone-600"
+              onClick={zoomIn}
+              title="Zoom in"
+            >
+              <ZoomIn className="h-3 w-3" />
+            </Button>
+            <Button 
+              size="sm" 
+              variant="secondary" 
+              className="bg-stone-800/80 hover:bg-stone-700 text-xs border border-stone-600"
+              onClick={zoomOut}
+              title="Zoom out"
+            >
+              <ZoomOut className="h-3 w-3" />
+            </Button>
+          </div>
         </div>
 
-        {connectingFrom && (
-          <div className="absolute top-3 right-3 z-30 flex items-center gap-2 bg-purple-600 px-3 py-1 rounded text-sm">
-            <span>Click another feat to connect</span>
-            <Button size="sm" variant="ghost" onClick={() => setConnectingFrom(null)}>
+        {/* Connection mode indicator */}
+        {connectionMode && (
+          <div className="absolute top-3 right-3 z-30 flex items-center gap-2 bg-purple-600/90 backdrop-blur px-3 py-1.5 rounded-lg text-sm shadow-lg">
+            <div className="w-2 h-2 bg-white rounded-full animate-pulse" />
+            <span>{connectingFrom ? 'Click target feat to connect' : 'Click source feat to start'}</span>
+            <Button 
+              size="sm" 
+              variant="ghost" 
+              className="h-6 w-6 p-0 hover:bg-purple-500"
+              onClick={() => {
+                setConnectionMode(false);
+                setConnectingFrom(null);
+              }}
+            >
               <X className="h-4 w-4" />
             </Button>
           </div>
@@ -1365,16 +1516,17 @@ function FeatTreesView() {
             transformOrigin: '0 0'
           }}
         >
-          {/* Grid pattern overlay */}
+          {/* Subtle grid pattern */}
           <div 
-            className="absolute inset-0 pointer-events-none"
+            className="absolute inset-0 pointer-events-none opacity-30"
             style={{
               backgroundImage: `
-                linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px),
-                linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px)
+                radial-gradient(circle at center, rgba(168,85,247,0.1) 0%, transparent 70%),
+                linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px)
               `,
-              backgroundSize: `${CELL_SIZE}px ${CELL_SIZE}px`,
-              backgroundPosition: `${WORLD_OFFSET}px ${WORLD_OFFSET}px`
+              backgroundSize: `100% 100%, 50px 50px, 50px 50px`,
+              backgroundPosition: `center, ${WORLD_OFFSET}px ${WORLD_OFFSET}px, ${WORLD_OFFSET}px ${WORLD_OFFSET}px`
             }}
           />
           
@@ -1389,47 +1541,82 @@ function FeatTreesView() {
             }}
           >
             <defs>
-              <marker id="arrowhead-feat" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
-                <polygon points="0 0, 10 3.5, 0 7" fill="#eab308" />
+              <marker id="arrowhead-skill" markerWidth="12" markerHeight="8" refX="10" refY="4" orient="auto">
+                <polygon points="0 0, 12 4, 0 8" fill="url(#arrow-gradient)" />
               </marker>
+              <linearGradient id="arrow-gradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stopColor="#a855f7" />
+                <stop offset="100%" stopColor="#eab308" />
+              </linearGradient>
+              <linearGradient id="line-gradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stopColor="#a855f7" stopOpacity="0.8" />
+                <stop offset="100%" stopColor="#eab308" stopOpacity="0.8" />
+              </linearGradient>
+              <filter id="glow">
+                <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+                <feMerge>
+                  <feMergeNode in="coloredBlur"/>
+                  <feMergeNode in="SourceGraphic"/>
+                </feMerge>
+              </filter>
             </defs>
             {connections.map((conn: FeatConnection) => {
               const from = featById.get(conn.fromFeatId);
               const to = featById.get(conn.toFeatId);
               if (!from || !to) return null;
               
-              const x1 = WORLD_OFFSET + from.gridX * CELL_SIZE + CELL_SIZE / 2;
-              const y1 = WORLD_OFFSET + from.gridY * CELL_SIZE + CELL_SIZE / 2;
-              const x2 = WORLD_OFFSET + to.gridX * CELL_SIZE + CELL_SIZE / 2;
-              const y2 = WORLD_OFFSET + to.gridY * CELL_SIZE + CELL_SIZE / 2;
+              // Convert grid indices to pixels and apply drag offset if node is being dragged
+              let fromX = from.gridX * CELL_SIZE;
+              let fromY = from.gridY * CELL_SIZE;
+              let toX = to.gridX * CELL_SIZE;
+              let toY = to.gridY * CELL_SIZE;
+              
+              if (dragOffset?.id === from.id) {
+                fromX += dragOffset.dx;
+                fromY += dragOffset.dy;
+              }
+              if (dragOffset?.id === to.id) {
+                toX += dragOffset.dx;
+                toY += dragOffset.dy;
+              }
+              
+              const x1 = WORLD_OFFSET + fromX + NODE_WIDTH / 2;
+              const y1 = WORLD_OFFSET + fromY + NODE_HEIGHT / 2;
+              const x2 = WORLD_OFFSET + toX + NODE_WIDTH / 2;
+              const y2 = WORLD_OFFSET + toY + NODE_HEIGHT / 2;
+              
+              const pathD = generateCurvePath(x1, y1, x2, y2);
+              const midX = (x1 + x2) / 2;
+              const midY = (y1 + y2) / 2;
               
               return (
-                <g key={conn.id}>
-                  <line
-                    x1={x1} y1={y1} x2={x2} y2={y2}
-                    stroke={conn.isOptional ? '#a855f7' : '#eab308'}
+                <g key={conn.id} filter="url(#glow)">
+                  <path
+                    d={pathD}
+                    fill="none"
+                    stroke="url(#line-gradient)"
                     strokeWidth={3}
-                    strokeDasharray={conn.isOptional ? '5,5' : undefined}
-                    markerEnd="url(#arrowhead-feat)"
+                    markerEnd="url(#arrowhead-skill)"
+                    className="transition-all"
                   />
                   <circle
-                    cx={(x1 + x2) / 2}
-                    cy={(y1 + y2) / 2}
-                    r={12}
-                    fill="#292524"
+                    cx={midX}
+                    cy={midY}
+                    r={10}
+                    fill="#1c1917"
                     stroke="#78716c"
                     strokeWidth={1}
-                    className="cursor-pointer pointer-events-auto hover:stroke-red-500"
+                    className="cursor-pointer pointer-events-auto hover:stroke-red-500 hover:fill-red-900/50 transition-colors"
                     onClick={(e) => {
                       e.stopPropagation();
                       deleteConnectionMutation.mutate(conn.id);
                     }}
                   />
                   <text
-                    x={(x1 + x2) / 2}
-                    y={(y1 + y2) / 2 + 4}
+                    x={midX}
+                    y={midY + 4}
                     textAnchor="middle"
-                    className="fill-red-400 pointer-events-none text-sm"
+                    className="fill-red-400 pointer-events-none text-xs font-bold"
                   >
                     ×
                   </text>
@@ -1438,93 +1625,121 @@ function FeatTreesView() {
             })}
           </svg>
           
-          {/* Feat cells - render all feats plus visible empty cells */}
-          {visibleCells.map(({ x, y }) => {
-            const feat = featMap.get(`${x},${y}`);
-            const cellLeft = WORLD_OFFSET + x * CELL_SIZE;
-            const cellTop = WORLD_OFFSET + y * CELL_SIZE;
+          {/* Feat nodes - free-form placement */}
+          {feats.map((feat: Feat) => {
+            const tierStyle = skillTreeTierStyles[feat.tier] || skillTreeTierStyles[1];
+            const isSelected = selectedFeatId === feat.id;
+            const isConnectSource = connectingFrom === feat.id;
+            
+            // Convert grid indices to pixels and apply drag offset
+            let posX = feat.gridX * CELL_SIZE;
+            let posY = feat.gridY * CELL_SIZE;
+            if (dragOffset?.id === feat.id) {
+              posX += dragOffset.dx;
+              posY += dragOffset.dy;
+            }
             
             return (
               <div
-                key={`cell-${x}-${y}`}
+                key={feat.id}
                 data-feat-cell
                 className={`
-                  absolute border-2 border-dashed rounded-lg
-                  flex items-center justify-center cursor-pointer
-                  transition-colors
-                  ${feat 
-                    ? `${tierColors[feat.tier] || tierColors[1]} border-solid` 
-                    : 'bg-stone-900/30 border-stone-700 hover:border-stone-500'
-                  }
-                  ${connectingFrom && feat ? 'ring-2 ring-purple-500' : ''}
+                  absolute rounded-xl border-2 transition-all duration-200
+                  ${tierStyle.border} ${tierStyle.bg} ${tierStyle.glow}
+                  ${isSelected ? 'ring-2 ring-white ring-offset-2 ring-offset-stone-900 scale-105' : ''}
+                  ${isConnectSource ? 'animate-pulse ring-2 ring-purple-400' : ''}
+                  ${connectionMode ? 'cursor-crosshair' : 'cursor-move'}
+                  hover:scale-105
                 `}
                 style={{
-                  left: cellLeft,
-                  top: cellTop,
-                  width: CELL_SIZE - 4,
-                  height: CELL_SIZE - 4
+                  left: WORLD_OFFSET + posX,
+                  top: WORLD_OFFSET + posY,
+                  width: NODE_WIDTH,
+                  height: NODE_HEIGHT,
                 }}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleGridCellClick(x, y);
-                }}
-                onDoubleClick={(e) => {
-                  e.stopPropagation();
-                  handleGridCellDoubleClick(x, y);
-                }}
-                data-testid={`grid-cell-${x}-${y}`}
+                onClick={(e) => handleFeatClick(feat, e)}
+                onDoubleClick={(e) => handleFeatDoubleClick(feat, e)}
+                onContextMenu={(e) => handleFeatContextMenu(feat, e)}
+                onPointerDown={(e) => handleFeatPointerDown(feat, e)}
+                onPointerMove={handleFeatPointerMove}
+                onPointerUp={(e) => handleFeatPointerUp(feat, e)}
+                data-testid={`feat-node-${feat.id}`}
               >
-                {feat ? (
-                  <div className="absolute inset-1 flex flex-col items-center justify-center text-center p-1 overflow-hidden">
-                    <div className="text-xs font-bold truncate w-full">{feat.name}</div>
-                    <Badge variant="secondary" className="text-[10px] mt-1">
-                      Tier {feat.tier}
-                    </Badge>
-                    <div className="absolute top-0.5 right-0.5 flex gap-0.5">
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-5 w-5 hover:bg-purple-600"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleStartConnect(feat.id, e);
-                        }}
-                        title="Connect to another feat"
-                      >
-                        <Link className="h-3 w-3" />
-                      </Button>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-5 w-5 hover:bg-red-600"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (confirm('Delete this feat?')) {
-                            deleteFeatMutation.mutate(feat.id);
-                          }
-                        }}
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
-                    </div>
+                <div className="h-full flex flex-col items-center justify-center p-2 text-center">
+                  <div className="text-xs font-bold text-white truncate w-full drop-shadow-lg">
+                    {feat.name}
                   </div>
-                ) : (
-                  <Plus className="h-5 w-5 text-stone-600" />
-                )}
+                  <Badge className={`text-[10px] mt-1 ${tierStyle.badge} border-0`}>
+                    Tier {feat.tier}
+                  </Badge>
+                  {(feat.effects as any[])?.length > 0 && (
+                    <div className="flex gap-0.5 mt-1">
+                      {(feat.effects as any[]).slice(0, 3).map((effect: any, idx: number) => {
+                        const Icon = effectTypeIcons[effect.type] || Star;
+                        return <Icon key={idx} className="h-3 w-3 text-white/70" />;
+                      })}
+                    </div>
+                  )}
+                </div>
               </div>
             );
           })}
           
           {/* Origin marker */}
           <div 
-            className="absolute w-3 h-3 bg-purple-500 rounded-full border-2 border-white"
+            className="absolute w-4 h-4 bg-purple-500/50 rounded-full border-2 border-purple-400"
             style={{
-              left: WORLD_OFFSET - 6,
-              top: WORLD_OFFSET - 6
+              left: WORLD_OFFSET - 8,
+              top: WORLD_OFFSET - 8
             }}
             title="Origin (0,0)"
           />
         </motion.div>
+
+        {/* Context Menu */}
+        {contextMenu && (
+          <div
+            className="absolute z-50 bg-stone-800 border border-stone-600 rounded-lg shadow-xl py-1 min-w-[150px]"
+            style={{ left: contextMenu.x, top: contextMenu.y }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              className="w-full px-3 py-2 text-left text-sm hover:bg-stone-700 flex items-center gap-2"
+              onClick={() => {
+                const feat = featById.get(contextMenu.featId);
+                if (feat) {
+                  setEditingFeat(feat);
+                  setShowFeatEditor(true);
+                }
+                setContextMenu(null);
+              }}
+            >
+              <Pencil className="h-4 w-4" /> Edit Feat
+            </button>
+            <button
+              className="w-full px-3 py-2 text-left text-sm hover:bg-stone-700 flex items-center gap-2"
+              onClick={() => {
+                setConnectionMode(true);
+                setConnectingFrom(contextMenu.featId);
+                setContextMenu(null);
+              }}
+            >
+              <Link className="h-4 w-4" /> Start Connection
+            </button>
+            <div className="border-t border-stone-600 my-1" />
+            <button
+              className="w-full px-3 py-2 text-left text-sm hover:bg-red-900/50 text-red-400 flex items-center gap-2"
+              onClick={() => {
+                if (confirm('Delete this feat?')) {
+                  deleteFeatMutation.mutate(contextMenu.featId);
+                }
+                setContextMenu(null);
+              }}
+            >
+              <Trash2 className="h-4 w-4" /> Delete Feat
+            </button>
+          </div>
+        )}
       </div>
     );
   };
@@ -1641,29 +1856,16 @@ function FeatTreesView() {
           Edit Tree
         </Button>
       </CardHeader>
-      <CardContent>
+      <CardContent className="p-0 sm:p-2">
         {treeDataLoading ? (
           <div className="text-center py-12 text-stone-400">Loading tree...</div>
         ) : (
-          <>
-            <div className="mb-4 flex items-center justify-between">
-              <div className="text-sm text-stone-400">
-                Drag to pan, scroll to zoom. Double-click a feat to edit. Use the link button to connect feats.
-              </div>
-              <Button
-                onClick={() => {
-                  setEditingFeat({ gridX: 0, gridY: 0, tier: 1, cost: 1 } as Feat);
-                  setShowFeatEditor(true);
-                }}
-                className="bg-purple-600 hover:bg-purple-700"
-                data-testid="add-feat-button"
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                Add Feat
-              </Button>
+          <div className="space-y-2">
+            <div className="px-4 py-2 text-xs text-stone-500 border-b border-stone-800">
+              <span className="font-medium">Tips:</span> Drag nodes to reposition • Double-click to edit • Right-click for menu • Scroll to zoom • Drag canvas to pan
             </div>
-            {renderGrid()}
-          </>
+            {renderSkillTree()}
+          </div>
         )}
       </CardContent>
 
