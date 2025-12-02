@@ -7940,8 +7940,11 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                         Feat Tree
                       </Label>
                       {(() => {
-                        // Calculate feat points: 1 point per level
-                        const totalPoints = liveCharacter.level || 1;
+                        // Calculate feat points: 1 point per level, but levels divisible by 3 give 3 points
+                        // Formula: level + 2 * floor(level / 3)
+                        // Level 1: 1, Level 2: 2, Level 3: 5, Level 4: 6, Level 5: 7, Level 6: 10, etc.
+                        const level = liveCharacter.level || 1;
+                        const totalPoints = level + (2 * Math.floor(level / 3));
                         // Calculate spent points from unlocked feats
                         const spentPoints = characterFeats.reduce((sum, cf) => {
                           const feat = featTreeData?.feats?.find((f: Feat) => f.id === cf.featId);
