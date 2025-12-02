@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { useLocation } from "wouter";
 import { motion, AnimatePresence, useMotionValue } from "framer-motion";
 import { Button } from "@/components/ui/button";
@@ -6520,6 +6520,48 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
     enabled: !!character?.id,
   });
 
+  // Calculate bonuses from unlocked feats
+  const featBonuses = useMemo(() => {
+    const bonuses = {
+      hp: 0,
+      dc: 0,
+      attributes: {} as Record<string, number>,
+      skills: {} as Record<string, number>,
+    };
+    
+    if (!featTreeData?.feats || !characterFeats.length) return bonuses;
+    
+    const unlockedFeatIds = new Set(characterFeats.map(cf => cf.featId));
+    const unlockedFeats = featTreeData.feats.filter((f: Feat) => unlockedFeatIds.has(f.id));
+    
+    for (const feat of unlockedFeats) {
+      if (!feat.effects || !Array.isArray(feat.effects)) continue;
+      
+      for (const effect of feat.effects as any[]) {
+        switch (effect.type) {
+          case 'hp_bonus':
+            bonuses.hp += effect.value || 0;
+            break;
+          case 'dc_bonus':
+            bonuses.dc += effect.value || 0;
+            break;
+          case 'attribute_bonus':
+            if (effect.target) {
+              bonuses.attributes[effect.target] = (bonuses.attributes[effect.target] || 0) + (effect.value || 0);
+            }
+            break;
+          case 'skill_bonus':
+            if (effect.target) {
+              bonuses.skills[effect.target] = (bonuses.skills[effect.target] || 0) + (effect.value || 0);
+            }
+            break;
+        }
+      }
+    }
+    
+    return bonuses;
+  }, [featTreeData?.feats, characterFeats]);
+
   // Handle race selection - auto-fill race stats and recalculate HP based on new species
   const handleRaceChange = (raceName: string) => {
     const raceData = systemSpecies.find((r: SystemSpecies) => r.name === raceName);
@@ -6809,7 +6851,7 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
   };
 
   const equippedArmorBonus = calculateArmorBonus();
-  const totalDC = (liveCharacter.sizeBonus || 0) + (liveCharacter.naturalArmor || 5) + equippedArmorBonus;
+  const totalDC = (liveCharacter.sizeBonus || 0) + (liveCharacter.naturalArmor || 5) + equippedArmorBonus + featBonuses.dc;
 
   // Item mutations
   const createItemMutation = useMutation({
@@ -7655,10 +7697,11 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                       {totalDC}
                     </span>
                   </div>
-                  <div className="flex gap-3 mt-2 text-xs text-stone-400">
+                  <div className="flex gap-3 mt-2 text-xs text-stone-400 flex-wrap">
                     <span>Size: {liveCharacter.sizeBonus >= 0 ? `+${liveCharacter.sizeBonus}` : liveCharacter.sizeBonus}</span>
                     <span>Natural: +{liveCharacter.naturalArmor || 5}</span>
                     <span>Armor: +{equippedArmorBonus}</span>
+                    {featBonuses.dc > 0 && <span className="text-purple-400">Feats: +{featBonuses.dc}</span>}
                   </div>
                 </div>
 
@@ -7798,6 +7841,7 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                       <div className="text-xs text-stone-500 flex items-center justify-between" data-testid="text-hp-breakdown">
                         <span>
                           Base: {currentSpecies?.startingMaxHp || 10} | Bonus: +{liveCharacter.bonusHpFromLevelUps || 0}
+                          {featBonuses.hp > 0 && <span className="text-purple-400"> | Feats: +{featBonuses.hp}</span>}
                         </span>
                         <span className="text-stone-400">
                           ({calculateDiceCount(liveCharacter.level || 1)}d{hpPerLevel} at level {liveCharacter.level || 1})
@@ -7988,7 +8032,9 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                     { key: 'craft', name: 'Craft', description: 'Technical skill and creativity' },
                   ].map(attr => {
                     const value = editingAttributes ? attributesData[attr.key as keyof typeof attributesData] : (liveCharacter[attr.key] || 0);
-                    const numericValue = typeof value === 'string' ? (parseInt(value) || 0) : value;
+                    const baseNumericValue = typeof value === 'string' ? (parseInt(value) || 0) : value;
+                    const featBonus = featBonuses.attributes[attr.key] || 0;
+                    const numericValue = baseNumericValue + featBonus;
                     return (
                       <Card 
                         key={attr.key} 
@@ -8067,8 +8113,13 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                               data-testid={`input-attribute-${attr.key}`}
                             />
                           ) : (
-                            <div className="text-2xl font-bold text-amber-500 mt-1" data-testid={`text-attribute-${attr.key}`}>
-                              {numericValue >= 0 ? `+${numericValue}` : numericValue}
+                            <div className="mt-1" data-testid={`text-attribute-${attr.key}`}>
+                              <span className="text-2xl font-bold text-amber-500">
+                                {numericValue >= 0 ? `+${numericValue}` : numericValue}
+                              </span>
+                              {featBonus > 0 && (
+                                <span className="text-xs text-purple-400 ml-1">(+{featBonus})</span>
+                              )}
                             </div>
                           )}
                           <p className="text-[10px] text-stone-500 mt-1">{attr.description}</p>
@@ -8254,7 +8305,9 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                       </div>
                     ) : (
                       (() => {
-                        const numericValue = typeof value === 'string' ? (parseInt(value) || 0) : value;
+                        const baseNumericValue = typeof value === 'string' ? (parseInt(value) || 0) : value;
+                        const skillFeatBonus = featBonuses.skills[skill.key] || 0;
+                        const numericValue = baseNumericValue + skillFeatBonus;
                         return (
                           <Badge 
                             key={skill.key} 
@@ -8306,7 +8359,10 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                             data-testid={`badge-skill-${skill.key}`}
                           >
                             <span className="text-xs">{skill.name}</span>
-                            <span className="font-bold ml-2">{numericValue >= 0 ? `+${numericValue}` : numericValue}</span>
+                            <span className="font-bold ml-2">
+                              {numericValue >= 0 ? `+${numericValue}` : numericValue}
+                              {skillFeatBonus > 0 && <span className="text-purple-400 text-[10px]"> (+{skillFeatBonus})</span>}
+                            </span>
                           </Badge>
                         );
                       })()
