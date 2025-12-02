@@ -28,7 +28,14 @@ Preferred communication style: Simple, everyday language.
 - **Targeting System**: Token targeting with range validation and hit detection. Selection modes (Select/Target) displayed as stacked vertical buttons on the left side of battlemap, always visible. Target mode allows selecting enemy tokens for attacks. Double-clicking a token in Select mode assigns that character to the user. Range checking validates weapon range against target distance (50px grid = 5ft, melee default 5ft, ranged uses weapon.range). Hit detection compares attack roll to target's naturalArmor as DC, displaying HIT!/MISS!/Crit Success!/Crit Failure! in notifications. GMs see character hotbars when clicking any token in select mode.
 - **Armor Damage Reduction System**: Armor items can be configured with damage reduction properties via Admin Settings. Each armor has: armorSlot (helm/chest/arm/legs/boots), armorBonus (added to character DC), damageReductionType (Sharp/Blunt/Piercing/Flame/Frost/Storm/Tide/Stone/Flux/Light/Dark/Sound), and damageReduction value. When a damage roll is made against a targeted character, equipped armor with matching damageReductionType subtracts its damageReduction from the damage. Final damage is applied to target's HP automatically. Google Drive image library browser available for item images in Admin Settings.
 - **Feat Tree System**: Comprehensive skill tree/talent system for character progression. Features include:
-  - **Admin Settings Grid Editor**: Visual infinite canvas editor for creating and managing feat trees. Uses the same pan/zoom mechanics as the battlemap (drag to pan, scroll/pinch to zoom). Feats can be placed anywhere on the infinite grid. Supports tier assignment (1-5), effect configuration, and prerequisite connections via the link button.
+  - **Interactive Skill Tree Editor**: Modern infinite canvas editor with free-form feat node placement. Features include:
+    - Draggable feat nodes positioned freely on canvas
+    - Tier-based visual styling: Tier 1 (Bronze/Amber), Tier 2 (Silver/Slate), Tier 3 (Gold/Yellow), Tier 4 (Purple/Violet), Tier 5 (Orange/Legendary with glow effects)
+    - Curved SVG connection lines with gradient arrowheads between prerequisite feats
+    - Toolbar with Add Feat, Connection mode toggle, Reset View, Zoom In/Out controls
+    - Double-click nodes to edit, right-click context menu for delete/connect actions
+    - Pan (drag canvas) and zoom (scroll wheel/pinch) interactions
+    - Selected node highlighting with white ring
   - **Prerequisite Connections**: Visual SVG lines connect prerequisite feats. Feats can only be unlocked when at least one connected prerequisite is already unlocked.
   - **Species Integration**: Each species can have a feat tree assigned. Characters automatically inherit their species' feat tree and can view/unlock feats from their character sheet.
   - **Feat Effects**: Six effect types that are dynamically calculated (not persisted to stats):
