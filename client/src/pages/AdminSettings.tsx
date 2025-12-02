@@ -1,7 +1,7 @@
-import { useState, useRef, useMemo } from 'react';
+import { useState, useRef, useMemo, useCallback, useEffect } from 'react';
 import { useLocation } from 'wouter';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { api, type Item, type SystemSpecies } from '@/lib/api';
+import { api, type Item, type SystemSpecies, type FeatTree, type Feat, type FeatConnection, type FeatTreeWithData } from '@/lib/api';
 import { useAuth } from '@/lib/AuthContext';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { Button } from '@/components/ui/button';
@@ -16,7 +16,7 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Slider } from '@/components/ui/slider';
 import { toast } from '@/hooks/use-toast';
-import { ArrowLeft, Plus, Pencil, Trash2, Sword, Shield, Package, Sparkles, Box, Coins, Search, Users, GitBranch, Library } from 'lucide-react';
+import { ArrowLeft, Plus, Pencil, Trash2, Sword, Shield, Package, Sparkles, Box, Coins, Search, Users, GitBranch, Library, Link, X, GripVertical, Star, Zap, Heart, ShieldCheck, BookOpen } from 'lucide-react';
 import { ImageBrowser } from '@/components/ImageBrowser';
 
 type AdminView = 'dashboard' | 'items' | 'species' | 'feat-trees';
@@ -570,20 +570,794 @@ function SpeciesView({ species, isLoading, searchQuery, setSearchQuery, onAddSpe
   );
 }
 
+const tierColors: Record<number, string> = {
+  1: 'border-stone-500 bg-stone-700/50',
+  2: 'border-green-500 bg-green-700/30',
+  3: 'border-blue-500 bg-blue-700/30',
+  4: 'border-purple-500 bg-purple-700/30',
+  5: 'border-amber-500 bg-amber-700/30',
+};
+
+const effectTypeIcons: Record<string, any> = {
+  hp_bonus: Heart,
+  dc_bonus: ShieldCheck,
+  spell_grant: BookOpen,
+  skill_bonus: Star,
+  attribute_bonus: Zap,
+};
+
 function FeatTreesView() {
+  const queryClient = useQueryClient();
+  const [selectedTreeId, setSelectedTreeId] = useState<string | null>(null);
+  const [showAddTree, setShowAddTree] = useState(false);
+  const [editingTree, setEditingTree] = useState<FeatTree | null>(null);
+  const [showFeatEditor, setShowFeatEditor] = useState(false);
+  const [editingFeat, setEditingFeat] = useState<Feat | null>(null);
+  const [connectingFrom, setConnectingFrom] = useState<string | null>(null);
+
+  const { data: featTrees = [], isLoading: treesLoading } = useQuery({
+    queryKey: ['feat-trees'],
+    queryFn: () => api.getFeatTrees(),
+  });
+
+  const { data: treeData, isLoading: treeDataLoading } = useQuery({
+    queryKey: ['feat-tree', selectedTreeId],
+    queryFn: () => selectedTreeId ? api.getFeatTree(selectedTreeId) : null,
+    enabled: !!selectedTreeId,
+  });
+
+  const createTreeMutation = useMutation({
+    mutationFn: (tree: Partial<FeatTree>) => api.createFeatTree(tree),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['feat-trees'] });
+      setShowAddTree(false);
+      toast({ title: 'Success', description: 'Feat tree created' });
+    },
+    onError: (err: any) => {
+      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+    },
+  });
+
+  const updateTreeMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Partial<FeatTree> }) => api.updateFeatTree(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['feat-trees'] });
+      queryClient.invalidateQueries({ queryKey: ['feat-tree', selectedTreeId] });
+      setEditingTree(null);
+      toast({ title: 'Success', description: 'Feat tree updated' });
+    },
+    onError: (err: any) => {
+      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+    },
+  });
+
+  const deleteTreeMutation = useMutation({
+    mutationFn: (id: string) => api.deleteFeatTree(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['feat-trees'] });
+      if (selectedTreeId === editingTree?.id) {
+        setSelectedTreeId(null);
+      }
+      toast({ title: 'Success', description: 'Feat tree deleted' });
+    },
+    onError: (err: any) => {
+      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+    },
+  });
+
+  const createFeatMutation = useMutation({
+    mutationFn: ({ treeId, feat }: { treeId: string; feat: Partial<Feat> }) => api.createFeat(treeId, feat),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['feat-tree', selectedTreeId] });
+      setShowFeatEditor(false);
+      setEditingFeat(null);
+      toast({ title: 'Success', description: 'Feat created' });
+    },
+    onError: (err: any) => {
+      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+    },
+  });
+
+  const updateFeatMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Partial<Feat> }) => api.updateFeat(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['feat-tree', selectedTreeId] });
+      setShowFeatEditor(false);
+      setEditingFeat(null);
+      toast({ title: 'Success', description: 'Feat updated' });
+    },
+    onError: (err: any) => {
+      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+    },
+  });
+
+  const deleteFeatMutation = useMutation({
+    mutationFn: (id: string) => api.deleteFeat(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['feat-tree', selectedTreeId] });
+      toast({ title: 'Success', description: 'Feat deleted' });
+    },
+    onError: (err: any) => {
+      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+    },
+  });
+
+  const createConnectionMutation = useMutation({
+    mutationFn: ({ treeId, connection }: { treeId: string; connection: Partial<FeatConnection> }) => 
+      api.createFeatConnection(treeId, connection),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['feat-tree', selectedTreeId] });
+      setConnectingFrom(null);
+      toast({ title: 'Success', description: 'Connection created' });
+    },
+    onError: (err: any) => {
+      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+    },
+  });
+
+  const deleteConnectionMutation = useMutation({
+    mutationFn: (id: string) => api.deleteFeatConnection(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['feat-tree', selectedTreeId] });
+      toast({ title: 'Success', description: 'Connection removed' });
+    },
+    onError: (err: any) => {
+      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+    },
+  });
+
+  const handleGridCellClick = (x: number, y: number) => {
+    if (!selectedTreeId || !treeData) return;
+    
+    const existingFeat = treeData.feats.find((f: Feat) => f.gridX === x && f.gridY === y);
+    
+    if (existingFeat) {
+      if (connectingFrom) {
+        if (connectingFrom !== existingFeat.id) {
+          createConnectionMutation.mutate({
+            treeId: selectedTreeId,
+            connection: { fromFeatId: connectingFrom, toFeatId: existingFeat.id, isOptional: false },
+          });
+        } else {
+          setConnectingFrom(null);
+        }
+      }
+    } else if (!connectingFrom) {
+      setEditingFeat({ gridX: x, gridY: y, tier: 1, cost: 1 } as Feat);
+      setShowFeatEditor(true);
+    }
+  };
+
+  const handleFeatDoubleClick = (feat: Feat) => {
+    setEditingFeat(feat);
+    setShowFeatEditor(true);
+  };
+
+  const handleStartConnect = (featId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setConnectingFrom(featId);
+  };
+
+  const renderGrid = () => {
+    if (!treeData) return null;
+    
+    const { tree, feats, connections } = treeData;
+    const gridWidth = tree.gridWidth || 7;
+    const gridHeight = tree.gridHeight || 5;
+    const cellSize = 90;
+    
+    const featMap = new Map<string, Feat>();
+    feats.forEach((f: Feat) => {
+      featMap.set(`${f.gridX},${f.gridY}`, f);
+    });
+    const featById = new Map<string, Feat>();
+    feats.forEach((f: Feat) => featById.set(f.id, f));
+
+    return (
+      <div className="relative overflow-auto bg-stone-800/50 rounded-lg p-4">
+        {connectingFrom && (
+          <div className="absolute top-2 right-2 z-20 flex items-center gap-2 bg-purple-600 px-3 py-1 rounded text-sm">
+            <span>Click another feat to connect</span>
+            <Button size="sm" variant="ghost" onClick={() => setConnectingFrom(null)}>
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+        )}
+        
+        <svg 
+          className="absolute top-0 left-0 pointer-events-none"
+          style={{ 
+            width: gridWidth * cellSize + 80, 
+            height: gridHeight * cellSize + 80 
+          }}
+        >
+          {connections.map((conn: FeatConnection) => {
+            const from = featById.get(conn.fromFeatId);
+            const to = featById.get(conn.toFeatId);
+            if (!from || !to) return null;
+            
+            const x1 = from.gridX * cellSize + cellSize / 2 + 16;
+            const y1 = from.gridY * cellSize + cellSize / 2 + 16;
+            const x2 = to.gridX * cellSize + cellSize / 2 + 16;
+            const y2 = to.gridY * cellSize + cellSize / 2 + 16;
+            
+            return (
+              <g key={conn.id}>
+                <line
+                  x1={x1} y1={y1} x2={x2} y2={y2}
+                  stroke={conn.isOptional ? '#a855f7' : '#eab308'}
+                  strokeWidth={3}
+                  strokeDasharray={conn.isOptional ? '5,5' : undefined}
+                  markerEnd="url(#arrowhead)"
+                />
+                <circle
+                  cx={(x1 + x2) / 2}
+                  cy={(y1 + y2) / 2}
+                  r={10}
+                  fill="#292524"
+                  stroke="#78716c"
+                  className="cursor-pointer pointer-events-auto hover:stroke-red-500"
+                  onClick={() => deleteConnectionMutation.mutate(conn.id)}
+                />
+                <text
+                  x={(x1 + x2) / 2}
+                  y={(y1 + y2) / 2 + 4}
+                  textAnchor="middle"
+                  className="text-xs fill-red-400 pointer-events-none"
+                >
+                  ×
+                </text>
+              </g>
+            );
+          })}
+          <defs>
+            <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+              <polygon points="0 0, 10 3.5, 0 7" fill="#eab308" />
+            </marker>
+          </defs>
+        </svg>
+        
+        <div 
+          className="grid gap-1 relative"
+          style={{ 
+            gridTemplateColumns: `repeat(${gridWidth}, ${cellSize}px)`,
+            gridTemplateRows: `repeat(${gridHeight}, ${cellSize}px)`,
+          }}
+        >
+          {Array.from({ length: gridHeight }).map((_, y) =>
+            Array.from({ length: gridWidth }).map((_, x) => {
+              const feat = featMap.get(`${x},${y}`);
+              
+              return (
+                <div
+                  key={`${x},${y}`}
+                  className={`
+                    border-2 border-dashed border-stone-600 rounded-lg
+                    flex items-center justify-center cursor-pointer
+                    hover:border-stone-400 transition-colors relative
+                    ${feat ? tierColors[feat.tier] || tierColors[1] : 'bg-stone-900/50'}
+                    ${connectingFrom && feat ? 'ring-2 ring-purple-500' : ''}
+                  `}
+                  onClick={() => handleGridCellClick(x, y)}
+                  onDoubleClick={() => feat && handleFeatDoubleClick(feat)}
+                  data-testid={`grid-cell-${x}-${y}`}
+                >
+                  {feat ? (
+                    <div className="absolute inset-1 flex flex-col items-center justify-center text-center p-1">
+                      <div className="text-xs font-bold truncate w-full">{feat.name}</div>
+                      <Badge variant="secondary" className="text-[10px] mt-1">
+                        Tier {feat.tier}
+                      </Badge>
+                      <div className="absolute top-1 right-1 flex gap-0.5">
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-5 w-5 hover:bg-purple-600"
+                          onClick={(e) => handleStartConnect(feat.id, e)}
+                          title="Connect to another feat"
+                        >
+                          <Link className="h-3 w-3" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-5 w-5 hover:bg-red-600"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (confirm('Delete this feat?')) {
+                              deleteFeatMutation.mutate(feat.id);
+                            }
+                          }}
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <Plus className="h-6 w-6 text-stone-600" />
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  if (!selectedTreeId) {
+    return (
+      <Card className="bg-stone-900 border-stone-700">
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle className="text-purple-500">Feat Trees</CardTitle>
+          <Button onClick={() => setShowAddTree(true)} className="bg-purple-600 hover:bg-purple-700">
+            <Plus className="h-4 w-4 mr-2" />
+            New Tree
+          </Button>
+        </CardHeader>
+        <CardContent>
+          {treesLoading ? (
+            <div className="text-center py-12 text-stone-400">Loading...</div>
+          ) : featTrees.length === 0 ? (
+            <div className="text-center py-12 text-stone-400">
+              <GitBranch className="h-12 w-12 mx-auto mb-3 opacity-50" />
+              <p className="font-bold">No feat trees yet</p>
+              <p className="text-sm mt-2">Create a feat tree to define character progression paths</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {featTrees.map((tree: FeatTree) => (
+                <div
+                  key={tree.id}
+                  className="flex items-center gap-4 p-4 rounded-lg bg-stone-800 border border-stone-700 hover:border-purple-500 cursor-pointer transition-colors"
+                  onClick={() => setSelectedTreeId(tree.id)}
+                  data-testid={`tree-row-${tree.id}`}
+                >
+                  <div className="h-10 w-10 rounded bg-purple-700/30 flex items-center justify-center">
+                    <GitBranch className="h-5 w-5 text-purple-400" />
+                  </div>
+                  <div className="flex-1">
+                    <div className="font-medium">{tree.name}</div>
+                    <div className="text-sm text-stone-400">
+                      {tree.gridWidth}x{tree.gridHeight} grid
+                      {tree.description && ` · ${tree.description}`}
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={(e) => { e.stopPropagation(); setEditingTree(tree); }}
+                      data-testid={`edit-tree-${tree.id}`}
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="text-red-500 hover:text-red-400"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (confirm('Delete this feat tree and all its feats?')) {
+                          deleteTreeMutation.mutate(tree.id);
+                        }
+                      }}
+                      data-testid={`delete-tree-${tree.id}`}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+
+        <FeatTreeFormDialog
+          open={showAddTree}
+          onOpenChange={setShowAddTree}
+          onSave={(data) => createTreeMutation.mutate(data)}
+          isLoading={createTreeMutation.isPending}
+        />
+
+        {editingTree && (
+          <FeatTreeFormDialog
+            open={!!editingTree}
+            onOpenChange={() => setEditingTree(null)}
+            onSave={(data) => updateTreeMutation.mutate({ id: editingTree.id, data })}
+            initialData={editingTree}
+            isLoading={updateTreeMutation.isPending}
+          />
+        )}
+      </Card>
+    );
+  }
+
   return (
     <Card className="bg-stone-900 border-stone-700">
-      <CardHeader>
-        <CardTitle className="text-purple-500">Feat Trees</CardTitle>
+      <CardHeader className="flex flex-row items-center gap-4">
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => setSelectedTreeId(null)}
+          className="text-stone-400 hover:text-stone-200"
+        >
+          <ArrowLeft className="h-5 w-5" />
+        </Button>
+        <div className="flex-1">
+          <CardTitle className="text-purple-500">
+            {treeData?.tree.name || 'Loading...'}
+          </CardTitle>
+          <CardDescription>{treeData?.tree.description}</CardDescription>
+        </div>
+        <Button
+          variant="outline"
+          onClick={() => setEditingTree(treeData?.tree || null)}
+        >
+          <Pencil className="h-4 w-4 mr-2" />
+          Edit Tree
+        </Button>
       </CardHeader>
       <CardContent>
-        <div className="text-center py-12 text-stone-400">
-          <GitBranch className="h-12 w-12 mx-auto mb-3 opacity-50" />
-          <p className="font-bold">Coming Soon</p>
-          <p className="text-sm mt-2">Feat tree management will be available in a future update</p>
-        </div>
+        {treeDataLoading ? (
+          <div className="text-center py-12 text-stone-400">Loading tree...</div>
+        ) : (
+          <>
+            <div className="mb-4 text-sm text-stone-400">
+              Click an empty cell to add a feat. Double-click a feat to edit. Use the link button to connect feats.
+            </div>
+            <ScrollArea className="w-full">
+              {renderGrid()}
+            </ScrollArea>
+          </>
+        )}
       </CardContent>
+
+      {editingTree && (
+        <FeatTreeFormDialog
+          open={!!editingTree}
+          onOpenChange={() => setEditingTree(null)}
+          onSave={(data) => updateTreeMutation.mutate({ id: editingTree.id, data })}
+          initialData={editingTree}
+          isLoading={updateTreeMutation.isPending}
+        />
+      )}
+
+      <FeatFormDialog
+        open={showFeatEditor}
+        onOpenChange={(open) => {
+          setShowFeatEditor(open);
+          if (!open) setEditingFeat(null);
+        }}
+        onSave={(data) => {
+          if (editingFeat?.id) {
+            updateFeatMutation.mutate({ id: editingFeat.id, data });
+          } else if (selectedTreeId) {
+            createFeatMutation.mutate({ treeId: selectedTreeId, feat: data });
+          }
+        }}
+        initialData={editingFeat}
+        isLoading={createFeatMutation.isPending || updateFeatMutation.isPending}
+      />
     </Card>
+  );
+}
+
+interface FeatTreeFormDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onSave: (data: Partial<FeatTree>) => void;
+  initialData?: FeatTree | null;
+  isLoading?: boolean;
+}
+
+function FeatTreeFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: FeatTreeFormDialogProps) {
+  const [formData, setFormData] = useState({
+    name: initialData?.name || '',
+    description: initialData?.description || '',
+    gridWidth: initialData?.gridWidth || 7,
+    gridHeight: initialData?.gridHeight || 5,
+  });
+
+  useEffect(() => {
+    if (initialData) {
+      setFormData({
+        name: initialData.name || '',
+        description: initialData.description || '',
+        gridWidth: initialData.gridWidth || 7,
+        gridHeight: initialData.gridHeight || 5,
+      });
+    } else {
+      setFormData({ name: '', description: '', gridWidth: 7, gridHeight: 5 });
+    }
+  }, [initialData, open]);
+
+  const handleSubmit = () => {
+    if (!formData.name.trim()) {
+      toast({ title: 'Error', description: 'Name is required', variant: 'destructive' });
+      return;
+    }
+    onSave(formData);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="bg-stone-900 border-stone-700 max-w-md">
+        <DialogHeader>
+          <DialogTitle className="text-purple-500">
+            {initialData ? 'Edit Feat Tree' : 'Create Feat Tree'}
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div>
+            <Label>Name</Label>
+            <Input
+              value={formData.name}
+              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              placeholder="e.g., Warrior Path"
+              className="bg-stone-800 border-stone-700"
+              data-testid="input-tree-name"
+            />
+          </div>
+          <div>
+            <Label>Description</Label>
+            <Textarea
+              value={formData.description}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              placeholder="Optional description"
+              className="bg-stone-800 border-stone-700"
+              data-testid="input-tree-description"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Label>Grid Width</Label>
+              <Input
+                type="number"
+                min={3}
+                max={15}
+                value={formData.gridWidth}
+                onChange={(e) => setFormData({ ...formData, gridWidth: parseInt(e.target.value) || 7 })}
+                className="bg-stone-800 border-stone-700"
+                data-testid="input-tree-width"
+              />
+            </div>
+            <div>
+              <Label>Grid Height</Label>
+              <Input
+                type="number"
+                min={3}
+                max={15}
+                value={formData.gridHeight}
+                onChange={(e) => setFormData({ ...formData, gridHeight: parseInt(e.target.value) || 5 })}
+                className="bg-stone-800 border-stone-700"
+                data-testid="input-tree-height"
+              />
+            </div>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button
+            onClick={handleSubmit}
+            disabled={isLoading}
+            className="bg-purple-600 hover:bg-purple-700"
+          >
+            {isLoading ? 'Saving...' : initialData ? 'Update' : 'Create'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+interface FeatFormDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onSave: (data: Partial<Feat>) => void;
+  initialData?: Feat | null;
+  isLoading?: boolean;
+}
+
+function FeatFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: FeatFormDialogProps) {
+  const [formData, setFormData] = useState({
+    name: initialData?.name || '',
+    description: initialData?.description || '',
+    gridX: initialData?.gridX || 0,
+    gridY: initialData?.gridY || 0,
+    tier: initialData?.tier || 1,
+    cost: initialData?.cost || 1,
+    icon: initialData?.icon || '',
+    effects: initialData?.effects || [],
+  });
+
+  const [newEffect, setNewEffect] = useState({
+    type: 'hp_bonus',
+    value: 0,
+    target: '',
+  });
+
+  useEffect(() => {
+    if (initialData) {
+      setFormData({
+        name: initialData.name || '',
+        description: initialData.description || '',
+        gridX: initialData.gridX || 0,
+        gridY: initialData.gridY || 0,
+        tier: initialData.tier || 1,
+        cost: initialData.cost || 1,
+        icon: initialData.icon || '',
+        effects: initialData.effects || [],
+      });
+    } else {
+      setFormData((prev) => ({
+        ...prev,
+        name: '',
+        description: '',
+        icon: '',
+        effects: [],
+      }));
+    }
+  }, [initialData, open]);
+
+  const handleSubmit = () => {
+    if (!formData.name.trim()) {
+      toast({ title: 'Error', description: 'Feat name is required', variant: 'destructive' });
+      return;
+    }
+    onSave(formData);
+  };
+
+  const addEffect = () => {
+    if (newEffect.value === 0 && newEffect.type !== 'spell_grant' && newEffect.type !== 'item_grant') {
+      toast({ title: 'Error', description: 'Effect value cannot be 0', variant: 'destructive' });
+      return;
+    }
+    setFormData({
+      ...formData,
+      effects: [...(formData.effects || []), { ...newEffect }],
+    });
+    setNewEffect({ type: 'hp_bonus', value: 0, target: '' });
+  };
+
+  const removeEffect = (index: number) => {
+    const effects = [...(formData.effects || [])];
+    effects.splice(index, 1);
+    setFormData({ ...formData, effects });
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="bg-stone-900 border-stone-700 max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="text-purple-500">
+            {initialData?.id ? 'Edit Feat' : 'Create Feat'}
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div>
+            <Label>Name</Label>
+            <Input
+              value={formData.name}
+              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              placeholder="e.g., Power Strike"
+              className="bg-stone-800 border-stone-700"
+              data-testid="input-feat-name"
+            />
+          </div>
+          <div>
+            <Label>Description</Label>
+            <Textarea
+              value={formData.description}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              placeholder="Describe what this feat does"
+              className="bg-stone-800 border-stone-700"
+              data-testid="input-feat-description"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Label>Tier (1-5)</Label>
+              <Select
+                value={String(formData.tier)}
+                onValueChange={(v) => setFormData({ ...formData, tier: parseInt(v) })}
+              >
+                <SelectTrigger className="bg-stone-800 border-stone-700">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {[1, 2, 3, 4, 5].map((t) => (
+                    <SelectItem key={t} value={String(t)}>Tier {t}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Cost (feat points)</Label>
+              <Input
+                type="number"
+                min={1}
+                max={10}
+                value={formData.cost}
+                onChange={(e) => setFormData({ ...formData, cost: parseInt(e.target.value) || 1 })}
+                className="bg-stone-800 border-stone-700"
+                data-testid="input-feat-cost"
+              />
+            </div>
+          </div>
+
+          <div className="border-t border-stone-700 pt-4">
+            <Label className="text-base font-semibold">Effects</Label>
+            <div className="mt-2 space-y-2">
+              {(formData.effects || []).map((effect: any, idx: number) => (
+                <div key={idx} className="flex items-center gap-2 bg-stone-800 p-2 rounded">
+                  <Badge variant="secondary">{effect.type}</Badge>
+                  <span className="text-sm">
+                    {effect.type === 'spell_grant' || effect.type === 'item_grant' 
+                      ? effect.target 
+                      : `+${effect.value}${effect.target ? ` to ${effect.target}` : ''}`}
+                  </span>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="ml-auto h-6 w-6 text-red-400"
+                    onClick={() => removeEffect(idx)}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+            <div className="mt-3 p-3 bg-stone-800/50 rounded border border-stone-700">
+              <div className="grid grid-cols-3 gap-2 mb-2">
+                <Select
+                  value={newEffect.type}
+                  onValueChange={(v) => setNewEffect({ ...newEffect, type: v })}
+                >
+                  <SelectTrigger className="bg-stone-800 border-stone-700 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="hp_bonus">HP Bonus</SelectItem>
+                    <SelectItem value="dc_bonus">DC Bonus</SelectItem>
+                    <SelectItem value="skill_bonus">Skill Bonus</SelectItem>
+                    <SelectItem value="attribute_bonus">Attribute Bonus</SelectItem>
+                    <SelectItem value="spell_grant">Grant Spell</SelectItem>
+                    <SelectItem value="item_grant">Grant Item</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Input
+                  type="number"
+                  value={newEffect.value}
+                  onChange={(e) => setNewEffect({ ...newEffect, value: parseInt(e.target.value) || 0 })}
+                  placeholder="Value"
+                  className="bg-stone-800 border-stone-700 text-xs"
+                />
+                <Input
+                  value={newEffect.target}
+                  onChange={(e) => setNewEffect({ ...newEffect, target: e.target.value })}
+                  placeholder="Target (optional)"
+                  className="bg-stone-800 border-stone-700 text-xs"
+                />
+              </div>
+              <Button size="sm" variant="secondary" onClick={addEffect} className="w-full">
+                <Plus className="h-3 w-3 mr-1" /> Add Effect
+              </Button>
+            </div>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button
+            onClick={handleSubmit}
+            disabled={isLoading}
+            className="bg-purple-600 hover:bg-purple-700"
+          >
+            {isLoading ? 'Saving...' : initialData?.id ? 'Update' : 'Create'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

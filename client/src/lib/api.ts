@@ -218,6 +218,50 @@ export interface CharacterPermission {
   accessLevel: string;
 }
 
+export interface FeatTree {
+  id: string;
+  name: string;
+  description?: string;
+  gridWidth: number;
+  gridHeight: number;
+  createdAt: string;
+}
+
+export interface Feat {
+  id: string;
+  treeId: string;
+  name: string;
+  description?: string;
+  gridX: number;
+  gridY: number;
+  tier: number;
+  cost: number;
+  icon?: string;
+  effects?: any;
+  createdAt: string;
+}
+
+export interface FeatConnection {
+  id: string;
+  treeId: string;
+  fromFeatId: string;
+  toFeatId: string;
+  isOptional: boolean;
+}
+
+export interface CharacterFeat {
+  id: string;
+  characterId: string;
+  featId: string;
+  unlockedAt: string;
+}
+
+export interface FeatTreeWithData {
+  tree: FeatTree;
+  feats: Feat[];
+  connections: FeatConnection[];
+}
+
 export interface CampaignBan {
   id: string;
   campaignId: string;
@@ -589,6 +633,88 @@ class ApiClient {
   async getSpecies(systemName?: string): Promise<SystemSpecies[]> {
     const params = systemName ? `?system=${encodeURIComponent(systemName)}` : '';
     return this.request(`/species${params}`);
+  }
+
+  // Admin Feat Trees
+  async getFeatTrees(): Promise<FeatTree[]> {
+    return this.request('/admin/feat-trees');
+  }
+
+  async getFeatTree(id: string): Promise<FeatTreeWithData> {
+    return this.request(`/admin/feat-trees/${id}`);
+  }
+
+  async createFeatTree(tree: Partial<FeatTree>): Promise<FeatTree> {
+    return this.request('/admin/feat-trees', {
+      method: 'POST',
+      body: JSON.stringify(tree),
+    });
+  }
+
+  async updateFeatTree(id: string, data: Partial<FeatTree>): Promise<FeatTree> {
+    return this.request(`/admin/feat-trees/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteFeatTree(id: string): Promise<void> {
+    return this.request(`/admin/feat-trees/${id}`, { method: 'DELETE' });
+  }
+
+  // Feats within a tree
+  async createFeat(treeId: string, feat: Partial<Feat>): Promise<Feat> {
+    return this.request(`/admin/feat-trees/${treeId}/feats`, {
+      method: 'POST',
+      body: JSON.stringify(feat),
+    });
+  }
+
+  async updateFeat(id: string, data: Partial<Feat>): Promise<Feat> {
+    return this.request(`/admin/feats/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteFeat(id: string): Promise<void> {
+    return this.request(`/admin/feats/${id}`, { method: 'DELETE' });
+  }
+
+  // Feat connections
+  async createFeatConnection(treeId: string, connection: Partial<FeatConnection>): Promise<FeatConnection> {
+    return this.request(`/admin/feat-trees/${treeId}/connections`, {
+      method: 'POST',
+      body: JSON.stringify(connection),
+    });
+  }
+
+  async deleteFeatConnection(id: string): Promise<void> {
+    return this.request(`/admin/feat-connections/${id}`, { method: 'DELETE' });
+  }
+
+  // Public feat tree routes (for character sheet)
+  async getPublicFeatTrees(): Promise<FeatTree[]> {
+    return this.request('/feat-trees');
+  }
+
+  async getFeatTreeByName(name: string): Promise<FeatTreeWithData> {
+    return this.request(`/feat-trees/by-name/${encodeURIComponent(name)}`);
+  }
+
+  // Character feats
+  async getCharacterFeats(characterId: string): Promise<CharacterFeat[]> {
+    return this.request(`/characters/${characterId}/feats`);
+  }
+
+  async unlockCharacterFeat(characterId: string, featId: string): Promise<CharacterFeat> {
+    return this.request(`/characters/${characterId}/feats/${featId}`, {
+      method: 'POST',
+    });
+  }
+
+  async removeCharacterFeat(characterId: string, featId: string): Promise<void> {
+    return this.request(`/characters/${characterId}/feats/${featId}`, { method: 'DELETE' });
   }
 
   // Campaign Template Items
