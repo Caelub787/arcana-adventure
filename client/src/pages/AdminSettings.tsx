@@ -1096,20 +1096,6 @@ function FeatTreesView() {
           <Button 
             size="sm" 
             variant="secondary" 
-            className="bg-purple-600 hover:bg-purple-700 text-xs border border-purple-500 backdrop-blur-sm"
-            onClick={() => {
-              setEditingFeat({ gridX: 0, gridY: 0, tier: 1, cost: 1 } as Feat);
-              setShowFeatEditor(true);
-            }}
-            title="Add new feat"
-            data-testid="add-feat-button"
-          >
-            <Plus className="h-3 w-3 mr-1" />
-            Add Feat
-          </Button>
-          <Button 
-            size="sm" 
-            variant="secondary" 
             className="bg-black/50 hover:bg-black/80 text-xs border border-white/10 backdrop-blur-sm"
             onClick={resetView}
             title="Reset view"
@@ -1440,8 +1426,21 @@ function FeatTreesView() {
           <div className="text-center py-12 text-stone-400">Loading tree...</div>
         ) : (
           <>
-            <div className="mb-4 text-sm text-stone-400">
-              Drag to pan, scroll to zoom. Click an empty cell to add a feat. Double-click a feat to edit. Use the link button to connect feats.
+            <div className="mb-4 flex items-center justify-between">
+              <div className="text-sm text-stone-400">
+                Drag to pan, scroll to zoom. Double-click a feat to edit. Use the link button to connect feats.
+              </div>
+              <Button
+                onClick={() => {
+                  setEditingFeat({ gridX: 0, gridY: 0, tier: 1, cost: 1 } as Feat);
+                  setShowFeatEditor(true);
+                }}
+                className="bg-purple-600 hover:bg-purple-700"
+                data-testid="add-feat-button"
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Add Feat
+              </Button>
             </div>
             {renderGrid()}
           </>
