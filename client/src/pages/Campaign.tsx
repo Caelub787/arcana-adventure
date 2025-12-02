@@ -661,15 +661,18 @@ export default function Campaign() {
   };
 
   const handleTokenClick = (token: any) => {
+    console.log('[TokenClick] Mode:', selectionMode, 'Token:', token.id, token.characterId);
     // Handle based on current selection mode
     switch (selectionMode) {
       case 'select':
         // Select mode: mark the token as selected and show character info for GMs
+        // This does NOT assign the character - only shows their info temporarily
         setSelectedTokenId(token.id);
         // For GMs, also set the inspected character so hotbar and sheet tabs appear
         if (role === 'gm' && token.characterId && characters && Array.isArray(characters)) {
           const charData = characters.find((c: any) => c.id === token.characterId);
           if (charData) {
+            console.log('[TokenClick] Inspecting character (not assigning):', charData.name);
             setInspectedChar(charData);
           }
         }
@@ -683,11 +686,13 @@ export default function Campaign() {
         
       case 'assign':
         // Assign mode: if user has edit access, assign the character to themselves
+        console.log('[TokenClick] ASSIGN mode - will assign character if player token');
         if (token.type === 'player' && characters && Array.isArray(characters)) {
           const charData = characters.find((c: any) => c.id === token.characterId);
           if (charData) {
             if (role === 'gm') {
               // GMs can assign any character
+              console.log('[TokenClick] ASSIGNING character (persisting):', charData.name);
               setCharacter(charData);
               setInspectedChar(charData);
               // Persist the assignment so it survives page reload

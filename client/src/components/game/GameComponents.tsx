@@ -1451,6 +1451,8 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
           console.log('[Damage] Applying', finalDamage, 'damage to', targetCharacter.name, '- HP:', currentHp, '->', newHp);
           await api.updateCharacter(targetCharacter.id, { hp: newHp });
           queryClient.invalidateQueries({ queryKey: ['characters'] });
+          // Broadcast character update via WebSocket for real-time sync
+          gameWs.sendCharacterUpdate(targetCharacter.id);
         }
       } catch (error) {
         console.error('Failed to update target HP:', error);
