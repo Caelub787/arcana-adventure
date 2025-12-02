@@ -428,6 +428,26 @@ export const insertInitiativeEntrySchema = createInsertSchema(initiativeEntries)
 export type InsertInitiativeEntry = z.infer<typeof insertInitiativeEntrySchema>;
 export type InitiativeEntry = typeof initiativeEntries.$inferSelect;
 
+// Feat Templates table (reusable feat definitions, like item templates)
+export const featTemplates = pgTable("feat_templates", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  description: text("description"),
+  icon: text("icon"), // Icon name or image URL
+  tier: integer("tier").default(1).notNull(), // Tier level (for unlocking requirements)
+  cost: integer("cost").default(1).notNull(), // Points required to unlock
+  effects: jsonb("effects").default([]).notNull(), // Array of effect objects
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertFeatTemplateSchema = createInsertSchema(featTemplates).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertFeatTemplate = z.infer<typeof insertFeatTemplateSchema>;
+export type FeatTemplate = typeof featTemplates.$inferSelect;
+
 // Feat Trees table (for skill trees/talent trees)
 export const featTrees = pgTable("feat_trees", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -446,10 +466,12 @@ export const insertFeatTreeSchema = createInsertSchema(featTrees).omit({
 export type InsertFeatTree = z.infer<typeof insertFeatTreeSchema>;
 export type FeatTree = typeof featTrees.$inferSelect;
 
-// Feats table (individual nodes in feat trees)
+// Feats table (individual nodes in feat trees - can reference a template or have inline data)
 export const feats = pgTable("feats", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   treeId: varchar("tree_id").notNull().references(() => featTrees.id, { onDelete: "cascade" }),
+  templateId: varchar("template_id").references(() => featTemplates.id, { onDelete: "set null" }), // Optional reference to template
+  // Inline data (used when no template, or for overrides)
   name: text("name").notNull(),
   description: text("description"),
   icon: text("icon"), // Icon name or image URL

@@ -14,11 +14,12 @@ import {
   type CharacterPermission, type InsertCharacterPermission,
   type InitiativeEntry, type InsertInitiativeEntry,
   type SystemSpecies, type InsertSystemSpecies,
+  type FeatTemplate, type InsertFeatTemplate,
   type FeatTree, type InsertFeatTree,
   type Feat, type InsertFeat,
   type FeatConnection, type InsertFeatConnection,
   type CharacterFeat, type InsertCharacterFeat,
-  users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, items, spells, characterPermissions, initiativeEntries, systemSpecies, featTrees, feats, featConnections, characterFeats
+  users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, items, spells, characterPermissions, initiativeEntries, systemSpecies, featTemplates, featTrees, feats, featConnections, characterFeats
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql, inArray } from "drizzle-orm";
@@ -139,6 +140,13 @@ export interface IStorage {
   createSystemSpecies(species: InsertSystemSpecies): Promise<SystemSpecies>;
   updateSystemSpecies(id: string, data: Partial<InsertSystemSpecies>): Promise<SystemSpecies | undefined>;
   deleteSystemSpecies(id: string): Promise<void>;
+
+  // Feat Template operations (reusable feat definitions)
+  getFeatTemplates(): Promise<FeatTemplate[]>;
+  getFeatTemplate(id: string): Promise<FeatTemplate | undefined>;
+  createFeatTemplate(template: InsertFeatTemplate): Promise<FeatTemplate>;
+  updateFeatTemplate(id: string, data: Partial<InsertFeatTemplate>): Promise<FeatTemplate | undefined>;
+  deleteFeatTemplate(id: string): Promise<void>;
 
   // Feat Tree operations
   getFeatTrees(): Promise<FeatTree[]>;
@@ -916,6 +924,36 @@ export class DatabaseStorage implements IStorage {
 
   async deleteSystemSpecies(id: string): Promise<void> {
     await db.delete(systemSpecies).where(eq(systemSpecies.id, id));
+  }
+
+  // Feat Template operations (reusable feat definitions)
+  async getFeatTemplates(): Promise<FeatTemplate[]> {
+    return await db.select().from(featTemplates).orderBy(featTemplates.name);
+  }
+
+  async getFeatTemplate(id: string): Promise<FeatTemplate | undefined> {
+    const [template] = await db.select()
+      .from(featTemplates)
+      .where(eq(featTemplates.id, id))
+      .limit(1);
+    return template;
+  }
+
+  async createFeatTemplate(template: InsertFeatTemplate): Promise<FeatTemplate> {
+    const [created] = await db.insert(featTemplates).values(template).returning();
+    return created;
+  }
+
+  async updateFeatTemplate(id: string, data: Partial<InsertFeatTemplate>): Promise<FeatTemplate | undefined> {
+    const [updated] = await db.update(featTemplates)
+      .set(data)
+      .where(eq(featTemplates.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteFeatTemplate(id: string): Promise<void> {
+    await db.delete(featTemplates).where(eq(featTemplates.id, id));
   }
 
   // Feat Tree operations
