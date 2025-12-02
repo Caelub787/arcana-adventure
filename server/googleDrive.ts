@@ -51,7 +51,7 @@ async function getGoogleDriveClient() {
 }
 
 // Root folder ID for the image library - restricts browsing to this folder only
-export const IMAGE_LIBRARY_ROOT_FOLDER_ID = '1XIIbXfkyJhClfACBa-G6B53n14sVSVUb';
+export const IMAGE_LIBRARY_ROOT_FOLDER_ID = '1MAdVTaRIO4r2ZsQU5AxEyQgb9iH_na6D';
 
 // List folders in a directory
 export async function listFolders(parentId?: string): Promise<{ id: string; name: string; }[]> {
