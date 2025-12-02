@@ -1257,11 +1257,11 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     if (!itemData || itemData.itemType !== 'weapon') return;
     
     // Check if ranged weapon requires ammunition
-    const ammo = isRangedWeapon(itemData) && requiresAmmunitionForRoll(itemData.weaponCategory) 
+    const ammo = isRangedWeapon(itemData) && itemData.weaponCategory && requiresAmmunitionForRoll(itemData.weaponCategory) 
       ? getEquippedAmmunition() 
       : null;
     
-    if (isRangedWeapon(itemData) && requiresAmmunitionForRoll(itemData.weaponCategory) && !ammo) {
+    if (isRangedWeapon(itemData) && itemData.weaponCategory && requiresAmmunitionForRoll(itemData.weaponCategory) && !ammo) {
       triggerRollNotification({
         type: 'attack',
         dieType: 'd20',
@@ -1395,7 +1395,7 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
 
   // Apply damage to target character with armor damage reduction
   const applyDamageToTarget = async (damageAmount: number, damageType: string | null, targetCharacter: any): Promise<{ finalDamage: number; reduction: number; armorName: string | null }> => {
-    if (!targetCharacter) return { finalDamage: damageAmount, reduction: 0, armorName: null };
+    if (!targetCharacter?.id) return { finalDamage: damageAmount, reduction: 0, armorName: null };
     
     // Fetch target's items to check for equipped armor with matching damage reduction
     let reduction = 0;
@@ -4893,7 +4893,7 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
     if (!itemData || itemData.itemType !== 'weapon') return;
     
     // Check if ranged weapon requires ammunition
-    if (isRangedWeapon(itemData) && requiresAmmunitionForRoll(itemData.weaponCategory)) {
+    if (isRangedWeapon(itemData) && itemData.weaponCategory && requiresAmmunitionForRoll(itemData.weaponCategory)) {
       const ammo = getEquippedAmmunition();
       if (!ammo) {
         triggerRollNotification({
@@ -4940,7 +4940,7 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
     }
     
     // Check ammunition break for ranged weapons
-    if (isRangedWeapon(itemData) && requiresAmmunitionForRoll(itemData.weaponCategory)) {
+    if (isRangedWeapon(itemData) && itemData.weaponCategory && requiresAmmunitionForRoll(itemData.weaponCategory)) {
       const ammo = getEquippedAmmunition();
       if (ammo) {
         await checkAmmunitionBreak(ammo);
