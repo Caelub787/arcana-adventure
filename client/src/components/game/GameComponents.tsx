@@ -10223,7 +10223,7 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
   );
 }
 
-// Feat Tree Viewer Grid Component with infinite pan/zoom like battlemap
+// Feat Tree Viewer Grid Component with infinite pan/zoom matching admin skill tree editor
 function FeatTreeViewerGrid({ 
   treeData, 
   characterFeats, 
@@ -10238,12 +10238,20 @@ function FeatTreeViewerGrid({
   const queryClient = useQueryClient();
   const [selectedFeat, setSelectedFeat] = useState<Feat | null>(null);
   
-  // Pan/zoom refs (avoid re-renders during interaction)
+  // Match admin dimensions exactly
+  const CELL_SIZE = 100;
+  const NODE_WIDTH = 160;
+  const NODE_HEIGHT = 100;
+  const WORLD_SIZE = 10000;
+  const WORLD_OFFSET = WORLD_SIZE / 2;
+  
+  // Pan/zoom refs
   const panRef = useRef({ x: 0, y: 0 });
   const zoomRef = useRef(1);
   const containerRef = useRef<HTMLDivElement>(null);
   const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
   const initializedRef = useRef(false);
+  const [displayZoom, setDisplayZoom] = useState(100);
   
   // Motion values for smooth transforms
   const motionX = useMotionValue(0);
@@ -10256,14 +10264,6 @@ function FeatTreeViewerGrid({
   const panStartRef = useRef<{ pointerX: number; pointerY: number; panX: number; panY: number } | null>(null);
   const panPointerIdRef = useRef<number | null>(null);
   const lastTouchDistanceRef = useRef<number | null>(null);
-  
-  const tierColors: Record<number, string> = {
-    1: 'border-stone-500 bg-stone-700/50',
-    2: 'border-green-500 bg-green-700/30',
-    3: 'border-blue-500 bg-blue-700/30',
-    4: 'border-purple-500 bg-purple-700/30',
-    5: 'border-amber-500 bg-amber-700/30',
-  };
   
   const unlockedFeatIds = new Set(characterFeats.map(cf => cf.featId));
   
@@ -10287,13 +10287,24 @@ function FeatTreeViewerGrid({
   };
   
   const { feats, connections } = treeData;
-  const cellSize = 80;
-  const WORLD_SIZE = 10000;
-  const WORLD_OFFSET = WORLD_SIZE / 2;
-  const [displayZoom, setDisplayZoom] = useState(100);
   
   const featById = new Map<string, Feat>();
   feats.forEach((f: Feat) => featById.set(f.id, f));
+  
+  // Generate curved path like admin editor
+  const generateCurvePath = (x1: number, y1: number, x2: number, y2: number) => {
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    const curvature = Math.min(dist * 0.3, 80);
+    const midX = (x1 + x2) / 2;
+    const midY = (y1 + y2) / 2;
+    const perpX = -dy / dist;
+    const perpY = dx / dist;
+    const ctrlX = midX + perpX * curvature * 0.3;
+    const ctrlY = midY + perpY * curvature * 0.3;
+    return `M ${x1} ${y1} Q ${ctrlX} ${ctrlY} ${x2} ${y2}`;
+  };
   
   // Track viewport size with ResizeObserver
   useEffect(() => {
@@ -10317,15 +10328,15 @@ function FeatTreeViewerGrid({
   useEffect(() => {
     if (initializedRef.current || viewportSize.width === 0 || feats.length === 0) return;
     
-    // Calculate bounding box of all feats
+    // Calculate bounding box of all feats using proper dimensions
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
     feats.forEach((f: Feat) => {
-      const worldX = f.gridX * cellSize;
-      const worldY = f.gridY * cellSize;
+      const worldX = f.gridX * CELL_SIZE;
+      const worldY = f.gridY * CELL_SIZE;
       minX = Math.min(minX, worldX);
-      maxX = Math.max(maxX, worldX + cellSize);
+      maxX = Math.max(maxX, worldX + NODE_WIDTH);
       minY = Math.min(minY, worldY);
-      maxY = Math.max(maxY, worldY + cellSize);
+      maxY = Math.max(maxY, worldY + NODE_HEIGHT);
     });
     
     // Center of the bounding box
@@ -10333,11 +10344,11 @@ function FeatTreeViewerGrid({
     const centerY = (minY + maxY) / 2;
     
     // Calculate zoom to fit all feats with padding
-    const treeWidth = maxX - minX + 100;
-    const treeHeight = maxY - minY + 100;
+    const treeWidth = maxX - minX + 200;
+    const treeHeight = maxY - minY + 200;
     const zoomX = viewportSize.width / treeWidth;
     const zoomY = viewportSize.height / treeHeight;
-    const fitZoom = Math.min(zoomX, zoomY, 1.5); // Cap at 1.5x
+    const fitZoom = Math.min(zoomX, zoomY, 1.2);
     const initialZoom = Math.max(0.3, fitZoom);
     
     // Calculate pan to center the tree
@@ -10413,15 +10424,12 @@ function FeatTreeViewerGrid({
       const mouseX = e.clientX - rect.left;
       const mouseY = e.clientY - rect.top;
       
-      // World point under cursor
       const worldX = (mouseX - currentPan.x) / currentZoom;
       const worldY = (mouseY - currentPan.y) / currentZoom;
       
-      // Calculate new zoom
       const zoomDelta = -e.deltaY * 0.001;
       const newZoom = Math.max(0.2, Math.min(3, currentZoom + zoomDelta * currentZoom));
       
-      // Adjust pan to keep world point under cursor
       const newPan = {
         x: mouseX - worldX * newZoom,
         y: mouseY - worldY * newZoom
@@ -10521,7 +10529,7 @@ function FeatTreeViewerGrid({
       {/* Infinite canvas viewport */}
       <div 
         ref={containerRef}
-        className="relative flex-1 min-h-[300px] overflow-hidden bg-stone-900/80 rounded-lg touch-none cursor-grab active:cursor-grabbing"
+        className="relative flex-1 min-h-[350px] overflow-hidden bg-gradient-to-br from-stone-900 via-purple-950/20 to-stone-900 rounded-lg touch-none cursor-grab active:cursor-grabbing border border-stone-700"
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
@@ -10531,72 +10539,129 @@ function FeatTreeViewerGrid({
         <motion.div
           className="absolute"
           style={{
-            width: `${WORLD_SIZE}px`,
-            height: `${WORLD_SIZE}px`,
+            width: WORLD_SIZE,
+            height: WORLD_SIZE,
             x: motionX,
             y: motionY,
             scale: motionZoom,
-            left: `-${WORLD_OFFSET}px`,
-            top: `-${WORLD_OFFSET}px`,
+            left: -WORLD_OFFSET,
+            top: -WORLD_OFFSET,
             transformOrigin: '0 0'
           }}
         >
-          {/* Connection lines SVG */}
+          {/* Subtle grid pattern like admin */}
+          <div 
+            className="absolute inset-0 pointer-events-none opacity-30"
+            style={{
+              backgroundImage: `
+                radial-gradient(circle at center, rgba(168,85,247,0.1) 0%, transparent 70%),
+                linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px)
+              `,
+              backgroundSize: `100% 100%, 50px 50px, 50px 50px`,
+              backgroundPosition: `center, ${WORLD_OFFSET}px ${WORLD_OFFSET}px, ${WORLD_OFFSET}px ${WORLD_OFFSET}px`
+            }}
+          />
+          
+          {/* Connection lines SVG with curved paths and arrows */}
           <svg 
             className="absolute pointer-events-none"
             style={{ 
-              width: `${WORLD_SIZE}px`, 
-              height: `${WORLD_SIZE}px`,
+              width: WORLD_SIZE, 
+              height: WORLD_SIZE,
               left: 0,
               top: 0
             }}
           >
+            <defs>
+              <marker id="arrowhead-viewer" markerWidth="12" markerHeight="8" refX="10" refY="4" orient="auto">
+                <polygon points="0 0, 12 4, 0 8" fill="url(#arrow-gradient-viewer)" />
+              </marker>
+              <marker id="arrowhead-unlocked" markerWidth="12" markerHeight="8" refX="10" refY="4" orient="auto">
+                <polygon points="0 0, 12 4, 0 8" fill="#22c55e" />
+              </marker>
+              <marker id="arrowhead-available" markerWidth="12" markerHeight="8" refX="10" refY="4" orient="auto">
+                <polygon points="0 0, 12 4, 0 8" fill="#eab308" />
+              </marker>
+              <linearGradient id="arrow-gradient-viewer" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stopColor="#a855f7" />
+                <stop offset="100%" stopColor="#eab308" />
+              </linearGradient>
+              <filter id="glow-viewer">
+                <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
+                <feMerge>
+                  <feMergeNode in="coloredBlur"/>
+                  <feMergeNode in="SourceGraphic"/>
+                </feMerge>
+              </filter>
+            </defs>
             {connections.map((conn: FeatConnection) => {
               const from = featById.get(conn.fromFeatId);
               const to = featById.get(conn.toFeatId);
               if (!from || !to) return null;
               
-              const x1 = from.gridX * cellSize + cellSize / 2 + WORLD_OFFSET;
-              const y1 = from.gridY * cellSize + cellSize / 2 + WORLD_OFFSET;
-              const x2 = to.gridX * cellSize + cellSize / 2 + WORLD_OFFSET;
-              const y2 = to.gridY * cellSize + cellSize / 2 + WORLD_OFFSET;
+              const x1 = WORLD_OFFSET + from.gridX * CELL_SIZE + NODE_WIDTH / 2;
+              const y1 = WORLD_OFFSET + from.gridY * CELL_SIZE + NODE_HEIGHT / 2;
+              const x2 = WORLD_OFFSET + to.gridX * CELL_SIZE + NODE_WIDTH / 2;
+              const y2 = WORLD_OFFSET + to.gridY * CELL_SIZE + NODE_HEIGHT / 2;
               
               const fromUnlocked = unlockedFeatIds.has(conn.fromFeatId);
               const toUnlocked = unlockedFeatIds.has(conn.toFeatId);
+              const pathD = generateCurvePath(x1, y1, x2, y2);
+              
+              let strokeColor = '#57534e';
+              let markerEnd = 'url(#arrowhead-viewer)';
+              if (fromUnlocked && toUnlocked) {
+                strokeColor = '#22c55e';
+                markerEnd = 'url(#arrowhead-unlocked)';
+              } else if (fromUnlocked) {
+                strokeColor = '#eab308';
+                markerEnd = 'url(#arrowhead-available)';
+              }
               
               return (
-                <line
-                  key={conn.id}
-                  x1={x1} y1={y1} x2={x2} y2={y2}
-                  stroke={fromUnlocked && toUnlocked ? '#22c55e' : fromUnlocked ? '#eab308' : '#57534e'}
-                  strokeWidth={3}
-                  strokeDasharray={conn.isOptional ? '8,8' : undefined}
-                />
+                <g key={conn.id} filter="url(#glow-viewer)">
+                  <path
+                    d={pathD}
+                    fill="none"
+                    stroke={strokeColor}
+                    strokeWidth={3}
+                    markerEnd={markerEnd}
+                    strokeOpacity={0.8}
+                  />
+                </g>
               );
             })}
           </svg>
           
-          {/* Feat nodes */}
+          {/* Feat nodes - matching admin styling */}
           {feats.map((feat: Feat) => {
             const isUnlocked = unlockedFeatIds.has(feat.id);
             const canUnlock = canUnlockFeat(feat);
+            
+            // Determine node styling based on unlock status
+            let nodeStyle = '';
+            if (isUnlocked) {
+              nodeStyle = 'border-green-500 bg-gradient-to-br from-green-900/90 to-emerald-800/80 ring-2 ring-green-400/50 shadow-lg shadow-green-500/20';
+            } else if (canUnlock) {
+              nodeStyle = 'border-purple-500 bg-gradient-to-br from-purple-900/80 to-violet-800/70 hover:ring-2 hover:ring-amber-400 shadow-lg shadow-purple-500/20';
+            } else {
+              nodeStyle = 'border-stone-600 bg-gradient-to-br from-stone-800/60 to-stone-900/80 opacity-60';
+            }
             
             return (
               <div
                 key={feat.id}
                 className={`
-                  absolute border-2 rounded-lg cursor-pointer transition-all
-                  ${isUnlocked 
-                    ? 'border-green-500 bg-green-900/80 ring-2 ring-green-400/50' 
-                    : canUnlock 
-                      ? `${tierColors[feat.tier]} hover:ring-2 hover:ring-amber-400` 
-                      : 'border-stone-700 bg-stone-900/80 opacity-50'}
+                  absolute rounded-xl border-2 cursor-pointer transition-all duration-200
+                  ${nodeStyle}
+                  hover:scale-105
                 `}
                 style={{
-                  left: feat.gridX * cellSize + WORLD_OFFSET,
-                  top: feat.gridY * cellSize + WORLD_OFFSET,
-                  width: cellSize - 4,
-                  height: cellSize - 4,
+                  left: WORLD_OFFSET + feat.gridX * CELL_SIZE,
+                  top: WORLD_OFFSET + feat.gridY * CELL_SIZE,
+                  width: NODE_WIDTH,
+                  height: NODE_HEIGHT,
                 }}
                 onClick={(e) => {
                   e.stopPropagation();
@@ -10604,14 +10669,23 @@ function FeatTreeViewerGrid({
                 }}
                 data-testid={`feat-node-${feat.id}`}
               >
-                <div className="absolute inset-1 flex flex-col items-center justify-center text-center p-1">
+                <div className="h-full flex flex-col items-center justify-center p-2 text-center overflow-hidden">
                   {isUnlocked && (
-                    <Check className="absolute top-0.5 right-0.5 h-4 w-4 text-green-400" />
+                    <Check className="absolute top-1 right-1 h-5 w-5 text-green-400 drop-shadow" />
                   )}
-                  <div className="text-xs font-bold truncate w-full leading-tight">{feat.name}</div>
-                  <Badge variant="secondary" className="text-[9px] mt-1 h-4 px-1.5">
-                    T{feat.tier}
-                  </Badge>
+                  <div className="text-sm font-bold text-white truncate w-full drop-shadow-lg">
+                    {feat.name}
+                  </div>
+                  {feat.description && (
+                    <div className="text-[10px] text-stone-300 mt-1 line-clamp-2 w-full leading-tight">
+                      {feat.description}
+                    </div>
+                  )}
+                  <div className="flex items-center gap-1 mt-1">
+                    <Badge variant="secondary" className="text-[9px] h-4 px-1.5 bg-stone-700/80">
+                      Cost: {feat.cost}
+                    </Badge>
+                  </div>
                 </div>
               </div>
             );
@@ -10622,21 +10696,36 @@ function FeatTreeViewerGrid({
         <div className="absolute bottom-2 right-2 bg-stone-800/90 px-2 py-1 rounded text-xs text-stone-400">
           {displayZoom}%
         </div>
+        
+        {/* Help text */}
+        <div className="absolute top-2 left-2 bg-stone-800/80 px-2 py-1 rounded text-xs text-stone-400">
+          Drag to pan · Scroll to zoom · Click feat for details
+        </div>
       </div>
       
       {/* Feat Detail Panel */}
       {selectedFeat && (
-        <div className="mt-3 bg-stone-800 rounded-lg p-4 border border-stone-700">
+        <div className="mt-3 bg-gradient-to-br from-stone-800 to-stone-900 rounded-lg p-4 border border-stone-700">
           <div className="flex items-start justify-between mb-3">
             <div>
-              <h3 className="font-bold text-lg">{selectedFeat.name}</h3>
+              <h3 className="font-display text-lg text-amber-500">{selectedFeat.name}</h3>
               <Badge variant="secondary" className="mt-1">
-                Tier {selectedFeat.tier} · Cost: {selectedFeat.cost}
+                Cost: {selectedFeat.cost} point{selectedFeat.cost !== 1 ? 's' : ''}
               </Badge>
             </div>
-            {unlockedFeatIds.has(selectedFeat.id) && (
-              <Badge className="bg-green-600">Unlocked</Badge>
-            )}
+            <div className="flex items-center gap-2">
+              {unlockedFeatIds.has(selectedFeat.id) && (
+                <Badge className="bg-green-600">Unlocked</Badge>
+              )}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setSelectedFeat(null)}
+                className="h-8 w-8 p-0"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
           
           {selectedFeat.description && (
@@ -10648,8 +10737,8 @@ function FeatTreeViewerGrid({
               <Label className="text-xs text-stone-400">Effects:</Label>
               <div className="flex flex-wrap gap-1 mt-1">
                 {(selectedFeat.effects as any[]).map((effect, idx) => (
-                  <Badge key={idx} variant="outline" className="text-xs">
-                    <Star className="h-3 w-3 mr-1" />
+                  <Badge key={idx} variant="outline" className="text-xs border-purple-500/50 text-purple-300">
+                    <Star className="h-3 w-3 mr-1 text-purple-400" />
                     {effect.type}: +{effect.value}{effect.target ? ` ${effect.target}` : ''}
                   </Badge>
                 ))}
@@ -10663,11 +10752,11 @@ function FeatTreeViewerGrid({
               disabled={!canUnlockFeat(selectedFeat) || unlockFeatMutation.isPending}
               className={canUnlockFeat(selectedFeat) 
                 ? "w-full bg-purple-600 hover:bg-purple-500" 
-                : "w-full"}
+                : "w-full bg-stone-700"}
               data-testid="button-unlock-feat"
             >
               {unlockFeatMutation.isPending ? 'Unlocking...' : 
-               canUnlockFeat(selectedFeat) ? 'Unlock Feat' : 'Prerequisites Not Met'}
+               canUnlockFeat(selectedFeat) ? `Unlock Feat (${selectedFeat.cost} point${selectedFeat.cost !== 1 ? 's' : ''})` : 'Prerequisites Not Met'}
             </Button>
           )}
         </div>
