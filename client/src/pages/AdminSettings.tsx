@@ -916,6 +916,7 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
     armorBonus: number | string;
     damageReduction: number | string;
     damageReductionType: string;
+    rationServings: number | string;
   }>({
     name: initialData?.name || '',
     image: initialData?.image || '',
@@ -946,6 +947,7 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
     armorBonus: (initialData as any)?.armorBonus ?? '',
     damageReduction: (initialData as any)?.damageReduction ?? '',
     damageReductionType: (initialData as any)?.damageReductionType || '',
+    rationServings: (initialData as any)?.rationServings ?? '',
   });
   
   const [showImageBrowser, setShowImageBrowser] = useState(false);
@@ -987,6 +989,7 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
       damageReduction: formData.itemType === 'armor' ? Number(formData.damageReduction) || 0 : 0,
       armorSlot: formData.itemType === 'armor' ? formData.armorSlot : undefined,
       damageReductionType: formData.itemType === 'armor' ? formData.damageReductionType : undefined,
+      rationServings: formData.itemType === 'consumable' ? Number(formData.rationServings) || 0 : 0,
     };
     onSave(cleanedData);
   };
@@ -1206,6 +1209,35 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
                     />
                   </div>
                 </>
+              )}
+
+              {formData.itemType === 'consumable' && (
+                <div className="col-span-2">
+                  <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-2">
+                      <Checkbox
+                        checked={Number(formData.rationServings) > 0}
+                        onCheckedChange={(checked) => setFormData({ ...formData, rationServings: checked ? 1 : 0 })}
+                        data-testid="checkbox-ration"
+                      />
+                      <Label>Is Ration</Label>
+                    </div>
+                    {Number(formData.rationServings) > 0 && (
+                      <div className="flex items-center gap-2">
+                        <Label>Servings:</Label>
+                        <Input
+                          type="number"
+                          min={1}
+                          value={formData.rationServings}
+                          onChange={(e) => setFormData({ ...formData, rationServings: e.target.value === '' ? '' : parseInt(e.target.value) || 1 })}
+                          className="bg-stone-800 border-stone-700 w-20"
+                          data-testid="input-ration-servings"
+                        />
+                      </div>
+                    )}
+                  </div>
+                  <p className="text-xs text-stone-500 mt-1">Ration items are consumed during rest. Each serving counts as 1 ration (Short Rest needs 2, Long Rest needs 4)</p>
+                </div>
               )}
 
               {formData.itemType === 'weapon' && (
