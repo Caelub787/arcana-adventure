@@ -27,6 +27,18 @@ Preferred communication style: Simple, everyday language.
 - **Roll Notification System**: Visual, animated notifications for all dice rolls (d4-d20) with distinct styling for different roll types (dice, initiative, "Crit Success" on natural 20, "Crit Failure" on natural 1). All rolls are server-authoritative and integrated into the chat.
 - **Targeting System**: Token targeting with range validation and hit detection. Selection modes (Select/Target) displayed as stacked vertical buttons on the left side of battlemap, always visible. Target mode allows selecting enemy tokens for attacks. Double-clicking a token in Select mode assigns that character to the user. Range checking validates weapon range against target distance (50px grid = 5ft, melee default 5ft, ranged uses weapon.range). Hit detection compares attack roll to target's naturalArmor as DC, displaying HIT!/MISS!/Crit Success!/Crit Failure! in notifications. GMs see character hotbars when clicking any token in select mode.
 - **Armor Damage Reduction System**: Armor items can be configured with damage reduction properties via Admin Settings. Each armor has: armorSlot (helm/chest/arm/legs/boots), armorBonus (added to character DC), damageReductionType (Sharp/Blunt/Piercing/Flame/Frost/Storm/Tide/Stone/Flux/Light/Dark/Sound), and damageReduction value. When a damage roll is made against a targeted character, equipped armor with matching damageReductionType subtracts its damageReduction from the damage. Final damage is applied to target's HP automatically. Google Drive image library browser available for item images in Admin Settings.
+- **Feat Tree System**: Comprehensive skill tree/talent system for character progression. Features include:
+  - **Admin Settings Grid Editor**: Visual editor for creating and managing feat trees with drag-and-drop positioning on a configurable grid (7x5 default). Supports tier assignment (1-5), effect configuration, and prerequisite connections via shift+click.
+  - **Prerequisite Connections**: Visual SVG lines connect prerequisite feats. Feats can only be unlocked when at least one connected prerequisite is already unlocked.
+  - **Species Integration**: Each species can have a feat tree assigned. Characters automatically inherit their species' feat tree and can view/unlock feats from their character sheet.
+  - **Feat Effects**: Four effect types that are dynamically calculated (not persisted to stats):
+    - `hp_bonus`: Adds to character's max HP (shown in HP breakdown)
+    - `dc_bonus`: Adds to character's defense DC (shown in DC breakdown)
+    - `attribute_bonus`: Adds to attribute values (target: `might`, `finesse`, `wit`, `presence`, `will`, `craft`)
+    - `skill_bonus`: Adds to skill values (target: `skillAgility`, `skillArcana`, `skillStealth`, etc.)
+  - **Visual Bonus Indicators**: Star icons with purple highlighting show which stats are feat-enhanced. Breakdowns display feat bonuses separately from base values.
+  - **Character Sheet Integration**: Clickable feat tree label opens a dialog viewer showing the grid layout with unlocked feats highlighted in green and locked feats grayed out. Prerequisites are validated before allowing unlock.
+  - **Database Tables**: `feat_trees`, `feats`, `feat_connections`, `character_feats` for storing tree definitions and character unlock progress.
 
 ### Backend
 - **Technology Stack**: Express.js with TypeScript, `express-session` for session management.
