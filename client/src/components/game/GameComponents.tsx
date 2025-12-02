@@ -20,10 +20,10 @@ import {
   Users, User, Plus, Minus, LogOut, Menu, ChevronRight, ChevronLeft, ChevronDown, ChevronUp,
   Heart, Zap, Backpack, Sparkles, Dice5, MessageSquare, RefreshCw, X, Trash2, Package, FolderOpen, Lock, Unlock, Camera,
   BarChart3, Grid3X3, ScrollText, Upload, Image as ImageIcon, Layers, Search, TrendingUp, UserMinus, Ban,
-  MousePointer, Target, UserCheck, Swords, ArrowRight, Eye, EyeOff, Check, Moon, Coffee, AlertTriangle
+  MousePointer, Target, UserCheck, Swords, ArrowRight, Eye, EyeOff, Check, Moon, Coffee, AlertTriangle, GitBranch, Star
 } from "lucide-react";
 import { useForm } from "react-hook-form";
-import { type Scene, type Hotbar, type SystemSpecies, api, gameWs } from "@/lib/api";
+import { type Scene, type Hotbar, type SystemSpecies, type FeatTreeWithData, type Feat, type FeatConnection, type CharacterFeat, api, gameWs } from "@/lib/api";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -6505,6 +6505,21 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
     queryFn: () => api.getSpecies('Arcana Adventure'),
   });
 
+  // Fetch feat tree for this character (based on species featTree name)
+  const featTreeName = character?.featTree || '';
+  const { data: featTreeData } = useQuery({
+    queryKey: ['feat-tree-by-name', featTreeName],
+    queryFn: () => api.getFeatTreeByName(featTreeName),
+    enabled: !!featTreeName,
+  });
+
+  // Fetch character's unlocked feats
+  const { data: characterFeats = [] } = useQuery({
+    queryKey: ['character-feats', character?.id],
+    queryFn: () => character?.id ? api.getCharacterFeats(character.id) : Promise.resolve([]),
+    enabled: !!character?.id,
+  });
+
   // Handle race selection - auto-fill race stats and recalculate HP based on new species
   const handleRaceChange = (raceName: string) => {
     const raceData = systemSpecies.find((r: SystemSpecies) => r.name === raceName);
@@ -6570,6 +6585,9 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
   // Level-up HP state
   const [showLevelUpHpDialog, setShowLevelUpHpDialog] = useState(false);
   const [levelUpHpResult, setLevelUpHpResult] = useState<{diceRolls: number[], total: number, diceCount: number, dieSize: number} | null>(null);
+  
+  // Feat tree viewer state
+  const [showFeatTreeViewer, setShowFeatTreeViewer] = useState(false);
   
   // Calculate if character can level up HP (level > lastLevelUpRolled)
   const canLevelUpHp = (liveCharacter.level || 1) > (liveCharacter.lastLevelUpRolled || 1);
@@ -7589,12 +7607,24 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                           {editingOverview ? (overviewData.sizeBonus >= 0 ? `+${overviewData.sizeBonus}` : overviewData.sizeBonus) : (liveCharacter.sizeBonus >= 0 ? `+${liveCharacter.sizeBonus}` : liveCharacter.sizeBonus)}
                         </p>
                       </div>
-                      {/* Feat Tree (auto-filled from race) */}
+                      {/* Feat Tree (auto-filled from race) - clickable to open viewer */}
                       <div>
                         <Label className="text-xs text-stone-400">Feat Tree</Label>
-                        <p className="text-stone-200" data-testid="text-feat-tree">
-                          {editingOverview ? overviewData.featTree : liveCharacter.featTree || "None"}
-                        </p>
+                        {!editingOverview && (liveCharacter.featTree) ? (
+                          <Button
+                            variant="link"
+                            className="p-0 h-auto text-purple-400 hover:text-purple-300 font-normal"
+                            onClick={() => setShowFeatTreeViewer(true)}
+                            data-testid="button-view-feat-tree"
+                          >
+                            <GitBranch className="h-3 w-3 mr-1" />
+                            {liveCharacter.featTree}
+                          </Button>
+                        ) : (
+                          <p className="text-stone-200" data-testid="text-feat-tree">
+                            {editingOverview ? overviewData.featTree : "None"}
+                          </p>
+                        )}
                       </div>
                       {/* Speed (auto-filled from race) */}
                       <div>
@@ -9682,6 +9712,221 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Feat Tree Viewer Dialog */}
+      <Dialog open={showFeatTreeViewer} onOpenChange={setShowFeatTreeViewer}>
+        <DialogContent className="sm:max-w-[600px] max-h-[80vh] bg-stone-900 border-stone-700 overflow-hidden flex flex-col">
+          <DialogHeader className="shrink-0">
+            <DialogTitle className="text-purple-400 flex items-center gap-2">
+              <GitBranch className="h-5 w-5" />
+              {featTreeData?.tree?.name || liveCharacter.featTree || 'Feat Tree'}
+            </DialogTitle>
+            {featTreeData?.tree?.description && (
+              <DialogDescription>{featTreeData.tree.description}</DialogDescription>
+            )}
+          </DialogHeader>
+          
+          <div className="flex-1 overflow-auto">
+            {!featTreeData ? (
+              <div className="text-center py-12 text-stone-400">
+                <GitBranch className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                <p>No feat tree data available</p>
+                <p className="text-sm mt-1">Ask your GM to set up feat trees</p>
+              </div>
+            ) : (
+              <FeatTreeViewerGrid 
+                treeData={featTreeData}
+                characterFeats={characterFeats}
+                characterId={liveCharacter.id}
+                canEdit={isOwner || isGM}
+              />
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+// Feat Tree Viewer Grid Component
+function FeatTreeViewerGrid({ 
+  treeData, 
+  characterFeats, 
+  characterId,
+  canEdit 
+}: { 
+  treeData: FeatTreeWithData;
+  characterFeats: CharacterFeat[];
+  characterId: string;
+  canEdit: boolean;
+}) {
+  const queryClient = useQueryClient();
+  const [selectedFeat, setSelectedFeat] = useState<Feat | null>(null);
+  
+  const tierColors: Record<number, string> = {
+    1: 'border-stone-500 bg-stone-700/50',
+    2: 'border-green-500 bg-green-700/30',
+    3: 'border-blue-500 bg-blue-700/30',
+    4: 'border-purple-500 bg-purple-700/30',
+    5: 'border-amber-500 bg-amber-700/30',
+  };
+  
+  const unlockedFeatIds = new Set(characterFeats.map(cf => cf.featId));
+  
+  const unlockFeatMutation = useMutation({
+    mutationFn: (featId: string) => api.unlockCharacterFeat(characterId, featId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['character-feats', characterId] });
+      toast({ title: 'Feat Unlocked!', description: `You've unlocked ${selectedFeat?.name}` });
+      setSelectedFeat(null);
+    },
+    onError: (err: any) => {
+      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+    },
+  });
+  
+  const canUnlockFeat = (feat: Feat) => {
+    if (unlockedFeatIds.has(feat.id)) return false;
+    const connections = treeData.connections.filter(c => c.toFeatId === feat.id);
+    if (connections.length === 0) return true;
+    return connections.some(conn => unlockedFeatIds.has(conn.fromFeatId));
+  };
+  
+  const { tree, feats, connections } = treeData;
+  const gridWidth = tree.gridWidth || 7;
+  const gridHeight = tree.gridHeight || 5;
+  const cellSize = 70;
+  
+  const featMap = new Map<string, Feat>();
+  feats.forEach((f: Feat) => featMap.set(`${f.gridX},${f.gridY}`, f));
+  const featById = new Map<string, Feat>();
+  feats.forEach((f: Feat) => featById.set(f.id, f));
+  
+  return (
+    <div className="space-y-4">
+      <div className="relative overflow-auto bg-stone-800/50 rounded-lg p-4">
+        <svg 
+          className="absolute top-0 left-0 pointer-events-none"
+          style={{ width: gridWidth * cellSize + 40, height: gridHeight * cellSize + 40 }}
+        >
+          {connections.map((conn: FeatConnection) => {
+            const from = featById.get(conn.fromFeatId);
+            const to = featById.get(conn.toFeatId);
+            if (!from || !to) return null;
+            
+            const x1 = from.gridX * cellSize + cellSize / 2 + 16;
+            const y1 = from.gridY * cellSize + cellSize / 2 + 16;
+            const x2 = to.gridX * cellSize + cellSize / 2 + 16;
+            const y2 = to.gridY * cellSize + cellSize / 2 + 16;
+            
+            const fromUnlocked = unlockedFeatIds.has(conn.fromFeatId);
+            const toUnlocked = unlockedFeatIds.has(conn.toFeatId);
+            
+            return (
+              <line
+                key={conn.id}
+                x1={x1} y1={y1} x2={x2} y2={y2}
+                stroke={fromUnlocked && toUnlocked ? '#22c55e' : fromUnlocked ? '#eab308' : '#57534e'}
+                strokeWidth={2}
+                strokeDasharray={conn.isOptional ? '4,4' : undefined}
+              />
+            );
+          })}
+        </svg>
+        
+        <div 
+          className="grid gap-1 relative"
+          style={{ 
+            gridTemplateColumns: `repeat(${gridWidth}, ${cellSize}px)`,
+            gridTemplateRows: `repeat(${gridHeight}, ${cellSize}px)`,
+          }}
+        >
+          {Array.from({ length: gridHeight }).map((_, y) =>
+            Array.from({ length: gridWidth }).map((_, x) => {
+              const feat = featMap.get(`${x},${y}`);
+              if (!feat) return <div key={`${x},${y}`} className="bg-transparent" />;
+              
+              const isUnlocked = unlockedFeatIds.has(feat.id);
+              const canUnlock = canUnlockFeat(feat);
+              
+              return (
+                <div
+                  key={`${x},${y}`}
+                  className={`
+                    border-2 rounded-lg cursor-pointer transition-all relative
+                    ${isUnlocked 
+                      ? 'border-green-500 bg-green-900/50 ring-2 ring-green-400/50' 
+                      : canUnlock 
+                        ? `${tierColors[feat.tier]} hover:ring-2 hover:ring-amber-400` 
+                        : 'border-stone-700 bg-stone-900/50 opacity-50'}
+                  `}
+                  onClick={() => setSelectedFeat(feat)}
+                  data-testid={`feat-cell-${x}-${y}`}
+                >
+                  <div className="absolute inset-1 flex flex-col items-center justify-center text-center p-0.5">
+                    {isUnlocked && (
+                      <Check className="absolute top-0 right-0 h-3 w-3 text-green-400" />
+                    )}
+                    <div className="text-[10px] font-bold truncate w-full leading-tight">{feat.name}</div>
+                    <Badge variant="secondary" className="text-[8px] mt-0.5 h-4 px-1">
+                      T{feat.tier}
+                    </Badge>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+      </div>
+      
+      {/* Feat Detail Panel */}
+      {selectedFeat && (
+        <div className="bg-stone-800 rounded-lg p-4 border border-stone-700">
+          <div className="flex items-start justify-between mb-3">
+            <div>
+              <h3 className="font-bold text-lg">{selectedFeat.name}</h3>
+              <Badge variant="secondary" className="mt-1">
+                Tier {selectedFeat.tier} · Cost: {selectedFeat.cost}
+              </Badge>
+            </div>
+            {unlockedFeatIds.has(selectedFeat.id) && (
+              <Badge className="bg-green-600">Unlocked</Badge>
+            )}
+          </div>
+          
+          {selectedFeat.description && (
+            <p className="text-sm text-stone-300 mb-3">{selectedFeat.description}</p>
+          )}
+          
+          {selectedFeat.effects && (selectedFeat.effects as any[]).length > 0 && (
+            <div className="mb-3">
+              <Label className="text-xs text-stone-400">Effects:</Label>
+              <div className="flex flex-wrap gap-1 mt-1">
+                {(selectedFeat.effects as any[]).map((effect, idx) => (
+                  <Badge key={idx} variant="outline" className="text-xs">
+                    <Star className="h-3 w-3 mr-1" />
+                    {effect.type}: +{effect.value}{effect.target ? ` ${effect.target}` : ''}
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          )}
+          
+          {canEdit && !unlockedFeatIds.has(selectedFeat.id) && (
+            <Button
+              onClick={() => unlockFeatMutation.mutate(selectedFeat.id)}
+              disabled={!canUnlockFeat(selectedFeat) || unlockFeatMutation.isPending}
+              className={canUnlockFeat(selectedFeat) 
+                ? "w-full bg-purple-600 hover:bg-purple-500" 
+                : "w-full"}
+              data-testid="button-unlock-feat"
+            >
+              {unlockFeatMutation.isPending ? 'Unlocking...' : 
+               canUnlockFeat(selectedFeat) ? 'Unlock Feat' : 'Prerequisites Not Met'}
+            </Button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
