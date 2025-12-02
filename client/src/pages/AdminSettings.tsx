@@ -16,7 +16,8 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Slider } from '@/components/ui/slider';
 import { toast } from '@/hooks/use-toast';
-import { ArrowLeft, Plus, Pencil, Trash2, Sword, Shield, Package, Sparkles, Box, Coins, Search, Users, GitBranch } from 'lucide-react';
+import { ArrowLeft, Plus, Pencil, Trash2, Sword, Shield, Package, Sparkles, Box, Coins, Search, Users, GitBranch, Library } from 'lucide-react';
+import { ImageBrowser } from '@/components/ImageBrowser';
 
 type AdminView = 'dashboard' | 'items' | 'species' | 'feat-trees';
 
@@ -911,6 +912,10 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
     durability: number | string;
     isContainer: boolean;
     carryCapacity: number | string;
+    armorSlot: string;
+    armorBonus: number | string;
+    damageReduction: number | string;
+    damageReductionType: string;
   }>({
     name: initialData?.name || '',
     image: initialData?.image || '',
@@ -937,7 +942,13 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
     durability: initialData?.durability ?? '',
     isContainer: initialData?.isContainer || false,
     carryCapacity: initialData?.carryCapacity ?? '',
+    armorSlot: (initialData as any)?.armorSlot || '',
+    armorBonus: (initialData as any)?.armorBonus ?? '',
+    damageReduction: (initialData as any)?.damageReduction ?? '',
+    damageReductionType: (initialData as any)?.damageReductionType || '',
   });
+  
+  const [showImageBrowser, setShowImageBrowser] = useState(false);
   
   const handleItemNumericChange = (field: string, value: string) => {
     setFormData({ ...formData, [field]: value === '' ? '' : parseInt(value) });
@@ -972,6 +983,10 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
       quantity: Number(formData.quantity) || 1,
       breakChance: formData.itemType === 'ammunition' ? Number(formData.breakChance) || 10 : 10,
       aoe: formData.aoe === 'none' ? undefined : formData.aoe,
+      armorBonus: formData.itemType === 'armor' ? Number(formData.armorBonus) || 0 : 0,
+      damageReduction: formData.itemType === 'armor' ? Number(formData.damageReduction) || 0 : 0,
+      armorSlot: formData.itemType === 'armor' ? formData.armorSlot : undefined,
+      damageReductionType: formData.itemType === 'armor' ? formData.damageReductionType : undefined,
     };
     onSave(cleanedData);
   };
@@ -1061,7 +1076,7 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
                       <Package className="h-8 w-8 text-stone-500" />
                     </div>
                   )}
-                  <div>
+                  <div className="flex gap-2">
                     <input
                       ref={imageInputRef}
                       type="file"
@@ -1078,9 +1093,30 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
                     >
                       Upload Image
                     </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setShowImageBrowser(true)}
+                      className="border-stone-600"
+                      data-testid="button-browse-library"
+                    >
+                      <Library className="h-4 w-4 mr-1" />
+                      Libraries
+                    </Button>
                   </div>
                 </div>
               </div>
+
+              <ImageBrowser
+                open={showImageBrowser}
+                onOpenChange={setShowImageBrowser}
+                onSelect={(imageBase64) => {
+                  setFormData({ ...formData, image: imageBase64 });
+                  setShowImageBrowser(false);
+                }}
+                title="Select Item Image"
+              />
 
               {formData.itemType === 'ammunition' && (
                 <>
@@ -1213,6 +1249,72 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
                       <Label>Two-Handed / Heavy Weapon</Label>
                     </div>
                     <p className="text-xs text-stone-500 mt-1">Two-handed weapons require both hands and occupy both weapon slots</p>
+                  </div>
+                </>
+              )}
+
+              {formData.itemType === 'armor' && (
+                <>
+                  <div>
+                    <Label>Armor Slot</Label>
+                    <Select value={formData.armorSlot} onValueChange={(v) => setFormData({ ...formData, armorSlot: v })}>
+                      <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-armor-slot">
+                        <SelectValue placeholder="Select slot" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="helm">Helm</SelectItem>
+                        <SelectItem value="chest">Chest</SelectItem>
+                        <SelectItem value="arm">Arm</SelectItem>
+                        <SelectItem value="legs">Legs</SelectItem>
+                        <SelectItem value="boots">Boots</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label>DC Armor Bonus</Label>
+                    <Input
+                      type="number"
+                      value={formData.armorBonus}
+                      onChange={(e) => handleItemNumericChange('armorBonus', e.target.value)}
+                      className="bg-stone-800 border-stone-700"
+                      placeholder="Added to character DC"
+                      data-testid="input-armor-bonus"
+                    />
+                    <p className="text-xs text-stone-500 mt-1">Directly added to character's DC when equipped</p>
+                  </div>
+                  <div>
+                    <Label>Damage Reduction Type</Label>
+                    <Select value={formData.damageReductionType} onValueChange={(v) => setFormData({ ...formData, damageReductionType: v })}>
+                      <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-damage-reduction-type">
+                        <SelectValue placeholder="Select damage type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Sharp">Sharp</SelectItem>
+                        <SelectItem value="Blunt">Blunt</SelectItem>
+                        <SelectItem value="Piercing">Piercing</SelectItem>
+                        <SelectItem value="Flame">Flame</SelectItem>
+                        <SelectItem value="Frost">Frost</SelectItem>
+                        <SelectItem value="Storm">Storm</SelectItem>
+                        <SelectItem value="Tide">Tide</SelectItem>
+                        <SelectItem value="Stone">Stone</SelectItem>
+                        <SelectItem value="Flux">Flux</SelectItem>
+                        <SelectItem value="Light">Light</SelectItem>
+                        <SelectItem value="Dark">Dark</SelectItem>
+                        <SelectItem value="Sound">Sound</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label>Damage Reduction Value</Label>
+                    <Input
+                      type="number"
+                      value={formData.damageReduction}
+                      onChange={(e) => handleItemNumericChange('damageReduction', e.target.value)}
+                      className="bg-stone-800 border-stone-700"
+                      placeholder="Amount reduced"
+                      data-testid="input-damage-reduction"
+                    />
+                    <p className="text-xs text-stone-500 mt-1">HP damage reduced when hit by matching damage type</p>
                   </div>
                 </>
               )}

@@ -1393,11 +1393,60 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     }
   };
 
+  // Apply damage to target character with armor damage reduction
+  const applyDamageToTarget = async (damageAmount: number, damageType: string | null, targetCharacter: any): Promise<{ finalDamage: number; reduction: number; armorName: string | null }> => {
+    if (!targetCharacter) return { finalDamage: damageAmount, reduction: 0, armorName: null };
+    
+    // Fetch target's items to check for equipped armor with matching damage reduction
+    let reduction = 0;
+    let armorName: string | null = null;
+    
+    try {
+      const targetItems = await api.getItems(targetCharacter.id);
+      const targetHotbars = await api.getHotbars(targetCharacter.id);
+      
+      // Find equipped armor items (from armor hotbar slots 0-4: helm, chest, arm, legs, boots)
+      const equippedArmorIds = targetHotbars
+        .filter((h: any) => h.hotbarType === 'armor' && h.slotNumber >= 0 && h.slotNumber <= 4 && h.itemId)
+        .map((h: any) => h.itemId);
+      
+      const equippedArmor = targetItems.filter((item: any) => 
+        item.itemType === 'armor' && equippedArmorIds.includes(item.id)
+      );
+      
+      // Calculate total damage reduction from armor matching the damage type
+      for (const armor of equippedArmor) {
+        if (damageType && armor.damageReductionType === damageType && armor.damageReduction > 0) {
+          reduction += armor.damageReduction;
+          armorName = armor.name; // Track the last armor that provided reduction
+        }
+      }
+    } catch (error) {
+      console.error('Failed to fetch target armor for damage reduction:', error);
+    }
+    
+    const finalDamage = Math.max(0, damageAmount - reduction);
+    
+    // Apply damage to target's HP
+    if (finalDamage > 0) {
+      const newHp = Math.max(0, (targetCharacter.currentHp || 0) - finalDamage);
+      try {
+        await api.updateCharacter(targetCharacter.id, { currentHp: newHp });
+        queryClient.invalidateQueries({ queryKey: ['characters'] });
+      } catch (error) {
+        console.error('Failed to update target HP:', error);
+      }
+    }
+    
+    return { finalDamage, reduction, armorName };
+  };
+
   // Handle damage roll (weapon damage dice + mod, or ammunition damage for ranged weapons)
-  const handleDamageRoll = (options?: { extraMod?: number }) => {
+  const handleDamageRoll = async (options?: { extraMod?: number }) => {
     if (!itemData) return;
     
     const extraMod = options?.extraMod || 0;
+    const targetData = getTargetData();
     
     // For ranged weapons, use ammunition damage + both weapon mod and ammo mod
     if (isRangedWeapon(itemData)) {
@@ -1421,23 +1470,40 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
       const ammoMod = ammo.mod || 0;
       const totalMod = weaponMod + ammoMod + extraMod;
       const total = result + totalMod;
+      const damageType = ammo.damageType || itemData.damageType || null;
       
       // Build calculation breakdown
       const modParts: string[] = [];
       if (weaponMod !== 0) modParts.push(`${itemData.name} (${weaponMod >= 0 ? '+' : ''}${weaponMod})`);
       if (ammoMod !== 0) modParts.push(`${ammo.name} (${ammoMod >= 0 ? '+' : ''}${ammoMod})`);
       if (extraMod !== 0) modParts.push(`Extra (${extraMod >= 0 ? '+' : ''}${extraMod})`);
-      const calculationBreakdown = modParts.length > 0
+      let calculationBreakdown = modParts.length > 0
         ? `${ammo.damage} = ${result} + ${modParts.join(' + ')}`
         : `${ammo.damage} = ${result}`;
+      
+      // Apply damage to target if one is selected
+      let damageLabel = `${itemData.name} Damage`;
+      let finalTotal = total;
+      
+      if (targetedTokenId && targetData?.character) {
+        const { finalDamage, reduction, armorName } = await applyDamageToTarget(total, damageType, targetData.character);
+        finalTotal = finalDamage;
+        
+        if (reduction > 0) {
+          calculationBreakdown += ` - ${reduction} (${armorName || 'Armor'})`;
+          damageLabel = `${itemData.name} Damage → ${targetData.character.name} (-${finalDamage} HP)`;
+        } else {
+          damageLabel = `${itemData.name} Damage → ${targetData.character.name} (-${finalDamage} HP)`;
+        }
+      }
       
       triggerRollNotification({
         type: 'attack',
         dieType: dieType as any,
-        label: `${itemData.name} Damage`,
+        label: damageLabel,
         result,
         modifier: totalMod,
-        total,
+        total: finalTotal,
         username: character.name || 'Unknown',
         characterName: character.name,
         calculationBreakdown,
@@ -1445,7 +1511,9 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
       
       // Send roll to chat
       if (character.campaignId) {
-        const chatText = `${itemData.name} Damage: ${calculationBreakdown} = ${total}`;
+        const chatText = targetedTokenId && targetData?.character
+          ? `${itemData.name} Damage → ${targetData.character.name}: ${calculationBreakdown} = ${finalTotal} HP`
+          : `${itemData.name} Damage: ${calculationBreakdown} = ${total}`;
         gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', chatText, 'roll');
       }
       return;
@@ -1457,22 +1525,39 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     const { result, dieType } = rollDice(itemData.damage);
     const mod = (itemData.mod || 0) + extraMod;
     const total = result + mod;
+    const damageType = itemData.damageType || null;
     
     // Build calculation breakdown
     const modParts: string[] = [];
     if (itemData.mod) modParts.push(`Mod (${itemData.mod >= 0 ? '+' : ''}${itemData.mod})`);
     if (extraMod !== 0) modParts.push(`Extra (${extraMod >= 0 ? '+' : ''}${extraMod})`);
-    const calculationBreakdown = modParts.length > 0
+    let calculationBreakdown = modParts.length > 0
       ? `${itemData.damage} = ${result} + ${modParts.join(' + ')}`
       : `${itemData.damage} = ${result}`;
+    
+    // Apply damage to target if one is selected
+    let damageLabel = `${itemData.name} Damage`;
+    let finalTotal = total;
+    
+    if (targetedTokenId && targetData?.character) {
+      const { finalDamage, reduction, armorName } = await applyDamageToTarget(total, damageType, targetData.character);
+      finalTotal = finalDamage;
+      
+      if (reduction > 0) {
+        calculationBreakdown += ` - ${reduction} (${armorName || 'Armor'})`;
+        damageLabel = `${itemData.name} Damage → ${targetData.character.name} (-${finalDamage} HP)`;
+      } else {
+        damageLabel = `${itemData.name} Damage → ${targetData.character.name} (-${finalDamage} HP)`;
+      }
+    }
     
     triggerRollNotification({
       type: 'attack',
       dieType: dieType as any,
-      label: `${itemData.name} Damage`,
+      label: damageLabel,
       result,
       modifier: mod,
-      total,
+      total: finalTotal,
       username: character.name || 'Unknown',
       characterName: character.name,
       calculationBreakdown,
@@ -1480,7 +1565,9 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     
     // Send roll to chat
     if (character.campaignId) {
-      const chatText = `${itemData.name} Damage: ${calculationBreakdown} = ${total}`;
+      const chatText = targetedTokenId && targetData?.character
+        ? `${itemData.name} Damage → ${targetData.character.name}: ${calculationBreakdown} = ${finalTotal} HP`
+        : `${itemData.name} Damage: ${calculationBreakdown} = ${total}`;
       gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', chatText, 'roll');
     }
   };
@@ -1521,8 +1608,8 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     setHasDisadvantage(false);
   };
   
-  const handleModifiedDamageRoll = () => {
-    handleDamageRoll({ extraMod: extraModifier });
+  const handleModifiedDamageRoll = async () => {
+    await handleDamageRoll({ extraMod: extraModifier });
     // Reset and close popup
     setShowModifierPopup(false);
     setExtraModifier(0);
@@ -1910,7 +1997,7 @@ export function BattleMapHotbars({ character, tokens, targetedTokenId, character
   );
 }
 
-// Selection Mode Buttons Component with hold-to-reveal behavior
+// Selection Mode Buttons Component with double-click-to-reveal behavior
 interface SelectionModeButtonsProps {
   selectionMode: SelectionMode;
   onModeChange: (mode: SelectionMode) => void;
@@ -1918,7 +2005,6 @@ interface SelectionModeButtonsProps {
 
 export function SelectionModeButtons({ selectionMode, onModeChange }: SelectionModeButtonsProps) {
   const [isExpanded, setIsExpanded] = useState(false);
-  const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   
   const modes = [
@@ -1931,25 +2017,15 @@ export function SelectionModeButtons({ selectionMode, onModeChange }: SelectionM
   const CurrentIcon = currentModeData.icon;
   const altModes = modes.filter(m => m.mode !== selectionMode);
 
-  const handlePointerDown = (e: React.PointerEvent) => {
+  const handleSingleClick = () => {
+    if (!isExpanded) {
+      onModeChange('select');
+    }
+  };
+  
+  const handleDoubleClick = (e: React.MouseEvent) => {
     e.preventDefault();
-    longPressTimerRef.current = setTimeout(() => {
-      setIsExpanded(true);
-    }, 300);
-  };
-  
-  const handlePointerUp = () => {
-    if (longPressTimerRef.current) {
-      clearTimeout(longPressTimerRef.current);
-      longPressTimerRef.current = null;
-    }
-  };
-  
-  const handlePointerLeave = () => {
-    if (longPressTimerRef.current) {
-      clearTimeout(longPressTimerRef.current);
-      longPressTimerRef.current = null;
-    }
+    setIsExpanded(!isExpanded);
   };
   
   const handleModeSelect = (mode: SelectionMode) => {
@@ -1970,14 +2046,6 @@ export function SelectionModeButtons({ selectionMode, onModeChange }: SelectionM
     }
   }, [isExpanded]);
   
-  useEffect(() => {
-    return () => {
-      if (longPressTimerRef.current) {
-        clearTimeout(longPressTimerRef.current);
-      }
-    };
-  }, []);
-  
   const getColorClasses = (color: string, isActive: boolean) => {
     const colorClasses: Record<string, string> = {
       stone: isActive ? 'bg-stone-600 border-stone-400 text-stone-100' : 'bg-stone-800/80 border-stone-600 text-stone-400 hover:bg-stone-700/50',
@@ -1997,19 +2065,16 @@ export function SelectionModeButtons({ selectionMode, onModeChange }: SelectionM
           <Tooltip>
             <TooltipTrigger asChild>
               <button
-                onPointerDown={handlePointerDown}
-                onPointerUp={handlePointerUp}
-                onPointerLeave={handlePointerLeave}
-                onPointerCancel={handlePointerUp}
-                onClick={() => !isExpanded && onModeChange('select')}
+                onClick={handleSingleClick}
+                onDoubleClick={handleDoubleClick}
                 className={`
                   w-9 h-9 md:w-10 md:h-10 rounded-lg border-2 flex items-center justify-center
-                  transition-all duration-200 shadow-lg backdrop-blur-sm touch-none
+                  transition-all duration-200 shadow-lg backdrop-blur-sm
                   ${getColorClasses(currentModeData.color, true)}
                   scale-110 ring-2 ring-white/20
                 `}
                 aria-expanded={isExpanded}
-                aria-label={`Current mode: ${currentModeData.label}. Hold to reveal other modes.`}
+                aria-label={`Current mode: ${currentModeData.label}. Double-click to reveal other modes.`}
                 data-testid={`selection-mode-${selectionMode}`}
               >
                 <CurrentIcon className="h-4 w-4 md:h-5 md:w-5" />
@@ -2017,7 +2082,7 @@ export function SelectionModeButtons({ selectionMode, onModeChange }: SelectionM
             </TooltipTrigger>
             <TooltipContent side="right">
               <p className="font-bold">{currentModeData.label}</p>
-              <p className="text-xs text-stone-400">Hold to change mode</p>
+              <p className="text-xs text-stone-400">Double-click to change mode</p>
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>
