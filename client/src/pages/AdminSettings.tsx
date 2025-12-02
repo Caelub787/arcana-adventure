@@ -1861,6 +1861,12 @@ function FeatFormDialog({ open, onOpenChange, onSave, initialData, isLoading, fe
     enabled: open,
   });
 
+  // Query system items for item_grant dropdown
+  const { data: systemItems = [] } = useQuery<any[]>({
+    queryKey: ['/api/system-items'],
+    enabled: open,
+  });
+
   // Normalize effects for UI display - preserve ALL existing data exactly as stored
   // This function only makes a shallow copy, does NOT modify any fields
   const normalizeEffects = (effects: any[] | undefined): any[] => {
@@ -2083,7 +2089,8 @@ function FeatFormDialog({ open, onOpenChange, onSave, initialData, isLoading, fe
                     return spell ? `Grants: ${spell.name}` : target || '(select spell)';
                   }
                   if (effect.type === 'item_grant') {
-                    return `Grants item: ${target || '(no item)'}`;
+                    const item = systemItems.find((i: any) => i.id === target);
+                    return item ? `Grants: ${item.name}` : target || '(select item)';
                   }
                   if (effect.type === 'skill_bonus') {
                     const skill = SKILLS_LIST.find(s => s.key === target);
@@ -2235,14 +2242,35 @@ function FeatFormDialog({ open, onOpenChange, onSave, initialData, isLoading, fe
                   </Select>
                 )}
 
-                {/* Item grant - text input for now */}
+                {/* Item grant - searchable dropdown */}
                 {newEffect.type === 'item_grant' && (
-                  <Input
+                  <Select
                     value={newEffect.target}
-                    onChange={(e) => setNewEffect({ ...newEffect, target: e.target.value })}
-                    placeholder="Item ID or name"
-                    className="bg-stone-800 border-stone-700 text-xs"
-                  />
+                    onValueChange={(v) => setNewEffect({ ...newEffect, target: v })}
+                  >
+                    <SelectTrigger className="bg-stone-800 border-stone-700 text-xs">
+                      <SelectValue placeholder="Select item..." />
+                    </SelectTrigger>
+                    <SelectContent className="max-h-60">
+                      {systemItems.length === 0 ? (
+                        <div className="p-2 text-xs text-stone-400">No system items available. Create items in campaign settings first.</div>
+                      ) : (
+                        systemItems.map((item: any) => (
+                          <SelectItem key={item.id} value={item.id}>
+                            <span className="flex items-center gap-2">
+                              {item.image && (
+                                <img src={item.image} alt="" className="w-4 h-4 rounded object-cover" />
+                              )}
+                              <span>{item.name}</span>
+                              {item.itemType && (
+                                <Badge variant="secondary" className="text-xs capitalize">{item.itemType}</Badge>
+                              )}
+                            </span>
+                          </SelectItem>
+                        ))
+                      )}
+                    </SelectContent>
+                  </Select>
                 )}
               </div>
               <Button size="sm" variant="secondary" onClick={addEffect} className="w-full">

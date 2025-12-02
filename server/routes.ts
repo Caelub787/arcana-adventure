@@ -2670,6 +2670,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Public system items route (for feat effects item picker)
+  app.get("/api/system-items", requireAuth, async (req, res) => {
+    try {
+      const itemList = await storage.getSystemItems();
+      res.json(itemList);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch system items" });
+    }
+  });
+
   // Campaign template item routes (GM only)
   app.get("/api/campaigns/:campaignId/template-items", requireAuth, async (req, res) => {
     try {
