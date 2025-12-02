@@ -1360,10 +1360,22 @@ function FeatTreesView() {
   };
 
   const resetView = () => {
-    if (viewportSize.width > 0) {
-      // Center on origin (0,0) - same formula as useEffect above
-      const centerX = viewportSize.width / 2;
-      const centerY = viewportSize.height / 2;
+    if (viewportSize.width > 0 && treeData) {
+      // Center on the first feat, or origin if no feats
+      let targetX = 0;
+      let targetY = 0;
+      
+      if (treeData.feats && treeData.feats.length > 0) {
+        // Find the first feat (by order in array)
+        const firstFeat = treeData.feats[0];
+        targetX = firstFeat.gridX * CELL_SIZE;
+        targetY = firstFeat.gridY * CELL_SIZE;
+      }
+      
+      // Calculate pan to center target in viewport
+      const centerX = viewportSize.width / 2 - targetX;
+      const centerY = viewportSize.height / 2 - targetY;
+      
       panRef.current = { x: centerX, y: centerY };
       zoomRef.current = 1;
       motionX.set(centerX);
@@ -1371,20 +1383,6 @@ function FeatTreesView() {
       motionZoom.set(1);
       forceUpdate(n => n + 1);
     }
-  };
-
-  const zoomIn = () => {
-    const newZoom = Math.min(3, zoomRef.current + 0.2);
-    zoomRef.current = newZoom;
-    motionZoom.set(newZoom);
-    forceUpdate(n => n + 1);
-  };
-
-  const zoomOut = () => {
-    const newZoom = Math.max(0.3, zoomRef.current - 0.2);
-    zoomRef.current = newZoom;
-    motionZoom.set(newZoom);
-    forceUpdate(n => n + 1);
   };
 
   // Helper to generate bezier curve path between two points
@@ -1452,35 +1450,15 @@ function FeatTreesView() {
             <Link className="h-3 w-3 mr-1" />
             {connectionMode ? 'Exit Connection Mode' : 'Connect'}
           </Button>
-          <div className="flex gap-1 ml-2">
-            <Button 
-              size="sm" 
-              variant="secondary" 
-              className="bg-stone-800/80 hover:bg-stone-700 text-xs border border-stone-600"
-              onClick={resetView}
-              title="Reset view"
-            >
-              <RefreshCw className="h-3 w-3" />
-            </Button>
-            <Button 
-              size="sm" 
-              variant="secondary" 
-              className="bg-stone-800/80 hover:bg-stone-700 text-xs border border-stone-600"
-              onClick={zoomIn}
-              title="Zoom in"
-            >
-              <ZoomIn className="h-3 w-3" />
-            </Button>
-            <Button 
-              size="sm" 
-              variant="secondary" 
-              className="bg-stone-800/80 hover:bg-stone-700 text-xs border border-stone-600"
-              onClick={zoomOut}
-              title="Zoom out"
-            >
-              <ZoomOut className="h-3 w-3" />
-            </Button>
-          </div>
+          <Button 
+            size="sm" 
+            variant="secondary" 
+            className="bg-stone-800/80 hover:bg-stone-700 text-xs border border-stone-600 ml-2"
+            onClick={resetView}
+            title="Center on first feat"
+          >
+            <RefreshCw className="h-3 w-3" />
+          </Button>
         </div>
 
         {/* Connection mode indicator */}
