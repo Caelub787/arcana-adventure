@@ -1416,8 +1416,8 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
       
       // Calculate total damage reduction from armor matching the damage type
       for (const armor of equippedArmor) {
-        if (damageType && armor.damageReductionType === damageType && armor.damageReduction > 0) {
-          reduction += armor.damageReduction;
+        if (damageType && armor.damageReductionType === damageType && (armor.damageReduction || 0) > 0) {
+          reduction += armor.damageReduction || 0;
           armorName = armor.name; // Track the last armor that provided reduction
         }
       }
@@ -1429,9 +1429,9 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     
     // Apply damage to target's HP
     if (finalDamage > 0) {
-      const newHp = Math.max(0, (targetCharacter.currentHp || 0) - finalDamage);
+      const newHp = Math.max(0, (targetCharacter.hp || 0) - finalDamage);
       try {
-        await api.updateCharacter(targetCharacter.id, { currentHp: newHp });
+        await api.updateCharacter(targetCharacter.id, { hp: newHp });
         queryClient.invalidateQueries({ queryKey: ['characters'] });
       } catch (error) {
         console.error('Failed to update target HP:', error);
