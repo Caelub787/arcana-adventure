@@ -290,6 +290,16 @@ export default function Campaign() {
     enabled: !!effectiveCampaignId && !isNew,
   });
 
+  // Sync viewingCharacterSheet with the latest data from the characters query
+  useEffect(() => {
+    if (viewingCharacterSheet && characters) {
+      const updatedChar = (characters as any[]).find((c: any) => c.id === viewingCharacterSheet.id);
+      if (updatedChar && JSON.stringify(updatedChar) !== JSON.stringify(viewingCharacterSheet)) {
+        setViewingCharacterSheet(updatedChar);
+      }
+    }
+  }, [characters, viewingCharacterSheet]);
+
   // Load campaign members
   const { data: members, isLoading: membersLoading } = useQuery({
     queryKey: [`/api/campaigns/${effectiveCampaignId}/members`],

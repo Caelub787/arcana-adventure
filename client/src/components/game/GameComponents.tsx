@@ -6122,10 +6122,12 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
       if (updatedChar) {
         setLiveCharacter(updatedChar);
       }
-      if (onUpdate) {
-        // Notify parent component
-        queryClient.invalidateQueries({ queryKey: ['characters'] });
+      // Invalidate the correct query key that Campaign.tsx uses
+      if (campaignId) {
+        queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${campaignId}/characters`] });
       }
+      // Also invalidate individual character query if it exists
+      queryClient.invalidateQueries({ queryKey: [`/api/characters/${character.id}`] });
       toast({ title: "Character updated successfully" });
     },
     onError: (error: any) => {

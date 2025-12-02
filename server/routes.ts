@@ -851,28 +851,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
     userId: string,
     requiredLevel: 'view' | 'edit'
   ): Promise<{ allowed: boolean; isOwner: boolean; isGM: boolean; character?: any; campaign?: any; permission?: any }> {
+    console.log(`[checkCharacterAccess] Checking access for character ${characterId} by user ${userId} (${requiredLevel})`);
+    
     const character = await storage.getCharacter(characterId);
     if (!character) {
+      console.log(`[checkCharacterAccess] Character not found`);
       return { allowed: false, isOwner: false, isGM: false };
     }
     
     const campaign = await storage.getCampaign(character.campaignId);
     if (!campaign) {
+      console.log(`[checkCharacterAccess] Campaign not found`);
       return { allowed: false, isOwner: false, isGM: false };
     }
     
     const isOwner = character.userId === userId;
     const isGM = campaign.gmUserId === userId;
+    console.log(`[checkCharacterAccess] Character userId: ${character.userId}, Request userId: ${userId}, isOwner: ${isOwner}, isGM: ${isGM}`);
     
     // Verify user is still a member of the campaign (skip for GM)
     if (!isGM) {
       const isMember = await storage.isCampaignMember(campaign.id, userId);
+      console.log(`[checkCharacterAccess] isCampaignMember: ${isMember}`);
       if (!isMember) {
         return { allowed: false, isOwner: false, isGM: false, character, campaign };
       }
     }
     
     if (isOwner || isGM) {
+      console.log(`[checkCharacterAccess] Allowed - isOwner: ${isOwner}, isGM: ${isGM}`);
       return { allowed: true, isOwner, isGM, character, campaign };
     }
     
@@ -1390,9 +1397,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
+      console.log('[Character Update] Saving updates for character', req.params.id, ':', req.body);
       const updatedCharacter = await storage.updateCharacter(req.params.id, req.body);
+      console.log('[Character Update] Saved successfully:', updatedCharacter);
       res.json(updatedCharacter);
     } catch (err) {
+      console.error('[Character Update] Error:', err);
       res.status(400).json({ error: "Failed to update character" });
     }
   });
