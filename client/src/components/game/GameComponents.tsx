@@ -1833,6 +1833,20 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     }
     const attributeValue = attributeKey && typeof character[attributeKey] === 'number' ? character[attributeKey] as number : 0;
     
+    // DEBUG: Log all values
+    console.log('[SkillRoll DEBUG]', {
+      skillName,
+      skillKey,
+      skillModifier,
+      attributeKey,
+      attributeValue,
+      characterId: character?.id,
+      characterMight: character?.might,
+      characterFinesse: character?.finesse,
+      characterWit: character?.wit,
+      fullCharacter: character
+    });
+    
     // Determine die type: d30 if attribute >= 5, otherwise d20
     const dieMax = attributeValue >= 5 ? 30 : 20;
     const dieType = attributeValue >= 5 ? 'd30' : 'd20';
