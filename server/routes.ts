@@ -1434,7 +1434,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Short Rest - Restores HP equal to level, requires 2 rations
+  // Short Rest - Restores HP based on species hpPerLevel die roll, requires 2 rations
   app.post("/api/characters/:id/short-rest", requireAuth, async (req, res) => {
     try {
       const access = await checkCharacterAccess(req.params.id, req.session.userId!, 'edit');
@@ -1490,9 +1490,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
         rationsToConsume -= rationsFromThis;
       }
       
-      // Calculate new HP: current + level (capped at max)
-      const hpRestored = Math.min(character.level || 1, (character.maxHp || 10) - (character.hp || 0));
-      const newHp = Math.min((character.hp || 0) + (character.level || 1), character.maxHp || 10);
+      // Get character's species hpPerLevel for the die roll
+      let hpPerLevel = 5; // Default fallback
+      if (character.race) {
+        const species = await storage.getSpeciesByName(character.race);
+        if (species) {
+          hpPerLevel = species.hpPerLevel || 5;
+        }
+      }
+      
+      // Roll the HP die (1d{hpPerLevel})
+      const hpRoll = Math.floor(Math.random() * hpPerLevel) + 1;
+      
+      // Calculate new HP: current + roll (capped at max)
+      const maxHpGain = (character.maxHp || 10) - (character.hp || 0);
+      const hpRestored = Math.min(hpRoll, maxHpGain);
+      const newHp = Math.min((character.hp || 0) + hpRoll, character.maxHp || 10);
       
       // Update character HP
       const updatedCharacter = await storage.updateCharacter(character.id, { hp: newHp });
@@ -1516,6 +1529,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ 
         success: true, 
         hpRestored,
+        hpRoll,
+        dieType: `d${hpPerLevel}`,
         newHp,
         rationsConsumed: rationsRequired,
         character: updatedCharacter 

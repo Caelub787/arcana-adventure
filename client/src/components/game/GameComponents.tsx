@@ -6984,9 +6984,10 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
         queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${campaignId}/characters`] });
         queryClient.invalidateQueries({ queryKey: ['items', character.id] });
       }
+      const dieInfo = result.dieType ? ` (rolled ${result.hpRoll} on ${result.dieType})` : '';
       toast({ 
         title: "Short Rest Complete", 
-        description: `Restored ${result.hpRestored} HP. Consumed ${result.rationsConsumed} rations.` 
+        description: `Restored ${result.hpRestored} HP${dieInfo}. Consumed ${result.rationsConsumed} rations.` 
       });
     },
     onError: (error: any) => {
@@ -7448,7 +7449,7 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                               </Button>
                             </TooltipTrigger>
                             <TooltipContent side="bottom">
-                              <p>Short Rest (2 rations, +{liveCharacter.level || 1} HP)</p>
+                              <p>Short Rest (2 rations, roll HP die)</p>
                             </TooltipContent>
                           </Tooltip>
                         </TooltipProvider>
