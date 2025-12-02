@@ -1637,11 +1637,93 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     setHasAdvantage(false);
     setHasDisadvantage(false);
   };
+
+  // Handle skill roll (1d20 + skill modifier)
+  const handleSkillRoll = (options?: { extraMod?: number; advantage?: boolean; disadvantage?: boolean }) => {
+    if (!hotbar?.skillName) return;
+    
+    const skillName = hotbar.skillName;
+    // Get skill modifier from character - skills are stored as skill<SkillName> in character
+    // Convert skill name to camelCase key: "Sleight of Hand" -> "skillSleightOfHand"
+    const skillKey = `skill${skillName.split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()).join('')}` as keyof typeof character;
+    const skillModifier = typeof character[skillKey] === 'number' ? character[skillKey] : 0;
+    
+    const extraMod = options?.extraMod || 0;
+    const hasAdv = options?.advantage || false;
+    const hasDisadv = options?.disadvantage || false;
+    
+    // Roll 1d20 (or 2d20 for advantage/disadvantage)
+    let roll1 = Math.floor(Math.random() * 20) + 1;
+    let roll2 = Math.floor(Math.random() * 20) + 1;
+    let baseRoll = roll1;
+    let advLabel = '';
+    
+    if (hasAdv && !hasDisadv) {
+      baseRoll = Math.max(roll1, roll2);
+      advLabel = ` (Adv: ${roll1}, ${roll2})`;
+    } else if (hasDisadv && !hasAdv) {
+      baseRoll = Math.min(roll1, roll2);
+      advLabel = ` (Disadv: ${roll1}, ${roll2})`;
+    }
+    
+    const total = baseRoll + skillModifier + extraMod;
+    
+    let calculationBreakdown = `1d20 = ${baseRoll}`;
+    if (skillModifier !== 0) calculationBreakdown += ` + ${skillName} (+${skillModifier})`;
+    if (extraMod !== 0) calculationBreakdown += ` + Mod (+${extraMod})`;
+    calculationBreakdown += advLabel;
+    
+    // Check for crit success/failure
+    let resultLabel = `${skillName} Check`;
+    if (baseRoll === 20) {
+      resultLabel = `${skillName} Check - Crit Success!`;
+    } else if (baseRoll === 1) {
+      resultLabel = `${skillName} Check - Crit Failure!`;
+    }
+    
+    triggerRollNotification({
+      type: 'dice',
+      dieType: 'd20',
+      label: resultLabel,
+      result: baseRoll,
+      modifier: skillModifier + extraMod,
+      total,
+      username: character.name || 'Unknown',
+      characterName: character.name,
+      calculationBreakdown,
+    });
+    
+    // Send roll to chat
+    if (character.campaignId) {
+      gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', `${skillName} Check: ${calculationBreakdown} = ${total}`, 'roll');
+    }
+  };
   
-  const isClickable = itemData && itemData.itemType === 'weapon';
+  const handleModifiedSkillRoll = () => {
+    handleSkillRoll({ 
+      extraMod: extraModifier, 
+      advantage: hasAdvantage, 
+      disadvantage: hasDisadvantage 
+    });
+    // Reset and close popup
+    setShowModifierPopup(false);
+    setExtraModifier(0);
+    setHasAdvantage(false);
+    setHasDisadvantage(false);
+  };
+  
+  const isWeaponClickable = itemData && itemData.itemType === 'weapon';
+  const isSkillClickable = !!hotbar?.skillName;
+  const isClickable = isWeaponClickable || isSkillClickable;
 
   // Handle click with single/double click detection
   const handleClick = () => {
+    // Handle skill clicks
+    if (isSkillClickable) {
+      handleSkillRoll();
+      return;
+    }
+    
     if (!itemData || itemData.itemType !== 'weapon') return;
     
     clickCountRef.current += 1;
@@ -1739,12 +1821,22 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
       </>
     );
   } else if (hotbar?.skillName) {
+    // Get skill modifier for display - convert to camelCase key
+    const skillKey = `skill${hotbar.skillName.split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()).join('')}` as keyof typeof character;
+    const skillMod = typeof character[skillKey] === 'number' ? character[skillKey] : 0;
+    
     content = (
       <div className="text-blue-400 font-bold truncate">
         {hotbar.skillName.substring(0, 4)}
       </div>
     );
-    tooltipContent = <p className="font-bold">{hotbar.skillName}</p>;
+    tooltipContent = (
+      <>
+        <p className="font-bold">{hotbar.skillName}</p>
+        <p className="text-sm">Modifier: +{skillMod}</p>
+        <p className="text-xs text-stone-400 mt-1">Click to roll | Hold for modifiers</p>
+      </>
+    );
   }
 
   return (
@@ -1788,7 +1880,7 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
       <Dialog open={showModifierPopup} onOpenChange={setShowModifierPopup}>
         <DialogContent className="w-72 bg-stone-900 border-stone-700 text-stone-200 p-4">
           <DialogHeader>
-            <DialogTitle className="text-amber-500 text-lg">{itemData?.name || 'Roll'} Modifiers</DialogTitle>
+            <DialogTitle className="text-amber-500 text-lg">{isSkillClickable ? hotbar?.skillName : itemData?.name || 'Roll'} Modifiers</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 mt-2">
             {/* Extra Modifier Input */}
@@ -1850,25 +1942,38 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
               <p className="text-xs text-stone-400 italic">Both ADV and DIS cancel out - normal roll</p>
             )}
             
-            {/* Roll Buttons */}
-            <div className="flex gap-2 pt-2">
-              <Button
-                onClick={handleModifiedAttackRoll}
-                className="flex-1 bg-amber-600 hover:bg-amber-500"
-                data-testid="button-modified-attack"
-              >
-                <Sword className="h-4 w-4 mr-1" />
-                Attack
-              </Button>
-              <Button
-                onClick={handleModifiedDamageRoll}
-                className="flex-1 bg-red-600 hover:bg-red-500"
-                data-testid="button-modified-damage"
-              >
-                <Zap className="h-4 w-4 mr-1" />
-                Damage
-              </Button>
-            </div>
+            {/* Roll Buttons - different for skills vs weapons */}
+            {isSkillClickable ? (
+              <div className="pt-2">
+                <Button
+                  onClick={handleModifiedSkillRoll}
+                  className="w-full bg-blue-600 hover:bg-blue-500"
+                  data-testid="button-modified-skill"
+                >
+                  <Dice5 className="h-4 w-4 mr-1" />
+                  Roll {hotbar?.skillName}
+                </Button>
+              </div>
+            ) : (
+              <div className="flex gap-2 pt-2">
+                <Button
+                  onClick={handleModifiedAttackRoll}
+                  className="flex-1 bg-amber-600 hover:bg-amber-500"
+                  data-testid="button-modified-attack"
+                >
+                  <Sword className="h-4 w-4 mr-1" />
+                  Attack
+                </Button>
+                <Button
+                  onClick={handleModifiedDamageRoll}
+                  className="flex-1 bg-red-600 hover:bg-red-500"
+                  data-testid="button-modified-damage"
+                >
+                  <Zap className="h-4 w-4 mr-1" />
+                  Damage
+                </Button>
+              </div>
+            )}
           </div>
         </DialogContent>
       </Dialog>
@@ -1890,6 +1995,22 @@ export function BattleMapHotbars({ character, tokens, targetedTokenId, character
     queryFn: () => api.getItems(character.id),
     enabled: !!character?.id
   });
+
+  // Calculate total DC from equipped armor (same logic as character sheet)
+  const calculateArmorBonus = () => {
+    const armorHotbars = hotbars.filter((h: any) => h.hotbarType === 'armor' && h.itemId);
+    let totalArmorBonus = 0;
+    armorHotbars.forEach((hotbar: any) => {
+      const armorItem = items.find((item: any) => item.id === hotbar.itemId);
+      if (armorItem?.armorBonus) {
+        totalArmorBonus += armorItem.armorBonus;
+      }
+    });
+    return totalArmorBonus;
+  };
+
+  const equippedArmorBonus = calculateArmorBonus();
+  const totalDC = (character?.sizeBonus || 0) + (character?.naturalArmor || 5) + equippedArmorBonus;
 
   // Don't render if no character selected
   if (!character) return null;
@@ -1915,7 +2036,7 @@ export function BattleMapHotbars({ character, tokens, targetedTokenId, character
           <div className="glass-panel p-1.5 md:p-2 rounded border-l-4 border-amber-600 relative overflow-hidden w-32 md:w-44">
             <div className="flex justify-between text-[9px] md:text-xs uppercase tracking-wider font-bold text-amber-200">
               <span>DC</span>
-              <span>{character.naturalArmor ?? 10}</span>
+              <span>{totalDC}</span>
             </div>
           </div>
 
