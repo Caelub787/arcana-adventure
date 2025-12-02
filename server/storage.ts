@@ -14,7 +14,11 @@ import {
   type CharacterPermission, type InsertCharacterPermission,
   type InitiativeEntry, type InsertInitiativeEntry,
   type SystemSpecies, type InsertSystemSpecies,
-  users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, items, spells, characterPermissions, initiativeEntries, systemSpecies
+  type FeatTree, type InsertFeatTree,
+  type Feat, type InsertFeat,
+  type FeatConnection, type InsertFeatConnection,
+  type CharacterFeat, type InsertCharacterFeat,
+  users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, items, spells, characterPermissions, initiativeEntries, systemSpecies, featTrees, feats, featConnections, characterFeats
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql, inArray } from "drizzle-orm";
@@ -135,6 +139,33 @@ export interface IStorage {
   createSystemSpecies(species: InsertSystemSpecies): Promise<SystemSpecies>;
   updateSystemSpecies(id: string, data: Partial<InsertSystemSpecies>): Promise<SystemSpecies | undefined>;
   deleteSystemSpecies(id: string): Promise<void>;
+
+  // Feat Tree operations
+  getFeatTrees(): Promise<FeatTree[]>;
+  getFeatTree(id: string): Promise<FeatTree | undefined>;
+  getFeatTreeByName(name: string): Promise<FeatTree | undefined>;
+  createFeatTree(tree: InsertFeatTree): Promise<FeatTree>;
+  updateFeatTree(id: string, data: Partial<InsertFeatTree>): Promise<FeatTree | undefined>;
+  deleteFeatTree(id: string): Promise<void>;
+
+  // Feat operations
+  getFeats(treeId: string): Promise<Feat[]>;
+  getFeat(id: string): Promise<Feat | undefined>;
+  createFeat(feat: InsertFeat): Promise<Feat>;
+  updateFeat(id: string, data: Partial<InsertFeat>): Promise<Feat | undefined>;
+  deleteFeat(id: string): Promise<void>;
+
+  // Feat Connection operations
+  getFeatConnections(treeId: string): Promise<FeatConnection[]>;
+  createFeatConnection(connection: InsertFeatConnection): Promise<FeatConnection>;
+  deleteFeatConnection(id: string): Promise<void>;
+  deleteFeatConnectionsByFeat(featId: string): Promise<void>;
+
+  // Character Feat operations
+  getCharacterFeats(characterId: string): Promise<CharacterFeat[]>;
+  unlockCharacterFeat(characterId: string, featId: string): Promise<CharacterFeat>;
+  removeCharacterFeat(characterId: string, featId: string): Promise<void>;
+  hasCharacterFeat(characterId: string, featId: string): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -885,6 +916,131 @@ export class DatabaseStorage implements IStorage {
 
   async deleteSystemSpecies(id: string): Promise<void> {
     await db.delete(systemSpecies).where(eq(systemSpecies.id, id));
+  }
+
+  // Feat Tree operations
+  async getFeatTrees(): Promise<FeatTree[]> {
+    return await db.select().from(featTrees).orderBy(featTrees.name);
+  }
+
+  async getFeatTree(id: string): Promise<FeatTree | undefined> {
+    const [tree] = await db.select()
+      .from(featTrees)
+      .where(eq(featTrees.id, id))
+      .limit(1);
+    return tree;
+  }
+
+  async getFeatTreeByName(name: string): Promise<FeatTree | undefined> {
+    const [tree] = await db.select()
+      .from(featTrees)
+      .where(eq(featTrees.name, name))
+      .limit(1);
+    return tree;
+  }
+
+  async createFeatTree(tree: InsertFeatTree): Promise<FeatTree> {
+    const [created] = await db.insert(featTrees).values(tree).returning();
+    return created;
+  }
+
+  async updateFeatTree(id: string, data: Partial<InsertFeatTree>): Promise<FeatTree | undefined> {
+    const [updated] = await db.update(featTrees)
+      .set(data)
+      .where(eq(featTrees.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteFeatTree(id: string): Promise<void> {
+    await db.delete(featTrees).where(eq(featTrees.id, id));
+  }
+
+  // Feat operations
+  async getFeats(treeId: string): Promise<Feat[]> {
+    return await db.select()
+      .from(feats)
+      .where(eq(feats.treeId, treeId))
+      .orderBy(feats.gridY, feats.gridX);
+  }
+
+  async getFeat(id: string): Promise<Feat | undefined> {
+    const [feat] = await db.select()
+      .from(feats)
+      .where(eq(feats.id, id))
+      .limit(1);
+    return feat;
+  }
+
+  async createFeat(feat: InsertFeat): Promise<Feat> {
+    const [created] = await db.insert(feats).values(feat).returning();
+    return created;
+  }
+
+  async updateFeat(id: string, data: Partial<InsertFeat>): Promise<Feat | undefined> {
+    const [updated] = await db.update(feats)
+      .set(data)
+      .where(eq(feats.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteFeat(id: string): Promise<void> {
+    await db.delete(feats).where(eq(feats.id, id));
+  }
+
+  // Feat Connection operations
+  async getFeatConnections(treeId: string): Promise<FeatConnection[]> {
+    return await db.select()
+      .from(featConnections)
+      .where(eq(featConnections.treeId, treeId));
+  }
+
+  async createFeatConnection(connection: InsertFeatConnection): Promise<FeatConnection> {
+    const [created] = await db.insert(featConnections).values(connection).returning();
+    return created;
+  }
+
+  async deleteFeatConnection(id: string): Promise<void> {
+    await db.delete(featConnections).where(eq(featConnections.id, id));
+  }
+
+  async deleteFeatConnectionsByFeat(featId: string): Promise<void> {
+    await db.delete(featConnections)
+      .where(sql`${featConnections.fromFeatId} = ${featId} OR ${featConnections.toFeatId} = ${featId}`);
+  }
+
+  // Character Feat operations
+  async getCharacterFeats(characterId: string): Promise<CharacterFeat[]> {
+    return await db.select()
+      .from(characterFeats)
+      .where(eq(characterFeats.characterId, characterId));
+  }
+
+  async unlockCharacterFeat(characterId: string, featId: string): Promise<CharacterFeat> {
+    const [created] = await db.insert(characterFeats)
+      .values({ characterId, featId })
+      .returning();
+    return created;
+  }
+
+  async removeCharacterFeat(characterId: string, featId: string): Promise<void> {
+    await db.delete(characterFeats)
+      .where(and(
+        eq(characterFeats.characterId, characterId),
+        eq(characterFeats.featId, featId)
+      ));
+  }
+
+  async hasCharacterFeat(characterId: string, featId: string): Promise<boolean> {
+    const [feat] = await db.select()
+      .from(characterFeats)
+      .where(and(
+        eq(characterFeats.characterId, characterId),
+        eq(characterFeats.featId, featId)
+      ))
+      .limit(1);
+    return !!feat;
   }
 }
 
