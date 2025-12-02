@@ -2315,6 +2315,236 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ==================== FEAT TREE ROUTES ====================
+
+  // Get all feat trees (admin)
+  app.get("/api/admin/feat-trees", requireAdmin, async (req, res) => {
+    try {
+      const trees = await storage.getFeatTrees();
+      res.json(trees);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch feat trees" });
+    }
+  });
+
+  // Get a single feat tree with its feats and connections
+  app.get("/api/admin/feat-trees/:id", requireAdmin, async (req, res) => {
+    try {
+      const tree = await storage.getFeatTree(req.params.id);
+      if (!tree) {
+        return res.status(404).json({ error: "Feat tree not found" });
+      }
+      const [featsData, connections] = await Promise.all([
+        storage.getFeats(req.params.id),
+        storage.getFeatConnections(req.params.id)
+      ]);
+      res.json({ tree, feats: featsData, connections });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch feat tree" });
+    }
+  });
+
+  // Create a new feat tree
+  app.post("/api/admin/feat-trees", requireAdmin, async (req, res) => {
+    try {
+      const tree = await storage.createFeatTree(req.body);
+      res.json(tree);
+    } catch (err) {
+      res.status(400).json({ error: "Failed to create feat tree" });
+    }
+  });
+
+  // Update a feat tree
+  app.patch("/api/admin/feat-trees/:id", requireAdmin, async (req, res) => {
+    try {
+      const tree = await storage.getFeatTree(req.params.id);
+      if (!tree) {
+        return res.status(404).json({ error: "Feat tree not found" });
+      }
+      const updated = await storage.updateFeatTree(req.params.id, req.body);
+      res.json(updated);
+    } catch (err) {
+      res.status(400).json({ error: "Failed to update feat tree" });
+    }
+  });
+
+  // Delete a feat tree
+  app.delete("/api/admin/feat-trees/:id", requireAdmin, async (req, res) => {
+    try {
+      const tree = await storage.getFeatTree(req.params.id);
+      if (!tree) {
+        return res.status(404).json({ error: "Feat tree not found" });
+      }
+      await storage.deleteFeatTree(req.params.id);
+      res.json({ success: true });
+    } catch (err) {
+      res.status(400).json({ error: "Failed to delete feat tree" });
+    }
+  });
+
+  // Create a feat within a tree
+  app.post("/api/admin/feat-trees/:treeId/feats", requireAdmin, async (req, res) => {
+    try {
+      const tree = await storage.getFeatTree(req.params.treeId);
+      if (!tree) {
+        return res.status(404).json({ error: "Feat tree not found" });
+      }
+      const feat = await storage.createFeat({ ...req.body, treeId: req.params.treeId });
+      res.json(feat);
+    } catch (err) {
+      res.status(400).json({ error: "Failed to create feat" });
+    }
+  });
+
+  // Update a feat
+  app.patch("/api/admin/feats/:id", requireAdmin, async (req, res) => {
+    try {
+      const feat = await storage.getFeat(req.params.id);
+      if (!feat) {
+        return res.status(404).json({ error: "Feat not found" });
+      }
+      const updated = await storage.updateFeat(req.params.id, req.body);
+      res.json(updated);
+    } catch (err) {
+      res.status(400).json({ error: "Failed to update feat" });
+    }
+  });
+
+  // Delete a feat
+  app.delete("/api/admin/feats/:id", requireAdmin, async (req, res) => {
+    try {
+      const feat = await storage.getFeat(req.params.id);
+      if (!feat) {
+        return res.status(404).json({ error: "Feat not found" });
+      }
+      // Delete connections first, then the feat
+      await storage.deleteFeatConnectionsByFeat(req.params.id);
+      await storage.deleteFeat(req.params.id);
+      res.json({ success: true });
+    } catch (err) {
+      res.status(400).json({ error: "Failed to delete feat" });
+    }
+  });
+
+  // Create a connection between feats
+  app.post("/api/admin/feat-trees/:treeId/connections", requireAdmin, async (req, res) => {
+    try {
+      const tree = await storage.getFeatTree(req.params.treeId);
+      if (!tree) {
+        return res.status(404).json({ error: "Feat tree not found" });
+      }
+      const connection = await storage.createFeatConnection({ 
+        ...req.body, 
+        treeId: req.params.treeId 
+      });
+      res.json(connection);
+    } catch (err) {
+      res.status(400).json({ error: "Failed to create connection" });
+    }
+  });
+
+  // Delete a connection
+  app.delete("/api/admin/feat-connections/:id", requireAdmin, async (req, res) => {
+    try {
+      await storage.deleteFeatConnection(req.params.id);
+      res.json({ success: true });
+    } catch (err) {
+      res.status(400).json({ error: "Failed to delete connection" });
+    }
+  });
+
+  // Public feat tree route (for character sheet)
+  app.get("/api/feat-trees", requireAuth, async (req, res) => {
+    try {
+      const trees = await storage.getFeatTrees();
+      res.json(trees);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch feat trees" });
+    }
+  });
+
+  // Get feat tree by name (for character sheet)
+  app.get("/api/feat-trees/by-name/:name", requireAuth, async (req, res) => {
+    try {
+      const tree = await storage.getFeatTreeByName(req.params.name);
+      if (!tree) {
+        return res.status(404).json({ error: "Feat tree not found" });
+      }
+      const [featsData, connections] = await Promise.all([
+        storage.getFeats(tree.id),
+        storage.getFeatConnections(tree.id)
+      ]);
+      res.json({ tree, feats: featsData, connections });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch feat tree" });
+    }
+  });
+
+  // Character feat routes
+  app.get("/api/characters/:id/feats", requireAuth, async (req, res) => {
+    try {
+      const character = await storage.getCharacter(req.params.id);
+      if (!character) {
+        return res.status(404).json({ error: "Character not found" });
+      }
+      const charFeats = await storage.getCharacterFeats(req.params.id);
+      res.json(charFeats);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch character feats" });
+    }
+  });
+
+  app.post("/api/characters/:id/feats/:featId", requireAuth, async (req, res) => {
+    try {
+      const character = await storage.getCharacter(req.params.id);
+      if (!character) {
+        return res.status(404).json({ error: "Character not found" });
+      }
+      
+      // Check if user has permission to modify this character
+      const isOwner = character.userId === req.session.userId;
+      const campaign = await storage.getCampaign(character.campaignId);
+      const isGM = campaign?.gmUserId === req.session.userId;
+      
+      if (!isOwner && !isGM) {
+        return res.status(403).json({ error: "Not authorized to modify this character" });
+      }
+      
+      const feat = await storage.getFeat(req.params.featId);
+      if (!feat) {
+        return res.status(404).json({ error: "Feat not found" });
+      }
+      
+      const charFeat = await storage.unlockCharacterFeat(req.params.id, req.params.featId);
+      res.json(charFeat);
+    } catch (err) {
+      res.status(400).json({ error: "Failed to unlock feat" });
+    }
+  });
+
+  app.delete("/api/characters/:id/feats/:featId", requireAuth, async (req, res) => {
+    try {
+      const character = await storage.getCharacter(req.params.id);
+      if (!character) {
+        return res.status(404).json({ error: "Character not found" });
+      }
+      
+      // Check if user has permission to modify this character
+      const isOwner = character.userId === req.session.userId;
+      const campaign = await storage.getCampaign(character.campaignId);
+      const isGM = campaign?.gmUserId === req.session.userId;
+      
+      if (!isOwner && !isGM) {
+        return res.status(403).json({ error: "Not authorized to modify this character" });
+      }
+      
+      await storage.removeCharacterFeat(req.params.id, req.params.featId);
+      res.json({ success: true });
+    } catch (err) {
+      res.status(400).json({ error: "Failed to remove feat" });
+    }
+  });
+
   // Campaign template item routes (GM only)
   app.get("/api/campaigns/:campaignId/template-items", requireAuth, async (req, res) => {
     try {
