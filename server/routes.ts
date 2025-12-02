@@ -2315,6 +2315,69 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ==================== FEAT TEMPLATE ROUTES ====================
+
+  // Get all feat templates (admin)
+  app.get("/api/admin/feat-templates", requireAdmin, async (req, res) => {
+    try {
+      const templates = await storage.getFeatTemplates();
+      res.json(templates);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch feat templates" });
+    }
+  });
+
+  // Get a single feat template
+  app.get("/api/admin/feat-templates/:id", requireAdmin, async (req, res) => {
+    try {
+      const template = await storage.getFeatTemplate(req.params.id);
+      if (!template) {
+        return res.status(404).json({ error: "Feat template not found" });
+      }
+      res.json(template);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch feat template" });
+    }
+  });
+
+  // Create a new feat template
+  app.post("/api/admin/feat-templates", requireAdmin, async (req, res) => {
+    try {
+      const template = await storage.createFeatTemplate(req.body);
+      res.json(template);
+    } catch (err) {
+      res.status(400).json({ error: "Failed to create feat template" });
+    }
+  });
+
+  // Update a feat template
+  app.patch("/api/admin/feat-templates/:id", requireAdmin, async (req, res) => {
+    try {
+      const template = await storage.getFeatTemplate(req.params.id);
+      if (!template) {
+        return res.status(404).json({ error: "Feat template not found" });
+      }
+      const updated = await storage.updateFeatTemplate(req.params.id, req.body);
+      res.json(updated);
+    } catch (err) {
+      res.status(400).json({ error: "Failed to update feat template" });
+    }
+  });
+
+  // Delete a feat template
+  app.delete("/api/admin/feat-templates/:id", requireAdmin, async (req, res) => {
+    try {
+      const template = await storage.getFeatTemplate(req.params.id);
+      if (!template) {
+        return res.status(404).json({ error: "Feat template not found" });
+      }
+      await storage.deleteFeatTemplate(req.params.id);
+      res.json({ success: true });
+    } catch (err) {
+      res.status(400).json({ error: "Failed to delete feat template" });
+    }
+  });
+
   // ==================== FEAT TREE ROUTES ====================
 
   // Get all feat trees (admin)

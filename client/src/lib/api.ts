@@ -227,9 +227,21 @@ export interface FeatTree {
   createdAt: string;
 }
 
+export interface FeatTemplate {
+  id: string;
+  name: string;
+  description?: string;
+  tier: number;
+  cost: number;
+  icon?: string;
+  effects?: any;
+  createdAt: string;
+}
+
 export interface Feat {
   id: string;
   treeId: string;
+  templateId?: string;
   name: string;
   description?: string;
   gridX: number;
@@ -633,6 +645,33 @@ class ApiClient {
   async getSpecies(systemName?: string): Promise<SystemSpecies[]> {
     const params = systemName ? `?system=${encodeURIComponent(systemName)}` : '';
     return this.request(`/species${params}`);
+  }
+
+  // Admin Feat Templates
+  async getFeatTemplates(): Promise<FeatTemplate[]> {
+    return this.request('/admin/feat-templates');
+  }
+
+  async getFeatTemplate(id: string): Promise<FeatTemplate> {
+    return this.request(`/admin/feat-templates/${id}`);
+  }
+
+  async createFeatTemplate(template: Partial<FeatTemplate>): Promise<FeatTemplate> {
+    return this.request('/admin/feat-templates', {
+      method: 'POST',
+      body: JSON.stringify(template),
+    });
+  }
+
+  async updateFeatTemplate(id: string, data: Partial<FeatTemplate>): Promise<FeatTemplate> {
+    return this.request(`/admin/feat-templates/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteFeatTemplate(id: string): Promise<void> {
+    return this.request(`/admin/feat-templates/${id}`, { method: 'DELETE' });
   }
 
   // Admin Feat Trees
