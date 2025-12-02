@@ -66,13 +66,28 @@ function RollCard({ notification, onComplete }: { notification: RollNotification
   const isNat20 = notification.dieType === 'd20' && notification.result === 20;
   const isNat1 = notification.dieType === 'd20' && notification.result === 1;
   
+  // Handle double-click to dismiss
+  const handleDoubleClick = () => {
+    onComplete(notification.id);
+  };
+  
   return (
     <motion.div
       initial={{ opacity: 0, y: -50, scale: 0.9 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
-      exit={{ opacity: 0, y: -30, scale: 0.95 }}
+      exit={{ opacity: 0, x: 100, scale: 0.95 }}
       transition={{ type: 'spring', damping: 20, stiffness: 300 }}
-      className="pointer-events-auto"
+      className="pointer-events-auto cursor-pointer select-none"
+      onDoubleClick={handleDoubleClick}
+      drag="x"
+      dragConstraints={{ left: 0, right: 0 }}
+      dragElastic={0.5}
+      onDragEnd={(_, info) => {
+        if (Math.abs(info.offset.x) > 100 || Math.abs(info.velocity.x) > 500) {
+          onComplete(notification.id);
+        }
+      }}
+      whileTap={{ scale: 0.98 }}
     >
       <div className={`
         relative overflow-hidden rounded-xl shadow-2xl
