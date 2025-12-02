@@ -1031,6 +1031,13 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
   const clickCountRef = useRef(0);
   const queryClient = useQueryClient();
   
+  // Long-press modifier popup state
+  const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const [showModifierPopup, setShowModifierPopup] = useState(false);
+  const [extraModifier, setExtraModifier] = useState(0);
+  const [hasAdvantage, setHasAdvantage] = useState(false);
+  const [hasDisadvantage, setHasDisadvantage] = useState(false);
+  
   // Fetch item data if itemId exists (same pattern as HotbarSlot)
   const { data: itemData } = useQuery({
     queryKey: ['item', hotbar?.itemId],
@@ -1199,7 +1206,8 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
   };
 
   // Handle attack roll (1d20 + attribute modifier)
-  const handleAttackRoll = async () => {
+  // Options allow for extra modifiers and advantage/disadvantage from the popup
+  const handleAttackRoll = async (options?: { extraMod?: number; advantage?: boolean; disadvantage?: boolean }) => {
     if (!itemData || itemData.itemType !== 'weapon') return;
     
     // Check if ranged weapon requires ammunition
@@ -1223,21 +1231,49 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     
     const attrName = itemData.attribute || 'might';
     const attrMod = getAttributeModifier(attrName);
-    const roll = Math.floor(Math.random() * 20) + 1;
-    const total = roll + attrMod;
+    const extraMod = options?.extraMod || 0;
+    const totalMod = attrMod + extraMod;
     
-    // Build calculation breakdown like "1d20 = 11 + Might (2)"
+    // Determine advantage type (if both, they cancel out)
+    const hasAdv = options?.advantage && !options?.disadvantage;
+    const hasDis = options?.disadvantage && !options?.advantage;
+    
+    // Roll dice - with advantage/disadvantage, roll 2d20 and take highest/lowest
+    let roll: number;
+    let roll1: number;
+    let roll2: number | undefined;
+    let rollText: string;
+    
+    if (hasAdv || hasDis) {
+      roll1 = Math.floor(Math.random() * 20) + 1;
+      roll2 = Math.floor(Math.random() * 20) + 1;
+      roll = hasAdv ? Math.max(roll1, roll2) : Math.min(roll1, roll2);
+      const keptLabel = hasAdv ? 'ADV' : 'DIS';
+      rollText = `2d20${keptLabel === 'ADV' ? 'kh' : 'kl'} [${roll1}, ${roll2}] = ${roll}`;
+    } else {
+      roll1 = Math.floor(Math.random() * 20) + 1;
+      roll = roll1;
+      rollText = `1d20 = ${roll}`;
+    }
+    
+    const total = roll + totalMod;
+    
+    // Build calculation breakdown
     const attrDisplayName = attrName.charAt(0).toUpperCase() + attrName.slice(1);
-    const calculationBreakdown = attrMod !== 0 
-      ? `1d20 = ${roll} + ${attrDisplayName} (${attrMod >= 0 ? '+' : ''}${attrMod})`
-      : `1d20 = ${roll}`;
+    const modParts: string[] = [];
+    if (attrMod !== 0) modParts.push(`${attrDisplayName} (${attrMod >= 0 ? '+' : ''}${attrMod})`);
+    if (extraMod !== 0) modParts.push(`Extra (${extraMod >= 0 ? '+' : ''}${extraMod})`);
+    
+    const calculationBreakdown = modParts.length > 0 
+      ? `${rollText} + ${modParts.join(' + ')}`
+      : rollText;
     
     triggerRollNotification({
       type: 'attack',
       dieType: 'd20',
-      label: `${itemData.name} Attack`,
+      label: `${itemData.name} Attack${hasAdv ? ' (ADV)' : hasDis ? ' (DIS)' : ''}`,
       result: roll,
-      modifier: attrMod,
+      modifier: totalMod,
       total,
       username: character.name || 'Unknown',
       characterName: character.name,
@@ -1246,19 +1282,21 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     
     // Send roll to chat
     if (character.campaignId) {
-      const chatText = `${itemData.name} Attack: ${calculationBreakdown} = ${total}`;
+      const chatText = `${itemData.name} Attack${hasAdv ? ' (ADV)' : hasDis ? ' (DIS)' : ''}: ${calculationBreakdown} = ${total}`;
       gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', chatText, 'roll');
     }
     
-    // Check for ammunition break (10% chance) for ranged weapons
+    // Check for ammunition break for ranged weapons
     if (ammo) {
       await checkAmmunitionBreak(ammo);
     }
   };
 
   // Handle damage roll (weapon damage dice + mod, or ammunition damage for ranged weapons)
-  const handleDamageRoll = () => {
+  const handleDamageRoll = (options?: { extraMod?: number }) => {
     if (!itemData) return;
+    
+    const extraMod = options?.extraMod || 0;
     
     // For ranged weapons, use ammunition damage + both weapon mod and ammo mod
     if (isRangedWeapon(itemData)) {
@@ -1280,13 +1318,14 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
       const { result, dieType } = rollDice(ammo.damage);
       const weaponMod = itemData.mod || 0;
       const ammoMod = ammo.mod || 0;
-      const totalMod = weaponMod + ammoMod;
+      const totalMod = weaponMod + ammoMod + extraMod;
       const total = result + totalMod;
       
       // Build calculation breakdown
       const modParts: string[] = [];
       if (weaponMod !== 0) modParts.push(`${itemData.name} (${weaponMod >= 0 ? '+' : ''}${weaponMod})`);
       if (ammoMod !== 0) modParts.push(`${ammo.name} (${ammoMod >= 0 ? '+' : ''}${ammoMod})`);
+      if (extraMod !== 0) modParts.push(`Extra (${extraMod >= 0 ? '+' : ''}${extraMod})`);
       const calculationBreakdown = modParts.length > 0
         ? `${ammo.damage} = ${result} + ${modParts.join(' + ')}`
         : `${ammo.damage} = ${result}`;
@@ -1315,12 +1354,15 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     if (!itemData.damage) return;
     
     const { result, dieType } = rollDice(itemData.damage);
-    const mod = itemData.mod || 0;
+    const mod = (itemData.mod || 0) + extraMod;
     const total = result + mod;
     
     // Build calculation breakdown
-    const calculationBreakdown = mod !== 0 
-      ? `${itemData.damage} = ${result} + Mod (${mod >= 0 ? '+' : ''}${mod})`
+    const modParts: string[] = [];
+    if (itemData.mod) modParts.push(`Mod (${itemData.mod >= 0 ? '+' : ''}${itemData.mod})`);
+    if (extraMod !== 0) modParts.push(`Extra (${extraMod >= 0 ? '+' : ''}${extraMod})`);
+    const calculationBreakdown = modParts.length > 0
+      ? `${itemData.damage} = ${result} + ${modParts.join(' + ')}`
       : `${itemData.damage} = ${result}`;
     
     triggerRollNotification({
@@ -1341,6 +1383,53 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
       gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', chatText, 'roll');
     }
   };
+
+  // Long-press handlers for opening modifier popup
+  const handlePointerDown = () => {
+    if (!isClickable) return;
+    longPressTimerRef.current = setTimeout(() => {
+      setShowModifierPopup(true);
+    }, 500); // 500ms hold to open popup
+  };
+  
+  const handlePointerUp = () => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  };
+  
+  const handlePointerLeave = () => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  };
+  
+  // Execute roll from modifier popup
+  const handleModifiedAttackRoll = async () => {
+    await handleAttackRoll({ 
+      extraMod: extraModifier, 
+      advantage: hasAdvantage, 
+      disadvantage: hasDisadvantage 
+    });
+    // Reset and close popup
+    setShowModifierPopup(false);
+    setExtraModifier(0);
+    setHasAdvantage(false);
+    setHasDisadvantage(false);
+  };
+  
+  const handleModifiedDamageRoll = () => {
+    handleDamageRoll({ extraMod: extraModifier });
+    // Reset and close popup
+    setShowModifierPopup(false);
+    setExtraModifier(0);
+    setHasAdvantage(false);
+    setHasDisadvantage(false);
+  };
+  
+  const isClickable = itemData && itemData.itemType === 'weapon';
 
   // Handle click with single/double click detection
   const handleClick = () => {
@@ -1365,7 +1454,6 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
   // Determine what to display
   let content = null;
   let tooltipContent = null;
-  const isClickable = itemData && itemData.itemType === 'weapon';
 
   if (hotbar?.spellId && spellData) {
     content = spellData.image ? (
@@ -1451,35 +1539,131 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
   }
 
   return (
-    <TooltipProvider>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <div
-            onClick={isClickable ? handleClick : undefined}
-            className={`
-              w-11 h-11 md:w-16 md:h-16 rounded border flex items-center justify-center text-[9px] md:text-[12px]
-              ${content 
-                ? `bg-stone-800 border-${color}-600/50 hover:border-${color}-500` 
-                : 'bg-stone-900/50 border-stone-700 border-dashed'
-              }
-              ${isClickable ? 'cursor-pointer hover:bg-stone-700/50 active:bg-stone-600/50' : ''}
-            `}
-            data-testid={`battlemap-hotbar-${type}-${slotIndex}`}
-          >
-            {content ? (
-              <div className="text-center w-full h-full flex items-center justify-center">{content}</div>
-            ) : (
-              <span className="text-[6px] text-stone-600">{slotIndex + 1}</span>
+    <>
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div
+              onClick={isClickable ? handleClick : undefined}
+              onPointerDown={handlePointerDown}
+              onPointerUp={handlePointerUp}
+              onPointerLeave={handlePointerLeave}
+              onContextMenu={(e) => { e.preventDefault(); if (isClickable) setShowModifierPopup(true); }}
+              className={`
+                w-11 h-11 md:w-16 md:h-16 rounded border flex items-center justify-center text-[9px] md:text-[12px]
+                ${content 
+                  ? `bg-stone-800 border-${color}-600/50 hover:border-${color}-500` 
+                  : 'bg-stone-900/50 border-stone-700 border-dashed'
+                }
+                ${isClickable ? 'cursor-pointer hover:bg-stone-700/50 active:bg-stone-600/50' : ''}
+              `}
+              data-testid={`battlemap-hotbar-${type}-${slotIndex}`}
+            >
+              {content ? (
+                <div className="text-center w-full h-full flex items-center justify-center">{content}</div>
+              ) : (
+                <span className="text-[6px] text-stone-600">{slotIndex + 1}</span>
+              )}
+            </div>
+          </TooltipTrigger>
+          {tooltipContent && (
+            <TooltipContent>
+              {tooltipContent}
+              {isClickable && <p className="text-xs text-stone-400 mt-1">Hold for modifiers</p>}
+            </TooltipContent>
+          )}
+        </Tooltip>
+      </TooltipProvider>
+      
+      {/* Modifier Popup Dialog */}
+      <Dialog open={showModifierPopup} onOpenChange={setShowModifierPopup}>
+        <DialogContent className="w-72 bg-stone-900 border-stone-700 text-stone-200 p-4">
+          <DialogHeader>
+            <DialogTitle className="text-amber-500 text-lg">{itemData?.name || 'Roll'} Modifiers</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 mt-2">
+            {/* Extra Modifier Input */}
+            <div className="flex items-center gap-3">
+              <label className="text-sm text-stone-300 w-24">Extra Mod:</label>
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 w-8 p-0 border-stone-600"
+                  onClick={() => setExtraModifier(prev => prev - 1)}
+                  data-testid="button-modifier-decrease"
+                >
+                  <Minus className="h-4 w-4" />
+                </Button>
+                <Input
+                  type="number"
+                  value={extraModifier}
+                  onChange={(e) => setExtraModifier(parseInt(e.target.value) || 0)}
+                  className="w-16 h-8 text-center bg-stone-800 border-stone-600"
+                  data-testid="input-extra-modifier"
+                />
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 w-8 p-0 border-stone-600"
+                  onClick={() => setExtraModifier(prev => prev + 1)}
+                  data-testid="button-modifier-increase"
+                >
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+            
+            {/* ADV/DIS Checkboxes */}
+            <div className="flex items-center gap-6">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <Checkbox
+                  checked={hasAdvantage}
+                  onCheckedChange={(checked) => setHasAdvantage(checked === true)}
+                  className="border-green-600 data-[state=checked]:bg-green-600"
+                  data-testid="checkbox-advantage"
+                />
+                <span className="text-sm text-green-400 font-medium">ADV</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <Checkbox
+                  checked={hasDisadvantage}
+                  onCheckedChange={(checked) => setHasDisadvantage(checked === true)}
+                  className="border-red-600 data-[state=checked]:bg-red-600"
+                  data-testid="checkbox-disadvantage"
+                />
+                <span className="text-sm text-red-400 font-medium">DIS</span>
+              </label>
+            </div>
+            
+            {/* Note when both are checked */}
+            {hasAdvantage && hasDisadvantage && (
+              <p className="text-xs text-stone-400 italic">Both ADV and DIS cancel out - normal roll</p>
             )}
+            
+            {/* Roll Buttons */}
+            <div className="flex gap-2 pt-2">
+              <Button
+                onClick={handleModifiedAttackRoll}
+                className="flex-1 bg-amber-600 hover:bg-amber-500"
+                data-testid="button-modified-attack"
+              >
+                <Sword className="h-4 w-4 mr-1" />
+                Attack
+              </Button>
+              <Button
+                onClick={handleModifiedDamageRoll}
+                className="flex-1 bg-red-600 hover:bg-red-500"
+                data-testid="button-modified-damage"
+              >
+                <Zap className="h-4 w-4 mr-1" />
+                Damage
+              </Button>
+            </div>
           </div>
-        </TooltipTrigger>
-        {tooltipContent && (
-          <TooltipContent>
-            {tooltipContent}
-          </TooltipContent>
-        )}
-      </Tooltip>
-    </TooltipProvider>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
@@ -1503,6 +1687,7 @@ export function BattleMapHotbars({ character }: BattleMapHotbarsProps) {
 
   const hotbarTypes = [
     { type: 'weapons', icon: Sword, color: 'amber', maxSlots: 3 },
+    { type: 'armor', icon: Shield, color: 'cyan', maxSlots: 5 },
     { type: 'magic', icon: Sparkles, color: 'purple', maxSlots: 5 },
     { type: 'skills', icon: Dice5, color: 'blue', maxSlots: 5 },
     { type: 'consumables', icon: Heart, color: 'green', maxSlots: 5 },
@@ -1558,6 +1743,7 @@ export function BattleMapHotbars({ character }: BattleMapHotbarsProps) {
               const isActive = activeHotbar === type;
               const colorClasses: Record<string, string> = {
                 amber: isActive ? 'bg-amber-600 border-amber-400 text-amber-100' : 'bg-stone-800/80 border-stone-600 text-amber-400 hover:bg-amber-900/50',
+                cyan: isActive ? 'bg-cyan-600 border-cyan-400 text-cyan-100' : 'bg-stone-800/80 border-stone-600 text-cyan-400 hover:bg-cyan-900/50',
                 purple: isActive ? 'bg-purple-600 border-purple-400 text-purple-100' : 'bg-stone-800/80 border-stone-600 text-purple-400 hover:bg-purple-900/50',
                 blue: isActive ? 'bg-blue-600 border-blue-400 text-blue-100' : 'bg-stone-800/80 border-stone-600 text-blue-400 hover:bg-blue-900/50',
                 green: isActive ? 'bg-green-600 border-green-400 text-green-100' : 'bg-stone-800/80 border-stone-600 text-green-400 hover:bg-green-900/50',
