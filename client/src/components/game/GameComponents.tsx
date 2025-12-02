@@ -1558,8 +1558,31 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
   };
 
   // Apply damage to target character with armor damage reduction
-  const applyDamageToTarget = async (damageAmount: number, damageType: string | null, targetCharacter: any): Promise<{ finalDamage: number; reduction: number; armorName: string | null }> => {
-    if (!targetCharacter?.id) return { finalDamage: damageAmount, reduction: 0, armorName: null };
+  // If damageType is "Health", this heals instead of damaging
+  const applyDamageToTarget = async (damageAmount: number, damageType: string | null, targetCharacter: any): Promise<{ finalDamage: number; reduction: number; armorName: string | null; isHealing: boolean }> => {
+    if (!targetCharacter?.id) return { finalDamage: damageAmount, reduction: 0, armorName: null, isHealing: false };
+    
+    // Check if this is healing (Health damage type)
+    const isHealing = damageType === 'Health';
+    
+    // For healing, no armor reduction applies
+    if (isHealing) {
+      try {
+        const freshCharacterData = await api.getCharacter(targetCharacter.id);
+        if (freshCharacterData) {
+          const currentHp = freshCharacterData.hp || 0;
+          const maxHp = freshCharacterData.maxHp || currentHp;
+          const newHp = Math.min(maxHp, currentHp + damageAmount);
+          console.log('[Healing] Applying', damageAmount, 'healing to', targetCharacter.name, '- HP:', currentHp, '->', newHp);
+          await api.updateCharacter(targetCharacter.id, { hp: newHp });
+          queryClient.invalidateQueries({ queryKey: ['characters'] });
+          gameWs.sendCharacterUpdate(targetCharacter.id);
+        }
+      } catch (error) {
+        console.error('Failed to update target HP (healing):', error);
+      }
+      return { finalDamage: damageAmount, reduction: 0, armorName: null, isHealing: true };
+    }
     
     // Fetch target's items to check for equipped armor with matching damage reduction
     let reduction = 0;
@@ -1610,7 +1633,7 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
       }
     }
     
-    return { finalDamage, reduction, armorName };
+    return { finalDamage, reduction, armorName, isHealing: false };
   };
 
   // Handle damage roll (weapon damage dice + mod, or ammunition damage for ranged weapons)
@@ -1658,10 +1681,12 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
       let finalTotal = total;
       
       if (targetedTokenId && targetData?.character) {
-        const { finalDamage, reduction, armorName } = await applyDamageToTarget(total, damageType, targetData.character);
+        const { finalDamage, reduction, armorName, isHealing } = await applyDamageToTarget(total, damageType, targetData.character);
         finalTotal = finalDamage;
         
-        if (reduction > 0) {
+        if (isHealing) {
+          damageLabel = `${itemData.name} Healing → ${targetData.character.name} (+${finalDamage} HP)`;
+        } else if (reduction > 0) {
           calculationBreakdown += ` - ${reduction} (${armorName || 'Armor'})`;
           damageLabel = `${itemData.name} Damage → ${targetData.character.name} (-${finalDamage} HP)`;
         } else {
@@ -1683,9 +1708,10 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
       
       // Send roll to chat
       if (character.campaignId) {
+        const isHealing = damageType === 'Health';
         const chatText = targetedTokenId && targetData?.character
-          ? `${itemData.name} Damage → ${targetData.character.name}: ${calculationBreakdown} = ${finalTotal} HP`
-          : `${itemData.name} Damage: ${calculationBreakdown} = ${total}`;
+          ? `${itemData.name} ${isHealing ? 'Healing' : 'Damage'} → ${targetData.character.name}: ${calculationBreakdown} = ${finalTotal} HP`
+          : `${itemData.name} ${isHealing ? 'Healing' : 'Damage'}: ${calculationBreakdown} = ${total}`;
         gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', chatText, 'roll');
       }
       return;
@@ -1712,10 +1738,12 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     let finalTotal = total;
     
     if (targetedTokenId && targetData?.character) {
-      const { finalDamage, reduction, armorName } = await applyDamageToTarget(total, damageType, targetData.character);
+      const { finalDamage, reduction, armorName, isHealing } = await applyDamageToTarget(total, damageType, targetData.character);
       finalTotal = finalDamage;
       
-      if (reduction > 0) {
+      if (isHealing) {
+        damageLabel = `${itemData.name} Healing → ${targetData.character.name} (+${finalDamage} HP)`;
+      } else if (reduction > 0) {
         calculationBreakdown += ` - ${reduction} (${armorName || 'Armor'})`;
         damageLabel = `${itemData.name} Damage → ${targetData.character.name} (-${finalDamage} HP)`;
       } else {
@@ -1737,9 +1765,10 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     
     // Send roll to chat
     if (character.campaignId) {
+      const isHealing = damageType === 'Health';
       const chatText = targetedTokenId && targetData?.character
-        ? `${itemData.name} Damage → ${targetData.character.name}: ${calculationBreakdown} = ${finalTotal} HP`
-        : `${itemData.name} Damage: ${calculationBreakdown} = ${total}`;
+        ? `${itemData.name} ${isHealing ? 'Healing' : 'Damage'} → ${targetData.character.name}: ${calculationBreakdown} = ${finalTotal} HP`
+        : `${itemData.name} ${isHealing ? 'Healing' : 'Damage'}: ${calculationBreakdown} = ${total}`;
       gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', chatText, 'roll');
     }
   };
@@ -1960,8 +1989,8 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     }
   };
 
-  // Handle spell damage roll (damage dice + mod)
-  const handleSpellDamageRoll = () => {
+  // Handle spell damage roll (damage dice + mod) - with target application
+  const handleSpellDamageRoll = async () => {
     if (!spellData) return;
     
     const isHealing = spellData.damageType === 'Health';
@@ -1981,16 +2010,34 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
       return;
     }
     
+    const targetData = getTargetData();
+    
     const { result, dieType } = rollDice(diceNotation);
     const mod = spellData.mod || 0;
     const total = result + mod;
     
-    const calculationBreakdown = mod !== 0 
+    let calculationBreakdown = mod !== 0 
       ? `${diceNotation} = ${result} + Mod (${mod >= 0 ? '+' : ''}${mod})`
       : `${diceNotation} = ${result}`;
     
-    const label = isHealing ? `${spellData.name} Healing` : `${spellData.name} Damage`;
+    let label = isHealing ? `${spellData.name} Healing` : `${spellData.name} Damage`;
     const damageTypeDisplay = spellData.damageType ? ` (${spellData.damageType})` : '';
+    let finalTotal = total;
+    
+    // Apply damage/healing to target if one is selected
+    if (targetedTokenId && targetData?.character) {
+      const { finalDamage, reduction, armorName, isHealing: wasHealing } = await applyDamageToTarget(total, spellData.damageType || null, targetData.character);
+      finalTotal = finalDamage;
+      
+      if (wasHealing) {
+        label = `${spellData.name} Healing → ${targetData.character.name} (+${finalDamage} HP)`;
+      } else if (reduction > 0) {
+        calculationBreakdown += ` - ${reduction} (${armorName || 'Armor'})`;
+        label = `${spellData.name} Damage → ${targetData.character.name} (-${finalDamage} HP)`;
+      } else {
+        label = `${spellData.name} Damage → ${targetData.character.name} (-${finalDamage} HP)`;
+      }
+    }
     
     triggerRollNotification({
       type: 'attack',
@@ -1998,14 +2045,16 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
       label,
       result,
       modifier: mod,
-      total,
+      total: finalTotal,
       username: character.name || 'Unknown',
       characterName: character.name,
       calculationBreakdown,
     });
     
     if (character.campaignId) {
-      const chatText = `${label}: ${calculationBreakdown} = ${total}${damageTypeDisplay}`;
+      const chatText = targetedTokenId && targetData?.character
+        ? `${label}: ${calculationBreakdown} = ${finalTotal}${damageTypeDisplay}`
+        : `${isHealing ? `${spellData.name} Healing` : `${spellData.name} Damage`}: ${calculationBreakdown} = ${total}${damageTypeDisplay}`;
       gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', chatText, 'roll');
     }
   };
