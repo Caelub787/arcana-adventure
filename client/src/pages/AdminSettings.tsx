@@ -80,6 +80,12 @@ export default function AdminSettings() {
     enabled: isAdmin && currentView === 'spells',
   });
 
+  const { data: allFeatTrees = [] } = useQuery({
+    queryKey: ['feat-trees'],
+    queryFn: () => api.getFeatTrees(),
+    enabled: isAdmin,
+  });
+
   const createItemMutation = useMutation({
     mutationFn: (item: Partial<Item>) => api.createSystemItem(item),
     onSuccess: () => {
@@ -349,6 +355,7 @@ export default function AdminSettings() {
           onOpenChange={setShowAddSpecies}
           onSave={(data) => createSpeciesMutation.mutate(data)}
           isLoading={createSpeciesMutation.isPending}
+          featTrees={allFeatTrees}
         />
 
         {editingSpecies && (
@@ -358,6 +365,7 @@ export default function AdminSettings() {
             onSave={(data) => updateSpeciesMutation.mutate({ id: editingSpecies.id, data })}
             initialData={editingSpecies}
             isLoading={updateSpeciesMutation.isPending}
+            featTrees={allFeatTrees}
           />
         )}
 
@@ -2574,6 +2582,7 @@ interface SpeciesFormDialogProps {
   onSave: (data: Partial<SystemSpecies>) => void;
   initialData?: SystemSpecies;
   isLoading?: boolean;
+  featTrees?: FeatTree[];
 }
 
 // Calculate size bonus based on size
@@ -2589,7 +2598,7 @@ const getSizeBonusFromSize = (size: string): number => {
   return sizeBonusMap[size] ?? 0;
 };
 
-function SpeciesFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: SpeciesFormDialogProps) {
+function SpeciesFormDialog({ open, onOpenChange, onSave, initialData, isLoading, featTrees = [] }: SpeciesFormDialogProps) {
   const [formData, setFormData] = useState<{
     name: string;
     description: string;
@@ -2827,14 +2836,23 @@ function SpeciesFormDialog({ open, onOpenChange, onSave, initialData, isLoading 
               </div>
 
               <div className="col-span-2">
-                <Label>Feat Tree (Reference)</Label>
-                <Input
-                  value={formData.featTree}
-                  onChange={(e) => setFormData({ ...formData, featTree: e.target.value })}
-                  placeholder="e.g., Versatile, Draconic Heritage"
-                  className="bg-stone-800 border-stone-700"
-                  data-testid="input-species-feattree"
-                />
+                <Label>Feat Tree</Label>
+                <Select 
+                  value={formData.featTree || "_none"} 
+                  onValueChange={(value) => setFormData({ ...formData, featTree: value === "_none" ? "" : value })}
+                >
+                  <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-species-feattree">
+                    <SelectValue placeholder="Select a feat tree..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="_none">None</SelectItem>
+                    {featTrees.map((tree) => (
+                      <SelectItem key={tree.id} value={tree.id}>
+                        {tree.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
           </div>
