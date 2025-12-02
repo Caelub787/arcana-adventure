@@ -38,7 +38,8 @@ Preferred communication style: Simple, everyday language.
     - `skill_bonus`: Adds to skill values (target: `skillAgility`, `skillArcana`, `skillStealth`, etc.)
   - **Visual Bonus Indicators**: Star icons with purple highlighting show which stats are feat-enhanced. Breakdowns display feat bonuses separately from base values.
   - **Character Sheet Integration**: Clickable feat tree label opens a dialog viewer showing the grid layout with unlocked feats highlighted in green and locked feats grayed out. Prerequisites are validated before allowing unlock.
-  - **Database Tables**: `feat_trees`, `feats`, `feat_connections`, `character_feats` for storing tree definitions and character unlock progress.
+  - **Feat Template System**: Reusable feat definitions that can be shared across multiple feat trees. Templates store name, description, tier, cost, and effects. Admin can select "From Library" when creating a feat to pre-fill from a template, and "Save as Template" to create new templates from existing feats. Feats can optionally reference a templateId linking to the source template.
+  - **Database Tables**: `feat_templates`, `feat_trees`, `feats` (with optional `templateId`), `feat_connections`, `character_feats` for storing templates, tree definitions, and character unlock progress.
 
 ### Backend
 - **Technology Stack**: Express.js with TypeScript, `express-session` for session management.

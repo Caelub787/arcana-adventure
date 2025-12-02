@@ -1,7 +1,7 @@
 import { useState, useRef, useMemo, useCallback, useEffect } from 'react';
 import { useLocation } from 'wouter';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { api, type Item, type SystemSpecies, type FeatTree, type Feat, type FeatConnection, type FeatTreeWithData } from '@/lib/api';
+import { api, type Item, type SystemSpecies, type FeatTree, type Feat, type FeatConnection, type FeatTreeWithData, type FeatTemplate } from '@/lib/api';
 import { useAuth } from '@/lib/AuthContext';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { Button } from '@/components/ui/button';
@@ -594,6 +594,8 @@ function FeatTreesView() {
   const [showFeatEditor, setShowFeatEditor] = useState(false);
   const [editingFeat, setEditingFeat] = useState<Feat | null>(null);
   const [connectingFrom, setConnectingFrom] = useState<string | null>(null);
+  const [showSaveAsTemplate, setShowSaveAsTemplate] = useState(false);
+  const [featToSaveAsTemplate, setFeatToSaveAsTemplate] = useState<Partial<Feat> | null>(null);
 
   const { data: featTrees = [], isLoading: treesLoading } = useQuery({
     queryKey: ['feat-trees'],
@@ -604,6 +606,35 @@ function FeatTreesView() {
     queryKey: ['feat-tree', selectedTreeId],
     queryFn: () => selectedTreeId ? api.getFeatTree(selectedTreeId) : null,
     enabled: !!selectedTreeId,
+  });
+
+  const { data: featTemplates = [] } = useQuery({
+    queryKey: ['feat-templates'],
+    queryFn: () => api.getFeatTemplates(),
+  });
+
+  const createTemplateMutation = useMutation({
+    mutationFn: (template: Partial<FeatTemplate>) => api.createFeatTemplate(template),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['feat-templates'] });
+      setShowSaveAsTemplate(false);
+      setFeatToSaveAsTemplate(null);
+      toast({ title: 'Success', description: 'Feat template created' });
+    },
+    onError: (err: any) => {
+      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+    },
+  });
+
+  const deleteTemplateMutation = useMutation({
+    mutationFn: (id: string) => api.deleteFeatTemplate(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['feat-templates'] });
+      toast({ title: 'Success', description: 'Template deleted' });
+    },
+    onError: (err: any) => {
+      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+    },
   });
 
   const createTreeMutation = useMutation({
@@ -1038,6 +1069,22 @@ function FeatTreesView() {
         }}
         initialData={editingFeat}
         isLoading={createFeatMutation.isPending || updateFeatMutation.isPending}
+        featTemplates={featTemplates}
+        onSaveAsTemplate={(feat) => {
+          setFeatToSaveAsTemplate(feat);
+          setShowSaveAsTemplate(true);
+        }}
+      />
+
+      <SaveAsTemplateDialog
+        open={showSaveAsTemplate}
+        onOpenChange={(open) => {
+          setShowSaveAsTemplate(open);
+          if (!open) setFeatToSaveAsTemplate(null);
+        }}
+        feat={featToSaveAsTemplate}
+        onSave={(template) => createTemplateMutation.mutate(template)}
+        isLoading={createTemplateMutation.isPending}
       />
     </Card>
   );
@@ -1157,9 +1204,12 @@ interface FeatFormDialogProps {
   onSave: (data: Partial<Feat>) => void;
   initialData?: Feat | null;
   isLoading?: boolean;
+  featTemplates?: FeatTemplate[];
+  onSaveAsTemplate?: (feat: Partial<Feat>) => void;
 }
 
-function FeatFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: FeatFormDialogProps) {
+function FeatFormDialog({ open, onOpenChange, onSave, initialData, isLoading, featTemplates = [], onSaveAsTemplate }: FeatFormDialogProps) {
+  const [showTemplateSelector, setShowTemplateSelector] = useState(false);
   const [formData, setFormData] = useState({
     name: initialData?.name || '',
     description: initialData?.description || '',
@@ -1230,10 +1280,63 @@ function FeatFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="bg-stone-900 border-stone-700 max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="text-purple-500">
+          <DialogTitle className="text-purple-500 flex items-center gap-2">
             {initialData?.id ? 'Edit Feat' : 'Create Feat'}
+            {featTemplates.length > 0 && !initialData?.id && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setShowTemplateSelector(!showTemplateSelector)}
+                className="ml-auto h-7 text-xs"
+              >
+                <Library className="h-3 w-3 mr-1" />
+                From Library
+              </Button>
+            )}
           </DialogTitle>
         </DialogHeader>
+
+        {showTemplateSelector && featTemplates.length > 0 && (
+          <div className="p-3 bg-purple-900/30 border border-purple-600/50 rounded mb-2">
+            <Label className="text-xs text-purple-400 mb-2 block">Select a template to pre-fill:</Label>
+            <ScrollArea className="h-32">
+              <div className="space-y-1">
+                {featTemplates.map((template) => (
+                  <Button
+                    key={template.id}
+                    variant="ghost"
+                    className="w-full justify-start text-left h-auto py-2"
+                    onClick={() => {
+                      setFormData({
+                        ...formData,
+                        name: template.name,
+                        description: template.description || '',
+                        tier: template.tier,
+                        cost: template.cost,
+                        icon: template.icon || '',
+                        effects: template.effects || [],
+                      });
+                      setShowTemplateSelector(false);
+                    }}
+                  >
+                    <div className="flex flex-col">
+                      <span className="font-medium">{template.name}</span>
+                      {template.description && (
+                        <span className="text-xs text-stone-400 truncate max-w-[250px]">
+                          {template.description}
+                        </span>
+                      )}
+                    </div>
+                    <Badge variant="secondary" className="ml-auto text-xs">
+                      Tier {template.tier}
+                    </Badge>
+                  </Button>
+                ))}
+              </div>
+            </ScrollArea>
+          </div>
+        )}
+
         <div className="space-y-4">
           <div>
             <Label>Name</Label>
@@ -1346,14 +1449,99 @@ function FeatFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
             </div>
           </div>
         </div>
+        <DialogFooter className="flex-col sm:flex-row gap-2">
+          <div className="flex gap-2 mr-auto">
+            {onSaveAsTemplate && formData.name.trim() && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => onSaveAsTemplate(formData)}
+                className="text-purple-400 border-purple-600"
+              >
+                <Library className="h-3 w-3 mr-1" />
+                Save as Template
+              </Button>
+            )}
+          </div>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+            <Button
+              onClick={handleSubmit}
+              disabled={isLoading}
+              className="bg-purple-600 hover:bg-purple-700"
+            >
+              {isLoading ? 'Saving...' : initialData?.id ? 'Update' : 'Create'}
+            </Button>
+          </div>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+interface SaveAsTemplateDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  feat: Partial<Feat> | null;
+  onSave: (template: Partial<FeatTemplate>) => void;
+  isLoading?: boolean;
+}
+
+function SaveAsTemplateDialog({ open, onOpenChange, feat, onSave, isLoading }: SaveAsTemplateDialogProps) {
+  const [templateName, setTemplateName] = useState(feat?.name || '');
+
+  useEffect(() => {
+    if (feat) {
+      setTemplateName(feat.name || '');
+    }
+  }, [feat]);
+
+  const handleSave = () => {
+    if (!templateName.trim()) {
+      toast({ title: 'Error', description: 'Template name is required', variant: 'destructive' });
+      return;
+    }
+    if (!feat) return;
+
+    onSave({
+      name: templateName,
+      description: feat.description || undefined,
+      tier: feat.tier || 1,
+      cost: feat.cost || 1,
+      icon: feat.icon || undefined,
+      effects: feat.effects || [],
+    });
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="bg-stone-900 border-stone-700 max-w-sm">
+        <DialogHeader>
+          <DialogTitle className="text-purple-500">Save as Template</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div>
+            <Label>Template Name</Label>
+            <Input
+              value={templateName}
+              onChange={(e) => setTemplateName(e.target.value)}
+              placeholder="Template name"
+              className="bg-stone-800 border-stone-700"
+            />
+          </div>
+          <p className="text-xs text-stone-500">
+            This will save the feat's name, description, tier, cost, and effects as a reusable template.
+          </p>
+        </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
           <Button
-            onClick={handleSubmit}
+            onClick={handleSave}
             disabled={isLoading}
             className="bg-purple-600 hover:bg-purple-700"
           >
-            {isLoading ? 'Saving...' : initialData?.id ? 'Update' : 'Create'}
+            {isLoading ? 'Saving...' : 'Save Template'}
           </Button>
         </DialogFooter>
       </DialogContent>
