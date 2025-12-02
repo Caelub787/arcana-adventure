@@ -1,6 +1,7 @@
 import { useState, useRef, useMemo, useCallback, useEffect } from 'react';
 import { useLocation } from 'wouter';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { motion, useMotionValue } from 'framer-motion';
 import { api, type Item, type SystemSpecies, type FeatTree, type Feat, type FeatConnection, type FeatTreeWithData, type FeatTemplate } from '@/lib/api';
 import { useAuth } from '@/lib/AuthContext';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
@@ -16,7 +17,7 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Slider } from '@/components/ui/slider';
 import { toast } from '@/hooks/use-toast';
-import { ArrowLeft, Plus, Pencil, Trash2, Sword, Shield, Package, Sparkles, Box, Coins, Search, Users, GitBranch, Library, Link, X, GripVertical, Star, Zap, Heart, ShieldCheck, BookOpen } from 'lucide-react';
+import { ArrowLeft, Plus, Pencil, Trash2, Sword, Shield, Package, Sparkles, Box, Coins, Search, Users, GitBranch, Library, Link, X, GripVertical, Star, Zap, Heart, ShieldCheck, BookOpen, RefreshCw, ZoomIn, ZoomOut } from 'lucide-react';
 import { ImageBrowser } from '@/components/ImageBrowser';
 
 type AdminView = 'dashboard' | 'items' | 'species' | 'feat-trees';
@@ -769,13 +770,283 @@ function FeatTreesView() {
     setConnectingFrom(featId);
   };
 
+  // Infinite canvas state - use refs to avoid re-renders during pan/zoom
+  const canvasContainerRef = useRef<HTMLDivElement>(null);
+  const panRef = useRef({ x: 0, y: 0 });
+  const zoomRef = useRef(1);
+  const [, forceUpdate] = useState(0);
+  
+  // Motion values for smooth updates without re-renders
+  const motionX = useMotionValue(0);
+  const motionY = useMotionValue(0);
+  const motionZoom = useMotionValue(1);
+  
+  // Gesture state
+  type GestureMode = 'idle' | 'panning' | 'pinching';
+  const gestureModeRef = useRef<GestureMode>('idle');
+  const panStartRef = useRef<{ pointerX: number; pointerY: number; panX: number; panY: number } | null>(null);
+  const panPointerIdRef = useRef<number | null>(null);
+  const lastTouchDistanceRef = useRef<number | null>(null);
+  const [isPinching, setIsPinching] = useState(false);
+  
+  // Track viewport size
+  const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
+  
+  // Cell size for the grid
+  const CELL_SIZE = 90;
+  const WORLD_SIZE = 20000;
+  const WORLD_OFFSET = 10000;
+
+  // Track viewport with ResizeObserver
+  useEffect(() => {
+    if (!canvasContainerRef.current) return;
+    
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const { width, height } = entry.contentRect;
+        if (width > 0 && height > 0) {
+          setViewportSize(prev => {
+            if (prev.width !== width || prev.height !== height) {
+              return { width, height };
+            }
+            return prev;
+          });
+        }
+      }
+    });
+    
+    observer.observe(canvasContainerRef.current);
+    return () => observer.disconnect();
+  }, [selectedTreeId]);
+
+  // Reset view when tree changes
+  useEffect(() => {
+    if (selectedTreeId && viewportSize.width > 0) {
+      // Center on origin (0,0)
+      const centerX = viewportSize.width / 2 - WORLD_OFFSET;
+      const centerY = viewportSize.height / 2 - WORLD_OFFSET;
+      panRef.current = { x: centerX, y: centerY };
+      zoomRef.current = 1;
+      motionX.set(centerX);
+      motionY.set(centerY);
+      motionZoom.set(1);
+      forceUpdate(n => n + 1);
+    }
+  }, [selectedTreeId, viewportSize.width]);
+
+  // Wheel zoom handler
+  useEffect(() => {
+    const container = canvasContainerRef.current;
+    if (!container || !selectedTreeId) return;
+
+    const handleWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      
+      if (gestureModeRef.current !== 'idle' && gestureModeRef.current !== 'panning') return;
+      
+      const currentZoom = zoomRef.current;
+      const currentPan = panRef.current;
+      
+      const rect = container.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+      
+      const delta = -e.deltaY * 0.002;
+      const newZoom = Math.max(0.3, Math.min(3, currentZoom + delta));
+      
+      if (Math.abs(newZoom - currentZoom) > 0.001) {
+        // Zoom towards cursor
+        const worldX = ((mouseX + WORLD_OFFSET - currentPan.x) / currentZoom) - WORLD_OFFSET;
+        const worldY = ((mouseY + WORLD_OFFSET - currentPan.y) / currentZoom) - WORLD_OFFSET;
+        
+        const newPan = {
+          x: mouseX + WORLD_OFFSET - (worldX + WORLD_OFFSET) * newZoom,
+          y: mouseY + WORLD_OFFSET - (worldY + WORLD_OFFSET) * newZoom
+        };
+        
+        panRef.current = newPan;
+        zoomRef.current = newZoom;
+        motionX.set(newPan.x);
+        motionY.set(newPan.y);
+        motionZoom.set(newZoom);
+        forceUpdate(n => n + 1);
+      }
+    };
+
+    container.addEventListener('wheel', handleWheel, { passive: false });
+    return () => container.removeEventListener('wheel', handleWheel);
+  }, [selectedTreeId, motionX, motionY, motionZoom]);
+
+  // Touch pinch-to-zoom handler
+  useEffect(() => {
+    const container = canvasContainerRef.current;
+    if (!container || !selectedTreeId) return;
+
+    const handleTouchStart = (e: TouchEvent) => {
+      if (e.touches.length === 2) {
+        if (gestureModeRef.current === 'panning') {
+          gestureModeRef.current = 'idle';
+          panPointerIdRef.current = null;
+          panStartRef.current = null;
+        }
+        gestureModeRef.current = 'pinching';
+        setIsPinching(true);
+      } else if (e.touches.length === 1) {
+        setIsPinching(false);
+      }
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      if (e.touches.length === 2) {
+        e.preventDefault();
+        gestureModeRef.current = 'pinching';
+        setIsPinching(true);
+        
+        const currentZoom = zoomRef.current;
+        const currentPan = panRef.current;
+        
+        const touch1 = e.touches[0];
+        const touch2 = e.touches[1];
+        const distance = Math.hypot(
+          touch2.clientX - touch1.clientX,
+          touch2.clientY - touch1.clientY
+        );
+
+        const rect = container.getBoundingClientRect();
+        const centerX = ((touch1.clientX + touch2.clientX) / 2) - rect.left;
+        const centerY = ((touch1.clientY + touch2.clientY) / 2) - rect.top;
+
+        if (lastTouchDistanceRef.current !== null) {
+          const delta = (distance - lastTouchDistanceRef.current) * 0.01;
+          const newZoom = Math.max(0.3, Math.min(3, currentZoom + delta));
+          
+          if (Math.abs(newZoom - currentZoom) > 0.001) {
+            const worldX = ((centerX + WORLD_OFFSET - currentPan.x) / currentZoom) - WORLD_OFFSET;
+            const worldY = ((centerY + WORLD_OFFSET - currentPan.y) / currentZoom) - WORLD_OFFSET;
+            
+            const newPan = {
+              x: centerX + WORLD_OFFSET - (worldX + WORLD_OFFSET) * newZoom,
+              y: centerY + WORLD_OFFSET - (worldY + WORLD_OFFSET) * newZoom
+            };
+            
+            panRef.current = newPan;
+            zoomRef.current = newZoom;
+            motionX.set(newPan.x);
+            motionY.set(newPan.y);
+            motionZoom.set(newZoom);
+            forceUpdate(n => n + 1);
+          }
+        }
+        lastTouchDistanceRef.current = distance;
+      }
+    };
+
+    const handleTouchEnd = () => {
+      lastTouchDistanceRef.current = null;
+      if (gestureModeRef.current === 'pinching') {
+        gestureModeRef.current = 'idle';
+        setIsPinching(false);
+      }
+    };
+
+    container.addEventListener('touchstart', handleTouchStart, { passive: false });
+    container.addEventListener('touchmove', handleTouchMove, { passive: false });
+    container.addEventListener('touchend', handleTouchEnd);
+    container.addEventListener('touchcancel', handleTouchEnd);
+
+    return () => {
+      container.removeEventListener('touchstart', handleTouchStart);
+      container.removeEventListener('touchmove', handleTouchMove);
+      container.removeEventListener('touchend', handleTouchEnd);
+      container.removeEventListener('touchcancel', handleTouchEnd);
+    };
+  }, [selectedTreeId]);
+
+  // Pointer handlers for panning
+  const handleCanvasPointerDown = (e: React.PointerEvent) => {
+    if (isPinching) return;
+    if (gestureModeRef.current !== 'idle') return;
+    
+    // Only pan with left mouse button or touch
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    
+    // Don't start pan if clicking on a feat
+    const target = e.target as HTMLElement;
+    if (target.closest('[data-feat-cell]')) return;
+    
+    gestureModeRef.current = 'panning';
+    panPointerIdRef.current = e.pointerId;
+    panStartRef.current = {
+      pointerX: e.clientX,
+      pointerY: e.clientY,
+      panX: panRef.current.x,
+      panY: panRef.current.y
+    };
+    
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  };
+
+  const handleCanvasPointerMove = (e: React.PointerEvent) => {
+    if (gestureModeRef.current !== 'panning') return;
+    if (panPointerIdRef.current !== e.pointerId) return;
+    if (!panStartRef.current) return;
+    
+    const dx = e.clientX - panStartRef.current.pointerX;
+    const dy = e.clientY - panStartRef.current.pointerY;
+    
+    const newPan = {
+      x: panStartRef.current.panX + dx,
+      y: panStartRef.current.panY + dy
+    };
+    
+    panRef.current = newPan;
+    motionX.set(newPan.x);
+    motionY.set(newPan.y);
+  };
+
+  const handleCanvasPointerUp = (e: React.PointerEvent) => {
+    if (panPointerIdRef.current === e.pointerId) {
+      gestureModeRef.current = 'idle';
+      panPointerIdRef.current = null;
+      panStartRef.current = null;
+      
+      try {
+        (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+      } catch (err) {}
+    }
+  };
+
+  const resetView = () => {
+    if (viewportSize.width > 0) {
+      const centerX = viewportSize.width / 2 - WORLD_OFFSET;
+      const centerY = viewportSize.height / 2 - WORLD_OFFSET;
+      panRef.current = { x: centerX, y: centerY };
+      zoomRef.current = 1;
+      motionX.set(centerX);
+      motionY.set(centerY);
+      motionZoom.set(1);
+      forceUpdate(n => n + 1);
+    }
+  };
+
+  const zoomIn = () => {
+    const newZoom = Math.min(3, zoomRef.current + 0.2);
+    zoomRef.current = newZoom;
+    motionZoom.set(newZoom);
+    forceUpdate(n => n + 1);
+  };
+
+  const zoomOut = () => {
+    const newZoom = Math.max(0.3, zoomRef.current - 0.2);
+    zoomRef.current = newZoom;
+    motionZoom.set(newZoom);
+    forceUpdate(n => n + 1);
+  };
+
   const renderGrid = () => {
     if (!treeData) return null;
     
-    const { tree, feats, connections } = treeData;
-    const gridWidth = tree.gridWidth || 7;
-    const gridHeight = tree.gridHeight || 5;
-    const cellSize = 90;
+    const { feats, connections } = treeData;
     
     const featMap = new Map<string, Feat>();
     feats.forEach((f: Feat) => {
@@ -784,10 +1055,71 @@ function FeatTreesView() {
     const featById = new Map<string, Feat>();
     feats.forEach((f: Feat) => featById.set(f.id, f));
 
+    // Calculate visible grid range based on viewport and current pan/zoom
+    const zoom = zoomRef.current;
+    const pan = panRef.current;
+    const cellSizeScaled = CELL_SIZE * zoom;
+    
+    // Calculate which cells are visible in the viewport
+    const startX = Math.floor((-pan.x - WORLD_OFFSET) / cellSizeScaled) - 2;
+    const endX = Math.ceil((-pan.x - WORLD_OFFSET + viewportSize.width) / cellSizeScaled) + 2;
+    const startY = Math.floor((-pan.y - WORLD_OFFSET) / cellSizeScaled) - 2;
+    const endY = Math.ceil((-pan.y - WORLD_OFFSET + viewportSize.height) / cellSizeScaled) + 2;
+
+    // Generate visible cells
+    const visibleCells = [];
+    for (let y = startY; y <= endY; y++) {
+      for (let x = startX; x <= endX; x++) {
+        visibleCells.push({ x, y });
+      }
+    }
+
     return (
-      <div className="relative overflow-auto bg-stone-800/50 rounded-lg p-4">
+      <div 
+        ref={canvasContainerRef}
+        className="relative w-full h-[500px] overflow-hidden bg-stone-900 rounded-lg border border-stone-700 cursor-grab active:cursor-grabbing"
+        onPointerDown={handleCanvasPointerDown}
+        onPointerMove={handleCanvasPointerMove}
+        onPointerUp={handleCanvasPointerUp}
+        onPointerCancel={handleCanvasPointerUp}
+        style={{ touchAction: 'none' }}
+      >
+        {/* Controls overlay */}
+        <div className="absolute top-3 left-3 z-30 flex gap-1">
+          <Button 
+            size="sm" 
+            variant="secondary" 
+            className="bg-black/50 hover:bg-black/80 text-xs border border-white/10 backdrop-blur-sm"
+            onClick={resetView}
+            title="Reset view"
+          >
+            <RefreshCw className="h-3 w-3" />
+          </Button>
+          <Button 
+            size="sm" 
+            variant="secondary" 
+            className="bg-black/50 hover:bg-black/80 text-xs border border-white/10 backdrop-blur-sm"
+            onClick={zoomIn}
+            title="Zoom in"
+          >
+            <ZoomIn className="h-3 w-3" />
+          </Button>
+          <Button 
+            size="sm" 
+            variant="secondary" 
+            className="bg-black/50 hover:bg-black/80 text-xs border border-white/10 backdrop-blur-sm"
+            onClick={zoomOut}
+            title="Zoom out"
+          >
+            <ZoomOut className="h-3 w-3" />
+          </Button>
+          <div className="bg-black/50 px-2 py-1 rounded text-xs border border-white/10 backdrop-blur-sm flex items-center">
+            {Math.round(zoom * 100)}%
+          </div>
+        </div>
+
         {connectingFrom && (
-          <div className="absolute top-2 right-2 z-20 flex items-center gap-2 bg-purple-600 px-3 py-1 rounded text-sm">
+          <div className="absolute top-3 right-3 z-30 flex items-center gap-2 bg-purple-600 px-3 py-1 rounded text-sm">
             <span>Click another feat to connect</span>
             <Button size="sm" variant="ghost" onClick={() => setConnectingFrom(null)}>
               <X className="h-4 w-4" />
@@ -795,123 +1127,180 @@ function FeatTreesView() {
           </div>
         )}
         
-        <svg 
-          className="absolute top-0 left-0 pointer-events-none"
-          style={{ 
-            width: gridWidth * cellSize + 80, 
-            height: gridHeight * cellSize + 80 
+        {/* Infinite canvas world */}
+        <motion.div
+          className="absolute"
+          style={{
+            x: motionX,
+            y: motionY,
+            scale: motionZoom,
+            width: WORLD_SIZE,
+            height: WORLD_SIZE,
+            left: -WORLD_OFFSET,
+            top: -WORLD_OFFSET,
+            transformOrigin: '0 0'
           }}
         >
-          {connections.map((conn: FeatConnection) => {
-            const from = featById.get(conn.fromFeatId);
-            const to = featById.get(conn.toFeatId);
-            if (!from || !to) return null;
-            
-            const x1 = from.gridX * cellSize + cellSize / 2 + 16;
-            const y1 = from.gridY * cellSize + cellSize / 2 + 16;
-            const x2 = to.gridX * cellSize + cellSize / 2 + 16;
-            const y2 = to.gridY * cellSize + cellSize / 2 + 16;
-            
-            return (
-              <g key={conn.id}>
-                <line
-                  x1={x1} y1={y1} x2={x2} y2={y2}
-                  stroke={conn.isOptional ? '#a855f7' : '#eab308'}
-                  strokeWidth={3}
-                  strokeDasharray={conn.isOptional ? '5,5' : undefined}
-                  markerEnd="url(#arrowhead)"
-                />
-                <circle
-                  cx={(x1 + x2) / 2}
-                  cy={(y1 + y2) / 2}
-                  r={10}
-                  fill="#292524"
-                  stroke="#78716c"
-                  className="cursor-pointer pointer-events-auto hover:stroke-red-500"
-                  onClick={() => deleteConnectionMutation.mutate(conn.id)}
-                />
-                <text
-                  x={(x1 + x2) / 2}
-                  y={(y1 + y2) / 2 + 4}
-                  textAnchor="middle"
-                  className="text-xs fill-red-400 pointer-events-none"
-                >
-                  ×
-                </text>
-              </g>
-            );
-          })}
-          <defs>
-            <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
-              <polygon points="0 0, 10 3.5, 0 7" fill="#eab308" />
-            </marker>
-          </defs>
-        </svg>
-        
-        <div 
-          className="grid gap-1 relative"
-          style={{ 
-            gridTemplateColumns: `repeat(${gridWidth}, ${cellSize}px)`,
-            gridTemplateRows: `repeat(${gridHeight}, ${cellSize}px)`,
-          }}
-        >
-          {Array.from({ length: gridHeight }).map((_, y) =>
-            Array.from({ length: gridWidth }).map((_, x) => {
-              const feat = featMap.get(`${x},${y}`);
+          {/* Grid pattern overlay */}
+          <div 
+            className="absolute inset-0 pointer-events-none"
+            style={{
+              backgroundImage: `
+                linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px)
+              `,
+              backgroundSize: `${CELL_SIZE}px ${CELL_SIZE}px`,
+              backgroundPosition: `${WORLD_OFFSET}px ${WORLD_OFFSET}px`
+            }}
+          />
+          
+          {/* Connection lines SVG */}
+          <svg 
+            className="absolute pointer-events-none"
+            style={{ 
+              width: WORLD_SIZE, 
+              height: WORLD_SIZE,
+              left: 0,
+              top: 0
+            }}
+          >
+            <defs>
+              <marker id="arrowhead-feat" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+                <polygon points="0 0, 10 3.5, 0 7" fill="#eab308" />
+              </marker>
+            </defs>
+            {connections.map((conn: FeatConnection) => {
+              const from = featById.get(conn.fromFeatId);
+              const to = featById.get(conn.toFeatId);
+              if (!from || !to) return null;
+              
+              const x1 = WORLD_OFFSET + from.gridX * CELL_SIZE + CELL_SIZE / 2;
+              const y1 = WORLD_OFFSET + from.gridY * CELL_SIZE + CELL_SIZE / 2;
+              const x2 = WORLD_OFFSET + to.gridX * CELL_SIZE + CELL_SIZE / 2;
+              const y2 = WORLD_OFFSET + to.gridY * CELL_SIZE + CELL_SIZE / 2;
               
               return (
-                <div
-                  key={`${x},${y}`}
-                  className={`
-                    border-2 border-dashed border-stone-600 rounded-lg
-                    flex items-center justify-center cursor-pointer
-                    hover:border-stone-400 transition-colors relative
-                    ${feat ? tierColors[feat.tier] || tierColors[1] : 'bg-stone-900/50'}
-                    ${connectingFrom && feat ? 'ring-2 ring-purple-500' : ''}
-                  `}
-                  onClick={() => handleGridCellClick(x, y)}
-                  onDoubleClick={() => feat && handleFeatDoubleClick(feat)}
-                  data-testid={`grid-cell-${x}-${y}`}
-                >
-                  {feat ? (
-                    <div className="absolute inset-1 flex flex-col items-center justify-center text-center p-1">
-                      <div className="text-xs font-bold truncate w-full">{feat.name}</div>
-                      <Badge variant="secondary" className="text-[10px] mt-1">
-                        Tier {feat.tier}
-                      </Badge>
-                      <div className="absolute top-1 right-1 flex gap-0.5">
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className="h-5 w-5 hover:bg-purple-600"
-                          onClick={(e) => handleStartConnect(feat.id, e)}
-                          title="Connect to another feat"
-                        >
-                          <Link className="h-3 w-3" />
-                        </Button>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className="h-5 w-5 hover:bg-red-600"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (confirm('Delete this feat?')) {
-                              deleteFeatMutation.mutate(feat.id);
-                            }
-                          }}
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </Button>
-                      </div>
-                    </div>
-                  ) : (
-                    <Plus className="h-6 w-6 text-stone-600" />
-                  )}
-                </div>
+                <g key={conn.id}>
+                  <line
+                    x1={x1} y1={y1} x2={x2} y2={y2}
+                    stroke={conn.isOptional ? '#a855f7' : '#eab308'}
+                    strokeWidth={3}
+                    strokeDasharray={conn.isOptional ? '5,5' : undefined}
+                    markerEnd="url(#arrowhead-feat)"
+                  />
+                  <circle
+                    cx={(x1 + x2) / 2}
+                    cy={(y1 + y2) / 2}
+                    r={12}
+                    fill="#292524"
+                    stroke="#78716c"
+                    strokeWidth={1}
+                    className="cursor-pointer pointer-events-auto hover:stroke-red-500"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      deleteConnectionMutation.mutate(conn.id);
+                    }}
+                  />
+                  <text
+                    x={(x1 + x2) / 2}
+                    y={(y1 + y2) / 2 + 4}
+                    textAnchor="middle"
+                    className="fill-red-400 pointer-events-none text-sm"
+                  >
+                    ×
+                  </text>
+                </g>
               );
-            })
-          )}
-        </div>
+            })}
+          </svg>
+          
+          {/* Feat cells - render all feats plus visible empty cells */}
+          {visibleCells.map(({ x, y }) => {
+            const feat = featMap.get(`${x},${y}`);
+            const cellLeft = WORLD_OFFSET + x * CELL_SIZE;
+            const cellTop = WORLD_OFFSET + y * CELL_SIZE;
+            
+            return (
+              <div
+                key={`cell-${x}-${y}`}
+                data-feat-cell
+                className={`
+                  absolute border-2 border-dashed rounded-lg
+                  flex items-center justify-center cursor-pointer
+                  transition-colors
+                  ${feat 
+                    ? `${tierColors[feat.tier] || tierColors[1]} border-solid` 
+                    : 'bg-stone-900/30 border-stone-700 hover:border-stone-500'
+                  }
+                  ${connectingFrom && feat ? 'ring-2 ring-purple-500' : ''}
+                `}
+                style={{
+                  left: cellLeft,
+                  top: cellTop,
+                  width: CELL_SIZE - 4,
+                  height: CELL_SIZE - 4
+                }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleGridCellClick(x, y);
+                }}
+                onDoubleClick={(e) => {
+                  e.stopPropagation();
+                  if (feat) handleFeatDoubleClick(feat);
+                }}
+                data-testid={`grid-cell-${x}-${y}`}
+              >
+                {feat ? (
+                  <div className="absolute inset-1 flex flex-col items-center justify-center text-center p-1 overflow-hidden">
+                    <div className="text-xs font-bold truncate w-full">{feat.name}</div>
+                    <Badge variant="secondary" className="text-[10px] mt-1">
+                      Tier {feat.tier}
+                    </Badge>
+                    <div className="absolute top-0.5 right-0.5 flex gap-0.5">
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-5 w-5 hover:bg-purple-600"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleStartConnect(feat.id, e);
+                        }}
+                        title="Connect to another feat"
+                      >
+                        <Link className="h-3 w-3" />
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-5 w-5 hover:bg-red-600"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (confirm('Delete this feat?')) {
+                            deleteFeatMutation.mutate(feat.id);
+                          }
+                        }}
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <Plus className="h-5 w-5 text-stone-600" />
+                )}
+              </div>
+            );
+          })}
+          
+          {/* Origin marker */}
+          <div 
+            className="absolute w-3 h-3 bg-purple-500 rounded-full border-2 border-white"
+            style={{
+              left: WORLD_OFFSET - 6,
+              top: WORLD_OFFSET - 6
+            }}
+            title="Origin (0,0)"
+          />
+        </motion.div>
       </div>
     );
   };
@@ -1035,11 +1424,9 @@ function FeatTreesView() {
         ) : (
           <>
             <div className="mb-4 text-sm text-stone-400">
-              Click an empty cell to add a feat. Double-click a feat to edit. Use the link button to connect feats.
+              Drag to pan, scroll to zoom. Click an empty cell to add a feat. Double-click a feat to edit. Use the link button to connect feats.
             </div>
-            <ScrollArea className="w-full">
-              {renderGrid()}
-            </ScrollArea>
+            {renderGrid()}
           </>
         )}
       </CardContent>
