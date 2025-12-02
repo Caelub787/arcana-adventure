@@ -1801,6 +1801,35 @@ interface FeatFormDialogProps {
   onSaveAsTemplate?: (feat: Partial<Feat>) => void;
 }
 
+const SKILLS_LIST = [
+  { key: 'skillAgility', name: 'Agility' },
+  { key: 'skillStrength', name: 'Strength' },
+  { key: 'skillStealth', name: 'Stealth' },
+  { key: 'skillSleightOfHand', name: 'Sleight of Hand' },
+  { key: 'skillArcana', name: 'Arcana' },
+  { key: 'skillConcentration', name: 'Concentration' },
+  { key: 'skillWisdom', name: 'Wisdom' },
+  { key: 'skillInvestigation', name: 'Investigation' },
+  { key: 'skillPerception', name: 'Perception' },
+  { key: 'skillMedicine', name: 'Medicine' },
+  { key: 'skillHistory', name: 'History' },
+  { key: 'skillCharisma', name: 'Charisma' },
+  { key: 'skillDeception', name: 'Deception' },
+  { key: 'skillIntimidation', name: 'Intimidation' },
+  { key: 'skillCulture', name: 'Culture' },
+  { key: 'skillSurvival', name: 'Survival' },
+  { key: 'skillBeastHandling', name: 'Beast Handling' },
+];
+
+const ATTRIBUTES_LIST = [
+  { key: 'might', name: 'Might' },
+  { key: 'finesse', name: 'Finesse' },
+  { key: 'wit', name: 'Wit' },
+  { key: 'presence', name: 'Presence' },
+  { key: 'craft', name: 'Craft' },
+  { key: 'will', name: 'Will' },
+];
+
 function FeatFormDialog({ open, onOpenChange, onSave, initialData, isLoading, featTemplates = [], onSaveAsTemplate }: FeatFormDialogProps) {
   const [showTemplateSelector, setShowTemplateSelector] = useState(false);
   const [formData, setFormData] = useState({
@@ -1814,11 +1843,31 @@ function FeatFormDialog({ open, onOpenChange, onSave, initialData, isLoading, fe
     effects: initialData?.effects || [],
   });
 
-  const [newEffect, setNewEffect] = useState({
+  const [newEffect, setNewEffect] = useState<{
+    type: string;
+    value: number;
+    target: string;
+    subtype?: string;
+  }>({
     type: 'hp_bonus',
     value: 0,
     target: '',
+    subtype: 'flat',
   });
+
+  // Query system spells for spell_grant dropdown
+  const { data: systemSpells = [] } = useQuery({
+    queryKey: ['/api/system-spells'],
+    enabled: open,
+  });
+
+  // Normalize effects for UI display - preserve ALL existing data exactly as stored
+  // This function only makes a shallow copy, does NOT modify any fields
+  const normalizeEffects = (effects: any[] | undefined): any[] => {
+    if (!effects) return [];
+    // Return a shallow copy of each effect, preserving all fields exactly
+    return effects.map((effect: any) => ({ ...effect }));
+  };
 
   useEffect(() => {
     if (initialData) {
@@ -1830,7 +1879,7 @@ function FeatFormDialog({ open, onOpenChange, onSave, initialData, isLoading, fe
         tier: initialData.tier || 1,
         cost: initialData.cost || 1,
         icon: initialData.icon || '',
-        effects: initialData.effects || [],
+        effects: normalizeEffects(initialData.effects),
       });
     } else {
       setFormData((prev) => ({
@@ -1852,15 +1901,31 @@ function FeatFormDialog({ open, onOpenChange, onSave, initialData, isLoading, fe
   };
 
   const addEffect = () => {
-    if (newEffect.value === 0 && newEffect.type !== 'spell_grant' && newEffect.type !== 'item_grant') {
+    // Value validation: require non-zero for most types except spell_grant, item_grant
+    // Also allow hp_bonus with target (for per-level dice expressions)
+    const requiresValue = newEffect.type !== 'spell_grant' && 
+                          newEffect.type !== 'item_grant' &&
+                          !(newEffect.type === 'hp_bonus' && newEffect.target);
+    if (requiresValue && newEffect.value === 0) {
       toast({ title: 'Error', description: 'Effect value cannot be 0', variant: 'destructive' });
       return;
     }
+    
+    // Validate target is selected for types that need it
+    if ((newEffect.type === 'skill_bonus' || newEffect.type === 'attribute_bonus') && !newEffect.target) {
+      toast({ title: 'Error', description: 'Please select a target', variant: 'destructive' });
+      return;
+    }
+    if (newEffect.type === 'spell_grant' && !newEffect.target) {
+      toast({ title: 'Error', description: 'Please select a spell', variant: 'destructive' });
+      return;
+    }
+    
     setFormData({
       ...formData,
       effects: [...(formData.effects || []), { ...newEffect }],
     });
-    setNewEffect({ type: 'hp_bonus', value: 0, target: '' });
+    setNewEffect({ type: 'hp_bonus', value: 0, target: '', subtype: 'flat' });
   };
 
   const removeEffect = (index: number) => {
@@ -2007,56 +2072,178 @@ function FeatFormDialog({ open, onOpenChange, onSave, initialData, isLoading, fe
           <div className="border-t border-stone-700 pt-4">
             <Label className="text-base font-semibold">Effects</Label>
             <div className="mt-2 space-y-2">
-              {(formData.effects || []).map((effect: any, idx: number) => (
-                <div key={idx} className="flex items-center gap-2 bg-stone-800 p-2 rounded">
-                  <Badge variant="secondary">{effect.type}</Badge>
-                  <span className="text-sm">
-                    {effect.type === 'spell_grant' || effect.type === 'item_grant' 
-                      ? effect.target 
-                      : `+${effect.value}${effect.target ? ` to ${effect.target}` : ''}`}
-                  </span>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    className="ml-auto h-6 w-6 text-red-400"
-                    onClick={() => removeEffect(idx)}
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
-                </div>
-              ))}
+              {(formData.effects || []).map((effect: any, idx: number) => {
+                // Format display based on effect type - handles legacy undefined fields
+                const getEffectDisplay = () => {
+                  const value = effect.value ?? 0;
+                  const target = effect.target ?? '';
+                  
+                  if (effect.type === 'spell_grant') {
+                    const spell = (systemSpells as SystemSpell[]).find(s => s.id === target);
+                    return spell ? `Grants: ${spell.name}` : target || '(select spell)';
+                  }
+                  if (effect.type === 'item_grant') {
+                    return `Grants item: ${target || '(no item)'}`;
+                  }
+                  if (effect.type === 'skill_bonus') {
+                    const skill = SKILLS_LIST.find(s => s.key === target);
+                    return `+${value} to ${skill?.name || target || '(select skill)'}`;
+                  }
+                  if (effect.type === 'attribute_bonus') {
+                    const attr = ATTRIBUTES_LIST.find(a => a.key === target);
+                    return `+${value} to ${attr?.name || target || '(select attribute)'}`;
+                  }
+                  if (effect.type === 'hp_bonus') {
+                    const subtypeLabel = effect.subtype === 'per_level' ? '/level' : '';
+                    // For legacy effects, show target if it contains useful info (e.g., dice expressions)
+                    const hasLegacyTarget = !effect.subtype && target && target !== '';
+                    if (hasLegacyTarget) {
+                      // Legacy effect - show as "HP: <target>" to preserve original info
+                      return `HP: ${target}`;
+                    }
+                    return `+${value} HP${subtypeLabel}`;
+                  }
+                  return `+${value}${target ? ` to ${target}` : ''}`;
+                };
+
+                return (
+                  <div key={idx} className="flex items-center gap-2 bg-stone-800 p-2 rounded">
+                    <Badge variant="secondary">{effect.type.replace('_', ' ')}</Badge>
+                    <span className="text-sm">{getEffectDisplay()}</span>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="ml-auto h-6 w-6 text-red-400"
+                      onClick={() => removeEffect(idx)}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                );
+              })}
             </div>
             <div className="mt-3 p-3 bg-stone-800/50 rounded border border-stone-700">
-              <div className="grid grid-cols-3 gap-2 mb-2">
-                <Select
-                  value={newEffect.type}
-                  onValueChange={(v) => setNewEffect({ ...newEffect, type: v })}
-                >
-                  <SelectTrigger className="bg-stone-800 border-stone-700 text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="hp_bonus">HP Bonus</SelectItem>
-                    <SelectItem value="dc_bonus">DC Bonus</SelectItem>
-                    <SelectItem value="skill_bonus">Skill Bonus</SelectItem>
-                    <SelectItem value="attribute_bonus">Attribute Bonus</SelectItem>
-                    <SelectItem value="spell_grant">Grant Spell</SelectItem>
-                    <SelectItem value="item_grant">Grant Item</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Input
-                  type="number"
-                  value={newEffect.value}
-                  onChange={(e) => setNewEffect({ ...newEffect, value: parseInt(e.target.value) || 0 })}
-                  placeholder="Value"
-                  className="bg-stone-800 border-stone-700 text-xs"
-                />
-                <Input
-                  value={newEffect.target}
-                  onChange={(e) => setNewEffect({ ...newEffect, target: e.target.value })}
-                  placeholder="Target (optional)"
-                  className="bg-stone-800 border-stone-700 text-xs"
-                />
+              <div className="space-y-2 mb-2">
+                <div className="grid grid-cols-2 gap-2">
+                  <Select
+                    value={newEffect.type}
+                    onValueChange={(v) => setNewEffect({ ...newEffect, type: v, target: '', subtype: v === 'hp_bonus' ? 'flat' : undefined })}
+                  >
+                    <SelectTrigger className="bg-stone-800 border-stone-700 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="hp_bonus">HP Bonus</SelectItem>
+                      <SelectItem value="dc_bonus">DC Bonus</SelectItem>
+                      <SelectItem value="skill_bonus">Skill Bonus</SelectItem>
+                      <SelectItem value="attribute_bonus">Attribute Bonus</SelectItem>
+                      <SelectItem value="spell_grant">Grant Spell</SelectItem>
+                      <SelectItem value="item_grant">Grant Item</SelectItem>
+                    </SelectContent>
+                  </Select>
+
+                  {/* Value input - shown for all except spell/item grants */}
+                  {newEffect.type !== 'spell_grant' && newEffect.type !== 'item_grant' && (
+                    <Input
+                      type="number"
+                      value={newEffect.value}
+                      onChange={(e) => setNewEffect({ ...newEffect, value: parseInt(e.target.value) || 0 })}
+                      placeholder="Value"
+                      className="bg-stone-800 border-stone-700 text-xs"
+                    />
+                  )}
+                </div>
+
+                {/* HP Bonus subtype selector */}
+                {newEffect.type === 'hp_bonus' && (
+                  <div className="flex gap-2">
+                    <Select
+                      value={newEffect.subtype || 'flat'}
+                      onValueChange={(v) => setNewEffect({ ...newEffect, subtype: v })}
+                    >
+                      <SelectTrigger className="bg-stone-800 border-stone-700 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="flat">Flat Bonus</SelectItem>
+                        <SelectItem value="per_level">Per Level</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <span className="text-xs text-stone-400 self-center">
+                      {newEffect.subtype === 'per_level' ? 'Adds HP each level' : 'One-time HP boost'}
+                    </span>
+                  </div>
+                )}
+
+                {/* Skill selector */}
+                {newEffect.type === 'skill_bonus' && (
+                  <Select
+                    value={newEffect.target}
+                    onValueChange={(v) => setNewEffect({ ...newEffect, target: v })}
+                  >
+                    <SelectTrigger className="bg-stone-800 border-stone-700 text-xs">
+                      <SelectValue placeholder="Select skill..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {SKILLS_LIST.map((skill) => (
+                        <SelectItem key={skill.key} value={skill.key}>{skill.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+
+                {/* Attribute selector */}
+                {newEffect.type === 'attribute_bonus' && (
+                  <Select
+                    value={newEffect.target}
+                    onValueChange={(v) => setNewEffect({ ...newEffect, target: v })}
+                  >
+                    <SelectTrigger className="bg-stone-800 border-stone-700 text-xs">
+                      <SelectValue placeholder="Select attribute..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {ATTRIBUTES_LIST.map((attr) => (
+                        <SelectItem key={attr.key} value={attr.key}>{attr.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+
+                {/* Spell selector */}
+                {newEffect.type === 'spell_grant' && (
+                  <Select
+                    value={newEffect.target}
+                    onValueChange={(v) => setNewEffect({ ...newEffect, target: v })}
+                  >
+                    <SelectTrigger className="bg-stone-800 border-stone-700 text-xs">
+                      <SelectValue placeholder="Select spell..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(systemSpells as SystemSpell[]).length === 0 ? (
+                        <div className="p-2 text-xs text-stone-400">No spells created yet</div>
+                      ) : (
+                        (systemSpells as SystemSpell[]).map((spell) => (
+                          <SelectItem key={spell.id} value={spell.id}>
+                            <span className="flex items-center gap-2">
+                              <span>{spell.name}</span>
+                              <Badge variant="secondary" className="text-xs">Lvl {spell.level}</Badge>
+                            </span>
+                          </SelectItem>
+                        ))
+                      )}
+                    </SelectContent>
+                  </Select>
+                )}
+
+                {/* Item grant - text input for now */}
+                {newEffect.type === 'item_grant' && (
+                  <Input
+                    value={newEffect.target}
+                    onChange={(e) => setNewEffect({ ...newEffect, target: e.target.value })}
+                    placeholder="Item ID or name"
+                    className="bg-stone-800 border-stone-700 text-xs"
+                  />
+                )}
               </div>
               <Button size="sm" variant="secondary" onClick={addEffect} className="w-full">
                 <Plus className="h-3 w-3 mr-1" /> Add Effect
