@@ -283,8 +283,9 @@ export const items = pgTable("items", {
   priceGold: integer("price_gold").default(0).notNull(),
   pricePlatinum: integer("price_platinum").default(0).notNull(),
   weight: text("weight").default("light"), // Legacy field
-  // Ration flag for consumables (used for rest mechanics)
-  isRation: boolean("is_ration").default(false).notNull(),
+  // Ration servings for consumables (used for rest mechanics)
+  // null or 0 means not a ration, positive values indicate how many rations this item provides
+  rationServings: integer("ration_servings").default(0),
 });
 
 export const insertItemSchema = createInsertSchema(items).omit({

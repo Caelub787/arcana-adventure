@@ -1428,12 +1428,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const character = access.character;
       const rationsRequired = 2;
       
-      // Get all ration items for this character
+      // Get all ration items for this character (items with rationServings > 0)
       const items = await storage.getItemsByCharacter(character.id);
-      const rationItems = items.filter((item) => item.isRation && (item.quantity || 0) > 0);
+      const rationItems = items.filter((item) => (item.rationServings || 0) > 0 && (item.quantity || 0) > 0);
       
-      // Count total rations available
-      let totalRations = rationItems.reduce((sum, item) => sum + (item.quantity || 0), 0);
+      // Count total rations available (sum of rationServings * quantity for each item)
+      let totalRations = rationItems.reduce((sum, item) => sum + ((item.rationServings || 0) * (item.quantity || 0)), 0);
       
       if (totalRations < rationsRequired) {
         return res.status(400).json({ 
@@ -1442,12 +1442,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // Consume rations from inventory
+      // Each item provides rationServings rations per quantity
       let rationsToConsume = rationsRequired;
       for (const item of rationItems) {
         if (rationsToConsume <= 0) break;
         
-        const consumeFromThis = Math.min(item.quantity || 0, rationsToConsume);
-        const newQuantity = (item.quantity || 0) - consumeFromThis;
+        const rationServingsPerItem = item.rationServings || 1;
+        const itemQuantity = item.quantity || 0;
+        
+        // Calculate how many items we need to consume
+        const itemsNeeded = Math.ceil(rationsToConsume / rationServingsPerItem);
+        const itemsToConsume = Math.min(itemQuantity, itemsNeeded);
+        const rationsFromThis = itemsToConsume * rationServingsPerItem;
+        
+        const newQuantity = itemQuantity - itemsToConsume;
         
         if (newQuantity <= 0) {
           // Delete the item
@@ -1457,7 +1465,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           await storage.updateItem(item.id, { quantity: newQuantity });
         }
         
-        rationsToConsume -= consumeFromThis;
+        rationsToConsume -= rationsFromThis;
       }
       
       // Calculate new HP: current + level (capped at max)
@@ -1512,12 +1520,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const character = access.character;
       const rationsRequired = 4;
       
-      // Get all ration items for this character
+      // Get all ration items for this character (items with rationServings > 0)
       const items = await storage.getItemsByCharacter(character.id);
-      const rationItems = items.filter((item) => item.isRation && (item.quantity || 0) > 0);
+      const rationItems = items.filter((item) => (item.rationServings || 0) > 0 && (item.quantity || 0) > 0);
       
-      // Count total rations available
-      let totalRations = rationItems.reduce((sum, item) => sum + (item.quantity || 0), 0);
+      // Count total rations available (sum of rationServings * quantity for each item)
+      let totalRations = rationItems.reduce((sum, item) => sum + ((item.rationServings || 0) * (item.quantity || 0)), 0);
       
       if (totalRations < rationsRequired) {
         return res.status(400).json({ 
@@ -1526,12 +1534,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // Consume rations from inventory
+      // Each item provides rationServings rations per quantity
       let rationsToConsume = rationsRequired;
       for (const item of rationItems) {
         if (rationsToConsume <= 0) break;
         
-        const consumeFromThis = Math.min(item.quantity || 0, rationsToConsume);
-        const newQuantity = (item.quantity || 0) - consumeFromThis;
+        const rationServingsPerItem = item.rationServings || 1;
+        const itemQuantity = item.quantity || 0;
+        
+        // Calculate how many items we need to consume
+        const itemsNeeded = Math.ceil(rationsToConsume / rationServingsPerItem);
+        const itemsToConsume = Math.min(itemQuantity, itemsNeeded);
+        const rationsFromThis = itemsToConsume * rationServingsPerItem;
+        
+        const newQuantity = itemQuantity - itemsToConsume;
         
         if (newQuantity <= 0) {
           // Delete the item
@@ -1541,7 +1557,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           await storage.updateItem(item.id, { quantity: newQuantity });
         }
         
-        rationsToConsume -= consumeFromThis;
+        rationsToConsume -= rationsFromThis;
       }
       
       // Calculate HP restored: full HP
