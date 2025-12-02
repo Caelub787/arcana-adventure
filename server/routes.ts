@@ -1148,6 +1148,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Clear chat messages for a campaign (GM only)
+  app.delete("/api/campaigns/:id/chat", requireAuth, async (req, res) => {
+    try {
+      const campaignId = req.params.id;
+      const userId = req.session.userId!;
+      
+      // Check if user is GM of this campaign
+      const members = await storage.getCampaignMembers(campaignId);
+      const member = members.find(m => m.userId === userId);
+      
+      if (!member || member.role !== 'gm') {
+        return res.status(403).json({ error: "Only the GM can clear chat" });
+      }
+      
+      await storage.clearChatMessages(campaignId);
+      res.json({ success: true });
+    } catch (err) {
+      console.error('Error clearing chat messages:', err);
+      res.status(500).json({ error: "Failed to clear chat messages" });
+    }
+  });
+
   app.patch("/api/campaigns/:id", requireAuth, async (req, res) => {
     try {
       const campaign = await storage.updateCampaign(req.params.id, req.body);

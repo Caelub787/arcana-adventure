@@ -3120,6 +3120,7 @@ export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onIn
   const [accessLevels, setAccessLevels] = useState<Record<string, string>>({});
   const [loadingAccess, setLoadingAccess] = useState(false);
   const [pendingDeleteChar, setPendingDeleteChar] = useState<any>(null);
+  const [clearingChat, setClearingChat] = useState(false);
   const queryClient = useQueryClient();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
@@ -3344,6 +3345,21 @@ export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onIn
     }
   };
 
+  const handleClearChat = async () => {
+    if (!campaignId) return;
+    setClearingChat(true);
+    try {
+      await api.clearChatMessages(campaignId);
+      setMessages([{ sender: "System", text: "Chat cleared.", type: "system" }]);
+      queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${campaignId}/chat`] });
+      toast({ title: "Chat Cleared", description: "All chat messages have been deleted" });
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message || "Failed to clear chat", variant: "destructive" });
+    } finally {
+      setClearingChat(false);
+    }
+  };
+
   return (
     <>
       {/* Floating Chat Button if closed (handled by parent HUD usually, but here for fallback) */}
@@ -3356,41 +3372,104 @@ export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onIn
         <SheetContent side="left" className="bg-stone-950 border-r-stone-800 text-stone-200 w-[90vw] sm:max-w-sm flex flex-col">
           <div className="flex items-center justify-between mb-4">
             <h2 className="font-display text-xl text-amber-500">Adventure Log</h2>
-            <Button size="sm" variant="outline" onClick={handleRoll} className="border-stone-700 hover:bg-stone-800">
-              <Dice5 className="mr-2 h-4 w-4" /> Roll d20
-            </Button>
+            <div className="flex items-center gap-2">
+              {role === 'gm' && (
+                <Button 
+                  size="sm" 
+                  variant="outline" 
+                  onClick={handleClearChat}
+                  disabled={clearingChat}
+                  className="border-red-700/50 hover:bg-red-900/30 text-red-400 hover:text-red-300"
+                  data-testid="button-clear-chat"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              )}
+              <Button size="sm" variant="outline" onClick={handleRoll} className="border-stone-700 hover:bg-stone-800">
+                <Dice5 className="mr-2 h-4 w-4" /> Roll d20
+              </Button>
+            </div>
           </div>
 
           <ScrollArea className="flex-1 pr-4 mb-4 border border-stone-800 rounded bg-black/30 p-2">
             <div className="space-y-3">
-              {messages.map((msg, i) => (
-                <div 
-                  key={i} 
-                  className={`text-sm ${
-                    msg.type === 'system' 
-                      ? 'text-amber-400 italic' 
-                      : msg.type === 'roll'
-                        ? 'bg-gradient-to-r from-cyan-900/40 to-purple-900/40 border border-cyan-700/50 rounded-lg px-3 py-2'
-                        : 'text-stone-300'
-                  }`}
-                >
-                  {msg.type === 'roll' ? (
-                    <div className="flex items-center gap-2">
-                      <Dice5 className="h-4 w-4 text-cyan-400 shrink-0" />
-                      <div>
-                        <span className="font-bold text-cyan-300">{msg.sender}</span>
-                        <span className="text-stone-400 mx-1">rolled</span>
-                        <span className="font-mono text-purple-300">{msg.text}</span>
+              {messages.map((msg, i) => {
+                // Parse roll message to extract total for notification-style display
+                const parseRollTotal = (text: string) => {
+                  const match = text.match(/=\s*(\d+)\s*$/);
+                  return match ? parseInt(match[1]) : null;
+                };
+                const parseRollLabel = (text: string) => {
+                  const colonIndex = text.indexOf(':');
+                  return colonIndex > 0 ? text.substring(0, colonIndex) : text;
+                };
+                const parseRollBreakdown = (text: string) => {
+                  const colonIndex = text.indexOf(':');
+                  if (colonIndex > 0) {
+                    const afterColon = text.substring(colonIndex + 1);
+                    const equalsIndex = afterColon.lastIndexOf('=');
+                    if (equalsIndex > 0) {
+                      return afterColon.substring(0, equalsIndex).trim();
+                    }
+                    return afterColon.trim();
+                  }
+                  return text;
+                };
+                const isCritSuccess = msg.text.includes('Crit Success');
+                const isCritFail = msg.text.includes('Crit Failure');
+                
+                return (
+                  <div 
+                    key={i} 
+                    className={`text-sm ${
+                      msg.type === 'system' 
+                        ? 'text-amber-400 italic' 
+                        : msg.type === 'roll'
+                          ? ''
+                          : 'text-stone-300'
+                    }`}
+                  >
+                    {msg.type === 'roll' ? (
+                      <div className={`
+                        relative overflow-hidden rounded-xl shadow-lg
+                        bg-gradient-to-r ${isCritSuccess ? 'from-yellow-500 to-amber-600' : isCritFail ? 'from-red-800 to-red-900' : 'from-cyan-600 to-blue-700'}
+                        border ${isCritSuccess ? 'border-yellow-400/50' : isCritFail ? 'border-red-600/50' : 'border-white/20'}
+                        ${isCritSuccess ? 'ring-2 ring-yellow-400/50' : ''}
+                        ${isCritFail ? 'ring-2 ring-red-500/50' : ''}
+                      `}>
+                        <div className="absolute inset-0 bg-black/20" />
+                        <div className="relative px-4 py-2 flex items-center gap-3">
+                          <div className="flex-shrink-0">
+                            <div className="w-10 h-10 rounded-lg bg-white/20 backdrop-blur-sm flex items-center justify-center">
+                              <Dice5 className="w-5 h-5 text-white" />
+                            </div>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 text-white/80 text-xs">
+                              <span className="font-medium truncate">{msg.sender}</span>
+                              <span className="text-white/50">•</span>
+                              <span className="text-white/70">{parseRollLabel(msg.text)}</span>
+                            </div>
+                            <div className="text-white/60 text-xs mt-0.5 truncate">
+                              {parseRollBreakdown(msg.text)}
+                            </div>
+                          </div>
+                          <div className="flex-shrink-0">
+                            <span className={`text-2xl font-bold text-white drop-shadow-lg ${isCritSuccess ? 'text-yellow-100' : ''} ${isCritFail ? 'text-red-200' : ''}`}>
+                              {parseRollTotal(msg.text) || '?'}
+                            </span>
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  ) : (
-                    <>
-                      <span className="font-bold text-stone-500 mr-2">{msg.sender}:</span>
-                      {msg.text}
-                    </>
-                  )}
-                </div>
-              ))}
+                    ) : (
+                      <>
+                        <span className="font-bold text-stone-500 mr-2">{msg.sender}:</span>
+                        {msg.text}
+                      </>
+                    )}
+                  </div>
+                );
+              })}
               <div ref={messagesEndRef} />
             </div>
           </ScrollArea>

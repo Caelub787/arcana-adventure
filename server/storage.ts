@@ -451,6 +451,10 @@ export class DatabaseStorage implements IStorage {
       .limit(limit);
   }
 
+  async clearChatMessages(campaignId: string): Promise<void> {
+    await db.delete(chatMessages).where(eq(chatMessages.campaignId, campaignId));
+  }
+
   // Password Reset operations
   async createPasswordResetToken(token: InsertPasswordResetToken): Promise<PasswordResetToken> {
     const [resetToken] = await db.insert(passwordResetTokens).values(token).returning();

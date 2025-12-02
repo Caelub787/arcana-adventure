@@ -438,6 +438,10 @@ class ApiClient {
     return this.request(`/campaigns/${campaignId}/chat`);
   }
 
+  async clearChatMessages(campaignId: string): Promise<void> {
+    return this.request(`/campaigns/${campaignId}/chat`, { method: 'DELETE' });
+  }
+
   // Scenes
   async getScenes(campaignId: string): Promise<Scene[]> {
     return this.request(`/campaigns/${campaignId}/scenes`);
