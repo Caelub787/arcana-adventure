@@ -676,46 +676,49 @@ export default function Campaign() {
         setTargetedTokenId(token.id);
         setSelectedTokenId(token.id);
         break;
-        
-      case 'assign':
-        // Assign mode: if user has edit access, assign the character to themselves
-        console.log('[TokenClick] ASSIGN mode - will assign character if player token');
-        if (token.type === 'player' && characters && Array.isArray(characters)) {
-          const charData = characters.find((c: any) => c.id === token.characterId);
-          if (charData) {
-            if (role === 'gm') {
-              // GMs can assign any character
-              console.log('[TokenClick] ASSIGNING character (persisting):', charData.name);
-              setCharacter(charData);
-              setInspectedChar(charData);
-              // Persist the assignment so it survives page reload
-              if (effectiveCampaignId) {
-                api.setAssignedCharacter(effectiveCampaignId, charData.id).catch(() => {
-                  // Silently fail - assignment will still work for this session
-                });
-              }
-              toast({ title: "Character Assigned", description: `${charData.name} is now your active character` });
-            } else if (role === 'player') {
-              // Players can only assign characters they have edit access to
-              const permission = myPermissions?.permissions?.[charData.id];
-              if (permission === 'owner' || permission === 'edit') {
-                setCharacter(charData);
-                // Persist the assignment
-                if (effectiveCampaignId) {
-                  api.setAssignedCharacter(effectiveCampaignId, charData.id).catch(() => {
-                    // Silently fail - assignment will still work for this session
-                  });
-                }
-                toast({ title: "Character Assigned", description: `${charData.name} is now your active character` });
-              } else {
-                toast({ title: "No Access", description: "You don't have edit access to this character", variant: "destructive" });
-              }
+    }
+  };
+
+  // Handler for double-clicking a token - triggers character assignment in select mode
+  const handleTokenDoubleClick = (token: any) => {
+    // Only assign in select mode - double-click assigns the character
+    if (selectionMode !== 'select') return;
+    
+    console.log('[TokenDoubleClick] Assigning character from token:', token.id, token.characterId);
+    if (token.type === 'player' && characters && Array.isArray(characters)) {
+      const charData = characters.find((c: any) => c.id === token.characterId);
+      if (charData) {
+        if (role === 'gm') {
+          // GMs can assign any character
+          console.log('[TokenDoubleClick] ASSIGNING character (persisting):', charData.name);
+          setCharacter(charData);
+          setInspectedChar(charData);
+          // Persist the assignment so it survives page reload
+          if (effectiveCampaignId) {
+            api.setAssignedCharacter(effectiveCampaignId, charData.id).catch(() => {
+              // Silently fail - assignment will still work for this session
+            });
+          }
+          toast({ title: "Character Assigned", description: `${charData.name} is now your active character` });
+        } else if (role === 'player') {
+          // Players can only assign characters they have edit access to
+          const permission = myPermissions?.permissions?.[charData.id];
+          if (permission === 'owner' || permission === 'edit') {
+            setCharacter(charData);
+            // Persist the assignment
+            if (effectiveCampaignId) {
+              api.setAssignedCharacter(effectiveCampaignId, charData.id).catch(() => {
+                // Silently fail - assignment will still work for this session
+              });
             }
+            toast({ title: "Character Assigned", description: `${charData.name} is now your active character` });
+          } else {
+            toast({ title: "No Access", description: "You don't have edit access to this character", variant: "destructive" });
           }
         }
-        setSelectedTokenId(token.id);
-        break;
+      }
     }
+    setSelectedTokenId(token.id);
   };
 
   // Handler for mode changes - clear targeting and selection when switching modes
@@ -1214,6 +1217,7 @@ export default function Campaign() {
              tokens={tokens} 
              onMoveToken={handleMoveToken} 
              onTokenClick={handleTokenClick}
+             onTokenDoubleClick={handleTokenDoubleClick}
              onDeleteToken={handleDeleteToken}
              role={role} 
              gridSize={50}

@@ -229,13 +229,14 @@ export function CharacterCreation({ onComplete, onCancel }: CharacterCreationPro
 }
 
 // Selection mode types
-export type SelectionMode = 'select' | 'target' | 'assign';
+export type SelectionMode = 'select' | 'target';
 
 // 2. BattleMap
 interface BattleMapProps {
   tokens: Token[];
   onMoveToken: (id: string, x: number, y: number) => void;
   onTokenClick?: (token: Token) => void;
+  onTokenDoubleClick?: (token: Token) => void;
   onDeleteToken?: (tokenId: string) => void;
   role: Role;
   gridSize: number;
@@ -248,7 +249,7 @@ interface BattleMapProps {
   selectedTokenId?: string | null;
 }
 
-export function BattleMap({ tokens, onMoveToken, onTokenClick, onDeleteToken, role, gridSize, backgroundImage, scene, onViewChange, characters = [], selectionMode = 'select', targetedTokenId, selectedTokenId }: BattleMapProps) {
+export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClick, onDeleteToken, role, gridSize, backgroundImage, scene, onViewChange, characters = [], selectionMode = 'select', targetedTokenId, selectedTokenId }: BattleMapProps) {
   // Use refs for pan/zoom to avoid re-renders during interaction
   const panRef = useRef({ x: 0, y: 0 });
   const zoomRef = useRef(1);
@@ -1061,6 +1062,12 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onDeleteToken, ro
                 e.stopPropagation(); 
                 if (showDeleteButton !== token.id && !isDragging) {
                   onTokenClick && onTokenClick(token);
+                }
+              }}
+              onDoubleClick={(e) => {
+                e.stopPropagation();
+                if (showDeleteButton !== token.id && !isDragging) {
+                  onTokenDoubleClick && onTokenDoubleClick(token);
                 }
               }}
               className={`absolute top-0 left-0 rounded-full shadow-xl ring-2 ring-white/20 overflow-visible bg-black token-shadow cursor-pointer touch-none select-none ${isDragging ? 'z-20 scale-110' : 'hover:scale-105'} transition-transform`}
@@ -2291,135 +2298,71 @@ export function BattleMapHotbars({ character, tokens, targetedTokenId, character
   );
 }
 
-// Selection Mode Buttons Component with double-click-to-reveal behavior
+// Selection Mode Buttons Component - Select and Target buttons stacked vertically
 interface SelectionModeButtonsProps {
   selectionMode: SelectionMode;
   onModeChange: (mode: SelectionMode) => void;
 }
 
 export function SelectionModeButtons({ selectionMode, onModeChange }: SelectionModeButtonsProps) {
-  const [isExpanded, setIsExpanded] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
-  
-  const modes = [
-    { mode: 'select' as SelectionMode, icon: MousePointer, label: 'Select', color: 'stone' },
-    { mode: 'target' as SelectionMode, icon: Target, label: 'Target', color: 'red' },
-    { mode: 'assign' as SelectionMode, icon: UserCheck, label: 'Assign', color: 'green' },
-  ];
-  
-  const currentModeData = modes.find(m => m.mode === selectionMode) || modes[0];
-  const CurrentIcon = currentModeData.icon;
-  const altModes = modes.filter(m => m.mode !== selectionMode);
-
-  const handleSingleClick = () => {
-    if (!isExpanded) {
-      onModeChange('select');
-    }
-  };
-  
-  const handleDoubleClick = (e: React.MouseEvent) => {
-    e.preventDefault();
-    setIsExpanded(!isExpanded);
-  };
-  
-  const handleModeSelect = (mode: SelectionMode) => {
-    onModeChange(mode);
-    setIsExpanded(false);
-  };
-  
-  useEffect(() => {
-    const handleClick = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setIsExpanded(false);
-      }
-    };
-    
-    if (isExpanded) {
-      document.addEventListener('mousedown', handleClick);
-      return () => document.removeEventListener('mousedown', handleClick);
-    }
-  }, [isExpanded]);
-  
   const getColorClasses = (color: string, isActive: boolean) => {
     const colorClasses: Record<string, string> = {
       stone: isActive ? 'bg-stone-600 border-stone-400 text-stone-100' : 'bg-stone-800/80 border-stone-600 text-stone-400 hover:bg-stone-700/50',
       red: isActive ? 'bg-red-600 border-red-400 text-red-100' : 'bg-stone-800/80 border-stone-600 text-red-400 hover:bg-red-900/50',
-      green: isActive ? 'bg-green-600 border-green-400 text-green-100' : 'bg-stone-800/80 border-stone-600 text-green-400 hover:bg-green-900/50',
     };
     return colorClasses[color] || colorClasses.stone;
   };
 
   return (
-    <div 
-      ref={containerRef}
-      className="absolute left-2 md:left-4 top-44 z-30 pointer-events-auto"
-    >
-      <div className="flex items-center gap-2">
+    <div className="absolute left-2 md:left-4 top-44 z-30 pointer-events-auto">
+      <div className="flex flex-col gap-2">
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
               <button
-                onClick={handleSingleClick}
-                onDoubleClick={handleDoubleClick}
+                onClick={() => onModeChange('select')}
                 className={`
                   w-9 h-9 md:w-10 md:h-10 rounded-lg border-2 flex items-center justify-center
                   transition-all duration-200 shadow-lg backdrop-blur-sm
-                  ${getColorClasses(currentModeData.color, true)}
-                  scale-110 ring-2 ring-white/20
+                  ${getColorClasses('stone', selectionMode === 'select')}
+                  ${selectionMode === 'select' ? 'scale-110 ring-2 ring-white/20' : 'hover:scale-105'}
                 `}
-                aria-expanded={isExpanded}
-                aria-label={`Current mode: ${currentModeData.label}. Double-click to reveal other modes.`}
-                data-testid={`selection-mode-${selectionMode}`}
+                aria-label="Select mode"
+                data-testid="selection-mode-select"
               >
-                <CurrentIcon className="h-4 w-4 md:h-5 md:w-5" />
+                <MousePointer className="h-4 w-4 md:h-5 md:w-5" />
               </button>
             </TooltipTrigger>
             <TooltipContent side="right">
-              <p className="font-bold">{currentModeData.label}</p>
-              <p className="text-xs text-stone-400">Double-click to change mode</p>
+              <p className="font-bold">Select</p>
+              <p className="text-xs text-stone-400">Double-click token to assign character</p>
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>
         
-        <AnimatePresence>
-          {isExpanded && (
-            <motion.div
-              initial={{ opacity: 0, x: -10, width: 0 }}
-              animate={{ opacity: 1, x: 0, width: 'auto' }}
-              exit={{ opacity: 0, x: -10, width: 0 }}
-              transition={{ duration: 0.15 }}
-              className="flex items-center gap-2 overflow-hidden"
-            >
-              {altModes.map(({ mode, icon: Icon, label, color }) => (
-                <TooltipProvider key={mode}>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <motion.button
-                        initial={{ opacity: 0, scale: 0.8 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        exit={{ opacity: 0, scale: 0.8 }}
-                        transition={{ duration: 0.1 }}
-                        onClick={() => handleModeSelect(mode)}
-                        className={`
-                          w-9 h-9 md:w-10 md:h-10 rounded-lg border-2 flex items-center justify-center
-                          transition-all duration-200 shadow-lg backdrop-blur-sm
-                          ${getColorClasses(color, false)}
-                          hover:scale-105
-                        `}
-                        data-testid={`selection-mode-${mode}`}
-                      >
-                        <Icon className="h-4 w-4 md:h-5 md:w-5" />
-                      </motion.button>
-                    </TooltipTrigger>
-                    <TooltipContent side="right">
-                      <p className="font-bold">{label}</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              ))}
-            </motion.div>
-          )}
-        </AnimatePresence>
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={() => onModeChange('target')}
+                className={`
+                  w-9 h-9 md:w-10 md:h-10 rounded-lg border-2 flex items-center justify-center
+                  transition-all duration-200 shadow-lg backdrop-blur-sm
+                  ${getColorClasses('red', selectionMode === 'target')}
+                  ${selectionMode === 'target' ? 'scale-110 ring-2 ring-white/20' : 'hover:scale-105'}
+                `}
+                aria-label="Target mode"
+                data-testid="selection-mode-target"
+              >
+                <Target className="h-4 w-4 md:h-5 md:w-5" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="right">
+              <p className="font-bold">Target</p>
+              <p className="text-xs text-stone-400">Mark a token for attacks</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
       </div>
     </div>
   );
