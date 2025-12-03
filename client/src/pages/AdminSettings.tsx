@@ -1395,23 +1395,9 @@ function FeatTreesView() {
     feats.forEach((f: Feat) => featById.set(f.id, f));
 
     return (
-      <div 
-        ref={canvasContainerRef}
-        className={`relative w-full h-[600px] overflow-hidden rounded-lg border border-stone-700 ${
-          connectionMode ? 'cursor-crosshair' : 'cursor-grab active:cursor-grabbing'
-        }`}
-        style={{ 
-          touchAction: 'none',
-          background: 'radial-gradient(ellipse at center, #1c1917 0%, #0c0a09 100%)'
-        }}
-        onPointerDown={handleCanvasPointerDown}
-        onPointerMove={handleCanvasPointerMove}
-        onPointerUp={handleCanvasPointerUp}
-        onPointerCancel={handleCanvasPointerUp}
-        onClick={handleCanvasClick}
-      >
-        {/* Toolbar */}
-        <div className="absolute top-3 left-3 z-30 flex gap-2">
+      <div className="space-y-3">
+        {/* Toolbar - moved outside canvas */}
+        <div className="flex flex-wrap gap-2 items-center">
           <Button 
             size="sm" 
             onClick={handleAddFeat}
@@ -1439,32 +1425,50 @@ function FeatTreesView() {
           <Button 
             size="sm" 
             variant="secondary" 
-            className="bg-stone-800/80 hover:bg-stone-700 text-xs border border-stone-600 ml-2"
+            className="bg-stone-800/80 hover:bg-stone-700 text-xs border border-stone-600"
             onClick={resetView}
             title="Center on first feat"
           >
-            <RefreshCw className="h-3 w-3" />
+            <RefreshCw className="h-3 w-3 mr-1" />
+            Reset View
           </Button>
+          
+          {/* Connection mode indicator */}
+          {connectionMode && (
+            <div className="flex items-center gap-2 bg-purple-600/90 backdrop-blur px-3 py-1.5 rounded-lg text-sm shadow-lg ml-auto">
+              <div className="w-2 h-2 bg-white rounded-full animate-pulse" />
+              <span>{connectingFrom ? 'Click target feat to connect' : 'Click source feat to start'}</span>
+              <Button 
+                size="sm" 
+                variant="ghost" 
+                className="h-6 w-6 p-0 hover:bg-purple-500"
+                onClick={() => {
+                  setConnectionMode(false);
+                  setConnectingFrom(null);
+                }}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          )}
         </div>
 
-        {/* Connection mode indicator */}
-        {connectionMode && (
-          <div className="absolute top-3 right-3 z-30 flex items-center gap-2 bg-purple-600/90 backdrop-blur px-3 py-1.5 rounded-lg text-sm shadow-lg">
-            <div className="w-2 h-2 bg-white rounded-full animate-pulse" />
-            <span>{connectingFrom ? 'Click target feat to connect' : 'Click source feat to start'}</span>
-            <Button 
-              size="sm" 
-              variant="ghost" 
-              className="h-6 w-6 p-0 hover:bg-purple-500"
-              onClick={() => {
-                setConnectionMode(false);
-                setConnectingFrom(null);
-              }}
-            >
-              <X className="h-4 w-4" />
-            </Button>
-          </div>
-        )}
+        {/* Canvas container */}
+        <div 
+          ref={canvasContainerRef}
+          className={`relative w-full h-[600px] overflow-hidden rounded-lg border border-stone-700 ${
+            connectionMode ? 'cursor-crosshair' : 'cursor-grab active:cursor-grabbing'
+          }`}
+          style={{ 
+            touchAction: 'none',
+            background: 'radial-gradient(ellipse at center, #1c1917 0%, #0c0a09 100%)'
+          }}
+          onPointerDown={handleCanvasPointerDown}
+          onPointerMove={handleCanvasPointerMove}
+          onPointerUp={handleCanvasPointerUp}
+          onPointerCancel={handleCanvasPointerUp}
+          onClick={handleCanvasClick}
+        >
         
         {/* Infinite canvas world */}
         <motion.div
@@ -1662,6 +1666,7 @@ function FeatTreesView() {
             title="Origin (0,0)"
           />
         </motion.div>
+        </div>
 
         {/* Centered Feat Action Menu */}
         {featActionMenu && (
