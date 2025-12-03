@@ -26,6 +26,12 @@ declare module 'http' {
   }
 }
 
+// Trust proxy for production (Replit uses reverse proxy)
+const isProduction = process.env.NODE_ENV === 'production';
+if (isProduction) {
+  app.set('trust proxy', 1);
+}
+
 // Configure Neon to use WebSocket for connections (required for Node.js)
 neonConfig.webSocketConstructor = ws;
 
@@ -46,10 +52,12 @@ app.use(session({
   secret: process.env.SESSION_SECRET || 'arcana-adventures-secret-key',
   resave: false,
   saveUninitialized: false,
+  proxy: isProduction, // Trust the reverse proxy in production
   cookie: { 
-    secure: false, 
+    secure: isProduction, // Use secure cookies in production (HTTPS)
     maxAge: 1000 * 60 * 60 * 24 * 7, // 7 days
-    httpOnly: true
+    httpOnly: true,
+    sameSite: 'lax' // Allows cookies to be sent with same-site requests
   }
 }));
 
