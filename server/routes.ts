@@ -2595,6 +2595,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Feat not found" });
       }
       
+      // Check if already unlocked
+      const existingFeats = await storage.getCharacterFeats(req.params.id);
+      const alreadyUnlocked = existingFeats.some(cf => cf.featId === req.params.featId);
+      if (alreadyUnlocked) {
+        return res.status(400).json({ error: "Feat already unlocked" });
+      }
+      
+      // Check prerequisites: at least one prerequisite must be unlocked (unless no prerequisites)
+      const connections = await storage.getFeatConnections(feat.treeId);
+      const prereqConnections = connections.filter(c => c.toFeatId === req.params.featId);
+      if (prereqConnections.length > 0) {
+        const unlockedIds = new Set(existingFeats.map(cf => cf.featId));
+        const hasPrereq = prereqConnections.some(c => unlockedIds.has(c.fromFeatId));
+        if (!hasPrereq) {
+          return res.status(400).json({ error: "Prerequisites not met" });
+        }
+      }
+      
+      // Validate feat points: level + (2 × floor(level/3))
+      const level = character.level || 1;
+      const totalFeatPoints = level + (2 * Math.floor(level / 3));
+      
+      // Get feat details for each to sum up spent points
+      let spentPoints = 0;
+      for (const cf of existingFeats) {
+        const f = await storage.getFeat(cf.featId);
+        if (f) {
+          spentPoints += f.cost || 1;
+        }
+      }
+      
+      const featCost = feat.cost || 1;
+      const availablePoints = totalFeatPoints - spentPoints;
+      
+      if (availablePoints < featCost) {
+        return res.status(400).json({ 
+          error: `Not enough feat points. Need ${featCost}, have ${availablePoints}` 
+        });
+      }
+      
       const charFeat = await storage.unlockCharacterFeat(req.params.id, req.params.featId);
       res.json(charFeat);
     } catch (err) {
