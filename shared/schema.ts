@@ -292,8 +292,9 @@ export const insertItemSchema = createInsertSchema(items).omit({
   id: true,
 }).refine((data) => {
   // Validate breakChance is between 0 and 100
-  if (data.breakChance !== undefined && data.breakChance !== null) {
-    if (data.breakChance < 0 || data.breakChance > 100) {
+  const breakChance = data.breakChance as number | undefined | null;
+  if (breakChance !== undefined && breakChance !== null) {
+    if (breakChance < 0 || breakChance > 100) {
       return false;
     }
   }
@@ -343,14 +344,20 @@ export const spells = pgTable("spells", {
   name: text("name").notNull(),
   image: text("image"),
   description: text("description"),
-  damage: text("damage"), // Dice notation
+  damage: text("damage"), // Dice notation (legacy)
+  damageDice: text("damage_dice"), // Dice notation e.g. "2d6"
+  healingDice: text("healing_dice"), // For healing spells
   damageType: text("damage_type"),
   range: integer("range"),
+  rangeNum: integer("range_num").default(30), // Numeric range in feet for distance calculations
   aoe: text("aoe"),
   castingTime: text("casting_time"),
   duration: text("duration"),
   level: integer("level").default(0).notNull(), // Spell level 0-9
   school: text("school"), // e.g. "evocation", "abjuration"
+  mod: integer("mod").default(0), // Flat bonus added after dice roll
+  attribute: text("attribute"), // Attribute used for attack rolls (might, finesse, wit, presence, will, craft)
+  energyCost: integer("energy_cost").default(1), // Energy cost to cast
   isEquipped: boolean("is_equipped").default(false).notNull(),
 });
 

@@ -181,13 +181,19 @@ export interface Spell {
   image?: string;
   description?: string;
   damage?: string;
+  damageDice?: string;
+  healingDice?: string;
   damageType?: string;
   range?: number;
+  rangeNum?: number;
   aoe?: string;
   castingTime?: string;
   duration?: string;
   level: number;
   school?: string;
+  mod?: number;
+  attribute?: string;
+  energyCost?: number;
   isEquipped: boolean;
 }
 
@@ -207,6 +213,7 @@ export interface SystemSpecies {
   hpPerLevel: number;
   startingEnergy: number;
   startingMaxEnergy: number;
+  carryWeight: number;
   featTree?: string;
   createdAt: string;
 }
@@ -440,6 +447,8 @@ class ApiClient {
     newHp: number;
     rationsConsumed: number;
     character: Character;
+    dieType?: string;
+    hpRoll?: number;
   }> {
     return this.request(`/characters/${characterId}/short-rest`, {
       method: 'POST',

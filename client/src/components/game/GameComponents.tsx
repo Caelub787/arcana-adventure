@@ -20,7 +20,7 @@ import {
   Users, User, Plus, Minus, LogOut, Menu, ChevronRight, ChevronLeft, ChevronDown, ChevronUp,
   Heart, Zap, Backpack, Sparkles, Dice5, MessageSquare, RefreshCw, X, Trash2, Package, FolderOpen, Lock, Unlock, Camera,
   BarChart3, Grid3X3, ScrollText, Upload, Image as ImageIcon, Layers, Search, TrendingUp, UserMinus, Ban,
-  MousePointer, Target, UserCheck, Swords, ArrowRight, Eye, EyeOff, Check, Moon, Coffee, AlertTriangle, GitBranch, Star
+  MousePointer, Target, UserCheck, Swords, ArrowRight, Eye, EyeOff, Check, Moon, Coffee, AlertTriangle, GitBranch, Star, BookOpen
 } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { type Scene, type Hotbar, type SystemSpecies, type FeatTreeWithData, type Feat, type FeatConnection, type CharacterFeat, api, gameWs } from "@/lib/api";
@@ -6711,7 +6711,7 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
   // Image browser state
   const [showImageBrowser, setShowImageBrowser] = useState(false);
 
-  const longPressTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const clickTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const isLongPressRef = useRef(false);
   const lastClickTimeRef = useRef(0);
@@ -11586,6 +11586,7 @@ function ManageTemplatesDialog({ open, onOpenChange, campaignId }: { open: boole
     durability: number;
     ammunitionType: string;
     weaponCategory: string;
+    breakChance: number;
   }>({
     name: '',
     description: '',
@@ -11604,6 +11605,7 @@ function ManageTemplatesDialog({ open, onOpenChange, campaignId }: { open: boole
     durability: 10,
     ammunitionType: '',
     weaponCategory: '',
+    breakChance: 10,
   });
 
   const { data: templateData, refetch } = useQuery({
@@ -11644,7 +11646,7 @@ function ManageTemplatesDialog({ open, onOpenChange, campaignId }: { open: boole
         name: '', description: '', itemType: 'utility', rarity: 'common',
         damage: '', damageType: '', mod: '', range: '', weight: 'light',
         itemWeight: '', priceCopper: '', priceSilver: '', priceGold: '', pricePlatinum: '', durability: 10,
-        ammunitionType: '', weaponCategory: '',
+        ammunitionType: '', weaponCategory: '', breakChance: 10,
       });
       toast({ title: "Template Created", description: "Campaign item template created successfully" });
     }
