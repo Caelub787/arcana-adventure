@@ -760,7 +760,10 @@ function SpellsView({ spells, isLoading, searchQuery, setSearchQuery, onAddSpell
                     </div>
                     <div className="text-sm text-stone-400 flex flex-wrap gap-2">
                       <span>Range: {spell.range}</span>
-                      <span>| {spell.castingTime}</span>
+                      <span className={spell.castingTime?.toLowerCase().includes('bonus') ? 'text-blue-400' : 'text-red-400'}>
+                        | {spell.castingTime?.toLowerCase().includes('bonus') ? 'Bonus Action' : 'Action'}
+                      </span>
+                      <span>| {spell.duration}</span>
                       {spell.damageDice && <span>| Damage: {spell.damageDice} {spell.damageType}</span>}
                       {spell.concentration && <span>| Concentration</span>}
                     </div>
@@ -2895,6 +2898,22 @@ const spellDamageTypes = ['Sharp', 'Blunt', 'Piercing', 'Flame', 'Frost', 'Storm
 const spellAttributes = ['might', 'finesse', 'wit', 'presence', 'will', 'craft'];
 
 function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: SpellFormDialogProps) {
+  // Normalize castingTime to new action format
+  const normalizeCastingTime = (ct: string | undefined | null): string => {
+    if (!ct) return 'action';
+    const lower = ct.toLowerCase();
+    if (lower.includes('bonus')) return 'bonus action';
+    return 'action';
+  };
+
+  // Normalize duration to match dropdown options
+  const normalizeDuration = (d: string | undefined | null): string => {
+    if (!d) return 'Instant';
+    // Check for common variations
+    if (d.toLowerCase() === 'instantaneous' || d.toLowerCase() === 'instant') return 'Instant';
+    return d;
+  };
+
   const [formData, setFormData] = useState<{
     name: string;
     description: string;
@@ -2908,9 +2927,9 @@ function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading }:
   }>({
     name: initialData?.name || '',
     description: initialData?.description || '',
-    castingTime: initialData?.castingTime || '1 action',
+    castingTime: normalizeCastingTime(initialData?.castingTime),
     range: initialData?.rangeNum ?? 30,
-    duration: initialData?.duration || 'Instantaneous',
+    duration: normalizeDuration(initialData?.duration),
     damageType: initialData?.damageType || '',
     damageDice: initialData?.damageDice || '',
     attribute: initialData?.attribute || '',
@@ -2922,9 +2941,9 @@ function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading }:
       setFormData({
         name: initialData.name || '',
         description: initialData.description || '',
-        castingTime: initialData.castingTime || '1 action',
+        castingTime: normalizeCastingTime(initialData.castingTime),
         range: initialData.rangeNum ?? 30,
-        duration: initialData.duration || 'Instantaneous',
+        duration: normalizeDuration(initialData.duration),
         damageType: initialData.damageType || '',
         damageDice: initialData.damageDice || '',
         attribute: initialData.attribute || '',
@@ -2934,9 +2953,9 @@ function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading }:
       setFormData({
         name: '',
         description: '',
-        castingTime: '1 action',
+        castingTime: 'action',
         range: 30,
-        duration: 'Instantaneous',
+        duration: 'Instant',
         damageType: '',
         damageDice: '',
         attribute: '',
@@ -3058,25 +3077,40 @@ function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading }:
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <Label>Cast Time</Label>
-                  <Input
-                    value={formData.castingTime}
-                    onChange={(e) => setFormData({ ...formData, castingTime: e.target.value })}
-                    placeholder="1 action"
-                    className="bg-stone-800 border-stone-700"
-                    data-testid="input-spell-casting-time"
-                  />
+                  <Label>Action Type</Label>
+                  <Select value={formData.castingTime} onValueChange={(v) => setFormData({ ...formData, castingTime: v })}>
+                    <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-spell-action-type">
+                      <SelectValue placeholder="Select action type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="action">Action</SelectItem>
+                      <SelectItem value="bonus action">Bonus Action</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 <div>
                   <Label>Duration</Label>
-                  <Input
-                    value={formData.duration}
-                    onChange={(e) => setFormData({ ...formData, duration: e.target.value })}
-                    placeholder="Instantaneous"
-                    className="bg-stone-800 border-stone-700"
-                    data-testid="input-spell-duration"
-                  />
+                  <Select value={formData.duration} onValueChange={(v) => setFormData({ ...formData, duration: v })}>
+                    <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-spell-duration">
+                      <SelectValue placeholder="Select duration" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Instant">Instant</SelectItem>
+                      <SelectItem value="1 Round">1 Round</SelectItem>
+                      <SelectItem value="1 Minute">1 Minute</SelectItem>
+                      <SelectItem value="10 Minutes">10 Minutes</SelectItem>
+                      <SelectItem value="30 Minutes">30 Minutes</SelectItem>
+                      <SelectItem value="1 Hour">1 Hour</SelectItem>
+                      <SelectItem value="6 Hours">6 Hours</SelectItem>
+                      <SelectItem value="12 Hours">12 Hours</SelectItem>
+                      <SelectItem value="1 Day">1 Day</SelectItem>
+                      <SelectItem value="1 Week">1 Week</SelectItem>
+                      <SelectItem value="1 Month">1 Month</SelectItem>
+                      <SelectItem value="1 Year">1 Year</SelectItem>
+                      <SelectItem value="Permanent">Permanent</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
 
