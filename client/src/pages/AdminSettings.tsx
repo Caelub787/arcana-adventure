@@ -2054,7 +2054,8 @@ function FeatFormDialog({ open, onOpenChange, onSave, initialData, isLoading, fe
 
   // Query system spells for spell_grant dropdown
   const { data: systemSpells = [] } = useQuery({
-    queryKey: ['/api/system-spells'],
+    queryKey: ['admin-spells'],
+    queryFn: () => api.getSystemSpells(),
     enabled: open,
   });
 
@@ -2884,61 +2885,59 @@ interface SpellFormDialogProps {
   isLoading?: boolean;
 }
 
-const spellSchools = ['Evocation', 'Conjuration', 'Abjuration', 'Transmutation', 'Divination', 'Enchantment', 'Illusion', 'Necromancy'];
 const spellDamageTypes = ['Sharp', 'Blunt', 'Piercing', 'Flame', 'Frost', 'Storm', 'Tide', 'Stone', 'Flux', 'Light', 'Dark', 'Sound', 'Health'];
-const targetTypes = ['self', 'single', 'multiple', 'area', 'cone', 'line'];
-const savingThrows = ['Strength', 'Dexterity', 'Constitution', 'Intelligence', 'Wisdom', 'Charisma'];
-const spellAoeTypes = ['cone', 'sphere', 'line', 'cube', 'cylinder'];
 const spellAttributes = ['might', 'finesse', 'wit', 'presence', 'will', 'craft'];
 
 function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: SpellFormDialogProps) {
   const [formData, setFormData] = useState<{
     name: string;
     description: string;
-    icon: string;
-    school: string;
-    level: number | string;
     castingTime: string;
-    range: string;
-    rangeNum: number | string;
+    range: number | string;
     duration: string;
-    components: string;
     damageType: string;
     damageDice: string;
-    mod: number | string;
     attribute: string;
-    healingDice: string;
     energyCost: number | string;
-    concentration: boolean;
-    ritual: boolean;
-    targetType: string;
-    areaSize: string;
-    aoe: string;
-    savingThrow: string;
   }>({
     name: initialData?.name || '',
     description: initialData?.description || '',
-    icon: initialData?.icon || '',
-    school: initialData?.school || 'Evocation',
-    level: initialData?.level ?? 1,
     castingTime: initialData?.castingTime || '1 action',
-    range: initialData?.range || '30 ft',
-    rangeNum: initialData?.rangeNum ?? 30,
+    range: initialData?.rangeNum ?? 30,
     duration: initialData?.duration || 'Instantaneous',
-    components: initialData?.components || 'V, S',
     damageType: initialData?.damageType || '',
     damageDice: initialData?.damageDice || '',
-    mod: initialData?.mod ?? 0,
     attribute: initialData?.attribute || '',
-    healingDice: initialData?.healingDice || '',
     energyCost: initialData?.energyCost ?? 1,
-    concentration: initialData?.concentration || false,
-    ritual: initialData?.ritual || false,
-    targetType: initialData?.targetType || 'single',
-    areaSize: initialData?.areaSize || '',
-    aoe: initialData?.aoe || '',
-    savingThrow: initialData?.savingThrow || '',
   });
+
+  useEffect(() => {
+    if (initialData) {
+      setFormData({
+        name: initialData.name || '',
+        description: initialData.description || '',
+        castingTime: initialData.castingTime || '1 action',
+        range: initialData.rangeNum ?? 30,
+        duration: initialData.duration || 'Instantaneous',
+        damageType: initialData.damageType || '',
+        damageDice: initialData.damageDice || '',
+        attribute: initialData.attribute || '',
+        energyCost: initialData.energyCost ?? 1,
+      });
+    } else {
+      setFormData({
+        name: '',
+        description: '',
+        castingTime: '1 action',
+        range: 30,
+        duration: 'Instantaneous',
+        damageType: '',
+        damageDice: '',
+        attribute: '',
+        energyCost: 1,
+      });
+    }
+  }, [initialData, open]);
 
   const handleNumericChange = (field: string, value: string) => {
     setFormData({ ...formData, [field]: value === '' ? '' : parseInt(value) });
@@ -2949,24 +2948,24 @@ function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading }:
       toast({ title: 'Error', description: 'Spell name is required', variant: 'destructive' });
       return;
     }
-    // Convert _none sentinel values back to empty strings for storage
     const normalizeNone = (val: string) => val === '_none' ? '' : val;
     onSave({
-      ...formData,
-      attribute: normalizeNone(formData.attribute),
+      name: formData.name,
+      description: formData.description,
+      castingTime: formData.castingTime,
+      range: `${formData.range} ft`,
+      rangeNum: Number(formData.range) || 30,
+      duration: formData.duration,
       damageType: normalizeNone(formData.damageType),
-      aoe: normalizeNone(formData.aoe),
-      savingThrow: normalizeNone(formData.savingThrow),
-      level: Number(formData.level) || 1,
-      rangeNum: Number(formData.rangeNum) || 30,
-      mod: Number(formData.mod) || 0,
+      damageDice: formData.damageDice,
+      attribute: normalizeNone(formData.attribute),
       energyCost: Number(formData.energyCost) || 1,
     });
   };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-stone-900 border-stone-700 text-stone-200 max-w-2xl max-h-[90vh] flex flex-col">
+      <DialogContent className="bg-stone-900 border-stone-700 text-stone-200 max-w-md max-h-[90vh] flex flex-col">
         <DialogHeader className="shrink-0">
           <DialogTitle className="text-blue-500">
             {initialData ? 'Edit Spell' : 'Create Spell'}
@@ -2975,8 +2974,8 @@ function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading }:
 
         <div className="flex-1 overflow-y-auto pr-4 min-h-0">
           <div className="space-y-4 py-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="col-span-2">
+            <div className="space-y-3">
+              <div>
                 <Label>Name *</Label>
                 <Input
                   value={formData.name}
@@ -2986,98 +2985,93 @@ function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading }:
                 />
               </div>
 
-              <div className="col-span-2">
+              <div>
                 <Label>Description</Label>
                 <Textarea
                   value={formData.description}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  className="bg-stone-800 border-stone-700 min-h-[80px]"
+                  className="bg-stone-800 border-stone-700 min-h-[60px]"
                   data-testid="textarea-spell-description"
                 />
               </div>
 
-              <div>
-                <Label>School</Label>
-                <Select value={formData.school} onValueChange={(v) => setFormData({ ...formData, school: v })}>
-                  <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-spell-school">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {spellSchools.map((school) => (
-                      <SelectItem key={school} value={school}>{school}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label>Damage Dice</Label>
+                  <Input
+                    value={formData.damageDice}
+                    onChange={(e) => setFormData({ ...formData, damageDice: e.target.value })}
+                    placeholder="2d6"
+                    className="bg-stone-800 border-stone-700"
+                    data-testid="input-spell-damage-dice"
+                  />
+                </div>
+
+                <div>
+                  <Label>Damage Type</Label>
+                  <Select value={formData.damageType || '_none'} onValueChange={(v) => setFormData({ ...formData, damageType: v === '_none' ? '' : v })}>
+                    <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-spell-damage-type">
+                      <SelectValue placeholder="Select type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="_none">None</SelectItem>
+                      {spellDamageTypes.map((type) => (
+                        <SelectItem key={type} value={type}>{type}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
 
-              <div>
-                <Label>Level (0-9)</Label>
-                <Input
-                  type="number"
-                  min="0"
-                  max="9"
-                  value={formData.level}
-                  onChange={(e) => handleNumericChange('level', e.target.value)}
-                  className="bg-stone-800 border-stone-700"
-                  data-testid="input-spell-level"
-                />
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label>Range (feet)</Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    value={formData.range}
+                    onChange={(e) => handleNumericChange('range', e.target.value)}
+                    placeholder="30"
+                    className="bg-stone-800 border-stone-700"
+                    data-testid="input-spell-range"
+                  />
+                </div>
+
+                <div>
+                  <Label>Energy Cost</Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    value={formData.energyCost}
+                    onChange={(e) => handleNumericChange('energyCost', e.target.value)}
+                    className="bg-stone-800 border-stone-700"
+                    data-testid="input-spell-energy-cost"
+                  />
+                </div>
               </div>
 
-              <div>
-                <Label>Casting Time</Label>
-                <Input
-                  value={formData.castingTime}
-                  onChange={(e) => setFormData({ ...formData, castingTime: e.target.value })}
-                  placeholder="1 action"
-                  className="bg-stone-800 border-stone-700"
-                  data-testid="input-spell-casting-time"
-                />
-              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label>Cast Time</Label>
+                  <Input
+                    value={formData.castingTime}
+                    onChange={(e) => setFormData({ ...formData, castingTime: e.target.value })}
+                    placeholder="1 action"
+                    className="bg-stone-800 border-stone-700"
+                    data-testid="input-spell-casting-time"
+                  />
+                </div>
 
-              <div>
-                <Label>Range (description)</Label>
-                <Input
-                  value={formData.range}
-                  onChange={(e) => setFormData({ ...formData, range: e.target.value })}
-                  placeholder="30 ft"
-                  className="bg-stone-800 border-stone-700"
-                  data-testid="input-spell-range"
-                />
-              </div>
-
-              <div>
-                <Label>Range (feet)</Label>
-                <Input
-                  type="number"
-                  min="0"
-                  value={formData.rangeNum}
-                  onChange={(e) => handleNumericChange('rangeNum', e.target.value)}
-                  placeholder="30"
-                  className="bg-stone-800 border-stone-700"
-                  data-testid="input-spell-range-num"
-                />
-              </div>
-
-              <div>
-                <Label>Duration</Label>
-                <Input
-                  value={formData.duration}
-                  onChange={(e) => setFormData({ ...formData, duration: e.target.value })}
-                  placeholder="Instantaneous"
-                  className="bg-stone-800 border-stone-700"
-                  data-testid="input-spell-duration"
-                />
-              </div>
-
-              <div>
-                <Label>Components</Label>
-                <Input
-                  value={formData.components}
-                  onChange={(e) => setFormData({ ...formData, components: e.target.value })}
-                  placeholder="V, S, M"
-                  className="bg-stone-800 border-stone-700"
-                  data-testid="input-spell-components"
-                />
+                <div>
+                  <Label>Duration</Label>
+                  <Input
+                    value={formData.duration}
+                    onChange={(e) => setFormData({ ...formData, duration: e.target.value })}
+                    placeholder="Instantaneous"
+                    className="bg-stone-800 border-stone-700"
+                    data-testid="input-spell-duration"
+                  />
+                </div>
               </div>
 
               <div>
@@ -3093,144 +3087,6 @@ function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading }:
                     ))}
                   </SelectContent>
                 </Select>
-              </div>
-
-              <div>
-                <Label>Damage Dice</Label>
-                <Input
-                  value={formData.damageDice}
-                  onChange={(e) => setFormData({ ...formData, damageDice: e.target.value })}
-                  placeholder="3d6"
-                  className="bg-stone-800 border-stone-700"
-                  data-testid="input-spell-damage-dice"
-                />
-              </div>
-
-              <div>
-                <Label>Damage Type</Label>
-                <Select value={formData.damageType || '_none'} onValueChange={(v) => setFormData({ ...formData, damageType: v === '_none' ? '' : v })}>
-                  <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-spell-damage-type">
-                    <SelectValue placeholder="Select type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="_none">None</SelectItem>
-                    {spellDamageTypes.map((type) => (
-                      <SelectItem key={type} value={type}>{type}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div>
-                <Label>Damage Mod (+/-)</Label>
-                <Input
-                  type="number"
-                  value={formData.mod}
-                  onChange={(e) => handleNumericChange('mod', e.target.value)}
-                  placeholder="0"
-                  className="bg-stone-800 border-stone-700"
-                  data-testid="input-spell-mod"
-                />
-              </div>
-
-              <div>
-                <Label>Area of Effect</Label>
-                <Select value={formData.aoe || '_none'} onValueChange={(v) => setFormData({ ...formData, aoe: v === '_none' ? '' : v })}>
-                  <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-spell-aoe">
-                    <SelectValue placeholder="None" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="_none">None</SelectItem>
-                    {spellAoeTypes.map((aoe) => (
-                      <SelectItem key={aoe} value={aoe}>{aoe.charAt(0).toUpperCase() + aoe.slice(1)}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div>
-                <Label>Healing Dice</Label>
-                <Input
-                  value={formData.healingDice}
-                  onChange={(e) => setFormData({ ...formData, healingDice: e.target.value })}
-                  placeholder="2d8+4"
-                  className="bg-stone-800 border-stone-700"
-                  data-testid="input-spell-healing-dice"
-                />
-              </div>
-
-              <div>
-                <Label>Energy Cost</Label>
-                <Input
-                  type="number"
-                  min="0"
-                  value={formData.energyCost}
-                  onChange={(e) => handleNumericChange('energyCost', e.target.value)}
-                  className="bg-stone-800 border-stone-700"
-                  data-testid="input-spell-energy-cost"
-                />
-              </div>
-
-              <div>
-                <Label>Target Type</Label>
-                <Select value={formData.targetType} onValueChange={(v) => setFormData({ ...formData, targetType: v })}>
-                  <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-spell-target-type">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {targetTypes.map((type) => (
-                      <SelectItem key={type} value={type}>{type.charAt(0).toUpperCase() + type.slice(1)}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div>
-                <Label>Area Size (if applicable)</Label>
-                <Input
-                  value={formData.areaSize}
-                  onChange={(e) => setFormData({ ...formData, areaSize: e.target.value })}
-                  placeholder="20 ft radius"
-                  className="bg-stone-800 border-stone-700"
-                  data-testid="input-spell-area-size"
-                />
-              </div>
-
-              <div>
-                <Label>Saving Throw</Label>
-                <Select value={formData.savingThrow || '_none'} onValueChange={(v) => setFormData({ ...formData, savingThrow: v === '_none' ? '' : v })}>
-                  <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-spell-saving-throw">
-                    <SelectValue placeholder="None" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="_none">None</SelectItem>
-                    {savingThrows.map((save) => (
-                      <SelectItem key={save} value={save}>{save}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="col-span-2 flex gap-6">
-                <div className="flex items-center gap-2">
-                  <Checkbox
-                    id="concentration"
-                    checked={formData.concentration}
-                    onCheckedChange={(checked) => setFormData({ ...formData, concentration: !!checked })}
-                    data-testid="checkbox-spell-concentration"
-                  />
-                  <Label htmlFor="concentration" className="cursor-pointer">Concentration</Label>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <Checkbox
-                    id="ritual"
-                    checked={formData.ritual}
-                    onCheckedChange={(checked) => setFormData({ ...formData, ritual: !!checked })}
-                    data-testid="checkbox-spell-ritual"
-                  />
-                  <Label htmlFor="ritual" className="cursor-pointer">Ritual</Label>
-                </div>
               </div>
             </div>
           </div>
