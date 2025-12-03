@@ -197,9 +197,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
     
     const userId = (req as any).session?.userId;
+    console.log(`[WebSocket] Session parsed, userId: ${userId}, session exists: ${!!(req as any).session}`);
     
     // Reject unauthenticated connections
     if (!userId) {
+      console.log(`[WebSocket] Rejecting - no userId in session. Cookie header: ${req.headers.cookie?.substring(0, 50)}...`);
       ws.close(4401, "Unauthorized - No active session");
       return;
     }
