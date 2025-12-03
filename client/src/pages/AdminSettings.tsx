@@ -3252,25 +3252,31 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
       toast({ title: 'Error', description: 'Item name is required', variant: 'destructive' });
       return;
     }
+    // Helper to convert empty strings to undefined for optional numeric fields
+    const optionalNum = (val: string | number): number | undefined => {
+      if (val === '' || val === undefined || val === null) return undefined;
+      const num = Number(val);
+      return isNaN(num) ? undefined : num;
+    };
     // Convert _none sentinel values back to empty strings for storage
     const normalizeNone = (val: string) => val === '_none' ? '' : val;
     const cleanedData = {
       ...formData,
       ammunitionType: normalizeNone(formData.ammunitionType),
-      mod: Number(formData.mod) || 0,
-      range: Number(formData.range) || 0,
-      itemWeight: Number(formData.itemWeight) || 0,
+      mod: optionalNum(formData.mod),
+      range: optionalNum(formData.range),
+      itemWeight: optionalNum(formData.itemWeight),
       durability: Number(formData.durability) || 10,
-      price: Number(formData.price) || 0,
-      carryCapacity: Number(formData.carryCapacity) || 0,
+      price: optionalNum(formData.price),
+      carryCapacity: optionalNum(formData.carryCapacity),
       quantity: Number(formData.quantity) || 1,
       breakChance: formData.itemType === 'ammunition' ? Number(formData.breakChance) || 10 : 10,
       aoe: formData.aoe === 'none' ? undefined : formData.aoe,
-      armorBonus: formData.itemType === 'armor' ? Number(formData.armorBonus) || 0 : 0,
-      damageReduction: formData.itemType === 'armor' ? Number(formData.damageReduction) || 0 : 0,
+      armorBonus: formData.itemType === 'armor' ? optionalNum(formData.armorBonus) : undefined,
+      damageReduction: formData.itemType === 'armor' ? optionalNum(formData.damageReduction) : undefined,
       armorSlot: formData.itemType === 'armor' ? formData.armorSlot : undefined,
       damageReductionType: formData.itemType === 'armor' ? formData.damageReductionType : undefined,
-      rationServings: formData.itemType === 'consumable' ? Number(formData.rationServings) || 0 : 0,
+      rationServings: formData.itemType === 'consumable' ? optionalNum(formData.rationServings) : undefined,
     };
     onSave(cleanedData);
   };
