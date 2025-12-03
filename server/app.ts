@@ -57,7 +57,7 @@ app.use(session({
     secure: isProduction, // Use secure cookies in production (HTTPS)
     maxAge: 1000 * 60 * 60 * 24 * 7, // 7 days
     httpOnly: true,
-    sameSite: 'lax' // Allows cookies to be sent with same-site requests
+    sameSite: isProduction ? 'none' : 'lax' // 'none' required for cross-site WebSocket in production
   }
 }));
 
