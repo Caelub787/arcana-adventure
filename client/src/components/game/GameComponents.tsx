@@ -10916,22 +10916,27 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
 
   const handleSubmit = () => {
     if (!formData.name) return;
-    // Convert empty/NaN values to 0 on submit
+    // Helper to convert empty strings to undefined for optional numeric fields
+    const optionalNum = (val: string | number): number | undefined => {
+      if (val === '' || val === undefined || val === null) return undefined;
+      const num = Number(val);
+      return isNaN(num) ? undefined : num;
+    };
     const cleanedData = {
       ...formData,
-      mod: Number(formData.mod) || 0,
-      range: Number(formData.range) || 0,
-      itemWeight: Number(formData.itemWeight) || 0,
-      priceCopper: Number(formData.priceCopper) || 0,
-      priceSilver: Number(formData.priceSilver) || 0,
-      priceGold: Number(formData.priceGold) || 0,
-      pricePlatinum: Number(formData.pricePlatinum) || 0,
+      mod: optionalNum(formData.mod),
+      range: optionalNum(formData.range),
+      itemWeight: optionalNum(formData.itemWeight),
+      priceCopper: optionalNum(formData.priceCopper),
+      priceSilver: optionalNum(formData.priceSilver),
+      priceGold: optionalNum(formData.priceGold),
+      pricePlatinum: optionalNum(formData.pricePlatinum),
       quantity: Number(formData.quantity) || 1,
-      carryCapacity: Number(formData.carryCapacity) || 0,
-      armorBonus: Number(formData.armorBonus) || 0,
-      damageReduction: Number(formData.damageReduction) || 0,
-      rationServings: Number(formData.rationServings) || 0,
-      breakChance: Number(formData.breakChance) ?? 10,
+      carryCapacity: optionalNum(formData.carryCapacity),
+      armorBonus: optionalNum(formData.armorBonus),
+      damageReduction: optionalNum(formData.damageReduction),
+      rationServings: optionalNum(formData.rationServings),
+      breakChance: Number(formData.breakChance) || 10,
     };
     onSave(cleanedData);
     setFormData({
@@ -11613,16 +11618,21 @@ function ManageTemplatesDialog({ open, onOpenChange, campaignId }: { open: boole
 
   const createTemplateMutation = useMutation({
     mutationFn: (data: any) => {
-      // Convert empty/NaN values to 0 before saving
+      // Helper to convert empty strings to undefined for optional numeric fields
+      const optionalNum = (val: string | number): number | undefined => {
+        if (val === '' || val === undefined || val === null) return undefined;
+        const num = Number(val);
+        return isNaN(num) ? undefined : num;
+      };
       const cleanedData = {
         ...data,
-        mod: Number(data.mod) || 0,
-        range: Number(data.range) || 0,
-        itemWeight: Number(data.itemWeight) || 0,
-        priceCopper: Number(data.priceCopper) || 0,
-        priceSilver: Number(data.priceSilver) || 0,
-        priceGold: Number(data.priceGold) || 0,
-        pricePlatinum: Number(data.pricePlatinum) || 0,
+        mod: optionalNum(data.mod),
+        range: optionalNum(data.range),
+        itemWeight: optionalNum(data.itemWeight),
+        priceCopper: optionalNum(data.priceCopper),
+        priceSilver: optionalNum(data.priceSilver),
+        priceGold: optionalNum(data.priceGold),
+        pricePlatinum: optionalNum(data.pricePlatinum),
       };
       return api.createCampaignTemplateItem(campaignId!, cleanedData);
     },
@@ -12009,18 +12019,23 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
 
   const handleSave = () => {
     if (editData) {
-      // Convert empty/NaN values to 0 before saving
+      // Helper to convert empty strings to undefined for optional numeric fields
+      const optionalNum = (val: string | number): number | undefined => {
+        if (val === '' || val === undefined || val === null) return undefined;
+        const num = Number(val);
+        return isNaN(num) ? undefined : num;
+      };
       const cleanedData = {
         ...editData,
-        mod: Number(editData.mod) || 0,
-        range: Number(editData.range) || 0,
-        itemWeight: Number(editData.itemWeight) || 0,
-        priceCopper: Number(editData.priceCopper) || 0,
-        priceSilver: Number(editData.priceSilver) || 0,
-        priceGold: Number(editData.priceGold) || 0,
-        pricePlatinum: Number(editData.pricePlatinum) || 0,
+        mod: optionalNum(editData.mod),
+        range: optionalNum(editData.range),
+        itemWeight: optionalNum(editData.itemWeight),
+        priceCopper: optionalNum(editData.priceCopper),
+        priceSilver: optionalNum(editData.priceSilver),
+        priceGold: optionalNum(editData.priceGold),
+        pricePlatinum: optionalNum(editData.pricePlatinum),
         quantity: Number(editData.quantity) || 1,
-        carryCapacity: Number(editData.carryCapacity) || 0,
+        carryCapacity: optionalNum(editData.carryCapacity),
       };
       onUpdate(cleanedData);
       setIsEditing(false);
