@@ -2876,6 +2876,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Item not found" });
       }
 
+      if (!currentItem.characterId) {
+        return res.status(400).json({ error: "Item has no associated character" });
+      }
+
       const access = await checkCharacterAccess(currentItem.characterId, req.session.userId!, 'edit');
       
       if (!access.character) {
@@ -2948,6 +2952,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Item not found" });
       }
 
+      if (!item.characterId) {
+        return res.status(400).json({ error: "Item has no associated character" });
+      }
+
       const access = await checkCharacterAccess(item.characterId, req.session.userId!, 'edit');
       
       if (!access.character) {
@@ -2970,6 +2978,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const item = await storage.getItem(req.params.id);
       if (!item) {
         return res.status(404).json({ error: "Item not found" });
+      }
+
+      if (!item.characterId) {
+        return res.status(400).json({ error: "Item has no associated character" });
       }
       
       const access = await checkCharacterAccess(item.characterId, req.session.userId!, 'edit');
