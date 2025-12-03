@@ -2929,6 +2929,8 @@ function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading }:
     damageDice: string;
     attribute: string;
     energyCost: number | string;
+    isAoe: boolean;
+    aoeRange: number | string;
   }>({
     name: initialData?.name || '',
     description: initialData?.description || '',
@@ -2939,6 +2941,8 @@ function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading }:
     damageDice: initialData?.damageDice || '',
     attribute: initialData?.attribute || '',
     energyCost: initialData?.energyCost ?? 1,
+    isAoe: initialData?.isAoe || false,
+    aoeRange: initialData?.aoeRange ?? '',
   });
 
   useEffect(() => {
@@ -2953,6 +2957,8 @@ function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading }:
         damageDice: initialData.damageDice || '',
         attribute: initialData.attribute || '',
         energyCost: initialData.energyCost ?? 1,
+        isAoe: initialData.isAoe || false,
+        aoeRange: initialData.aoeRange ?? '',
       });
     } else {
       setFormData({
@@ -2965,6 +2971,8 @@ function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading }:
         damageDice: '',
         attribute: '',
         energyCost: 1,
+        isAoe: false,
+        aoeRange: '',
       });
     }
   }, [initialData, open]);
@@ -2979,6 +2987,11 @@ function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading }:
       return;
     }
     const normalizeNone = (val: string) => val === '_none' ? '' : val;
+    const optionalNum = (val: string | number): number | undefined => {
+      if (val === '' || val === undefined || val === null) return undefined;
+      const num = Number(val);
+      return isNaN(num) ? undefined : num;
+    };
     onSave({
       name: formData.name,
       description: formData.description,
@@ -2990,6 +3003,8 @@ function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading }:
       damageDice: formData.damageDice,
       attribute: normalizeNone(formData.attribute),
       energyCost: Number(formData.energyCost) || 1,
+      isAoe: formData.isAoe,
+      aoeRange: formData.isAoe ? optionalNum(formData.aoeRange) : undefined,
     });
   };
 
@@ -3132,6 +3147,33 @@ function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading }:
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+
+              <div className="space-y-3">
+                <div className="flex items-center gap-3">
+                  <Checkbox
+                    id="spell-aoe"
+                    checked={formData.isAoe}
+                    onCheckedChange={(checked) => setFormData({ ...formData, isAoe: checked === true })}
+                    className="border-stone-600"
+                    data-testid="checkbox-spell-aoe"
+                  />
+                  <Label htmlFor="spell-aoe" className="cursor-pointer">Area of Effect (AoE)</Label>
+                </div>
+                {formData.isAoe && (
+                  <div>
+                    <Label>AoE Range (feet)</Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      value={formData.aoeRange}
+                      onChange={(e) => handleNumericChange('aoeRange', e.target.value)}
+                      placeholder="e.g. 15"
+                      className="bg-stone-800 border-stone-700"
+                      data-testid="input-spell-aoe-range"
+                    />
+                  </div>
+                )}
               </div>
             </div>
           </div>

@@ -568,6 +568,8 @@ export const systemSpells = pgTable("system_spells", {
   targetType: text("target_type").default("single").notNull(),
   areaSize: text("area_size"),
   aoe: text("aoe"), // Area of effect type: cone, sphere, line, cube, cylinder (like weapons)
+  isAoe: boolean("is_aoe").default(false), // Whether the spell has an area of effect
+  aoeRange: integer("aoe_range"), // Area of effect range in feet (optional, no default)
   savingThrow: text("saving_throw"),
   effects: jsonb("effects").default([]).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
