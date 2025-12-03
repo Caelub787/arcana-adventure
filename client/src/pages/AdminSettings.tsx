@@ -228,8 +228,7 @@ export default function AdminSettings() {
   const filteredSpells = useMemo(() => {
     return systemSpells.filter((spell: SystemSpell) => {
       return spell.name.toLowerCase().includes(debouncedSpellSearchQuery.toLowerCase()) ||
-             (spell.description?.toLowerCase().includes(debouncedSpellSearchQuery.toLowerCase())) ||
-             spell.school.toLowerCase().includes(debouncedSpellSearchQuery.toLowerCase());
+             (spell.description?.toLowerCase().includes(debouncedSpellSearchQuery.toLowerCase()));
     });
   }, [systemSpells, debouncedSpellSearchQuery]);
 
@@ -693,16 +692,6 @@ interface SpellsViewProps {
   onDeleteSpell: (id: string) => void;
 }
 
-const spellSchoolColors: Record<string, string> = {
-  Evocation: 'bg-red-600',
-  Conjuration: 'bg-yellow-600',
-  Abjuration: 'bg-blue-600',
-  Transmutation: 'bg-green-600',
-  Divination: 'bg-purple-600',
-  Enchantment: 'bg-pink-600',
-  Illusion: 'bg-indigo-600',
-  Necromancy: 'bg-gray-600',
-};
 
 function SpellsView({ spells, isLoading, searchQuery, setSearchQuery, onAddSpell, onEditSpell, onDeleteSpell }: SpellsViewProps) {
   return (
@@ -755,16 +744,15 @@ function SpellsView({ spells, isLoading, searchQuery, setSearchQuery, onAddSpell
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="font-medium truncate">{spell.name}</span>
-                      <Badge className={`${spellSchoolColors[spell.school] || 'bg-stone-600'} text-xs`}>{spell.school}</Badge>
-                      <Badge className="bg-stone-600 text-xs">Lvl {spell.level}</Badge>
+                      <Badge className={spell.castingTime?.toLowerCase().includes('bonus') ? 'bg-blue-600 text-xs' : 'bg-red-600 text-xs'}>
+                        {spell.castingTime?.toLowerCase().includes('bonus') ? 'Bonus Action' : 'Action'}
+                      </Badge>
                     </div>
                     <div className="text-sm text-stone-400 flex flex-wrap gap-2">
                       <span>Range: {spell.range}</span>
-                      <span className={spell.castingTime?.toLowerCase().includes('bonus') ? 'text-blue-400' : 'text-red-400'}>
-                        | {spell.castingTime?.toLowerCase().includes('bonus') ? 'Bonus Action' : 'Action'}
-                      </span>
                       <span>| {spell.duration}</span>
                       {spell.damageDice && <span>| Damage: {spell.damageDice} {spell.damageType}</span>}
+                      {spell.isAoe && spell.aoeRange && <span>| AoE: {spell.aoeRange}ft</span>}
                       {spell.concentration && <span>| Concentration</span>}
                     </div>
                   </div>
