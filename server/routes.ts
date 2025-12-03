@@ -167,7 +167,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       origin.startsWith(allowed) || 
       (allowed.includes('.repl.co') && origin.includes('.repl.co')) ||
       origin.includes('.picard.replit.dev') ||
-      origin.includes('.replit.dev')
+      origin.includes('.replit.dev') ||
+      origin.includes('.replit.app') // Published apps use .replit.app domain
     );
     
     if (!isAllowed) {
