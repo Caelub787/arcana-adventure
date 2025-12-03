@@ -10203,12 +10203,18 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
             )}
           </DialogHeader>
           
-          <div className="flex-1 overflow-auto">
+          <div className="flex-1 min-h-[400px] overflow-auto">
             {!featTreeData ? (
               <div className="text-center py-12 text-stone-400">
                 <GitBranch className="h-12 w-12 mx-auto mb-3 opacity-50" />
                 <p>No feat tree data available</p>
                 <p className="text-sm mt-1">Ask your GM to set up feat trees</p>
+              </div>
+            ) : featTreeData.feats.length === 0 ? (
+              <div className="text-center py-12 text-stone-400">
+                <GitBranch className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                <p>This feat tree has no feats yet</p>
+                <p className="text-sm mt-1">Ask your GM to add feats in Admin Settings</p>
               </div>
             ) : (
               <FeatTreeViewerGrid 
@@ -10527,11 +10533,12 @@ function FeatTreeViewerGrid({
   }, [motionX, motionY, motionZoom]);
   
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col" style={{ minHeight: '400px' }}>
       {/* Infinite canvas viewport */}
       <div 
         ref={containerRef}
-        className="relative flex-1 min-h-[350px] overflow-hidden bg-gradient-to-br from-stone-900 via-purple-950/20 to-stone-900 rounded-lg touch-none cursor-grab active:cursor-grabbing border border-stone-700"
+        className="relative overflow-hidden bg-gradient-to-br from-stone-900 via-purple-950/20 to-stone-900 rounded-lg touch-none cursor-grab active:cursor-grabbing border border-stone-700"
+        style={{ height: '350px' }}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
