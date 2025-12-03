@@ -6824,6 +6824,7 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
   const featBonuses = useMemo(() => {
     const bonuses = {
       hp: 0,
+      energy: 0,
       dc: 0,
       attributes: {} as Record<string, number>,
       skills: {} as Record<string, number>,
@@ -6848,6 +6849,14 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
               bonuses.hp += effect.value || 0;
             }
             break;
+          case 'energy_bonus':
+            // Support per-level scaling for energy as well
+            if (effect.subtype === 'per_level') {
+              bonuses.energy += (effect.value || 0) * charLevel;
+            } else {
+              bonuses.energy += effect.value || 0;
+            }
+            break;
           case 'dc_bonus':
             bonuses.dc += effect.value || 0;
             break;
@@ -6867,6 +6876,10 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
     
     return bonuses;
   }, [featTreeData?.feats, characterFeats, liveCharacter?.level]);
+
+  // Calculate effective max HP/Energy including feat bonuses
+  const effectiveMaxHp = (liveCharacter.maxHp || 0) + featBonuses.hp;
+  const effectiveMaxEnergy = (liveCharacter.maxEnergy || 0) + featBonuses.energy;
 
   // Handle race selection - auto-fill race stats and recalculate HP based on new species
   const handleRaceChange = (raceName: string) => {
@@ -8156,11 +8169,11 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                       </div>
                     ) : (
                       <span className="text-sm font-bold" data-testid="text-hp">
-                        {liveCharacter.hp} / {liveCharacter.maxHp}
+                        {Math.min(liveCharacter.hp, effectiveMaxHp)} / {effectiveMaxHp}
                       </span>
                     )}
                   </div>
-                  {!editingOverview && <Progress value={Math.round((liveCharacter.hp / liveCharacter.maxHp) * 100)} className="h-3" data-testid="progress-hp" />}
+                  {!editingOverview && <Progress value={Math.min(100, Math.round((liveCharacter.hp / effectiveMaxHp) * 100))} className="h-3" data-testid="progress-hp" />}
                   
                   {/* HP Breakdown and Level-Up Button */}
                   {!editingOverview && (
@@ -8239,11 +8252,19 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                       </div>
                     ) : (
                       <span className="text-sm font-bold" data-testid="text-energy">
-                        {liveCharacter.energy} / {liveCharacter.maxEnergy}
+                        {Math.min(liveCharacter.energy, effectiveMaxEnergy)} / {effectiveMaxEnergy}
                       </span>
                     )}
                   </div>
-                  {!editingOverview && <Progress value={Math.round((liveCharacter.energy / liveCharacter.maxEnergy) * 100)} className="h-3" data-testid="progress-energy" />}
+                  {!editingOverview && <Progress value={Math.min(100, Math.round((liveCharacter.energy / effectiveMaxEnergy) * 100))} className="h-3" data-testid="progress-energy" />}
+                  
+                  {/* Energy Breakdown */}
+                  {!editingOverview && featBonuses.energy > 0 && (
+                    <div className="mt-1 text-xs text-stone-500" data-testid="text-energy-breakdown">
+                      Base: {currentSpecies?.startingMaxEnergy || 10}
+                      <span className="text-purple-400"> | Feats: +{featBonuses.energy}</span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Edit Mode Buttons */}

@@ -804,10 +804,11 @@ const featNodeStyle = {
 
 const effectTypeIcons: Record<string, any> = {
   hp_bonus: Heart,
+  energy_bonus: Zap,
   dc_bonus: ShieldCheck,
   spell_grant: BookOpen,
   skill_bonus: Star,
-  attribute_bonus: Zap,
+  attribute_bonus: Sparkles,
 };
 
 const NODE_WIDTH = 160;
@@ -1589,11 +1590,12 @@ function FeatTreesView() {
           {feats.map((feat: Feat) => {
             const isSelected = selectedFeatId === feat.id;
             const isConnectSource = connectingFrom === feat.id;
+            const isDragging = dragOffset?.id === feat.id;
             
             // Convert grid indices to pixels and apply drag offset
             let posX = feat.gridX * CELL_SIZE;
             let posY = feat.gridY * CELL_SIZE;
-            if (dragOffset?.id === feat.id) {
+            if (isDragging) {
               posX += dragOffset.dx;
               posY += dragOffset.dy;
             }
@@ -1603,18 +1605,19 @@ function FeatTreesView() {
                 key={feat.id}
                 data-feat-cell
                 className={`
-                  absolute rounded-xl border-2 transition-all duration-200
+                  absolute rounded-xl border-2 
                   ${featNodeStyle.border} ${featNodeStyle.bg} ${featNodeStyle.glow}
                   ${isSelected ? 'ring-2 ring-white ring-offset-2 ring-offset-stone-900 scale-105' : ''}
                   ${isConnectSource ? 'animate-pulse ring-2 ring-purple-400' : ''}
                   ${connectionMode ? 'cursor-crosshair' : 'cursor-move'}
-                  hover:scale-105
+                  ${!isDragging ? 'transition-transform duration-150 hover:scale-105' : ''}
                 `}
                 style={{
                   left: WORLD_OFFSET + posX,
                   top: WORLD_OFFSET + posY,
                   width: NODE_WIDTH,
                   height: NODE_HEIGHT,
+                  willChange: isDragging ? 'left, top' : 'auto',
                 }}
                 onClick={(e) => handleFeatClick(feat, e)}
                 onDoubleClick={(e) => handleFeatDoubleClick(feat, e)}
@@ -2332,13 +2335,14 @@ function FeatFormDialog({ open, onOpenChange, onSave, initialData, isLoading, fe
                 <div className="grid grid-cols-2 gap-2">
                   <Select
                     value={newEffect.type}
-                    onValueChange={(v) => setNewEffect({ ...newEffect, type: v, target: '', subtype: v === 'hp_bonus' ? 'flat' : undefined })}
+                    onValueChange={(v) => setNewEffect({ ...newEffect, type: v, target: '', subtype: (v === 'hp_bonus' || v === 'energy_bonus') ? 'flat' : undefined })}
                   >
                     <SelectTrigger className="bg-stone-800 border-stone-700 text-xs">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="hp_bonus">HP Bonus</SelectItem>
+                      <SelectItem value="energy_bonus">Energy Bonus</SelectItem>
                       <SelectItem value="dc_bonus">DC Bonus</SelectItem>
                       <SelectItem value="skill_bonus">Skill Bonus</SelectItem>
                       <SelectItem value="attribute_bonus">Attribute Bonus</SelectItem>
@@ -2359,8 +2363,8 @@ function FeatFormDialog({ open, onOpenChange, onSave, initialData, isLoading, fe
                   )}
                 </div>
 
-                {/* HP Bonus subtype selector */}
-                {newEffect.type === 'hp_bonus' && (
+                {/* HP/Energy Bonus subtype selector */}
+                {(newEffect.type === 'hp_bonus' || newEffect.type === 'energy_bonus') && (
                   <div className="flex gap-2">
                     <Select
                       value={newEffect.subtype || 'flat'}
@@ -2375,7 +2379,9 @@ function FeatFormDialog({ open, onOpenChange, onSave, initialData, isLoading, fe
                       </SelectContent>
                     </Select>
                     <span className="text-xs text-stone-400 self-center">
-                      {newEffect.subtype === 'per_level' ? 'Adds HP each level' : 'One-time HP boost'}
+                      {newEffect.subtype === 'per_level' 
+                        ? `Adds ${newEffect.type === 'hp_bonus' ? 'HP' : 'Energy'} each level` 
+                        : `One-time ${newEffect.type === 'hp_bonus' ? 'HP' : 'Energy'} boost`}
                     </span>
                   </div>
                 )}

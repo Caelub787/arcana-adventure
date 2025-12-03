@@ -38,13 +38,15 @@ Preferred communication style: Simple, everyday language.
     - Selected node highlighting with white ring
   - **Prerequisite Connections**: Visual SVG lines connect prerequisite feats. Feats can only be unlocked when at least one connected prerequisite is already unlocked.
   - **Species Integration**: Each species can have a feat tree assigned. Characters automatically inherit their species' feat tree and can view/unlock feats from their character sheet.
-  - **Feat Effects**: Six effect types that are dynamically calculated (not persisted to stats):
+  - **Feat Effects**: Seven effect types that are dynamically calculated client-side (not persisted to character stats):
     - `hp_bonus`: Adds to character's max HP. Supports flat bonus or per-level scaling via subtype selector.
+    - `energy_bonus`: Adds to character's max Energy. Supports flat bonus or per-level scaling via subtype selector.
     - `dc_bonus`: Adds to character's defense DC (shown in DC breakdown)
     - `attribute_bonus`: Adds to attribute values with dropdown selector (might, finesse, wit, presence, will, craft)
     - `skill_bonus`: Adds to skill values with dropdown selector for all 17 skills
     - `spell_grant`: Grants access to a system-defined spell, selected via dropdown from the spells database
     - `item_grant`: Grants access to an item (target specifies item ID)
+  - **Note on Feat Bonuses**: HP and Energy bonuses from feats are calculated client-side for instant UI updates. Display values include these bonuses (shown as `effectiveMaxHP`), but server-side mechanics (rest, healing) use base maxHP. Future improvement could add server-side feat bonus calculation.
   - **Context-Sensitive Effect Editor**: Effect type selection dynamically shows appropriate controls - dropdowns for skill/attribute/spell selection, subtype selector for HP bonus modes.
   - **Legacy Effect Compatibility**: Minimal normalization preserves all existing effect data formats without modification.
   - **Visual Bonus Indicators**: Star icons with purple highlighting show which stats are feat-enhanced. Breakdowns display feat bonuses separately from base values.
