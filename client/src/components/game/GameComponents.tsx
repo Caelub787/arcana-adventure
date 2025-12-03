@@ -2238,6 +2238,15 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     );
   }
 
+  // Determine action type border color for spells
+  const getActionBorderClass = () => {
+    if (hotbar?.spellId && spellData?.castingTime) {
+      const isBonusAction = spellData.castingTime.toLowerCase().includes('bonus');
+      return isBonusAction ? 'ring-2 ring-blue-500' : 'ring-2 ring-red-500';
+    }
+    return '';
+  };
+
   return (
     <>
       <TooltipProvider>
@@ -2256,6 +2265,7 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
                   : 'bg-stone-900/50 border-stone-700 border-dashed'
                 }
                 ${isClickable ? 'cursor-pointer hover:bg-stone-700/50 active:bg-stone-600/50' : ''}
+                ${getActionBorderClass()}
               `}
               data-testid={`battlemap-hotbar-${type}-${slotIndex}`}
             >
@@ -6002,6 +6012,15 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
 
   const slotContent = getSlotContent();
 
+  // Determine action type border color for spells
+  const getSpellActionRing = () => {
+    if (hotbar?.spellId && spellData?.castingTime) {
+      const isBonusAction = spellData.castingTime.toLowerCase().includes('bonus');
+      return isBonusAction ? 'ring-2 ring-blue-500' : 'ring-2 ring-red-500';
+    }
+    return '';
+  };
+
   return (
     <div className="relative group">
       <div
@@ -6015,6 +6034,7 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
           ${isDragOver ? 'border-amber-500 bg-amber-900/20 scale-105 glow-amber' : ''}
           ${canEdit && !hotbar && !isBlocked ? 'cursor-pointer' : ''}
           ${isBlocked ? 'opacity-60 cursor-not-allowed' : ''}
+          ${getSpellActionRing()}
         `}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
@@ -6935,6 +6955,8 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
   const [isEditingSpell, setIsEditingSpell] = useState(false);
   const [editSpellData, setEditSpellData] = useState<any>(null);
   const [showSpellDeleteConfirm, setShowSpellDeleteConfirm] = useState(false);
+  const [showSpellLibrary, setShowSpellLibrary] = useState(false);
+  const [spellLibrarySearch, setSpellLibrarySearch] = useState('');
   
   const [rollPanelOpen, setRollPanelOpen] = useState(false);
   const [rollPanelData, setRollPanelData] = useState<{name: string, modifier: number, type: 'skill' | 'attribute'} | null>(null);
@@ -7284,6 +7306,13 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
     queryKey: ['spells', character.id],
     queryFn: () => api.getSpells(character.id),
     enabled: !!character.id
+  });
+
+  // Fetch system spell library for adding from library
+  const { data: systemSpells = [] } = useQuery({
+    queryKey: ['system-spells'],
+    queryFn: () => api.getSystemSpells(),
+    enabled: showSpellLibrary
   });
 
   // Spell mutations
@@ -8936,7 +8965,17 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
             <Card className="bg-stone-800 border-stone-700">
               <CardContent className="space-y-4 pt-4">
                 {canEdit && (
-                  <div className="flex justify-end">
+                  <div className="flex justify-end gap-2">
+                    <Button 
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setShowSpellLibrary(true)}
+                      data-testid="button-spell-library"
+                      className="border-purple-600 text-purple-400 hover:bg-purple-900/30"
+                    >
+                      <BookOpen className="h-4 w-4 mr-1" />
+                      Spell Library
+                    </Button>
                     <Button 
                       size="sm"
                       onClick={() => {
@@ -8947,7 +8986,7 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                       className="bg-purple-600 hover:bg-purple-700"
                     >
                       <Plus className="h-4 w-4 mr-1" />
-                      Add Spell
+                      Create Spell
                     </Button>
                   </div>
                 )}
@@ -9133,7 +9172,11 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                                   )}
                                 </div>
                                 <div className="flex flex-wrap gap-3 mt-2 text-xs text-stone-400">
-                                  {spell.castingTime && <span>⏱ {spell.castingTime}</span>}
+                                  {spell.castingTime && (
+                                    <span className={spell.castingTime?.toLowerCase().includes('bonus') ? 'text-blue-400' : 'text-red-400'}>
+                                      ⏱ {spell.castingTime?.toLowerCase().includes('bonus') ? 'Bonus Action' : 'Action'}
+                                    </span>
+                                  )}
                                   {spell.range && <span>📏 {spell.range}ft</span>}
                                   {spell.aoe && <span>💥 {spell.aoe}</span>}
                                   {spell.duration && <span>⏳ {spell.duration}</span>}
@@ -9370,7 +9413,7 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                     </div>
                     <div>
                       <div className="flex items-center gap-2">
-                        <Label>Casting Time</Label>
+                        <Label>Action Type</Label>
                         {!isGM && (
                           <TooltipProvider>
                             <Tooltip>
@@ -9384,13 +9427,19 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                           </TooltipProvider>
                         )}
                       </div>
-                      <Input
-                        name="castingTime"
-                        defaultValue={editSpellData?.castingTime}
-                        className={`bg-stone-800 ${isGM ? 'border-amber-700' : 'border-stone-700'}`}
-                        placeholder="1 action"
+                      <Select 
+                        name="castingTime" 
+                        defaultValue={editSpellData?.castingTime?.toLowerCase().includes('bonus') ? 'bonus action' : 'action'}
                         disabled={!isGM}
-                      />
+                      >
+                        <SelectTrigger className={`bg-stone-800 ${isGM ? 'border-amber-700' : 'border-stone-700'}`}>
+                          <SelectValue placeholder="Select action type" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="action">Action</SelectItem>
+                          <SelectItem value="bonus action">Bonus Action</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
                     <div>
                       <div className="flex items-center gap-2">
@@ -9408,13 +9457,34 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                           </TooltipProvider>
                         )}
                       </div>
-                      <Input
-                        name="duration"
-                        defaultValue={editSpellData?.duration}
-                        className={`bg-stone-800 ${isGM ? 'border-amber-700' : 'border-stone-700'}`}
-                        placeholder="Instantaneous"
+                      <Select 
+                        name="duration" 
+                        defaultValue={(() => {
+                          const d = editSpellData?.duration?.toLowerCase();
+                          if (!d || d === 'instantaneous' || d === 'instant') return 'Instant';
+                          return editSpellData?.duration || 'Instant';
+                        })()}
                         disabled={!isGM}
-                      />
+                      >
+                        <SelectTrigger className={`bg-stone-800 ${isGM ? 'border-amber-700' : 'border-stone-700'}`}>
+                          <SelectValue placeholder="Select duration" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Instant">Instant</SelectItem>
+                          <SelectItem value="1 Round">1 Round</SelectItem>
+                          <SelectItem value="1 Minute">1 Minute</SelectItem>
+                          <SelectItem value="10 Minutes">10 Minutes</SelectItem>
+                          <SelectItem value="30 Minutes">30 Minutes</SelectItem>
+                          <SelectItem value="1 Hour">1 Hour</SelectItem>
+                          <SelectItem value="6 Hours">6 Hours</SelectItem>
+                          <SelectItem value="12 Hours">12 Hours</SelectItem>
+                          <SelectItem value="1 Day">1 Day</SelectItem>
+                          <SelectItem value="1 Week">1 Week</SelectItem>
+                          <SelectItem value="1 Month">1 Month</SelectItem>
+                          <SelectItem value="1 Year">1 Year</SelectItem>
+                          <SelectItem value="Permanent">Permanent</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
                   </div>
                   <div className="flex justify-end gap-2 pt-4">
@@ -9426,6 +9496,94 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                     </Button>
                   </div>
                 </form>
+              </DialogContent>
+            </Dialog>
+
+            {/* Spell Library Dialog */}
+            <Dialog open={showSpellLibrary} onOpenChange={setShowSpellLibrary}>
+              <DialogContent className="max-w-2xl bg-stone-900 border-stone-700 max-h-[80vh] flex flex-col">
+                <DialogHeader>
+                  <DialogTitle className="text-purple-400 flex items-center gap-2">
+                    <BookOpen className="h-5 w-5" />
+                    Spell Library
+                  </DialogTitle>
+                </DialogHeader>
+                <div className="mb-4">
+                  <Input
+                    placeholder="Search spells..."
+                    value={spellLibrarySearch}
+                    onChange={(e) => setSpellLibrarySearch(e.target.value)}
+                    className="bg-stone-800 border-stone-700"
+                    data-testid="input-spell-library-search"
+                  />
+                </div>
+                <ScrollArea className="flex-1 max-h-[50vh]">
+                  <div className="space-y-2">
+                    {systemSpells
+                      .filter((spell: any) =>
+                        spell.name.toLowerCase().includes(spellLibrarySearch.toLowerCase()) ||
+                        spell.description?.toLowerCase().includes(spellLibrarySearch.toLowerCase())
+                      )
+                      .map((spell: any) => (
+                        <div
+                          key={spell.id}
+                          className="p-3 bg-stone-800 rounded-lg border border-stone-700 hover:border-purple-500 cursor-pointer"
+                          onClick={() => {
+                            createSpellMutation.mutate({
+                              name: spell.name,
+                              description: spell.description,
+                              level: spell.level || 0,
+                              school: spell.school,
+                              damage: spell.damageDice,
+                              damageType: spell.damageType,
+                              range: spell.rangeNum,
+                              aoe: spell.aoe,
+                              castingTime: spell.castingTime,
+                              duration: spell.duration,
+                            });
+                            setShowSpellLibrary(false);
+                            setSpellLibrarySearch('');
+                          }}
+                          data-testid={`spell-library-item-${spell.id}`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 bg-stone-700 rounded flex items-center justify-center">
+                              <Sparkles className="h-5 w-5 text-purple-400" />
+                            </div>
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2">
+                                <span className="font-medium text-stone-100">{spell.name}</span>
+                                <Badge className="bg-purple-600/30 text-purple-300 text-xs">
+                                  {spell.level === 0 ? 'Cantrip' : `Lvl ${spell.level}`}
+                                </Badge>
+                              </div>
+                              <div className="flex flex-wrap gap-2 mt-1 text-xs text-stone-400">
+                                <span className={spell.castingTime?.toLowerCase().includes('bonus') ? 'text-blue-400' : 'text-red-400'}>
+                                  {spell.castingTime?.toLowerCase().includes('bonus') ? 'Bonus Action' : 'Action'}
+                                </span>
+                                {spell.rangeNum && <span>| {spell.rangeNum}ft</span>}
+                                {spell.damageDice && <span>| {spell.damageDice} {spell.damageType}</span>}
+                                {spell.duration && <span>| {spell.duration}</span>}
+                              </div>
+                              {spell.description && (
+                                <p className="text-xs text-stone-500 mt-1 line-clamp-1">{spell.description}</p>
+                              )}
+                            </div>
+                            <Plus className="h-5 w-5 text-purple-400" />
+                          </div>
+                        </div>
+                      ))}
+                    {systemSpells.filter((spell: any) =>
+                      spell.name.toLowerCase().includes(spellLibrarySearch.toLowerCase())
+                    ).length === 0 && (
+                      <div className="text-center py-8 text-stone-400">
+                        <BookOpen className="h-12 w-12 mx-auto mb-3 opacity-30" />
+                        <p>No spells found in the library</p>
+                        <p className="text-xs mt-1">Ask your GM to add spells in Admin Settings</p>
+                      </div>
+                    )}
+                  </div>
+                </ScrollArea>
               </DialogContent>
             </Dialog>
 
