@@ -5773,7 +5773,8 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
     
     // Check if spell has healing (Health damage type heals instead of damages)
     const isHealing = spellData.damageType === 'Health';
-    const diceNotation = isHealing ? (spellData.healingDice || spellData.damageDice) : spellData.damageDice;
+    // Check both damageDice and damage fields for backwards compatibility
+    const diceNotation = isHealing ? (spellData.healingDice || spellData.damageDice || spellData.damage) : (spellData.damageDice || spellData.damage);
     
     if (!diceNotation) {
       triggerRollNotification({
@@ -5962,9 +5963,9 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
                       {spellData.level === 0 ? 'C' : spellData.level}
                     </div>
                     {/* Damage badge if spell has damage */}
-                    {spellData.damageDice && (
+                    {(spellData.damageDice || spellData.damage) && (
                       <div className="absolute bottom-0 left-0 bg-red-900/90 text-red-300 text-[7px] px-0.5 rounded-tr font-bold">
-                        {spellData.damageDice}
+                        {spellData.damageDice || spellData.damage}
                       </div>
                     )}
                   </div>
@@ -5975,7 +5976,7 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
               <p className="font-bold">{spellData.name}</p>
               <p className="text-sm">Level: {spellData.level === 0 ? 'Cantrip' : spellData.level}</p>
               {spellData.school && <p className="text-sm">School: {spellData.school}</p>}
-              {spellData.damageDice && <p className="text-sm">Damage: {spellData.damageDice}{spellData.mod ? ` +${spellData.mod}` : ''} {spellData.damageType || ''}</p>}
+              {(spellData.damageDice || spellData.damage) && <p className="text-sm">Damage: {spellData.damageDice || spellData.damage}{spellData.mod ? ` +${spellData.mod}` : ''} {spellData.damageType || ''}</p>}
               {spellData.attribute && <p className="text-sm">Attack: {spellData.attribute}</p>}
               {spellData.rangeNum && <p className="text-sm">Range: {spellData.rangeNum}ft</p>}
               {spellData.castingTime && <p className="text-sm">Casting: {spellData.castingTime}</p>}
@@ -7197,6 +7198,7 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
       duration: spellFormData.duration,
       damageType: normalizeNone(spellFormData.damageType),
       damage: spellFormData.damageDice,
+      damageDice: spellFormData.damageDice,
       attribute: normalizeNone(spellFormData.attribute),
       energyCost: Number(spellFormData.energyCost) || 1,
       isAoe: spellFormData.isAoe,
