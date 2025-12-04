@@ -647,8 +647,9 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
       // Pointer capture may already be released
     }
     
-    // If we're in AoE targeting mode and didn't drag, treat as click to lock AoE
-    if (aoeTargetState?.active && !didDragRef.current && onAoeClick) {
+    // If we're in AoE targeting mode, didn't drag, and AoE is not already locked, treat as click to lock AoE
+    // Once AoE is locked, user can switch to select mode to pick targets without placing new AoE markers
+    if (aoeTargetState?.active && !aoeTargetState.locked && !didDragRef.current && onAoeClick) {
       const container = containerRef.current;
       if (container) {
         const rect = container.getBoundingClientRect();
@@ -1057,8 +1058,9 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
           const tokenOffset = gridThickness + (usableCellSize - tokenSize) / 2;
           
           const handleTokenPointerDown = (e: React.PointerEvent) => {
-            // If in AoE targeting mode, let the click go through to the map handler
-            if (aoeTargetState?.active && e.button === 0 && onAoeClick) {
+            // If in AoE targeting mode and AoE is not locked yet, let the click go through to place the AoE
+            // Once locked, allow normal token interactions (like selecting for damage application)
+            if (aoeTargetState?.active && !aoeTargetState.locked && e.button === 0 && onAoeClick) {
               // Calculate world coordinates and call the AoE click handler
               const container = containerRef.current;
               if (container) {
@@ -1069,7 +1071,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                 const worldY = ((screenY + 9000 - panRef.current.y) / zoomRef.current) - 9000;
                 onAoeClick(worldX, worldY);
               }
-              return; // Don't process token interactions in AoE mode
+              return; // Don't process token interactions until AoE is placed
             }
             
             e.stopPropagation();
