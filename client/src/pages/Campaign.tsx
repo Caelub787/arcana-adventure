@@ -1269,7 +1269,7 @@ export default function Campaign() {
                tokens={tokens}
                targetedTokenId={targetedTokenId}
                characters={characters as any[]}
-               gridSize={50}
+               gridSize={activeScene?.gridSize || 50}
              />
            )}
           

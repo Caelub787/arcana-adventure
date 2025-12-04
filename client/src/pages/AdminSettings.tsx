@@ -752,7 +752,7 @@ function SpellsView({ spells, isLoading, searchQuery, setSearchQuery, onAddSpell
                       <span>Range: {spell.range}</span>
                       <span>| {spell.duration}</span>
                       {spell.damageDice && <span>| Damage: {spell.damageDice} {spell.damageType}</span>}
-                      {spell.isAoe && spell.aoeRange && <span>| AoE: {spell.aoeRange}ft</span>}
+                      {spell.isAoe && <span>| AoE{spell.aoeShape ? `: ${spell.aoeShape.charAt(0).toUpperCase() + spell.aoeShape.slice(1)}` : ''}{spell.aoeRange ? ` ${spell.aoeRange}ft` : ''}</span>}
                       {spell.concentration && <span>| Concentration</span>}
                     </div>
                   </div>
@@ -2919,6 +2919,7 @@ function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading }:
     energyCost: number | string;
     isAoe: boolean;
     aoeRange: number | string;
+    aoeShape: string;
   }>({
     name: initialData?.name || '',
     description: initialData?.description || '',
@@ -2931,6 +2932,7 @@ function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading }:
     energyCost: initialData?.energyCost ?? 1,
     isAoe: initialData?.isAoe || false,
     aoeRange: initialData?.aoeRange ?? '',
+    aoeShape: initialData?.aoeShape || '',
   });
 
   useEffect(() => {
@@ -2947,6 +2949,7 @@ function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading }:
         energyCost: initialData.energyCost ?? 1,
         isAoe: initialData.isAoe || false,
         aoeRange: initialData.aoeRange ?? '',
+        aoeShape: initialData.aoeShape || '',
       });
     } else {
       setFormData({
@@ -2961,6 +2964,7 @@ function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading }:
         energyCost: 1,
         isAoe: false,
         aoeRange: '',
+        aoeShape: '',
       });
     }
   }, [initialData, open]);
@@ -2972,6 +2976,10 @@ function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading }:
   const handleSubmit = () => {
     if (!formData.name.trim()) {
       toast({ title: 'Error', description: 'Spell name is required', variant: 'destructive' });
+      return;
+    }
+    if (formData.isAoe && !formData.aoeShape) {
+      toast({ title: 'Error', description: 'Please select an AoE shape', variant: 'destructive' });
       return;
     }
     const normalizeNone = (val: string) => val === '_none' ? '' : val;
@@ -2993,6 +3001,7 @@ function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading }:
       energyCost: Number(formData.energyCost) || 1,
       isAoe: formData.isAoe,
       aoeRange: formData.isAoe ? optionalNum(formData.aoeRange) : undefined,
+      aoeShape: formData.isAoe ? formData.aoeShape : undefined,
     });
   };
 
@@ -3149,17 +3158,34 @@ function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading }:
                   <Label htmlFor="spell-aoe" className="cursor-pointer">Area of Effect (AoE)</Label>
                 </div>
                 {formData.isAoe && (
-                  <div>
-                    <Label>AoE Range (feet)</Label>
-                    <Input
-                      type="number"
-                      min="0"
-                      value={formData.aoeRange}
-                      onChange={(e) => handleNumericChange('aoeRange', e.target.value)}
-                      placeholder="e.g. 15"
-                      className="bg-stone-800 border-stone-700"
-                      data-testid="input-spell-aoe-range"
-                    />
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label>AoE Shape</Label>
+                      <Select value={formData.aoeShape || '_none'} onValueChange={(v) => setFormData({ ...formData, aoeShape: v === '_none' ? '' : v })}>
+                        <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-spell-aoe-shape">
+                          <SelectValue placeholder="Select shape" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="_none">None</SelectItem>
+                          <SelectItem value="circle">Circle</SelectItem>
+                          <SelectItem value="square">Square</SelectItem>
+                          <SelectItem value="cone">Cone</SelectItem>
+                          <SelectItem value="line">Line</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label>AoE Range (feet)</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        value={formData.aoeRange}
+                        onChange={(e) => handleNumericChange('aoeRange', e.target.value)}
+                        placeholder="e.g. 15"
+                        className="bg-stone-800 border-stone-700"
+                        data-testid="input-spell-aoe-range"
+                      />
+                    </div>
                   </div>
                 )}
               </div>

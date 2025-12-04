@@ -300,6 +300,7 @@ export interface SystemSpell {
   aoe?: string;
   isAoe?: boolean;
   aoeRange?: number;
+  aoeShape?: string;
   savingThrow?: string;
   effects: any;
   createdAt: string;
