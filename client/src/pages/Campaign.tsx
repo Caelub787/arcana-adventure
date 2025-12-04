@@ -825,6 +825,11 @@ export default function Campaign() {
         if (data.type === 'aoe_targeting') {
           const { userId, username, active, spellName, spellAoe, casterTokenId, casterName, center, locked } = data;
           
+          // Skip our own broadcasts - we already display our AoE via aoeTargetState
+          if (userId === user?.id) {
+            return;
+          }
+          
           setOtherPlayersAoe(prev => {
             const updated = new Map(prev);
             if (active) {
