@@ -275,7 +275,6 @@ export default function Campaign() {
   
   // Helper function to enter AoE targeting mode
   const enterAoeMode = (spell: any, casterTokenId: string) => {
-    console.log('[Campaign] enterAoeMode called, spell:', spell?.name, 'aoe:', spell?.aoe, 'tokenId:', casterTokenId);
     setAoeTargetState({
       active: true,
       spell,

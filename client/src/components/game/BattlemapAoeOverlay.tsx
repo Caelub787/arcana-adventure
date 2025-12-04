@@ -18,14 +18,6 @@ export function BattlemapAoeOverlay({
   panY,
   zoom,
 }: BattlemapAoeOverlayProps) {
-  console.log('[BattlemapAoeOverlay] Render check:', { 
-    active: aoeTargetState.active, 
-    hasSpell: !!aoeTargetState.spell,
-    spellName: aoeTargetState.spell?.name,
-    aoe: aoeTargetState.spell?.aoe,
-    center: aoeTargetState.center
-  });
-  
   if (!aoeTargetState.active || !aoeTargetState.spell) return null;
 
   const { spell, center, locked } = aoeTargetState;
@@ -36,8 +28,6 @@ export function BattlemapAoeOverlay({
   const aoeShape = (parsedShape || 'circle').toLowerCase();
   const aoeRangeFeet = parseInt(parsedRadius, 10) || 15;
   const spellRangeFeet = spell.rangeNum || 30;
-  
-  console.log('[BattlemapAoeOverlay] Rendering shape:', aoeShape, 'radius:', aoeRangeFeet, 'at:', center);
   const radiusPixels = (aoeRangeFeet / 5) * gridSize;
 
   const casterX = casterToken ? casterToken.x + gridSize / 2 : 0;
@@ -158,6 +148,60 @@ export function BattlemapAoeOverlay({
     }
   };
 
+  // Convert world coordinates to screen coordinates
+  // World coords are in the 0-2000 range (map content area)
+  // Screen position = (worldCoord + 9000) * zoom + pan - 9000
+  // But since we're inside an SVG that fills the viewport, we need direct screen coords
+  const screenCenterX = (center.x + 9000) * zoom + panX - 9000;
+  const screenCenterY = (center.y + 9000) * zoom + panY - 9000;
+  const screenCasterX = casterToken ? (casterToken.x + gridSize/2 + 9000) * zoom + panX - 9000 : 0;
+  const screenCasterY = casterToken ? (casterToken.y + gridSize/2 + 9000) * zoom + panY - 9000 : 0;
+  const screenRadius = radiusPixels * zoom;
+
+  const renderScreenShape = () => {
+    switch (aoeShape) {
+      case 'circle':
+        return (
+          <circle
+            cx={screenCenterX}
+            cy={screenCenterY}
+            r={screenRadius}
+            fill={actualFill}
+            stroke={actualStroke}
+            strokeWidth={2}
+            strokeDasharray={locked ? 'none' : '8 4'}
+          />
+        );
+
+      case 'square':
+        return (
+          <rect
+            x={screenCenterX - screenRadius}
+            y={screenCenterY - screenRadius}
+            width={screenRadius * 2}
+            height={screenRadius * 2}
+            fill={actualFill}
+            stroke={actualStroke}
+            strokeWidth={2}
+            strokeDasharray={locked ? 'none' : '8 4'}
+          />
+        );
+
+      default:
+        return (
+          <circle
+            cx={screenCenterX}
+            cy={screenCenterY}
+            r={screenRadius}
+            fill={actualFill}
+            stroke={actualStroke}
+            strokeWidth={2}
+            strokeDasharray={locked ? 'none' : '8 4'}
+          />
+        );
+    }
+  };
+
   return (
     <svg
       className="absolute inset-0 pointer-events-none"
@@ -168,39 +212,19 @@ export function BattlemapAoeOverlay({
         zIndex: 40,
       }}
     >
-      <g
-        style={{
-          transform: `translate(${panX}px, ${panY}px) scale(${zoom})`,
-          transformOrigin: '0 0',
-        }}
-      >
-        <g style={{ transform: 'translate(-9000px, -9000px)' }}>
-          {renderShape()}
+      {renderScreenShape()}
 
-          {!locked && casterToken && (aoeShape === 'cone' || aoeShape === 'line') && (
-            <line
-              x1={casterX}
-              y1={casterY}
-              x2={center.x}
-              y2={center.y}
-              stroke="rgba(255, 255, 255, 0.4)"
-              strokeWidth={1 / zoom}
-              strokeDasharray={`${4 / zoom} ${4 / zoom}`}
-            />
-          )}
-
-          {!locked && (
-            <circle
-              cx={center.x}
-              cy={center.y}
-              r={6 / zoom}
-              fill="rgba(255, 255, 255, 0.8)"
-              stroke={actualStroke}
-              strokeWidth={2 / zoom}
-            />
-          )}
-        </g>
-      </g>
+      {/* Center dot indicator when not locked */}
+      {!locked && (
+        <circle
+          cx={screenCenterX}
+          cy={screenCenterY}
+          r={6}
+          fill="rgba(255, 255, 255, 0.8)"
+          stroke={actualStroke}
+          strokeWidth={2}
+        />
+      )}
     </svg>
   );
 }

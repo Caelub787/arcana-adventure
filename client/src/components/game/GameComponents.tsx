@@ -569,32 +569,24 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
     return characters.find((c: any) => c.id === token.characterId);
   };
 
+  // Track if a drag occurred (for distinguishing click from pan)
+  const didDragRef = useRef(false);
+  
   /**
    * Custom pointer-based map panning (replaces Framer Motion drag)
    * This gives us full control over when panning is allowed and prevents teleportation bugs.
+   * In AoE targeting mode, panning still works - click without drag locks the AoE.
    */
   const handleMapPointerDown = (e: React.PointerEvent) => {
-    // Handle AoE targeting mode click (both locked and unlocked)
-    if (aoeTargetState?.active && e.button === 0 && onAoeClick) {
-      const container = containerRef.current;
-      if (container) {
-        const rect = container.getBoundingClientRect();
-        const screenX = e.clientX - rect.left;
-        const screenY = e.clientY - rect.top;
-        // Match the wheel handler's coordinate formula: account for 9000px world offset
-        const worldX = ((screenX + 9000 - panRef.current.x) / zoomRef.current) - 9000;
-        const worldY = ((screenY + 9000 - panRef.current.y) / zoomRef.current) - 9000;
-        onAoeClick(worldX, worldY);
-      }
-      return;
-    }
-    
     // Don't start panning if locked, pinching, or dragging a token
     if (isMapLockedRef.current) return;
     if (gestureModeRef.current !== 'idle') return;
     
     // Only pan with primary button (left click / single touch)
     if (e.button !== 0) return;
+    
+    // Reset drag tracking
+    didDragRef.current = false;
     
     gestureModeRef.current = 'panning';
     panPointerIdRef.current = e.pointerId;
@@ -632,6 +624,11 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
     const deltaX = e.clientX - panStartRef.current.pointerX;
     const deltaY = e.clientY - panStartRef.current.pointerY;
     
+    // Track if we actually moved (threshold of 5px to count as a drag)
+    if (Math.abs(deltaX) > 5 || Math.abs(deltaY) > 5) {
+      didDragRef.current = true;
+    }
+    
     const newX = panStartRef.current.panX + deltaX;
     const newY = panStartRef.current.panY + deltaY;
     
@@ -648,6 +645,19 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
       (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
     } catch (err) {
       // Pointer capture may already be released
+    }
+    
+    // If we're in AoE targeting mode and didn't drag, treat as click to lock AoE
+    if (aoeTargetState?.active && !didDragRef.current && onAoeClick) {
+      const container = containerRef.current;
+      if (container) {
+        const rect = container.getBoundingClientRect();
+        const screenX = e.clientX - rect.left;
+        const screenY = e.clientY - rect.top;
+        const worldX = ((screenX + 9000 - panRef.current.x) / zoomRef.current) - 9000;
+        const worldY = ((screenY + 9000 - panRef.current.y) / zoomRef.current) - 9000;
+        onAoeClick(worldX, worldY);
+      }
     }
     
     gestureModeRef.current = 'idle';
