@@ -148,6 +148,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
   }
 
+  /**
+   * calculateFeatHpBonus - Calculate total HP bonus from character's unlocked feats
+   * 
+   * This function fetches a character's unlocked feats and sums up all hp_bonus effects.
+   * It matches the client-side calculation by iterating over ALL unlocked feats,
+   * not just those from a specific tree.
+   */
+  async function calculateFeatHpBonus(characterId: string, characterLevel: number): Promise<number> {
+    try {
+      // Get character's unlocked feat records
+      const characterFeatRecords = await storage.getCharacterFeats(characterId);
+      if (characterFeatRecords.length === 0) return 0;
+      
+      // Sum up HP bonuses from all unlocked feats
+      let totalHpBonus = 0;
+      
+      for (const charFeat of characterFeatRecords) {
+        // Fetch each feat definition directly by ID (works for any tree)
+        const feat = await storage.getFeat(charFeat.featId);
+        if (!feat || !feat.effects || !Array.isArray(feat.effects)) continue;
+        
+        for (const effect of feat.effects as any[]) {
+          if (effect.type === 'hp_bonus') {
+            // Support per-level scaling: if subtype is 'per_level', multiply by character level
+            if (effect.subtype === 'per_level') {
+              totalHpBonus += (effect.value || 0) * characterLevel;
+            } else {
+              totalHpBonus += effect.value || 0;
+            }
+          }
+        }
+      }
+      
+      return totalHpBonus;
+    } catch (err) {
+      console.error('[calculateFeatHpBonus] Error:', err);
+      return 0;
+    }
+  }
+
   wss.on("connection", async (ws, req) => {
     // Buffer messages received during async setup
     const messageBuffer: any[] = [];
@@ -1671,10 +1711,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Roll the HP die (1d{hpPerLevel})
       const hpRoll = Math.floor(Math.random() * hpPerLevel) + 1;
       
-      // Calculate new HP: current + roll (capped at max)
-      const maxHpGain = (character.maxHp || 10) - (character.hp || 0);
+      // Calculate effective max HP including feat bonuses
+      const featHpBonus = await calculateFeatHpBonus(character.id, character.level || 1);
+      const effectiveMaxHp = (character.maxHp || 10) + featHpBonus;
+      
+      // Calculate new HP: current + roll (capped at effective max)
+      const maxHpGain = effectiveMaxHp - (character.hp || 0);
       const hpRestored = Math.min(hpRoll, maxHpGain);
-      const newHp = Math.min((character.hp || 0) + hpRoll, character.maxHp || 10);
+      const newHp = Math.min((character.hp || 0) + hpRoll, effectiveMaxHp);
       
       // Update character HP
       const updatedCharacter = await storage.updateCharacter(character.id, { hp: newHp });
@@ -1766,9 +1810,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         rationsToConsume -= rationsFromThis;
       }
       
-      // Calculate HP restored: full HP
-      const hpRestored = (character.maxHp || 10) - (character.hp || 0);
-      const newHp = character.maxHp || 10;
+      // Calculate effective max HP including feat bonuses
+      const featHpBonus = await calculateFeatHpBonus(character.id, character.level || 1);
+      const effectiveMaxHp = (character.maxHp || 10) + featHpBonus;
+      
+      // Calculate HP restored: full HP (using effective max)
+      const hpRestored = effectiveMaxHp - (character.hp || 0);
+      const newHp = effectiveMaxHp;
       
       // Calculate exhaustion recovery: reduce by 1 (min 0)
       const currentExhaustion = character.exhaustion || 0;
