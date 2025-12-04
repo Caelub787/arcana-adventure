@@ -4509,15 +4509,20 @@ function HotbarsTabContent({ character, isGM, isOwner }: HotbarsTabContentProps)
     // Handle spell drops
     if (data.type === 'spell') {
       try {
-        // Add spell to hotbar
+        // Add spell to hotbar first
         await upsertMutation.mutateAsync({
           hotbarType,
           slotNumber,
           spellId: data.id
         });
 
-        // Update spell's isEquipped flag
-        await api.updateSpell(data.id, { isEquipped: true });
+        // Update spell's isEquipped flag (non-blocking - flag is for UI only)
+        try {
+          await api.updateSpell(data.id, { isEquipped: true });
+        } catch (flagErr) {
+          // Silently ignore - the spell is already equipped in the hotbar
+          console.log('isEquipped flag update skipped:', flagErr);
+        }
         queryClient.invalidateQueries({ queryKey: ['spells', character.id] });
 
         toast({
