@@ -965,7 +965,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
       {/* Draggable World Container - Large scrollable space beyond image bounds */}
       {/* Using custom pointer handlers instead of Framer Motion drag for stability */}
       <motion.div 
-        className={`absolute ${isMapLocked || draggingToken ? 'cursor-default' : 'cursor-grab active:cursor-grabbing'} touch-none`}
+        className={`absolute ${aoeTargetState?.active ? 'cursor-crosshair' : (isMapLocked || draggingToken ? 'cursor-default' : 'cursor-grab active:cursor-grabbing')} touch-none`}
         style={{ 
           width: '20000px', 
           height: '20000px', 
