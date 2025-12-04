@@ -156,6 +156,7 @@ export function BattlemapAoeOverlay({
   const screenCenterY = (center.y + 9000) * zoom + panY - 9000;
   const screenCasterX = casterToken ? (casterToken.x + gridSize/2 + 9000) * zoom + panX - 9000 : 0;
   const screenCasterY = casterToken ? (casterToken.y + gridSize/2 + 9000) * zoom + panY - 9000 : 0;
+  // Radius should scale with zoom to maintain proper size relative to the grid
   const screenRadius = radiusPixels * zoom;
 
   const renderScreenShape = () => {

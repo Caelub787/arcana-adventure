@@ -116,8 +116,21 @@ export function getTokensInAoe(
   if (!aoeState.active || !aoeState.spell) return [];
 
   const { spell, center } = aoeState;
-  const aoeShape = spell.aoeShape?.toLowerCase() || 'circle';
-  const aoeRangeFeet = spell.aoeRange || 15;
+  
+  // Parse the aoe field which is in format "shape:radius" like "circle:15"
+  // Fall back to separate aoeShape/aoeRange fields for backwards compatibility
+  let aoeShape = 'circle';
+  let aoeRangeFeet = 15;
+  
+  if (spell.aoe && typeof spell.aoe === 'string' && spell.aoe.includes(':')) {
+    const [parsedShape, parsedRadius] = spell.aoe.split(':');
+    aoeShape = (parsedShape || 'circle').toLowerCase();
+    aoeRangeFeet = parseInt(parsedRadius, 10) || 15;
+  } else {
+    aoeShape = spell.aoeShape?.toLowerCase() || 'circle';
+    aoeRangeFeet = spell.aoeRange || 15;
+  }
+  
   const radiusPixels = (aoeRangeFeet / 5) * gridSize;
 
   const casterX = casterToken?.x ?? 0;

@@ -1223,19 +1223,93 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
             </div>
           );
         })}
-      </motion.div>
 
-      {/* AoE Targeting Overlay */}
-      {aoeTargetState?.active && (
-        <BattlemapAoeOverlay
-          aoeTargetState={aoeTargetState}
-          gridSize={gridSize}
-          casterToken={tokens.find(t => t.id === aoeTargetState.casterTokenId)}
-          panX={panRef.current.x}
-          panY={panRef.current.y}
-          zoom={zoomRef.current}
-        />
-      )}
+        {/* AoE Targeting Overlay - Inside motion.div so it transforms with the map */}
+        {aoeTargetState?.active && aoeTargetState.spell && (() => {
+          const spell = aoeTargetState.spell;
+          const aoeField = spell.aoe || '';
+          const [parsedShape, parsedRadius] = aoeField.split(':');
+          const aoeShape = (parsedShape || 'circle').toLowerCase();
+          const aoeRangeFeet = parseInt(parsedRadius, 10) || 15;
+          const radiusPixels = (aoeRangeFeet / 5) * (scene?.gridSize || gridSize);
+          const { center, locked } = aoeTargetState;
+          
+          const casterToken = tokens.find(t => t.id === aoeTargetState.casterTokenId);
+          const spellRangeFeet = spell.rangeNum || 30;
+          const spellRangePixels = (spellRangeFeet / 5) * (scene?.gridSize || gridSize);
+          
+          // Check if in range
+          let isInRange = true;
+          if (casterToken) {
+            const casterCenterX = casterToken.x + (scene?.gridSize || gridSize) / 2;
+            const casterCenterY = casterToken.y + (scene?.gridSize || gridSize) / 2;
+            const distance = Math.sqrt(
+              Math.pow(center.x - casterCenterX, 2) + Math.pow(center.y - casterCenterY, 2)
+            );
+            isInRange = distance <= spellRangePixels;
+          }
+          
+          const fillColor = isInRange 
+            ? (locked ? 'rgba(139, 92, 246, 0.5)' : 'rgba(139, 92, 246, 0.3)')
+            : 'rgba(239, 68, 68, 0.3)';
+          const strokeColor = isInRange 
+            ? (locked ? 'rgba(139, 92, 246, 1)' : 'rgba(139, 92, 246, 0.8)')
+            : 'rgba(239, 68, 68, 0.8)';
+          
+          // Position relative to the 9000,9000 offset (same as tokens)
+          const worldX = center.x + 9000;
+          const worldY = center.y + 9000;
+          
+          return (
+            <svg
+              className="absolute pointer-events-none"
+              style={{
+                left: 0,
+                top: 0,
+                width: '20000px',
+                height: '20000px',
+                overflow: 'visible',
+                zIndex: 25,
+              }}
+            >
+              {aoeShape === 'circle' && (
+                <circle
+                  cx={worldX}
+                  cy={worldY}
+                  r={radiusPixels}
+                  fill={fillColor}
+                  stroke={strokeColor}
+                  strokeWidth={2}
+                  strokeDasharray={locked ? 'none' : '8 4'}
+                />
+              )}
+              {aoeShape === 'square' && (
+                <rect
+                  x={worldX - radiusPixels}
+                  y={worldY - radiusPixels}
+                  width={radiusPixels * 2}
+                  height={radiusPixels * 2}
+                  fill={fillColor}
+                  stroke={strokeColor}
+                  strokeWidth={2}
+                  strokeDasharray={locked ? 'none' : '8 4'}
+                />
+              )}
+              {/* Center dot when not locked */}
+              {!locked && (
+                <circle
+                  cx={worldX}
+                  cy={worldY}
+                  r={6}
+                  fill="rgba(255, 255, 255, 0.8)"
+                  stroke={strokeColor}
+                  strokeWidth={2}
+                />
+              )}
+            </svg>
+          );
+        })()}
+      </motion.div>
 
     </div>
   );
@@ -7854,7 +7928,7 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
   const { data: systemSpells = [] } = useQuery({
     queryKey: ['system-spells'],
     queryFn: () => api.getSystemSpells(),
-    enabled: showSpellLibrary
+    enabled: showAddSpell || showSpellLibrary
   });
 
   // Spell mutations
