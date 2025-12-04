@@ -1126,6 +1126,53 @@ export class GameWebSocket {
     
     this.send(message);
   }
+  
+  // Send AoE targeting state - broadcasts to all campaign members
+  // so everyone can see each other's AoE placement
+  sendAoeTargeting(
+    aoeState: {
+      active: boolean;
+      spellName?: string;
+      spellAoe?: string;
+      casterTokenId?: string;
+      casterName?: string;
+      center: { x: number; y: number };
+      locked: boolean;
+    }
+  ) {
+    if (!this.campaignId) {
+      console.error('Cannot send AoE targeting: not connected to a campaign');
+      return;
+    }
+    
+    const message = { 
+      type: 'aoe_targeting',
+      campaignId: this.campaignId,
+      ...aoeState
+    };
+    
+    // If not yet joined, queue the message
+    if (!this.joinedCampaign) {
+      console.log('WebSocket: Queueing AoE targeting until campaign join is confirmed');
+      this.pendingMessages.push(message);
+      return;
+    }
+    
+    this.send(message);
+  }
+  
+  // Clear AoE targeting when exiting targeting mode
+  clearAoeTargeting() {
+    if (!this.campaignId) return;
+    
+    this.send({
+      type: 'aoe_targeting',
+      campaignId: this.campaignId,
+      active: false,
+      center: { x: 0, y: 0 },
+      locked: false
+    });
+  }
 }
 
 export const gameWs = new GameWebSocket();

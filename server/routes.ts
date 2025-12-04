@@ -826,6 +826,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // Broadcast scene change to all campaign members
           broadcastToCampaign(campaignId, message);
         }
+        
+        // Handle AoE targeting - broadcast to all campaign members
+        // so everyone can see each other's AoE placement in real-time
+        if (message.type === "aoe_targeting") {
+          const { campaignId, active, spellName, spellAoe, casterTokenId, casterName, center, locked } = message;
+          
+          // Verify user has joined this campaign
+          const userCampaign = (ws as any).campaigns.get(campaignId);
+          if (!userCampaign) return;
+          
+          // Broadcast AoE targeting to all OTHER campaign members (not the sender)
+          const room = campaignRooms.get(campaignId);
+          if (room) {
+            const aoeMessage = JSON.stringify({
+              type: "aoe_targeting",
+              userId: authenticatedUserId,
+              username,
+              active,
+              spellName,
+              spellAoe,
+              casterTokenId,
+              casterName,
+              center,
+              locked
+            });
+            
+            room.forEach((client) => {
+              // Send to all clients except the sender
+              if (client !== ws && client.readyState === 1) {
+                client.send(aoeMessage);
+              }
+            });
+          }
+        }
       } catch (err) {
         console.error("WebSocket error:", err);
         ws.send(JSON.stringify({
