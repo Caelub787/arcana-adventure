@@ -3,8 +3,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Folder, FolderOpen, ArrowLeft, Search, Image, Loader2, Check, Home, AlertCircle } from 'lucide-react';
-import { useQuery } from '@tanstack/react-query';
+import { Folder, FolderOpen, ArrowLeft, Search, Image, Loader2, Check, Home, AlertCircle, RefreshCw } from 'lucide-react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from '@/hooks/use-toast';
 
 interface DriveFolder {
@@ -27,6 +27,7 @@ interface ImageBrowserProps {
 }
 
 export function ImageBrowser({ open, onOpenChange, onSelect, title = "Browse Image Library" }: ImageBrowserProps) {
+  const queryClient = useQueryClient();
   const [currentFolderId, setCurrentFolderId] = useState<string | undefined>(undefined);
   const [folderStack, setFolderStack] = useState<{ id: string | undefined; name: string }[]>([
     { id: undefined, name: 'Image Library' }
@@ -34,6 +35,22 @@ export function ImageBrowser({ open, onOpenChange, onSelect, title = "Browse Ima
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedImageId, setSelectedImageId] = useState<string | null>(null);
   const [isLoadingImage, setIsLoadingImage] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // Refresh all drive data
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      await queryClient.invalidateQueries({ queryKey: ['drive-folders'] });
+      await queryClient.invalidateQueries({ queryKey: ['drive-images'] });
+      await queryClient.invalidateQueries({ queryKey: ['drive-search'] });
+      toast({ title: 'Refreshed', description: 'Image library updated with latest files' });
+    } catch (error) {
+      toast({ title: 'Error', description: 'Failed to refresh library', variant: 'destructive' });
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
 
   // Fetch folders
   const { data: folders = [], isLoading: foldersLoading } = useQuery({
@@ -141,16 +158,29 @@ export function ImageBrowser({ open, onOpenChange, onSelect, title = "Browse Ima
           </DialogDescription>
         </DialogHeader>
 
-        {/* Search Bar */}
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-500" />
-          <Input
-            placeholder="Search images..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10 bg-stone-900 border-stone-700 text-stone-200"
-            data-testid="input-image-search"
-          />
+        {/* Search Bar with Refresh */}
+        <div className="flex gap-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-500" />
+            <Input
+              placeholder="Search images..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-10 bg-stone-900 border-stone-700 text-stone-200"
+              data-testid="input-image-search"
+            />
+          </div>
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={handleRefresh}
+            disabled={isRefreshing}
+            className="border-stone-700 hover:bg-stone-800 hover:text-amber-500"
+            title="Refresh library"
+            data-testid="button-refresh-library"
+          >
+            <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+          </Button>
         </div>
 
         {/* Breadcrumb Navigation */}
