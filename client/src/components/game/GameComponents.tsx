@@ -6951,6 +6951,7 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
   const [spellSchoolFilter, setSpellSchoolFilter] = useState("all");
   const [spellSort, setSpellSort] = useState("name-asc");
   const [showAddSpell, setShowAddSpell] = useState(false);
+  const [spellDialogTab, setSpellDialogTab] = useState<'library' | 'create'>('library');
   const [selectedSpell, setSelectedSpell] = useState<any>(null);
   const [showSpellDetail, setShowSpellDetail] = useState(false);
   const [isEditingSpell, setIsEditingSpell] = useState(false);
@@ -8969,16 +8970,6 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                   <div className="flex justify-end gap-2">
                     <Button 
                       size="sm"
-                      variant="outline"
-                      onClick={() => setShowSpellLibrary(true)}
-                      data-testid="button-spell-library"
-                      className="border-purple-600 text-purple-400 hover:bg-purple-900/30"
-                    >
-                      <BookOpen className="h-4 w-4 mr-1" />
-                      Spell Library
-                    </Button>
-                    <Button 
-                      size="sm"
                       onClick={() => {
                         setEditSpellData(null);
                         setShowAddSpell(true);
@@ -8987,7 +8978,7 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                       className="bg-purple-600 hover:bg-purple-700"
                     >
                       <Plus className="h-4 w-4 mr-1" />
-                      Create Spell
+                      Add Magic
                     </Button>
                   </div>
                 )}
@@ -9194,13 +9185,133 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
             </Card>
 
             {/* Add/Edit Spell Dialog */}
-            <Dialog open={showAddSpell} onOpenChange={setShowAddSpell}>
-              <DialogContent key={editSpellData?.id || 'new'} className="max-w-2xl bg-stone-900 border-stone-700 max-h-[90vh] overflow-y-auto">
+            <Dialog open={showAddSpell} onOpenChange={(open) => {
+              setShowAddSpell(open);
+              if (!open) {
+                setSpellDialogTab('library');
+              }
+            }}>
+              <DialogContent key={editSpellData?.id || 'new'} className="max-w-2xl bg-stone-900 border-stone-700 max-h-[90vh] flex flex-col">
                 <DialogHeader>
                   <DialogTitle className="text-purple-400">
-                    {editSpellData ? 'Edit Spell' : 'Add New Spell'}
+                    {editSpellData ? 'Edit Spell' : 'Add Magic'}
                   </DialogTitle>
                 </DialogHeader>
+                
+                {/* Show tabs only when creating, not editing */}
+                {!editSpellData && (
+                  <div className="flex border-b border-stone-700 mb-4">
+                    <button
+                      type="button"
+                      onClick={() => setSpellDialogTab('library')}
+                      className={`px-4 py-2 font-medium transition-colors ${
+                        spellDialogTab === 'library' 
+                          ? 'text-purple-500 border-b-2 border-purple-500' 
+                          : 'text-stone-400 hover:text-stone-200'
+                      }`}
+                      data-testid="tab-spell-library"
+                    >
+                      From Library
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSpellDialogTab('create')}
+                      className={`px-4 py-2 font-medium transition-colors ${
+                        spellDialogTab === 'create' 
+                          ? 'text-purple-500 border-b-2 border-purple-500' 
+                          : 'text-stone-400 hover:text-stone-200'
+                      }`}
+                      data-testid="tab-spell-create"
+                    >
+                      Create New
+                    </button>
+                  </div>
+                )}
+                
+                <ScrollArea className="flex-1 min-h-0 overflow-y-auto" style={{ maxHeight: 'calc(90vh - 140px)' }}>
+                  {/* Library Tab - only show when not editing */}
+                  {!editSpellData && spellDialogTab === 'library' && (
+                    <div className="space-y-4">
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-500" />
+                        <Input
+                          placeholder="Search spells..."
+                          value={spellLibrarySearch}
+                          onChange={(e) => setSpellLibrarySearch(e.target.value)}
+                          className="pl-9 bg-stone-800 border-stone-700"
+                          data-testid="input-spell-library-search"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        {systemSpells
+                          .filter((spell: any) =>
+                            spell.name.toLowerCase().includes(spellLibrarySearch.toLowerCase()) ||
+                            spell.description?.toLowerCase().includes(spellLibrarySearch.toLowerCase())
+                          )
+                          .map((spell: any) => (
+                            <div
+                              key={spell.id}
+                              className="p-3 bg-stone-800 rounded-lg border border-stone-700 hover:border-purple-500 cursor-pointer"
+                              onClick={() => {
+                                createSpellMutation.mutate({
+                                  name: spell.name,
+                                  description: spell.description,
+                                  level: spell.level || 0,
+                                  school: spell.school,
+                                  damage: spell.damageDice,
+                                  damageType: spell.damageType,
+                                  range: spell.rangeNum,
+                                  aoe: spell.aoe,
+                                  castingTime: spell.castingTime,
+                                  duration: spell.duration,
+                                });
+                                setShowAddSpell(false);
+                                setSpellLibrarySearch('');
+                              }}
+                              data-testid={`spell-library-item-${spell.id}`}
+                            >
+                              <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 bg-stone-700 rounded flex items-center justify-center">
+                                  <Sparkles className="h-5 w-5 text-purple-400" />
+                                </div>
+                                <div className="flex-1">
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-medium text-stone-100">{spell.name}</span>
+                                    <Badge className="bg-purple-600/30 text-purple-300 text-xs">
+                                      {spell.level === 0 ? 'Cantrip' : `Lvl ${spell.level}`}
+                                    </Badge>
+                                  </div>
+                                  <div className="flex flex-wrap gap-2 mt-1 text-xs text-stone-400">
+                                    <span className={spell.castingTime?.toLowerCase().includes('bonus') ? 'text-blue-400' : 'text-red-400'}>
+                                      {spell.castingTime?.toLowerCase().includes('bonus') ? 'Bonus Action' : 'Action'}
+                                    </span>
+                                    {spell.rangeNum && <span>| {spell.rangeNum}ft</span>}
+                                    {spell.damageDice && <span>| {spell.damageDice} {spell.damageType}</span>}
+                                    {spell.duration && <span>| {spell.duration}</span>}
+                                  </div>
+                                  {spell.description && (
+                                    <p className="text-xs text-stone-500 mt-1 line-clamp-1">{spell.description}</p>
+                                  )}
+                                </div>
+                                <Plus className="h-5 w-5 text-purple-400" />
+                              </div>
+                            </div>
+                          ))}
+                        {systemSpells.filter((spell: any) =>
+                          spell.name.toLowerCase().includes(spellLibrarySearch.toLowerCase())
+                        ).length === 0 && (
+                          <div className="text-center py-8 text-stone-400">
+                            <BookOpen className="h-12 w-12 mx-auto mb-3 opacity-30" />
+                            <p>No spells found in the library</p>
+                            <p className="text-xs mt-1">Ask your GM to add spells in Admin Settings</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Create Tab or Edit Mode */}
+                  {(editSpellData || spellDialogTab === 'create') && (
                 <form onSubmit={(e) => {
                   e.preventDefault();
                   const formData = new FormData(e.currentTarget);
@@ -9497,11 +9608,14 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                     </Button>
                   </div>
                 </form>
+                  )}
+                </ScrollArea>
               </DialogContent>
             </Dialog>
 
-            {/* Spell Library Dialog */}
-            <Dialog open={showSpellLibrary} onOpenChange={setShowSpellLibrary}>
+            {/* Spell Library Dialog - REMOVED - Now integrated into Add Magic dialog */}
+            {/* Keeping showSpellLibrary for backward compat but it's no longer used */}
+            <Dialog open={false} onOpenChange={setShowSpellLibrary}>
               <DialogContent className="max-w-2xl bg-stone-900 border-stone-700 max-h-[80vh] flex flex-col">
                 <DialogHeader>
                   <DialogTitle className="text-purple-400 flex items-center gap-2">
