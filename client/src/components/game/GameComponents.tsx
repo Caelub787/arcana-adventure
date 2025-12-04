@@ -581,8 +581,9 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
         const rect = container.getBoundingClientRect();
         const screenX = e.clientX - rect.left;
         const screenY = e.clientY - rect.top;
-        const worldX = (screenX - panRef.current.x) / zoomRef.current - 9000;
-        const worldY = (screenY - panRef.current.y) / zoomRef.current - 9000;
+        // Match the wheel handler's coordinate formula: account for 9000px world offset
+        const worldX = ((screenX + 9000 - panRef.current.x) / zoomRef.current) - 9000;
+        const worldY = ((screenY + 9000 - panRef.current.y) / zoomRef.current) - 9000;
         onAoeClick(worldX, worldY);
       }
       return;
@@ -616,8 +617,9 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
         const rect = container.getBoundingClientRect();
         const screenX = e.clientX - rect.left;
         const screenY = e.clientY - rect.top;
-        const worldX = (screenX - panRef.current.x) / zoomRef.current - 9000;
-        const worldY = (screenY - panRef.current.y) / zoomRef.current - 9000;
+        // Match the wheel handler's coordinate formula: account for 9000px world offset
+        const worldX = ((screenX + 9000 - panRef.current.x) / zoomRef.current) - 9000;
+        const worldY = ((screenY + 9000 - panRef.current.y) / zoomRef.current) - 9000;
         onAoeMouseMove(worldX, worldY);
       }
     }
@@ -2724,12 +2726,24 @@ export function SelectionModeButtons({
 
   // Handle spell selection from picker
   const handleSpellSelect = (spell: any) => {
-    if (!character || !tokens || !onEnterSpellTargeting) return;
+    console.log('[SpellPicker] handleSpellSelect called with spell:', spell);
+    console.log('[SpellPicker] character:', character);
+    console.log('[SpellPicker] tokens:', tokens);
+    console.log('[SpellPicker] onEnterSpellTargeting:', !!onEnterSpellTargeting);
+    
+    if (!character || !tokens || !onEnterSpellTargeting) {
+      console.log('[SpellPicker] Missing required props, returning');
+      return;
+    }
     
     const casterToken = tokens.find((t: any) => t.characterId === character.id);
+    console.log('[SpellPicker] casterToken:', casterToken);
     if (casterToken) {
+      console.log('[SpellPicker] Calling onEnterSpellTargeting with tokenId:', casterToken.id);
       onEnterSpellTargeting(spell, casterToken.id);
       setShowSpellPicker(false);
+    } else {
+      console.log('[SpellPicker] No caster token found for character:', character.id);
     }
   };
 

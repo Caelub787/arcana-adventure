@@ -291,32 +291,34 @@ export default function Campaign() {
   
   // Helper function to handle AoE click - updates position and validates range
   const handleAoeClick = (x: number, y: number) => {
-    // Find the caster token
-    const casterToken = tokens.find((t: any) => t.id === aoeTargetState.casterTokenId);
-    if (!casterToken) return;
-    
-    // Calculate distance from caster to clicked position
-    const casterCenterX = casterToken.x + (activeScene?.gridSize || 50) / 2;
-    const casterCenterY = casterToken.y + (activeScene?.gridSize || 50) / 2;
-    const spellRange = aoeTargetState.spell?.rangeNum || 30;
-    const gridSizeVal = activeScene?.gridSize || 50;
-    
-    // Calculate distance in feet
-    const dx = x - casterCenterX;
-    const dy = y - casterCenterY;
-    const distancePixels = Math.sqrt(dx * dx + dy * dy);
-    const distanceFeet = (distancePixels / gridSizeVal) * 5;
-    
-    // Check if in range
-    const isInRange = distanceFeet <= spellRange;
-    
-    // Always update position to clicked location
-    // Only lock if in range
+    // Always update position to clicked location first
     setAoeTargetState(prev => ({
       ...prev,
       center: { x, y },
-      locked: isInRange,
+      locked: true,
     }));
+    
+    // Then check range if we have caster token info
+    const casterToken = tokens.find((t: any) => t.id === aoeTargetState.casterTokenId);
+    if (casterToken) {
+      const casterCenterX = casterToken.x + (activeScene?.gridSize || 50) / 2;
+      const casterCenterY = casterToken.y + (activeScene?.gridSize || 50) / 2;
+      const spellRange = aoeTargetState.spell?.rangeNum || 30;
+      const gridSizeVal = activeScene?.gridSize || 50;
+      
+      const dx = x - casterCenterX;
+      const dy = y - casterCenterY;
+      const distancePixels = Math.sqrt(dx * dx + dy * dy);
+      const distanceFeet = (distancePixels / gridSizeVal) * 5;
+      
+      // If out of range, unlock so user can reposition
+      if (distanceFeet > spellRange) {
+        setAoeTargetState(prev => ({
+          ...prev,
+          locked: false,
+        }));
+      }
+    }
   };
   
   // Helper function to update AoE center position
