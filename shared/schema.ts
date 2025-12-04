@@ -313,6 +313,7 @@ export const systemSpecies = pgTable("system_species", {
   systemName: text("system_name").notNull().default("Arcana Adventure"), // Which game system this species belongs to
   name: text("name").notNull(),
   description: text("description"),
+  defaultImage: text("default_image"), // Default token image for characters of this species
   lifespan: integer("lifespan").default(100).notNull(),
   speed: integer("speed").default(30).notNull(),
   flySpeed: integer("fly_speed").default(0).notNull(),
