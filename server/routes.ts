@@ -1816,7 +1816,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.patch("/api/spells/:id", requireAuth, async (req, res) => {
     try {
       // First fetch the spell to get its character
-      const currentSpell = await storage.updateSpell(req.params.id, {});
+      const currentSpell = await storage.getSpell(req.params.id);
       if (!currentSpell) {
         return res.status(404).json({ error: "Spell not found" });
       }
@@ -1848,7 +1848,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete("/api/spells/:id", requireAuth, async (req, res) => {
     try {
       // First fetch the spell to get its character
-      const currentSpell = await storage.updateSpell(req.params.id, {});
+      const currentSpell = await storage.getSpell(req.params.id);
       if (!currentSpell) {
         return res.status(404).json({ error: "Spell not found" });
       }

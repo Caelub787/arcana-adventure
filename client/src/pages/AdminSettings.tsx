@@ -2910,6 +2910,7 @@ function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading }:
   const [formData, setFormData] = useState<{
     name: string;
     description: string;
+    icon: string;
     castingTime: string;
     range: number | string;
     duration: string;
@@ -2923,6 +2924,7 @@ function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading }:
   }>({
     name: initialData?.name || '',
     description: initialData?.description || '',
+    icon: initialData?.icon || '',
     castingTime: normalizeCastingTime(initialData?.castingTime),
     range: initialData?.rangeNum ?? 30,
     duration: normalizeDuration(initialData?.duration),
@@ -2935,11 +2937,26 @@ function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading }:
     aoeShape: initialData?.aoeShape || '',
   });
 
+  const [showSpellImageBrowser, setShowSpellImageBrowser] = useState(false);
+  const spellImageInputRef = useRef<HTMLInputElement>(null);
+
+  const handleSpellImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        setFormData({ ...formData, icon: event.target?.result as string });
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   useEffect(() => {
     if (initialData) {
       setFormData({
         name: initialData.name || '',
         description: initialData.description || '',
+        icon: initialData.icon || '',
         castingTime: normalizeCastingTime(initialData.castingTime),
         range: initialData.rangeNum ?? 30,
         duration: normalizeDuration(initialData.duration),
@@ -2955,6 +2972,7 @@ function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading }:
       setFormData({
         name: '',
         description: '',
+        icon: '',
         castingTime: 'action',
         range: 30,
         duration: 'Instant',
@@ -2991,6 +3009,7 @@ function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading }:
     onSave({
       name: formData.name,
       description: formData.description,
+      icon: formData.icon || undefined,
       castingTime: formData.castingTime,
       range: `${formData.range} ft`,
       rangeNum: Number(formData.range) || 30,
@@ -3035,6 +3054,58 @@ function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading }:
                   className="bg-stone-800 border-stone-700 min-h-[60px]"
                   data-testid="textarea-spell-description"
                 />
+              </div>
+
+              <div>
+                <Label>Spell Icon</Label>
+                <div className="flex items-center gap-4">
+                  {formData.icon ? (
+                    <div className="relative">
+                      <img src={formData.icon} alt="Spell" className="h-16 w-16 rounded object-cover border border-stone-600" />
+                      <button
+                        type="button"
+                        onClick={() => setFormData({ ...formData, icon: '' })}
+                        className="absolute -top-1 -right-1 bg-red-600 text-white rounded-full h-5 w-5 text-xs flex items-center justify-center hover:bg-red-500"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="h-16 w-16 rounded border border-dashed border-stone-600 flex items-center justify-center text-stone-500">
+                      <Sparkles className="h-6 w-6" />
+                    </div>
+                  )}
+                  <div className="flex flex-col gap-2">
+                    <input
+                      ref={spellImageInputRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={handleSpellImageUpload}
+                      data-testid="input-spell-icon"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => spellImageInputRef.current?.click()}
+                      className="border-stone-600"
+                      data-testid="button-upload-spell-icon"
+                    >
+                      Upload
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setShowSpellImageBrowser(true)}
+                      className="border-stone-600"
+                      data-testid="button-browse-spell-icon"
+                    >
+                      Browse Library
+                    </Button>
+                  </div>
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -3207,6 +3278,15 @@ function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading }:
           </Button>
         </DialogFooter>
       </DialogContent>
+
+      <ImageBrowser
+        open={showSpellImageBrowser}
+        onOpenChange={setShowSpellImageBrowser}
+        onSelect={(imageBase64) => {
+          setFormData({ ...formData, icon: imageBase64 });
+          setShowSpellImageBrowser(false);
+        }}
+      />
     </Dialog>
   );
 }

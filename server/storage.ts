@@ -105,6 +105,7 @@ export interface IStorage {
 
   // Spell operations
   getSpellsByCharacter(characterId: string): Promise<Spell[]>;
+  getSpell(id: string): Promise<Spell | undefined>;
   createSpell(spell: InsertSpell): Promise<Spell>;
   updateSpell(id: string, updates: Partial<InsertSpell>): Promise<Spell | undefined>;
   deleteSpell(id: string): Promise<void>;
@@ -693,6 +694,14 @@ export class DatabaseStorage implements IStorage {
     return await db.select()
       .from(spells)
       .where(eq(spells.characterId, characterId));
+  }
+
+  async getSpell(id: string): Promise<Spell | undefined> {
+    const [spell] = await db.select()
+      .from(spells)
+      .where(eq(spells.id, id))
+      .limit(1);
+    return spell;
   }
 
   async createSpell(spell: InsertSpell): Promise<Spell> {
