@@ -6959,6 +6959,131 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
   const [showSpellDeleteConfirm, setShowSpellDeleteConfirm] = useState(false);
   const [showSpellLibrary, setShowSpellLibrary] = useState(false);
   const [spellLibrarySearch, setSpellLibrarySearch] = useState('');
+  const [showSpellImageBrowser, setShowSpellImageBrowser] = useState(false);
+  const [spellFormData, setSpellFormData] = useState<{
+    name: string;
+    description: string;
+    image: string;
+    castingTime: string;
+    range: number | string;
+    duration: string;
+    damageType: string;
+    damageDice: string;
+    attribute: string;
+    energyCost: number | string;
+    isAoe: boolean;
+    aoeRange: number | string;
+    aoeShape: string;
+  }>({
+    name: '',
+    description: '',
+    image: '',
+    castingTime: 'action',
+    range: 30,
+    duration: 'Instant',
+    damageType: '',
+    damageDice: '',
+    attribute: '',
+    energyCost: 1,
+    isAoe: false,
+    aoeRange: '',
+    aoeShape: '',
+  });
+  
+  const spellDamageTypes = ['Sharp', 'Blunt', 'Piercing', 'Flame', 'Frost', 'Storm', 'Tide', 'Stone', 'Flux', 'Light', 'Dark', 'Sound', 'Health'];
+  const spellAttributes = ['might', 'finesse', 'wit', 'presence', 'will', 'craft'];
+  
+  const normalizeCastingTime = (ct: string | undefined | null): string => {
+    if (!ct) return 'action';
+    const lower = ct.toLowerCase();
+    if (lower.includes('bonus')) return 'bonus action';
+    return 'action';
+  };
+
+  const normalizeDuration = (d: string | undefined | null): string => {
+    if (!d) return 'Instant';
+    if (d.toLowerCase() === 'instantaneous' || d.toLowerCase() === 'instant') return 'Instant';
+    return d;
+  };
+  
+  useEffect(() => {
+    if (editSpellData) {
+      setSpellFormData({
+        name: editSpellData.name || '',
+        description: editSpellData.description || '',
+        image: editSpellData.image || '',
+        castingTime: normalizeCastingTime(editSpellData.castingTime),
+        range: editSpellData.range ?? 30,
+        duration: normalizeDuration(editSpellData.duration),
+        damageType: editSpellData.damageType || '',
+        damageDice: editSpellData.damage || editSpellData.damageDice || '',
+        attribute: editSpellData.attribute || '',
+        energyCost: editSpellData.energyCost ?? 1,
+        isAoe: editSpellData.isAoe || false,
+        aoeRange: editSpellData.aoeRange ?? '',
+        aoeShape: editSpellData.aoeShape || '',
+      });
+    } else if (showAddSpell && spellDialogTab === 'create') {
+      setSpellFormData({
+        name: '',
+        description: '',
+        image: '',
+        castingTime: 'action',
+        range: 30,
+        duration: 'Instant',
+        damageType: '',
+        damageDice: '',
+        attribute: '',
+        energyCost: 1,
+        isAoe: false,
+        aoeRange: '',
+        aoeShape: '',
+      });
+    }
+  }, [editSpellData, showAddSpell, spellDialogTab]);
+  
+  const handleSpellNumericChange = (field: string, value: string) => {
+    setSpellFormData({ ...spellFormData, [field]: value === '' ? '' : parseInt(value) });
+  };
+  
+  const handleSpellFormSubmit = () => {
+    if (!spellFormData.name.trim()) {
+      toast({ title: 'Error', description: 'Spell name is required', variant: 'destructive' });
+      return;
+    }
+    if (spellFormData.isAoe && !spellFormData.aoeShape) {
+      toast({ title: 'Error', description: 'Please select an AoE shape', variant: 'destructive' });
+      return;
+    }
+    const normalizeNone = (val: string) => val === '_none' ? '' : val;
+    const optionalNum = (val: string | number): number | undefined => {
+      if (val === '' || val === undefined || val === null) return undefined;
+      const num = Number(val);
+      return isNaN(num) ? undefined : num;
+    };
+    
+    const spellData = {
+      name: spellFormData.name,
+      description: spellFormData.description,
+      image: spellFormData.image || undefined,
+      castingTime: spellFormData.castingTime,
+      range: Number(spellFormData.range) || 30,
+      duration: spellFormData.duration,
+      damageType: normalizeNone(spellFormData.damageType),
+      damage: spellFormData.damageDice,
+      attribute: normalizeNone(spellFormData.attribute),
+      energyCost: Number(spellFormData.energyCost) || 1,
+      isAoe: spellFormData.isAoe,
+      aoeRange: spellFormData.isAoe ? optionalNum(spellFormData.aoeRange) : undefined,
+      aoeShape: spellFormData.isAoe ? spellFormData.aoeShape : undefined,
+    };
+
+    if (editSpellData) {
+      updateSpellMutation.mutate({ id: editSpellData.id, data: spellData });
+    } else {
+      createSpellMutation.mutate(spellData);
+    }
+  };
   
   const [rollPanelOpen, setRollPanelOpen] = useState(false);
   const [rollPanelData, setRollPanelData] = useState<{name: string, modifier: number, type: 'skill' | 'attribute'} | null>(null);
@@ -9312,302 +9437,341 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                   
                   {/* Create Tab or Edit Mode */}
                   {(editSpellData || spellDialogTab === 'create') && (
-                <form onSubmit={(e) => {
-                  e.preventDefault();
-                  const formData = new FormData(e.currentTarget);
-                  const spellData = {
-                    name: formData.get('name'),
-                    image: formData.get('image') || undefined,
-                    description: formData.get('description') || undefined,
-                    level: parseInt(formData.get('level') as string),
-                    school: formData.get('school') === 'none' ? undefined : (formData.get('school') || undefined),
-                    damage: formData.get('damage') || undefined,
-                    damageType: formData.get('damageType') || undefined,
-                    range: formData.get('range') ? parseInt(formData.get('range') as string) : undefined,
-                    aoe: formData.get('aoe') === 'none' ? undefined : (formData.get('aoe') || undefined),
-                    castingTime: formData.get('castingTime') || undefined,
-                    duration: formData.get('duration') || undefined,
-                  };
+                    <div className="space-y-4 py-2">
+                      <div className="space-y-3">
+                        <div>
+                          <Label>Spell Name *</Label>
+                          <Input
+                            value={spellFormData.name}
+                            onChange={(e) => setSpellFormData({ ...spellFormData, name: e.target.value })}
+                            className="bg-stone-800 border-stone-700"
+                            data-testid="input-spell-name"
+                          />
+                        </div>
 
-                  if (editSpellData) {
-                    updateSpellMutation.mutate({ id: editSpellData.id, data: spellData });
-                  } else {
-                    createSpellMutation.mutate(spellData);
-                  }
-                }} className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="col-span-2">
-                      <Label>Spell Name *</Label>
-                      <Input
-                        name="name"
-                        required
-                        defaultValue={editSpellData?.name}
-                        className="bg-stone-800 border-stone-700"
-                        data-testid="input-spell-name"
-                      />
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <Label>Level *</Label>
-                        {!isGM && (
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger>
-                                <Lock className="h-3 w-3 text-amber-600" />
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                <p>Only GMs can edit this field</p>
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
-                        )}
+                        <div>
+                          <Label>Spell Image</Label>
+                          <div className="flex items-center gap-2 mt-1">
+                            {spellFormData.image ? (
+                              <div className="relative">
+                                <img src={spellFormData.image} alt="Spell" className="h-12 w-12 rounded object-cover border border-stone-600" />
+                                <button 
+                                  type="button"
+                                  onClick={() => setSpellFormData({...spellFormData, image: ''})}
+                                  className="absolute -top-1 -right-1 bg-red-600 text-white rounded-full h-4 w-4 text-xs flex items-center justify-center hover:bg-red-500"
+                                >×</button>
+                              </div>
+                            ) : (
+                              <div className="h-12 w-12 rounded bg-stone-800 border border-stone-600 flex items-center justify-center text-stone-500">
+                                <ImageIcon className="h-6 w-6" />
+                              </div>
+                            )}
+                            <Button 
+                              type="button" 
+                              variant="outline" 
+                              size="sm"
+                              onClick={() => setShowSpellImageBrowser(true)}
+                              className="bg-stone-800 border-stone-600 hover:bg-stone-700"
+                              data-testid="button-browse-spell-image"
+                            >
+                              <FolderOpen className="h-4 w-4 mr-1" /> Choose Image
+                            </Button>
+                          </div>
+                          
+                          <ImageBrowser
+                            open={showSpellImageBrowser}
+                            onOpenChange={setShowSpellImageBrowser}
+                            onSelect={(imageBase64) => {
+                              setSpellFormData({...spellFormData, image: imageBase64});
+                            }}
+                            title="Select Spell Image"
+                          />
+                        </div>
+
+                        <div>
+                          <Label>Description</Label>
+                          <Textarea
+                            value={spellFormData.description}
+                            onChange={(e) => setSpellFormData({ ...spellFormData, description: e.target.value })}
+                            className="bg-stone-800 border-stone-700 min-h-[60px]"
+                            placeholder="Describe what the spell does..."
+                            data-testid="textarea-spell-description"
+                          />
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <Label>Damage Dice</Label>
+                              {!isGM && (
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger>
+                                      <Lock className="h-3 w-3 text-amber-600" />
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      <p>Only GMs can edit this field</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                              )}
+                            </div>
+                            <Input
+                              value={spellFormData.damageDice}
+                              onChange={(e) => setSpellFormData({ ...spellFormData, damageDice: e.target.value })}
+                              placeholder="2d6"
+                              className={`bg-stone-800 ${isGM ? 'border-amber-700' : 'border-stone-700'}`}
+                              disabled={!isGM}
+                              data-testid="input-spell-damage-dice"
+                            />
+                          </div>
+
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <Label>Damage Type</Label>
+                              {!isGM && (
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger>
+                                      <Lock className="h-3 w-3 text-amber-600" />
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      <p>Only GMs can edit this field</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                              )}
+                            </div>
+                            <Select 
+                              value={spellFormData.damageType || '_none'} 
+                              onValueChange={(v) => setSpellFormData({ ...spellFormData, damageType: v === '_none' ? '' : v })}
+                              disabled={!isGM}
+                            >
+                              <SelectTrigger className={`bg-stone-800 ${isGM ? 'border-amber-700' : 'border-stone-700'}`} data-testid="select-spell-damage-type">
+                                <SelectValue placeholder="Select type" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="_none">None</SelectItem>
+                                {spellDamageTypes.map((type) => (
+                                  <SelectItem key={type} value={type}>{type}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <Label>Range (feet)</Label>
+                              {!isGM && (
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger>
+                                      <Lock className="h-3 w-3 text-amber-600" />
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      <p>Only GMs can edit this field</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                              )}
+                            </div>
+                            <Input
+                              type="number"
+                              min="0"
+                              value={spellFormData.range}
+                              onChange={(e) => handleSpellNumericChange('range', e.target.value)}
+                              placeholder="30"
+                              className={`bg-stone-800 ${isGM ? 'border-amber-700' : 'border-stone-700'}`}
+                              disabled={!isGM}
+                              data-testid="input-spell-range"
+                            />
+                          </div>
+
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <Label>Energy Cost</Label>
+                              {!isGM && (
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger>
+                                      <Lock className="h-3 w-3 text-amber-600" />
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      <p>Only GMs can edit this field</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                              )}
+                            </div>
+                            <Input
+                              type="number"
+                              min="0"
+                              value={spellFormData.energyCost}
+                              onChange={(e) => handleSpellNumericChange('energyCost', e.target.value)}
+                              className={`bg-stone-800 ${isGM ? 'border-amber-700' : 'border-stone-700'}`}
+                              disabled={!isGM}
+                              data-testid="input-spell-energy-cost"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <Label>Action Type</Label>
+                            <Select 
+                              value={spellFormData.castingTime} 
+                              onValueChange={(v) => setSpellFormData({ ...spellFormData, castingTime: v })}
+                            >
+                              <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-spell-action-type">
+                                <SelectValue placeholder="Select action type" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="action">Action</SelectItem>
+                                <SelectItem value="bonus action">Bonus Action</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+
+                          <div>
+                            <Label>Duration</Label>
+                            <Select 
+                              value={spellFormData.duration} 
+                              onValueChange={(v) => setSpellFormData({ ...spellFormData, duration: v })}
+                            >
+                              <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-spell-duration">
+                                <SelectValue placeholder="Select duration" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="Instant">Instant</SelectItem>
+                                <SelectItem value="1 Round">1 Round</SelectItem>
+                                <SelectItem value="1 Minute">1 Minute</SelectItem>
+                                <SelectItem value="10 Minutes">10 Minutes</SelectItem>
+                                <SelectItem value="30 Minutes">30 Minutes</SelectItem>
+                                <SelectItem value="1 Hour">1 Hour</SelectItem>
+                                <SelectItem value="6 Hours">6 Hours</SelectItem>
+                                <SelectItem value="12 Hours">12 Hours</SelectItem>
+                                <SelectItem value="1 Day">1 Day</SelectItem>
+                                <SelectItem value="1 Week">1 Week</SelectItem>
+                                <SelectItem value="1 Month">1 Month</SelectItem>
+                                <SelectItem value="1 Year">1 Year</SelectItem>
+                                <SelectItem value="Permanent">Permanent</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <Label>Attribute (for rolls)</Label>
+                            {!isGM && (
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger>
+                                    <Lock className="h-3 w-3 text-amber-600" />
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <p>Only GMs can edit this field</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            )}
+                          </div>
+                          <Select 
+                            value={spellFormData.attribute || '_none'} 
+                            onValueChange={(v) => setSpellFormData({ ...spellFormData, attribute: v === '_none' ? '' : v })}
+                            disabled={!isGM}
+                          >
+                            <SelectTrigger className={`bg-stone-800 ${isGM ? 'border-amber-700' : 'border-stone-700'}`} data-testid="select-spell-attribute">
+                              <SelectValue placeholder="Select attribute" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="_none">None</SelectItem>
+                              {spellAttributes.map((attr) => (
+                                <SelectItem key={attr} value={attr}>{attr.charAt(0).toUpperCase() + attr.slice(1)}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div className="space-y-3">
+                          <div className="flex items-center gap-3">
+                            {!isGM && (
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger>
+                                    <Lock className="h-3 w-3 text-amber-600" />
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <p>Only GMs can edit this field</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            )}
+                            <Checkbox
+                              id="spell-aoe"
+                              checked={spellFormData.isAoe}
+                              onCheckedChange={(checked) => setSpellFormData({ ...spellFormData, isAoe: checked === true })}
+                              className="border-stone-600"
+                              disabled={!isGM}
+                              data-testid="checkbox-spell-aoe"
+                            />
+                            <Label htmlFor="spell-aoe" className="cursor-pointer">Area of Effect (AoE)</Label>
+                          </div>
+                          {spellFormData.isAoe && (
+                            <div className="grid grid-cols-2 gap-3">
+                              <div>
+                                <Label>AoE Shape</Label>
+                                <Select 
+                                  value={spellFormData.aoeShape || '_none'} 
+                                  onValueChange={(v) => setSpellFormData({ ...spellFormData, aoeShape: v === '_none' ? '' : v })}
+                                  disabled={!isGM}
+                                >
+                                  <SelectTrigger className={`bg-stone-800 ${isGM ? 'border-amber-700' : 'border-stone-700'}`} data-testid="select-spell-aoe-shape">
+                                    <SelectValue placeholder="Select shape" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="_none">None</SelectItem>
+                                    <SelectItem value="circle">Circle</SelectItem>
+                                    <SelectItem value="square">Square</SelectItem>
+                                    <SelectItem value="cone">Cone</SelectItem>
+                                    <SelectItem value="line">Line</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              <div>
+                                <Label>AoE Range (feet)</Label>
+                                <Input
+                                  type="number"
+                                  min="0"
+                                  value={spellFormData.aoeRange}
+                                  onChange={(e) => handleSpellNumericChange('aoeRange', e.target.value)}
+                                  placeholder="e.g. 15"
+                                  className={`bg-stone-800 ${isGM ? 'border-amber-700' : 'border-stone-700'}`}
+                                  disabled={!isGM}
+                                  data-testid="input-spell-aoe-range"
+                                />
+                              </div>
+                            </div>
+                          )}
+                        </div>
                       </div>
-                      <Select name="level" defaultValue={editSpellData?.level?.toString() || "0"} required disabled={!isGM}>
-                        <SelectTrigger className={`bg-stone-800 ${isGM ? 'border-amber-700' : 'border-stone-700'}`}>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="0">Cantrip</SelectItem>
-                          {[1,2,3,4,5,6,7,8,9].map(l => (
-                            <SelectItem key={l} value={l.toString()}>Level {l}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <Label>School</Label>
-                        {!isGM && (
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger>
-                                <Lock className="h-3 w-3 text-amber-600" />
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                <p>Only GMs can edit this field</p>
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
-                        )}
+
+                      <div className="flex justify-end gap-2 pt-4">
+                        <Button type="button" variant="outline" onClick={() => setShowAddSpell(false)}>
+                          Cancel
+                        </Button>
+                        <Button 
+                          type="button" 
+                          onClick={handleSpellFormSubmit}
+                          className="bg-purple-600 hover:bg-purple-700"
+                          data-testid="button-save-spell"
+                        >
+                          {editSpellData ? 'Update Spell' : 'Add Spell'}
+                        </Button>
                       </div>
-                      <Select name="school" defaultValue={editSpellData?.school || "none"} disabled={!isGM}>
-                        <SelectTrigger className={`bg-stone-800 ${isGM ? 'border-amber-700' : 'border-stone-700'}`}>
-                          <SelectValue placeholder="Select school" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="none">None</SelectItem>
-                          <SelectItem value="evocation">Evocation</SelectItem>
-                          <SelectItem value="abjuration">Abjuration</SelectItem>
-                          <SelectItem value="conjuration">Conjuration</SelectItem>
-                          <SelectItem value="divination">Divination</SelectItem>
-                          <SelectItem value="enchantment">Enchantment</SelectItem>
-                          <SelectItem value="illusion">Illusion</SelectItem>
-                          <SelectItem value="necromancy">Necromancy</SelectItem>
-                          <SelectItem value="transmutation">Transmutation</SelectItem>
-                        </SelectContent>
-                      </Select>
                     </div>
-                    <div className="col-span-2">
-                      <Label>Image URL</Label>
-                      <Input
-                        name="image"
-                        type="url"
-                        defaultValue={editSpellData?.image}
-                        className="bg-stone-800 border-stone-700"
-                        placeholder="https://example.com/spell-icon.png"
-                      />
-                    </div>
-                    <div className="col-span-2">
-                      <Label>Description</Label>
-                      <Textarea
-                        name="description"
-                        defaultValue={editSpellData?.description}
-                        className="bg-stone-800 border-stone-700 min-h-[80px]"
-                        placeholder="Describe what the spell does..."
-                      />
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <Label>Damage (dice notation)</Label>
-                        {!isGM && (
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger>
-                                <Lock className="h-3 w-3 text-amber-600" />
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                <p>Only GMs can edit this field</p>
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
-                        )}
-                      </div>
-                      <Input
-                        name="damage"
-                        defaultValue={editSpellData?.damage}
-                        className={`bg-stone-800 ${isGM ? 'border-amber-700' : 'border-stone-700'}`}
-                        placeholder="2d6"
-                        disabled={!isGM}
-                      />
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <Label>Damage Type</Label>
-                        {!isGM && (
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger>
-                                <Lock className="h-3 w-3 text-amber-600" />
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                <p>Only GMs can edit this field</p>
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
-                        )}
-                      </div>
-                      <Input
-                        name="damageType"
-                        defaultValue={editSpellData?.damageType}
-                        className={`bg-stone-800 ${isGM ? 'border-amber-700' : 'border-stone-700'}`}
-                        placeholder="fire, cold, lightning..."
-                        disabled={!isGM}
-                      />
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <Label>Range (feet)</Label>
-                        {!isGM && (
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger>
-                                <Lock className="h-3 w-3 text-amber-600" />
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                <p>Only GMs can edit this field</p>
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
-                        )}
-                      </div>
-                      <Input
-                        name="range"
-                        type="number"
-                        defaultValue={editSpellData?.range}
-                        className={`bg-stone-800 ${isGM ? 'border-amber-700' : 'border-stone-700'}`}
-                        placeholder="60"
-                        disabled={!isGM}
-                      />
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <Label>Area of Effect</Label>
-                        {!isGM && (
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger>
-                                <Lock className="h-3 w-3 text-amber-600" />
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                <p>Only GMs can edit this field</p>
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
-                        )}
-                      </div>
-                      <Input
-                        name="aoe"
-                        defaultValue={editSpellData?.aoe}
-                        className={`bg-stone-800 ${isGM ? 'border-amber-700' : 'border-stone-700'}`}
-                        placeholder="15-foot cone"
-                        disabled={!isGM}
-                      />
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <Label>Action Type</Label>
-                        {!isGM && (
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger>
-                                <Lock className="h-3 w-3 text-amber-600" />
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                <p>Only GMs can edit this field</p>
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
-                        )}
-                      </div>
-                      <Select 
-                        name="castingTime" 
-                        defaultValue={editSpellData?.castingTime?.toLowerCase().includes('bonus') ? 'bonus action' : 'action'}
-                        disabled={!isGM}
-                      >
-                        <SelectTrigger className={`bg-stone-800 ${isGM ? 'border-amber-700' : 'border-stone-700'}`}>
-                          <SelectValue placeholder="Select action type" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="action">Action</SelectItem>
-                          <SelectItem value="bonus action">Bonus Action</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <Label>Duration</Label>
-                        {!isGM && (
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger>
-                                <Lock className="h-3 w-3 text-amber-600" />
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                <p>Only GMs can edit this field</p>
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
-                        )}
-                      </div>
-                      <Select 
-                        name="duration" 
-                        defaultValue={(() => {
-                          const d = editSpellData?.duration?.toLowerCase();
-                          if (!d || d === 'instantaneous' || d === 'instant') return 'Instant';
-                          return editSpellData?.duration || 'Instant';
-                        })()}
-                        disabled={!isGM}
-                      >
-                        <SelectTrigger className={`bg-stone-800 ${isGM ? 'border-amber-700' : 'border-stone-700'}`}>
-                          <SelectValue placeholder="Select duration" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="Instant">Instant</SelectItem>
-                          <SelectItem value="1 Round">1 Round</SelectItem>
-                          <SelectItem value="1 Minute">1 Minute</SelectItem>
-                          <SelectItem value="10 Minutes">10 Minutes</SelectItem>
-                          <SelectItem value="30 Minutes">30 Minutes</SelectItem>
-                          <SelectItem value="1 Hour">1 Hour</SelectItem>
-                          <SelectItem value="6 Hours">6 Hours</SelectItem>
-                          <SelectItem value="12 Hours">12 Hours</SelectItem>
-                          <SelectItem value="1 Day">1 Day</SelectItem>
-                          <SelectItem value="1 Week">1 Week</SelectItem>
-                          <SelectItem value="1 Month">1 Month</SelectItem>
-                          <SelectItem value="1 Year">1 Year</SelectItem>
-                          <SelectItem value="Permanent">Permanent</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                  <div className="flex justify-end gap-2 pt-4">
-                    <Button type="button" variant="outline" onClick={() => setShowAddSpell(false)}>
-                      Cancel
-                    </Button>
-                    <Button type="submit" className="bg-purple-600 hover:bg-purple-700">
-                      {editSpellData ? 'Update Spell' : 'Add Spell'}
-                    </Button>
-                  </div>
-                </form>
                   )}
                 </ScrollArea>
               </DialogContent>
