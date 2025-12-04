@@ -708,6 +708,66 @@ export default function Campaign() {
             data.characterName
           );
         }
+        
+        // Handle combat HP updates - real-time damage/healing
+        if (data.type === 'character_hp_update') {
+          const { characterId, hp, previousHp, damage, isHealing, attackerName } = data;
+          // Update local character state if it matches
+          setCharacter((prev: any) => {
+            if (prev && prev.id === characterId) {
+              return { ...prev, hp };
+            }
+            return prev;
+          });
+          // Update inspected character if it matches
+          setInspectedChar((prev: any) => {
+            if (prev && prev.id === characterId) {
+              return { ...prev, hp };
+            }
+            return prev;
+          });
+          // Update tokens to reflect HP changes
+          queryClientRef.current.invalidateQueries({ queryKey: [`/api/campaigns/${effectiveCampaignId}/characters`] });
+          queryClientRef.current.invalidateQueries({ queryKey: [`/api/characters/${characterId}`] });
+        }
+        
+        // Handle token CRUD - real-time token updates
+        if (data.type === 'token_created' && data.token) {
+          setTokens(prev => {
+            // Avoid duplicates
+            if (prev.some(t => t.id === data.token.id)) return prev;
+            return [...prev, data.token];
+          });
+        }
+        if (data.type === 'token_updated' && data.token) {
+          setTokens(prev => prev.map(t => 
+            t.id === data.token.id ? data.token : t
+          ));
+        }
+        if (data.type === 'token_deleted' && data.tokenId) {
+          setTokens(prev => prev.filter(t => t.id !== data.tokenId));
+        }
+        
+        // Handle scene updates - real-time scene changes
+        if (data.type === 'scene_updated' && data.scene) {
+          queryClientRef.current.invalidateQueries({ queryKey: [`/api/campaigns/${effectiveCampaignId}/scenes`] });
+          queryClientRef.current.invalidateQueries({ queryKey: [`/api/scenes/${data.scene.id}`] });
+        }
+        if (data.type === 'scene_deleted' && data.sceneId) {
+          queryClientRef.current.invalidateQueries({ queryKey: [`/api/campaigns/${effectiveCampaignId}/scenes`] });
+        }
+        if (data.type === 'active_scene_changed') {
+          queryClientRef.current.invalidateQueries({ queryKey: [`/api/campaigns/${effectiveCampaignId}`] });
+          queryClientRef.current.invalidateQueries({ queryKey: [`/api/campaigns/${effectiveCampaignId}/scenes`] });
+          if (data.sceneId) {
+            queryClientRef.current.invalidateQueries({ queryKey: [`/api/scenes/${data.sceneId}`] });
+          }
+        }
+        
+        // Handle chat messages - real-time chat
+        if (data.type === 'chat_message' && data.message) {
+          queryClientRef.current.invalidateQueries({ queryKey: [`/api/campaigns/${effectiveCampaignId}/messages`] });
+        }
       });
 
       return () => {

@@ -1750,6 +1750,7 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
 
   // Apply damage to target character with armor damage reduction
   // If damageType is "Health", this heals instead of damaging
+  // Uses WebSocket combat damage which bypasses edit permission checks
   const applyDamageToTarget = async (damageAmount: number, damageType: string | null, targetCharacter: any): Promise<{ finalDamage: number; reduction: number; armorName: string | null; isHealing: boolean }> => {
     if (!targetCharacter?.id) return { finalDamage: damageAmount, reduction: 0, armorName: null, isHealing: false };
     
@@ -1758,20 +1759,15 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     
     // For healing, no armor reduction applies
     if (isHealing) {
-      try {
-        const freshCharacterData = await api.getCharacter(targetCharacter.id);
-        if (freshCharacterData) {
-          const currentHp = freshCharacterData.hp || 0;
-          const maxHp = freshCharacterData.maxHp || currentHp;
-          const newHp = Math.min(maxHp, currentHp + damageAmount);
-          console.log('[Healing] Applying', damageAmount, 'healing to', targetCharacter.name, '- HP:', currentHp, '->', newHp);
-          await api.updateCharacter(targetCharacter.id, { hp: newHp });
-          queryClient.invalidateQueries({ queryKey: ['characters'] });
-          gameWs.sendCharacterUpdate(targetCharacter.id);
-        }
-      } catch (error) {
-        console.error('Failed to update target HP (healing):', error);
-      }
+      console.log('[Healing] Applying', damageAmount, 'healing to', targetCharacter.name);
+      // Use WebSocket combat damage which bypasses edit permissions
+      gameWs.sendCombatDamage(
+        targetCharacter.id,
+        damageAmount,
+        damageType || undefined,
+        character?.name || 'Unknown',
+        true // isHealing
+      );
       return { finalDamage: damageAmount, reduction: 0, armorName: null, isHealing: true };
     }
     
@@ -1805,23 +1801,17 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     
     const finalDamage = Math.max(0, damageAmount - reduction);
     
-    // Apply damage to target's HP - fetch fresh HP from server to avoid stale data
+    // Apply damage using WebSocket - bypasses edit permission checks
+    // Anyone in the campaign can apply combat damage
     if (finalDamage > 0) {
-      try {
-        // Fetch current character data from server to get fresh HP value
-        const freshCharacterData = await api.getCharacter(targetCharacter.id);
-        if (freshCharacterData) {
-          const currentHp = freshCharacterData.hp || 0;
-          const newHp = Math.max(0, currentHp - finalDamage);
-          console.log('[Damage] Applying', finalDamage, 'damage to', targetCharacter.name, '- HP:', currentHp, '->', newHp);
-          await api.updateCharacter(targetCharacter.id, { hp: newHp });
-          queryClient.invalidateQueries({ queryKey: ['characters'] });
-          // Broadcast character update via WebSocket for real-time sync
-          gameWs.sendCharacterUpdate(targetCharacter.id);
-        }
-      } catch (error) {
-        console.error('Failed to update target HP:', error);
-      }
+      console.log('[Damage] Applying', finalDamage, 'damage to', targetCharacter.name);
+      gameWs.sendCombatDamage(
+        targetCharacter.id,
+        finalDamage,
+        damageType || undefined,
+        character?.name || 'Unknown',
+        false // isHealing
+      );
     }
     
     return { finalDamage, reduction, armorName, isHealing: false };

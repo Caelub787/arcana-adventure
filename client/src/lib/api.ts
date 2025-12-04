@@ -1092,6 +1092,40 @@ export class GameWebSocket {
     
     this.send(message);
   }
+  
+  // Send combat damage - bypasses normal edit permissions
+  // Anyone in the campaign can apply damage to tokens during combat
+  sendCombatDamage(
+    characterId: string, 
+    damage: number, 
+    damageType?: string, 
+    attackerName?: string,
+    isHealing?: boolean
+  ) {
+    if (!this.campaignId) {
+      console.error('Cannot send combat damage: not connected to a campaign');
+      return;
+    }
+    
+    const message = { 
+      type: 'apply_combat_damage', 
+      campaignId: this.campaignId, 
+      characterId,
+      damage,
+      damageType,
+      attackerName,
+      isHealing: isHealing || false
+    };
+    
+    // If not yet joined, queue the message
+    if (!this.joinedCampaign) {
+      console.log('WebSocket: Queueing combat damage until campaign join is confirmed');
+      this.pendingMessages.push(message);
+      return;
+    }
+    
+    this.send(message);
+  }
 }
 
 export const gameWs = new GameWebSocket();
