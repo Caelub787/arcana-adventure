@@ -18,12 +18,26 @@ export function BattlemapAoeOverlay({
   panY,
   zoom,
 }: BattlemapAoeOverlayProps) {
+  console.log('[BattlemapAoeOverlay] Render check:', { 
+    active: aoeTargetState.active, 
+    hasSpell: !!aoeTargetState.spell,
+    spellName: aoeTargetState.spell?.name,
+    aoe: aoeTargetState.spell?.aoe,
+    center: aoeTargetState.center
+  });
+  
   if (!aoeTargetState.active || !aoeTargetState.spell) return null;
 
   const { spell, center, locked } = aoeTargetState;
-  const aoeShape = spell.aoeShape?.toLowerCase() || 'circle';
-  const aoeRangeFeet = spell.aoeRange || 15;
+  
+  // Parse the aoe field which is in format "shape:radius" like "circle:15"
+  const aoeField = spell.aoe || '';
+  const [parsedShape, parsedRadius] = aoeField.split(':');
+  const aoeShape = (parsedShape || 'circle').toLowerCase();
+  const aoeRangeFeet = parseInt(parsedRadius, 10) || 15;
   const spellRangeFeet = spell.rangeNum || 30;
+  
+  console.log('[BattlemapAoeOverlay] Rendering shape:', aoeShape, 'radius:', aoeRangeFeet, 'at:', center);
   const radiusPixels = (aoeRangeFeet / 5) * gridSize;
 
   const casterX = casterToken ? casterToken.x + gridSize / 2 : 0;
