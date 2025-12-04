@@ -2093,7 +2093,8 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     if (!spellData) return;
     
     const isHealing = spellData.damageType === 'Health';
-    const diceNotation = isHealing ? (spellData.healingDice || spellData.damageDice) : spellData.damageDice;
+    // Check both damageDice and damage fields for backwards compatibility
+    const diceNotation = isHealing ? (spellData.healingDice || spellData.damageDice || spellData.damage) : (spellData.damageDice || spellData.damage);
     
     if (!diceNotation) {
       triggerRollNotification({
@@ -2293,7 +2294,7 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
         <p className="font-bold">{spellData.name}</p>
         <p className="text-sm">Level: {spellData.level === 0 ? 'Cantrip' : spellData.level}</p>
         {spellData.school && <p className="text-sm">School: {spellData.school}</p>}
-        {spellData.damageDice && <p className="text-sm">Damage: {spellData.damageDice}{spellData.mod ? ` +${spellData.mod}` : ''} {spellData.damageType || ''}</p>}
+        {(spellData.damageDice || spellData.damage) && <p className="text-sm">Damage: {spellData.damageDice || spellData.damage}{spellData.mod ? ` +${spellData.mod}` : ''} {spellData.damageType || ''}</p>}
         {spellData.attribute && <p className="text-sm">Attack: {spellData.attribute}</p>}
         {spellData.rangeNum && <p className="text-sm">Range: {spellData.rangeNum}ft</p>}
         <p className="text-xs text-stone-400 mt-1">Click: Attack | Double-click: Damage</p>
@@ -9443,14 +9444,21 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                                 createSpellMutation.mutate({
                                   name: spell.name,
                                   description: spell.description,
+                                  image: spell.icon || undefined,
                                   level: spell.level || 0,
                                   school: spell.school,
                                   damage: spell.damageDice,
+                                  damageDice: spell.damageDice,
                                   damageType: spell.damageType,
                                   range: spell.rangeNum,
                                   aoe: spell.aoe,
                                   castingTime: spell.castingTime,
                                   duration: spell.duration,
+                                  attribute: spell.attribute,
+                                  energyCost: spell.energyCost,
+                                  isAoe: spell.isAoe,
+                                  aoeRange: spell.aoeRange,
+                                  aoeShape: spell.aoeShape,
                                 });
                                 setShowAddSpell(false);
                                 setSpellLibrarySearch('');
@@ -9873,14 +9881,21 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                             createSpellMutation.mutate({
                               name: spell.name,
                               description: spell.description,
+                              image: spell.icon || undefined,
                               level: spell.level || 0,
                               school: spell.school,
                               damage: spell.damageDice,
+                              damageDice: spell.damageDice,
                               damageType: spell.damageType,
                               range: spell.rangeNum,
                               aoe: spell.aoe,
                               castingTime: spell.castingTime,
                               duration: spell.duration,
+                              attribute: spell.attribute,
+                              energyCost: spell.energyCost,
+                              isAoe: spell.isAoe,
+                              aoeRange: spell.aoeRange,
+                              aoeShape: spell.aoeShape,
                             });
                             setShowSpellLibrary(false);
                             setSpellLibrarySearch('');
