@@ -1552,6 +1552,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log('[Character Update] Saving updates for character', req.params.id, ':', req.body);
       const updatedCharacter = await storage.updateCharacter(req.params.id, req.body);
       console.log('[Character Update] Saved successfully:', updatedCharacter);
+      
+      // Broadcast character update to all campaign members
+      if (updatedCharacter.campaignId) {
+        broadcastToCampaign(updatedCharacter.campaignId, {
+          type: "character_updated",
+          characterId: updatedCharacter.id,
+          character: updatedCharacter
+        });
+      }
+      
       res.json(updatedCharacter);
     } catch (err) {
       console.error('[Character Update] Error:', err);
@@ -1998,6 +2008,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ...req.body,
         campaignId: req.params.campaignId
       });
+      
+      // Broadcast token creation to all campaign members
+      broadcastToCampaign(req.params.campaignId, {
+        type: "token_created",
+        token
+      });
+      
       res.json(token);
     } catch (err) {
       res.status(400).json({ error: "Failed to create token" });
@@ -2019,6 +2036,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!token) {
         return res.status(404).json({ error: "Token not found" });
       }
+      
+      // Broadcast token update to all campaign members
+      if (token.campaignId) {
+        broadcastToCampaign(token.campaignId, {
+          type: "token_updated",
+          token
+        });
+      }
+      
       res.json(token);
     } catch (err) {
       res.status(400).json({ error: "Failed to update token" });
@@ -2027,7 +2053,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.delete("/api/tokens/:id", requireAuth, async (req, res) => {
     try {
+      // Get token before deleting to get campaignId
+      const token = await storage.getToken(req.params.id);
+      const campaignId = token?.campaignId;
+      
       await storage.deleteToken(req.params.id);
+      
+      // Broadcast token deletion to all campaign members
+      if (campaignId) {
+        broadcastToCampaign(campaignId, {
+          type: "token_deleted",
+          tokenId: req.params.id
+        });
+      }
+      
       res.json({ success: true });
     } catch (err) {
       res.status(400).json({ error: "Failed to delete token" });
@@ -2251,6 +2290,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const updatedScene = await storage.updateScene(req.params.sceneId, req.body);
+      
+      // Broadcast scene update to all campaign members
+      broadcastToCampaign(scene.campaignId, {
+        type: "scene_updated",
+        scene: updatedScene
+      });
+      
       res.json(updatedScene);
     } catch (err) {
       res.status(400).json({ error: "Failed to update scene" });
@@ -2274,7 +2320,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ error: "Only the GM can delete scenes" });
       }
 
+      const campaignId = scene.campaignId;
       await storage.deleteScene(req.params.sceneId);
+      
+      // Broadcast scene deletion to all campaign members
+      broadcastToCampaign(campaignId, {
+        type: "scene_deleted",
+        sceneId: req.params.sceneId
+      });
+      
       res.json({ success: true });
     } catch (err) {
       res.status(400).json({ error: "Failed to delete scene" });
@@ -2305,6 +2359,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       await storage.setActiveScene(req.params.campaignId, sceneId);
+      
+      // Broadcast active scene change to all campaign members
+      broadcastToCampaign(req.params.campaignId, {
+        type: "active_scene_changed",
+        sceneId,
+        scene
+      });
+      
       res.json({ success: true });
     } catch (err) {
       res.status(400).json({ error: "Failed to set active scene" });
