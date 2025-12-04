@@ -1331,10 +1331,12 @@ export default function Campaign() {
            <BattlemapDiceOverlay />
            
            {/* Selection Mode Buttons - Left side of screen */}
+           {/* For GMs: use inspectedChar if clicked, otherwise fall back to assigned character */}
+           {/* For players: always use their assigned character */}
            <SelectionModeButtons 
              selectionMode={selectionMode}
              onModeChange={handleModeChange}
-             character={role === 'gm' ? inspectedChar : character}
+             character={role === 'gm' ? (inspectedChar ?? character) : character}
              tokens={tokens}
              onEnterSpellTargeting={enterAoeMode}
              onClearSpellTargeting={exitAoeMode}
