@@ -17,7 +17,7 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Slider } from '@/components/ui/slider';
 import { toast } from '@/hooks/use-toast';
-import { ArrowLeft, Plus, Pencil, Trash2, Sword, Shield, Package, Sparkles, Box, Coins, Search, Users, GitBranch, Library, Link, X, GripVertical, Star, Zap, Heart, ShieldCheck, BookOpen, RefreshCw, ZoomIn, ZoomOut } from 'lucide-react';
+import { ArrowLeft, Plus, Pencil, Trash2, Sword, Shield, Package, Sparkles, Box, Coins, Search, Users, User, GitBranch, Library, Link, X, GripVertical, Star, Zap, Heart, ShieldCheck, BookOpen, RefreshCw, ZoomIn, ZoomOut } from 'lucide-react';
 import { ImageBrowser } from '@/components/ImageBrowser';
 
 type AdminView = 'dashboard' | 'items' | 'species' | 'spells' | 'feat-trees';
@@ -2609,6 +2609,7 @@ function SpeciesFormDialog({ open, onOpenChange, onSave, initialData, isLoading,
   const [formData, setFormData] = useState<{
     name: string;
     description: string;
+    defaultImage: string;
     lifespan: number | string;
     speed: number | string;
     flySpeed: number | string;
@@ -2625,6 +2626,7 @@ function SpeciesFormDialog({ open, onOpenChange, onSave, initialData, isLoading,
   }>({
     name: initialData?.name || '',
     description: initialData?.description || '',
+    defaultImage: initialData?.defaultImage || '',
     lifespan: initialData?.lifespan ?? '',
     speed: initialData?.speed ?? '',
     flySpeed: initialData?.flySpeed ?? '',
@@ -2639,6 +2641,20 @@ function SpeciesFormDialog({ open, onOpenChange, onSave, initialData, isLoading,
     carryWeight: initialData?.carryWeight ?? '',
     featTree: initialData?.featTree || '',
   });
+  
+  const [showSpeciesImageBrowser, setShowSpeciesImageBrowser] = useState(false);
+  const speciesImageInputRef = useRef<HTMLInputElement>(null);
+  
+  const handleSpeciesImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        setFormData({ ...formData, defaultImage: event.target?.result as string });
+      };
+      reader.readAsDataURL(file);
+    }
+  };
   
   // Helper to handle numeric input - allows empty string
   const handleNumericChange = (field: string, value: string) => {
@@ -2662,6 +2678,7 @@ function SpeciesFormDialog({ open, onOpenChange, onSave, initialData, isLoading,
     // Convert string values to numbers, using defaults for empty strings
     onSave({
       ...formData,
+      defaultImage: formData.defaultImage || undefined,
       lifespan: Number(formData.lifespan) || 100,
       speed: Number(formData.speed) || 30,
       flySpeed: Number(formData.flySpeed) || 0,
@@ -2706,6 +2723,70 @@ function SpeciesFormDialog({ open, onOpenChange, onSave, initialData, isLoading,
                   data-testid="textarea-species-description"
                 />
               </div>
+
+              <div className="col-span-2">
+                <Label>Default Token Image</Label>
+                <div className="flex items-center gap-4">
+                  {formData.defaultImage ? (
+                    <div className="relative">
+                      <img src={formData.defaultImage} alt="Species" className="h-16 w-16 rounded-full object-cover border border-stone-600" />
+                      <button
+                        type="button"
+                        onClick={() => setFormData({ ...formData, defaultImage: '' })}
+                        className="absolute -top-1 -right-1 bg-red-600 text-white rounded-full h-5 w-5 text-xs flex items-center justify-center hover:bg-red-500"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="h-16 w-16 rounded-full bg-stone-700 flex items-center justify-center border border-stone-600">
+                      <User className="h-8 w-8 text-stone-500" />
+                    </div>
+                  )}
+                  <div className="flex gap-2">
+                    <input
+                      ref={speciesImageInputRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={handleSpeciesImageUpload}
+                      className="hidden"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => speciesImageInputRef.current?.click()}
+                      className="border-stone-600"
+                    >
+                      Upload Image
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setShowSpeciesImageBrowser(true)}
+                      className="border-stone-600"
+                      data-testid="button-species-browse-library"
+                    >
+                      <Library className="h-4 w-4 mr-1" />
+                      Libraries
+                    </Button>
+                  </div>
+                </div>
+                <p className="text-xs text-stone-500 mt-1">
+                  This image will be used as the default token for characters of this species.
+                </p>
+              </div>
+
+              <ImageBrowser
+                open={showSpeciesImageBrowser}
+                onOpenChange={setShowSpeciesImageBrowser}
+                onSelect={(imageBase64) => {
+                  setFormData({ ...formData, defaultImage: imageBase64 });
+                  setShowSpeciesImageBrowser(false);
+                }}
+                title="Select Species Default Image"
+              />
 
               <div>
                 <Label>Size</Label>
