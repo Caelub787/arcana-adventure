@@ -9471,8 +9471,12 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                               data-testid={`spell-library-item-${spell.id}`}
                             >
                               <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 bg-stone-700 rounded flex items-center justify-center">
-                                  <Sparkles className="h-5 w-5 text-purple-400" />
+                                <div className="w-10 h-10 bg-stone-700 rounded flex items-center justify-center overflow-hidden">
+                                  {spell.icon ? (
+                                    <img src={spell.icon} alt={spell.name} className="w-full h-full object-cover" />
+                                  ) : (
+                                    <Sparkles className="h-5 w-5 text-purple-400" />
+                                  )}
                                 </div>
                                 <div className="flex-1">
                                   <div className="flex items-center gap-2">
@@ -9908,8 +9912,12 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                           data-testid={`spell-library-item-${spell.id}`}
                         >
                           <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 bg-stone-700 rounded flex items-center justify-center">
-                              <Sparkles className="h-5 w-5 text-purple-400" />
+                            <div className="w-10 h-10 bg-stone-700 rounded flex items-center justify-center overflow-hidden">
+                              {spell.icon ? (
+                                <img src={spell.icon} alt={spell.name} className="w-full h-full object-cover" />
+                              ) : (
+                                <Sparkles className="h-5 w-5 text-purple-400" />
+                              )}
                             </div>
                             <div className="flex-1">
                               <div className="flex items-center gap-2">

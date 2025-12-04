@@ -738,8 +738,12 @@ function SpellsView({ spells, isLoading, searchQuery, setSearchQuery, onAddSpell
                   className="flex items-center gap-4 p-3 rounded-lg bg-stone-800 border border-stone-700 hover:border-stone-600"
                   data-testid={`spell-row-${spell.id}`}
                 >
-                  <div className="h-12 w-12 rounded bg-stone-700 flex items-center justify-center">
-                    <Sparkles className="h-6 w-6 text-blue-400" />
+                  <div className="h-12 w-12 rounded bg-stone-700 flex items-center justify-center overflow-hidden">
+                    {spell.icon ? (
+                      <img src={spell.icon} alt={spell.name} className="h-full w-full object-cover" />
+                    ) : (
+                      <Sparkles className="h-6 w-6 text-blue-400" />
+                    )}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
