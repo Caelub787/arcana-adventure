@@ -233,6 +233,19 @@ export function CharacterCreation({ onComplete, onCancel }: CharacterCreationPro
 // Selection mode types
 export type SelectionMode = 'select' | 'target';
 
+// Other players' AoE targeting state (for displaying their AoE markers)
+export interface OtherPlayerAoe {
+  userId: string;
+  username: string;
+  active: boolean;
+  spellName?: string;
+  spellAoe?: string;
+  casterTokenId?: string;
+  casterName?: string;
+  center: { x: number; y: number };
+  locked: boolean;
+}
+
 // 2. BattleMap
 interface BattleMapProps {
   tokens: Token[];
@@ -252,9 +265,10 @@ interface BattleMapProps {
   aoeTargetState?: AoeTargetState;
   onAoeMouseMove?: (x: number, y: number) => void;
   onAoeClick?: (x: number, y: number) => void;
+  otherPlayersAoe?: Map<string, OtherPlayerAoe>;
 }
 
-export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClick, onDeleteToken, role, gridSize, backgroundImage, scene, onViewChange, characters = [], selectionMode = 'select', targetedTokenId, selectedTokenId, aoeTargetState, onAoeMouseMove, onAoeClick }: BattleMapProps) {
+export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClick, onDeleteToken, role, gridSize, backgroundImage, scene, onViewChange, characters = [], selectionMode = 'select', targetedTokenId, selectedTokenId, aoeTargetState, onAoeMouseMove, onAoeClick, otherPlayersAoe }: BattleMapProps) {
   // Use refs for pan/zoom to avoid re-renders during interaction
   const panRef = useRef({ x: 0, y: 0 });
   const zoomRef = useRef(1);
@@ -1312,6 +1326,91 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
             </svg>
           );
         })()}
+        
+        {/* Other Players' AoE Overlays - Show all other players' targeting */}
+        {otherPlayersAoe && Array.from(otherPlayersAoe.values()).map((playerAoe) => {
+          if (!playerAoe.active || !playerAoe.spellAoe) return null;
+          
+          const aoeField = playerAoe.spellAoe || '';
+          const [parsedShape, parsedRadius] = aoeField.split(':');
+          const aoeShape = (parsedShape || 'circle').toLowerCase();
+          const aoeRangeFeet = parseInt(parsedRadius, 10) || 15;
+          const radiusPixels = (aoeRangeFeet / 5) * (scene?.gridSize || gridSize) / 2;
+          const { center, locked: playerLocked } = playerAoe;
+          
+          // Different colors for other players - use orange/amber theme
+          const playerFillColor = playerLocked 
+            ? 'rgba(251, 146, 60, 0.4)' // orange-400 at 40%
+            : 'rgba(251, 146, 60, 0.25)'; // orange-400 at 25%
+          const playerStrokeColor = playerLocked 
+            ? 'rgba(251, 146, 60, 1)' // orange-400
+            : 'rgba(251, 146, 60, 0.7)';
+          
+          const worldX = center.x + 9000;
+          const worldY = center.y + 9000;
+          
+          return (
+            <svg
+              key={playerAoe.userId}
+              className="absolute pointer-events-none"
+              style={{
+                left: 0,
+                top: 0,
+                width: '20000px',
+                height: '20000px',
+                overflow: 'visible',
+                zIndex: 24, // Slightly below current user's AoE
+              }}
+            >
+              {aoeShape === 'circle' && (
+                <circle
+                  cx={worldX}
+                  cy={worldY}
+                  r={radiusPixels}
+                  fill={playerFillColor}
+                  stroke={playerStrokeColor}
+                  strokeWidth={2}
+                  strokeDasharray={playerLocked ? 'none' : '8 4'}
+                />
+              )}
+              {aoeShape === 'square' && (
+                <rect
+                  x={worldX - radiusPixels}
+                  y={worldY - radiusPixels}
+                  width={radiusPixels * 2}
+                  height={radiusPixels * 2}
+                  fill={playerFillColor}
+                  stroke={playerStrokeColor}
+                  strokeWidth={2}
+                  strokeDasharray={playerLocked ? 'none' : '8 4'}
+                />
+              )}
+              {/* Player name label */}
+              <text
+                x={worldX}
+                y={worldY - radiusPixels - 8}
+                textAnchor="middle"
+                fill="white"
+                fontSize="12"
+                fontWeight="bold"
+                style={{ textShadow: '0 0 4px rgba(0,0,0,0.8)' }}
+              >
+                {playerAoe.casterName || playerAoe.username} - {playerAoe.spellName}
+              </text>
+              {/* Center dot when not locked */}
+              {!playerLocked && (
+                <circle
+                  cx={worldX}
+                  cy={worldY}
+                  r={5}
+                  fill="rgba(255, 255, 255, 0.7)"
+                  stroke={playerStrokeColor}
+                  strokeWidth={2}
+                />
+              )}
+            </svg>
+          );
+        })}
       </motion.div>
 
     </div>

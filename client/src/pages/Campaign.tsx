@@ -273,12 +273,39 @@ export default function Campaign() {
   // AoE targeting state
   const [aoeTargetState, setAoeTargetState] = useState<AoeTargetState>(createInitialAoeState());
   
+  // Other players' AoE targeting states (keyed by userId)
+  const [otherPlayersAoe, setOtherPlayersAoe] = useState<Map<string, {
+    userId: string;
+    username: string;
+    active: boolean;
+    spellName?: string;
+    spellAoe?: string;
+    casterTokenId?: string;
+    casterName?: string;
+    center: { x: number; y: number };
+    locked: boolean;
+  }>>(new Map());
+  
   // Helper function to enter AoE targeting mode
   const enterAoeMode = (spell: any, casterTokenId: string) => {
+    const casterToken = tokens.find((t: any) => t.id === casterTokenId);
+    const casterChar = characters ? (characters as any[]).find((c: any) => c.id === casterToken?.characterId) : null;
+    
     setAoeTargetState({
       active: true,
       spell,
       casterTokenId,
+      center: { x: 0, y: 0 },
+      locked: false,
+    });
+    
+    // Broadcast to other players
+    gameWs.sendAoeTargeting({
+      active: true,
+      spellName: spell.name,
+      spellAoe: spell.aoe,
+      casterTokenId,
+      casterName: casterChar?.name || 'Unknown',
       center: { x: 0, y: 0 },
       locked: false,
     });
@@ -287,16 +314,12 @@ export default function Campaign() {
   // Helper function to exit AoE mode
   const exitAoeMode = () => {
     setAoeTargetState(createInitialAoeState());
+    gameWs.clearAoeTargeting();
   };
   
   // Helper function to handle AoE click - updates position and validates range
   const handleAoeClick = (x: number, y: number) => {
-    // Always update position to clicked location first
-    setAoeTargetState(prev => ({
-      ...prev,
-      center: { x, y },
-      locked: true,
-    }));
+    let isLocked = true;
     
     // Then check range if we have caster token info
     const casterToken = tokens.find((t: any) => t.id === aoeTargetState.casterTokenId);
@@ -313,18 +336,47 @@ export default function Campaign() {
       
       // If out of range, unlock so user can reposition
       if (distanceFeet > spellRange) {
-        setAoeTargetState(prev => ({
-          ...prev,
-          locked: false,
-        }));
+        isLocked = false;
       }
     }
+    
+    // Update position
+    setAoeTargetState(prev => ({
+      ...prev,
+      center: { x, y },
+      locked: isLocked,
+    }));
+    
+    // Broadcast the locked position to other players
+    const casterChar = characters && casterToken ? (characters as any[]).find((c: any) => c.id === casterToken.characterId) : null;
+    gameWs.sendAoeTargeting({
+      active: true,
+      spellName: aoeTargetState.spell?.name,
+      spellAoe: aoeTargetState.spell?.aoe,
+      casterTokenId: aoeTargetState.casterTokenId,
+      casterName: casterChar?.name || 'Unknown',
+      center: { x, y },
+      locked: isLocked,
+    });
   };
   
-  // Helper function to update AoE center position
+  // Helper function to update AoE center position (when hovering)
   const updateAoeCenter = (x: number, y: number) => {
     if (!aoeTargetState.locked) {
       setAoeTargetState(prev => ({ ...prev, center: { x, y } }));
+      
+      // Broadcast the moving position to other players (throttled by sending every update)
+      const casterToken = tokens.find((t: any) => t.id === aoeTargetState.casterTokenId);
+      const casterChar = characters && casterToken ? (characters as any[]).find((c: any) => c.id === casterToken.characterId) : null;
+      gameWs.sendAoeTargeting({
+        active: true,
+        spellName: aoeTargetState.spell?.name,
+        spellAoe: aoeTargetState.spell?.aoe,
+        casterTokenId: aoeTargetState.casterTokenId,
+        casterName: casterChar?.name || 'Unknown',
+        center: { x, y },
+        locked: false,
+      });
     }
   };
   
@@ -767,6 +819,32 @@ export default function Campaign() {
         // Handle chat messages - real-time chat
         if (data.type === 'chat_message' && data.message) {
           queryClientRef.current.invalidateQueries({ queryKey: [`/api/campaigns/${effectiveCampaignId}/messages`] });
+        }
+        
+        // Handle other players' AoE targeting updates
+        if (data.type === 'aoe_targeting') {
+          const { userId, username, active, spellName, spellAoe, casterTokenId, casterName, center, locked } = data;
+          
+          setOtherPlayersAoe(prev => {
+            const updated = new Map(prev);
+            if (active) {
+              updated.set(userId, {
+                userId,
+                username,
+                active,
+                spellName,
+                spellAoe,
+                casterTokenId,
+                casterName,
+                center,
+                locked,
+              });
+            } else {
+              // Player exited AoE mode
+              updated.delete(userId);
+            }
+            return updated;
+          });
         }
       });
 
@@ -1383,6 +1461,7 @@ export default function Campaign() {
              aoeTargetState={aoeTargetState}
              onAoeMouseMove={updateAoeCenter}
              onAoeClick={handleAoeClick}
+             otherPlayersAoe={otherPlayersAoe}
            />
            
            {/* Battlemap Dice Overlay for 3D dice rolling */}
