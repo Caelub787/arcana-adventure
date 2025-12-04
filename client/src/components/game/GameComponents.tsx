@@ -2688,69 +2688,303 @@ export function BattleMapHotbars({ character, tokens, targetedTokenId, character
 interface SelectionModeButtonsProps {
   selectionMode: SelectionMode;
   onModeChange: (mode: SelectionMode) => void;
+  character?: any;
+  tokens?: any[];
+  onEnterSpellTargeting?: (spell: any, casterTokenId: string) => void;
+  onClearSpellTargeting?: () => void;
+  isSpellTargetingActive?: boolean;
 }
 
-export function SelectionModeButtons({ selectionMode, onModeChange }: SelectionModeButtonsProps) {
+export function SelectionModeButtons({ 
+  selectionMode, 
+  onModeChange, 
+  character, 
+  tokens, 
+  onEnterSpellTargeting,
+  onClearSpellTargeting,
+  isSpellTargetingActive 
+}: SelectionModeButtonsProps) {
+  const [showSpellPicker, setShowSpellPicker] = useState(false);
+  
   const getColorClasses = (color: string, isActive: boolean) => {
     const colorClasses: Record<string, string> = {
       stone: isActive ? 'bg-stone-600 border-stone-400 text-stone-100' : 'bg-stone-800/80 border-stone-600 text-stone-400 hover:bg-stone-700/50',
       red: isActive ? 'bg-red-600 border-red-400 text-red-100' : 'bg-stone-800/80 border-stone-600 text-red-400 hover:bg-red-900/50',
+      purple: isActive ? 'bg-purple-600 border-purple-400 text-purple-100' : 'bg-stone-800/80 border-stone-600 text-purple-400 hover:bg-purple-900/50',
+      amber: isActive ? 'bg-amber-600 border-amber-400 text-amber-100' : 'bg-stone-800/80 border-stone-600 text-amber-400 hover:bg-amber-900/50',
     };
     return colorClasses[color] || colorClasses.stone;
   };
 
+  // Handle spell selection from picker
+  const handleSpellSelect = (spell: any) => {
+    if (!character || !tokens || !onEnterSpellTargeting) return;
+    
+    const casterToken = tokens.find((t: any) => t.characterId === character.id);
+    if (casterToken) {
+      onEnterSpellTargeting(spell, casterToken.id);
+      setShowSpellPicker(false);
+    }
+  };
+
   return (
-    <div className="absolute left-2 md:left-4 top-44 z-30 pointer-events-auto">
-      <div className="flex flex-col gap-2">
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                onClick={() => onModeChange('select')}
-                className={`
-                  w-9 h-9 md:w-10 md:h-10 rounded-lg border-2 flex items-center justify-center
-                  transition-all duration-200 shadow-lg backdrop-blur-sm
-                  ${getColorClasses('stone', selectionMode === 'select')}
-                  ${selectionMode === 'select' ? 'scale-110 ring-2 ring-white/20' : 'hover:scale-105'}
-                `}
-                aria-label="Select mode"
-                data-testid="selection-mode-select"
-              >
-                <MousePointer className="h-4 w-4 md:h-5 md:w-5" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="right">
-              <p className="font-bold">Select</p>
-              <p className="text-xs text-stone-400">Double-click token to assign character</p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-        
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                onClick={() => onModeChange('target')}
-                className={`
-                  w-9 h-9 md:w-10 md:h-10 rounded-lg border-2 flex items-center justify-center
-                  transition-all duration-200 shadow-lg backdrop-blur-sm
-                  ${getColorClasses('red', selectionMode === 'target')}
-                  ${selectionMode === 'target' ? 'scale-110 ring-2 ring-white/20' : 'hover:scale-105'}
-                `}
-                aria-label="Target mode"
-                data-testid="selection-mode-target"
-              >
-                <Target className="h-4 w-4 md:h-5 md:w-5" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="right">
-              <p className="font-bold">Target</p>
-              <p className="text-xs text-stone-400">Mark a token for attacks</p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
+    <>
+      <div className="absolute left-2 md:left-4 top-44 z-30 pointer-events-auto">
+        <div className="flex flex-col gap-2">
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={() => onModeChange('select')}
+                  className={`
+                    w-9 h-9 md:w-10 md:h-10 rounded-lg border-2 flex items-center justify-center
+                    transition-all duration-200 shadow-lg backdrop-blur-sm
+                    ${getColorClasses('stone', selectionMode === 'select')}
+                    ${selectionMode === 'select' ? 'scale-110 ring-2 ring-white/20' : 'hover:scale-105'}
+                  `}
+                  aria-label="Select mode"
+                  data-testid="selection-mode-select"
+                >
+                  <MousePointer className="h-4 w-4 md:h-5 md:w-5" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="right">
+                <p className="font-bold">Select</p>
+                <p className="text-xs text-stone-400">Double-click token to assign character</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+          
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={() => onModeChange('target')}
+                  className={`
+                    w-9 h-9 md:w-10 md:h-10 rounded-lg border-2 flex items-center justify-center
+                    transition-all duration-200 shadow-lg backdrop-blur-sm
+                    ${getColorClasses('red', selectionMode === 'target')}
+                    ${selectionMode === 'target' ? 'scale-110 ring-2 ring-white/20' : 'hover:scale-105'}
+                  `}
+                  aria-label="Target mode"
+                  data-testid="selection-mode-target"
+                >
+                  <Target className="h-4 w-4 md:h-5 md:w-5" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="right">
+                <p className="font-bold">Target</p>
+                <p className="text-xs text-stone-400">Mark a token for attacks</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+          
+          {/* Spell Target Button */}
+          {character && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={() => setShowSpellPicker(true)}
+                    className={`
+                      w-9 h-9 md:w-10 md:h-10 rounded-lg border-2 flex items-center justify-center
+                      transition-all duration-200 shadow-lg backdrop-blur-sm
+                      ${getColorClasses('purple', isSpellTargetingActive || false)}
+                      ${isSpellTargetingActive ? 'scale-110 ring-2 ring-white/20' : 'hover:scale-105'}
+                    `}
+                    aria-label="Spell Target mode"
+                    data-testid="selection-mode-spell-target"
+                  >
+                    <Sparkles className="h-4 w-4 md:h-5 md:w-5" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="right">
+                  <p className="font-bold">Spell Target</p>
+                  <p className="text-xs text-stone-400">Target area with a spell</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+          
+          {/* Clear Spell Target Button - Only show when spell targeting is active */}
+          {isSpellTargetingActive && onClearSpellTargeting && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={onClearSpellTargeting}
+                    className={`
+                      w-9 h-9 md:w-10 md:h-10 rounded-lg border-2 flex items-center justify-center
+                      transition-all duration-200 shadow-lg backdrop-blur-sm
+                      ${getColorClasses('amber', false)}
+                      hover:scale-105
+                    `}
+                    aria-label="Clear spell targeting"
+                    data-testid="button-clear-spell-target"
+                  >
+                    <X className="h-4 w-4 md:h-5 md:w-5" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="right">
+                  <p className="font-bold">Clear</p>
+                  <p className="text-xs text-stone-400">Cancel spell targeting</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+        </div>
       </div>
-    </div>
+      
+      {/* Spell Picker Dialog */}
+      {character && (
+        <SpellPickerDialog
+          open={showSpellPicker}
+          onOpenChange={setShowSpellPicker}
+          character={character}
+          onSelectSpell={handleSpellSelect}
+        />
+      )}
+    </>
+  );
+}
+
+// Spell Picker Dialog for spell targeting
+interface SpellPickerDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  character: any;
+  onSelectSpell: (spell: any) => void;
+}
+
+function SpellPickerDialog({ open, onOpenChange, character, onSelectSpell }: SpellPickerDialogProps) {
+  const [searchTerm, setSearchTerm] = useState('');
+  
+  // Fetch character's spells
+  const { data: spells = [] } = useQuery({
+    queryKey: ['spells', character?.id],
+    queryFn: () => character?.id ? api.getSpells(character.id) : Promise.resolve([]),
+    enabled: open && !!character?.id,
+  });
+  
+  // Fetch character's hotbars to know which spells are equipped
+  const { data: hotbars = [] } = useQuery({
+    queryKey: ['hotbars', character?.id],
+    queryFn: () => character?.id ? api.getHotbars(character.id) : Promise.resolve([]),
+    enabled: open && !!character?.id,
+  });
+  
+  // Get equipped spell IDs from magic hotbar
+  const equippedSpellIds = new Set(
+    hotbars
+      .filter((h: Hotbar) => h.hotbarType === 'magic' && h.spellId)
+      .map((h: Hotbar) => h.spellId)
+  );
+  
+  // Sort spells: hotbar spells first, then by name
+  const sortedSpells = [...spells].sort((a: any, b: any) => {
+    const aEquipped = equippedSpellIds.has(a.id);
+    const bEquipped = equippedSpellIds.has(b.id);
+    if (aEquipped && !bEquipped) return -1;
+    if (!aEquipped && bEquipped) return 1;
+    return a.name.localeCompare(b.name);
+  });
+  
+  // Filter by search
+  const filteredSpells = sortedSpells.filter((spell: any) =>
+    spell.name.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+  
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md bg-stone-900 border-stone-700 max-h-[80vh] flex flex-col">
+        <DialogHeader>
+          <DialogTitle className="text-purple-400 flex items-center gap-2">
+            <Sparkles className="h-5 w-5" />
+            Select Spell to Target
+          </DialogTitle>
+        </DialogHeader>
+        
+        <div className="relative mb-3">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-500" />
+          <Input
+            placeholder="Search spells..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="pl-9 bg-stone-800 border-stone-700"
+            data-testid="input-spell-picker-search"
+          />
+        </div>
+        
+        <ScrollArea className="flex-1 max-h-[50vh]">
+          <div className="space-y-2 pr-2">
+            {filteredSpells.length === 0 ? (
+              <div className="text-center py-8 text-stone-400">
+                <Sparkles className="h-10 w-10 mx-auto mb-2 opacity-30" />
+                <p className="text-sm">No spells found</p>
+                <p className="text-xs mt-1">Add spells in your character sheet</p>
+              </div>
+            ) : (
+              filteredSpells.map((spell: any) => {
+                const isEquipped = equippedSpellIds.has(spell.id);
+                const rangeDisplay = spell.rangeNum ? `${spell.rangeNum}ft` : (spell.range || 'Self');
+                const hasAoe = spell.isAoe && spell.aoeShape;
+                
+                return (
+                  <div
+                    key={spell.id}
+                    onClick={() => onSelectSpell(spell)}
+                    className={`
+                      p-3 rounded-lg border cursor-pointer transition-all
+                      ${isEquipped 
+                        ? 'bg-purple-900/30 border-purple-600 hover:border-purple-400' 
+                        : 'bg-stone-800 border-stone-700 hover:border-purple-500'}
+                    `}
+                    data-testid={`spell-picker-item-${spell.id}`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded bg-stone-700 flex items-center justify-center overflow-hidden flex-shrink-0">
+                        {spell.image ? (
+                          <img src={spell.image} alt={spell.name} className="w-full h-full object-cover" />
+                        ) : (
+                          <Sparkles className="h-5 w-5 text-purple-400" />
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-stone-100 truncate">{spell.name}</span>
+                          {isEquipped && (
+                            <Badge className="bg-purple-600/50 text-purple-200 text-[10px] px-1">Hotbar</Badge>
+                          )}
+                        </div>
+                        <div className="flex flex-wrap gap-2 text-xs text-stone-400 mt-0.5">
+                          <span>Range: {rangeDisplay}</span>
+                          {hasAoe && (
+                            <span className="text-purple-400">
+                              AoE: {spell.aoeShape} {spell.aoeRange}ft
+                            </span>
+                          )}
+                          {(spell.damageDice || spell.damage) && (
+                            <span className="text-orange-400">
+                              {spell.damageDice || spell.damage} {spell.damageType || ''}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </ScrollArea>
+        
+        <DialogFooter className="mt-3">
+          <Button variant="outline" onClick={() => onOpenChange(false)} className="border-stone-600">
+            Cancel
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

@@ -289,9 +289,13 @@ export default function Campaign() {
     setAoeTargetState(createInitialAoeState());
   };
   
-  // Helper function to lock AoE position
+  // Helper function to lock/unlock AoE position (toggle behavior for repositioning)
   const lockAoePosition = () => {
-    setAoeTargetState(prev => ({ ...prev, locked: true }));
+    setAoeTargetState(prev => {
+      // If already locked, unlock it so user can reposition by clicking elsewhere
+      // If not locked, lock the current position
+      return { ...prev, locked: !prev.locked };
+    });
   };
   
   // Helper function to update AoE center position
@@ -1305,6 +1309,11 @@ export default function Campaign() {
            <SelectionModeButtons 
              selectionMode={selectionMode}
              onModeChange={handleModeChange}
+             character={role === 'gm' ? inspectedChar : character}
+             tokens={tokens}
+             onEnterSpellTargeting={enterAoeMode}
+             onClearSpellTargeting={exitAoeMode}
+             isSpellTargetingActive={aoeTargetState.active}
            />
            
            {/* Hotbars Display - only show when there's a character to display */}
