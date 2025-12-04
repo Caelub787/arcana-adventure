@@ -35,6 +35,8 @@ import warriorToken from "@assets/generated_images/top_down_warrior_token.png";
 import goblinToken from "@assets/generated_images/top_down_goblin_token.png";
 import { triggerSkillRollNotification, triggerRollNotification } from './RollNotification';
 import { ImageBrowser } from '@/components/ImageBrowser';
+import { BattlemapAoeOverlay } from './BattlemapAoeOverlay';
+import { type AoeTargetState, getTokensInAoe } from '@/lib/aoeHelpers';
 
 
 // --- Types & Mock Data ---
@@ -247,9 +249,12 @@ interface BattleMapProps {
   selectionMode?: SelectionMode;
   targetedTokenId?: string | null;
   selectedTokenId?: string | null;
+  aoeTargetState?: AoeTargetState;
+  onAoeMouseMove?: (x: number, y: number) => void;
+  onAoeClick?: () => void;
 }
 
-export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClick, onDeleteToken, role, gridSize, backgroundImage, scene, onViewChange, characters = [], selectionMode = 'select', targetedTokenId, selectedTokenId }: BattleMapProps) {
+export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClick, onDeleteToken, role, gridSize, backgroundImage, scene, onViewChange, characters = [], selectionMode = 'select', targetedTokenId, selectedTokenId, aoeTargetState, onAoeMouseMove, onAoeClick }: BattleMapProps) {
   // Use refs for pan/zoom to avoid re-renders during interaction
   const panRef = useRef({ x: 0, y: 0 });
   const zoomRef = useRef(1);
@@ -569,6 +574,14 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
    * This gives us full control over when panning is allowed and prevents teleportation bugs.
    */
   const handleMapPointerDown = (e: React.PointerEvent) => {
+    // Handle AoE targeting mode click
+    if (aoeTargetState?.active && !aoeTargetState.locked && e.button === 0) {
+      if (onAoeClick) {
+        onAoeClick();
+      }
+      return;
+    }
+    
     // Don't start panning if locked, pinching, or dragging a token
     if (isMapLockedRef.current) return;
     if (gestureModeRef.current !== 'idle') return;
@@ -590,6 +603,19 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
   };
   
   const handleMapPointerMove = (e: React.PointerEvent) => {
+    // Handle AoE targeting mode mouse tracking
+    if (aoeTargetState?.active && !aoeTargetState.locked && onAoeMouseMove) {
+      const container = containerRef.current;
+      if (container) {
+        const rect = container.getBoundingClientRect();
+        const screenX = e.clientX - rect.left;
+        const screenY = e.clientY - rect.top;
+        const worldX = (screenX - panRef.current.x) / zoomRef.current - 9000;
+        const worldY = (screenY - panRef.current.y) / zoomRef.current - 9000;
+        onAoeMouseMove(worldX, worldY);
+      }
+    }
+    
     // Only handle if we're panning with this pointer
     if (gestureModeRef.current !== 'panning') return;
     if (panPointerIdRef.current !== e.pointerId) return;
@@ -1164,6 +1190,18 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
         })}
       </motion.div>
 
+      {/* AoE Targeting Overlay */}
+      {aoeTargetState?.active && (
+        <BattlemapAoeOverlay
+          aoeTargetState={aoeTargetState}
+          gridSize={gridSize}
+          casterToken={tokens.find(t => t.id === aoeTargetState.casterTokenId)}
+          panX={panRef.current.x}
+          panY={panRef.current.y}
+          zoom={zoomRef.current}
+        />
+      )}
+
     </div>
   );
 }
@@ -1215,6 +1253,9 @@ interface BattleMapHotbarsProps {
   targetedTokenId?: string | null;
   characters?: any[];
   gridSize?: number;
+  onEnterAoeMode?: (spell: any, casterTokenId: string) => void;
+  aoeTargetState?: AoeTargetState;
+  onAoeDamageRoll?: (tokensInAoe: any[], spell: any) => void;
 }
 
 // Sub-component for individual hotbar slot
@@ -1230,12 +1271,15 @@ interface BattleMapHotbarSlotProps {
   targetedTokenId?: string | null;
   allCharacters?: any[];
   gridSize?: number;
+  onEnterAoeMode?: (spell: any, casterTokenId: string) => void;
+  aoeTargetState?: AoeTargetState;
+  onAoeDamageRoll?: (tokensInAoe: any[], spell: any) => void;
 }
 
 // Ranged weapon categories that use ammunition
 const RANGED_WEAPON_CATEGORIES = ['bow', 'crossbow', 'sling', 'firearm'];
 
-function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHotbars, allItems, tokens, targetedTokenId, allCharacters, gridSize = 50 }: BattleMapHotbarSlotProps) {
+function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHotbars, allItems, tokens, targetedTokenId, allCharacters, gridSize = 50, onEnterAoeMode, aoeTargetState, onAoeDamageRoll }: BattleMapHotbarSlotProps) {
   const clickTimerRef = useRef<NodeJS.Timeout | null>(null);
   const clickCountRef = useRef(0);
   const queryClient = useQueryClient();
@@ -1996,6 +2040,26 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
   const handleSpellAttackRoll = () => {
     if (!spellData) return;
     
+    // Check if this is an AoE spell - enter AoE targeting mode instead of rolling
+    if (spellData.isAoe && onEnterAoeMode) {
+      const casterToken = tokens?.find((t: any) => t.characterId === character.id);
+      if (casterToken) {
+        onEnterAoeMode(spellData, casterToken.id);
+        return;
+      } else {
+        triggerRollNotification({
+          type: 'system',
+          label: `${spellData.name} - No Token!`,
+          result: 0,
+          total: 0,
+          username: character.name || 'Unknown',
+          characterName: character.name,
+          calculationBreakdown: 'You need a token on the map to cast AoE spells',
+        });
+        return;
+      }
+    }
+    
     const attrName = spellData.attribute || 'wit';
     const attrMod = getAttributeModifier(attrName);
     const roll = Math.floor(Math.random() * 20) + 1;
@@ -2042,6 +2106,65 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
         username: character.name || 'Unknown',
         characterName: character.name,
       });
+      return;
+    }
+    
+    // Handle AoE damage when AoE is locked
+    if (spellData.isAoe && aoeTargetState?.active && aoeTargetState?.locked && tokens) {
+      const casterToken = tokens.find((t: any) => t.id === aoeTargetState.casterTokenId);
+      const tokensInAoe = getTokensInAoe(tokens, aoeTargetState, gridSize, casterToken);
+      
+      if (tokensInAoe.length === 0) {
+        triggerRollNotification({
+          type: 'system',
+          label: `${spellData.name} - No targets in AoE!`,
+          result: 0,
+          total: 0,
+          username: character.name || 'Unknown',
+          characterName: character.name,
+          calculationBreakdown: 'No tokens are within the area of effect',
+        });
+        return;
+      }
+      
+      const { result, dieType } = rollDice(diceNotation);
+      const mod = spellData.mod || 0;
+      const total = result + mod;
+      
+      let calculationBreakdown = mod !== 0 
+        ? `${diceNotation} = ${result} + Mod (${mod >= 0 ? '+' : ''}${mod})`
+        : `${diceNotation} = ${result}`;
+      const damageTypeDisplay = spellData.damageType ? ` (${spellData.damageType})` : '';
+      
+      const affectedNames: string[] = [];
+      for (const token of tokensInAoe) {
+        const targetChar = allCharacters?.find((c: any) => c.id === token.characterId);
+        if (targetChar) {
+          await applyDamageToTarget(total, spellData.damageType || null, targetChar);
+          affectedNames.push(targetChar.name);
+        }
+      }
+      
+      const label = isHealing 
+        ? `${spellData.name} AoE Healing → ${affectedNames.join(', ')}`
+        : `${spellData.name} AoE Damage → ${affectedNames.join(', ')}`;
+      
+      triggerRollNotification({
+        type: 'attack',
+        dieType: dieType as any,
+        label,
+        result,
+        modifier: mod,
+        total,
+        username: character.name || 'Unknown',
+        characterName: character.name,
+        calculationBreakdown,
+      });
+      
+      if (character.campaignId) {
+        const chatText = `${label}: ${calculationBreakdown} = ${total}${damageTypeDisplay}`;
+        gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', chatText, 'roll');
+      }
       return;
     }
     
@@ -2391,7 +2514,7 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
   );
 }
 
-export function BattleMapHotbars({ character, tokens, targetedTokenId, characters, gridSize }: BattleMapHotbarsProps) {
+export function BattleMapHotbars({ character, tokens, targetedTokenId, characters, gridSize, onEnterAoeMode, aoeTargetState, onAoeDamageRoll }: BattleMapHotbarsProps) {
   const [activeHotbar, setActiveHotbar] = useState<string>('weapons');
   
   const { data: hotbars = [], isLoading: hotbarsLoading } = useQuery({
@@ -2545,6 +2668,9 @@ export function BattleMapHotbars({ character, tokens, targetedTokenId, character
                       targetedTokenId={targetedTokenId}
                       allCharacters={characters}
                       gridSize={gridSize}
+                      onEnterAoeMode={onEnterAoeMode}
+                      aoeTargetState={aoeTargetState}
+                      onAoeDamageRoll={onAoeDamageRoll}
                     />
                   );
                 })}
@@ -9107,15 +9233,11 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                     </Button>
                   </div>
                 )}
-                {/* Spell Stats */}
-                <div className="grid grid-cols-3 gap-4">
+                {/* Spell Stats - Simplified */}
+                <div className="grid grid-cols-2 gap-4">
                   <div className="bg-stone-900 p-3 rounded">
                     <Label className="text-xs text-stone-400">Total Spells</Label>
                     <p className="text-2xl font-bold text-purple-400" data-testid="text-spells-known">{spells.length}</p>
-                  </div>
-                  <div className="bg-stone-900 p-3 rounded">
-                    <Label className="text-xs text-stone-400">Cantrips</Label>
-                    <p className="text-2xl font-bold text-gray-400">{spells.filter((s: any) => s.level === 0).length}</p>
                   </div>
                   <div className="bg-stone-900 p-3 rounded">
                     <Label className="text-xs text-stone-400">Equipped</Label>
@@ -9123,57 +9245,24 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                   </div>
                 </div>
 
-                {/* Filters and Search */}
-                <div className="space-y-2">
+                {/* Filters and Search - Simplified */}
+                <div className="flex gap-2">
                   <Input
                     placeholder="Search spells..."
                     value={spellSearch}
                     onChange={(e) => setSpellSearch(e.target.value)}
-                    className="bg-stone-900 border-stone-700"
+                    className="bg-stone-900 border-stone-700 flex-1"
                     data-testid="input-spell-search"
                   />
-                  <div className="grid grid-cols-3 gap-2">
-                    <Select value={spellLevelFilter} onValueChange={setSpellLevelFilter}>
-                      <SelectTrigger className="bg-stone-900 border-stone-700" data-testid="select-spell-level-filter">
-                        <SelectValue placeholder="Level" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All Levels</SelectItem>
-                        <SelectItem value="0">Cantrips</SelectItem>
-                        {[1,2,3,4,5,6,7,8,9].map(l => (
-                          <SelectItem key={l} value={l.toString()}>Level {l}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <Select value={spellSchoolFilter} onValueChange={setSpellSchoolFilter}>
-                      <SelectTrigger className="bg-stone-900 border-stone-700" data-testid="select-spell-school-filter">
-                        <SelectValue placeholder="School" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All Schools</SelectItem>
-                        <SelectItem value="evocation">Evocation</SelectItem>
-                        <SelectItem value="abjuration">Abjuration</SelectItem>
-                        <SelectItem value="conjuration">Conjuration</SelectItem>
-                        <SelectItem value="divination">Divination</SelectItem>
-                        <SelectItem value="enchantment">Enchantment</SelectItem>
-                        <SelectItem value="illusion">Illusion</SelectItem>
-                        <SelectItem value="necromancy">Necromancy</SelectItem>
-                        <SelectItem value="transmutation">Transmutation</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <Select value={spellSort} onValueChange={setSpellSort}>
-                      <SelectTrigger className="bg-stone-900 border-stone-700" data-testid="select-spell-sort">
-                        <SelectValue placeholder="Sort" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="name-asc">Name (A-Z)</SelectItem>
-                        <SelectItem value="name-desc">Name (Z-A)</SelectItem>
-                        <SelectItem value="level-asc">Level (Low-High)</SelectItem>
-                        <SelectItem value="level-desc">Level (High-Low)</SelectItem>
-                        <SelectItem value="school-asc">School (A-Z)</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
+                  <Select value={spellSort} onValueChange={setSpellSort}>
+                    <SelectTrigger className="bg-stone-900 border-stone-700 w-36" data-testid="select-spell-sort">
+                      <SelectValue placeholder="Sort" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="name-asc">Name (A-Z)</SelectItem>
+                      <SelectItem value="name-desc">Name (Z-A)</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 {/* Spell List */}
@@ -9187,28 +9276,10 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                       );
                     }
 
-                    if (spellLevelFilter !== "all") {
-                      filteredSpells = filteredSpells.filter((s: any) =>
-                        s.level === parseInt(spellLevelFilter)
-                      );
-                    }
-
-                    if (spellSchoolFilter !== "all") {
-                      filteredSpells = filteredSpells.filter((s: any) =>
-                        s.school?.toLowerCase() === spellSchoolFilter.toLowerCase()
-                      );
-                    }
-
                     if (spellSort === "name-asc") {
                       filteredSpells.sort((a: any, b: any) => a.name.localeCompare(b.name));
                     } else if (spellSort === "name-desc") {
                       filteredSpells.sort((a: any, b: any) => b.name.localeCompare(a.name));
-                    } else if (spellSort === "level-asc") {
-                      filteredSpells.sort((a: any, b: any) => a.level - b.level);
-                    } else if (spellSort === "level-desc") {
-                      filteredSpells.sort((a: any, b: any) => b.level - a.level);
-                    } else if (spellSort === "school-asc") {
-                      filteredSpells.sort((a: any, b: any) => (a.school || "").localeCompare(b.school || ""));
                     }
 
                     if (filteredSpells.length === 0) {
@@ -9273,30 +9344,19 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                                     </Badge>
                                   )}
                                 </div>
-                                <div className="flex flex-wrap gap-2 mt-1">
-                                  <Badge className={`${getSpellLevelBgColor(spell.level)} text-xs`}>
-                                    {spell.level === 0 ? 'Cantrip' : `Level ${spell.level}`}
-                                  </Badge>
-                                  {spell.school && (
-                                    <Badge className={`${getSchoolBadgeColor(spell.school)} text-xs`}>
-                                      {spell.school}
-                                    </Badge>
+                                {/* Simplified display: only action type and damage */}
+                                <div className="flex flex-wrap items-center gap-2 mt-1 text-sm">
+                                  <span className={spell.castingTime?.toLowerCase().includes('bonus') ? 'text-blue-400 font-medium' : 'text-red-400 font-medium'}>
+                                    {spell.castingTime?.toLowerCase().includes('bonus') ? 'Bonus Action' : 'Action'}
+                                  </span>
+                                  {(spell.damage || spell.damageDice) && (
+                                    <>
+                                      <span className="text-stone-500">|</span>
+                                      <span className="text-orange-400 font-medium">
+                                        {spell.damage || spell.damageDice}{spell.damageType ? ` ${spell.damageType}` : ''}
+                                      </span>
+                                    </>
                                   )}
-                                  {spell.damage && (
-                                    <Badge variant="outline" className="bg-red-900/30 text-red-300 border-red-700 text-xs">
-                                      {spell.damage} {spell.damageType || ''}
-                                    </Badge>
-                                  )}
-                                </div>
-                                <div className="flex flex-wrap gap-3 mt-2 text-xs text-stone-400">
-                                  {spell.castingTime && (
-                                    <span className={spell.castingTime?.toLowerCase().includes('bonus') ? 'text-blue-400' : 'text-red-400'}>
-                                      ⏱ {spell.castingTime?.toLowerCase().includes('bonus') ? 'Bonus Action' : 'Action'}
-                                    </span>
-                                  )}
-                                  {spell.range && <span>📏 {spell.range}ft</span>}
-                                  {spell.aoe && <span>💥 {spell.aoe}</span>}
-                                  {spell.duration && <span>⏳ {spell.duration}</span>}
                                 </div>
                               </div>
                             </div>

@@ -3,6 +3,7 @@ import { useLocation, useSearch, useRoute } from "wouter";
 import { motion } from "framer-motion";
 import { CharacterCreation, BattleMap, CampaignMenu, CharacterSheet, BattleMapHotbars, SelectionModeButtons, InitiativeTracker, type SelectionMode } from "@/components/game/GameComponents";
 import { BattlemapDiceOverlay, triggerBattlemapDiceRoll } from "@/components/game/BattlemapDiceOverlay";
+import { type AoeTargetState, createInitialAoeState } from "@/lib/aoeHelpers";
 import { RollNotificationContainer, triggerInitiativeNotification } from "@/components/game/RollNotification";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Loader2, Settings, Map as MapIcon, Layers, Trash2, MessageSquare, User, BarChart3, Zap, Backpack, Sparkles, Grid3X3, ScrollText, Swords, Dices } from "lucide-react";
@@ -268,6 +269,49 @@ export default function Campaign() {
   // Dice roller state
   const [diceMenuOpen, setDiceMenuOpen] = useState(false);
   const battlemapContainerRef = useRef<HTMLDivElement>(null);
+  
+  // AoE targeting state
+  const [aoeTargetState, setAoeTargetState] = useState<AoeTargetState>(createInitialAoeState());
+  
+  // Helper function to enter AoE targeting mode
+  const enterAoeMode = (spell: any, casterTokenId: string) => {
+    setAoeTargetState({
+      active: true,
+      spell,
+      casterTokenId,
+      center: { x: 0, y: 0 },
+      locked: false,
+    });
+  };
+  
+  // Helper function to exit AoE mode
+  const exitAoeMode = () => {
+    setAoeTargetState(createInitialAoeState());
+  };
+  
+  // Helper function to lock AoE position
+  const lockAoePosition = () => {
+    setAoeTargetState(prev => ({ ...prev, locked: true }));
+  };
+  
+  // Helper function to update AoE center position
+  const updateAoeCenter = (x: number, y: number) => {
+    if (!aoeTargetState.locked) {
+      setAoeTargetState(prev => ({ ...prev, center: { x, y } }));
+    }
+  };
+  
+  // Escape key handler to cancel AoE mode
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && aoeTargetState.active) {
+        exitAoeMode();
+      }
+    };
+    
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [aoeTargetState.active]);
 
   // Determine effective campaign ID (from URL or newly created)
   const effectiveCampaignId = campaignId || createdCampaignId;
@@ -1249,6 +1293,9 @@ export default function Campaign() {
              selectionMode={selectionMode}
              targetedTokenId={targetedTokenId}
              selectedTokenId={selectedTokenId}
+             aoeTargetState={aoeTargetState}
+             onAoeMouseMove={updateAoeCenter}
+             onAoeClick={lockAoePosition}
            />
            
            {/* Battlemap Dice Overlay for 3D dice rolling */}
@@ -1270,6 +1317,8 @@ export default function Campaign() {
                targetedTokenId={targetedTokenId}
                characters={characters as any[]}
                gridSize={activeScene?.gridSize || 50}
+               onEnterAoeMode={enterAoeMode}
+               aoeTargetState={aoeTargetState}
              />
            )}
           
