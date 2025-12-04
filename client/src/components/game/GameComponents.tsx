@@ -2220,9 +2220,13 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     }
     
     // Handle AoE damage when AoE is locked
-    if (spellData.isAoe && aoeTargetState?.active && aoeTargetState?.locked && tokens) {
+    // Check for aoe field (format "shape:radius" like "circle:15") OR legacy isAoe boolean
+    const hasAoe = (spellData.aoe && typeof spellData.aoe === 'string' && spellData.aoe.includes(':')) || spellData.isAoe;
+    console.log('[SpellDamage] AoE check:', { hasAoe, aoeActive: aoeTargetState?.active, aoeLocked: aoeTargetState?.locked, tokensCount: tokens?.length });
+    if (hasAoe && aoeTargetState?.active && aoeTargetState?.locked && tokens) {
       const casterToken = tokens.find((t: any) => t.id === aoeTargetState.casterTokenId);
       const tokensInAoe = getTokensInAoe(tokens, aoeTargetState, gridSize, casterToken);
+      console.log('[SpellDamage] Tokens in AoE:', tokensInAoe.length, 'Center:', aoeTargetState.center);
       
       if (tokensInAoe.length === 0) {
         triggerRollNotification({
