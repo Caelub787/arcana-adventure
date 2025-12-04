@@ -1047,6 +1047,21 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
           const tokenOffset = gridThickness + (usableCellSize - tokenSize) / 2;
           
           const handleTokenPointerDown = (e: React.PointerEvent) => {
+            // If in AoE targeting mode, let the click go through to the map handler
+            if (aoeTargetState?.active && e.button === 0 && onAoeClick) {
+              // Calculate world coordinates and call the AoE click handler
+              const container = containerRef.current;
+              if (container) {
+                const rect = container.getBoundingClientRect();
+                const screenX = e.clientX - rect.left;
+                const screenY = e.clientY - rect.top;
+                const worldX = ((screenX + 9000 - panRef.current.x) / zoomRef.current) - 9000;
+                const worldY = ((screenY + 9000 - panRef.current.y) / zoomRef.current) - 9000;
+                onAoeClick(worldX, worldY);
+              }
+              return; // Don't process token interactions in AoE mode
+            }
+            
             e.stopPropagation();
             
             // Set up pending drag instead of starting immediately
@@ -1127,6 +1142,8 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
               onPointerMove={handleTokenPointerMove}
               onPointerCancel={handleTokenPointerCancel}
               onClick={(e) => { 
+                // Don't handle token click when in AoE targeting mode
+                if (aoeTargetState?.active) return;
                 e.stopPropagation(); 
                 if (showDeleteButton !== token.id && !isDragging) {
                   onTokenClick && onTokenClick(token);
