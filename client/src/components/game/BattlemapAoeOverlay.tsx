@@ -174,7 +174,7 @@ export function BattlemapAoeOverlay({
           transformOrigin: '0 0',
         }}
       >
-        <g style={{ transform: 'translate(9000px, 9000px)' }}>
+        <g style={{ transform: 'translate(-9000px, -9000px)' }}>
           {renderShape()}
 
           {!locked && casterToken && (aoeShape === 'cone' || aoeShape === 'line') && (
