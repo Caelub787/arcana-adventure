@@ -202,6 +202,7 @@ export interface SystemSpecies {
   systemName: string;
   name: string;
   description?: string;
+  defaultImage?: string;
   lifespan: number;
   speed: number;
   flySpeed: number;

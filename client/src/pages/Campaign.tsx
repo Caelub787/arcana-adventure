@@ -453,6 +453,14 @@ export default function Campaign() {
     enabled: !!effectiveCampaignId,
   });
 
+  // Load system species for default token images (only needed when campaign is loaded)
+  const { data: systemSpecies } = useQuery({
+    queryKey: ['/api/admin/system-species'],
+    queryFn: () => api.getSystemSpecies(),
+    enabled: !!effectiveCampaignId && !isNew,
+    staleTime: 5 * 60 * 1000, // Species data doesn't change often, cache for 5 minutes
+  });
+
   // Create campaign mutation
   const createCampaignMutation = useMutation({
     mutationFn: (name: string) => api.createCampaign(name),
@@ -969,12 +977,27 @@ export default function Campaign() {
 
   // GM Actions
   const handleAddCharacterToken = (character: any) => {
+    // Determine the token image:
+    // 1. Use character's portrait if available
+    // 2. Fall back to species default image if available
+    // 3. Fall back to goblinToken as the last resort
+    let tokenImage = character.portrait;
+    if (!tokenImage && character.race && systemSpecies) {
+      const species = (systemSpecies as any[]).find((s: any) => s.name === character.race);
+      if (species?.defaultImage) {
+        tokenImage = species.defaultImage;
+      }
+    }
+    if (!tokenImage) {
+      tokenImage = goblinToken;
+    }
+    
     const newToken = {
       type: 'player',
       characterId: character.id,
       x: 200 + Math.floor(Math.random() * 200),
       y: 200 + Math.floor(Math.random() * 200),
-      image: character.portrait || goblinToken,
+      image: tokenImage,
     };
     createTokenMutation.mutate(newToken);
   };
