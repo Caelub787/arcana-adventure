@@ -2221,8 +2221,18 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     
     // Handle AoE damage when AoE is locked
     // Check for aoe field (format "shape:radius" like "circle:15") OR legacy isAoe boolean
-    const hasAoe = (spellData.aoe && typeof spellData.aoe === 'string' && spellData.aoe.includes(':')) || spellData.isAoe;
-    console.log('[SpellDamage] AoE check:', { hasAoe, aoeActive: aoeTargetState?.active, aoeLocked: aoeTargetState?.locked, tokensCount: tokens?.length });
+    // Also check aoeTargetState.spell.aoe since the spell data there should have it
+    const hasAoe = (spellData.aoe && typeof spellData.aoe === 'string' && spellData.aoe.includes(':')) || 
+                   (aoeTargetState?.spell?.aoe && typeof aoeTargetState.spell.aoe === 'string' && aoeTargetState.spell.aoe.includes(':')) ||
+                   spellData.isAoe;
+    console.log('[SpellDamage] AoE check:', { 
+      hasAoe, 
+      spellDataAoe: spellData.aoe,
+      aoeStateSpellAoe: aoeTargetState?.spell?.aoe,
+      aoeActive: aoeTargetState?.active, 
+      aoeLocked: aoeTargetState?.locked, 
+      tokensCount: tokens?.length 
+    });
     if (hasAoe && aoeTargetState?.active && aoeTargetState?.locked && tokens) {
       const casterToken = tokens.find((t: any) => t.id === aoeTargetState.casterTokenId);
       const tokensInAoe = getTokensInAoe(tokens, aoeTargetState, gridSize, casterToken);
@@ -9805,6 +9815,12 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                               key={spell.id}
                               className="p-3 bg-stone-800 rounded-lg border border-stone-700 hover:border-purple-500 cursor-pointer"
                               onClick={() => {
+                                // Generate the aoe field from aoeShape:aoeRange if isAoe is true
+                                // This is needed because spells table only has "aoe" field, not separate isAoe/aoeShape/aoeRange
+                                let aoeValue = spell.aoe;
+                                if (spell.isAoe && spell.aoeShape && spell.aoeRange) {
+                                  aoeValue = `${spell.aoeShape}:${spell.aoeRange}`;
+                                }
                                 createSpellMutation.mutate({
                                   name: spell.name,
                                   description: spell.description,
@@ -9815,14 +9831,11 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                                   damageDice: spell.damageDice,
                                   damageType: spell.damageType,
                                   range: spell.rangeNum,
-                                  aoe: spell.aoe,
+                                  aoe: aoeValue,
                                   castingTime: spell.castingTime,
                                   duration: spell.duration,
                                   attribute: spell.attribute,
                                   energyCost: spell.energyCost,
-                                  isAoe: spell.isAoe,
-                                  aoeRange: spell.aoeRange,
-                                  aoeShape: spell.aoeShape,
                                 });
                                 setShowAddSpell(false);
                                 setSpellLibrarySearch('');
@@ -10246,6 +10259,11 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                           key={spell.id}
                           className="p-3 bg-stone-800 rounded-lg border border-stone-700 hover:border-purple-500 cursor-pointer"
                           onClick={() => {
+                            // Generate the aoe field from aoeShape:aoeRange if isAoe is true
+                            let aoeValue = spell.aoe;
+                            if (spell.isAoe && spell.aoeShape && spell.aoeRange) {
+                              aoeValue = `${spell.aoeShape}:${spell.aoeRange}`;
+                            }
                             createSpellMutation.mutate({
                               name: spell.name,
                               description: spell.description,
@@ -10256,14 +10274,11 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                               damageDice: spell.damageDice,
                               damageType: spell.damageType,
                               range: spell.rangeNum,
-                              aoe: spell.aoe,
+                              aoe: aoeValue,
                               castingTime: spell.castingTime,
                               duration: spell.duration,
                               attribute: spell.attribute,
                               energyCost: spell.energyCost,
-                              isAoe: spell.isAoe,
-                              aoeRange: spell.aoeRange,
-                              aoeShape: spell.aoeShape,
                             });
                             setShowSpellLibrary(false);
                             setSpellLibrarySearch('');
