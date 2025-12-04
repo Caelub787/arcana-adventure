@@ -251,7 +251,7 @@ interface BattleMapProps {
   selectedTokenId?: string | null;
   aoeTargetState?: AoeTargetState;
   onAoeMouseMove?: (x: number, y: number) => void;
-  onAoeClick?: () => void;
+  onAoeClick?: (x: number, y: number) => void;
 }
 
 export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClick, onDeleteToken, role, gridSize, backgroundImage, scene, onViewChange, characters = [], selectionMode = 'select', targetedTokenId, selectedTokenId, aoeTargetState, onAoeMouseMove, onAoeClick }: BattleMapProps) {
@@ -574,10 +574,16 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
    * This gives us full control over when panning is allowed and prevents teleportation bugs.
    */
   const handleMapPointerDown = (e: React.PointerEvent) => {
-    // Handle AoE targeting mode click
-    if (aoeTargetState?.active && !aoeTargetState.locked && e.button === 0) {
-      if (onAoeClick) {
-        onAoeClick();
+    // Handle AoE targeting mode click (both locked and unlocked)
+    if (aoeTargetState?.active && e.button === 0 && onAoeClick) {
+      const container = containerRef.current;
+      if (container) {
+        const rect = container.getBoundingClientRect();
+        const screenX = e.clientX - rect.left;
+        const screenY = e.clientY - rect.top;
+        const worldX = (screenX - panRef.current.x) / zoomRef.current - 9000;
+        const worldY = (screenY - panRef.current.y) / zoomRef.current - 9000;
+        onAoeClick(worldX, worldY);
       }
       return;
     }

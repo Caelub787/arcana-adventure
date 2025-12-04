@@ -289,13 +289,34 @@ export default function Campaign() {
     setAoeTargetState(createInitialAoeState());
   };
   
-  // Helper function to lock/unlock AoE position (toggle behavior for repositioning)
-  const lockAoePosition = () => {
-    setAoeTargetState(prev => {
-      // If already locked, unlock it so user can reposition by clicking elsewhere
-      // If not locked, lock the current position
-      return { ...prev, locked: !prev.locked };
-    });
+  // Helper function to handle AoE click - updates position and validates range
+  const handleAoeClick = (x: number, y: number) => {
+    // Find the caster token
+    const casterToken = tokens.find((t: any) => t.id === aoeTargetState.casterTokenId);
+    if (!casterToken) return;
+    
+    // Calculate distance from caster to clicked position
+    const casterCenterX = casterToken.x + (activeScene?.gridSize || 50) / 2;
+    const casterCenterY = casterToken.y + (activeScene?.gridSize || 50) / 2;
+    const spellRange = aoeTargetState.spell?.rangeNum || 30;
+    const gridSizeVal = activeScene?.gridSize || 50;
+    
+    // Calculate distance in feet
+    const dx = x - casterCenterX;
+    const dy = y - casterCenterY;
+    const distancePixels = Math.sqrt(dx * dx + dy * dy);
+    const distanceFeet = (distancePixels / gridSizeVal) * 5;
+    
+    // Check if in range
+    const isInRange = distanceFeet <= spellRange;
+    
+    // Always update position to clicked location
+    // Only lock if in range
+    setAoeTargetState(prev => ({
+      ...prev,
+      center: { x, y },
+      locked: isInRange,
+    }));
   };
   
   // Helper function to update AoE center position
@@ -1289,7 +1310,7 @@ export default function Campaign() {
              onTokenDoubleClick={handleTokenDoubleClick}
              onDeleteToken={handleDeleteToken}
              role={role} 
-             gridSize={50}
+             gridSize={activeScene?.gridSize || 50}
              backgroundImage={currentMap}
              scene={activeScene}
              onViewChange={setCurrentView}
@@ -1299,7 +1320,7 @@ export default function Campaign() {
              selectedTokenId={selectedTokenId}
              aoeTargetState={aoeTargetState}
              onAoeMouseMove={updateAoeCenter}
-             onAoeClick={lockAoePosition}
+             onAoeClick={handleAoeClick}
            />
            
            {/* Battlemap Dice Overlay for 3D dice rolling */}
