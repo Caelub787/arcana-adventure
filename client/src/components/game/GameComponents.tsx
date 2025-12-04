@@ -1473,11 +1473,12 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
         targetData.token.x, targetData.token.y
       );
       
-      // Determine weapon range - use 10ft minimum for all melee, and check weapon's explicit range
+      // Determine weapon range - use the weapon's explicit range, or default if not specified
       // For ranged weapons, default to 120ft (standard longbow range)
+      // For melee weapons, default to 5ft (1 square) if not specified
       const weaponRange = isRangedWeapon(itemData) 
         ? (itemData.range || 120) // Default ranged range is 120ft if not specified
-        : Math.max(10, itemData.range || 10); // Melee minimum 10ft (2 squares)
+        : (itemData.range || 5); // Melee defaults to 5ft if not specified
       
       console.log('[Range Check]', {
         attacker: { x: attackerToken.x, y: attackerToken.y },
