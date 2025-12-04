@@ -128,6 +128,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   }
 
+  /**
+   * broadcastToCampaign - Broadcast to ALL connected users in a campaign
+   * 
+   * This function broadcasts messages to all users in a campaign room without
+   * any permission filtering. Used for combat updates, token changes, scene changes,
+   * and other updates that all campaign members need to see.
+   */
+  function broadcastToCampaign(campaignId: string, message: any): void {
+    const room = campaignRooms.get(campaignId);
+    if (!room || room.size === 0) return;
+
+    const messageString = JSON.stringify(message);
+    
+    room.forEach((client) => {
+      if (client.readyState === 1) { // OPEN
+        client.send(messageString);
+      }
+    });
+  }
+
   wss.on("connection", async (ws, req) => {
     // Buffer messages received during async setup
     const messageBuffer: any[] = [];
@@ -704,6 +724,107 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
           
           console.log(`[WebSocket] Initiative roll by ${username} for ${character.name}: ${d20Roll} + ${finesse} = ${total}`);
+        }
+        
+        // Handle combat damage - bypasses normal edit permissions
+        // Anyone in the campaign can apply damage to tokens during combat
+        if (message.type === "apply_combat_damage") {
+          const { campaignId, characterId, damage, damageType, attackerName, isHealing } = message;
+          
+          // Verify user has joined this campaign
+          const userCampaign = (ws as any).campaigns.get(campaignId);
+          if (!userCampaign) {
+            ws.send(JSON.stringify({
+              type: "error",
+              message: "Not authorized - You have not joined this campaign"
+            }));
+            return;
+          }
+          
+          // Get the character to apply damage
+          const character = await storage.getCharacter(characterId);
+          if (!character) {
+            ws.send(JSON.stringify({
+              type: "error",
+              message: "Character not found"
+            }));
+            return;
+          }
+          
+          // Verify character belongs to this campaign
+          if (character.campaignId !== campaignId) {
+            ws.send(JSON.stringify({
+              type: "error",
+              message: "Character does not belong to this campaign"
+            }));
+            return;
+          }
+          
+          // Apply damage (or healing if isHealing is true)
+          let newHp: number;
+          if (isHealing) {
+            newHp = Math.min(character.hp + damage, character.maxHp);
+          } else {
+            newHp = Math.max(0, character.hp - damage);
+          }
+          
+          // Update character HP directly - bypassing normal permission checks
+          await storage.updateCharacter(characterId, { hp: newHp });
+          
+          // Create a chat message for the combat log
+          const actionText = isHealing ? 'healed' : 'damaged';
+          const dmgTypeText = damageType ? ` ${damageType}` : '';
+          const chatText = `${attackerName || username} ${actionText} ${character.name} for ${damage}${dmgTypeText} (HP: ${character.hp} → ${newHp})`;
+          
+          const chatMessage = await storage.createChatMessage({
+            campaignId,
+            userId: authenticatedUserId,
+            sender: username,
+            text: chatText,
+            type: "roll"
+          });
+          
+          // Broadcast to ALL campaign members - everyone needs to see HP changes
+          broadcastToCampaign(campaignId, {
+            type: "character_hp_update",
+            characterId,
+            hp: newHp,
+            previousHp: character.hp,
+            damage,
+            isHealing,
+            attackerName: attackerName || username
+          });
+          
+          broadcastToCampaign(campaignId, {
+            type: "chat_message",
+            message: chatMessage
+          });
+          
+          console.log(`[WebSocket] Combat damage: ${attackerName || username} ${actionText} ${character.name} for ${damage} (HP: ${character.hp} → ${newHp})`);
+        }
+        
+        // Handle token updates - broadcast to all
+        if (message.type === "token_created" || message.type === "token_deleted" || message.type === "token_updated") {
+          const { campaignId } = message;
+          
+          // Verify user has joined this campaign
+          const userCampaign = (ws as any).campaigns.get(campaignId);
+          if (!userCampaign) return;
+          
+          // Broadcast token change to all campaign members
+          broadcastToCampaign(campaignId, message);
+        }
+        
+        // Handle scene updates - broadcast to all
+        if (message.type === "scene_updated" || message.type === "scene_changed") {
+          const { campaignId } = message;
+          
+          // Verify user has joined this campaign
+          const userCampaign = (ws as any).campaigns.get(campaignId);
+          if (!userCampaign) return;
+          
+          // Broadcast scene change to all campaign members
+          broadcastToCampaign(campaignId, message);
         }
       } catch (err) {
         console.error("WebSocket error:", err);
