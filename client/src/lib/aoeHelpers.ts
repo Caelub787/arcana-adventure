@@ -131,7 +131,8 @@ export function getTokensInAoe(
     aoeRangeFeet = spell.aoeRange || 15;
   }
   
-  const radiusPixels = (aoeRangeFeet / 5) * gridSize;
+  // aoeRangeFeet is the total diameter, so divide by 2 to get radius
+  const radiusPixels = (aoeRangeFeet / 5) * gridSize / 2;
 
   const casterX = casterToken?.x ?? 0;
   const casterY = casterToken?.y ?? 0;

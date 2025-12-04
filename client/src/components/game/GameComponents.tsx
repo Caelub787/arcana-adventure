@@ -1231,7 +1231,8 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
           const [parsedShape, parsedRadius] = aoeField.split(':');
           const aoeShape = (parsedShape || 'circle').toLowerCase();
           const aoeRangeFeet = parseInt(parsedRadius, 10) || 15;
-          const radiusPixels = (aoeRangeFeet / 5) * (scene?.gridSize || gridSize);
+          // aoeRangeFeet is the total diameter, so divide by 2 to get radius
+          const radiusPixels = (aoeRangeFeet / 5) * (scene?.gridSize || gridSize) / 2;
           const { center, locked } = aoeTargetState;
           
           const casterToken = tokens.find(t => t.id === aoeTargetState.casterTokenId);
