@@ -7321,7 +7321,7 @@ function CustomSkillForm({
       }
       onSave({
         systemSkillId: skill.id,
-        skillName: skill.name,
+        name: skill.name,
         description: skill.description,
         parentAttribute: skill.parentAttribute,
         value: skillValue
@@ -7332,7 +7332,7 @@ function CustomSkillForm({
         return;
       }
       onSave({
-        skillName: customName.trim(),
+        name: customName.trim(),
         description: customDescription.trim() || undefined,
         parentAttribute: customAttribute,
         value: skillValue
@@ -7464,7 +7464,7 @@ function CustomSkillEditForm({
   return (
     <div className="space-y-4">
       <div className="p-3 bg-stone-800 rounded-lg border border-stone-700">
-        <div className="font-medium text-cyan-400">{skill.skillName}</div>
+        <div className="font-medium text-cyan-400">{skill.name}</div>
         <div className="text-xs text-stone-500 capitalize">Parent: {skill.parentAttribute}</div>
       </div>
 
@@ -9847,7 +9847,7 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                             isLongPressRef.current = false;
                             longPressTimerRef.current = setTimeout(() => {
                               isLongPressRef.current = true;
-                              openRollPanel(customSkill.skillName, totalMod, 'skill');
+                              openRollPanel(customSkill.name, totalMod, 'skill');
                             }, 500);
                           }}
                           onPointerUp={() => {
@@ -9869,7 +9869,7 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                               lastClickTimeRef.current = 0;
                               lastClickedCardRef.current = null;
                               doubleClickDetectedRef.current = true;
-                              openRollPanel(customSkill.skillName, totalMod, 'skill');
+                              openRollPanel(customSkill.name, totalMod, 'skill');
                               setTimeout(() => { doubleClickDetectedRef.current = false; }, 100);
                             } else {
                               lastClickTimeRef.current = now;
@@ -9879,7 +9879,7 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                               if (existingTimer) clearTimeout(existingTimer);
                               const timer = setTimeout(() => {
                                 if (!isLongPressRef.current && !doubleClickDetectedRef.current) {
-                                  handleRoll(customSkill.skillName, totalMod, 0, 'none', true);
+                                  handleRoll(customSkill.name, totalMod, 0, 'none', true);
                                 }
                                 clickTimersRef.current.delete(cardKey);
                               }, 400);
@@ -9889,7 +9889,7 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                           data-testid={`badge-custom-skill-${customSkill.id}`}
                         >
                           <div className="flex flex-col">
-                            <span className="text-xs text-cyan-300">{customSkill.skillName}</span>
+                            <span className="text-xs text-cyan-300">{customSkill.name}</span>
                             <span className="text-[10px] text-stone-500 capitalize">{parentAttr}</span>
                           </div>
                           <div className="flex items-center gap-1">

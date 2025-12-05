@@ -342,11 +342,11 @@ export interface CharacterCustomSkill {
   id: string;
   characterId: string;
   systemSkillId?: string;
-  skillName: string;
+  name: string;
   description?: string;
   parentAttribute: string;
   value: number;
-  createdAt: string;
+  createdAt?: string;
 }
 
 export interface CampaignBan {
