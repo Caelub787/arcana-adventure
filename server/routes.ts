@@ -1296,7 +1296,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       // Create default scene with Ancient ruins battlemap background
-      // Default view settings match the "Tc" campaign for optimal initial view
+      // Default view centered on origin with comfortable zoom level
       const defaultScene = await storage.createScene({
         campaignId: campaign.id,
         name: "Default Scene",
@@ -1304,9 +1304,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         gridEnabled: true,
         gridType: "square",
         gridSize: gridSize || 50,
-        defaultViewX: -26660,
-        defaultViewY: -26695,
-        defaultViewZoom: 0.33
+        defaultViewX: 0,
+        defaultViewY: 0,
+        defaultViewZoom: 0.5
       });
 
       // Set the default scene as active
