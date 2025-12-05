@@ -338,6 +338,45 @@ export const insertSystemSpeciesSchema = createInsertSchema(systemSpecies).omit(
 export type InsertSystemSpecies = z.infer<typeof insertSystemSpeciesSchema>;
 export type SystemSpecies = typeof systemSpecies.$inferSelect;
 
+// System Skills table (admin-defined custom skills that can be added to characters)
+export const systemSkills = pgTable("system_skills", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  description: text("description"),
+  parentAttribute: text("parent_attribute").notNull().default("wit"), // might, finesse, wit, presence, will, craft
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertSystemSkillSchema = createInsertSchema(systemSkills).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertSystemSkill = z.infer<typeof insertSystemSkillSchema>;
+export type SystemSkill = typeof systemSkills.$inferSelect;
+
+// Character Custom Skills table (links characters to custom skills with values)
+export const characterCustomSkills = pgTable("character_custom_skills", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  characterId: varchar("character_id").notNull().references(() => characters.id, { onDelete: "cascade" }),
+  systemSkillId: varchar("system_skill_id").references(() => systemSkills.id, { onDelete: "cascade" }), // Links to system skill if from admin
+  name: text("name").notNull(), // Skill name (can be custom if no systemSkillId)
+  parentAttribute: text("parent_attribute").notNull().default("wit"), // might, finesse, wit, presence, will, craft
+  value: integer("value").notNull().default(0), // Skill modifier value (-2 to 5)
+}, (table) => ({
+  uniqueCharacterSkill: uniqueIndex("character_custom_skills_char_name_unique").on(
+    table.characterId,
+    table.name
+  ),
+}));
+
+export const insertCharacterCustomSkillSchema = createInsertSchema(characterCustomSkills).omit({
+  id: true,
+});
+
+export type InsertCharacterCustomSkill = z.infer<typeof insertCharacterCustomSkillSchema>;
+export type CharacterCustomSkill = typeof characterCustomSkills.$inferSelect;
+
 // Spells table (for magic system) - MUST be before hotbars to avoid TDZ error
 export const spells = pgTable("spells", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
