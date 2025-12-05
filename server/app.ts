@@ -1,4 +1,5 @@
 import { type Server } from "node:http";
+import path from "node:path";
 
 import express, { type Express, type Request, Response, NextFunction } from "express";
 import session from "express-session";
@@ -68,6 +69,10 @@ app.use(express.json({
   }
 }));
 app.use(express.urlencoded({ extended: false, limit: '100mb' }));
+
+// Serve attached_assets directory for uploaded images and default assets
+const attachedAssetsPath = path.resolve(import.meta.dirname, '..', 'attached_assets');
+app.use('/attached_assets', express.static(attachedAssetsPath));
 
 app.use((req, res, next) => {
   const start = Date.now();
