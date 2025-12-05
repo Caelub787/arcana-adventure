@@ -20,10 +20,10 @@ import {
   Users, User, Plus, Minus, LogOut, Menu, ChevronRight, ChevronLeft, ChevronDown, ChevronUp,
   Heart, Zap, Backpack, Sparkles, Dice5, MessageSquare, RefreshCw, X, Trash2, Package, FolderOpen, Lock, Unlock, Camera,
   BarChart3, Grid3X3, ScrollText, Upload, Image as ImageIcon, Layers, Search, TrendingUp, UserMinus, Ban,
-  MousePointer, Target, UserCheck, Swords, ArrowRight, Eye, EyeOff, Check, Moon, Coffee, AlertTriangle, GitBranch, Star, BookOpen
+  MousePointer, Target, UserCheck, Swords, ArrowRight, Eye, EyeOff, Check, Moon, Coffee, AlertTriangle, GitBranch, Star, BookOpen, Pencil
 } from "lucide-react";
 import { useForm } from "react-hook-form";
-import { type Scene, type Hotbar, type SystemSpecies, type FeatTreeWithData, type Feat, type FeatConnection, type CharacterFeat, api, gameWs } from "@/lib/api";
+import { type Scene, type Hotbar, type SystemSpecies, type FeatTreeWithData, type Feat, type FeatConnection, type CharacterFeat, type SystemSkill, type CharacterCustomSkill, api, gameWs } from "@/lib/api";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -7289,6 +7289,233 @@ interface CharacterSheetProps {
   sceneId?: string;
 }
 
+// Custom Skill Form for adding new skills to a character
+const PARENT_ATTRIBUTE_OPTIONS = ['might', 'finesse', 'wit', 'presence', 'will', 'craft'];
+
+function CustomSkillForm({ 
+  systemSkills, 
+  existingSkillIds, 
+  onSave, 
+  isLoading 
+}: { 
+  systemSkills: SystemSkill[]; 
+  existingSkillIds: (string | undefined)[];
+  onSave: (data: Partial<CharacterCustomSkill>) => void; 
+  isLoading?: boolean;
+}) {
+  const [mode, setMode] = useState<'library' | 'custom'>('library');
+  const [selectedSkillId, setSelectedSkillId] = useState<string>('');
+  const [customName, setCustomName] = useState('');
+  const [customDescription, setCustomDescription] = useState('');
+  const [customAttribute, setCustomAttribute] = useState('wit');
+  const [skillValue, setSkillValue] = useState(0);
+
+  const availableSkills = systemSkills.filter(s => !existingSkillIds.includes(s.id));
+
+  const handleSave = () => {
+    if (mode === 'library') {
+      const skill = systemSkills.find(s => s.id === selectedSkillId);
+      if (!skill) {
+        toast({ title: 'Error', description: 'Please select a skill', variant: 'destructive' });
+        return;
+      }
+      onSave({
+        systemSkillId: skill.id,
+        skillName: skill.name,
+        description: skill.description,
+        parentAttribute: skill.parentAttribute,
+        value: skillValue
+      });
+    } else {
+      if (!customName.trim()) {
+        toast({ title: 'Error', description: 'Please enter a skill name', variant: 'destructive' });
+        return;
+      }
+      onSave({
+        skillName: customName.trim(),
+        description: customDescription.trim() || undefined,
+        parentAttribute: customAttribute,
+        value: skillValue
+      });
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <Tabs value={mode} onValueChange={(v) => setMode(v as 'library' | 'custom')}>
+        <TabsList className="w-full bg-stone-800">
+          <TabsTrigger value="library" className="flex-1">From Library</TabsTrigger>
+          <TabsTrigger value="custom" className="flex-1">Custom</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="library" className="space-y-4">
+          {availableSkills.length === 0 ? (
+            <div className="text-center py-4 text-stone-500">
+              No skills available in library
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <Label className="text-stone-300">Select Skill</Label>
+              <Select value={selectedSkillId} onValueChange={setSelectedSkillId}>
+                <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-system-skill">
+                  <SelectValue placeholder="Choose a skill..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableSkills.map(skill => (
+                    <SelectItem key={skill.id} value={skill.id}>
+                      {skill.name} ({skill.parentAttribute})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="custom" className="space-y-4">
+          <div>
+            <Label className="text-stone-300">Skill Name</Label>
+            <Input
+              value={customName}
+              onChange={(e) => setCustomName(e.target.value)}
+              placeholder="e.g. Alchemy"
+              className="bg-stone-800 border-stone-700 mt-1"
+              data-testid="input-custom-skill-name"
+            />
+          </div>
+          <div>
+            <Label className="text-stone-300">Description (optional)</Label>
+            <Textarea
+              value={customDescription}
+              onChange={(e) => setCustomDescription(e.target.value)}
+              placeholder="Describe what this skill represents..."
+              className="bg-stone-800 border-stone-700 mt-1"
+              rows={2}
+              data-testid="input-custom-skill-description"
+            />
+          </div>
+          <div>
+            <Label className="text-stone-300">Parent Attribute</Label>
+            <Select value={customAttribute} onValueChange={setCustomAttribute}>
+              <SelectTrigger className="bg-stone-800 border-stone-700 mt-1" data-testid="select-custom-skill-attribute">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {PARENT_ATTRIBUTE_OPTIONS.map(attr => (
+                  <SelectItem key={attr} value={attr}>
+                    {attr.charAt(0).toUpperCase() + attr.slice(1)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </TabsContent>
+      </Tabs>
+
+      <div>
+        <Label className="text-stone-300">Skill Value (-2 to 5)</Label>
+        <Input
+          type="number"
+          min={-2}
+          max={5}
+          value={skillValue}
+          onChange={(e) => setSkillValue(Math.max(-2, Math.min(5, parseInt(e.target.value) || 0)))}
+          className="bg-stone-800 border-stone-700 mt-1"
+          data-testid="input-skill-value"
+        />
+      </div>
+
+      <div className="flex justify-end gap-2 pt-2">
+        <Button
+          onClick={handleSave}
+          disabled={isLoading}
+          className="bg-cyan-700 hover:bg-cyan-600"
+          data-testid="button-add-custom-skill-confirm"
+        >
+          {isLoading ? 'Adding...' : 'Add Skill'}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+// Custom Skill Edit Form
+function CustomSkillEditForm({ 
+  skill, 
+  onSave, 
+  onDelete,
+  isLoading 
+}: { 
+  skill: CharacterCustomSkill; 
+  onSave: (data: Partial<CharacterCustomSkill>) => void;
+  onDelete: () => void;
+  isLoading?: boolean;
+}) {
+  const [skillValue, setSkillValue] = useState(skill.value);
+  const [description, setDescription] = useState(skill.description || '');
+
+  const handleSave = () => {
+    onSave({
+      value: skillValue,
+      description: description.trim() || undefined
+    });
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="p-3 bg-stone-800 rounded-lg border border-stone-700">
+        <div className="font-medium text-cyan-400">{skill.skillName}</div>
+        <div className="text-xs text-stone-500 capitalize">Parent: {skill.parentAttribute}</div>
+      </div>
+
+      <div>
+        <Label className="text-stone-300">Skill Value (-2 to 5)</Label>
+        <Input
+          type="number"
+          min={-2}
+          max={5}
+          value={skillValue}
+          onChange={(e) => setSkillValue(Math.max(-2, Math.min(5, parseInt(e.target.value) || 0)))}
+          className="bg-stone-800 border-stone-700 mt-1"
+          data-testid="input-edit-skill-value"
+        />
+      </div>
+
+      <div>
+        <Label className="text-stone-300">Description (optional)</Label>
+        <Textarea
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          placeholder="Add notes about this skill..."
+          className="bg-stone-800 border-stone-700 mt-1"
+          rows={2}
+          data-testid="input-edit-skill-description"
+        />
+      </div>
+
+      <div className="flex justify-between pt-2">
+        <Button
+          variant="destructive"
+          onClick={onDelete}
+          className="bg-red-700 hover:bg-red-600"
+          data-testid="button-remove-custom-skill"
+        >
+          <Trash2 className="h-4 w-4 mr-1" />
+          Remove
+        </Button>
+        <Button
+          onClick={handleSave}
+          disabled={isLoading}
+          className="bg-cyan-700 hover:bg-cyan-600"
+          data-testid="button-save-custom-skill"
+        >
+          {isLoading ? 'Saving...' : 'Save'}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, defaultTab = "overview", campaignId, sceneId }: CharacterSheetProps) {
   const [biography, setBiography] = useState(character?.biography || "");
   const [gmNotes, setGmNotes] = useState(character?.gmNotes || "");
@@ -7434,6 +7661,23 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
     queryFn: () => character?.id ? api.getCharacterFeats(character.id) : Promise.resolve([]),
     enabled: !!character?.id,
   });
+
+  // Fetch system skills (admin-defined custom skills)
+  const { data: systemSkills = [] } = useQuery({
+    queryKey: ['public-skills'],
+    queryFn: () => api.getPublicSkills(),
+  });
+
+  // Fetch character's custom skills
+  const { data: characterCustomSkills = [], refetch: refetchCustomSkills } = useQuery({
+    queryKey: ['character-custom-skills', character?.id],
+    queryFn: () => character?.id ? api.getCharacterCustomSkills(character.id) : Promise.resolve([]),
+    enabled: !!character?.id,
+  });
+
+  // State for custom skill management
+  const [showAddCustomSkill, setShowAddCustomSkill] = useState(false);
+  const [editingCustomSkill, setEditingCustomSkill] = useState<CharacterCustomSkill | null>(null);
 
   // Calculate bonuses from unlocked feats
   const featBonuses = useMemo(() => {
@@ -7915,6 +8159,64 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
 
   const equippedArmorBonus = calculateArmorBonus();
   const totalDC = (liveCharacter.sizeBonus || 0) + (liveCharacter.naturalArmor || 5) + equippedArmorBonus + featBonuses.dc;
+
+  // Custom skill mutations
+  const addCustomSkillMutation = useMutation({
+    mutationFn: (skillData: Partial<CharacterCustomSkill>) => api.addCharacterCustomSkill(character.id, skillData),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['character-custom-skills', character.id] });
+      setShowAddCustomSkill(false);
+      toast({
+        title: "Skill Added",
+        description: "Custom skill has been added to character",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to add custom skill",
+        variant: "destructive",
+      });
+    }
+  });
+
+  const updateCustomSkillMutation = useMutation({
+    mutationFn: ({ skillId, data }: { skillId: string; data: Partial<CharacterCustomSkill> }) => 
+      api.updateCharacterCustomSkill(character.id, skillId, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['character-custom-skills', character.id] });
+      setEditingCustomSkill(null);
+      toast({
+        title: "Skill Updated",
+        description: "Custom skill has been updated",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to update custom skill",
+        variant: "destructive",
+      });
+    }
+  });
+
+  const removeCustomSkillMutation = useMutation({
+    mutationFn: (skillId: string) => api.removeCharacterCustomSkill(character.id, skillId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['character-custom-skills', character.id] });
+      toast({
+        title: "Skill Removed",
+        description: "Custom skill has been removed from character",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to remove custom skill",
+        variant: "destructive",
+      });
+    }
+  });
 
   // Item mutations
   const createItemMutation = useMutation({
@@ -9498,6 +9800,160 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                 )}
               </CardContent>
             </Card>
+
+            {/* Custom Skills Section */}
+            <Card className="bg-stone-800 border-stone-700 mt-4">
+              <CardHeader className="pb-2">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-cyan-500 text-sm font-medium flex items-center gap-2">
+                    <BookOpen className="h-4 w-4" />
+                    Custom Skills
+                  </CardTitle>
+                  {(isOwner || isGM) && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setShowAddCustomSkill(true)}
+                      className="h-7 text-xs"
+                      data-testid="button-add-custom-skill"
+                    >
+                      <Plus className="h-3 w-3 mr-1" />
+                      Add Skill
+                    </Button>
+                  )}
+                </div>
+              </CardHeader>
+              <CardContent className="pt-2">
+                {characterCustomSkills.length === 0 ? (
+                  <div className="text-center py-4 text-stone-500 text-sm">
+                    No custom skills added yet
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    {characterCustomSkills.map((customSkill: CharacterCustomSkill) => {
+                      const parentAttr = customSkill.parentAttribute || 'wit';
+                      const attrValue = typeof liveCharacter[parentAttr as keyof typeof liveCharacter] === 'number' 
+                        ? (liveCharacter[parentAttr as keyof typeof liveCharacter] as number) 
+                        : 0;
+                      const skillValue = customSkill.value || 0;
+                      const totalMod = skillValue + attrValue;
+                      
+                      return (
+                        <Badge 
+                          key={customSkill.id}
+                          variant="outline" 
+                          className="justify-between p-3 bg-stone-900 border-cyan-700 cursor-pointer hover:bg-stone-800 transition-colors group relative"
+                          onPointerDown={() => {
+                            isLongPressRef.current = false;
+                            longPressTimerRef.current = setTimeout(() => {
+                              isLongPressRef.current = true;
+                              openRollPanel(customSkill.skillName, totalMod, 'skill');
+                            }, 500);
+                          }}
+                          onPointerUp={() => {
+                            clearTimeout(longPressTimerRef.current);
+                          }}
+                          onPointerLeave={() => {
+                            clearTimeout(longPressTimerRef.current);
+                          }}
+                          onClick={() => {
+                            const cardKey = `custom-skill-${customSkill.id}`;
+                            const now = Date.now();
+                            const timeSinceLastClick = now - lastClickTimeRef.current;
+                            const sameCard = lastClickedCardRef.current === cardKey;
+                            
+                            if (timeSinceLastClick < 400 && timeSinceLastClick > 0 && sameCard) {
+                              const existingTimer = clickTimersRef.current.get(cardKey);
+                              if (existingTimer) clearTimeout(existingTimer);
+                              clickTimersRef.current.delete(cardKey);
+                              lastClickTimeRef.current = 0;
+                              lastClickedCardRef.current = null;
+                              doubleClickDetectedRef.current = true;
+                              openRollPanel(customSkill.skillName, totalMod, 'skill');
+                              setTimeout(() => { doubleClickDetectedRef.current = false; }, 100);
+                            } else {
+                              lastClickTimeRef.current = now;
+                              lastClickedCardRef.current = cardKey;
+                              doubleClickDetectedRef.current = false;
+                              const existingTimer = clickTimersRef.current.get(cardKey);
+                              if (existingTimer) clearTimeout(existingTimer);
+                              const timer = setTimeout(() => {
+                                if (!isLongPressRef.current && !doubleClickDetectedRef.current) {
+                                  handleRoll(customSkill.skillName, totalMod, 0, 'none', true);
+                                }
+                                clickTimersRef.current.delete(cardKey);
+                              }, 400);
+                              clickTimersRef.current.set(cardKey, timer);
+                            }
+                          }}
+                          data-testid={`badge-custom-skill-${customSkill.id}`}
+                        >
+                          <div className="flex flex-col">
+                            <span className="text-xs text-cyan-300">{customSkill.skillName}</span>
+                            <span className="text-[10px] text-stone-500 capitalize">{parentAttr}</span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <span className="font-bold">
+                              {totalMod >= 0 ? `+${totalMod}` : totalMod}
+                            </span>
+                            {(isOwner || isGM) && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setEditingCustomSkill(customSkill);
+                                }}
+                                data-testid={`button-edit-custom-skill-${customSkill.id}`}
+                              >
+                                <Pencil className="h-3 w-3" />
+                              </Button>
+                            )}
+                          </div>
+                        </Badge>
+                      );
+                    })}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Add Custom Skill Dialog */}
+            <Dialog open={showAddCustomSkill} onOpenChange={setShowAddCustomSkill}>
+              <DialogContent className="bg-stone-900 border-stone-700 max-w-md">
+                <DialogHeader>
+                  <DialogTitle className="text-cyan-500">Add Custom Skill</DialogTitle>
+                </DialogHeader>
+                <CustomSkillForm
+                  systemSkills={systemSkills}
+                  existingSkillIds={characterCustomSkills.map((cs: CharacterCustomSkill) => cs.systemSkillId).filter(Boolean)}
+                  onSave={(data) => addCustomSkillMutation.mutate(data)}
+                  isLoading={addCustomSkillMutation.isPending}
+                />
+              </DialogContent>
+            </Dialog>
+
+            {/* Edit Custom Skill Dialog */}
+            {editingCustomSkill && (
+              <Dialog open={!!editingCustomSkill} onOpenChange={() => setEditingCustomSkill(null)}>
+                <DialogContent className="bg-stone-900 border-stone-700 max-w-md">
+                  <DialogHeader>
+                    <DialogTitle className="text-cyan-500">Edit Custom Skill</DialogTitle>
+                  </DialogHeader>
+                  <CustomSkillEditForm
+                    skill={editingCustomSkill}
+                    onSave={(data) => updateCustomSkillMutation.mutate({ skillId: editingCustomSkill.id, data })}
+                    onDelete={() => {
+                      if (confirm('Are you sure you want to remove this skill?')) {
+                        removeCustomSkillMutation.mutate(editingCustomSkill.id);
+                      }
+                    }}
+                    isLoading={updateCustomSkillMutation.isPending}
+                  />
+                </DialogContent>
+              </Dialog>
+            )}
           </TabsContent>
 
           {/* INVENTORY TAB */}

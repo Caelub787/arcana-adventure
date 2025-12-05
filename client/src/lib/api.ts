@@ -330,6 +330,25 @@ export interface FeatTreeWithData {
   connections: FeatConnection[];
 }
 
+export interface SystemSkill {
+  id: string;
+  name: string;
+  description?: string;
+  parentAttribute: string;
+  createdAt: string;
+}
+
+export interface CharacterCustomSkill {
+  id: string;
+  characterId: string;
+  systemSkillId?: string;
+  skillName: string;
+  description?: string;
+  parentAttribute: string;
+  value: number;
+  createdAt: string;
+}
+
 export interface CampaignBan {
   id: string;
   campaignId: string;
