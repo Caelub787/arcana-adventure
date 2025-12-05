@@ -1295,11 +1295,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         role: "gm"
       });
 
-      // Create default scene (null backgroundImage uses frontend's default Rocky Coast image)
+      // Create default scene with Ancient ruins battlemap background
       const defaultScene = await storage.createScene({
         campaignId: campaign.id,
         name: "Default Scene",
-        backgroundImage: null,
+        backgroundImage: "/attached_assets/default_battlemap.webp",
         gridEnabled: true,
         gridType: "square",
         gridSize: gridSize || 50,

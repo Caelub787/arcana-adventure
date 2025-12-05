@@ -4,7 +4,7 @@ import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Play, Users, Settings, ScrollText, Plus, Heart, Loader2, Shield } from "lucide-react";
-import bgImage from "@assets/generated_images/dark_fantasy_landscape_with_arcane_ruins.png";
+import bgImage from "@assets/home_background.webp";
 import { useAuth } from "@/lib/AuthContext";
 import { api } from "@/lib/api";
 import { useQuery } from "@tanstack/react-query";
