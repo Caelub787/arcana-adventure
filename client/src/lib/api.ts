@@ -219,6 +219,23 @@ export interface SystemSpecies {
   createdAt: string;
 }
 
+export interface SystemSkill {
+  id: string;
+  name: string;
+  description?: string;
+  parentAttribute: string;
+  createdAt: string;
+}
+
+export interface CharacterCustomSkill {
+  id: string;
+  characterId: string;
+  systemSkillId?: string;
+  name: string;
+  parentAttribute: string;
+  value: number;
+}
+
 export interface CharacterPermission {
   id: string;
   characterId: string;
@@ -740,6 +757,61 @@ class ApiClient {
 
   async deleteSystemSpell(id: string): Promise<void> {
     return this.request(`/admin/spells/${id}`, { method: 'DELETE' });
+  }
+
+  // Admin System Skills
+  async getSystemSkills(): Promise<SystemSkill[]> {
+    return this.request('/admin/skills');
+  }
+
+  async getSystemSkill(id: string): Promise<SystemSkill> {
+    return this.request(`/admin/skills/${id}`);
+  }
+
+  async createSystemSkill(skill: Partial<SystemSkill>): Promise<SystemSkill> {
+    return this.request('/admin/skills', {
+      method: 'POST',
+      body: JSON.stringify(skill),
+    });
+  }
+
+  async updateSystemSkill(id: string, data: Partial<SystemSkill>): Promise<SystemSkill> {
+    return this.request(`/admin/skills/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteSystemSkill(id: string): Promise<void> {
+    return this.request(`/admin/skills/${id}`, { method: 'DELETE' });
+  }
+
+  // Public skills (for character sheet)
+  async getPublicSkills(): Promise<SystemSkill[]> {
+    return this.request('/skills');
+  }
+
+  // Character Custom Skills
+  async getCharacterCustomSkills(characterId: string): Promise<CharacterCustomSkill[]> {
+    return this.request(`/characters/${characterId}/custom-skills`);
+  }
+
+  async addCharacterCustomSkill(characterId: string, skill: Partial<CharacterCustomSkill>): Promise<CharacterCustomSkill> {
+    return this.request(`/characters/${characterId}/custom-skills`, {
+      method: 'POST',
+      body: JSON.stringify(skill),
+    });
+  }
+
+  async updateCharacterCustomSkill(characterId: string, skillId: string, data: Partial<CharacterCustomSkill>): Promise<CharacterCustomSkill> {
+    return this.request(`/characters/${characterId}/custom-skills/${skillId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async removeCharacterCustomSkill(characterId: string, skillId: string): Promise<void> {
+    return this.request(`/characters/${characterId}/custom-skills/${skillId}`, { method: 'DELETE' });
   }
 
   // Public spells (for character sheet and feat effects)

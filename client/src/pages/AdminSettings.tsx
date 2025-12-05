@@ -2,7 +2,7 @@ import { useState, useRef, useMemo, useCallback, useEffect } from 'react';
 import { useLocation } from 'wouter';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, useMotionValue } from 'framer-motion';
-import { api, type Item, type SystemSpecies, type FeatTree, type Feat, type FeatConnection, type FeatTreeWithData, type FeatTemplate, type SystemSpell } from '@/lib/api';
+import { api, type Item, type SystemSpecies, type FeatTree, type Feat, type FeatConnection, type FeatTreeWithData, type FeatTemplate, type SystemSpell, type SystemSkill } from '@/lib/api';
 import { useAuth } from '@/lib/AuthContext';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { Button } from '@/components/ui/button';
@@ -20,7 +20,7 @@ import { toast } from '@/hooks/use-toast';
 import { ArrowLeft, Plus, Pencil, Trash2, Sword, Shield, Package, Sparkles, Box, Coins, Search, Users, User, GitBranch, Library, Link, X, GripVertical, Star, Zap, Heart, ShieldCheck, BookOpen, RefreshCw, ZoomIn, ZoomOut } from 'lucide-react';
 import { ImageBrowser } from '@/components/ImageBrowser';
 
-type AdminView = 'dashboard' | 'items' | 'species' | 'spells' | 'feat-trees';
+type AdminView = 'dashboard' | 'items' | 'species' | 'spells' | 'skills' | 'feat-trees';
 
 const itemTypeIcons: Record<string, any> = {
   weapon: Sword,
@@ -62,6 +62,10 @@ export default function AdminSettings() {
   const [editingSpell, setEditingSpell] = useState<SystemSpell | null>(null);
   const [spellSearchQuery, setSpellSearchQuery] = useState('');
 
+  const [showAddSkill, setShowAddSkill] = useState(false);
+  const [editingSkill, setEditingSkill] = useState<SystemSkill | null>(null);
+  const [skillSearchQuery, setSkillSearchQuery] = useState('');
+
   const { data: systemItems = [], isLoading: itemsLoading } = useQuery({
     queryKey: ['system-items'],
     queryFn: () => api.getSystemItems(),
@@ -78,6 +82,12 @@ export default function AdminSettings() {
     queryKey: ['system-spells'],
     queryFn: () => api.getSystemSpells(),
     enabled: isAdmin && currentView === 'spells',
+  });
+
+  const { data: systemSkills = [], isLoading: skillsLoading } = useQuery({
+    queryKey: ['system-skills'],
+    queryFn: () => api.getSystemSkills(),
+    enabled: isAdmin && currentView === 'skills',
   });
 
   const { data: allFeatTrees = [] } = useQuery({
@@ -191,6 +201,41 @@ export default function AdminSettings() {
     },
   });
 
+  const createSkillMutation = useMutation({
+    mutationFn: (skill: Partial<SystemSkill>) => api.createSystemSkill(skill),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['system-skills'] });
+      setShowAddSkill(false);
+      toast({ title: 'Skill Created', description: 'Custom skill created successfully' });
+    },
+    onError: (error: any) => {
+      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    },
+  });
+
+  const updateSkillMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Partial<SystemSkill> }) => api.updateSystemSkill(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['system-skills'] });
+      setEditingSkill(null);
+      toast({ title: 'Skill Updated', description: 'Custom skill updated successfully' });
+    },
+    onError: (error: any) => {
+      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    },
+  });
+
+  const deleteSkillMutation = useMutation({
+    mutationFn: (id: string) => api.deleteSystemSkill(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['system-skills'] });
+      toast({ title: 'Skill Deleted', description: 'Custom skill deleted successfully' });
+    },
+    onError: (error: any) => {
+      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    },
+  });
+
   if (!isAdmin) {
     return (
       <div className="min-h-screen bg-stone-950 text-stone-200 flex items-center justify-center">
@@ -208,6 +253,7 @@ export default function AdminSettings() {
   const debouncedSearchQuery = useDebouncedValue(searchQuery, 150);
   const debouncedSpeciesSearchQuery = useDebouncedValue(speciesSearchQuery, 150);
   const debouncedSpellSearchQuery = useDebouncedValue(spellSearchQuery, 150);
+  const debouncedSkillSearchQuery = useDebouncedValue(skillSearchQuery, 150);
   
   const filteredItems = useMemo(() => {
     return systemItems.filter((item: Item) => {
@@ -231,6 +277,13 @@ export default function AdminSettings() {
              (spell.description?.toLowerCase().includes(debouncedSpellSearchQuery.toLowerCase()));
     });
   }, [systemSpells, debouncedSpellSearchQuery]);
+
+  const filteredSkills = useMemo(() => {
+    return systemSkills.filter((skill: SystemSkill) => {
+      return skill.name.toLowerCase().includes(debouncedSkillSearchQuery.toLowerCase()) ||
+             (skill.description?.toLowerCase().includes(debouncedSkillSearchQuery.toLowerCase()));
+    });
+  }, [systemSkills, debouncedSkillSearchQuery]);
 
   const handleBackNavigation = () => {
     if (currentView === 'dashboard') {
@@ -259,7 +312,8 @@ export default function AdminSettings() {
               {currentView === 'dashboard' ? 'Manage game system settings' : 
                currentView === 'items' ? 'System Items' :
                currentView === 'species' ? 'Species / Races' : 
-               currentView === 'spells' ? 'Spells' : 'Feat Trees'}
+               currentView === 'spells' ? 'Spells' : 
+               currentView === 'skills' ? 'Custom Skills' : 'Feat Trees'}
             </p>
           </div>
           <div className="w-[200px]">
@@ -328,6 +382,22 @@ export default function AdminSettings() {
           />
         )}
 
+        {currentView === 'skills' && (
+          <SkillsView
+            skills={filteredSkills}
+            isLoading={skillsLoading}
+            searchQuery={skillSearchQuery}
+            setSearchQuery={setSkillSearchQuery}
+            onAddSkill={() => setShowAddSkill(true)}
+            onEditSkill={setEditingSkill}
+            onDeleteSkill={(id) => {
+              if (confirm('Are you sure you want to delete this skill?')) {
+                deleteSkillMutation.mutate(id);
+              }
+            }}
+          />
+        )}
+
         {currentView === 'feat-trees' && (
           <FeatTreesView />
         )}
@@ -384,6 +454,23 @@ export default function AdminSettings() {
             isLoading={updateSpellMutation.isPending}
           />
         )}
+
+        <SkillFormDialog
+          open={showAddSkill}
+          onOpenChange={setShowAddSkill}
+          onSave={(data) => createSkillMutation.mutate(data)}
+          isLoading={createSkillMutation.isPending}
+        />
+
+        {editingSkill && (
+          <SkillFormDialog
+            open={!!editingSkill}
+            onOpenChange={() => setEditingSkill(null)}
+            onSave={(data) => updateSkillMutation.mutate({ id: editingSkill.id, data })}
+            initialData={editingSkill}
+            isLoading={updateSkillMutation.isPending}
+          />
+        )}
       </div>
     </div>
   );
@@ -436,6 +523,22 @@ function DashboardView({ onNavigate }: { onNavigate: (view: AdminView) => void }
           <CardTitle className="text-blue-500">System Spells</CardTitle>
           <CardDescription className="text-stone-400">
             Define spells that can be learned or granted through feats
+          </CardDescription>
+        </CardHeader>
+      </Card>
+
+      <Card 
+        className="bg-stone-900 border-stone-700 cursor-pointer hover:border-amber-600 transition-colors"
+        onClick={() => onNavigate('skills')}
+        data-testid="card-system-skills"
+      >
+        <CardHeader>
+          <div className="h-12 w-12 rounded-lg bg-cyan-700/20 flex items-center justify-center mb-2">
+            <BookOpen className="h-6 w-6 text-cyan-500" />
+          </div>
+          <CardTitle className="text-cyan-500">Custom Skills</CardTitle>
+          <CardDescription className="text-stone-400">
+            Create custom skills that can be added to character sheets
           </CardDescription>
         </CardHeader>
       </Card>
@@ -787,6 +890,244 @@ function SpellsView({ spells, isLoading, searchQuery, setSearchQuery, onAddSpell
         )}
       </CardContent>
     </Card>
+  );
+}
+
+interface SkillsViewProps {
+  skills: SystemSkill[];
+  isLoading: boolean;
+  searchQuery: string;
+  setSearchQuery: (q: string) => void;
+  onAddSkill: () => void;
+  onEditSkill: (skill: SystemSkill) => void;
+  onDeleteSkill: (id: string) => void;
+}
+
+const parentAttributeColors: Record<string, string> = {
+  might: 'text-red-400',
+  finesse: 'text-green-400',
+  wit: 'text-blue-400',
+  presence: 'text-purple-400',
+  will: 'text-yellow-400',
+  craft: 'text-orange-400',
+};
+
+function SkillsView({ skills, isLoading, searchQuery, setSearchQuery, onAddSkill, onEditSkill, onDeleteSkill }: SkillsViewProps) {
+  return (
+    <Card className="bg-stone-900 border-stone-700">
+      <CardHeader className="flex flex-row items-center justify-between">
+        <CardTitle className="text-cyan-500">Custom Skills</CardTitle>
+        <Button
+          onClick={onAddSkill}
+          className="bg-cyan-700 hover:bg-cyan-600"
+          data-testid="button-add-skill"
+        >
+          <Plus className="h-4 w-4 mr-2" />
+          Add Skill
+        </Button>
+      </CardHeader>
+      <CardContent>
+        <div className="mb-4">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-500" />
+            <Input
+              placeholder="Search skills..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9 bg-stone-800 border-stone-700"
+              data-testid="input-search-skills"
+            />
+          </div>
+        </div>
+
+        {isLoading ? (
+          <div className="text-center py-12 text-stone-400">Loading skills...</div>
+        ) : skills.length === 0 ? (
+          <div className="text-center py-12 text-stone-400">
+            <BookOpen className="h-12 w-12 mx-auto mb-3 opacity-50" />
+            <p className="font-bold">No custom skills found</p>
+            <p className="text-sm mt-2">Create custom skills that can be added to character sheets</p>
+          </div>
+        ) : (
+          <ScrollArea className="h-[500px]">
+            <div className="space-y-2">
+              {skills.map((skill: SystemSkill) => (
+                <div
+                  key={skill.id}
+                  className="flex items-center gap-4 p-3 rounded-lg bg-stone-800 border border-stone-700 hover:border-stone-600"
+                  data-testid={`skill-row-${skill.id}`}
+                >
+                  <div className="h-12 w-12 rounded bg-stone-700 flex items-center justify-center overflow-hidden">
+                    <BookOpen className="h-6 w-6 text-cyan-400" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium truncate">{skill.name}</span>
+                      <Badge className={`bg-stone-700 ${parentAttributeColors[skill.parentAttribute] || 'text-stone-300'} text-xs`}>
+                        {skill.parentAttribute.charAt(0).toUpperCase() + skill.parentAttribute.slice(1)}
+                      </Badge>
+                    </div>
+                    {skill.description && (
+                      <div className="text-sm text-stone-400 truncate">
+                        {skill.description}
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => onEditSkill(skill)}
+                      className="text-stone-400 hover:text-cyan-500"
+                      data-testid={`button-edit-skill-${skill.id}`}
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => onDeleteSkill(skill.id)}
+                      className="text-stone-400 hover:text-red-500"
+                      data-testid={`button-delete-skill-${skill.id}`}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </ScrollArea>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+interface SkillFormDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onSave: (data: Partial<SystemSkill>) => void;
+  initialData?: SystemSkill;
+  isLoading?: boolean;
+}
+
+const parentAttributeOptions = ['might', 'finesse', 'wit', 'presence', 'will', 'craft'];
+
+function SkillFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: SkillFormDialogProps) {
+  const [formData, setFormData] = useState<{
+    name: string;
+    description: string;
+    parentAttribute: string;
+  }>({
+    name: initialData?.name || '',
+    description: initialData?.description || '',
+    parentAttribute: initialData?.parentAttribute || 'wit',
+  });
+
+  useEffect(() => {
+    if (initialData) {
+      setFormData({
+        name: initialData.name || '',
+        description: initialData.description || '',
+        parentAttribute: initialData.parentAttribute || 'wit',
+      });
+    } else {
+      setFormData({
+        name: '',
+        description: '',
+        parentAttribute: 'wit',
+      });
+    }
+  }, [initialData, open]);
+
+  const handleSave = () => {
+    if (!formData.name.trim()) {
+      toast({ title: 'Error', description: 'Skill name is required', variant: 'destructive' });
+      return;
+    }
+    onSave({
+      name: formData.name.trim(),
+      description: formData.description.trim() || undefined,
+      parentAttribute: formData.parentAttribute,
+    });
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="bg-stone-900 border-stone-700 max-w-md">
+        <DialogHeader>
+          <DialogTitle className="text-cyan-500">
+            {initialData ? 'Edit Skill' : 'Create Skill'}
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          <div>
+            <Label className="text-stone-300">Skill Name</Label>
+            <Input
+              value={formData.name}
+              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              placeholder="e.g. Alchemy"
+              className="bg-stone-800 border-stone-700 mt-1"
+              data-testid="input-skill-name"
+            />
+          </div>
+
+          <div>
+            <Label className="text-stone-300">Description</Label>
+            <Textarea
+              value={formData.description}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              placeholder="Describe what this skill represents..."
+              className="bg-stone-800 border-stone-700 mt-1"
+              rows={3}
+              data-testid="input-skill-description"
+            />
+          </div>
+
+          <div>
+            <Label className="text-stone-300">Parent Attribute</Label>
+            <Select
+              value={formData.parentAttribute}
+              onValueChange={(value) => setFormData({ ...formData, parentAttribute: value })}
+            >
+              <SelectTrigger className="bg-stone-800 border-stone-700 mt-1" data-testid="select-skill-attribute">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {parentAttributeOptions.map((attr) => (
+                  <SelectItem key={attr} value={attr}>
+                    {attr.charAt(0).toUpperCase() + attr.slice(1)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-stone-500 mt-1">
+              The parent attribute determines which stat modifier is added to skill rolls
+            </p>
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            className="border-stone-700"
+            data-testid="button-cancel-skill"
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={handleSave}
+            disabled={isLoading}
+            className="bg-cyan-700 hover:bg-cyan-600"
+            data-testid="button-save-skill"
+          >
+            {isLoading ? 'Saving...' : (initialData ? 'Update' : 'Create')}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
