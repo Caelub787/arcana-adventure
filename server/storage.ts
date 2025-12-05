@@ -20,7 +20,9 @@ import {
   type FeatConnection, type InsertFeatConnection,
   type CharacterFeat, type InsertCharacterFeat,
   type SystemSpell, type InsertSystemSpell,
-  users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, items, spells, characterPermissions, initiativeEntries, systemSpecies, featTemplates, featTrees, feats, featConnections, characterFeats, systemSpells
+  type SystemSkill, type InsertSystemSkill,
+  type CharacterCustomSkill, type InsertCharacterCustomSkill,
+  users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, items, spells, characterPermissions, initiativeEntries, systemSpecies, featTemplates, featTrees, feats, featConnections, characterFeats, systemSpells, systemSkills, characterCustomSkills
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql, inArray } from "drizzle-orm";
@@ -183,6 +185,20 @@ export interface IStorage {
   createSystemSpell(spell: InsertSystemSpell): Promise<SystemSpell>;
   updateSystemSpell(id: string, data: Partial<InsertSystemSpell>): Promise<SystemSpell | undefined>;
   deleteSystemSpell(id: string): Promise<void>;
+
+  // System Skill operations (admin-defined custom skills)
+  getSystemSkills(): Promise<SystemSkill[]>;
+  getSystemSkill(id: string): Promise<SystemSkill | undefined>;
+  createSystemSkill(skill: InsertSystemSkill): Promise<SystemSkill>;
+  updateSystemSkill(id: string, data: Partial<InsertSystemSkill>): Promise<SystemSkill | undefined>;
+  deleteSystemSkill(id: string): Promise<void>;
+
+  // Character Custom Skill operations
+  getCharacterCustomSkills(characterId: string): Promise<CharacterCustomSkill[]>;
+  getCharacterCustomSkill(id: string): Promise<CharacterCustomSkill | undefined>;
+  addCharacterCustomSkill(skill: InsertCharacterCustomSkill): Promise<CharacterCustomSkill>;
+  updateCharacterCustomSkill(id: string, data: Partial<InsertCharacterCustomSkill>): Promise<CharacterCustomSkill | undefined>;
+  removeCharacterCustomSkill(id: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1128,6 +1144,71 @@ export class DatabaseStorage implements IStorage {
 
   async deleteSystemSpell(id: string): Promise<void> {
     await db.delete(systemSpells).where(eq(systemSpells.id, id));
+  }
+
+  // System Skill operations (admin-defined custom skills)
+  async getSystemSkills(): Promise<SystemSkill[]> {
+    return await db.select()
+      .from(systemSkills)
+      .orderBy(systemSkills.name);
+  }
+
+  async getSystemSkill(id: string): Promise<SystemSkill | undefined> {
+    const [skill] = await db.select()
+      .from(systemSkills)
+      .where(eq(systemSkills.id, id))
+      .limit(1);
+    return skill;
+  }
+
+  async createSystemSkill(skill: InsertSystemSkill): Promise<SystemSkill> {
+    const [created] = await db.insert(systemSkills).values(skill).returning();
+    return created;
+  }
+
+  async updateSystemSkill(id: string, data: Partial<InsertSystemSkill>): Promise<SystemSkill | undefined> {
+    const [updated] = await db.update(systemSkills)
+      .set(data)
+      .where(eq(systemSkills.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteSystemSkill(id: string): Promise<void> {
+    await db.delete(systemSkills).where(eq(systemSkills.id, id));
+  }
+
+  // Character Custom Skill operations
+  async getCharacterCustomSkills(characterId: string): Promise<CharacterCustomSkill[]> {
+    return await db.select()
+      .from(characterCustomSkills)
+      .where(eq(characterCustomSkills.characterId, characterId))
+      .orderBy(characterCustomSkills.name);
+  }
+
+  async getCharacterCustomSkill(id: string): Promise<CharacterCustomSkill | undefined> {
+    const [skill] = await db.select()
+      .from(characterCustomSkills)
+      .where(eq(characterCustomSkills.id, id))
+      .limit(1);
+    return skill;
+  }
+
+  async addCharacterCustomSkill(skill: InsertCharacterCustomSkill): Promise<CharacterCustomSkill> {
+    const [created] = await db.insert(characterCustomSkills).values(skill).returning();
+    return created;
+  }
+
+  async updateCharacterCustomSkill(id: string, data: Partial<InsertCharacterCustomSkill>): Promise<CharacterCustomSkill | undefined> {
+    const [updated] = await db.update(characterCustomSkills)
+      .set(data)
+      .where(eq(characterCustomSkills.id, id))
+      .returning();
+    return updated;
+  }
+
+  async removeCharacterCustomSkill(id: string): Promise<void> {
+    await db.delete(characterCustomSkills).where(eq(characterCustomSkills.id, id));
   }
 }
 
