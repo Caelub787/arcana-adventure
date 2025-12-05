@@ -2986,6 +2986,119 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // System Skills routes (admin)
+  app.get("/api/admin/skills", requireAdmin, async (req, res) => {
+    try {
+      const skills = await storage.getSystemSkills();
+      res.json(skills);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch system skills" });
+    }
+  });
+
+  app.get("/api/admin/skills/:id", requireAdmin, async (req, res) => {
+    try {
+      const skill = await storage.getSystemSkill(req.params.id);
+      if (!skill) {
+        return res.status(404).json({ error: "Skill not found" });
+      }
+      res.json(skill);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch skill" });
+    }
+  });
+
+  app.post("/api/admin/skills", requireAdmin, async (req, res) => {
+    try {
+      const skill = await storage.createSystemSkill(req.body);
+      res.json(skill);
+    } catch (err) {
+      res.status(400).json({ error: "Failed to create skill" });
+    }
+  });
+
+  app.patch("/api/admin/skills/:id", requireAdmin, async (req, res) => {
+    try {
+      const skill = await storage.updateSystemSkill(req.params.id, req.body);
+      if (!skill) {
+        return res.status(404).json({ error: "Skill not found" });
+      }
+      res.json(skill);
+    } catch (err) {
+      res.status(400).json({ error: "Failed to update skill" });
+    }
+  });
+
+  app.delete("/api/admin/skills/:id", requireAdmin, async (req, res) => {
+    try {
+      await storage.deleteSystemSkill(req.params.id);
+      res.json({ success: true });
+    } catch (err) {
+      res.status(400).json({ error: "Failed to delete skill" });
+    }
+  });
+
+  // Public system skills route (for character sheet)
+  app.get("/api/skills", requireAuth, async (req, res) => {
+    try {
+      const skills = await storage.getSystemSkills();
+      res.json(skills);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch skills" });
+    }
+  });
+
+  // Character custom skills routes
+  app.get("/api/characters/:characterId/custom-skills", requireAuth, async (req, res) => {
+    try {
+      const character = await storage.getCharacter(req.params.characterId);
+      if (!character) {
+        return res.status(404).json({ error: "Character not found" });
+      }
+      const customSkills = await storage.getCharacterCustomSkills(req.params.characterId);
+      res.json(customSkills);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch character custom skills" });
+    }
+  });
+
+  app.post("/api/characters/:characterId/custom-skills", requireAuth, async (req, res) => {
+    try {
+      const character = await storage.getCharacter(req.params.characterId);
+      if (!character) {
+        return res.status(404).json({ error: "Character not found" });
+      }
+      const skill = await storage.addCharacterCustomSkill({
+        ...req.body,
+        characterId: req.params.characterId
+      });
+      res.json(skill);
+    } catch (err) {
+      res.status(400).json({ error: "Failed to add custom skill" });
+    }
+  });
+
+  app.patch("/api/characters/:characterId/custom-skills/:skillId", requireAuth, async (req, res) => {
+    try {
+      const skill = await storage.updateCharacterCustomSkill(req.params.skillId, req.body);
+      if (!skill) {
+        return res.status(404).json({ error: "Skill not found" });
+      }
+      res.json(skill);
+    } catch (err) {
+      res.status(400).json({ error: "Failed to update custom skill" });
+    }
+  });
+
+  app.delete("/api/characters/:characterId/custom-skills/:skillId", requireAuth, async (req, res) => {
+    try {
+      await storage.removeCharacterCustomSkill(req.params.skillId);
+      res.json({ success: true });
+    } catch (err) {
+      res.status(400).json({ error: "Failed to remove custom skill" });
+    }
+  });
+
   // Public spell routes (for character sheet and feat effects)
   app.get("/api/spells", requireAuth, async (req, res) => {
     try {
