@@ -19,6 +19,7 @@ Preferred communication style: Simple, everyday language.
     - **Species/Race System**: Database-driven management of custom species with auto-filled attributes.
     - **Level-Up HP System**: Dynamic HP gain based on species `hpPerLevel` and level-dependent dice rolls.
     - **Attributes & Skills**: Six core attributes and seventeen skills with modifiers. Features single-click rolls, Roll Modifier Panel, and d30 usage for high attribute values. Includes a flexible **Custom Skills System** for admin-defined and character-specific skills.
+    - **Traits System**: Admin-defined and character-specific traits with uses-per-long-rest tracking. Traits reset on long rest. Full admin management in Admin Settings and character sheet integration with use tracking, rolling, and visual uses display.
     - **Rest Mechanics**: Short and Long Rest options that restore HP and manage exhaustion, consuming rations automatically.
     - **Exhaustion System**: 0-5 levels tracked per character with visual display and GM controls, impacting speed, skill checks, and attack rolls.
     - **Inventory & Hotbars**: Comprehensive inventory with weight calculation, quantity management, item stacking, and hotbars for weapons, magic, skills, consumables, and utility items. Features an **Ammunition System** with configurable break chance and automatic re-equip.
@@ -30,9 +31,9 @@ Preferred communication style: Simple, everyday language.
         - **Feat Nodes**: Draggable nodes with tier-based visual styling (Bronze to Legendary).
         - **Prerequisites**: Curved SVG connection lines, requiring at least one prerequisite to be unlocked.
         - **Species Integration**: Feat trees assigned to species, inherited by characters.
-        - **Feat Effects**: Seven effect types dynamically calculated client-side (e.g., hp_bonus, energy_bonus, attribute_bonus, skill_bonus, spell_grant, item_grant).
+        - **Feat Effects**: Eight effect types dynamically calculated client-side (hp_bonus, energy_bonus, dc_bonus, attribute_bonus, skill_bonus, spell_grant, item_grant, skill_grant for custom skills).
         - **Editor**: Context-sensitive effect editor and visual bonus indicators.
-        - **Templates**: Reusable feat definitions shareable across trees.
+        - **Feat Library**: All feats are automatically saved to a reusable library. Enhanced template selector with search, effect previews, and tier badges when adding feats from library.
     - **Spell Management System**: System for defining and managing spells with properties like damage dice, type, range, energy cost, and attribute. Spells are granted via feats, roll like weapons, and support 13 damage types, including "Health" for healing.
     - **Feat Points System**: Characters earn feat points based on level for unlocking feats.
 
@@ -42,7 +43,7 @@ Preferred communication style: Simple, everyday language.
 
 ### Data Storage
 - **Database**: PostgreSQL via Neon serverless, managed with Drizzle ORM.
-- **Schema**: Comprehensive schema covering users, campaigns, scenes, characters, tokens, chat messages, initiative entries, feat data, spell definitions, and custom skills.
+- **Schema**: Comprehensive schema covering users, campaigns, scenes, characters, tokens, chat messages, initiative entries, feat data, spell definitions, custom skills, and traits.
 - **Validation**: Zod schemas derived from Drizzle for client/server input validation.
 
 ### Authentication & Authorization
