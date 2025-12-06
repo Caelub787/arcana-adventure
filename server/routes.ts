@@ -1493,6 +1493,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         userId: req.session.userId!
       });
       console.log("[Character Create] Success:", character.id);
+      
+      broadcastToCampaign(req.params.campaignId, {
+        type: "character_created",
+        character
+      });
+      
       res.json(character);
     } catch (err: any) {
       console.error("[Character Create] Error:", err.message, err.stack);
@@ -1628,7 +1634,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log('[Character Update] Saved successfully:', updatedCharacter);
       
       // Broadcast character update to all campaign members
-      if (updatedCharacter.campaignId) {
+      if (updatedCharacter?.campaignId) {
         broadcastToCampaign(updatedCharacter.campaignId, {
           type: "character_updated",
           characterId: updatedCharacter.id,
@@ -1970,6 +1976,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const hotbar = await storage.upsertHotbar(hotbarData);
+      
+      if (access.character?.campaignId) {
+        broadcastToCampaign(access.character.campaignId, {
+          type: "hotbar_updated",
+          characterId: req.params.characterId
+        });
+      }
+      
       res.json(hotbar);
     } catch (err) {
       res.status(400).json({ error: "Failed to upsert hotbar" });
@@ -1978,7 +1992,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.delete("/api/hotbars/:id", requireAuth, async (req, res) => {
     try {
-      await storage.deleteHotbar(req.params.id);
+      const hotbar = await storage.getHotbar(req.params.id);
+      if (hotbar) {
+        const character = await storage.getCharacter(hotbar.characterId);
+        await storage.deleteHotbar(req.params.id);
+        
+        if (character?.campaignId) {
+          broadcastToCampaign(character.campaignId, {
+            type: "hotbar_updated",
+            characterId: hotbar.characterId
+          });
+        }
+      } else {
+        await storage.deleteHotbar(req.params.id);
+      }
       res.json({ success: true });
     } catch (err) {
       res.status(400).json({ error: "Failed to delete hotbar" });
@@ -2023,6 +2050,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       const spell = await storage.createSpell(spellData);
+      
+      if (access.character?.campaignId) {
+        broadcastToCampaign(access.character.campaignId, {
+          type: "spell_created",
+          characterId: req.params.characterId,
+          spell
+        });
+      }
+      
       res.json(spell);
     } catch (err) {
       res.status(400).json({ error: "Failed to create spell" });
@@ -2055,6 +2091,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const spell = await storage.updateSpell(req.params.id, req.body);
+      
+      if (access.character?.campaignId) {
+        broadcastToCampaign(access.character.campaignId, {
+          type: "spell_updated",
+          characterId: currentSpell.characterId,
+          spell
+        });
+      }
+      
       res.json(spell);
     } catch (err) {
       res.status(400).json({ error: "Failed to update spell" });
@@ -2080,6 +2125,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       await storage.deleteSpell(req.params.id);
+      
+      if (access.character?.campaignId) {
+        broadcastToCampaign(access.character.campaignId, {
+          type: "spell_deleted",
+          characterId: currentSpell.characterId,
+          spellId: req.params.id
+        });
+      }
+      
       res.json({ success: true });
     } catch (err) {
       res.status(400).json({ error: "Failed to delete spell" });
@@ -2328,6 +2382,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const scene = await storage.createScene({
         ...req.body,
         campaignId: req.params.campaignId
+      });
+
+      broadcastToCampaign(req.params.campaignId, {
+        type: "scene_created",
+        scene
       });
 
       res.json(scene);
@@ -2929,6 +2988,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       const charFeat = await storage.unlockCharacterFeat(req.params.id, req.params.featId);
+      
+      if (character?.campaignId) {
+        broadcastToCampaign(character.campaignId, {
+          type: "feat_unlocked",
+          characterId: req.params.id,
+          featId: req.params.featId
+        });
+      }
+      
       res.json(charFeat);
     } catch (err) {
       res.status(400).json({ error: "Failed to unlock feat" });
@@ -2952,6 +3020,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       await storage.removeCharacterFeat(req.params.id, req.params.featId);
+      
+      if (character?.campaignId) {
+        broadcastToCampaign(character.campaignId, {
+          type: "feat_removed",
+          characterId: req.params.id,
+          featId: req.params.featId
+        });
+      }
+      
       res.json({ success: true });
     } catch (err) {
       res.status(400).json({ error: "Failed to remove feat" });
@@ -3096,6 +3173,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ...req.body,
         characterId: req.params.characterId
       });
+      
+      if (character?.campaignId) {
+        broadcastToCampaign(character.campaignId, {
+          type: "custom_skill_added",
+          characterId: req.params.characterId,
+          skill
+        });
+      }
+      
       res.json(skill);
     } catch (err) {
       res.status(400).json({ error: "Failed to add custom skill" });
@@ -3104,10 +3190,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.patch("/api/characters/:characterId/custom-skills/:skillId", requireAuth, async (req, res) => {
     try {
+      const character = await storage.getCharacter(req.params.characterId);
       const skill = await storage.updateCharacterCustomSkill(req.params.skillId, req.body);
       if (!skill) {
         return res.status(404).json({ error: "Skill not found" });
       }
+      
+      if (character?.campaignId) {
+        broadcastToCampaign(character.campaignId, {
+          type: "custom_skill_updated",
+          characterId: req.params.characterId,
+          skillId: req.params.skillId,
+          skill
+        });
+      }
+      
       res.json(skill);
     } catch (err) {
       res.status(400).json({ error: "Failed to update custom skill" });
@@ -3116,7 +3213,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.delete("/api/characters/:characterId/custom-skills/:skillId", requireAuth, async (req, res) => {
     try {
+      const character = await storage.getCharacter(req.params.characterId);
       await storage.removeCharacterCustomSkill(req.params.skillId);
+      
+      if (character?.campaignId) {
+        broadcastToCampaign(character.campaignId, {
+          type: "custom_skill_removed",
+          characterId: req.params.characterId,
+          skillId: req.params.skillId
+        });
+      }
+      
       res.json({ success: true });
     } catch (err) {
       res.status(400).json({ error: "Failed to remove custom skill" });
@@ -3209,6 +3316,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ...req.body,
         characterId: req.params.characterId
       });
+      
+      if (character?.campaignId) {
+        broadcastToCampaign(character.campaignId, {
+          type: "trait_added",
+          characterId: req.params.characterId,
+          trait
+        });
+      }
+      
       res.json(trait);
     } catch (err) {
       res.status(400).json({ error: "Failed to add trait" });
@@ -3217,10 +3333,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.patch("/api/characters/:characterId/traits/:traitId", requireAuth, async (req, res) => {
     try {
+      const character = await storage.getCharacter(req.params.characterId);
       const trait = await storage.updateCharacterTrait(req.params.traitId, req.body);
       if (!trait) {
         return res.status(404).json({ error: "Trait not found" });
       }
+      
+      if (character?.campaignId) {
+        broadcastToCampaign(character.campaignId, {
+          type: "trait_updated",
+          characterId: req.params.characterId,
+          traitId: req.params.traitId,
+          trait
+        });
+      }
+      
       res.json(trait);
     } catch (err) {
       res.status(400).json({ error: "Failed to update trait" });
@@ -3229,7 +3356,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.delete("/api/characters/:characterId/traits/:traitId", requireAuth, async (req, res) => {
     try {
+      const character = await storage.getCharacter(req.params.characterId);
       await storage.removeCharacterTrait(req.params.traitId);
+      
+      if (character?.campaignId) {
+        broadcastToCampaign(character.campaignId, {
+          type: "trait_removed",
+          characterId: req.params.characterId,
+          traitId: req.params.traitId
+        });
+      }
+      
       res.json({ success: true });
     } catch (err) {
       res.status(400).json({ error: "Failed to remove trait" });
@@ -3239,6 +3376,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Use trait route (decrements remaining uses)
   app.post("/api/characters/:characterId/traits/:traitId/use", requireAuth, async (req, res) => {
     try {
+      const character = await storage.getCharacter(req.params.characterId);
       const trait = await storage.getCharacterTrait(req.params.traitId);
       if (!trait) {
         return res.status(404).json({ error: "Trait not found" });
@@ -3252,6 +3390,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const updated = await storage.updateCharacterTrait(req.params.traitId, {
         currentUses: trait.currentUses + 1
       });
+      
+      if (character?.campaignId) {
+        broadcastToCampaign(character.campaignId, {
+          type: "trait_used",
+          characterId: req.params.characterId,
+          traitId: req.params.traitId,
+          trait: updated
+        });
+      }
+      
       res.json(updated);
     } catch (err) {
       res.status(400).json({ error: "Failed to use trait" });
@@ -3403,6 +3551,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       const item = await storage.createItem(itemData);
+      
+      if (access.character?.campaignId) {
+        broadcastToCampaign(access.character.campaignId, {
+          type: "item_created",
+          characterId: req.params.characterId,
+          item
+        });
+      }
+      
       res.json(item);
     } catch (err) {
       res.status(400).json({ error: "Failed to create item" });
@@ -3478,6 +3635,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Item not found" });
       }
 
+      if (access.character?.campaignId) {
+        broadcastToCampaign(access.character.campaignId, {
+          type: "item_updated",
+          characterId: currentItem.characterId,
+          item: updatedItem
+        });
+      }
+
       res.json(updatedItem);
     } catch (err) {
       res.status(400).json({ error: "Failed to update item" });
@@ -3536,6 +3701,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       await storage.deleteItem(req.params.id);
+      
+      if (access.character?.campaignId) {
+        broadcastToCampaign(access.character.campaignId, {
+          type: "item_deleted",
+          characterId: item.characterId,
+          itemId: req.params.id
+        });
+      }
+      
       res.json({ success: true });
     } catch (err) {
       res.status(400).json({ error: "Failed to delete item" });

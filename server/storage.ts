@@ -91,6 +91,7 @@ export interface IStorage {
   setActiveScene(campaignId: string, sceneId: string): Promise<Campaign | undefined>;
 
   // Hotbar operations
+  getHotbar(id: string): Promise<Hotbar | undefined>;
   getHotbarsByCharacter(characterId: string): Promise<Hotbar[]>;
   upsertHotbar(hotbar: InsertHotbar): Promise<Hotbar>;
   deleteHotbar(id: string): Promise<void>;
@@ -617,6 +618,14 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Hotbar operations
+  async getHotbar(id: string): Promise<Hotbar | undefined> {
+    const [hotbar] = await db.select()
+      .from(hotbars)
+      .where(eq(hotbars.id, id))
+      .limit(1);
+    return hotbar;
+  }
+
   async getHotbarsByCharacter(characterId: string): Promise<Hotbar[]> {
     return await db.select()
       .from(hotbars)

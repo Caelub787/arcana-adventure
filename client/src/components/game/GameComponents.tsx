@@ -3964,6 +3964,78 @@ export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onIn
     return () => { unsubscribe(); };
   }, [campaignId]);
   
+  // Listen for all entity updates via WebSocket and invalidate queries for live updates
+  useEffect(() => {
+    if (!campaignId) return;
+    
+    const unsubscribe = gameWs.onMessage((data) => {
+      // Character operations
+      if (data.type === 'character_created' || data.type === 'character_updated' || data.type === 'character_deleted') {
+        queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${campaignId}/characters`] });
+        if (data.characterId) {
+          queryClient.invalidateQueries({ queryKey: [`/api/characters/${data.characterId}`] });
+        }
+      }
+      
+      // Item operations
+      if (data.type === 'item_created' || data.type === 'item_updated' || data.type === 'item_deleted') {
+        if (data.characterId) {
+          queryClient.invalidateQueries({ queryKey: ['items', data.characterId] });
+          queryClient.invalidateQueries({ queryKey: ['hotbars', data.characterId] });
+        }
+      }
+      
+      // Spell operations
+      if (data.type === 'spell_created' || data.type === 'spell_updated' || data.type === 'spell_deleted') {
+        if (data.characterId) {
+          queryClient.invalidateQueries({ queryKey: ['spells', data.characterId] });
+          queryClient.invalidateQueries({ queryKey: ['hotbars', data.characterId] });
+        }
+      }
+      
+      // Scene operations
+      if (data.type === 'scene_created') {
+        queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${campaignId}/scenes`] });
+      }
+      
+      // Token operations
+      if (data.type === 'token_created' || data.type === 'token_updated' || data.type === 'token_deleted') {
+        queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${campaignId}/tokens`] });
+      }
+      
+      // Hotbar operations
+      if (data.type === 'hotbar_updated') {
+        if (data.characterId) {
+          queryClient.invalidateQueries({ queryKey: ['hotbars', data.characterId] });
+        }
+      }
+      
+      // Feat operations
+      if (data.type === 'feat_unlocked' || data.type === 'feat_removed') {
+        if (data.characterId) {
+          queryClient.invalidateQueries({ queryKey: ['character-feats', data.characterId] });
+          queryClient.invalidateQueries({ queryKey: [`/api/characters/${data.characterId}`] });
+        }
+      }
+      
+      // Custom skill operations
+      if (data.type === 'custom_skill_added' || data.type === 'custom_skill_updated' || data.type === 'custom_skill_removed') {
+        if (data.characterId) {
+          queryClient.invalidateQueries({ queryKey: ['character-custom-skills', data.characterId] });
+        }
+      }
+      
+      // Trait operations
+      if (data.type === 'trait_added' || data.type === 'trait_updated' || data.type === 'trait_removed' || data.type === 'trait_used') {
+        if (data.characterId) {
+          queryClient.invalidateQueries({ queryKey: ['character-traits', data.characterId] });
+        }
+      }
+    });
+    
+    return () => { unsubscribe(); };
+  }, [campaignId, queryClient]);
+  
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
