@@ -183,7 +183,7 @@ export default function Home() {
 
         </motion.div>
 
-        <div className="mt-12 text-xs text-stone-600 font-mono">v0.1.0 Beta • Mystereed</div>
+        <div className="mt-12 text-xs text-stone-600 font-mono">v0.1 Beta • Mystereed</div>
       </div>
     </div>
   );

@@ -2745,6 +2745,47 @@ export function BattleMapHotbars({ character, tokens, targetedTokenId, character
     enabled: !!character?.id
   });
 
+  // Fetch feat tree and character feats for bonus calculation
+  const { data: featTreeData } = useQuery({
+    queryKey: ['feat-tree', character?.race],
+    queryFn: () => character?.race ? api.getFeatTreeBySpecies(character.race) : Promise.resolve(null),
+    enabled: !!character?.race,
+  });
+
+  const { data: characterFeats = [] } = useQuery({
+    queryKey: ['character-feats', character?.id],
+    queryFn: () => character?.id ? api.getCharacterFeats(character.id) : Promise.resolve([]),
+    enabled: !!character?.id,
+  });
+
+  // Calculate feat bonuses for HP/Energy/DC
+  const featBonuses = useMemo(() => {
+    const bonuses = { hp: 0, energy: 0, dc: 0 };
+    if (!featTreeData?.feats || !characterFeats.length) return bonuses;
+    
+    const unlockedFeatIds = new Set(characterFeats.map((cf: CharacterFeat) => cf.featId));
+    const unlockedFeats = featTreeData.feats.filter((f: Feat) => unlockedFeatIds.has(f.id));
+    const charLevel = Math.max(1, character?.level || 1);
+    
+    for (const feat of unlockedFeats) {
+      if (!feat.effects || !Array.isArray(feat.effects)) continue;
+      for (const effect of feat.effects as any[]) {
+        if (effect.type === 'hp_bonus') {
+          bonuses.hp += effect.subtype === 'per_level' ? (effect.value || 0) * charLevel : (effect.value || 0);
+        } else if (effect.type === 'energy_bonus') {
+          bonuses.energy += effect.subtype === 'per_level' ? (effect.value || 0) * charLevel : (effect.value || 0);
+        } else if (effect.type === 'dc_bonus') {
+          bonuses.dc += effect.value || 0;
+        }
+      }
+    }
+    return bonuses;
+  }, [featTreeData?.feats, characterFeats, character?.level]);
+
+  // Calculate effective max HP/Energy including feat bonuses
+  const effectiveMaxHp = (character?.maxHp || 10) + featBonuses.hp;
+  const effectiveMaxEnergy = (character?.maxEnergy || 10) + featBonuses.energy;
+
   // Calculate total DC from equipped armor (same logic as character sheet)
   const calculateArmorBonus = () => {
     const armorHotbars = hotbars.filter((h: any) => h.hotbarType === 'armor' && h.itemId);
@@ -2759,7 +2800,7 @@ export function BattleMapHotbars({ character, tokens, targetedTokenId, character
   };
 
   const equippedArmorBonus = calculateArmorBonus();
-  const totalDC = (character?.sizeBonus || 0) + (character?.naturalArmor || 5) + equippedArmorBonus;
+  const totalDC = (character?.sizeBonus || 0) + (character?.naturalArmor || 5) + equippedArmorBonus + featBonuses.dc;
 
   // Don't render if no character selected
   if (!character) return null;
@@ -2782,8 +2823,8 @@ export function BattleMapHotbars({ character, tokens, targetedTokenId, character
       <div className="absolute bottom-2 md:bottom-4 left-2 md:left-4 pointer-events-auto z-30">
         <div className="flex flex-col gap-1">
           {/* DC Display */}
-          <div className="glass-panel p-1.5 md:p-2 rounded border-l-4 border-amber-600 relative overflow-hidden w-32 md:w-44">
-            <div className="flex justify-between text-[9px] md:text-xs uppercase tracking-wider font-bold text-amber-200">
+          <div className="glass-panel p-1.5 md:p-2 rounded border-l-4 border-purple-600 relative overflow-hidden w-32 md:w-44">
+            <div className="flex justify-between text-[9px] md:text-xs uppercase tracking-wider font-bold text-purple-200">
               <span>DC</span>
               <span>{totalDC}</span>
             </div>
@@ -2793,13 +2834,13 @@ export function BattleMapHotbars({ character, tokens, targetedTokenId, character
           <div className="glass-panel p-1.5 md:p-2 rounded border-l-4 border-red-600 relative overflow-hidden w-32 md:w-44">
             <div className="flex justify-between text-[9px] md:text-xs uppercase tracking-wider mb-1 font-bold text-red-200">
               <span>HP</span>
-              <span>{character.hp ?? character.currentHp ?? 10}/{character.maxHp ?? 10}</span>
+              <span>{Math.min(character.hp ?? 10, effectiveMaxHp)}/{effectiveMaxHp}</span>
             </div>
             <div className="h-1.5 md:h-2 bg-black/50 rounded-full overflow-hidden">
               <motion.div 
                 className="h-full bg-gradient-to-r from-red-700 to-red-500"
                 initial={{ width: 0 }}
-                animate={{ width: `${((character.hp ?? character.currentHp ?? 10) / (character.maxHp ?? 10)) * 100}%` }}
+                animate={{ width: `${Math.min(100, ((character.hp ?? 10) / effectiveMaxHp) * 100)}%` }}
               />
             </div>
           </div>
@@ -2808,13 +2849,13 @@ export function BattleMapHotbars({ character, tokens, targetedTokenId, character
           <div className="glass-panel p-1.5 md:p-2 rounded border-l-4 border-blue-600 relative overflow-hidden w-32 md:w-44">
             <div className="flex justify-between text-[9px] md:text-xs uppercase tracking-wider mb-1 font-bold text-blue-200">
               <span>Energy</span>
-              <span>{character.energy ?? character.currentEnergy ?? 10}/{character.maxEnergy ?? 10}</span>
+              <span>{Math.min(character.energy ?? 10, effectiveMaxEnergy)}/{effectiveMaxEnergy}</span>
             </div>
             <div className="h-1.5 md:h-2 bg-black/50 rounded-full overflow-hidden">
               <motion.div 
                 className="h-full bg-gradient-to-r from-blue-700 to-blue-500"
                 initial={{ width: 0 }}
-                animate={{ width: `${((character.energy ?? character.currentEnergy ?? 10) / (character.maxEnergy ?? 10)) * 100}%` }}
+                animate={{ width: `${Math.min(100, ((character.energy ?? 10) / effectiveMaxEnergy) * 100)}%` }}
               />
             </div>
           </div>
@@ -9467,11 +9508,10 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                         Feat Tree
                       </Label>
                       {(() => {
-                        // Calculate feat points: 1 point per level, but levels divisible by 3 give 3 points
-                        // Formula: level + 2 * floor(level / 3)
-                        // Level 1: 1, Level 2: 2, Level 3: 5, Level 4: 6, Level 5: 7, Level 6: 10, etc.
+                        // Calculate feat points: 2 base + level + 2 * floor(level / 3)
+                        // Level 1: 3, Level 2: 4, Level 3: 7, Level 4: 8, Level 5: 9, Level 6: 12, etc.
                         const level = liveCharacter.level || 1;
-                        const totalPoints = level + (2 * Math.floor(level / 3));
+                        const totalPoints = 2 + level + (2 * Math.floor(level / 3));
                         // Calculate spent points from unlocked feats
                         const spentPoints = characterFeats.reduce((sum, cf) => {
                           const feat = featTreeData?.feats?.find((f: Feat) => f.id === cf.featId);
@@ -12325,8 +12365,8 @@ function FeatTreeViewerGrid({
   const unlockedFeatIds = new Set(characterFeats.map(cf => cf.featId));
   const { feats, connections } = treeData;
   
-  // Calculate feat points: level + (2 × floor(level/3))
-  const totalFeatPoints = characterLevel + (2 * Math.floor(characterLevel / 3));
+  // Calculate feat points: 2 base + level + (2 × floor(level/3)) = 3 points at level 1
+  const totalFeatPoints = 2 + characterLevel + (2 * Math.floor(characterLevel / 3));
   const spentPoints = feats
     .filter((f: Feat) => unlockedFeatIds.has(f.id))
     .reduce((sum: number, f: Feat) => sum + (f.cost || 1), 0);
