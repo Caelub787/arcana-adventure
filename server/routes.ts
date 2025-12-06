@@ -222,15 +222,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
     
     // Check if origin matches any allowed origin (with partial match support for Replit domains)
-    const isAllowed = !origin || allowedOrigins.some(allowed => 
+    // In production, we allow any HTTPS origin since the app is publicly deployed
+    const isProduction = process.env.NODE_ENV === 'production';
+    const isAllowed = !origin || isProduction || allowedOrigins.some(allowed => 
       origin === allowed || 
       origin.startsWith(allowed) || 
       (allowed.includes('.repl.co') && origin.includes('.repl.co')) ||
       origin.includes('.picard.replit.dev') ||
       origin.includes('.replit.dev') ||
       origin.includes('.replit.app') || // Published apps use .replit.app domain
-      origin.includes('arcanaadventure.com') // Custom domain
+      origin.startsWith('https://') // Allow any HTTPS origin (custom domains)
     );
+    
+    console.log(`[WebSocket] Connection attempt - origin: ${origin}, isProduction: ${isProduction}, isAllowed: ${isAllowed}`);
     
     if (!isAllowed) {
       console.warn(`WebSocket connection rejected - invalid origin: ${origin}`);
