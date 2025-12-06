@@ -2747,9 +2747,9 @@ export function BattleMapHotbars({ character, tokens, targetedTokenId, character
 
   // Fetch feat tree and character feats for bonus calculation
   const { data: featTreeData } = useQuery({
-    queryKey: ['feat-tree', character?.race],
-    queryFn: () => character?.race ? api.getFeatTreeBySpecies(character.race) : Promise.resolve(null),
-    enabled: !!character?.race,
+    queryKey: ['feat-tree', character?.featTree],
+    queryFn: () => character?.featTree ? api.getFeatTree(character.featTree) : Promise.resolve(null),
+    enabled: !!character?.featTree,
   });
 
   const { data: characterFeats = [] } = useQuery({
