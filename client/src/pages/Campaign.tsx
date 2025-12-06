@@ -6,7 +6,7 @@ import { BattlemapDiceOverlay, triggerBattlemapDiceRoll } from "@/components/gam
 import { type AoeTargetState, createInitialAoeState } from "@/lib/aoeHelpers";
 import { RollNotificationContainer, triggerInitiativeNotification } from "@/components/game/RollNotification";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Loader2, Settings, Map as MapIcon, Layers, Trash2, MessageSquare, User, BarChart3, Zap, Backpack, Sparkles, Grid3X3, ScrollText, Swords, Dices } from "lucide-react";
+import { ArrowLeft, Loader2, Settings, Map as MapIcon, Layers, Trash2, MessageSquare, User, BarChart3, Zap, Backpack, Sparkles, Grid3X3, ScrollText, Swords, Dices, Users } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -22,6 +22,8 @@ import { useAuth } from "@/lib/AuthContext";
 import { api, gameWs, type Scene } from "@/lib/api";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
+import { ImageBrowser } from "@/components/ImageBrowser";
+import { Folder, Plus } from "lucide-react";
 
 // Scene Settings Form Component
 function SceneSettingsForm({ scene, onUpdateScene }: { scene: Scene; onUpdateScene: (settings: Partial<Scene>) => void }) {
@@ -34,6 +36,7 @@ function SceneSettingsForm({ scene, onUpdateScene }: { scene: Scene; onUpdateSce
     gridOpacity: scene.gridOpacity ?? 0.4,
     backgroundImage: scene.backgroundImage || '',
   });
+  const [showImageBrowser, setShowImageBrowser] = useState(false);
 
   const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -208,20 +211,42 @@ function SceneSettingsForm({ scene, onUpdateScene }: { scene: Scene; onUpdateSce
       {/* Background Image Upload */}
       <div className="space-y-2">
         <Label htmlFor="bg-image" className="text-stone-300">Background Image</Label>
-        <input
-          type="file"
-          id="bg-image"
-          accept="image/*"
-          onChange={handleImageUpload}
-          className="w-full bg-stone-800 border border-stone-700 text-stone-200 rounded px-3 py-2 text-sm"
-          data-testid="input-background-image"
-        />
+        <div className="flex gap-2">
+          <input
+            type="file"
+            id="bg-image"
+            accept="image/*"
+            onChange={handleImageUpload}
+            className="flex-1 bg-stone-800 border border-stone-700 text-stone-200 rounded px-3 py-2 text-sm"
+            data-testid="input-background-image"
+          />
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setShowImageBrowser(true)}
+            className="border-stone-700 hover:bg-stone-800 text-amber-500"
+            data-testid="button-browse-bg-library"
+          >
+            <Folder className="h-4 w-4 mr-1" />
+            Library
+          </Button>
+        </div>
         {localSettings.backgroundImage && (
           <div className="mt-2 text-xs text-stone-400">
             Image loaded (preview on battlemap)
           </div>
         )}
       </div>
+
+      {/* Image Browser Dialog */}
+      <ImageBrowser
+        open={showImageBrowser}
+        onOpenChange={setShowImageBrowser}
+        onSelect={(imageBase64) => {
+          updateSetting('backgroundImage', imageBase64);
+        }}
+        title="Select Background Image"
+      />
     </div>
   );
 }
@@ -269,6 +294,9 @@ export default function Campaign() {
   // Dice roller state
   const [diceMenuOpen, setDiceMenuOpen] = useState(false);
   const battlemapContainerRef = useRef<HTMLDivElement>(null);
+  
+  // Add Token dialog state
+  const [addTokenDialogOpen, setAddTokenDialogOpen] = useState(false);
   
   // AoE targeting state
   const [aoeTargetState, setAoeTargetState] = useState<AoeTargetState>(createInitialAoeState());
@@ -1373,6 +1401,18 @@ export default function Campaign() {
                   </div>
                 </div>
 
+                {/* Add Token Button */}
+                <div className="pb-2 border-b border-stone-700">
+                  <Button 
+                    variant="secondary" 
+                    className="w-full bg-purple-900/50 hover:bg-purple-800/50 border border-purple-700" 
+                    onClick={() => setAddTokenDialogOpen(true)} 
+                    data-testid="button-add-token-scenes"
+                  >
+                    <Plus className="mr-2 h-4 w-4" /> Add Token to Battlemap
+                  </Button>
+                </div>
+
                 {/* Scenes List */}
                 <div className="space-y-3">
                   <Label className="text-stone-300 font-bold">All Scenes</Label>
@@ -1464,6 +1504,80 @@ export default function Campaign() {
             </ScrollArea>
           </SheetContent>
         </Sheet>
+      )}
+
+      {/* Add Token Dialog */}
+      {role === 'gm' && (
+        <Dialog open={addTokenDialogOpen} onOpenChange={setAddTokenDialogOpen}>
+          <DialogContent className="bg-stone-950 border-stone-800 text-stone-200 max-w-md max-h-[80vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="text-amber-500 font-display text-xl">Add Token to Battlemap</DialogTitle>
+              <DialogDescription className="text-stone-400">
+                Select a character to place on the battlemap
+              </DialogDescription>
+            </DialogHeader>
+            
+            <div className="space-y-2 mt-4">
+              {characters && (characters as any[]).length > 0 ? (
+                (characters as any[]).map((char: any) => (
+                  <div
+                    key={char.id}
+                    className="flex items-center gap-3 p-3 bg-stone-900 border border-stone-800 rounded-lg hover:border-amber-600/50 cursor-pointer transition-colors"
+                    onClick={() => {
+                      handleAddCharacterToken(char);
+                      setAddTokenDialogOpen(false);
+                    }}
+                    data-testid={`select-character-token-${char.id}`}
+                  >
+                    {/* Character Portrait */}
+                    <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-stone-700 flex-shrink-0">
+                      {char.portrait ? (
+                        <img src={char.portrait} alt={char.name} className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="w-full h-full bg-stone-800 flex items-center justify-center">
+                          <Users className="h-6 w-6 text-stone-600" />
+                        </div>
+                      )}
+                    </div>
+                    
+                    {/* Character Info */}
+                    <div className="flex-1 min-w-0">
+                      <div className="font-bold text-stone-100 truncate">{char.name}</div>
+                      <div className="text-xs text-stone-400">
+                        {char.race} {char.class} • Level {char.level || 1}
+                      </div>
+                    </div>
+                    
+                    {/* HP Display */}
+                    <div className="text-right flex-shrink-0">
+                      <div className="text-sm font-bold text-red-400">
+                        {char.currentHp ?? char.maxHp ?? 10}/{char.maxHp ?? 10}
+                      </div>
+                      <div className="text-xs text-stone-500">HP</div>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="text-center py-8 text-stone-500">
+                  <Users className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                  <p>No characters in this campaign</p>
+                  <p className="text-xs mt-1">Create characters first to add them as tokens</p>
+                </div>
+              )}
+            </div>
+            
+            <div className="mt-4 pt-4 border-t border-stone-800">
+              <Button
+                variant="outline"
+                className="w-full bg-stone-800 border-stone-700 hover:bg-stone-700"
+                onClick={() => setAddTokenDialogOpen(false)}
+                data-testid="button-cancel-add-token"
+              >
+                Cancel
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       )}
 
       {/* Game View - Always visible for all campaign members */}

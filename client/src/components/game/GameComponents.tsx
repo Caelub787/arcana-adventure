@@ -4652,11 +4652,8 @@ export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onIn
               )}
 
               <div className="grid grid-cols-2 gap-2">
-                <Button variant="secondary" className="bg-stone-800 hover:bg-stone-700" onClick={() => setAddTokenDialogOpen(true)} data-testid="button-add-token">
+                <Button variant="secondary" className="bg-stone-800 hover:bg-stone-700 col-span-2" onClick={() => setAddTokenDialogOpen(true)} data-testid="button-add-token">
                   <Plus className="mr-2 h-4 w-4" /> Add Token
-                </Button>
-                <Button variant="secondary" className="bg-stone-800 hover:bg-stone-700" onClick={onChangeMap}>
-                  <MapIcon className="mr-2 h-4 w-4" /> Change Map
                 </Button>
                 <Button 
                   variant="secondary" 
