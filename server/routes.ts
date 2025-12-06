@@ -3099,6 +3099,141 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // System Traits routes (admin)
+  app.get("/api/admin/traits", requireAdmin, async (req, res) => {
+    try {
+      const traits = await storage.getSystemTraits();
+      res.json(traits);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch system traits" });
+    }
+  });
+
+  app.get("/api/admin/traits/:id", requireAdmin, async (req, res) => {
+    try {
+      const trait = await storage.getSystemTrait(req.params.id);
+      if (!trait) {
+        return res.status(404).json({ error: "Trait not found" });
+      }
+      res.json(trait);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch trait" });
+    }
+  });
+
+  app.post("/api/admin/traits", requireAdmin, async (req, res) => {
+    try {
+      const trait = await storage.createSystemTrait(req.body);
+      res.json(trait);
+    } catch (err) {
+      res.status(400).json({ error: "Failed to create trait" });
+    }
+  });
+
+  app.put("/api/admin/traits/:id", requireAdmin, async (req, res) => {
+    try {
+      const trait = await storage.updateSystemTrait(req.params.id, req.body);
+      if (!trait) {
+        return res.status(404).json({ error: "Trait not found" });
+      }
+      res.json(trait);
+    } catch (err) {
+      res.status(400).json({ error: "Failed to update trait" });
+    }
+  });
+
+  app.delete("/api/admin/traits/:id", requireAdmin, async (req, res) => {
+    try {
+      await storage.deleteSystemTrait(req.params.id);
+      res.json({ success: true });
+    } catch (err) {
+      res.status(400).json({ error: "Failed to delete trait" });
+    }
+  });
+
+  // Public system traits route (for character sheet)
+  app.get("/api/traits", requireAuth, async (req, res) => {
+    try {
+      const traits = await storage.getSystemTraits();
+      res.json(traits);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch traits" });
+    }
+  });
+
+  // Character traits routes
+  app.get("/api/characters/:characterId/traits", requireAuth, async (req, res) => {
+    try {
+      const character = await storage.getCharacter(req.params.characterId);
+      if (!character) {
+        return res.status(404).json({ error: "Character not found" });
+      }
+      const traits = await storage.getCharacterTraits(req.params.characterId);
+      res.json(traits);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch character traits" });
+    }
+  });
+
+  app.post("/api/characters/:characterId/traits", requireAuth, async (req, res) => {
+    try {
+      const character = await storage.getCharacter(req.params.characterId);
+      if (!character) {
+        return res.status(404).json({ error: "Character not found" });
+      }
+      const trait = await storage.addCharacterTrait({
+        ...req.body,
+        characterId: req.params.characterId
+      });
+      res.json(trait);
+    } catch (err) {
+      res.status(400).json({ error: "Failed to add trait" });
+    }
+  });
+
+  app.patch("/api/characters/:characterId/traits/:traitId", requireAuth, async (req, res) => {
+    try {
+      const trait = await storage.updateCharacterTrait(req.params.traitId, req.body);
+      if (!trait) {
+        return res.status(404).json({ error: "Trait not found" });
+      }
+      res.json(trait);
+    } catch (err) {
+      res.status(400).json({ error: "Failed to update trait" });
+    }
+  });
+
+  app.delete("/api/characters/:characterId/traits/:traitId", requireAuth, async (req, res) => {
+    try {
+      await storage.removeCharacterTrait(req.params.traitId);
+      res.json({ success: true });
+    } catch (err) {
+      res.status(400).json({ error: "Failed to remove trait" });
+    }
+  });
+
+  // Use trait route (decrements remaining uses)
+  app.post("/api/characters/:characterId/traits/:traitId/use", requireAuth, async (req, res) => {
+    try {
+      const trait = await storage.getCharacterTrait(req.params.traitId);
+      if (!trait) {
+        return res.status(404).json({ error: "Trait not found" });
+      }
+      if (trait.characterId !== req.params.characterId) {
+        return res.status(400).json({ error: "Trait does not belong to this character" });
+      }
+      if (trait.currentUses >= trait.usesPerLongRest) {
+        return res.status(400).json({ error: "No uses remaining" });
+      }
+      const updated = await storage.updateCharacterTrait(req.params.traitId, {
+        currentUses: trait.currentUses + 1
+      });
+      res.json(updated);
+    } catch (err) {
+      res.status(400).json({ error: "Failed to use trait" });
+    }
+  });
+
   // Public spell routes (for character sheet and feat effects)
   app.get("/api/spells", requireAuth, async (req, res) => {
     try {

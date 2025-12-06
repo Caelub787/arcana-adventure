@@ -22,7 +22,9 @@ import {
   type SystemSpell, type InsertSystemSpell,
   type SystemSkill, type InsertSystemSkill,
   type CharacterCustomSkill, type InsertCharacterCustomSkill,
-  users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, items, spells, characterPermissions, initiativeEntries, systemSpecies, featTemplates, featTrees, feats, featConnections, characterFeats, systemSpells, systemSkills, characterCustomSkills
+  type SystemTrait, type InsertSystemTrait,
+  type CharacterTrait, type InsertCharacterTrait,
+  users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, items, spells, characterPermissions, initiativeEntries, systemSpecies, featTemplates, featTrees, feats, featConnections, characterFeats, systemSpells, systemSkills, characterCustomSkills, systemTraits, characterTraits
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql, inArray } from "drizzle-orm";
@@ -199,6 +201,21 @@ export interface IStorage {
   addCharacterCustomSkill(skill: InsertCharacterCustomSkill): Promise<CharacterCustomSkill>;
   updateCharacterCustomSkill(id: string, data: Partial<InsertCharacterCustomSkill>): Promise<CharacterCustomSkill | undefined>;
   removeCharacterCustomSkill(id: string): Promise<void>;
+
+  // System Trait operations (admin-defined traits)
+  getSystemTraits(): Promise<SystemTrait[]>;
+  getSystemTrait(id: string): Promise<SystemTrait | undefined>;
+  createSystemTrait(trait: InsertSystemTrait): Promise<SystemTrait>;
+  updateSystemTrait(id: string, data: Partial<InsertSystemTrait>): Promise<SystemTrait | undefined>;
+  deleteSystemTrait(id: string): Promise<void>;
+
+  // Character Trait operations
+  getCharacterTraits(characterId: string): Promise<CharacterTrait[]>;
+  getCharacterTrait(id: string): Promise<CharacterTrait | undefined>;
+  addCharacterTrait(trait: InsertCharacterTrait): Promise<CharacterTrait>;
+  updateCharacterTrait(id: string, data: Partial<InsertCharacterTrait>): Promise<CharacterTrait | undefined>;
+  removeCharacterTrait(id: string): Promise<void>;
+  resetCharacterTraitUses(characterId: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1209,6 +1226,77 @@ export class DatabaseStorage implements IStorage {
 
   async removeCharacterCustomSkill(id: string): Promise<void> {
     await db.delete(characterCustomSkills).where(eq(characterCustomSkills.id, id));
+  }
+
+  // System Trait operations (admin-defined traits)
+  async getSystemTraits(): Promise<SystemTrait[]> {
+    return await db.select()
+      .from(systemTraits)
+      .orderBy(systemTraits.name);
+  }
+
+  async getSystemTrait(id: string): Promise<SystemTrait | undefined> {
+    const [trait] = await db.select()
+      .from(systemTraits)
+      .where(eq(systemTraits.id, id))
+      .limit(1);
+    return trait;
+  }
+
+  async createSystemTrait(trait: InsertSystemTrait): Promise<SystemTrait> {
+    const [created] = await db.insert(systemTraits).values(trait).returning();
+    return created;
+  }
+
+  async updateSystemTrait(id: string, data: Partial<InsertSystemTrait>): Promise<SystemTrait | undefined> {
+    const [updated] = await db.update(systemTraits)
+      .set(data)
+      .where(eq(systemTraits.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteSystemTrait(id: string): Promise<void> {
+    await db.delete(systemTraits).where(eq(systemTraits.id, id));
+  }
+
+  // Character Trait operations
+  async getCharacterTraits(characterId: string): Promise<CharacterTrait[]> {
+    return await db.select()
+      .from(characterTraits)
+      .where(eq(characterTraits.characterId, characterId))
+      .orderBy(characterTraits.name);
+  }
+
+  async getCharacterTrait(id: string): Promise<CharacterTrait | undefined> {
+    const [trait] = await db.select()
+      .from(characterTraits)
+      .where(eq(characterTraits.id, id))
+      .limit(1);
+    return trait;
+  }
+
+  async addCharacterTrait(trait: InsertCharacterTrait): Promise<CharacterTrait> {
+    const [created] = await db.insert(characterTraits).values(trait).returning();
+    return created;
+  }
+
+  async updateCharacterTrait(id: string, data: Partial<InsertCharacterTrait>): Promise<CharacterTrait | undefined> {
+    const [updated] = await db.update(characterTraits)
+      .set(data)
+      .where(eq(characterTraits.id, id))
+      .returning();
+    return updated;
+  }
+
+  async removeCharacterTrait(id: string): Promise<void> {
+    await db.delete(characterTraits).where(eq(characterTraits.id, id));
+  }
+
+  async resetCharacterTraitUses(characterId: string): Promise<void> {
+    await db.update(characterTraits)
+      .set({ currentUses: 0 })
+      .where(eq(characterTraits.characterId, characterId));
   }
 }
 

@@ -7516,6 +7516,258 @@ function CustomSkillEditForm({
   );
 }
 
+// Trait Form for adding traits from library or custom
+function TraitForm({ 
+  systemTraits, 
+  existingTraitIds, 
+  onSave, 
+  isLoading 
+}: { 
+  systemTraits: SystemTrait[]; 
+  existingTraitIds: (string | undefined)[];
+  onSave: (data: Partial<CharacterTrait>) => void; 
+  isLoading?: boolean;
+}) {
+  const [mode, setMode] = useState<'library' | 'custom'>('library');
+  const [selectedTraitId, setSelectedTraitId] = useState<string>('');
+  const [customName, setCustomName] = useState('');
+  const [customDescription, setCustomDescription] = useState('');
+  const [customAttribute, setCustomAttribute] = useState('wit');
+  const [usesPerLongRest, setUsesPerLongRest] = useState(1);
+
+  const availableTraits = systemTraits.filter(t => !existingTraitIds.includes(t.id));
+
+  const handleSave = () => {
+    if (mode === 'library') {
+      const trait = systemTraits.find(t => t.id === selectedTraitId);
+      if (!trait) {
+        toast({ title: 'Error', description: 'Please select a trait', variant: 'destructive' });
+        return;
+      }
+      onSave({
+        systemTraitId: trait.id,
+        name: trait.name,
+        description: trait.description,
+        parentAttribute: trait.parentAttribute,
+        usesPerLongRest: trait.usesPerLongRest,
+        currentUses: 0
+      });
+    } else {
+      if (!customName.trim()) {
+        toast({ title: 'Error', description: 'Please enter a trait name', variant: 'destructive' });
+        return;
+      }
+      onSave({
+        name: customName.trim(),
+        description: customDescription.trim() || undefined,
+        parentAttribute: customAttribute,
+        usesPerLongRest: usesPerLongRest,
+        currentUses: 0
+      });
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <Tabs value={mode} onValueChange={(v) => setMode(v as 'library' | 'custom')}>
+        <TabsList className="w-full bg-stone-800">
+          <TabsTrigger value="library" className="flex-1">From Library</TabsTrigger>
+          <TabsTrigger value="custom" className="flex-1">Custom</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="library" className="space-y-4">
+          {availableTraits.length === 0 ? (
+            <div className="text-center py-4 text-stone-500">
+              No traits available in library
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <Label className="text-stone-300">Select Trait</Label>
+              <Select value={selectedTraitId} onValueChange={setSelectedTraitId}>
+                <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-system-trait">
+                  <SelectValue placeholder="Choose a trait..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableTraits.map((trait) => (
+                    <SelectItem key={trait.id} value={trait.id}>
+                      <div className="flex items-center gap-2">
+                        <span>{trait.name}</span>
+                        <span className="text-xs text-stone-500 capitalize">({trait.parentAttribute})</span>
+                        <span className="text-xs text-rose-400">{trait.usesPerLongRest}/rest</span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {selectedTraitId && (
+                <div className="p-3 bg-stone-800 rounded-lg border border-stone-700 text-sm text-stone-400">
+                  {systemTraits.find(t => t.id === selectedTraitId)?.description || 'No description'}
+                </div>
+              )}
+            </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="custom" className="space-y-4">
+          <div>
+            <Label className="text-stone-300">Trait Name</Label>
+            <Input
+              value={customName}
+              onChange={(e) => setCustomName(e.target.value)}
+              placeholder="Enter trait name..."
+              className="bg-stone-800 border-stone-700 mt-1"
+              data-testid="input-custom-trait-name"
+            />
+          </div>
+
+          <div>
+            <Label className="text-stone-300">Description</Label>
+            <Textarea
+              value={customDescription}
+              onChange={(e) => setCustomDescription(e.target.value)}
+              placeholder="Describe the trait..."
+              className="bg-stone-800 border-stone-700 mt-1"
+              rows={2}
+              data-testid="input-custom-trait-description"
+            />
+          </div>
+
+          <div>
+            <Label className="text-stone-300">Parent Attribute</Label>
+            <Select value={customAttribute} onValueChange={setCustomAttribute}>
+              <SelectTrigger className="bg-stone-800 border-stone-700 mt-1" data-testid="select-custom-trait-attribute">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {PARENT_ATTRIBUTE_OPTIONS.map((attr) => (
+                  <SelectItem key={attr} value={attr}>
+                    {attr.charAt(0).toUpperCase() + attr.slice(1)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div>
+            <Label className="text-stone-300">Uses Per Long Rest</Label>
+            <Input
+              type="number"
+              min={1}
+              value={usesPerLongRest}
+              onChange={(e) => setUsesPerLongRest(Math.max(1, parseInt(e.target.value) || 1))}
+              className="bg-stone-800 border-stone-700 mt-1"
+              data-testid="input-custom-trait-uses"
+            />
+          </div>
+        </TabsContent>
+      </Tabs>
+
+      <div className="flex justify-end gap-2 pt-2">
+        <Button
+          onClick={handleSave}
+          disabled={isLoading}
+          className="bg-rose-700 hover:bg-rose-600"
+          data-testid="button-add-trait-confirm"
+        >
+          {isLoading ? 'Adding...' : 'Add Trait'}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+// Trait Edit Form
+function TraitEditForm({ 
+  trait, 
+  onSave, 
+  onDelete,
+  isLoading 
+}: { 
+  trait: CharacterTrait; 
+  onSave: (data: Partial<CharacterTrait>) => void;
+  onDelete: () => void;
+  isLoading?: boolean;
+}) {
+  const [description, setDescription] = useState(trait.description || '');
+  const [usesPerLongRest, setUsesPerLongRest] = useState(trait.usesPerLongRest);
+  const [currentUses, setCurrentUses] = useState(trait.currentUses);
+
+  const handleSave = () => {
+    onSave({
+      description: description.trim() || undefined,
+      usesPerLongRest: usesPerLongRest,
+      currentUses: currentUses
+    });
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="p-3 bg-stone-800 rounded-lg border border-stone-700">
+        <div className="font-medium text-rose-400">{trait.name}</div>
+        <div className="text-xs text-stone-500 capitalize">Parent: {trait.parentAttribute}</div>
+      </div>
+
+      <div>
+        <Label className="text-stone-300">Description (optional)</Label>
+        <Textarea
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          placeholder="Add notes about this trait..."
+          className="bg-stone-800 border-stone-700 mt-1"
+          rows={2}
+          data-testid="input-edit-trait-description"
+        />
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <Label className="text-stone-300">Uses Per Long Rest</Label>
+          <Input
+            type="number"
+            min={1}
+            value={usesPerLongRest}
+            onChange={(e) => setUsesPerLongRest(Math.max(1, parseInt(e.target.value) || 1))}
+            className="bg-stone-800 border-stone-700 mt-1"
+            data-testid="input-edit-trait-uses-max"
+          />
+        </div>
+        <div>
+          <Label className="text-stone-300">Current Uses</Label>
+          <Input
+            type="number"
+            min={0}
+            max={usesPerLongRest}
+            value={currentUses}
+            onChange={(e) => setCurrentUses(Math.max(0, Math.min(usesPerLongRest, parseInt(e.target.value) || 0)))}
+            className="bg-stone-800 border-stone-700 mt-1"
+            data-testid="input-edit-trait-uses-current"
+          />
+        </div>
+      </div>
+
+      <div className="flex justify-between pt-2">
+        <Button
+          variant="destructive"
+          onClick={onDelete}
+          className="bg-red-700 hover:bg-red-600"
+          data-testid="button-remove-trait"
+        >
+          <Trash2 className="h-4 w-4 mr-1" />
+          Remove
+        </Button>
+        <Button
+          onClick={handleSave}
+          disabled={isLoading}
+          className="bg-rose-700 hover:bg-rose-600"
+          data-testid="button-save-trait"
+        >
+          {isLoading ? 'Saving...' : 'Save'}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, defaultTab = "overview", campaignId, sceneId }: CharacterSheetProps) {
   const [biography, setBiography] = useState(character?.biography || "");
   const [gmNotes, setGmNotes] = useState(character?.gmNotes || "");
@@ -7675,9 +7927,26 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
     enabled: !!character?.id,
   });
 
+  // Fetch system traits (admin-defined traits)
+  const { data: systemTraits = [] } = useQuery({
+    queryKey: ['public-traits'],
+    queryFn: () => api.getPublicTraits(),
+  });
+
+  // Fetch character's traits
+  const { data: characterTraits = [], refetch: refetchCharacterTraits } = useQuery({
+    queryKey: ['character-traits', character?.id],
+    queryFn: () => character?.id ? api.getCharacterTraits(character.id) : Promise.resolve([]),
+    enabled: !!character?.id,
+  });
+
   // State for custom skill management
   const [showAddCustomSkill, setShowAddCustomSkill] = useState(false);
   const [editingCustomSkill, setEditingCustomSkill] = useState<CharacterCustomSkill | null>(null);
+  
+  // State for trait management
+  const [showAddTrait, setShowAddTrait] = useState(false);
+  const [editingTrait, setEditingTrait] = useState<CharacterTrait | null>(null);
 
   // Calculate bonuses from unlocked feats
   const featBonuses = useMemo(() => {
@@ -8218,6 +8487,82 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
     }
   });
 
+  // Trait mutations
+  const addTraitMutation = useMutation({
+    mutationFn: (traitData: Partial<CharacterTrait>) => api.addCharacterTrait(character.id, traitData),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['character-traits', character.id] });
+      setShowAddTrait(false);
+      toast({
+        title: "Trait Added",
+        description: "Trait has been added to character",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to add trait",
+        variant: "destructive",
+      });
+    }
+  });
+
+  const updateTraitMutation = useMutation({
+    mutationFn: ({ traitId, data }: { traitId: string; data: Partial<CharacterTrait> }) => 
+      api.updateCharacterTrait(character.id, traitId, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['character-traits', character.id] });
+      setEditingTrait(null);
+      toast({
+        title: "Trait Updated",
+        description: "Trait has been updated",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to update trait",
+        variant: "destructive",
+      });
+    }
+  });
+
+  const removeTraitMutation = useMutation({
+    mutationFn: (traitId: string) => api.removeCharacterTrait(character.id, traitId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['character-traits', character.id] });
+      toast({
+        title: "Trait Removed",
+        description: "Trait has been removed from character",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to remove trait",
+        variant: "destructive",
+      });
+    }
+  });
+
+  const useTraitMutation = useMutation({
+    mutationFn: (traitId: string) => api.useCharacterTrait(character.id, traitId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['character-traits', character.id] });
+      toast({
+        title: "Trait Used",
+        description: "Trait use recorded",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to use trait",
+        variant: "destructive",
+      });
+    }
+  });
+
   // Item mutations
   const createItemMutation = useMutation({
     mutationFn: (itemData: any) => api.createItem(character.id, itemData),
@@ -8442,6 +8787,8 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
         queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${campaignId}/characters`] });
         queryClient.invalidateQueries({ queryKey: ['items', character.id] });
       }
+      // Reset trait uses after long rest
+      queryClient.invalidateQueries({ queryKey: ['character-traits', character.id] });
       const exhaustionMsg = result.exhaustionRecovered > 0 ? ` Exhaustion reduced by ${result.exhaustionRecovered}.` : '';
       toast({ 
         title: "Long Rest Complete", 
@@ -9950,6 +10297,179 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                       }
                     }}
                     isLoading={updateCustomSkillMutation.isPending}
+                  />
+                </DialogContent>
+              </Dialog>
+            )}
+
+            {/* Traits Section */}
+            <Card className="bg-stone-800 border-stone-700 mt-4">
+              <CardHeader className="pb-2">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-rose-500 text-sm font-medium flex items-center gap-2">
+                    <Star className="h-4 w-4" />
+                    Traits
+                  </CardTitle>
+                  {(isOwner || isGM) && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setShowAddTrait(true)}
+                      className="h-7 text-xs"
+                      data-testid="button-add-trait"
+                    >
+                      <Plus className="h-3 w-3 mr-1" />
+                      Add Trait
+                    </Button>
+                  )}
+                </div>
+              </CardHeader>
+              <CardContent className="pt-2">
+                {characterTraits.length === 0 ? (
+                  <div className="text-center py-4 text-stone-500 text-sm">
+                    No traits added yet
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    {characterTraits.map((trait: CharacterTrait) => {
+                      const parentAttr = trait.parentAttribute || 'wit';
+                      const attrValue = typeof liveCharacter[parentAttr as keyof typeof liveCharacter] === 'number' 
+                        ? (liveCharacter[parentAttr as keyof typeof liveCharacter] as number) 
+                        : 0;
+                      const totalMod = attrValue;
+                      const usesRemaining = trait.usesPerLongRest - trait.currentUses;
+                      const canUse = trait.currentUses < trait.usesPerLongRest;
+                      
+                      return (
+                        <Badge 
+                          key={trait.id}
+                          variant="outline" 
+                          className="justify-between p-3 bg-stone-900 border-rose-700 cursor-pointer hover:bg-stone-800 transition-colors group relative"
+                          onPointerDown={() => {
+                            isLongPressRef.current = false;
+                            longPressTimerRef.current = setTimeout(() => {
+                              isLongPressRef.current = true;
+                              openRollPanel(trait.name, totalMod, 'skill');
+                            }, 500);
+                          }}
+                          onPointerUp={() => {
+                            clearTimeout(longPressTimerRef.current);
+                          }}
+                          onPointerLeave={() => {
+                            clearTimeout(longPressTimerRef.current);
+                          }}
+                          onClick={() => {
+                            const cardKey = `trait-${trait.id}`;
+                            const now = Date.now();
+                            const timeSinceLastClick = now - lastClickTimeRef.current;
+                            const sameCard = lastClickedCardRef.current === cardKey;
+                            
+                            if (timeSinceLastClick < 400 && timeSinceLastClick > 0 && sameCard) {
+                              const existingTimer = clickTimersRef.current.get(cardKey);
+                              if (existingTimer) clearTimeout(existingTimer);
+                              clickTimersRef.current.delete(cardKey);
+                              lastClickTimeRef.current = 0;
+                              lastClickedCardRef.current = null;
+                              doubleClickDetectedRef.current = true;
+                              openRollPanel(trait.name, totalMod, 'skill');
+                              setTimeout(() => { doubleClickDetectedRef.current = false; }, 100);
+                            } else {
+                              lastClickTimeRef.current = now;
+                              lastClickedCardRef.current = cardKey;
+                              doubleClickDetectedRef.current = false;
+                              const existingTimer = clickTimersRef.current.get(cardKey);
+                              if (existingTimer) clearTimeout(existingTimer);
+                              const timer = setTimeout(() => {
+                                if (!isLongPressRef.current && !doubleClickDetectedRef.current) {
+                                  handleRoll(trait.name, totalMod, 0, 'none', true);
+                                }
+                                clickTimersRef.current.delete(cardKey);
+                              }, 400);
+                              clickTimersRef.current.set(cardKey, timer);
+                            }
+                          }}
+                          data-testid={`badge-trait-${trait.id}`}
+                        >
+                          <div className="flex flex-col flex-1">
+                            <span className="text-xs text-rose-300">{trait.name}</span>
+                            <div className="flex items-center gap-1 text-[10px] text-stone-500">
+                              <span className="capitalize">{parentAttr}</span>
+                              <span>•</span>
+                              <span className={canUse ? 'text-green-400' : 'text-red-400'}>
+                                {usesRemaining}/{trait.usesPerLongRest} uses
+                              </span>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            {(isOwner || isGM) && (
+                              <>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity"
+                                  disabled={!canUse || useTraitMutation.isPending}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    useTraitMutation.mutate(trait.id);
+                                  }}
+                                  data-testid={`button-use-trait-${trait.id}`}
+                                >
+                                  <Zap className="h-3 w-3" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setEditingTrait(trait);
+                                  }}
+                                  data-testid={`button-edit-trait-${trait.id}`}
+                                >
+                                  <Pencil className="h-3 w-3" />
+                                </Button>
+                              </>
+                            )}
+                          </div>
+                        </Badge>
+                      );
+                    })}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Add Trait Dialog */}
+            <Dialog open={showAddTrait} onOpenChange={setShowAddTrait}>
+              <DialogContent className="bg-stone-900 border-stone-700 max-w-md">
+                <DialogHeader>
+                  <DialogTitle className="text-rose-500">Add Trait</DialogTitle>
+                </DialogHeader>
+                <TraitForm
+                  systemTraits={systemTraits}
+                  existingTraitIds={characterTraits.map((ct: CharacterTrait) => ct.systemTraitId).filter(Boolean)}
+                  onSave={(data) => addTraitMutation.mutate(data)}
+                  isLoading={addTraitMutation.isPending}
+                />
+              </DialogContent>
+            </Dialog>
+
+            {/* Edit Trait Dialog */}
+            {editingTrait && (
+              <Dialog open={!!editingTrait} onOpenChange={() => setEditingTrait(null)}>
+                <DialogContent className="bg-stone-900 border-stone-700 max-w-md">
+                  <DialogHeader>
+                    <DialogTitle className="text-rose-500">Edit Trait</DialogTitle>
+                  </DialogHeader>
+                  <TraitEditForm
+                    trait={editingTrait}
+                    onSave={(data) => updateTraitMutation.mutate({ traitId: editingTrait.id, data })}
+                    onDelete={() => {
+                      if (confirm('Are you sure you want to remove this trait?')) {
+                        removeTraitMutation.mutate(editingTrait.id);
+                      }
+                    }}
+                    isLoading={updateTraitMutation.isPending}
                   />
                 </DialogContent>
               </Dialog>

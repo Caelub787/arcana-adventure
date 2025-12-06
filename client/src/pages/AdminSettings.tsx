@@ -2,7 +2,7 @@ import { useState, useRef, useMemo, useCallback, useEffect } from 'react';
 import { useLocation } from 'wouter';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, useMotionValue } from 'framer-motion';
-import { api, type Item, type SystemSpecies, type FeatTree, type Feat, type FeatConnection, type FeatTreeWithData, type FeatTemplate, type SystemSpell, type SystemSkill } from '@/lib/api';
+import { api, type Item, type SystemSpecies, type FeatTree, type Feat, type FeatConnection, type FeatTreeWithData, type FeatTemplate, type SystemSpell, type SystemSkill, type SystemTrait } from '@/lib/api';
 import { useAuth } from '@/lib/AuthContext';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { Button } from '@/components/ui/button';
@@ -20,7 +20,7 @@ import { toast } from '@/hooks/use-toast';
 import { ArrowLeft, Plus, Pencil, Trash2, Sword, Shield, Package, Sparkles, Box, Coins, Search, Users, User, GitBranch, Library, Link, X, GripVertical, Star, Zap, Heart, ShieldCheck, BookOpen, RefreshCw, ZoomIn, ZoomOut } from 'lucide-react';
 import { ImageBrowser } from '@/components/ImageBrowser';
 
-type AdminView = 'dashboard' | 'items' | 'species' | 'spells' | 'skills' | 'feat-trees';
+type AdminView = 'dashboard' | 'items' | 'species' | 'spells' | 'skills' | 'traits' | 'feat-trees';
 
 const itemTypeIcons: Record<string, any> = {
   weapon: Sword,
@@ -66,6 +66,10 @@ export default function AdminSettings() {
   const [editingSkill, setEditingSkill] = useState<SystemSkill | null>(null);
   const [skillSearchQuery, setSkillSearchQuery] = useState('');
 
+  const [showAddTrait, setShowAddTrait] = useState(false);
+  const [editingTrait, setEditingTrait] = useState<SystemTrait | null>(null);
+  const [traitSearchQuery, setTraitSearchQuery] = useState('');
+
   const { data: systemItems = [], isLoading: itemsLoading } = useQuery({
     queryKey: ['system-items'],
     queryFn: () => api.getSystemItems(),
@@ -88,6 +92,12 @@ export default function AdminSettings() {
     queryKey: ['system-skills'],
     queryFn: () => api.getSystemSkills(),
     enabled: isAdmin && currentView === 'skills',
+  });
+
+  const { data: systemTraits = [], isLoading: traitsLoading } = useQuery({
+    queryKey: ['system-traits'],
+    queryFn: () => api.getSystemTraits(),
+    enabled: isAdmin && currentView === 'traits',
   });
 
   const { data: allFeatTrees = [] } = useQuery({
@@ -236,6 +246,41 @@ export default function AdminSettings() {
     },
   });
 
+  const createTraitMutation = useMutation({
+    mutationFn: (trait: Partial<SystemTrait>) => api.createSystemTrait(trait),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['system-traits'] });
+      setShowAddTrait(false);
+      toast({ title: 'Trait Created', description: 'System trait created successfully' });
+    },
+    onError: (error: any) => {
+      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    },
+  });
+
+  const updateTraitMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Partial<SystemTrait> }) => api.updateSystemTrait(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['system-traits'] });
+      setEditingTrait(null);
+      toast({ title: 'Trait Updated', description: 'System trait updated successfully' });
+    },
+    onError: (error: any) => {
+      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    },
+  });
+
+  const deleteTraitMutation = useMutation({
+    mutationFn: (id: string) => api.deleteSystemTrait(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['system-traits'] });
+      toast({ title: 'Trait Deleted', description: 'System trait deleted successfully' });
+    },
+    onError: (error: any) => {
+      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    },
+  });
+
   if (!isAdmin) {
     return (
       <div className="min-h-screen bg-stone-950 text-stone-200 flex items-center justify-center">
@@ -254,6 +299,7 @@ export default function AdminSettings() {
   const debouncedSpeciesSearchQuery = useDebouncedValue(speciesSearchQuery, 150);
   const debouncedSpellSearchQuery = useDebouncedValue(spellSearchQuery, 150);
   const debouncedSkillSearchQuery = useDebouncedValue(skillSearchQuery, 150);
+  const debouncedTraitSearchQuery = useDebouncedValue(traitSearchQuery, 150);
   
   const filteredItems = useMemo(() => {
     return systemItems.filter((item: Item) => {
@@ -285,6 +331,13 @@ export default function AdminSettings() {
     });
   }, [systemSkills, debouncedSkillSearchQuery]);
 
+  const filteredTraits = useMemo(() => {
+    return systemTraits.filter((trait: SystemTrait) => {
+      return trait.name.toLowerCase().includes(debouncedTraitSearchQuery.toLowerCase()) ||
+             (trait.description?.toLowerCase().includes(debouncedTraitSearchQuery.toLowerCase()));
+    });
+  }, [systemTraits, debouncedTraitSearchQuery]);
+
   const handleBackNavigation = () => {
     if (currentView === 'dashboard') {
       setLocation('/');
@@ -313,7 +366,8 @@ export default function AdminSettings() {
                currentView === 'items' ? 'System Items' :
                currentView === 'species' ? 'Species / Races' : 
                currentView === 'spells' ? 'Spells' : 
-               currentView === 'skills' ? 'Custom Skills' : 'Feat Trees'}
+               currentView === 'skills' ? 'Custom Skills' : 
+               currentView === 'traits' ? 'Traits' : 'Feat Trees'}
             </p>
           </div>
           <div className="w-[200px]">
@@ -398,6 +452,22 @@ export default function AdminSettings() {
           />
         )}
 
+        {currentView === 'traits' && (
+          <TraitsView
+            traits={filteredTraits}
+            isLoading={traitsLoading}
+            searchQuery={traitSearchQuery}
+            setSearchQuery={setTraitSearchQuery}
+            onAddTrait={() => setShowAddTrait(true)}
+            onEditTrait={setEditingTrait}
+            onDeleteTrait={(id) => {
+              if (confirm('Are you sure you want to delete this trait?')) {
+                deleteTraitMutation.mutate(id);
+              }
+            }}
+          />
+        )}
+
         {currentView === 'feat-trees' && (
           <FeatTreesView />
         )}
@@ -471,6 +541,23 @@ export default function AdminSettings() {
             isLoading={updateSkillMutation.isPending}
           />
         )}
+
+        <TraitFormDialog
+          open={showAddTrait}
+          onOpenChange={setShowAddTrait}
+          onSave={(data) => createTraitMutation.mutate(data)}
+          isLoading={createTraitMutation.isPending}
+        />
+
+        {editingTrait && (
+          <TraitFormDialog
+            open={!!editingTrait}
+            onOpenChange={() => setEditingTrait(null)}
+            onSave={(data) => updateTraitMutation.mutate({ id: editingTrait.id, data })}
+            initialData={editingTrait}
+            isLoading={updateTraitMutation.isPending}
+          />
+        )}
       </div>
     </div>
   );
@@ -539,6 +626,22 @@ function DashboardView({ onNavigate }: { onNavigate: (view: AdminView) => void }
           <CardTitle className="text-cyan-500">Custom Skills</CardTitle>
           <CardDescription className="text-stone-400">
             Create custom skills that can be added to character sheets
+          </CardDescription>
+        </CardHeader>
+      </Card>
+
+      <Card 
+        className="bg-stone-900 border-stone-700 cursor-pointer hover:border-amber-600 transition-colors"
+        onClick={() => onNavigate('traits')}
+        data-testid="card-system-traits"
+      >
+        <CardHeader>
+          <div className="h-12 w-12 rounded-lg bg-rose-700/20 flex items-center justify-center mb-2">
+            <Star className="h-6 w-6 text-rose-500" />
+          </div>
+          <CardTitle className="text-rose-500">Traits</CardTitle>
+          <CardDescription className="text-stone-400">
+            Create traits with limited uses that reset on long rest
           </CardDescription>
         </CardHeader>
       </Card>
@@ -1122,6 +1225,256 @@ function SkillFormDialog({ open, onOpenChange, onSave, initialData, isLoading }:
             disabled={isLoading}
             className="bg-cyan-700 hover:bg-cyan-600"
             data-testid="button-save-skill"
+          >
+            {isLoading ? 'Saving...' : (initialData ? 'Update' : 'Create')}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+interface TraitsViewProps {
+  traits: SystemTrait[];
+  isLoading: boolean;
+  searchQuery: string;
+  setSearchQuery: (q: string) => void;
+  onAddTrait: () => void;
+  onEditTrait: (trait: SystemTrait) => void;
+  onDeleteTrait: (id: string) => void;
+}
+
+function TraitsView({ traits, isLoading, searchQuery, setSearchQuery, onAddTrait, onEditTrait, onDeleteTrait }: TraitsViewProps) {
+  return (
+    <Card className="bg-stone-900 border-stone-700">
+      <CardHeader className="flex flex-row items-center justify-between">
+        <CardTitle className="text-rose-500">Traits</CardTitle>
+        <Button
+          onClick={onAddTrait}
+          className="bg-rose-700 hover:bg-rose-600"
+          data-testid="button-add-trait"
+        >
+          <Plus className="h-4 w-4 mr-2" />
+          Add Trait
+        </Button>
+      </CardHeader>
+      <CardContent>
+        <div className="mb-4">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-500" />
+            <Input
+              placeholder="Search traits..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9 bg-stone-800 border-stone-700"
+              data-testid="input-search-traits"
+            />
+          </div>
+        </div>
+
+        {isLoading ? (
+          <div className="text-center py-12 text-stone-400">Loading traits...</div>
+        ) : traits.length === 0 ? (
+          <div className="text-center py-12 text-stone-400">
+            <Star className="h-12 w-12 mx-auto mb-3 opacity-50" />
+            <p className="font-bold">No traits found</p>
+            <p className="text-sm mt-2">Create traits with limited uses that reset on long rest</p>
+          </div>
+        ) : (
+          <ScrollArea className="h-[500px]">
+            <div className="space-y-2">
+              {traits.map((trait: SystemTrait) => (
+                <div
+                  key={trait.id}
+                  className="flex items-center gap-4 p-3 rounded-lg bg-stone-800 border border-stone-700 hover:border-stone-600"
+                  data-testid={`trait-row-${trait.id}`}
+                >
+                  <div className="h-12 w-12 rounded bg-stone-700 flex items-center justify-center overflow-hidden">
+                    <Star className="h-6 w-6 text-rose-400" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium truncate">{trait.name}</span>
+                      <Badge className={`bg-stone-700 ${parentAttributeColors[trait.parentAttribute] || 'text-stone-300'} text-xs`}>
+                        {trait.parentAttribute.charAt(0).toUpperCase() + trait.parentAttribute.slice(1)}
+                      </Badge>
+                      <Badge className="bg-rose-700 text-xs">
+                        {trait.usesPerLongRest} use{trait.usesPerLongRest !== 1 ? 's' : ''}/rest
+                      </Badge>
+                    </div>
+                    {trait.description && (
+                      <div className="text-sm text-stone-400 truncate">
+                        {trait.description}
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => onEditTrait(trait)}
+                      className="text-stone-400 hover:text-rose-500"
+                      data-testid={`button-edit-trait-${trait.id}`}
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => onDeleteTrait(trait.id)}
+                      className="text-stone-400 hover:text-red-500"
+                      data-testid={`button-delete-trait-${trait.id}`}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </ScrollArea>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+interface TraitFormDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onSave: (data: Partial<SystemTrait>) => void;
+  initialData?: SystemTrait;
+  isLoading?: boolean;
+}
+
+function TraitFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: TraitFormDialogProps) {
+  const [formData, setFormData] = useState<{
+    name: string;
+    description: string;
+    parentAttribute: string;
+    usesPerLongRest: number;
+  }>({
+    name: initialData?.name || '',
+    description: initialData?.description || '',
+    parentAttribute: initialData?.parentAttribute || 'wit',
+    usesPerLongRest: initialData?.usesPerLongRest || 1,
+  });
+
+  useEffect(() => {
+    if (initialData) {
+      setFormData({
+        name: initialData.name || '',
+        description: initialData.description || '',
+        parentAttribute: initialData.parentAttribute || 'wit',
+        usesPerLongRest: initialData.usesPerLongRest || 1,
+      });
+    } else {
+      setFormData({
+        name: '',
+        description: '',
+        parentAttribute: 'wit',
+        usesPerLongRest: 1,
+      });
+    }
+  }, [initialData, open]);
+
+  const handleSave = () => {
+    if (!formData.name.trim()) {
+      toast({ title: 'Error', description: 'Trait name is required', variant: 'destructive' });
+      return;
+    }
+    onSave({
+      name: formData.name.trim(),
+      description: formData.description.trim() || undefined,
+      parentAttribute: formData.parentAttribute,
+      usesPerLongRest: formData.usesPerLongRest,
+    });
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="bg-stone-900 border-stone-700 max-w-md">
+        <DialogHeader>
+          <DialogTitle className="text-rose-500">
+            {initialData ? 'Edit Trait' : 'Create Trait'}
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          <div>
+            <Label className="text-stone-300">Trait Name</Label>
+            <Input
+              value={formData.name}
+              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              placeholder="e.g. Second Wind"
+              className="bg-stone-800 border-stone-700 mt-1"
+              data-testid="input-trait-name"
+            />
+          </div>
+
+          <div>
+            <Label className="text-stone-300">Description</Label>
+            <Textarea
+              value={formData.description}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              placeholder="Describe what this trait does..."
+              className="bg-stone-800 border-stone-700 mt-1"
+              rows={3}
+              data-testid="input-trait-description"
+            />
+          </div>
+
+          <div>
+            <Label className="text-stone-300">Parent Attribute</Label>
+            <Select
+              value={formData.parentAttribute}
+              onValueChange={(value) => setFormData({ ...formData, parentAttribute: value })}
+            >
+              <SelectTrigger className="bg-stone-800 border-stone-700 mt-1" data-testid="select-trait-attribute">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {parentAttributeOptions.map((attr) => (
+                  <SelectItem key={attr} value={attr}>
+                    {attr.charAt(0).toUpperCase() + attr.slice(1)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-stone-500 mt-1">
+              The parent attribute determines which stat modifier is added to trait rolls
+            </p>
+          </div>
+
+          <div>
+            <Label className="text-stone-300">Uses Per Long Rest</Label>
+            <Input
+              type="number"
+              min={1}
+              value={formData.usesPerLongRest}
+              onChange={(e) => setFormData({ ...formData, usesPerLongRest: Math.max(1, parseInt(e.target.value) || 1) })}
+              className="bg-stone-800 border-stone-700 mt-1"
+              data-testid="input-trait-uses"
+            />
+            <p className="text-xs text-stone-500 mt-1">
+              How many times this trait can be used before requiring a long rest
+            </p>
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            className="border-stone-700"
+            data-testid="button-cancel-trait"
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={handleSave}
+            disabled={isLoading}
+            className="bg-rose-700 hover:bg-rose-600"
+            data-testid="button-save-trait"
           >
             {isLoading ? 'Saving...' : (initialData ? 'Update' : 'Create')}
           </Button>

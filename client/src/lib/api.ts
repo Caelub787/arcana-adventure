@@ -358,6 +358,27 @@ export interface CampaignBan {
   username: string;
 }
 
+export interface SystemTrait {
+  id: string;
+  name: string;
+  description?: string;
+  parentAttribute: string;
+  usesPerLongRest: number;
+  createdAt: string;
+}
+
+export interface CharacterTrait {
+  id: string;
+  characterId: string;
+  systemTraitId?: string;
+  name: string;
+  description?: string;
+  parentAttribute: string;
+  usesPerLongRest: number;
+  currentUses: number;
+  createdAt: string;
+}
+
 class ApiClient {
   private baseUrl = '/api';
 
@@ -831,6 +852,67 @@ class ApiClient {
 
   async removeCharacterCustomSkill(characterId: string, skillId: string): Promise<void> {
     return this.request(`/characters/${characterId}/custom-skills/${skillId}`, { method: 'DELETE' });
+  }
+
+  // Admin System Traits
+  async getSystemTraits(): Promise<SystemTrait[]> {
+    return this.request('/admin/traits');
+  }
+
+  async getSystemTrait(id: string): Promise<SystemTrait> {
+    return this.request(`/admin/traits/${id}`);
+  }
+
+  async createSystemTrait(trait: Partial<SystemTrait>): Promise<SystemTrait> {
+    return this.request('/admin/traits', {
+      method: 'POST',
+      body: JSON.stringify(trait),
+    });
+  }
+
+  async updateSystemTrait(id: string, data: Partial<SystemTrait>): Promise<SystemTrait> {
+    return this.request(`/admin/traits/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteSystemTrait(id: string): Promise<void> {
+    return this.request(`/admin/traits/${id}`, { method: 'DELETE' });
+  }
+
+  // Public traits (for character sheet)
+  async getPublicTraits(): Promise<SystemTrait[]> {
+    return this.request('/traits');
+  }
+
+  // Character Traits
+  async getCharacterTraits(characterId: string): Promise<CharacterTrait[]> {
+    return this.request(`/characters/${characterId}/traits`);
+  }
+
+  async addCharacterTrait(characterId: string, trait: Partial<CharacterTrait>): Promise<CharacterTrait> {
+    return this.request(`/characters/${characterId}/traits`, {
+      method: 'POST',
+      body: JSON.stringify(trait),
+    });
+  }
+
+  async updateCharacterTrait(characterId: string, traitId: string, data: Partial<CharacterTrait>): Promise<CharacterTrait> {
+    return this.request(`/characters/${characterId}/traits/${traitId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async removeCharacterTrait(characterId: string, traitId: string): Promise<void> {
+    return this.request(`/characters/${characterId}/traits/${traitId}`, { method: 'DELETE' });
+  }
+
+  async useCharacterTrait(characterId: string, traitId: string): Promise<CharacterTrait> {
+    return this.request(`/characters/${characterId}/traits/${traitId}/use`, {
+      method: 'POST',
+    });
   }
 
   // Public spells (for character sheet and feat effects)

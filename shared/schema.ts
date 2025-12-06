@@ -377,6 +377,45 @@ export const insertCharacterCustomSkillSchema = createInsertSchema(characterCust
 export type InsertCharacterCustomSkill = z.infer<typeof insertCharacterCustomSkillSchema>;
 export type CharacterCustomSkill = typeof characterCustomSkills.$inferSelect;
 
+// System Traits table (admin-defined traits that can be added to characters)
+export const systemTraits = pgTable("system_traits", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  description: text("description"),
+  parentAttribute: text("parent_attribute").notNull().default("will"), // might, finesse, wit, presence, will, craft
+  usesPerLongRest: integer("uses_per_long_rest").notNull().default(1),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertSystemTraitSchema = createInsertSchema(systemTraits).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertSystemTrait = z.infer<typeof insertSystemTraitSchema>;
+export type SystemTrait = typeof systemTraits.$inferSelect;
+
+// Character Traits table (links characters to traits with usage tracking)
+export const characterTraits = pgTable("character_traits", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  characterId: varchar("character_id").notNull().references(() => characters.id, { onDelete: "cascade" }),
+  systemTraitId: varchar("system_trait_id").references(() => systemTraits.id, { onDelete: "cascade" }), // Links to system trait if from admin
+  name: text("name").notNull(), // Trait name (can be custom if no systemTraitId)
+  description: text("description"),
+  parentAttribute: text("parent_attribute").notNull().default("will"), // might, finesse, wit, presence, will, craft
+  usesPerLongRest: integer("uses_per_long_rest").notNull().default(1),
+  currentUses: integer("current_uses").notNull().default(0), // Current uses remaining
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertCharacterTraitSchema = createInsertSchema(characterTraits).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertCharacterTrait = z.infer<typeof insertCharacterTraitSchema>;
+export type CharacterTrait = typeof characterTraits.$inferSelect;
+
 // Spells table (for magic system) - MUST be before hotbars to avoid TDZ error
 export const spells = pgTable("spells", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
