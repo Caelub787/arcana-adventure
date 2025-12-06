@@ -766,9 +766,19 @@ export default function Campaign() {
             }
             return prev;
           });
-          // Also invalidate queries to keep cache in sync
-          queryClientRef.current.invalidateQueries({ queryKey: [`/api/campaigns/${effectiveCampaignId}/characters`] });
-          queryClientRef.current.invalidateQueries({ queryKey: [`/api/characters/${updatedChar.id}`] });
+          // Immediately update the characters query cache for instant UI updates
+          queryClientRef.current.setQueryData(
+            [`/api/campaigns/${effectiveCampaignId}/characters`],
+            (oldData: any[] | undefined) => {
+              if (!oldData) return oldData;
+              return oldData.map((c: any) => c.id === updatedChar.id ? updatedChar : c);
+            }
+          );
+          // Also update individual character cache
+          queryClientRef.current.setQueryData(
+            [`/api/characters/${updatedChar.id}`],
+            updatedChar
+          );
         }
         if (data.type === 'permission_update') {
           console.log('Permission update received:', data);
@@ -822,9 +832,22 @@ export default function Campaign() {
             }
             return prev;
           });
-          // Update tokens to reflect HP changes
-          queryClientRef.current.invalidateQueries({ queryKey: [`/api/campaigns/${effectiveCampaignId}/characters`] });
-          queryClientRef.current.invalidateQueries({ queryKey: [`/api/characters/${characterId}`] });
+          // Immediately update the characters query cache for instant HP bar updates on tokens
+          queryClientRef.current.setQueryData(
+            [`/api/campaigns/${effectiveCampaignId}/characters`],
+            (oldData: any[] | undefined) => {
+              if (!oldData) return oldData;
+              return oldData.map((c: any) => c.id === characterId ? { ...c, hp } : c);
+            }
+          );
+          // Also update individual character cache
+          queryClientRef.current.setQueryData(
+            [`/api/characters/${characterId}`],
+            (oldData: any | undefined) => {
+              if (!oldData) return oldData;
+              return { ...oldData, hp };
+            }
+          );
         }
         
         // Handle token CRUD - real-time token updates
