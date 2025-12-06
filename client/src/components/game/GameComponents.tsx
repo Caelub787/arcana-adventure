@@ -1163,6 +1163,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
           return (
             <div
               key={token.id}
+              data-testid={`token-${token.id}`}
               onPointerDown={handleTokenPointerDown}
               onPointerUp={handleTokenPointerUp}
               onPointerMove={handleTokenPointerMove}

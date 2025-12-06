@@ -874,7 +874,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           
           // Verify user has joined this campaign
           const userCampaign = (ws as any).campaigns.get(campaignId);
-          if (!userCampaign) return;
+          if (!userCampaign) {
+            console.log('[AoE Server] User not in campaign:', campaignId);
+            return;
+          }
           
           // Broadcast AoE targeting to all OTHER campaign members (not the sender)
           const room = campaignRooms.get(campaignId);
@@ -892,12 +895,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
               locked
             });
             
+            let sentCount = 0;
             room.forEach((client) => {
               // Send to all clients except the sender
               if (client !== ws && client.readyState === 1) {
                 client.send(aoeMessage);
+                sentCount++;
               }
             });
+            console.log(`[AoE Server] Broadcast from ${username}: active=${active}, sent to ${sentCount} other clients`);
           }
         }
       } catch (err) {

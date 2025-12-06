@@ -928,11 +928,15 @@ export default function Campaign() {
         if (data.type === 'aoe_targeting') {
           const { userId, username, active, spellName, spellAoe, casterTokenId, casterName, center, locked } = data;
           
+          console.log('[AoE] Received aoe_targeting:', { userId, username, active, spellName, spellAoe, center, locked });
+          
           // Skip our own broadcasts - we already display our AoE via aoeTargetState
           if (userId === user?.id) {
+            console.log('[AoE] Skipping our own broadcast');
             return;
           }
           
+          console.log('[AoE] Updating otherPlayersAoe state');
           setOtherPlayersAoe(prev => {
             const updated = new Map(prev);
             if (active) {
@@ -991,10 +995,8 @@ export default function Campaign() {
     // Update locally first for immediate feedback
     setTokens(prev => prev.map(t => t.id === id ? { ...t, x, y } : t));
     
-    // Send to API
-    updateTokenMutation.mutate({ id, x, y });
-    
-    // Send to WebSocket for real-time updates
+    // Send to WebSocket only - it handles both DB save and broadcast to all clients
+    // This is faster than using REST API which adds network round-trip delay
     gameWs.sendTokenMove(id, x, y);
   };
 
