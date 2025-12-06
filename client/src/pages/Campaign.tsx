@@ -396,23 +396,32 @@ export default function Campaign() {
     });
   };
   
+  // Throttle ref for AoE updates to avoid rate limiting
+  const lastAoeBroadcastRef = useRef<number>(0);
+  
   // Helper function to update AoE center position (when hovering)
   const updateAoeCenter = (x: number, y: number) => {
     if (!aoeTargetState.locked) {
       setAoeTargetState(prev => ({ ...prev, center: { x, y } }));
       
-      // Broadcast the moving position to other players (throttled by sending every update)
-      const casterToken = tokens.find((t: any) => t.id === aoeTargetState.casterTokenId);
-      const casterChar = characters && casterToken ? (characters as any[]).find((c: any) => c.id === casterToken.characterId) : null;
-      gameWs.sendAoeTargeting({
-        active: true,
-        spellName: aoeTargetState.spell?.name,
-        spellAoe: aoeTargetState.spell?.aoe,
-        casterTokenId: aoeTargetState.casterTokenId,
-        casterName: casterChar?.name || 'Unknown',
-        center: { x, y },
-        locked: false,
-      });
+      // Throttle broadcasts to ~20 updates per second to avoid rate limiting
+      const now = Date.now();
+      if (now - lastAoeBroadcastRef.current >= 50) {
+        lastAoeBroadcastRef.current = now;
+        
+        // Broadcast the moving position to other players
+        const casterToken = tokens.find((t: any) => t.id === aoeTargetState.casterTokenId);
+        const casterChar = characters && casterToken ? (characters as any[]).find((c: any) => c.id === casterToken.characterId) : null;
+        gameWs.sendAoeTargeting({
+          active: true,
+          spellName: aoeTargetState.spell?.name,
+          spellAoe: aoeTargetState.spell?.aoe,
+          casterTokenId: aoeTargetState.casterTokenId,
+          casterName: casterChar?.name || 'Unknown',
+          center: { x, y },
+          locked: false,
+        });
+      }
     }
   };
   
@@ -744,9 +753,10 @@ export default function Campaign() {
           ));
         }
         if (data.type === 'character_changed') {
-          queryClientRef.current.invalidateQueries({ queryKey: [`/api/campaigns/${effectiveCampaignId}/characters`] });
+          // Force immediate refetch for character changes
+          queryClientRef.current.refetchQueries({ queryKey: [`/api/campaigns/${effectiveCampaignId}/characters`] });
           if (data.characterId) {
-            queryClientRef.current.invalidateQueries({ queryKey: [`/api/characters/${data.characterId}`] });
+            queryClientRef.current.refetchQueries({ queryKey: [`/api/characters/${data.characterId}`] });
           }
         }
         // Handle real-time character updates - update local state if it matches current character
@@ -782,8 +792,8 @@ export default function Campaign() {
         }
         if (data.type === 'permission_update') {
           console.log('Permission update received:', data);
-          // Invalidate permissions cache so UI updates immediately
-          queryClientRef.current.invalidateQueries({ queryKey: [`/api/campaigns/${effectiveCampaignId}/my-permissions`] });
+          // Force immediate refetch for permission changes
+          queryClientRef.current.refetchQueries({ queryKey: [`/api/campaigns/${effectiveCampaignId}/my-permissions`] });
           
           // Show toast for the affected user
           const accessDesc = data.accessLevel === 'edit' ? 'edit' : 
@@ -795,9 +805,9 @@ export default function Campaign() {
           });
         }
         if (data.type === 'initiative_update' || data.type === 'combat_update') {
-          // Invalidate initiative queries for real-time sync
+          // Force immediate refetch for initiative/combat updates
           if (data.sceneId) {
-            queryClientRef.current.invalidateQueries({ queryKey: [`/api/scenes/${data.sceneId}/initiative`] });
+            queryClientRef.current.refetchQueries({ queryKey: [`/api/scenes/${data.sceneId}/initiative`] });
           }
         }
         if (data.type === 'dice_roll' && data.roll) {
@@ -869,23 +879,49 @@ export default function Campaign() {
         
         // Handle scene updates - real-time scene changes
         if (data.type === 'scene_updated' && data.scene) {
-          queryClientRef.current.invalidateQueries({ queryKey: [`/api/campaigns/${effectiveCampaignId}/scenes`] });
-          queryClientRef.current.invalidateQueries({ queryKey: [`/api/scenes/${data.scene.id}`] });
+          // Immediately update the scene cache
+          queryClientRef.current.setQueryData(
+            [`/api/scenes/${data.scene.id}`],
+            data.scene
+          );
+          queryClientRef.current.setQueryData(
+            [`/api/campaigns/${effectiveCampaignId}/scenes`],
+            (oldData: any[] | undefined) => {
+              if (!oldData) return oldData;
+              return oldData.map((s: any) => s.id === data.scene.id ? data.scene : s);
+            }
+          );
         }
         if (data.type === 'scene_deleted' && data.sceneId) {
-          queryClientRef.current.invalidateQueries({ queryKey: [`/api/campaigns/${effectiveCampaignId}/scenes`] });
+          queryClientRef.current.setQueryData(
+            [`/api/campaigns/${effectiveCampaignId}/scenes`],
+            (oldData: any[] | undefined) => {
+              if (!oldData) return oldData;
+              return oldData.filter((s: any) => s.id !== data.sceneId);
+            }
+          );
         }
         if (data.type === 'active_scene_changed') {
-          queryClientRef.current.invalidateQueries({ queryKey: [`/api/campaigns/${effectiveCampaignId}`] });
-          queryClientRef.current.invalidateQueries({ queryKey: [`/api/campaigns/${effectiveCampaignId}/scenes`] });
+          // Force immediate refetch of campaign and scenes for active scene change
+          queryClientRef.current.refetchQueries({ queryKey: [`/api/campaigns/${effectiveCampaignId}`] });
+          queryClientRef.current.refetchQueries({ queryKey: [`/api/campaigns/${effectiveCampaignId}/scenes`] });
           if (data.sceneId) {
-            queryClientRef.current.invalidateQueries({ queryKey: [`/api/scenes/${data.sceneId}`] });
+            queryClientRef.current.refetchQueries({ queryKey: [`/api/scenes/${data.sceneId}`] });
           }
         }
         
         // Handle chat messages - real-time chat
         if (data.type === 'chat_message' && data.message) {
-          queryClientRef.current.invalidateQueries({ queryKey: [`/api/campaigns/${effectiveCampaignId}/messages`] });
+          // Immediately add the new message to the cache
+          queryClientRef.current.setQueryData(
+            [`/api/campaigns/${effectiveCampaignId}/messages`],
+            (oldData: any[] | undefined) => {
+              if (!oldData) return [data.message];
+              // Avoid duplicates
+              if (oldData.some((m: any) => m.id === data.message.id)) return oldData;
+              return [...oldData, data.message];
+            }
+          );
         }
         
         // Handle other players' AoE targeting updates
