@@ -211,25 +211,33 @@ function SceneSettingsForm({ scene, onUpdateScene }: { scene: Scene; onUpdateSce
       {/* Background Image Upload */}
       <div className="space-y-2">
         <Label htmlFor="bg-image" className="text-stone-300">Background Image</Label>
-        <div className="flex gap-2">
-          <input
-            type="file"
-            id="bg-image"
-            accept="image/*"
-            onChange={handleImageUpload}
-            className="flex-1 bg-stone-800 border border-stone-700 text-stone-200 rounded px-3 py-2 text-sm"
-            data-testid="input-background-image"
-          />
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => setShowImageBrowser(true)}
-            className="border-stone-700 hover:bg-stone-800 text-amber-500"
-            data-testid="button-browse-bg-library"
-          >
-            <Folder className="h-4 w-4 mr-1" />
-            Library
-          </Button>
+        <div className="flex flex-col gap-2">
+          <div className="flex gap-2">
+            <label 
+              htmlFor="bg-image" 
+              className="flex-1 bg-stone-800 border border-stone-700 text-stone-200 rounded px-3 py-2 text-sm cursor-pointer hover:bg-stone-700 transition-colors text-center"
+            >
+              Change Background
+            </label>
+            <input
+              type="file"
+              id="bg-image"
+              accept="image/*"
+              onChange={handleImageUpload}
+              className="hidden"
+              data-testid="input-background-image"
+            />
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setShowImageBrowser(true)}
+              className="border-stone-700 hover:bg-stone-800 text-amber-500 shrink-0"
+              data-testid="button-browse-bg-library"
+            >
+              <Folder className="h-4 w-4 mr-1" />
+              Library
+            </Button>
+          </div>
         </div>
         {localSettings.backgroundImage && (
           <div className="mt-2 text-xs text-stone-400">
@@ -1409,7 +1417,7 @@ export default function Campaign() {
                     onClick={() => setAddTokenDialogOpen(true)} 
                     data-testid="button-add-token-scenes"
                   >
-                    <Plus className="mr-2 h-4 w-4" /> Add Token to Battlemap
+                    <Plus className="mr-2 h-4 w-4" /> Add Token
                   </Button>
                 </div>
 

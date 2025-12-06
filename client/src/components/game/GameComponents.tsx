@@ -4651,13 +4651,10 @@ export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onIn
                 </div>
               )}
 
-              <div className="grid grid-cols-2 gap-2">
-                <Button variant="secondary" className="bg-stone-800 hover:bg-stone-700 col-span-2" onClick={() => setAddTokenDialogOpen(true)} data-testid="button-add-token">
-                  <Plus className="mr-2 h-4 w-4" /> Add Token
-                </Button>
+              <div className="grid grid-cols-1 gap-2">
                 <Button 
                   variant="secondary" 
-                  className="bg-amber-800 hover:bg-amber-700 col-span-2" 
+                  className="bg-amber-800 hover:bg-amber-700" 
                   onClick={() => setShowLevelUpDialog(true)}
                   data-testid="button-level-up-all"
                 >
