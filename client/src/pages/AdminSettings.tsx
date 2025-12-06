@@ -2685,6 +2685,103 @@ function FeatTreeFormDialog({ open, onOpenChange, onSave, initialData, isLoading
   );
 }
 
+const EFFECT_TYPE_ICONS: Record<string, { icon: React.ComponentType<{ className?: string }>; color: string }> = {
+  hp_bonus: { icon: Heart, color: 'text-red-400' },
+  energy_bonus: { icon: Zap, color: 'text-blue-400' },
+  dc_bonus: { icon: ShieldCheck, color: 'text-amber-400' },
+  skill_bonus: { icon: Star, color: 'text-green-400' },
+  attribute_bonus: { icon: Star, color: 'text-purple-400' },
+  spell_grant: { icon: BookOpen, color: 'text-cyan-400' },
+  item_grant: { icon: Package, color: 'text-orange-400' },
+  skill_grant: { icon: Sparkles, color: 'text-pink-400' },
+};
+
+interface TemplateSelectorProps {
+  templates: FeatTemplate[];
+  onSelect: (template: FeatTemplate) => void;
+}
+
+function TemplateSelector({ templates, onSelect }: TemplateSelectorProps) {
+  const [searchQuery, setSearchQuery] = useState('');
+  
+  const filteredTemplates = useMemo(() => {
+    if (!searchQuery.trim()) return templates;
+    const query = searchQuery.toLowerCase();
+    return templates.filter(t => 
+      t.name.toLowerCase().includes(query) || 
+      t.description?.toLowerCase().includes(query)
+    );
+  }, [templates, searchQuery]);
+
+  const getEffectBadges = (effects: any[] | null | undefined) => {
+    if (!effects || effects.length === 0) return null;
+    const uniqueTypes = [...new Set(effects.map((e: any) => e.type))];
+    return uniqueTypes.slice(0, 4).map((type, idx) => {
+      const config = EFFECT_TYPE_ICONS[type as string];
+      if (!config) return null;
+      const Icon = config.icon;
+      return (
+        <Icon key={idx} className={`h-3 w-3 ${config.color}`} />
+      );
+    });
+  };
+
+  return (
+    <div className="p-3 bg-purple-900/30 border-2 border-purple-500 rounded-lg mb-2 shadow-lg shadow-purple-900/20">
+      <div className="flex items-center gap-2 mb-2">
+        <Library className="h-4 w-4 text-purple-400" />
+        <Label className="text-sm font-medium text-purple-300">Feat Library</Label>
+        <Badge variant="secondary" className="ml-auto text-xs">{templates.length} templates</Badge>
+      </div>
+      <div className="relative mb-2">
+        <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 h-3 w-3 text-stone-500" />
+        <Input
+          placeholder="Search templates..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="pl-7 h-8 text-xs bg-stone-800 border-stone-700"
+          data-testid="input-template-search"
+        />
+      </div>
+      <ScrollArea className="h-48">
+        <div className="space-y-1 pr-2">
+          {filteredTemplates.length === 0 ? (
+            <div className="text-center py-4 text-stone-500 text-xs">
+              No templates found
+            </div>
+          ) : (
+            filteredTemplates.map((template) => (
+              <Button
+                key={template.id}
+                variant="ghost"
+                className="w-full justify-start text-left h-auto py-2 px-2 hover:bg-purple-800/30"
+                onClick={() => onSelect(template)}
+              >
+                <div className="flex items-center gap-2 w-full">
+                  <div className="flex flex-col flex-1 min-w-0">
+                    <span className="font-medium text-sm">{template.name}</span>
+                    {template.description && (
+                      <span className="text-xs text-stone-400 truncate max-w-[220px]">
+                        {template.description}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    {getEffectBadges(template.effects)}
+                  </div>
+                  <Badge variant="secondary" className="text-xs shrink-0">
+                    T{template.tier}
+                  </Badge>
+                </div>
+              </Button>
+            ))
+          )}
+        </div>
+      </ScrollArea>
+    </div>
+  );
+}
+
 interface FeatFormDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -2756,6 +2853,13 @@ function FeatFormDialog({ open, onOpenChange, onSave, initialData, isLoading, fe
     enabled: open,
   });
 
+  // Query custom skills for skill_grant dropdown
+  const { data: customSkills = [] } = useQuery({
+    queryKey: ['admin-skills'],
+    queryFn: () => api.getSystemSkills(),
+    enabled: open,
+  });
+
   // Query system items for item_grant dropdown
   const { data: systemItems = [] } = useQuery<any[]>({
     queryKey: ['/api/system-items'],
@@ -2802,10 +2906,11 @@ function FeatFormDialog({ open, onOpenChange, onSave, initialData, isLoading, fe
   };
 
   const addEffect = () => {
-    // Value validation: require non-zero for most types except spell_grant, item_grant
+    // Value validation: require non-zero for most types except spell_grant, item_grant, skill_grant
     // Also allow hp_bonus with target (for per-level dice expressions)
     const requiresValue = newEffect.type !== 'spell_grant' && 
                           newEffect.type !== 'item_grant' &&
+                          newEffect.type !== 'skill_grant' &&
                           !(newEffect.type === 'hp_bonus' && newEffect.target);
     if (requiresValue && newEffect.value === 0) {
       toast({ title: 'Error', description: 'Effect value cannot be 0', variant: 'destructive' });
@@ -2819,6 +2924,10 @@ function FeatFormDialog({ open, onOpenChange, onSave, initialData, isLoading, fe
     }
     if (newEffect.type === 'spell_grant' && !newEffect.target) {
       toast({ title: 'Error', description: 'Please select a spell', variant: 'destructive' });
+      return;
+    }
+    if (newEffect.type === 'skill_grant' && !newEffect.target) {
+      toast({ title: 'Error', description: 'Please select a skill', variant: 'destructive' });
       return;
     }
     
@@ -2856,44 +2965,21 @@ function FeatFormDialog({ open, onOpenChange, onSave, initialData, isLoading, fe
         </DialogHeader>
 
         {showTemplateSelector && featTemplates.length > 0 && (
-          <div className="p-3 bg-purple-900/30 border border-purple-600/50 rounded mb-2">
-            <Label className="text-xs text-purple-400 mb-2 block">Select a template to pre-fill:</Label>
-            <ScrollArea className="h-32">
-              <div className="space-y-1">
-                {featTemplates.map((template) => (
-                  <Button
-                    key={template.id}
-                    variant="ghost"
-                    className="w-full justify-start text-left h-auto py-2"
-                    onClick={() => {
-                      setFormData({
-                        ...formData,
-                        name: template.name,
-                        description: template.description || '',
-                        tier: template.tier,
-                        cost: template.cost,
-                        icon: template.icon || '',
-                        effects: template.effects || [],
-                      });
-                      setShowTemplateSelector(false);
-                    }}
-                  >
-                    <div className="flex flex-col">
-                      <span className="font-medium">{template.name}</span>
-                      {template.description && (
-                        <span className="text-xs text-stone-400 truncate max-w-[250px]">
-                          {template.description}
-                        </span>
-                      )}
-                    </div>
-                    <Badge variant="secondary" className="ml-auto text-xs">
-                      Tier {template.tier}
-                    </Badge>
-                  </Button>
-                ))}
-              </div>
-            </ScrollArea>
-          </div>
+          <TemplateSelector 
+            templates={featTemplates}
+            onSelect={(template) => {
+              setFormData({
+                ...formData,
+                name: template.name,
+                description: template.description || '',
+                tier: template.tier,
+                cost: template.cost,
+                icon: template.icon || '',
+                effects: template.effects || [],
+              });
+              setShowTemplateSelector(false);
+            }}
+          />
         )}
 
         <div className="space-y-4">
@@ -2983,6 +3069,10 @@ function FeatFormDialog({ open, onOpenChange, onSave, initialData, isLoading, fe
                     const spell = (systemSpells as SystemSpell[]).find(s => s.id === target);
                     return spell ? `Grants: ${spell.name}` : target || '(select spell)';
                   }
+                  if (effect.type === 'skill_grant') {
+                    const skill = (customSkills as SystemSkill[]).find(s => s.id === target);
+                    return skill ? `Grants: ${skill.name}` : target || '(select skill)';
+                  }
                   if (effect.type === 'item_grant') {
                     const item = systemItems.find((i: any) => i.id === target);
                     return item ? `Grants: ${item.name}` : target || '(select item)';
@@ -3042,11 +3132,12 @@ function FeatFormDialog({ open, onOpenChange, onSave, initialData, isLoading, fe
                       <SelectItem value="attribute_bonus">Attribute Bonus</SelectItem>
                       <SelectItem value="spell_grant">Grant Spell</SelectItem>
                       <SelectItem value="item_grant">Grant Item</SelectItem>
+                      <SelectItem value="skill_grant">Grant Custom Skill</SelectItem>
                     </SelectContent>
                   </Select>
 
-                  {/* Value input - shown for all except spell/item grants */}
-                  {newEffect.type !== 'spell_grant' && newEffect.type !== 'item_grant' && (
+                  {/* Value input - shown for all except spell/item/skill grants */}
+                  {newEffect.type !== 'spell_grant' && newEffect.type !== 'item_grant' && newEffect.type !== 'skill_grant' && (
                     <Input
                       type="number"
                       value={newEffect.value}
@@ -3163,6 +3254,32 @@ function FeatFormDialog({ open, onOpenChange, onSave, initialData, isLoading, fe
                               {item.itemType && (
                                 <Badge variant="secondary" className="text-xs capitalize">{item.itemType}</Badge>
                               )}
+                            </span>
+                          </SelectItem>
+                        ))
+                      )}
+                    </SelectContent>
+                  </Select>
+                )}
+
+                {/* Custom skill grant dropdown */}
+                {newEffect.type === 'skill_grant' && (
+                  <Select
+                    value={newEffect.target}
+                    onValueChange={(v) => setNewEffect({ ...newEffect, target: v })}
+                  >
+                    <SelectTrigger className="bg-stone-800 border-stone-700 text-xs">
+                      <SelectValue placeholder="Select custom skill..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(customSkills as SystemSkill[]).length === 0 ? (
+                        <div className="p-2 text-xs text-stone-400">No custom skills created yet</div>
+                      ) : (
+                        (customSkills as SystemSkill[]).map((skill) => (
+                          <SelectItem key={skill.id} value={skill.id}>
+                            <span className="flex items-center gap-2">
+                              <span>{skill.name}</span>
+                              <Badge variant="secondary" className="text-xs capitalize">{skill.parentAttribute}</Badge>
                             </span>
                           </SelectItem>
                         ))
