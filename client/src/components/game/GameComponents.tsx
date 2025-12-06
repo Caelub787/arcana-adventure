@@ -3443,6 +3443,7 @@ function SceneSettingsDialog({ open, onOpenChange, scene, onUpdateScene }: Scene
     gridOpacity: scene?.gridOpacity ?? 0.4,
     backgroundImage: scene?.backgroundImage ?? '',
   });
+  const [showImageBrowser, setShowImageBrowser] = useState(false);
 
   // Reset local settings when scene changes or dialog opens
   useEffect(() => {
@@ -3593,20 +3594,42 @@ function SceneSettingsDialog({ open, onOpenChange, scene, onUpdateScene }: Scene
           {/* Background Image Upload */}
           <div className="space-y-2">
             <Label htmlFor="bg-image" className="text-stone-300">Background Image</Label>
-            <input
-              type="file"
-              id="bg-image"
-              accept="image/*"
-              onChange={handleImageUpload}
-              className="w-full bg-stone-800 border border-stone-700 text-stone-200 rounded px-3 py-2 text-sm"
-              data-testid="input-background-image"
-            />
+            <div className="flex gap-2">
+              <input
+                type="file"
+                id="bg-image"
+                accept="image/*"
+                onChange={handleImageUpload}
+                className="flex-1 bg-stone-800 border border-stone-700 text-stone-200 rounded px-3 py-2 text-sm"
+                data-testid="input-background-image"
+              />
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setShowImageBrowser(true)}
+                className="border-stone-700 hover:bg-stone-800 text-amber-500"
+                data-testid="button-browse-bg-library"
+              >
+                <Folder className="h-4 w-4 mr-1" />
+                Library
+              </Button>
+            </div>
             {localSettings.backgroundImage && (
               <div className="mt-2 text-xs text-stone-400">
                 Image loaded (preview on battlemap)
               </div>
             )}
           </div>
+
+          {/* Image Browser Dialog */}
+          <ImageBrowser
+            open={showImageBrowser}
+            onOpenChange={setShowImageBrowser}
+            onSelect={(imageBase64) => {
+              setLocalSettings(prev => ({ ...prev, backgroundImage: imageBase64 }));
+            }}
+            title="Select Background Image"
+          />
 
           {/* Action Buttons */}
           <div className="flex gap-2 pt-4">
