@@ -1286,48 +1286,46 @@ function TraitsView({ traits, isLoading, searchQuery, setSearchQuery, onAddTrait
               {traits.map((trait: SystemTrait) => (
                 <div
                   key={trait.id}
-                  className="flex items-center gap-4 p-3 rounded-lg bg-stone-800 border border-stone-700 hover:border-stone-600"
+                  className="p-3 rounded-lg bg-stone-800 border border-stone-700 hover:border-stone-600"
                   data-testid={`trait-row-${trait.id}`}
                 >
-                  <div className="h-12 w-12 rounded bg-stone-700 flex items-center justify-center overflow-hidden">
-                    <Star className="h-6 w-6 text-rose-400" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                      <Star className="h-5 w-5 text-rose-400 shrink-0" />
                       <span className="font-medium truncate">{trait.name}</span>
-                      <Badge className={`bg-stone-700 ${parentAttributeColors[trait.parentAttribute] || 'text-stone-300'} text-xs`}>
+                      <Badge className={`bg-stone-700 ${parentAttributeColors[trait.parentAttribute] || 'text-stone-300'} text-xs shrink-0`}>
                         {trait.parentAttribute.charAt(0).toUpperCase() + trait.parentAttribute.slice(1)}
                       </Badge>
-                      <Badge className="bg-rose-700 text-xs">
-                        {trait.usesPerLongRest} use{trait.usesPerLongRest !== 1 ? 's' : ''}/rest
+                      <Badge className="bg-rose-700 text-xs shrink-0">
+                        {trait.usesPerLongRest}/rest
                       </Badge>
                     </div>
-                    {trait.description && (
-                      <div className="text-sm text-stone-400 truncate">
-                        {trait.description}
-                      </div>
-                    )}
+                    <div className="flex gap-1 shrink-0">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => onEditTrait(trait)}
+                        className="h-8 w-8 text-stone-400 hover:text-rose-500"
+                        data-testid={`button-edit-trait-${trait.id}`}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => onDeleteTrait(trait.id)}
+                        className="h-8 w-8 text-stone-400 hover:text-red-500"
+                        data-testid={`button-delete-trait-${trait.id}`}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
-                  <div className="flex gap-2">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => onEditTrait(trait)}
-                      className="text-stone-400 hover:text-rose-500"
-                      data-testid={`button-edit-trait-${trait.id}`}
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => onDeleteTrait(trait.id)}
-                      className="text-stone-400 hover:text-red-500"
-                      data-testid={`button-delete-trait-${trait.id}`}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
+                  {trait.description && (
+                    <div className="text-sm text-stone-400 mt-1 line-clamp-2">
+                      {trait.description}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
