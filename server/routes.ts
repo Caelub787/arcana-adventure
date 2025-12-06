@@ -1829,6 +1829,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         exhaustion: newExhaustion
       });
       
+      // Reset trait uses on long rest
+      await storage.resetCharacterTraitUses(character.id);
+      
       // Broadcast to campaign room
       if (character.campaignId) {
         const room = campaignRooms.get(character.campaignId);
@@ -2722,6 +2725,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Feat tree not found" });
       }
       const feat = await storage.createFeat({ ...req.body, treeId: req.params.treeId });
+      
+      // Auto-save to library: create a template if one doesn't exist with this name
+      try {
+        const existingTemplates = await storage.getFeatTemplates();
+        const existingTemplate = existingTemplates.find(t => t.name === feat.name);
+        if (!existingTemplate && feat.name) {
+          // Create template from feat (without grid/tree-specific data)
+          await storage.createFeatTemplate({
+            name: feat.name,
+            description: feat.description || '',
+            icon: feat.icon || '',
+            tier: feat.tier || 1,
+            cost: feat.cost || 1,
+            effects: feat.effects || [],
+          });
+        }
+      } catch (templateErr) {
+        // Template creation failure shouldn't fail the feat creation
+        console.log("Auto-template creation skipped:", templateErr);
+      }
+      
       res.json(feat);
     } catch (err) {
       res.status(400).json({ error: "Failed to create feat" });
