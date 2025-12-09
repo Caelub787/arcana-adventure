@@ -6,7 +6,7 @@ import { BattlemapDiceOverlay, triggerBattlemapDiceRoll } from "@/components/gam
 import { type AoeTargetState, createInitialAoeState } from "@/lib/aoeHelpers";
 import { RollNotificationContainer, triggerInitiativeNotification } from "@/components/game/RollNotification";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Loader2, Settings, Map as MapIcon, Layers, Trash2, MessageSquare, User, BarChart3, Zap, Backpack, Sparkles, Grid3X3, ScrollText, Swords, Dices, Users } from "lucide-react";
+import { ArrowLeft, Loader2, Settings, Map as MapIcon, Layers, Trash2, MessageSquare, User, BarChart3, Zap, Backpack, Sparkles, Grid3X3, ScrollText, Swords, Dices, Users, Dna, Edit2 } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -19,7 +19,9 @@ import battleMapImage2 from "@assets/generated_images/dark_fantasy_landscape_wit
 import warriorToken from "@assets/generated_images/top_down_warrior_token.png";
 import goblinToken from "@assets/generated_images/top_down_goblin_token.png";
 import { useAuth } from "@/lib/AuthContext";
-import { api, gameWs, type Scene } from "@/lib/api";
+import { api, gameWs, type Scene, type CampaignSpecies, type FeatTree } from "@/lib/api";
+import { Textarea } from "@/components/ui/textarea";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { ImageBrowser } from "@/components/ImageBrowser";
@@ -259,6 +261,408 @@ function SceneSettingsForm({ scene, onUpdateScene }: { scene: Scene; onUpdateSce
   );
 }
 
+const sizeOptions = ['Tiny', 'Small', 'Medium', 'Large', 'Huge', 'Gargantuan'];
+
+const getSizeBonusFromSize = (size: string): number => {
+  const sizeBonusMap: Record<string, number> = {
+    'Tiny': -2,
+    'Small': -1,
+    'Medium': 0,
+    'Large': 1,
+    'Huge': 2,
+    'Gargantuan': 3,
+  };
+  return sizeBonusMap[size] ?? 0;
+};
+
+interface CampaignSpeciesFormDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onSave: (data: Partial<CampaignSpecies>) => void;
+  initialData?: CampaignSpecies | null;
+  isLoading?: boolean;
+  featTrees?: FeatTree[];
+}
+
+function CampaignSpeciesFormDialog({ open, onOpenChange, onSave, initialData, isLoading, featTrees = [] }: CampaignSpeciesFormDialogProps) {
+  const [formData, setFormData] = useState<{
+    name: string;
+    description: string;
+    defaultImage: string;
+    lifespan: number | string;
+    speed: number | string;
+    flySpeed: number | string;
+    size: string;
+    naturalArmor: number | string;
+    sizeBonus: number;
+    startingHp: number | string;
+    startingMaxHp: number | string;
+    hpPerLevel: number | string;
+    startingEnergy: number | string;
+    startingMaxEnergy: number | string;
+    carryWeight: number | string;
+    featTree: string;
+  }>({
+    name: '',
+    description: '',
+    defaultImage: '',
+    lifespan: '',
+    speed: '',
+    flySpeed: '',
+    size: 'Medium',
+    naturalArmor: '',
+    sizeBonus: 0,
+    startingHp: '',
+    startingMaxHp: '',
+    hpPerLevel: '',
+    startingEnergy: '',
+    startingMaxEnergy: '',
+    carryWeight: '',
+    featTree: '',
+  });
+  
+  const { toast } = useToast();
+  const speciesImageInputRef = useRef<HTMLInputElement>(null);
+  const [showSpeciesImageBrowser, setShowSpeciesImageBrowser] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      setFormData({
+        name: initialData?.name || '',
+        description: initialData?.description || '',
+        defaultImage: initialData?.defaultImage || '',
+        lifespan: initialData?.lifespan ?? '',
+        speed: initialData?.speed ?? '',
+        flySpeed: initialData?.flySpeed ?? '',
+        size: initialData?.size || 'Medium',
+        naturalArmor: initialData?.naturalArmor ?? '',
+        sizeBonus: initialData?.sizeBonus ?? getSizeBonusFromSize(initialData?.size || 'Medium'),
+        startingHp: initialData?.startingHp ?? '',
+        startingMaxHp: initialData?.startingMaxHp ?? '',
+        hpPerLevel: initialData?.hpPerLevel ?? '',
+        startingEnergy: initialData?.startingEnergy ?? '',
+        startingMaxEnergy: initialData?.startingMaxEnergy ?? '',
+        carryWeight: initialData?.carryWeight ?? '',
+        featTree: initialData?.featTree || '',
+      });
+    }
+  }, [open, initialData]);
+
+  const handleSpeciesImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        setFormData({ ...formData, defaultImage: event.target?.result as string });
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleNumericChange = (field: string, value: string) => {
+    setFormData({ ...formData, [field]: value === '' ? '' : parseInt(value) });
+  };
+
+  const handleSizeChange = (newSize: string) => {
+    setFormData({ 
+      ...formData, 
+      size: newSize, 
+      sizeBonus: getSizeBonusFromSize(newSize) 
+    });
+  };
+
+  const handleSubmit = () => {
+    if (!formData.name.trim()) {
+      toast({ title: 'Error', description: 'Species name is required', variant: 'destructive' });
+      return;
+    }
+    onSave({
+      ...formData,
+      defaultImage: formData.defaultImage || undefined,
+      lifespan: Number(formData.lifespan) || 100,
+      speed: Number(formData.speed) || 30,
+      flySpeed: Number(formData.flySpeed) || 0,
+      naturalArmor: Number(formData.naturalArmor) || 5,
+      startingHp: Number(formData.startingHp) || 10,
+      startingMaxHp: Number(formData.startingMaxHp) || 10,
+      hpPerLevel: Number(formData.hpPerLevel) || 5,
+      startingEnergy: Number(formData.startingEnergy) || 10,
+      startingMaxEnergy: Number(formData.startingMaxEnergy) || 10,
+      carryWeight: Number(formData.carryWeight) || 50,
+    });
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="bg-stone-900 border-stone-700 text-stone-200 max-w-2xl max-h-[90vh] flex flex-col">
+        <DialogHeader className="shrink-0">
+          <DialogTitle className="text-amber-500">
+            {initialData ? 'Edit Campaign Species' : 'Create Campaign Species'}
+          </DialogTitle>
+          <DialogDescription className="text-stone-400">
+            Define a custom species for this campaign
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="flex-1 overflow-y-auto pr-4 min-h-0">
+          <div className="space-y-4 py-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="col-span-2">
+                <Label>Name *</Label>
+                <Input
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  className="bg-stone-800 border-stone-700"
+                  data-testid="input-species-name"
+                />
+              </div>
+
+              <div className="col-span-2">
+                <Label>Description</Label>
+                <Textarea
+                  value={formData.description}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  className="bg-stone-800 border-stone-700 min-h-[80px]"
+                  data-testid="textarea-species-description"
+                />
+              </div>
+
+              <div className="col-span-2">
+                <Label>Default Token Image</Label>
+                <div className="flex items-center gap-4">
+                  {formData.defaultImage ? (
+                    <div className="relative">
+                      <img src={formData.defaultImage} alt="Species" className="h-16 w-16 rounded-full object-cover border border-stone-600" />
+                      <button
+                        type="button"
+                        onClick={() => setFormData({ ...formData, defaultImage: '' })}
+                        className="absolute -top-1 -right-1 bg-red-600 text-white rounded-full h-5 w-5 text-xs flex items-center justify-center hover:bg-red-500"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="h-16 w-16 rounded-full bg-stone-700 flex items-center justify-center border border-stone-600">
+                      <User className="h-8 w-8 text-stone-500" />
+                    </div>
+                  )}
+                  <div className="flex gap-2">
+                    <input
+                      ref={speciesImageInputRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={handleSpeciesImageUpload}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => speciesImageInputRef.current?.click()}
+                      className="bg-stone-800 border-stone-700 hover:bg-stone-700"
+                    >
+                      Upload
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setShowSpeciesImageBrowser(true)}
+                      className="bg-stone-800 border-stone-700 hover:bg-stone-700"
+                    >
+                      <Folder className="h-4 w-4 mr-2" />
+                      Browse
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <Label>Lifespan (years)</Label>
+                <Input
+                  type="number"
+                  value={formData.lifespan}
+                  onChange={(e) => handleNumericChange('lifespan', e.target.value)}
+                  className="bg-stone-800 border-stone-700"
+                  placeholder="100"
+                />
+              </div>
+
+              <div>
+                <Label>Size</Label>
+                <Select value={formData.size} onValueChange={handleSizeChange}>
+                  <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-species-size">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {sizeOptions.map((size) => (
+                      <SelectItem key={size} value={size}>{size}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <Label>Speed (ft)</Label>
+                <Input
+                  type="number"
+                  value={formData.speed}
+                  onChange={(e) => handleNumericChange('speed', e.target.value)}
+                  className="bg-stone-800 border-stone-700"
+                  placeholder="30"
+                />
+              </div>
+
+              <div>
+                <Label>Fly Speed (ft)</Label>
+                <Input
+                  type="number"
+                  value={formData.flySpeed}
+                  onChange={(e) => handleNumericChange('flySpeed', e.target.value)}
+                  className="bg-stone-800 border-stone-700"
+                  placeholder="0"
+                />
+              </div>
+
+              <div>
+                <Label>Natural Armor</Label>
+                <Input
+                  type="number"
+                  value={formData.naturalArmor}
+                  onChange={(e) => handleNumericChange('naturalArmor', e.target.value)}
+                  className="bg-stone-800 border-stone-700"
+                  placeholder="5"
+                />
+              </div>
+
+              <div>
+                <Label>Size Bonus</Label>
+                <Input
+                  type="number"
+                  value={formData.sizeBonus}
+                  disabled
+                  className="bg-stone-800 border-stone-700 opacity-50"
+                />
+              </div>
+
+              <div>
+                <Label>Starting HP</Label>
+                <Input
+                  type="number"
+                  value={formData.startingHp}
+                  onChange={(e) => handleNumericChange('startingHp', e.target.value)}
+                  className="bg-stone-800 border-stone-700"
+                  placeholder="10"
+                />
+              </div>
+
+              <div>
+                <Label>Max HP</Label>
+                <Input
+                  type="number"
+                  value={formData.startingMaxHp}
+                  onChange={(e) => handleNumericChange('startingMaxHp', e.target.value)}
+                  className="bg-stone-800 border-stone-700"
+                  placeholder="10"
+                />
+              </div>
+
+              <div>
+                <Label>HP Per Level</Label>
+                <Input
+                  type="number"
+                  value={formData.hpPerLevel}
+                  onChange={(e) => handleNumericChange('hpPerLevel', e.target.value)}
+                  className="bg-stone-800 border-stone-700"
+                  placeholder="5"
+                />
+              </div>
+
+              <div>
+                <Label>Starting Energy</Label>
+                <Input
+                  type="number"
+                  value={formData.startingEnergy}
+                  onChange={(e) => handleNumericChange('startingEnergy', e.target.value)}
+                  className="bg-stone-800 border-stone-700"
+                  placeholder="10"
+                />
+              </div>
+
+              <div>
+                <Label>Max Energy</Label>
+                <Input
+                  type="number"
+                  value={formData.startingMaxEnergy}
+                  onChange={(e) => handleNumericChange('startingMaxEnergy', e.target.value)}
+                  className="bg-stone-800 border-stone-700"
+                  placeholder="10"
+                />
+              </div>
+
+              <div>
+                <Label>Carry Weight</Label>
+                <Input
+                  type="number"
+                  value={formData.carryWeight}
+                  onChange={(e) => handleNumericChange('carryWeight', e.target.value)}
+                  className="bg-stone-800 border-stone-700"
+                  placeholder="50"
+                />
+              </div>
+
+              <div className="col-span-2">
+                <Label>Feat Tree</Label>
+                <Select 
+                  value={formData.featTree || "_none"} 
+                  onValueChange={(value) => setFormData({ ...formData, featTree: value === "_none" ? "" : value })}
+                >
+                  <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-species-feattree">
+                    <SelectValue placeholder="Select a feat tree..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="_none">None</SelectItem>
+                    {featTrees.map((tree) => (
+                      <SelectItem key={tree.id} value={tree.id}>
+                        {tree.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-2 pt-4 shrink-0 border-t border-stone-700">
+          <Button
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            className="bg-stone-800 border-stone-700"
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={handleSubmit}
+            disabled={isLoading || !formData.name.trim()}
+            className="bg-amber-700 hover:bg-amber-600"
+            data-testid="button-save-species"
+          >
+            {isLoading ? 'Saving...' : (initialData ? 'Update Species' : 'Create Species')}
+          </Button>
+        </div>
+      </DialogContent>
+
+      <ImageBrowser
+        open={showSpeciesImageBrowser}
+        onOpenChange={setShowSpeciesImageBrowser}
+        onSelect={(imageBase64) => {
+          setFormData({ ...formData, defaultImage: imageBase64 });
+        }}
+        title="Select Species Image"
+      />
+    </Dialog>
+  );
+}
+
 export default function Campaign() {
   const [location, setLocation] = useLocation();
   const search = useSearch();
@@ -283,6 +687,10 @@ export default function Campaign() {
   const [currentView, setCurrentView] = useState({ x: 0, y: 0, zoom: 1 });
   const [scenesManagementOpen, setScenesManagementOpen] = useState(false);
   const [newSceneName, setNewSceneName] = useState("");
+  const [campaignSpeciesOpen, setCampaignSpeciesOpen] = useState(false);
+  const [editingSpecies, setEditingSpecies] = useState<CampaignSpecies | null>(null);
+  const [speciesFormOpen, setSpeciesFormOpen] = useState(false);
+  const [deletingSpecies, setDeletingSpecies] = useState<CampaignSpecies | null>(null);
   const [chatOpen, setChatOpen] = useState(false);
   const [viewingCharacterSheet, setViewingCharacterSheet] = useState<any>(null);
   const [characterSheetDefaultTab, setCharacterSheetDefaultTab] = useState("overview");
@@ -504,6 +912,60 @@ export default function Campaign() {
     queryFn: () => api.getSystemSpecies(),
     enabled: !!effectiveCampaignId && !isNew,
     staleTime: 5 * 60 * 1000, // Species data doesn't change often, cache for 5 minutes
+  });
+
+  // Load campaign species for the campaign (GM-created species)
+  const { data: campaignSpeciesList = [] } = useQuery({
+    queryKey: ['campaignSpecies', effectiveCampaignId],
+    queryFn: () => api.getCampaignSpecies(effectiveCampaignId!),
+    enabled: !!effectiveCampaignId && !isNew,
+  });
+
+  // Load feat trees for species form (to assign racial feat trees)
+  const { data: featTrees = [] } = useQuery<FeatTree[]>({
+    queryKey: ['/api/admin/feat-trees'],
+    queryFn: () => api.getFeatTrees(),
+    enabled: role === 'gm' && speciesFormOpen,
+  });
+
+  // Campaign species mutations
+  const createCampaignSpeciesMutation = useMutation({
+    mutationFn: (data: Partial<CampaignSpecies>) => api.createCampaignSpecies(effectiveCampaignId!, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['campaignSpecies', effectiveCampaignId] });
+      setSpeciesFormOpen(false);
+      setEditingSpecies(null);
+      toast({ title: "Success", description: "Campaign species created" });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message || "Failed to create species", variant: "destructive" });
+    },
+  });
+
+  const updateCampaignSpeciesMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Partial<CampaignSpecies> }) => 
+      api.updateCampaignSpecies(effectiveCampaignId!, id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['campaignSpecies', effectiveCampaignId] });
+      setSpeciesFormOpen(false);
+      setEditingSpecies(null);
+      toast({ title: "Success", description: "Campaign species updated" });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message || "Failed to update species", variant: "destructive" });
+    },
+  });
+
+  const deleteCampaignSpeciesMutation = useMutation({
+    mutationFn: (id: string) => api.deleteCampaignSpecies(effectiveCampaignId!, id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['campaignSpecies', effectiveCampaignId] });
+      setDeletingSpecies(null);
+      toast({ title: "Success", description: "Campaign species deleted" });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message || "Failed to delete species", variant: "destructive" });
+    },
   });
 
   // Create campaign mutation
@@ -1407,6 +1869,28 @@ export default function Campaign() {
             </TooltipProvider>
           )}
           
+          {/* Campaign Species Button (GM Only) */}
+          {role === 'gm' && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setCampaignSpeciesOpen(true)}
+                    className="text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto relative z-[60]"
+                    data-testid="button-campaign-species"
+                  >
+                    <Dna className="h-5 w-5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="left" className="bg-stone-800 border-stone-700 text-stone-200">
+                  <p>Campaign Species</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+          
           {/* Initiative Button - Under scenes/settings */}
           <TooltipProvider>
             <Tooltip>
@@ -1574,6 +2058,145 @@ export default function Campaign() {
           </SheetContent>
         </Sheet>
       )}
+
+      {/* Campaign Species Sheet (GM Only) */}
+      {role === 'gm' && (
+        <Sheet open={campaignSpeciesOpen} onOpenChange={setCampaignSpeciesOpen}>
+          <SheetContent className="bg-stone-900 border-stone-700 text-stone-200 w-full sm:max-w-md overflow-y-auto custom-scrollbar">
+            <SheetHeader>
+              <SheetTitle className="text-amber-500 font-display text-xl sm:text-2xl">Campaign Species</SheetTitle>
+            </SheetHeader>
+            
+            <ScrollArea className="h-[calc(100vh-100px)] pr-4">
+              <div className="mt-6 space-y-6">
+                <p className="text-stone-400 text-sm">
+                  Create custom species for this campaign. Players can select these species when creating characters.
+                </p>
+
+                <Button
+                  onClick={() => {
+                    setEditingSpecies(null);
+                    setSpeciesFormOpen(true);
+                  }}
+                  className="w-full bg-amber-700 hover:bg-amber-600"
+                  data-testid="button-create-species"
+                >
+                  <Plus className="mr-2 h-4 w-4" /> Create Species
+                </Button>
+
+                <div className="space-y-3">
+                  {campaignSpeciesList.length > 0 ? (
+                    campaignSpeciesList.map((species: CampaignSpecies) => (
+                      <div
+                        key={species.id}
+                        className="p-4 bg-stone-800 rounded-lg border border-stone-700"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            {species.defaultImage ? (
+                              <img 
+                                src={species.defaultImage} 
+                                alt={species.name} 
+                                className="w-10 h-10 rounded-full object-cover border border-stone-600"
+                              />
+                            ) : (
+                              <div className="w-10 h-10 rounded-full bg-stone-700 flex items-center justify-center">
+                                <Dna className="h-5 w-5 text-stone-500" />
+                              </div>
+                            )}
+                            <div>
+                              <h3 className="font-bold text-stone-100">{species.name}</h3>
+                              <p className="text-xs text-stone-400">
+                                HP: {species.startingMaxHp} | Speed: {species.speed}ft | {species.size}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex gap-1">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => {
+                                setEditingSpecies(species);
+                                setSpeciesFormOpen(true);
+                              }}
+                              className="h-8 w-8 text-stone-400 hover:text-white"
+                              data-testid={`button-edit-species-${species.id}`}
+                            >
+                              <Edit2 className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => setDeletingSpecies(species)}
+                              className="h-8 w-8 text-red-400 hover:text-red-300"
+                              data-testid={`button-delete-species-${species.id}`}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </div>
+                        {species.description && (
+                          <p className="mt-2 text-sm text-stone-400 line-clamp-2">
+                            {species.description}
+                          </p>
+                        )}
+                      </div>
+                    ))
+                  ) : (
+                    <div className="text-center py-8 text-stone-500">
+                      <Dna className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                      <p>No campaign species yet</p>
+                      <p className="text-xs mt-1">Create species unique to your campaign</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </ScrollArea>
+          </SheetContent>
+        </Sheet>
+      )}
+
+      {/* Campaign Species Form Dialog */}
+      {role === 'gm' && (
+        <CampaignSpeciesFormDialog
+          open={speciesFormOpen}
+          onOpenChange={setSpeciesFormOpen}
+          onSave={(data) => {
+            if (editingSpecies) {
+              updateCampaignSpeciesMutation.mutate({ id: editingSpecies.id, data });
+            } else {
+              createCampaignSpeciesMutation.mutate(data);
+            }
+          }}
+          initialData={editingSpecies}
+          isLoading={createCampaignSpeciesMutation.isPending || updateCampaignSpeciesMutation.isPending}
+          featTrees={featTrees}
+        />
+      )}
+
+      {/* Delete Species Confirmation */}
+      <AlertDialog open={!!deletingSpecies} onOpenChange={(open) => !open && setDeletingSpecies(null)}>
+        <AlertDialogContent className="bg-stone-900 border-stone-700">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-red-400">Delete Species</AlertDialogTitle>
+            <AlertDialogDescription className="text-stone-400">
+              Are you sure you want to delete "{deletingSpecies?.name}"? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="bg-stone-800 border-stone-700 text-stone-200 hover:bg-stone-700">
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => deletingSpecies && deleteCampaignSpeciesMutation.mutate(deletingSpecies.id)}
+              className="bg-red-900 hover:bg-red-800 text-white"
+              disabled={deleteCampaignSpeciesMutation.isPending}
+            >
+              {deleteCampaignSpeciesMutation.isPending ? "Deleting..." : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Add Token Dialog */}
       {role === 'gm' && (

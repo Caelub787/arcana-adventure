@@ -340,6 +340,37 @@ export const insertSystemSpeciesSchema = createInsertSchema(systemSpecies).omit(
 export type InsertSystemSpecies = z.infer<typeof insertSystemSpeciesSchema>;
 export type SystemSpecies = typeof systemSpecies.$inferSelect;
 
+// Campaign Species table (campaign-local race/species definitions created by GMs)
+export const campaignSpecies = pgTable("campaign_species", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  campaignId: varchar("campaign_id").notNull().references(() => campaigns.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  description: text("description"),
+  defaultImage: text("default_image"),
+  lifespan: integer("lifespan").default(100).notNull(),
+  speed: integer("speed").default(30).notNull(),
+  flySpeed: integer("fly_speed").default(0).notNull(),
+  size: text("size").default("Medium").notNull(),
+  naturalArmor: integer("natural_armor").default(5).notNull(),
+  sizeBonus: integer("size_bonus").default(0).notNull(),
+  startingHp: integer("starting_hp").default(10).notNull(),
+  startingMaxHp: integer("starting_max_hp").default(10).notNull(),
+  hpPerLevel: integer("hp_per_level").default(5).notNull(),
+  startingEnergy: integer("starting_energy").default(10).notNull(),
+  startingMaxEnergy: integer("starting_max_energy").default(10).notNull(),
+  carryWeight: integer("carry_weight").default(50).notNull(),
+  featTree: text("feat_tree").default(""),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertCampaignSpeciesSchema = createInsertSchema(campaignSpecies).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertCampaignSpecies = z.infer<typeof insertCampaignSpeciesSchema>;
+export type CampaignSpecies = typeof campaignSpecies.$inferSelect;
+
 // System Skills table (admin-defined custom skills that can be added to characters)
 export const systemSkills = pgTable("system_skills", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

@@ -220,6 +220,28 @@ export interface SystemSpecies {
   createdAt: string;
 }
 
+export interface CampaignSpecies {
+  id: string;
+  campaignId: string;
+  name: string;
+  description?: string;
+  defaultImage?: string;
+  lifespan: number;
+  speed: number;
+  flySpeed: number;
+  size: string;
+  naturalArmor: number;
+  sizeBonus: number;
+  startingHp: number;
+  startingMaxHp: number;
+  hpPerLevel: number;
+  startingEnergy: number;
+  startingMaxEnergy: number;
+  carryWeight: number;
+  featTree?: string;
+  createdAt: string;
+}
+
 export interface SystemSkill {
   id: string;
   name: string;
@@ -744,6 +766,29 @@ class ApiClient {
   async getSpecies(systemName?: string): Promise<SystemSpecies[]> {
     const params = systemName ? `?system=${encodeURIComponent(systemName)}` : '';
     return this.request(`/species${params}`);
+  }
+
+  // Campaign Species (GM-managed species for the campaign)
+  async getCampaignSpecies(campaignId: string): Promise<CampaignSpecies[]> {
+    return this.request(`/campaigns/${campaignId}/species`);
+  }
+
+  async createCampaignSpecies(campaignId: string, species: Partial<CampaignSpecies>): Promise<CampaignSpecies> {
+    return this.request(`/campaigns/${campaignId}/species`, {
+      method: 'POST',
+      body: JSON.stringify(species),
+    });
+  }
+
+  async updateCampaignSpecies(campaignId: string, speciesId: string, data: Partial<CampaignSpecies>): Promise<CampaignSpecies> {
+    return this.request(`/campaigns/${campaignId}/species/${speciesId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteCampaignSpecies(campaignId: string, speciesId: string): Promise<void> {
+    return this.request(`/campaigns/${campaignId}/species/${speciesId}`, { method: 'DELETE' });
   }
 
   // Admin Feat Templates

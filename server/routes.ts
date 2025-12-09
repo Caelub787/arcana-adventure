@@ -2527,6 +2527,88 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Campaign Species routes (GM-managed species for the campaign)
+  app.get("/api/campaigns/:campaignId/species", requireAuth, async (req, res) => {
+    try {
+      const species = await storage.getCampaignSpecies(req.params.campaignId);
+      res.json(species);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch campaign species" });
+    }
+  });
+
+  app.post("/api/campaigns/:campaignId/species", requireAuth, async (req, res) => {
+    try {
+      const campaign = await storage.getCampaign(req.params.campaignId);
+      if (!campaign) {
+        return res.status(404).json({ error: "Campaign not found" });
+      }
+
+      // Only GM can create campaign species
+      if (campaign.gmUserId !== req.session.userId) {
+        return res.status(403).json({ error: "Only the GM can create campaign species" });
+      }
+
+      const species = await storage.createCampaignSpecies({
+        ...req.body,
+        campaignId: req.params.campaignId
+      });
+      res.json(species);
+    } catch (err) {
+      res.status(400).json({ error: "Failed to create campaign species" });
+    }
+  });
+
+  app.patch("/api/campaigns/:campaignId/species/:speciesId", requireAuth, async (req, res) => {
+    try {
+      const campaign = await storage.getCampaign(req.params.campaignId);
+      if (!campaign) {
+        return res.status(404).json({ error: "Campaign not found" });
+      }
+
+      // Only GM can update campaign species
+      if (campaign.gmUserId !== req.session.userId) {
+        return res.status(403).json({ error: "Only the GM can update campaign species" });
+      }
+
+      // Verify species belongs to this campaign
+      const species = await storage.getCampaignSpeciesById(req.params.speciesId);
+      if (!species || species.campaignId !== req.params.campaignId) {
+        return res.status(404).json({ error: "Species not found in this campaign" });
+      }
+
+      const updated = await storage.updateCampaignSpecies(req.params.speciesId, req.body);
+      res.json(updated);
+    } catch (err) {
+      res.status(400).json({ error: "Failed to update campaign species" });
+    }
+  });
+
+  app.delete("/api/campaigns/:campaignId/species/:speciesId", requireAuth, async (req, res) => {
+    try {
+      const campaign = await storage.getCampaign(req.params.campaignId);
+      if (!campaign) {
+        return res.status(404).json({ error: "Campaign not found" });
+      }
+
+      // Only GM can delete campaign species
+      if (campaign.gmUserId !== req.session.userId) {
+        return res.status(403).json({ error: "Only the GM can delete campaign species" });
+      }
+
+      // Verify species belongs to this campaign
+      const species = await storage.getCampaignSpeciesById(req.params.speciesId);
+      if (!species || species.campaignId !== req.params.campaignId) {
+        return res.status(404).json({ error: "Species not found in this campaign" });
+      }
+
+      await storage.deleteCampaignSpecies(req.params.speciesId);
+      res.json({ success: true });
+    } catch (err) {
+      res.status(400).json({ error: "Failed to delete campaign species" });
+    }
+  });
+
   // Admin emails for system-wide access
   const ADMIN_EMAILS = ['notclaudenot@gmail.com', 'reedmcaleb@gmail.com'];
 
@@ -2998,6 +3080,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       const charFeat = await storage.unlockCharacterFeat(req.params.id, req.params.featId);
+      
+      // Apply trait_grant effects: add traits to character when feat is unlocked
+      if (feat.effects && Array.isArray(feat.effects)) {
+        for (const effect of feat.effects as any[]) {
+          if (effect.type === 'trait_grant' && effect.target) {
+            try {
+              // Fetch the system trait
+              const systemTrait = await storage.getSystemTrait(effect.target);
+              if (systemTrait) {
+                // Add the trait to the character
+                await storage.addCharacterTrait({
+                  characterId: req.params.id,
+                  systemTraitId: systemTrait.id,
+                  name: systemTrait.name,
+                  description: systemTrait.description || undefined,
+                  parentAttribute: systemTrait.parentAttribute,
+                  usesPerLongRest: systemTrait.usesPerLongRest,
+                  currentUses: 0,
+                });
+              }
+            } catch (traitErr) {
+              console.error('[trait_grant] Error adding trait from feat:', traitErr);
+            }
+          }
+        }
+      }
       
       if (character?.campaignId) {
         broadcastToCampaign(character.campaignId, {

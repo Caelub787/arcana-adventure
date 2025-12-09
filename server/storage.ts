@@ -14,6 +14,7 @@ import {
   type CharacterPermission, type InsertCharacterPermission,
   type InitiativeEntry, type InsertInitiativeEntry,
   type SystemSpecies, type InsertSystemSpecies,
+  type CampaignSpecies, type InsertCampaignSpecies,
   type FeatTemplate, type InsertFeatTemplate,
   type FeatTree, type InsertFeatTree,
   type Feat, type InsertFeat,
@@ -24,7 +25,7 @@ import {
   type CharacterCustomSkill, type InsertCharacterCustomSkill,
   type SystemTrait, type InsertSystemTrait,
   type CharacterTrait, type InsertCharacterTrait,
-  users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, items, spells, characterPermissions, initiativeEntries, systemSpecies, featTemplates, featTrees, feats, featConnections, characterFeats, systemSpells, systemSkills, characterCustomSkills, systemTraits, characterTraits
+  users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, items, spells, characterPermissions, initiativeEntries, systemSpecies, campaignSpecies, featTemplates, featTrees, feats, featConnections, characterFeats, systemSpells, systemSkills, characterCustomSkills, systemTraits, characterTraits
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql, inArray } from "drizzle-orm";
@@ -147,6 +148,13 @@ export interface IStorage {
   createSystemSpecies(species: InsertSystemSpecies): Promise<SystemSpecies>;
   updateSystemSpecies(id: string, data: Partial<InsertSystemSpecies>): Promise<SystemSpecies | undefined>;
   deleteSystemSpecies(id: string): Promise<void>;
+
+  // Campaign Species operations (campaign-local species created by GMs)
+  getCampaignSpecies(campaignId: string): Promise<CampaignSpecies[]>;
+  getCampaignSpeciesById(id: string): Promise<CampaignSpecies | undefined>;
+  createCampaignSpecies(species: InsertCampaignSpecies): Promise<CampaignSpecies>;
+  updateCampaignSpecies(id: string, data: Partial<InsertCampaignSpecies>): Promise<CampaignSpecies | undefined>;
+  deleteCampaignSpecies(id: string): Promise<void>;
 
   // Feat Template operations (reusable feat definitions)
   getFeatTemplates(): Promise<FeatTemplate[]>;
@@ -984,6 +992,41 @@ export class DatabaseStorage implements IStorage {
 
   async deleteSystemSpecies(id: string): Promise<void> {
     await db.delete(systemSpecies).where(eq(systemSpecies.id, id));
+  }
+
+  // Campaign Species operations (campaign-local species created by GMs)
+  async getCampaignSpecies(campaignId: string): Promise<CampaignSpecies[]> {
+    return await db.select()
+      .from(campaignSpecies)
+      .where(eq(campaignSpecies.campaignId, campaignId))
+      .orderBy(campaignSpecies.name);
+  }
+
+  async getCampaignSpeciesById(id: string): Promise<CampaignSpecies | undefined> {
+    const [species] = await db.select()
+      .from(campaignSpecies)
+      .where(eq(campaignSpecies.id, id))
+      .limit(1);
+    return species;
+  }
+
+  async createCampaignSpecies(species: InsertCampaignSpecies): Promise<CampaignSpecies> {
+    const [created] = await db.insert(campaignSpecies)
+      .values(species)
+      .returning();
+    return created;
+  }
+
+  async updateCampaignSpecies(id: string, data: Partial<InsertCampaignSpecies>): Promise<CampaignSpecies | undefined> {
+    const [updated] = await db.update(campaignSpecies)
+      .set(data)
+      .where(eq(campaignSpecies.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteCampaignSpecies(id: string): Promise<void> {
+    await db.delete(campaignSpecies).where(eq(campaignSpecies.id, id));
   }
 
   // Feat Template operations (reusable feat definitions)

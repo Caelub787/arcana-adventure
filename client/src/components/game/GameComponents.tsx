@@ -3569,19 +3569,33 @@ interface AddCharacterDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onAddCharacter: (characterData: any) => void;
+  campaignId?: string;
 }
 
-function AddCharacterDialog({ open, onOpenChange, onAddCharacter }: AddCharacterDialogProps) {
+function AddCharacterDialog({ open, onOpenChange, onAddCharacter, campaignId }: AddCharacterDialogProps) {
   const [name, setName] = useState("");
   const [selectedRace, setSelectedRace] = useState("Human");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Fetch species from database
-  const { data: speciesList = [] } = useQuery({
+  // Fetch system species from database
+  const { data: systemSpeciesList = [] } = useQuery({
     queryKey: ['species'],
     queryFn: () => api.getSpecies('Arcana Adventure'),
     enabled: open,
   });
+
+  // Fetch campaign species if campaignId is provided
+  const { data: campaignSpeciesList = [] } = useQuery({
+    queryKey: ['campaignSpecies', campaignId],
+    queryFn: () => api.getCampaignSpecies(campaignId!),
+    enabled: open && !!campaignId,
+  });
+
+  // Combine system and campaign species
+  const speciesList = [
+    ...systemSpeciesList.map((s: any) => ({ ...s, source: 'system' })),
+    ...campaignSpeciesList.map((s: any) => ({ ...s, source: 'campaign' })),
+  ];
 
   // Get the selected species data
   const selectedSpecies = speciesList.find((s: any) => s.name === selectedRace) || {
@@ -3693,11 +3707,28 @@ function AddCharacterDialog({ open, onOpenChange, onAddCharacter }: AddCharacter
               </SelectTrigger>
               <SelectContent className="bg-stone-800 border-stone-700">
                 {speciesList.length > 0 ? (
-                  speciesList.map((species: any) => (
-                    <SelectItem key={species.id} value={species.name} className="text-stone-200">
-                      {species.name}
-                    </SelectItem>
-                  ))
+                  <>
+                    {systemSpeciesList.length > 0 && (
+                      <>
+                        <div className="px-2 py-1 text-xs text-stone-500 font-bold border-b border-stone-700">System Species</div>
+                        {systemSpeciesList.map((species: any) => (
+                          <SelectItem key={species.id} value={species.name} className="text-stone-200">
+                            {species.name}
+                          </SelectItem>
+                        ))}
+                      </>
+                    )}
+                    {campaignSpeciesList.length > 0 && (
+                      <>
+                        <div className="px-2 py-1 text-xs text-amber-500 font-bold border-b border-stone-700 mt-1">Campaign Species</div>
+                        {campaignSpeciesList.map((species: any) => (
+                          <SelectItem key={species.id} value={species.name} className="text-amber-300">
+                            {species.name}
+                          </SelectItem>
+                        ))}
+                      </>
+                    )}
+                  </>
                 ) : (
                   <SelectItem value="Human" className="text-stone-200">Human</SelectItem>
                 )}
@@ -5026,6 +5057,7 @@ export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onIn
           open={addCharacterOpen}
           onOpenChange={setAddCharacterOpen}
           onAddCharacter={onAddCharacter}
+          campaignId={campaignId}
         />
       )}
 

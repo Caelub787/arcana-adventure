@@ -17,7 +17,7 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Slider } from '@/components/ui/slider';
 import { toast } from '@/hooks/use-toast';
-import { ArrowLeft, Plus, Pencil, Trash2, Sword, Shield, Package, Sparkles, Box, Coins, Search, Users, User, GitBranch, Library, Link, X, GripVertical, Star, Zap, Heart, ShieldCheck, BookOpen, RefreshCw, ZoomIn, ZoomOut } from 'lucide-react';
+import { ArrowLeft, Plus, Pencil, Trash2, Sword, Shield, Package, Sparkles, Box, Coins, Search, Users, User, GitBranch, Library, Link, X, GripVertical, Star, Zap, Heart, ShieldCheck, BookOpen, RefreshCw, ZoomIn, ZoomOut, Wand2 } from 'lucide-react';
 import { ImageBrowser } from '@/components/ImageBrowser';
 
 type AdminView = 'dashboard' | 'items' | 'species' | 'spells' | 'skills' | 'traits' | 'feat-trees';
@@ -2692,6 +2692,7 @@ const EFFECT_TYPE_ICONS: Record<string, { icon: React.ComponentType<{ className?
   spell_grant: { icon: BookOpen, color: 'text-cyan-400' },
   item_grant: { icon: Package, color: 'text-orange-400' },
   skill_grant: { icon: Sparkles, color: 'text-pink-400' },
+  trait_grant: { icon: Wand2, color: 'text-violet-400' },
 };
 
 interface TemplateSelectorProps {
@@ -2864,6 +2865,13 @@ function FeatFormDialog({ open, onOpenChange, onSave, initialData, isLoading, fe
     enabled: open,
   });
 
+  // Query system traits for trait_grant dropdown
+  const { data: systemTraitsForDropdown = [] } = useQuery({
+    queryKey: ['admin-traits'],
+    queryFn: () => api.getSystemTraits(),
+    enabled: open,
+  });
+
   // Normalize effects for UI display - preserve ALL existing data exactly as stored
   // This function only makes a shallow copy, does NOT modify any fields
   const normalizeEffects = (effects: any[] | undefined): any[] => {
@@ -2904,11 +2912,12 @@ function FeatFormDialog({ open, onOpenChange, onSave, initialData, isLoading, fe
   };
 
   const addEffect = () => {
-    // Value validation: require non-zero for most types except spell_grant, item_grant, skill_grant
+    // Value validation: require non-zero for most types except spell_grant, item_grant, skill_grant, trait_grant
     // Also allow hp_bonus with target (for per-level dice expressions)
     const requiresValue = newEffect.type !== 'spell_grant' && 
                           newEffect.type !== 'item_grant' &&
                           newEffect.type !== 'skill_grant' &&
+                          newEffect.type !== 'trait_grant' &&
                           !(newEffect.type === 'hp_bonus' && newEffect.target);
     if (requiresValue && newEffect.value === 0) {
       toast({ title: 'Error', description: 'Effect value cannot be 0', variant: 'destructive' });
@@ -2926,6 +2935,10 @@ function FeatFormDialog({ open, onOpenChange, onSave, initialData, isLoading, fe
     }
     if (newEffect.type === 'skill_grant' && !newEffect.target) {
       toast({ title: 'Error', description: 'Please select a skill', variant: 'destructive' });
+      return;
+    }
+    if (newEffect.type === 'trait_grant' && !newEffect.target) {
+      toast({ title: 'Error', description: 'Please select a trait', variant: 'destructive' });
       return;
     }
     
@@ -3075,6 +3088,10 @@ function FeatFormDialog({ open, onOpenChange, onSave, initialData, isLoading, fe
                     const item = systemItems.find((i: any) => i.id === target);
                     return item ? `Grants: ${item.name}` : target || '(select item)';
                   }
+                  if (effect.type === 'trait_grant') {
+                    const trait = (systemTraitsForDropdown as SystemTrait[]).find(t => t.id === target);
+                    return trait ? `Grants: ${trait.name}` : target || '(select trait)';
+                  }
                   if (effect.type === 'skill_bonus') {
                     const skill = SKILLS_LIST.find(s => s.key === target);
                     return `+${value} to ${skill?.name || target || '(select skill)'}`;
@@ -3131,11 +3148,12 @@ function FeatFormDialog({ open, onOpenChange, onSave, initialData, isLoading, fe
                       <SelectItem value="spell_grant">Grant Spell</SelectItem>
                       <SelectItem value="item_grant">Grant Item</SelectItem>
                       <SelectItem value="skill_grant">Grant Custom Skill</SelectItem>
+                      <SelectItem value="trait_grant">Grant Trait</SelectItem>
                     </SelectContent>
                   </Select>
 
-                  {/* Value input - shown for all except spell/item/skill grants */}
-                  {newEffect.type !== 'spell_grant' && newEffect.type !== 'item_grant' && newEffect.type !== 'skill_grant' && (
+                  {/* Value input - shown for all except spell/item/skill/trait grants */}
+                  {newEffect.type !== 'spell_grant' && newEffect.type !== 'item_grant' && newEffect.type !== 'skill_grant' && newEffect.type !== 'trait_grant' && (
                     <Input
                       type="number"
                       value={newEffect.value}
@@ -3278,6 +3296,32 @@ function FeatFormDialog({ open, onOpenChange, onSave, initialData, isLoading, fe
                             <span className="flex items-center gap-2">
                               <span>{skill.name}</span>
                               <Badge variant="secondary" className="text-xs capitalize">{skill.parentAttribute}</Badge>
+                            </span>
+                          </SelectItem>
+                        ))
+                      )}
+                    </SelectContent>
+                  </Select>
+                )}
+
+                {/* Trait grant dropdown */}
+                {newEffect.type === 'trait_grant' && (
+                  <Select
+                    value={newEffect.target}
+                    onValueChange={(v) => setNewEffect({ ...newEffect, target: v })}
+                  >
+                    <SelectTrigger className="bg-stone-800 border-stone-700 text-xs">
+                      <SelectValue placeholder="Select trait..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(systemTraitsForDropdown as SystemTrait[]).length === 0 ? (
+                        <div className="p-2 text-xs text-stone-400">No traits created yet</div>
+                      ) : (
+                        (systemTraitsForDropdown as SystemTrait[]).map((trait) => (
+                          <SelectItem key={trait.id} value={trait.id}>
+                            <span className="flex items-center gap-2">
+                              <span>{trait.name}</span>
+                              <Badge variant="secondary" className="text-xs capitalize">{trait.parentAttribute}</Badge>
                             </span>
                           </SelectItem>
                         ))
