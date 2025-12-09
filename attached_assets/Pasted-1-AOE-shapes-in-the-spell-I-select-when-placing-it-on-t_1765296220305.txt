@@ -1,0 +1,13 @@
+1. AOE shapes in the spell I select when placing it on the battlemap needs to dictate the shape of it on the battlemap, right now only circle is displaying.  All other shapes must have the same Real time logic as the current one, but in their proper shape.  
+2. The Line shape is a straight line that goes from the player to the place clicked.
+3. All AOE shapes can only be placed within range of the range stat of the spell
+4. All AOE shapes must be the size of their AOE range stat
+Above is all currently used logic for the circle AOE shape which should remain untouched but used as reference for the rest of the AOE shapes.
+
+5.  If a spell's damage type is set to Heal, then when you roll the damage dice for it that total needs to be added to the target/s HP total, all other damages are subtracted. (keep in mind armor, if a target has a damage reduction type that matched the spells damage then they resist that much damage.  Ex. If a spell damage roll total is 15 flame damage but the token has a helm with a damage resistance type of flame and a damage reduction value of 5, then they only take 10 damage.
+6. Traits should be able to be equipped in the skills hotbar section.
+
+7. When creating a consumable item (in admin or character sheet), it should have a special checkbox to determine whether or not it is a damaging item.  If so when its equipped in your hotbar you can click on it to roll for its damage effect. You can target enemies within 5ft and its rolling effect must match weapons.  Click once on the item in the hotbar and it rolls an attack roll, same way weapon rolls work.  If you double click it rolls damage with effects in mind.  If you hold it opens that panel with roll modifiers.
+- NOTE: IF DAMAGE TYPE IS SET TO HEALTH THEN IT ADDS THE DAMAGE ROLL TOTAL TO THE HP INSTEAD OF SUBTRACTING IT!!!!!!!!!!!!!
+8. The item creation page in the character sheet needs to match the admin item creation page and all their stats.  Right now the damage type isn't a dropdown list with all damage types even tho it should be.
+9. Roll totals MUST appear in the chat, right now magic rolls are appearing as "?".  ALL players must see ALL rolls.

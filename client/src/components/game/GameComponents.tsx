@@ -1313,6 +1313,51 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                   strokeDasharray={locked ? 'none' : '8 4'}
                 />
               )}
+              {aoeShape === 'cone' && casterToken && (() => {
+                const casterCenterX = casterToken.x + (scene?.gridSize || gridSize) / 2 + 9000;
+                const casterCenterY = casterToken.y + (scene?.gridSize || gridSize) / 2 + 9000;
+                const angleRad = Math.atan2(worldY - casterCenterY, worldX - casterCenterX);
+                const halfConeAngle = (90 / 2) * (Math.PI / 180);
+                const leftAngle = angleRad - halfConeAngle;
+                const rightAngle = angleRad + halfConeAngle;
+                const leftX = casterCenterX + Math.cos(leftAngle) * radiusPixels;
+                const leftY = casterCenterY + Math.sin(leftAngle) * radiusPixels;
+                const rightX = casterCenterX + Math.cos(rightAngle) * radiusPixels;
+                const rightY = casterCenterY + Math.sin(rightAngle) * radiusPixels;
+                return (
+                  <path
+                    d={`M ${casterCenterX} ${casterCenterY} L ${leftX} ${leftY} A ${radiusPixels} ${radiusPixels} 0 0 1 ${rightX} ${rightY} Z`}
+                    fill={fillColor}
+                    stroke={strokeColor}
+                    strokeWidth={2}
+                    strokeDasharray={locked ? 'none' : '8 4'}
+                  />
+                );
+              })()}
+              {aoeShape === 'line' && casterToken && (() => {
+                const casterCenterX = casterToken.x + (scene?.gridSize || gridSize) / 2 + 9000;
+                const casterCenterY = casterToken.y + (scene?.gridSize || gridSize) / 2 + 9000;
+                const lineWidth = (scene?.gridSize || gridSize);
+                const dirX = worldX - casterCenterX;
+                const dirY = worldY - casterCenterY;
+                const dirLen = Math.sqrt(dirX * dirX + dirY * dirY);
+                if (dirLen === 0) return null;
+                const normX = dirX / dirLen;
+                const normY = dirY / dirLen;
+                const perpX = -normY * (lineWidth / 2);
+                const perpY = normX * (lineWidth / 2);
+                const endX = casterCenterX + normX * radiusPixels;
+                const endY = casterCenterY + normY * radiusPixels;
+                return (
+                  <polygon
+                    points={`${casterCenterX + perpX},${casterCenterY + perpY} ${endX + perpX},${endY + perpY} ${endX - perpX},${endY - perpY} ${casterCenterX - perpX},${casterCenterY - perpY}`}
+                    fill={fillColor}
+                    stroke={strokeColor}
+                    strokeWidth={2}
+                    strokeDasharray={locked ? 'none' : '8 4'}
+                  />
+                );
+              })()}
               {/* Center dot when not locked */}
               {!locked && (
                 <circle
@@ -1386,6 +1431,55 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                   strokeDasharray={playerLocked ? 'none' : '8 4'}
                 />
               )}
+              {aoeShape === 'cone' && (() => {
+                const playerCasterToken = playerAoe.casterTokenId ? tokens.find(t => t.id === playerAoe.casterTokenId) : null;
+                if (!playerCasterToken) return null;
+                const casterCenterX = playerCasterToken.x + (scene?.gridSize || gridSize) / 2 + 9000;
+                const casterCenterY = playerCasterToken.y + (scene?.gridSize || gridSize) / 2 + 9000;
+                const angleRad = Math.atan2(worldY - casterCenterY, worldX - casterCenterX);
+                const halfConeAngle = (90 / 2) * (Math.PI / 180);
+                const leftAngle = angleRad - halfConeAngle;
+                const rightAngle = angleRad + halfConeAngle;
+                const leftX = casterCenterX + Math.cos(leftAngle) * radiusPixels;
+                const leftY = casterCenterY + Math.sin(leftAngle) * radiusPixels;
+                const rightX = casterCenterX + Math.cos(rightAngle) * radiusPixels;
+                const rightY = casterCenterY + Math.sin(rightAngle) * radiusPixels;
+                return (
+                  <path
+                    d={`M ${casterCenterX} ${casterCenterY} L ${leftX} ${leftY} A ${radiusPixels} ${radiusPixels} 0 0 1 ${rightX} ${rightY} Z`}
+                    fill={playerFillColor}
+                    stroke={playerStrokeColor}
+                    strokeWidth={2}
+                    strokeDasharray={playerLocked ? 'none' : '8 4'}
+                  />
+                );
+              })()}
+              {aoeShape === 'line' && (() => {
+                const playerCasterToken = playerAoe.casterTokenId ? tokens.find(t => t.id === playerAoe.casterTokenId) : null;
+                if (!playerCasterToken) return null;
+                const casterCenterX = playerCasterToken.x + (scene?.gridSize || gridSize) / 2 + 9000;
+                const casterCenterY = playerCasterToken.y + (scene?.gridSize || gridSize) / 2 + 9000;
+                const lineWidth = (scene?.gridSize || gridSize);
+                const dirX = worldX - casterCenterX;
+                const dirY = worldY - casterCenterY;
+                const dirLen = Math.sqrt(dirX * dirX + dirY * dirY);
+                if (dirLen === 0) return null;
+                const normX = dirX / dirLen;
+                const normY = dirY / dirLen;
+                const perpX = -normY * (lineWidth / 2);
+                const perpY = normX * (lineWidth / 2);
+                const endX = casterCenterX + normX * radiusPixels;
+                const endY = casterCenterY + normY * radiusPixels;
+                return (
+                  <polygon
+                    points={`${casterCenterX + perpX},${casterCenterY + perpY} ${endX + perpX},${endY + perpY} ${endX - perpX},${endY - perpY} ${casterCenterX - perpX},${casterCenterY - perpY}`}
+                    fill={playerFillColor}
+                    stroke={playerStrokeColor}
+                    strokeWidth={2}
+                    strokeDasharray={playerLocked ? 'none' : '8 4'}
+                  />
+                );
+              })()}
               {/* Player name label */}
               <text
                 x={worldX}
@@ -1515,6 +1609,13 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     queryKey: ['spell', hotbar?.spellId],
     queryFn: () => api.getSpells(character.id).then(spells => spells.find((s: any) => s.id === hotbar?.spellId)),
     enabled: !!hotbar?.spellId
+  });
+
+  // Fetch trait data if traitId exists
+  const { data: traitData } = useQuery({
+    queryKey: ['trait', hotbar?.traitId],
+    queryFn: () => api.getCharacterTraits(character.id).then(traits => traits.find((t: any) => t.id === hotbar?.traitId)),
+    enabled: !!hotbar?.traitId
   });
 
   // Function to check if ammunition breaks (configurable chance) and update quantity
@@ -1697,14 +1798,30 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
   // Handle attack roll (1d20 + attribute modifier)
   // Options allow for extra modifiers and advantage/disadvantage from the popup
   const handleAttackRoll = async (options?: { extraMod?: number; advantage?: boolean; disadvantage?: boolean }) => {
-    if (!itemData || itemData.itemType !== 'weapon') return;
+    // Allow weapons and damaging consumables
+    const isDamagingConsumable = itemData && itemData.itemType === 'consumable' && itemData.isDamaging;
+    if (!itemData || (itemData.itemType !== 'weapon' && !isDamagingConsumable)) return;
     
-    // Check if ranged weapon requires ammunition
-    const ammo = isRangedWeapon(itemData) && itemData.weaponCategory && requiresAmmunitionForRoll(itemData.weaponCategory) 
+    // Guard: prevent using exhausted damaging consumables
+    if (isDamagingConsumable && (itemData.quantity || 1) <= 0) {
+      triggerRollNotification({
+        type: 'system',
+        label: `${itemData.name} - Exhausted!`,
+        result: 0,
+        total: 0,
+        username: character.name || 'Unknown',
+        characterName: character.name,
+        calculationBreakdown: 'No consumables remaining',
+      });
+      return;
+    }
+    
+    // Check if ranged weapon requires ammunition (skip for damaging consumables)
+    const ammo = !isDamagingConsumable && isRangedWeapon(itemData) && itemData.weaponCategory && requiresAmmunitionForRoll(itemData.weaponCategory) 
       ? getEquippedAmmunition() 
       : null;
     
-    if (isRangedWeapon(itemData) && itemData.weaponCategory && requiresAmmunitionForRoll(itemData.weaponCategory) && !ammo) {
+    if (!isDamagingConsumable && isRangedWeapon(itemData) && itemData.weaponCategory && requiresAmmunitionForRoll(itemData.weaponCategory) && !ammo) {
       triggerRollNotification({
         type: 'attack',
         dieType: 'd20',
@@ -1729,12 +1846,19 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
         targetData.token.x, targetData.token.y
       );
       
-      // Determine weapon range - use the weapon's explicit range, or default if not specified
-      // For ranged weapons, default to 120ft (standard longbow range)
-      // For melee weapons, default to 5ft (1 square) if not specified
-      const weaponRange = isRangedWeapon(itemData) 
-        ? (itemData.range || 120) // Default ranged range is 120ft if not specified
-        : (itemData.range || 5); // Melee defaults to 5ft if not specified
+      // Determine range:
+      // - Damaging consumables: always 5ft
+      // - Ranged weapons: explicit range or 120ft default
+      // - Melee weapons: explicit range or 5ft default
+      let itemRange: number;
+      if (isDamagingConsumable) {
+        itemRange = 5; // Damaging consumables always use 5ft range
+      } else if (isRangedWeapon(itemData)) {
+        itemRange = itemData.range || 120;
+      } else {
+        itemRange = itemData.range || 5;
+      }
+      const weaponRange = itemRange;
       
       console.log('[Range Check]', {
         attacker: { x: attackerToken.x, y: attackerToken.y },
@@ -1921,6 +2045,21 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
   const handleDamageRoll = async (options?: { extraMod?: number }) => {
     if (!itemData) return;
     
+    // Guard: prevent using exhausted damaging consumables
+    const isDamagingConsumable = itemData.itemType === 'consumable' && itemData.isDamaging;
+    if (isDamagingConsumable && (itemData.quantity || 1) <= 0) {
+      triggerRollNotification({
+        type: 'system',
+        label: `${itemData.name} - Exhausted!`,
+        result: 0,
+        total: 0,
+        username: character.name || 'Unknown',
+        characterName: character.name,
+        calculationBreakdown: 'No consumables remaining',
+      });
+      return;
+    }
+    
     const extraMod = options?.extraMod || 0;
     const targetData = getTargetData();
     
@@ -2051,6 +2190,31 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
         ? `${itemData.name} ${isHealing ? 'Healing' : 'Damage'} → ${targetData.character.name}: ${calculationBreakdown} = ${finalTotal} HP`
         : `${itemData.name} ${isHealing ? 'Healing' : 'Damage'}: ${calculationBreakdown} = ${total}`;
       gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', chatText, 'roll');
+    }
+    
+    // Consume the damaging consumable after damage is applied
+    const isDamagingConsumable = itemData.itemType === 'consumable' && itemData.isDamaging;
+    if (isDamagingConsumable) {
+      try {
+        const currentQty = itemData.quantity || 1;
+        if (currentQty <= 1) {
+          // Delete the item if quantity reaches 0
+          await api.deleteItem(itemData.id);
+          // Clear the hotbar slot
+          if (hotbar) {
+            await api.deleteHotbar(hotbar.id);
+          }
+        } else {
+          // Decrement quantity
+          await api.updateItem(itemData.id, { quantity: currentQty - 1 });
+        }
+        // Invalidate queries to refresh UI
+        queryClient.invalidateQueries({ queryKey: ['item', hotbar?.itemId] });
+        queryClient.invalidateQueries({ queryKey: ['items', character.id] });
+        queryClient.invalidateQueries({ queryKey: ['hotbars', character.id] });
+      } catch (err) {
+        console.error('Failed to consume damaging consumable:', err);
+      }
     }
   };
 
@@ -2232,11 +2396,106 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     setHasAdvantage(false);
     setHasDisadvantage(false);
   };
+
+  // Handle trait roll (1d20 + attribute modifier) - uses one of the trait's uses
+  const handleTraitRoll = async (options?: { extraMod?: number; advantage?: boolean; disadvantage?: boolean }) => {
+    if (!traitData) return;
+    
+    // Check if trait has uses remaining
+    if (traitData.currentUses >= traitData.usesPerLongRest) {
+      triggerRollNotification({
+        type: 'system',
+        label: `${traitData.name} - No Uses!`,
+        result: 0,
+        total: 0,
+        username: character.name || 'Unknown',
+        characterName: character.name,
+        calculationBreakdown: `No uses remaining (${traitData.currentUses}/${traitData.usesPerLongRest})`,
+      });
+      return;
+    }
+    
+    // Get attribute modifier for the trait
+    const attrName = traitData.parentAttribute || 'will';
+    const attrMod = getAttributeModifier(attrName);
+    const extraMod = options?.extraMod || 0;
+    const totalMod = attrMod + extraMod;
+    
+    // Determine advantage/disadvantage
+    const hasAdv = options?.advantage && !options?.disadvantage;
+    const hasDis = options?.disadvantage && !options?.advantage;
+    
+    // Roll dice
+    let roll1 = Math.floor(Math.random() * 20) + 1;
+    let roll2 = Math.floor(Math.random() * 20) + 1;
+    let roll = roll1;
+    let advLabel = '';
+    
+    if (hasAdv) {
+      roll = Math.max(roll1, roll2);
+      advLabel = ` (Adv: ${roll1}, ${roll2})`;
+    } else if (hasDis) {
+      roll = Math.min(roll1, roll2);
+      advLabel = ` (Disadv: ${roll1}, ${roll2})`;
+    }
+    
+    const total = roll + totalMod;
+    
+    // Build calculation breakdown
+    const attrDisplayName = attrName.charAt(0).toUpperCase() + attrName.slice(1);
+    let calculationBreakdown = `1d20 = ${roll}`;
+    if (attrMod !== 0) calculationBreakdown += ` + ${attrDisplayName} (${attrMod >= 0 ? '+' : ''}${attrMod})`;
+    if (extraMod !== 0) calculationBreakdown += ` + Mod (${extraMod >= 0 ? '+' : ''}${extraMod})`;
+    calculationBreakdown += advLabel;
+    
+    triggerRollNotification({
+      type: 'dice',
+      dieType: 'd20',
+      label: `${traitData.name}`,
+      result: roll,
+      modifier: totalMod,
+      total,
+      username: character.name || 'Unknown',
+      characterName: character.name,
+      calculationBreakdown,
+    });
+    
+    // Use the trait (increment currentUses)
+    try {
+      await api.useCharacterTrait(character.id, traitData.id);
+      queryClient.invalidateQueries({ queryKey: ['trait', hotbar?.traitId] });
+      queryClient.invalidateQueries({ queryKey: ['character-traits', character.id] });
+    } catch (err) {
+      console.error('Failed to use trait:', err);
+    }
+    
+    // Send roll to chat
+    if (character.campaignId) {
+      const usesAfter = traitData.currentUses + 1;
+      gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', 
+        `${traitData.name}: ${calculationBreakdown} = ${total} (${usesAfter}/${traitData.usesPerLongRest} uses)`, 'roll');
+    }
+  };
+
+  const handleModifiedTraitRoll = () => {
+    handleTraitRoll({ 
+      extraMod: extraModifier, 
+      advantage: hasAdvantage, 
+      disadvantage: hasDisadvantage 
+    });
+    // Reset and close popup
+    setShowModifierPopup(false);
+    setExtraModifier(0);
+    setHasAdvantage(false);
+    setHasDisadvantage(false);
+  };
   
   const isWeaponClickable = itemData && itemData.itemType === 'weapon';
+  const isDamagingConsumableClickable = itemData && itemData.itemType === 'consumable' && itemData.isDamaging;
   const isSkillClickable = !!hotbar?.skillName;
   const isSpellClickable = !!spellData;
-  const isClickable = isWeaponClickable || isSkillClickable || isSpellClickable;
+  const isTraitClickable = !!traitData;
+  const isClickable = isWeaponClickable || isDamagingConsumableClickable || isSkillClickable || isSpellClickable || isTraitClickable;
 
   // Handle spell attack roll (1d20 + attribute modifier)
   const handleSpellAttackRoll = () => {
@@ -2436,6 +2695,12 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
 
   // Handle click with single/double click detection
   const handleClick = () => {
+    // Handle trait clicks
+    if (isTraitClickable) {
+      handleTraitRoll();
+      return;
+    }
+
     // Handle skill clicks
     if (isSkillClickable) {
       handleSkillRoll();
@@ -2461,7 +2726,9 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
       return;
     }
     
-    if (!itemData || itemData.itemType !== 'weapon') return;
+    // Handle weapons and damaging consumables
+    const isWeaponOrDamagingConsumable = itemData && (itemData.itemType === 'weapon' || (itemData.itemType === 'consumable' && itemData.isDamaging));
+    if (!isWeaponOrDamagingConsumable) return;
     
     clickCountRef.current += 1;
     
@@ -2577,6 +2844,35 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
         <p className="text-xs text-stone-400 mt-1">Click to roll | Hold for modifiers</p>
       </>
     );
+  } else if (hotbar?.traitId && traitData) {
+    // Display trait with uses remaining
+    const usesRemaining = traitData.usesPerLongRest - traitData.currentUses;
+    const isExhausted = usesRemaining <= 0;
+    
+    content = (
+      <div className="relative w-full h-full flex flex-col items-center justify-center">
+        <div className={`font-bold truncate ${isExhausted ? 'text-stone-500' : 'text-cyan-400'}`}>
+          {traitData.name.substring(0, 4)}
+        </div>
+        <div className={`absolute top-0 right-0 text-[6px] px-0.5 rounded-bl font-bold ${isExhausted ? 'bg-red-900 text-red-400' : 'bg-cyan-900 text-cyan-400'}`}>
+          {usesRemaining}/{traitData.usesPerLongRest}
+        </div>
+      </div>
+    );
+    tooltipContent = (
+      <>
+        <p className="font-bold">{traitData.name}</p>
+        {traitData.description && <p className="text-xs text-stone-400">{traitData.description}</p>}
+        <p className="text-sm">Attribute: {traitData.parentAttribute}</p>
+        <p className={`text-sm ${isExhausted ? 'text-red-400' : 'text-cyan-400'}`}>
+          Uses: {usesRemaining}/{traitData.usesPerLongRest} per long rest
+        </p>
+        {isExhausted 
+          ? <p className="text-xs text-red-400 mt-1">No uses remaining - take a long rest</p>
+          : <p className="text-xs text-stone-400 mt-1">Click to roll | Hold for modifiers</p>
+        }
+      </>
+    );
   }
 
   // Determine action type border color for spells
@@ -2630,7 +2926,7 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
       <Dialog open={showModifierPopup} onOpenChange={setShowModifierPopup}>
         <DialogContent className="w-72 bg-stone-900 border-stone-700 text-stone-200 p-4">
           <DialogHeader>
-            <DialogTitle className="text-amber-500 text-lg">{isSkillClickable ? hotbar?.skillName : itemData?.name || 'Roll'} Modifiers</DialogTitle>
+            <DialogTitle className="text-amber-500 text-lg">{isTraitClickable ? traitData?.name : isSkillClickable ? hotbar?.skillName : itemData?.name || 'Roll'} Modifiers</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 mt-2">
             {/* Extra Modifier Input */}
@@ -2692,8 +2988,19 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
               <p className="text-xs text-stone-400 italic">Both ADV and DIS cancel out - normal roll</p>
             )}
             
-            {/* Roll Buttons - different for skills vs weapons */}
-            {isSkillClickable ? (
+            {/* Roll Buttons - different for skills, traits, vs weapons */}
+            {isTraitClickable ? (
+              <div className="pt-2">
+                <Button
+                  onClick={handleModifiedTraitRoll}
+                  className="w-full bg-cyan-600 hover:bg-cyan-500"
+                  data-testid="button-modified-trait"
+                >
+                  <Star className="h-4 w-4 mr-1" />
+                  Use {traitData?.name}
+                </Button>
+              </div>
+            ) : isSkillClickable ? (
               <div className="pt-2">
                 <Button
                   onClick={handleModifiedSkillRoll}
@@ -4333,9 +4640,14 @@ export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onIn
             <div className="space-y-3">
               {messages.map((msg, i) => {
                 // Parse roll message to extract total for notification-style display
+                // Match number after '=' even if followed by extra text like (HIT!) or (Flame)
                 const parseRollTotal = (text: string) => {
-                  const match = text.match(/=\s*(\d+)\s*$/);
-                  return match ? parseInt(match[1]) : null;
+                  // Try matching "= number" followed by optional non-digit text
+                  const match = text.match(/=\s*(\d+)(?:\s*\(|$|\s*$)/);
+                  if (match) return parseInt(match[1]);
+                  // Fallback: find any "= number" pattern
+                  const fallback = text.match(/=\s*(\d+)/);
+                  return fallback ? parseInt(fallback[1]) : null;
                 };
                 const parseRollLabel = (text: string) => {
                   const colonIndex = text.indexOf(':');
@@ -4974,6 +5286,12 @@ function HotbarsTabContent({ character, isGM, isOwner }: HotbarsTabContentProps)
     enabled: !!character.id
   });
 
+  const { data: characterTraits = [] } = useQuery({
+    queryKey: ['character-traits', character.id],
+    queryFn: () => api.getCharacterTraits(character.id),
+    enabled: !!character.id
+  });
+
   const weaponItems = items.filter((item: any) => item.itemType === 'weapon');
   const ammunitionItems = items.filter((item: any) => item.itemType === 'ammunition');
   const consumableItems = items.filter((item: any) => item.itemType === 'consumable');
@@ -5031,7 +5349,7 @@ function HotbarsTabContent({ character, isGM, isOwner }: HotbarsTabContentProps)
   const compatibleAmmoType = primaryRangedWeapon?.weaponCategory ? getCompatibleAmmoType(primaryRangedWeapon.weaponCategory) : null;
 
   const upsertMutation = useMutation({
-    mutationFn: (data: { hotbarType: string; slotNumber: number; itemId?: string; spellId?: string; skillName?: string }) =>
+    mutationFn: (data: { hotbarType: string; slotNumber: number; itemId?: string; spellId?: string; skillName?: string; traitId?: string }) =>
       api.upsertHotbar(character.id, data),
     onMutate: async (newData) => {
       await queryClient.cancelQueries({ queryKey: ['hotbars', character.id] });
@@ -5137,6 +5455,16 @@ function HotbarsTabContent({ character, isGM, isOwner }: HotbarsTabContentProps)
         hotbarType,
         slotNumber,
         skillName: data.skillName
+      });
+      return;
+    }
+
+    // Handle trait drops
+    if (data.type === 'trait') {
+      upsertMutation.mutate({
+        hotbarType,
+        slotNumber,
+        traitId: data.traitId
       });
       return;
     }
@@ -5720,6 +6048,40 @@ function HotbarsTabContent({ character, isGM, isOwner }: HotbarsTabContentProps)
                   );
                 })}
               </div>
+              
+              {/* Traits Section */}
+              {characterTraits.length > 0 && (
+                <div className="mt-4 pt-4 border-t border-stone-700">
+                  <Label className="text-xs text-stone-400 mb-2 block">Tap or drag traits to equip:</Label>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-48 overflow-y-auto">
+                    {characterTraits.map((trait: any) => {
+                      const usesRemaining = trait.usesPerLongRest - trait.currentUses;
+                      const isExhausted = usesRemaining <= 0;
+                      return (
+                        <div
+                          key={trait.id}
+                          draggable
+                          onDragStart={(e) => handleDragStart(e, { type: 'trait', traitId: trait.id, traitName: trait.name })}
+                          onClick={() => openEquipPicker('skills', { type: 'trait', traitId: trait.id, traitName: trait.name }, trait.name)}
+                          className={`px-2 py-1 bg-stone-900 rounded border cursor-pointer transition-all text-xs touch-target ${
+                            isExhausted 
+                              ? 'border-stone-600 opacity-60' 
+                              : 'border-stone-700 hover:border-cyan-500 hover:bg-stone-800 active:bg-cyan-900/30'
+                          }`}
+                          data-testid={`drag-trait-${trait.id}`}
+                        >
+                          <div className="flex justify-between items-center">
+                            <span className={`font-medium truncate ${isExhausted ? 'text-stone-500' : 'text-cyan-400'}`}>{trait.name}</span>
+                            <span className={`text-xs ${isExhausted ? 'text-red-400' : 'text-cyan-600'}`}>
+                              {usesRemaining}/{trait.usesPerLongRest}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </CardContent>
@@ -6064,6 +6426,13 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
     queryKey: ['spell', hotbar?.spellId],
     queryFn: () => api.getSpells(character.id).then(spells => spells.find((s: any) => s.id === hotbar?.spellId)),
     enabled: !!hotbar?.spellId
+  });
+
+  // Fetch trait data if traitId exists
+  const { data: traitData, isLoading: traitLoading } = useQuery({
+    queryKey: ['trait', hotbar?.traitId],
+    queryFn: () => api.getCharacterTraits(character.id).then(traits => traits.find((t: any) => t.id === hotbar?.traitId)),
+    enabled: !!hotbar?.traitId
   });
 
   // Parse dice notation like "1d8" or "2d6" and roll it
@@ -6711,8 +7080,46 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
       );
     }
 
-    // Show loading state if item/spell is being fetched
-    if ((hotbar.itemId && itemLoading) || (hotbar.spellId && spellLoading)) {
+    // Display trait if equipped
+    if (hotbar.traitId && traitData) {
+      const usesRemaining = traitData.usesPerLongRest - traitData.currentUses;
+      const isExhausted = usesRemaining <= 0;
+      
+      return (
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className="relative w-full h-full flex items-center justify-center">
+                {/* Trait icon */}
+                <div className={`w-10 h-10 sm:w-12 sm:h-12 md:w-14 md:h-14 rounded flex items-center justify-center ${isExhausted ? 'bg-stone-700/30' : 'bg-cyan-900/30'}`}>
+                  <Star className={`w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 ${isExhausted ? 'text-stone-500' : 'text-cyan-400'}`} />
+                </div>
+                {/* Uses remaining badge */}
+                <div className={`absolute top-0 right-0 text-white text-[8px] px-1 rounded-bl font-bold ${isExhausted ? 'bg-red-900' : 'bg-cyan-600'}`}>
+                  {usesRemaining}/{traitData.usesPerLongRest}
+                </div>
+                {/* Trait name at bottom */}
+                <div className={`absolute bottom-0 left-0 right-0 bg-stone-900/80 text-[7px] text-center px-0.5 rounded-t truncate font-medium ${isExhausted ? 'text-stone-500' : 'text-cyan-300'}`}>
+                  {traitData.name}
+                </div>
+              </div>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p className="font-bold">{traitData.name}</p>
+              {traitData.description && <p className="text-xs text-stone-400">{traitData.description}</p>}
+              <p className="text-sm">Attribute: {traitData.parentAttribute}</p>
+              <p className={`text-sm ${isExhausted ? 'text-red-400' : 'text-cyan-400'}`}>
+                Uses: {usesRemaining}/{traitData.usesPerLongRest} per long rest
+              </p>
+              {isExhausted && <p className="text-xs text-red-400">No uses remaining</p>}
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      );
+    }
+
+    // Show loading state if item/spell/trait is being fetched
+    if ((hotbar.itemId && itemLoading) || (hotbar.spellId && spellLoading) || (hotbar.traitId && traitLoading)) {
       return (
         <div className="text-xs text-center text-stone-400 animate-pulse">
           <div className="text-[10px]">Loading...</div>
@@ -6720,8 +7127,8 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
       );
     }
 
-    // Show orphaned state if item/spell was deleted but hotbar entry remains
-    if ((hotbar.itemId && !itemData) || (hotbar.spellId && !spellData)) {
+    // Show orphaned state if item/spell/trait was deleted but hotbar entry remains
+    if ((hotbar.itemId && !itemData) || (hotbar.spellId && !spellData) || (hotbar.traitId && !traitData)) {
       return (
         <div className="text-xs text-center text-stone-500 italic">
           <div className="text-[10px]">(Removed)</div>
@@ -12679,6 +13086,7 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
     damageReductionType: string;
     rationServings: number | string;
     breakChance: number | string;
+    isDamaging: boolean;
   }>({
     name: '',
     image: '',
@@ -12711,6 +13119,7 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
     damageReductionType: '',
     rationServings: '',
     breakChance: 10,
+    isDamaging: false,
   });
 
   const [showImageCrop, setShowImageCrop] = useState(false);
@@ -12756,6 +13165,7 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
       damageReductionType: template.damageReductionType || '',
       breakChance: template.breakChance ?? 10,
       rationServings: template.rationServings || 0,
+      isDamaging: template.isDamaging || false,
     };
     onSave(itemData);
   };
@@ -12878,6 +13288,7 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
       damageReduction: optionalNum(formData.damageReduction),
       rationServings: optionalNum(formData.rationServings),
       breakChance: Number(formData.breakChance) || 10,
+      isDamaging: formData.isDamaging,
     };
     onSave(cleanedData);
     setFormData({
@@ -12912,6 +13323,7 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
       damageReductionType: '',
       rationServings: '',
       breakChance: 10,
+      isDamaging: false,
     });
   };
 
@@ -13189,7 +13601,26 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
                 </div>
                 <div>
                   <Label>Damage Type</Label>
-                  <Input value={formData.damageType} onChange={(e) => setFormData({...formData, damageType: e.target.value})} placeholder="slashing" className="bg-stone-800 border-stone-700" />
+                  <Select value={formData.damageType} onValueChange={(v) => setFormData({...formData, damageType: v})}>
+                    <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-damage-type">
+                      <SelectValue placeholder="Select type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Sharp">Sharp</SelectItem>
+                      <SelectItem value="Blunt">Blunt</SelectItem>
+                      <SelectItem value="Piercing">Piercing</SelectItem>
+                      <SelectItem value="Flame">Flame</SelectItem>
+                      <SelectItem value="Frost">Frost</SelectItem>
+                      <SelectItem value="Storm">Storm</SelectItem>
+                      <SelectItem value="Tide">Tide</SelectItem>
+                      <SelectItem value="Stone">Stone</SelectItem>
+                      <SelectItem value="Flux">Flux</SelectItem>
+                      <SelectItem value="Light">Light</SelectItem>
+                      <SelectItem value="Dark">Dark</SelectItem>
+                      <SelectItem value="Sound">Sound</SelectItem>
+                      <SelectItem value="Health">Health</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div>
                   <Label>Modifier</Label>
@@ -13229,37 +13660,57 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
             {formData.itemType === 'consumable' && (
               <div className="border-t border-stone-700 pt-4">
                 <h3 className="text-sm font-bold text-stone-300 mb-3">Consumable Settings</h3>
-                <div className="flex items-center gap-2">
-                  <Checkbox 
-                    id="isRation" 
-                    checked={(formData.rationServings !== '' && Number(formData.rationServings) > 0)}
-                    onCheckedChange={(checked) => setFormData({...formData, rationServings: checked ? 1 : ''})}
-                    data-testid="checkbox-is-ration"
-                  />
-                  <Label htmlFor="isRation" className="cursor-pointer">
-                    This item is a ration (consumable for resting)
-                  </Label>
-                </div>
-                {(formData.rationServings !== '' && Number(formData.rationServings) > 0) && (
-                  <div className="mt-3">
-                    <Label>Ration Servings</Label>
-                    <Input 
-                      type="number" 
-                      min="1" 
-                      step="1"
-                      value={formData.rationServings} 
-                      onChange={(e) => setFormData({...formData, rationServings: e.target.value === '' ? '' : parseInt(e.target.value)})} 
-                      className="bg-stone-800 border-stone-700 w-32"
-                      data-testid="input-ration-servings"
-                    />
-                    <p className="text-xs text-stone-500 mt-1">
-                      How many rations this item provides when consumed
+                <div className="space-y-4">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <Checkbox 
+                        id="isRation" 
+                        checked={(formData.rationServings !== '' && Number(formData.rationServings) > 0)}
+                        onCheckedChange={(checked) => setFormData({...formData, rationServings: checked ? 1 : ''})}
+                        data-testid="checkbox-is-ration"
+                      />
+                      <Label htmlFor="isRation" className="cursor-pointer">
+                        This item is a ration (consumable for resting)
+                      </Label>
+                    </div>
+                    {(formData.rationServings !== '' && Number(formData.rationServings) > 0) && (
+                      <div className="mt-3">
+                        <Label>Ration Servings</Label>
+                        <Input 
+                          type="number" 
+                          min="1" 
+                          step="1"
+                          value={formData.rationServings} 
+                          onChange={(e) => setFormData({...formData, rationServings: e.target.value === '' ? '' : parseInt(e.target.value)})} 
+                          className="bg-stone-800 border-stone-700 w-32"
+                          data-testid="input-ration-servings"
+                        />
+                        <p className="text-xs text-stone-500 mt-1">
+                          How many rations this item provides when consumed
+                        </p>
+                      </div>
+                    )}
+                    <p className="text-xs text-stone-500 mt-2">
+                      Ration items are consumed during rests. Short rest requires 2, long rest requires 4.
                     </p>
                   </div>
-                )}
-                <p className="text-xs text-stone-500 mt-2">
-                  Ration items are consumed during rests. Short rest requires 2, long rest requires 4.
-                </p>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <Checkbox 
+                        id="isDamaging" 
+                        checked={formData.isDamaging}
+                        onCheckedChange={(checked) => setFormData({...formData, isDamaging: !!checked})}
+                        data-testid="checkbox-is-damaging"
+                      />
+                      <Label htmlFor="isDamaging" className="cursor-pointer">
+                        Damaging Consumable
+                      </Label>
+                    </div>
+                    <p className="text-xs text-stone-500 mt-1">
+                      When enabled, can be rolled from hotbar like weapons (click: attack, double-click: damage). Uses 5ft range.
+                    </p>
+                  </div>
+                </div>
               </div>
             )}
             {formData.itemType === 'ammunition' && (
@@ -13300,31 +13751,44 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
             {formData.itemType === 'weapon' && (
               <div className="border-t border-stone-700 pt-4">
                 <h3 className="text-sm font-bold text-stone-300 mb-3">Weapon Settings</h3>
-                <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
                   <div>
                     <Label>Weapon Category</Label>
                     <Select value={formData.weaponCategory} onValueChange={(v) => setFormData({...formData, weaponCategory: v})}>
                       <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-weapon-category">
-                        <SelectValue placeholder="Select weapon category..." />
+                        <SelectValue placeholder="Select category" />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="melee">Melee</SelectItem>
-                        <SelectItem value="bow">Bow (uses Arrows)</SelectItem>
-                        <SelectItem value="crossbow">Crossbow (uses Bolts)</SelectItem>
-                        <SelectItem value="sling">Sling (uses Stones)</SelectItem>
-                        <SelectItem value="firearm">Firearm (uses Bullets)</SelectItem>
-                        <SelectItem value="thrown">Thrown (uses Darts)</SelectItem>
+                        <SelectItem value="ranged">Ranged</SelectItem>
+                        <SelectItem value="thrown">Thrown</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div>
+                    <Label>Ammunition Required</Label>
+                    <Select value={formData.ammunitionType || '_none'} onValueChange={(v) => setFormData({...formData, ammunitionType: v === '_none' ? '' : v})}>
+                      <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-weapon-ammo">
+                        <SelectValue placeholder="None" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="_none">None</SelectItem>
+                        <SelectItem value="arrow">Arrow</SelectItem>
+                        <SelectItem value="bolt">Bolt</SelectItem>
+                        <SelectItem value="bullet">Bullet</SelectItem>
+                        <SelectItem value="dart">Dart</SelectItem>
+                        <SelectItem value="stone">Stone</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="col-span-2 flex items-center gap-2">
                     <Checkbox 
                       id="isHeavy" 
                       checked={formData.isHeavy || false} 
                       onCheckedChange={(checked) => setFormData({...formData, isHeavy: !!checked})}
                       data-testid="checkbox-is-heavy"
                     />
-                    <Label htmlFor="isHeavy" className="cursor-pointer">Two-Handed Weapon (blocks right hand slot)</Label>
+                    <Label htmlFor="isHeavy" className="cursor-pointer">Two-Handed / Heavy Weapon (requires both hands)</Label>
                   </div>
                 </div>
               </div>

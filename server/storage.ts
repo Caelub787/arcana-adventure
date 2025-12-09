@@ -642,6 +642,7 @@ export class DatabaseStorage implements IStorage {
           itemId: hotbar.itemId,
           spellId: hotbar.spellId,
           skillName: hotbar.skillName,
+          traitId: hotbar.traitId,
         },
       })
       .returning();

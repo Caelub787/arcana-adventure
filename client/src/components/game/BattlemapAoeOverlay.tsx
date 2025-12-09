@@ -188,6 +188,63 @@ export function BattlemapAoeOverlay({
           />
         );
 
+      case 'cone':
+        if (!casterToken) return null;
+        {
+          const angleRad = Math.atan2(screenCenterY - screenCasterY, screenCenterX - screenCasterX);
+          const halfConeAngle = (90 / 2) * (Math.PI / 180);
+          const leftAngle = angleRad - halfConeAngle;
+          const rightAngle = angleRad + halfConeAngle;
+          const leftX = screenCasterX + Math.cos(leftAngle) * screenRadius;
+          const leftY = screenCasterY + Math.sin(leftAngle) * screenRadius;
+          const rightX = screenCasterX + Math.cos(rightAngle) * screenRadius;
+          const rightY = screenCasterY + Math.sin(rightAngle) * screenRadius;
+          return (
+            <path
+              d={`
+                M ${screenCasterX} ${screenCasterY}
+                L ${leftX} ${leftY}
+                A ${screenRadius} ${screenRadius} 0 0 1 ${rightX} ${rightY}
+                Z
+              `}
+              fill={actualFill}
+              stroke={actualStroke}
+              strokeWidth={2}
+              strokeDasharray={locked ? 'none' : '8 4'}
+            />
+          );
+        }
+
+      case 'line':
+        if (!casterToken) return null;
+        {
+          const screenLineWidth = gridSize * zoom;
+          const dirX = screenCenterX - screenCasterX;
+          const dirY = screenCenterY - screenCasterY;
+          const dirLen = Math.sqrt(dirX * dirX + dirY * dirY);
+          if (dirLen === 0) return null;
+          const normX = dirX / dirLen;
+          const normY = dirY / dirLen;
+          const perpX = -normY * (screenLineWidth / 2);
+          const perpY = normX * (screenLineWidth / 2);
+          const endX = screenCasterX + normX * screenRadius;
+          const endY = screenCasterY + normY * screenRadius;
+          return (
+            <polygon
+              points={`
+                ${screenCasterX + perpX},${screenCasterY + perpY}
+                ${endX + perpX},${endY + perpY}
+                ${endX - perpX},${endY - perpY}
+                ${screenCasterX - perpX},${screenCasterY - perpY}
+              `}
+              fill={actualFill}
+              stroke={actualStroke}
+              strokeWidth={2}
+              strokeDasharray={locked ? 'none' : '8 4'}
+            />
+          );
+        }
+
       default:
         return (
           <circle

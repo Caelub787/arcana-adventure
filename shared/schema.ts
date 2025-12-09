@@ -286,6 +286,8 @@ export const items = pgTable("items", {
   // Ration servings for consumables (used for rest mechanics)
   // null or 0 means not a ration, positive values indicate how many rations this item provides
   rationServings: integer("ration_servings").default(0),
+  // Damaging consumable - when true, consumable can be rolled like a weapon (attack/damage rolls)
+  isDamaging: boolean("is_damaging").default(false).notNull(),
 });
 
 export const insertItemSchema = createInsertSchema(items).omit({
@@ -456,6 +458,7 @@ export const hotbars = pgTable("hotbars", {
   itemId: varchar("item_id").references(() => items.id, { onDelete: "set null" }), // For weapons, consumables, utility
   spellId: varchar("spell_id").references(() => spells.id, { onDelete: "set null" }), // For magic hotbar
   skillName: text("skill_name"), // For skills hotbar
+  traitId: varchar("trait_id").references(() => characterTraits.id, { onDelete: "set null" }), // For skills hotbar (traits)
 }, (table) => ({
   uniqueSlot: uniqueIndex("hotbars_character_type_slot_unique").on(
     table.characterId,

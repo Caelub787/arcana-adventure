@@ -135,6 +135,7 @@ export interface Hotbar {
   itemId?: string;
   spellId?: string;
   skillName?: string;
+  traitId?: string;
 }
 
 export interface Item {
