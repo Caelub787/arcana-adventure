@@ -2501,6 +2501,23 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
   const handleSpellAttackRoll = () => {
     if (!spellData) return;
     
+    // Check if there's a locked AoE marker on the map - validate spell matches
+    if (aoeTargetState?.active && aoeTargetState?.locked && aoeTargetState?.spell) {
+      // Check if this is the same spell as the locked marker
+      if (spellData.id !== aoeTargetState.spell?.id) {
+        triggerRollNotification({
+          type: 'system',
+          label: `Spell Mismatch!`,
+          result: 0,
+          total: 0,
+          username: character.name || 'Unknown',
+          characterName: character.name,
+          calculationBreakdown: `Cannot use "${spellData.name}" - AoE marker is set for "${aoeTargetState.spell?.name}". Cancel the AoE or use the correct spell.`,
+        });
+        return;
+      }
+    }
+    
     // Check if this is an AoE spell - enter AoE targeting mode instead of rolling
     if (spellData.isAoe && onEnterAoeMode) {
       const casterToken = tokens?.find((t: any) => t.characterId === character.id);
@@ -2549,9 +2566,49 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     }
   };
 
+  // Helper to normalize spell AoE properties for comparison
+  const getSpellAoeInfo = (spell: any) => {
+    if (!spell) return null;
+    let shape = 'circle';
+    let aoeRange = 15;
+    let spellRange = spell.rangeNum || 30;
+    
+    const aoeField = spell.aoe || '';
+    if (aoeField && typeof aoeField === 'string' && aoeField.includes(':')) {
+      const [parsedShape, parsedRadius] = aoeField.split(':');
+      shape = (parsedShape || 'circle').toLowerCase();
+      aoeRange = parseInt(parsedRadius, 10) || 15;
+    } else if (spell.aoeShape || spell.aoeRange) {
+      shape = (spell.aoeShape || 'circle').toLowerCase();
+      aoeRange = spell.aoeRange || 15;
+    }
+    
+    return { shape, aoeRange, spellRange, name: spell.name, id: spell.id };
+  };
+
   // Handle spell damage roll (damage dice + mod) - with target application
   const handleSpellDamageRoll = async () => {
     if (!spellData) return;
+    
+    // Check if there's a locked AoE marker on the map - validate spell matches
+    if (aoeTargetState?.active && aoeTargetState?.locked && aoeTargetState?.spell) {
+      const markerInfo = getSpellAoeInfo(aoeTargetState.spell);
+      const currentSpellInfo = getSpellAoeInfo(spellData);
+      
+      // Check if this is the same spell as the locked marker
+      if (markerInfo && currentSpellInfo && spellData.id !== aoeTargetState.spell?.id) {
+        triggerRollNotification({
+          type: 'system',
+          label: `Spell Mismatch!`,
+          result: 0,
+          total: 0,
+          username: character.name || 'Unknown',
+          characterName: character.name,
+          calculationBreakdown: `Cannot use "${spellData.name}" - AoE marker is set for "${aoeTargetState.spell?.name}". Cancel the AoE or use the correct spell.`,
+        });
+        return;
+      }
+    }
     
     const isHealing = spellData.damageType === 'Health';
     // Check both damageDice and damage fields for backwards compatibility
