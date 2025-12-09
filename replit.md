@@ -16,7 +16,7 @@ Preferred communication style: Simple, everyday language.
 - **Key Features**:
     - **Battle Map**: Infinite grid space, fluid pan & zoom, GM scene management, configurable square/hexagon grids, real-time draggable character tokens with HP bars, custom background uploads, and viewport-independent centering.
     - **Character Sheet**: Mobile-optimized design, responsive layout, single-scroll interface, and real-time updates.
-    - **Species/Race System**: Database-driven management of custom species with auto-filled attributes.
+    - **Species/Race System**: Database-driven management of custom species with auto-filled attributes. Supports both **System Species** (admin-created, global) and **Campaign Species** (GM-created, campaign-local with "(Campaign)" badge).
     - **Level-Up HP System**: Dynamic HP gain based on species `hpPerLevel` and level-dependent dice rolls.
     - **Attributes & Skills**: Six core attributes and seventeen skills with modifiers. Features single-click rolls, Roll Modifier Panel, and d30 usage for high attribute values. Includes a flexible **Custom Skills System** for admin-defined and character-specific skills.
     - **Traits System**: Admin-defined and character-specific traits with uses-per-long-rest tracking. Traits reset on long rest. Full admin management in Admin Settings and character sheet integration with use tracking, rolling, and visual uses display.
@@ -31,7 +31,7 @@ Preferred communication style: Simple, everyday language.
         - **Feat Nodes**: Draggable nodes with tier-based visual styling (Bronze to Legendary).
         - **Prerequisites**: Curved SVG connection lines, requiring at least one prerequisite to be unlocked.
         - **Species Integration**: Feat trees assigned to species, inherited by characters.
-        - **Feat Effects**: Eight effect types dynamically calculated client-side (hp_bonus, energy_bonus, dc_bonus, attribute_bonus, skill_bonus, spell_grant, item_grant, skill_grant for custom skills).
+        - **Feat Effects**: Eight effect types dynamically calculated client-side (hp_bonus, energy_bonus, dc_bonus, attribute_bonus, skill_bonus, spell_grant, item_grant, skill_grant for custom skills, trait_grant).
         - **Editor**: Context-sensitive effect editor and visual bonus indicators.
         - **Feat Library**: All feats are automatically saved to a reusable library. Enhanced template selector with search, effect previews, and tier badges when adding feats from library.
     - **Spell Management System**: System for defining and managing spells with properties like damage dice, type, range, energy cost, and attribute. Spells are granted via feats, roll like weapons, and support 13 damage types, including "Health" for healing.
