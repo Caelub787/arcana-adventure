@@ -20,7 +20,7 @@ import {
   Users, User, Plus, Minus, LogOut, Menu, ChevronRight, ChevronLeft, ChevronDown, ChevronUp,
   Heart, Zap, Backpack, Sparkles, Dice5, MessageSquare, RefreshCw, X, Trash2, Package, FolderOpen, Lock, Unlock, Camera,
   BarChart3, Grid3X3, ScrollText, Upload, Image as ImageIcon, Layers, Search, TrendingUp, UserMinus, Ban,
-  MousePointer, Target, UserCheck, Swords, ArrowRight, Eye, EyeOff, Check, Moon, Coffee, AlertTriangle, GitBranch, Star, BookOpen, Pencil
+  MousePointer, Target, UserCheck, Swords, ArrowRight, Eye, EyeOff, Check, Moon, Coffee, AlertTriangle, GitBranch, Star, BookOpen, Pencil, Dna
 } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { type Scene, type Hotbar, type SystemSpecies, type FeatTreeWithData, type Feat, type FeatConnection, type CharacterFeat, type SystemSkill, type CharacterCustomSkill, api, gameWs } from "@/lib/api";
@@ -4306,9 +4306,10 @@ interface CampaignMenuProps {
   onChatOpenChange?: (open: boolean) => void;
   onAssignCharacter?: (char: any) => void;
   myPermissions?: { permissions: Record<string, string> };
+  onOpenCampaignSpecies?: () => void;
 }
 
-export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onInspectChar, onAddCharacterToken, onChangeMap, characters, members, onAddCharacter, onViewCharacter, onLevelUpAll, chatOpen = false, onChatOpenChange, onAssignCharacter, myPermissions }: CampaignMenuProps) {
+export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onInspectChar, onAddCharacterToken, onChangeMap, characters, members, onAddCharacter, onViewCharacter, onLevelUpAll, chatOpen = false, onChatOpenChange, onAssignCharacter, myPermissions, onOpenCampaignSpecies }: CampaignMenuProps) {
   const setChatOpen = onChatOpenChange || (() => {});
   const [addCharacterOpen, setAddCharacterOpen] = useState(false);
   const [showLevelUpDialog, setShowLevelUpDialog] = useState(false);
@@ -4794,6 +4795,18 @@ export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onIn
               </div>
             </div>
           </div>
+
+          {/* Campaign Species Button (GM Only) */}
+          {role === 'gm' && onOpenCampaignSpecies && (
+            <Button
+              variant="secondary"
+              className="w-full mb-4 bg-purple-900/50 hover:bg-purple-800/50 border border-purple-700"
+              onClick={onOpenCampaignSpecies}
+              data-testid="button-campaign-species-settings"
+            >
+              <Dna className="mr-2 h-4 w-4" /> Campaign Species
+            </Button>
+          )}
 
           <Tabs defaultValue="players" className="w-full">
             <TabsList className="w-full grid grid-cols-2 bg-stone-900">

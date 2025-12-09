@@ -1845,6 +1845,7 @@ export default function Campaign() {
             onChatOpenChange={setChatOpen}
             onAssignCharacter={handleAssignCharacter}
             myPermissions={myPermissions}
+            onOpenCampaignSpecies={() => setCampaignSpeciesOpen(true)}
           />
           
           {/* Scenes Button (GM Only) - Icon only, directly under Settings */}
@@ -1864,28 +1865,6 @@ export default function Campaign() {
                 </TooltipTrigger>
                 <TooltipContent side="left" className="bg-stone-800 border-stone-700 text-stone-200">
                   <p>Scenes</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          )}
-          
-          {/* Campaign Species Button (GM Only) */}
-          {role === 'gm' && (
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => setCampaignSpeciesOpen(true)}
-                    className="text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto relative z-[60]"
-                    data-testid="button-campaign-species"
-                  >
-                    <Dna className="h-5 w-5" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="left" className="bg-stone-800 border-stone-700 text-stone-200">
-                  <p>Campaign Species</p>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
