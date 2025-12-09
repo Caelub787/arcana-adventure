@@ -2193,8 +2193,8 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     }
     
     // Consume the damaging consumable after damage is applied
-    const isDamagingConsumable = itemData.itemType === 'consumable' && itemData.isDamaging;
-    if (isDamagingConsumable) {
+    // (isDamagingConsumable already declared at function start)
+    if (itemData.itemType === 'consumable' && itemData.isDamaging) {
       try {
         const currentQty = itemData.quantity || 1;
         if (currentQty <= 1) {
