@@ -23,10 +23,19 @@ export function BattlemapAoeOverlay({
   const { spell, center, locked } = aoeTargetState;
   
   // Parse the aoe field which is in format "shape:radius" like "circle:15"
+  // Fall back to separate aoeShape/aoeRange fields for backwards compatibility
+  let aoeShape = 'circle';
+  let aoeRangeFeet = 15;
+  
   const aoeField = spell.aoe || '';
-  const [parsedShape, parsedRadius] = aoeField.split(':');
-  const aoeShape = (parsedShape || 'circle').toLowerCase();
-  const aoeRangeFeet = parseInt(parsedRadius, 10) || 15;
+  if (aoeField && typeof aoeField === 'string' && aoeField.includes(':')) {
+    const [parsedShape, parsedRadius] = aoeField.split(':');
+    aoeShape = (parsedShape || 'circle').toLowerCase();
+    aoeRangeFeet = parseInt(parsedRadius, 10) || 15;
+  } else if (spell.aoeShape || spell.aoeRange) {
+    aoeShape = (spell.aoeShape || 'circle').toLowerCase();
+    aoeRangeFeet = spell.aoeRange || 15;
+  }
   const spellRangeFeet = spell.rangeNum || 30;
   const radiusPixels = (aoeRangeFeet / 5) * gridSize;
 

@@ -6949,8 +6949,7 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
           <Tooltip>
             <TooltipTrigger asChild>
               <div 
-                className="w-full h-full flex flex-col items-center justify-center p-0.5 cursor-pointer hover:bg-stone-700/30 rounded"
-                onClick={handleSpellClick}
+                className="w-full h-full flex flex-col items-center justify-center p-0.5 rounded"
               >
                 {spellData.image ? (
                   <div className="relative w-full h-full flex items-center justify-center">
@@ -6992,7 +6991,7 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
               {spellData.attribute && <p className="text-sm">Attack: {spellData.attribute}</p>}
               {spellData.rangeNum && <p className="text-sm">Range: {spellData.rangeNum}ft</p>}
               {spellData.castingTime && <p className="text-sm">Casting: {spellData.castingTime}</p>}
-              <p className="text-xs text-stone-400 mt-1">Click: Attack | Double-click: Damage</p>
+              <p className="text-xs text-stone-400 mt-1">Use from battlemap hotbar to cast</p>
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>
