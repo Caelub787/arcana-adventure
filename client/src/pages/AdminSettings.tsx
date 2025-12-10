@@ -1921,7 +1921,19 @@ function FeatTreesView() {
 
   // Track viewport with ResizeObserver
   useEffect(() => {
-    if (!canvasContainerRef.current) return;
+    const container = canvasContainerRef.current;
+    if (!container) return;
+    
+    // Get initial size immediately
+    const rect = container.getBoundingClientRect();
+    if (rect.width > 0 && rect.height > 0) {
+      setViewportSize(prev => {
+        if (prev.width !== rect.width || prev.height !== rect.height) {
+          return { width: rect.width, height: rect.height };
+        }
+        return prev;
+      });
+    }
     
     const observer = new ResizeObserver((entries) => {
       for (const entry of entries) {
@@ -1937,7 +1949,7 @@ function FeatTreesView() {
       }
     });
     
-    observer.observe(canvasContainerRef.current);
+    observer.observe(container);
     return () => observer.disconnect();
   }, [selectedTreeId]);
 
@@ -2016,7 +2028,7 @@ function FeatTreesView() {
 
     container.addEventListener('wheel', handleWheel, { passive: false });
     return () => container.removeEventListener('wheel', handleWheel);
-  }, [selectedTreeId, motionX, motionY, motionZoom]);
+  }, [selectedTreeId, viewportSize.width, motionX, motionY, motionZoom]);
 
   // Touch pinch-to-zoom handler
   useEffect(() => {
@@ -2101,7 +2113,7 @@ function FeatTreesView() {
       container.removeEventListener('touchend', handleTouchEnd);
       container.removeEventListener('touchcancel', handleTouchEnd);
     };
-  }, [selectedTreeId]);
+  }, [selectedTreeId, viewportSize.width]);
 
   // Pointer handlers for panning
   const handleCanvasPointerDown = (e: React.PointerEvent) => {
