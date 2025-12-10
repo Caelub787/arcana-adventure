@@ -1322,6 +1322,41 @@ export default function Campaign() {
           );
         }
         
+        // Handle combat Energy updates - real-time energy gain/drain
+        if (data.type === 'character_energy_update') {
+          const { characterId, energy } = data;
+          // Update local character state if it matches
+          setCharacter((prev: any) => {
+            if (prev && prev.id === characterId) {
+              return { ...prev, energy };
+            }
+            return prev;
+          });
+          // Update inspected character if it matches
+          setInspectedChar((prev: any) => {
+            if (prev && prev.id === characterId) {
+              return { ...prev, energy };
+            }
+            return prev;
+          });
+          // Immediately update the characters query cache
+          queryClientRef.current.setQueryData(
+            [`/api/campaigns/${effectiveCampaignId}/characters`],
+            (oldData: any[] | undefined) => {
+              if (!oldData) return oldData;
+              return oldData.map((c: any) => c.id === characterId ? { ...c, energy } : c);
+            }
+          );
+          // Also update individual character cache
+          queryClientRef.current.setQueryData(
+            [`/api/characters/${characterId}`],
+            (oldData: any | undefined) => {
+              if (!oldData) return oldData;
+              return { ...oldData, energy };
+            }
+          );
+        }
+        
         // Handle token CRUD - real-time token updates
         if (data.type === 'token_created' && data.token) {
           setTokens(prev => {

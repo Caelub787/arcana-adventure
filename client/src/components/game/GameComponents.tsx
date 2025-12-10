@@ -12170,13 +12170,21 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                               school: spell.school,
                               damage: spell.damageDice,
                               damageDice: spell.damageDice,
+                              healingDice: spell.healingDice,
                               damageType: spell.damageType,
-                              range: spell.rangeNum,
+                              range: spell.range,
+                              rangeNum: spell.rangeNum,
                               aoe: aoeValue,
                               castingTime: spell.castingTime,
                               duration: spell.duration,
                               attribute: spell.attribute,
                               energyCost: spell.energyCost,
+                              mod: spell.mod || 0,
+                              isAoe: spell.isAoe || false,
+                              aoeRange: spell.aoeRange,
+                              aoeShape: spell.aoeShape,
+                              isAttack: spell.isAttack ?? true,
+                              gainEnergy: spell.gainEnergy || false,
                             });
                             setShowSpellLibrary(false);
                             setSpellLibrarySearch('');
