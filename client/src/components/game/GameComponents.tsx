@@ -9562,9 +9562,10 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
         queryClient.invalidateQueries({ queryKey: ['items', character.id] });
       }
       const dieInfo = result.dieType ? ` (rolled ${result.hpRoll} on ${result.dieType})` : '';
+      const energyInfo = result.energyRestored ? `, ${result.energyRestored} Energy` : '';
       toast({ 
         title: "Short Rest Complete", 
-        description: `Restored ${result.hpRestored} HP${dieInfo}. Consumed ${result.rationsConsumed} rations.` 
+        description: `Restored ${result.hpRestored} HP${energyInfo}${dieInfo}. Consumed ${result.rationsConsumed} rations.` 
       });
     },
     onError: (error: any) => {
@@ -9592,7 +9593,7 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
       const exhaustionMsg = result.exhaustionRecovered > 0 ? ` Exhaustion reduced by ${result.exhaustionRecovered}.` : '';
       toast({ 
         title: "Long Rest Complete", 
-        description: `Fully restored HP.${exhaustionMsg} Consumed ${result.rationsConsumed} rations.` 
+        description: `Fully restored HP and Energy.${exhaustionMsg} Consumed ${result.rationsConsumed} rations.` 
       });
     },
     onError: (error: any) => {
@@ -10028,7 +10029,7 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                               </Button>
                             </TooltipTrigger>
                             <TooltipContent side="bottom">
-                              <p>Short Rest (2 rations, roll HP die)</p>
+                              <p>Short Rest (2 rations, roll HP/Energy die)</p>
                             </TooltipContent>
                           </Tooltip>
                         </TooltipProvider>
@@ -10049,7 +10050,7 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                               </Button>
                             </TooltipTrigger>
                             <TooltipContent side="bottom">
-                              <p>Long Rest (4 rations, full HP, -1 exhaustion)</p>
+                              <p>Long Rest (4 rations, full HP/Energy, -1 exhaustion)</p>
                             </TooltipContent>
                           </Tooltip>
                         </TooltipProvider>

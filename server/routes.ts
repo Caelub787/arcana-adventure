@@ -1812,8 +1812,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const hpRestored = Math.min(hpRoll, maxHpGain);
       const newHp = Math.min((character.hp || 0) + hpRoll, effectiveMaxHp);
       
-      // Update character HP
-      const updatedCharacter = await storage.updateCharacter(character.id, { hp: newHp });
+      // Calculate new Energy: current + roll (capped at max)
+      const maxEnergy = character.maxEnergy || 10;
+      const currentEnergy = character.energy || 0;
+      const maxEnergyGain = maxEnergy - currentEnergy;
+      const energyRestored = Math.min(hpRoll, maxEnergyGain);
+      const newEnergy = Math.min(currentEnergy + hpRoll, maxEnergy);
+      
+      // Update character HP and Energy
+      const updatedCharacter = await storage.updateCharacter(character.id, { hp: newHp, energy: newEnergy });
       
       // Restore short rest trait uses
       await storage.restoreShortRestTraitUses(character.id);
@@ -1837,9 +1844,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ 
         success: true, 
         hpRestored,
+        energyRestored,
         hpRoll,
         dieType: `d${hpPerLevel}`,
         newHp,
+        newEnergy,
         rationsConsumed: rationsRequired,
         character: updatedCharacter 
       });
@@ -1849,7 +1858,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Long Rest - Restores ALL HP, recovers 1 exhaustion, requires 4 rations
+  // Long Rest - Restores ALL HP and Energy, recovers 1 exhaustion, requires 4 rations
   app.post("/api/characters/:id/long-rest", requireAuth, async (req, res) => {
     try {
       const access = await checkCharacterAccess(req.params.id, req.session.userId!, 'edit');
@@ -1913,14 +1922,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const hpRestored = effectiveMaxHp - (character.hp || 0);
       const newHp = effectiveMaxHp;
       
+      // Calculate Energy restored: full energy
+      const maxEnergy = character.maxEnergy || 10;
+      const energyRestored = maxEnergy - (character.energy || 0);
+      const newEnergy = maxEnergy;
+      
       // Calculate exhaustion recovery: reduce by 1 (min 0)
       const currentExhaustion = character.exhaustion || 0;
       const newExhaustion = Math.max(0, currentExhaustion - 1);
       const exhaustionRecovered = currentExhaustion - newExhaustion;
       
-      // Update character HP and exhaustion
+      // Update character HP, Energy, and exhaustion
       const updatedCharacter = await storage.updateCharacter(character.id, { 
         hp: newHp,
+        energy: newEnergy,
         exhaustion: newExhaustion
       });
       
@@ -1946,7 +1961,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ 
         success: true, 
         hpRestored,
+        energyRestored,
         newHp,
+        newEnergy,
         exhaustionRecovered,
         newExhaustion,
         rationsConsumed: rationsRequired,
