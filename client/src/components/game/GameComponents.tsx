@@ -13274,6 +13274,11 @@ function FeatTreeViewerGrid({
   const handlePointerDown = (e: React.PointerEvent) => {
     if (isPinching) return;
     if (e.button !== 0) return; // Only left click
+    
+    // Don't start panning if clicking on a feat node
+    const target = e.target as HTMLElement;
+    if (target.closest('[data-feat-node]')) return;
+    
     e.currentTarget.setPointerCapture(e.pointerId);
     
     gestureModeRef.current = 'panning';
@@ -13448,6 +13453,7 @@ function FeatTreeViewerGrid({
                   }
                 }}
                 data-testid={`feat-node-${feat.id}`}
+                data-feat-node
               >
                 <div className="h-full flex flex-col items-center justify-center p-2 text-center overflow-hidden">
                   {isUnlocked && (
