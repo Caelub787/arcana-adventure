@@ -5061,40 +5061,67 @@ export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onIn
                             HP: {char.hp}/{char.maxHp}
                           </div>
                           {onViewCharacter && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => onViewCharacter(char)}
-                              className="bg-amber-900/30 hover:bg-amber-800/50 border-amber-700 text-amber-200 text-xs"
-                              data-testid={`button-view-character-${char.id}`}
-                            >
-                              View Sheet
-                            </Button>
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => onViewCharacter(char)}
+                                    className="h-8 w-8 p-0 bg-amber-900/30 hover:bg-amber-800/50 border border-amber-700 text-amber-200"
+                                    data-testid={`button-view-character-${char.id}`}
+                                  >
+                                    <User className="h-4 w-4" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent side="top" className="bg-stone-800 border-stone-700">
+                                  <p>View Sheet</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
                           )}
                           {onAssignCharacter && (role === 'gm' || myPermissions?.permissions?.[char.id] === 'edit' || myPermissions?.permissions?.[char.id] === 'owner') && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => onAssignCharacter(char)}
-                              className="bg-green-900/30 hover:bg-green-800/50 border-green-700 text-green-200 text-xs"
-                              data-testid={`button-assign-character-${char.id}`}
-                            >
-                              Assign
-                            </Button>
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => onAssignCharacter(char)}
+                                    className="h-8 w-8 p-0 bg-green-900/30 hover:bg-green-800/50 border border-green-700 text-green-200"
+                                    data-testid={`button-assign-character-${char.id}`}
+                                  >
+                                    <UserCheck className="h-4 w-4" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent side="top" className="bg-stone-800 border-stone-700">
+                                  <p>Assign Character</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
                           )}
                           {role === 'gm' && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => {
-                                setSelectedCharForAccess(char);
-                                setShowAccessDialog(true);
-                              }}
-                              className="bg-purple-900/30 hover:bg-purple-800/50 border-purple-700 text-purple-200 text-xs"
-                              data-testid={`button-manage-access-${char.id}`}
-                            >
-                              Access
-                            </Button>
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => {
+                                      setSelectedCharForAccess(char);
+                                      setShowAccessDialog(true);
+                                    }}
+                                    className="h-8 w-8 p-0 bg-purple-900/30 hover:bg-purple-800/50 border border-purple-700 text-purple-200"
+                                    data-testid={`button-manage-access-${char.id}`}
+                                  >
+                                    <Shield className="h-4 w-4" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent side="top" className="bg-stone-800 border-stone-700">
+                                  <p>Manage Access</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
                           )}
                           {role === 'gm' && (
                             <TooltipProvider>
