@@ -1825,17 +1825,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Restore short rest trait uses
       await storage.restoreShortRestTraitUses(character.id);
       
+      // Fetch updated traits for broadcast
+      const updatedTraits = await storage.getCharacterTraits(character.id);
+      
       // Broadcast to campaign room
       if (character.campaignId) {
         const room = campaignRooms.get(character.campaignId);
         if (room) {
-          const message = JSON.stringify({
+          const charMessage = JSON.stringify({
             type: 'character_updated',
             character: updatedCharacter,
           });
+          const traitsMessage = JSON.stringify({
+            type: 'traits_reset',
+            characterId: character.id,
+            traits: updatedTraits,
+          });
           room.forEach((ws) => {
             if (ws.readyState === 1) {
-              ws.send(message);
+              ws.send(charMessage);
+              ws.send(traitsMessage);
             }
           });
         }
@@ -1850,7 +1859,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         newHp,
         newEnergy,
         rationsConsumed: rationsRequired,
-        character: updatedCharacter 
+        character: updatedCharacter,
+        traits: updatedTraits
       });
     } catch (err) {
       console.error("Failed to perform short rest:", err);
@@ -1939,20 +1949,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
         exhaustion: newExhaustion
       });
       
-      // Reset trait uses on long rest
+      // Reset trait uses on long rest (restores both long rest and short rest uses)
       await storage.resetCharacterTraitUses(character.id);
+      
+      // Fetch updated traits for broadcast
+      const updatedTraits = await storage.getCharacterTraits(character.id);
       
       // Broadcast to campaign room
       if (character.campaignId) {
         const room = campaignRooms.get(character.campaignId);
         if (room) {
-          const message = JSON.stringify({
+          const charMessage = JSON.stringify({
             type: 'character_updated',
             character: updatedCharacter,
           });
+          const traitsMessage = JSON.stringify({
+            type: 'traits_reset',
+            characterId: character.id,
+            traits: updatedTraits,
+          });
           room.forEach((ws) => {
             if (ws.readyState === 1) {
-              ws.send(message);
+              ws.send(charMessage);
+              ws.send(traitsMessage);
             }
           });
         }
@@ -1967,7 +1986,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         exhaustionRecovered,
         newExhaustion,
         rationsConsumed: rationsRequired,
-        character: updatedCharacter 
+        character: updatedCharacter,
+        traits: updatedTraits
       });
     } catch (err) {
       console.error("Failed to perform long rest:", err);

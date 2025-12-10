@@ -4600,6 +4600,13 @@ export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onIn
           queryClient.invalidateQueries({ queryKey: ['character-traits', data.characterId] });
         }
       }
+      
+      // Traits reset on rest (short rest or long rest)
+      if (data.type === 'traits_reset') {
+        if (data.characterId) {
+          queryClient.invalidateQueries({ queryKey: ['character-traits', data.characterId] });
+        }
+      }
     });
     
     return () => { unsubscribe(); };
@@ -9561,6 +9568,8 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
         queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${campaignId}/characters`] });
         queryClient.invalidateQueries({ queryKey: ['items', character.id] });
       }
+      // Restore short rest trait uses
+      queryClient.invalidateQueries({ queryKey: ['character-traits', character.id] });
       const dieInfo = result.dieType ? ` (rolled ${result.hpRoll} on ${result.dieType})` : '';
       const energyInfo = result.energyRestored ? `, ${result.energyRestored} Energy` : '';
       toast({ 
