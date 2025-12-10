@@ -2328,7 +2328,9 @@ function FeatTreesView() {
           }`}
           style={{ 
             touchAction: 'none',
-            background: 'radial-gradient(ellipse at center, #1c1917 0%, #0c0a09 100%)'
+            background: 'radial-gradient(ellipse at center, #1c1917 0%, #0c0a09 100%)',
+            userSelect: 'none',
+            WebkitUserSelect: 'none'
           }}
           onPointerDown={handleCanvasPointerDown}
           onPointerMove={handleCanvasPointerMove}

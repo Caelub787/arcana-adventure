@@ -13029,10 +13029,12 @@ function FeatTreeViewerGrid({
   const motionZoom = useMotionValue(1);
   
   // Gesture state
-  type GestureMode = 'idle' | 'panning';
+  type GestureMode = 'idle' | 'panning' | 'pinching';
   const gestureModeRef = useRef<GestureMode>('idle');
   const panStartRef = useRef({ x: 0, y: 0 });
   const pointerStartRef = useRef({ x: 0, y: 0 });
+  const lastTouchDistanceRef = useRef<number | null>(null);
+  const [isPinching, setIsPinching] = useState(false);
   
   const unlockFeatMutation = useMutation({
     mutationFn: (featId: string) => api.unlockCharacterFeat(characterId, featId),
@@ -13154,8 +13156,92 @@ function FeatTreeViewerGrid({
     return () => container.removeEventListener('wheel', handleWheel);
   }, [motionX, motionY, motionZoom]);
   
+  // Touch pinch-to-zoom handler
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const handleTouchStart = (e: TouchEvent) => {
+      if (e.touches.length === 2) {
+        if (gestureModeRef.current === 'panning') {
+          gestureModeRef.current = 'idle';
+        }
+        gestureModeRef.current = 'pinching';
+        setIsPinching(true);
+      } else if (e.touches.length === 1) {
+        setIsPinching(false);
+      }
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      if (e.touches.length === 2) {
+        e.preventDefault();
+        gestureModeRef.current = 'pinching';
+        setIsPinching(true);
+        
+        const currentZoom = zoomRef.current;
+        const currentPan = panRef.current;
+        
+        const touch1 = e.touches[0];
+        const touch2 = e.touches[1];
+        const distance = Math.sqrt(
+          Math.pow(touch2.clientX - touch1.clientX, 2) +
+          Math.pow(touch2.clientY - touch1.clientY, 2)
+        );
+
+        if (lastTouchDistanceRef.current !== null) {
+          const delta = (distance - lastTouchDistanceRef.current) * 0.005;
+          const newZoom = Math.max(0.3, Math.min(2, currentZoom + delta));
+
+          if (Math.abs(newZoom - currentZoom) > 0.001) {
+            const rect = container.getBoundingClientRect();
+            const centerX = ((touch1.clientX + touch2.clientX) / 2) - rect.left;
+            const centerY = ((touch1.clientY + touch2.clientY) / 2) - rect.top;
+
+            const worldX = ((centerX + WORLD_OFFSET - currentPan.x) / currentZoom) - WORLD_OFFSET;
+            const worldY = ((centerY + WORLD_OFFSET - currentPan.y) / currentZoom) - WORLD_OFFSET;
+
+            const newPan = {
+              x: centerX + WORLD_OFFSET - (worldX + WORLD_OFFSET) * newZoom,
+              y: centerY + WORLD_OFFSET - (worldY + WORLD_OFFSET) * newZoom
+            };
+
+            panRef.current = newPan;
+            zoomRef.current = newZoom;
+            motionX.set(newPan.x);
+            motionY.set(newPan.y);
+            motionZoom.set(newZoom);
+            forceUpdate(n => n + 1);
+          }
+        }
+        lastTouchDistanceRef.current = distance;
+      }
+    };
+
+    const handleTouchEnd = () => {
+      lastTouchDistanceRef.current = null;
+      if (gestureModeRef.current === 'pinching') {
+        gestureModeRef.current = 'idle';
+        setIsPinching(false);
+      }
+    };
+
+    container.addEventListener('touchstart', handleTouchStart, { passive: false });
+    container.addEventListener('touchmove', handleTouchMove, { passive: false });
+    container.addEventListener('touchend', handleTouchEnd);
+    container.addEventListener('touchcancel', handleTouchEnd);
+
+    return () => {
+      container.removeEventListener('touchstart', handleTouchStart);
+      container.removeEventListener('touchmove', handleTouchMove);
+      container.removeEventListener('touchend', handleTouchEnd);
+      container.removeEventListener('touchcancel', handleTouchEnd);
+    };
+  }, []);
+  
   // Pan handlers
   const handlePointerDown = (e: React.PointerEvent) => {
+    if (isPinching) return;
     if (e.button !== 0) return; // Only left click
     e.currentTarget.setPointerCapture(e.pointerId);
     
@@ -13230,7 +13316,7 @@ function FeatTreeViewerGrid({
       <div 
         ref={containerRef}
         className="relative overflow-hidden bg-gradient-to-br from-stone-900 via-purple-950/20 to-stone-900 rounded-lg border border-stone-700 cursor-grab active:cursor-grabbing"
-        style={{ height: '300px', touchAction: 'none' }}
+        style={{ height: '300px', touchAction: 'none', userSelect: 'none', WebkitUserSelect: 'none' }}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
