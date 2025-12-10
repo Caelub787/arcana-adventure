@@ -3015,57 +3015,17 @@ function FeatFormDialog({ open, onOpenChange, onSave, initialData, isLoading, fe
               data-testid="input-feat-description"
             />
           </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <Label>Grid X Position</Label>
-              <Input
-                type="number"
-                value={formData.gridX}
-                onChange={(e) => setFormData({ ...formData, gridX: parseInt(e.target.value) || 0 })}
-                className="bg-stone-800 border-stone-700"
-                data-testid="input-feat-gridx"
-              />
-            </div>
-            <div>
-              <Label>Grid Y Position</Label>
-              <Input
-                type="number"
-                value={formData.gridY}
-                onChange={(e) => setFormData({ ...formData, gridY: parseInt(e.target.value) || 0 })}
-                className="bg-stone-800 border-stone-700"
-                data-testid="input-feat-gridy"
-              />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <Label>Tier (1-5)</Label>
-              <Select
-                value={String(formData.tier)}
-                onValueChange={(v) => setFormData({ ...formData, tier: parseInt(v) })}
-              >
-                <SelectTrigger className="bg-stone-800 border-stone-700">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {[1, 2, 3, 4, 5].map((t) => (
-                    <SelectItem key={t} value={String(t)}>Tier {t}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>Cost (feat points)</Label>
-              <Input
-                type="number"
-                min={1}
-                max={10}
-                value={formData.cost}
-                onChange={(e) => setFormData({ ...formData, cost: parseInt(e.target.value) || 1 })}
-                className="bg-stone-800 border-stone-700"
-                data-testid="input-feat-cost"
-              />
-            </div>
+          <div>
+            <Label>Cost (feat points)</Label>
+            <Input
+              type="number"
+              min={1}
+              max={10}
+              value={formData.cost}
+              onChange={(e) => setFormData({ ...formData, cost: parseInt(e.target.value) || 1 })}
+              className="bg-stone-800 border-stone-700"
+              data-testid="input-feat-cost"
+            />
           </div>
 
           <div className="border-t border-stone-700 pt-4">
@@ -3239,7 +3199,7 @@ function FeatFormDialog({ open, onOpenChange, onSave, initialData, isLoading, fe
                           <SelectItem key={spell.id} value={spell.id}>
                             <span className="flex items-center gap-2">
                               <span>{spell.name}</span>
-                              <Badge variant="secondary" className="text-xs">Lvl {spell.level}</Badge>
+                              <Badge variant="secondary" className="text-xs text-cyan-400">{spell.energyCost || 0}E</Badge>
                             </span>
                           </SelectItem>
                         ))

@@ -2844,6 +2844,7 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
   let tooltipContent = null;
 
   if (hotbar?.spellId && spellData) {
+    const energyCost = spellData.energyCost || 0;
     content = spellData.image ? (
       <div className="relative w-full h-full flex items-center justify-center">
         <img 
@@ -2851,29 +2852,32 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
           alt={spellData.name}
           className="w-9 h-9 md:w-14 md:h-14 object-cover rounded"
         />
-        <div className={`absolute top-0 right-0 ${spellData.level === 0 ? 'bg-gray-600' : spellData.level <= 3 ? 'bg-blue-600' : spellData.level <= 6 ? 'bg-purple-600' : 'bg-amber-600'} text-white text-[6px] px-0.5 rounded-bl font-bold`}>
-          {spellData.level === 0 ? 'C' : spellData.level}
-        </div>
+        {energyCost > 0 && (
+          <div className="absolute top-0 right-0 bg-cyan-600 text-white text-[6px] px-0.5 rounded-bl font-bold">
+            {energyCost}E
+          </div>
+        )}
       </div>
     ) : (
       <>
-        <div className={`font-bold truncate ${getSpellLevelColor(spellData.level)}`}>
+        <div className="font-bold truncate text-purple-400">
           {spellData.name.substring(0, 3)}
         </div>
-        <div className="text-[7px] text-stone-400">
-          {spellData.level === 0 ? 'C' : `L${spellData.level}`}
-        </div>
+        {energyCost > 0 && (
+          <div className="text-[7px] text-cyan-400">
+            {energyCost}E
+          </div>
+        )}
       </>
     );
     tooltipContent = (
       <>
         <p className="font-bold">{spellData.name}</p>
-        <p className="text-sm">Level: {spellData.level === 0 ? 'Cantrip' : spellData.level}</p>
         {spellData.school && <p className="text-sm">School: {spellData.school}</p>}
         {(spellData.damageDice || spellData.damage) && <p className="text-sm">Damage: {spellData.damageDice || spellData.damage}{spellData.mod ? ` +${spellData.mod}` : ''} {spellData.damageType || ''}</p>}
         {spellData.attribute && <p className="text-sm">Attack: {spellData.attribute}</p>}
         {spellData.rangeNum && <p className="text-sm">Range: {spellData.rangeNum}ft</p>}
-        {spellData.energyCost && <p className="text-sm text-cyan-400">Energy: {spellData.energyCost}</p>}
+        <p className="text-sm text-cyan-400">Energy: {energyCost}</p>
         <p className="text-xs text-stone-400 mt-1">Click: Attack | Double-click: Damage</p>
       </>
     );
@@ -6111,10 +6115,7 @@ function HotbarsTabContent({ character, isGM, isOwner }: HotbarsTabContentProps)
                   >
                     <div className="flex justify-between items-center">
                       <span className="font-medium text-purple-400 truncate">{spell.name}</span>
-                      <div className="flex items-center gap-1.5">
-                        {spell.energyCost > 0 && <span className="text-cyan-400 text-[10px]">{spell.energyCost}E</span>}
-                        <span className="text-stone-500 text-xs">{spell.level === 0 ? 'C' : `L${spell.level}`}</span>
-                      </div>
+                      <span className="text-cyan-400 text-[10px]">{spell.energyCost || 0}E</span>
                     </div>
                   </div>
                 ))}
@@ -7027,19 +7028,7 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
 
     // Display spell if equipped
     if (hotbar.spellId && spellData) {
-      const getLevelColor = (level: number) => {
-        if (level === 0) return 'text-gray-400';
-        if (level <= 3) return 'text-blue-400';
-        if (level <= 6) return 'text-purple-400';
-        return 'text-amber-400';
-      };
-
-      const getLevelBgColor = (level: number) => {
-        if (level === 0) return 'bg-gray-600';
-        if (level <= 3) return 'bg-blue-600';
-        if (level <= 6) return 'bg-purple-600';
-        return 'bg-amber-600';
-      };
+      const energyCost = spellData.energyCost || 0;
       
       return (
         <TooltipProvider>
@@ -7055,10 +7044,12 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
                       alt={spellData.name}
                       className="w-10 h-10 sm:w-12 sm:h-12 md:w-14 md:h-14 object-cover rounded"
                     />
-                    {/* Level badge */}
-                    <div className={`absolute top-0 right-0 ${getLevelBgColor(spellData.level)} text-white text-[8px] px-1 rounded-bl font-bold`}>
-                      {spellData.level === 0 ? 'C' : spellData.level}
-                    </div>
+                    {/* Energy badge */}
+                    {energyCost > 0 && (
+                      <div className="absolute top-0 right-0 bg-cyan-600 text-white text-[8px] px-1 rounded-bl font-bold">
+                        {energyCost}E
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <div className="relative w-full h-full flex items-center justify-center">
@@ -7066,10 +7057,12 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
                     <div className="w-10 h-10 sm:w-12 sm:h-12 md:w-14 md:h-14 rounded bg-purple-900/30 flex items-center justify-center">
                       <Sparkles className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-purple-400" />
                     </div>
-                    {/* Level badge */}
-                    <div className={`absolute top-0 right-0 ${getLevelBgColor(spellData.level)} text-white text-[8px] px-1 rounded-bl font-bold`}>
-                      {spellData.level === 0 ? 'C' : spellData.level}
-                    </div>
+                    {/* Energy badge */}
+                    {energyCost > 0 && (
+                      <div className="absolute top-0 right-0 bg-cyan-600 text-white text-[8px] px-1 rounded-bl font-bold">
+                        {energyCost}E
+                      </div>
+                    )}
                     {/* Damage badge if spell has damage */}
                     {(spellData.damageDice || spellData.damage) && (
                       <div className="absolute bottom-0 left-0 bg-red-900/90 text-red-300 text-[7px] px-0.5 rounded-tr font-bold">
@@ -7082,12 +7075,11 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
             </TooltipTrigger>
             <TooltipContent>
               <p className="font-bold">{spellData.name}</p>
-              <p className="text-sm">Level: {spellData.level === 0 ? 'Cantrip' : spellData.level}</p>
               {spellData.school && <p className="text-sm">School: {spellData.school}</p>}
               {(spellData.damageDice || spellData.damage) && <p className="text-sm">Damage: {spellData.damageDice || spellData.damage}{spellData.mod ? ` +${spellData.mod}` : ''} {spellData.damageType || ''}</p>}
               {spellData.attribute && <p className="text-sm">Attack: {spellData.attribute}</p>}
               {spellData.rangeNum && <p className="text-sm">Range: {spellData.rangeNum}ft</p>}
-              {spellData.energyCost && <p className="text-sm text-cyan-400">Energy: {spellData.energyCost}</p>}
+              <p className="text-sm text-cyan-400">Energy: {energyCost}</p>
               {spellData.castingTime && <p className="text-sm">Casting: {spellData.castingTime}</p>}
               <p className="text-xs text-stone-400 mt-1">Use from battlemap hotbar to cast</p>
             </TooltipContent>
