@@ -1708,10 +1708,17 @@ function FeatTreesView() {
       queryClient.invalidateQueries({ queryKey: ['feat-tree', selectedTreeId] });
       setShowFeatEditor(false);
       setEditingFeat(null);
-      toast({ title: 'Success', description: 'Feat updated' });
     },
     onError: (err: any) => {
       toast({ title: 'Error', description: err.message, variant: 'destructive' });
+    },
+    onSettled: (_data, _error, variables) => {
+      // Clear only the pending drag update for this specific feat
+      setPendingDragUpdates(prev => {
+        const next = new Map(prev);
+        next.delete(variables.id);
+        return next;
+      });
     },
   });
 
@@ -1756,6 +1763,8 @@ function FeatTreesView() {
   const [featActionMenu, setFeatActionMenu] = useState<string | null>(null); // featId for centered popup
   const draggingRef = useRef<{ featId: string; startX: number; startY: number; origX: number; origY: number } | null>(null);
   const [dragOffset, setDragOffset] = useState<{ id: string; dx: number; dy: number } | null>(null);
+  // Track pending position updates per feat to keep visual offset until each mutation completes
+  const [pendingDragUpdates, setPendingDragUpdates] = useState<Map<string, { dx: number; dy: number }>>(new Map());
 
   // Handle feat node click
   const handleFeatClick = (feat: Feat, e: React.MouseEvent | React.PointerEvent) => {
@@ -1808,6 +1817,8 @@ function FeatTreesView() {
   // Drag handlers for feat nodes
   const handleFeatPointerDown = (feat: Feat, e: React.PointerEvent) => {
     if (connectionMode) return;
+    // Don't start a new drag if there's a pending update for this feat
+    if (pendingDragUpdates.has(feat.id)) return;
     
     e.stopPropagation();
     e.currentTarget.setPointerCapture(e.pointerId);
@@ -1842,6 +1853,9 @@ function FeatTreesView() {
     if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
       const newX = draggingRef.current.origX + dx;
       const newY = draggingRef.current.origY + dy;
+      
+      // Keep the visual offset until mutation completes to prevent snap-back
+      setPendingDragUpdates(prev => new Map(prev).set(feat.id, { dx, dy }));
       
       updateFeatMutation.mutate({
         id: feat.id,
@@ -2386,19 +2400,28 @@ function FeatTreesView() {
               const to = featById.get(conn.toFeatId);
               if (!from || !to) return null;
               
-              // Convert grid indices to pixels and apply drag offset if node is being dragged
+              // Convert grid indices to pixels and apply drag/pending offset if node is being dragged
               let fromX = from.gridX * CELL_SIZE;
               let fromY = from.gridY * CELL_SIZE;
               let toX = to.gridX * CELL_SIZE;
               let toY = to.gridY * CELL_SIZE;
               
+              const fromPending = pendingDragUpdates.get(from.id);
+              const toPending = pendingDragUpdates.get(to.id);
+              
               if (dragOffset?.id === from.id) {
                 fromX += dragOffset.dx;
                 fromY += dragOffset.dy;
+              } else if (fromPending) {
+                fromX += fromPending.dx;
+                fromY += fromPending.dy;
               }
               if (dragOffset?.id === to.id) {
                 toX += dragOffset.dx;
                 toY += dragOffset.dy;
+              } else if (toPending) {
+                toX += toPending.dx;
+                toY += toPending.dy;
               }
               
               const x1 = WORLD_OFFSET + fromX + NODE_WIDTH / 2;
@@ -2452,13 +2475,18 @@ function FeatTreesView() {
             const isSelected = selectedFeatId === feat.id;
             const isConnectSource = connectingFrom === feat.id;
             const isDragging = dragOffset?.id === feat.id;
+            const pendingUpdate = pendingDragUpdates.get(feat.id);
             
-            // Convert grid indices to pixels and apply drag offset
+            // Convert grid indices to pixels and apply drag offset (or pending update offset)
             let posX = feat.gridX * CELL_SIZE;
             let posY = feat.gridY * CELL_SIZE;
             if (isDragging) {
               posX += dragOffset.dx;
               posY += dragOffset.dy;
+            } else if (pendingUpdate) {
+              // Keep visual offset while mutation is pending
+              posX += pendingUpdate.dx;
+              posY += pendingUpdate.dy;
             }
             
             return (
