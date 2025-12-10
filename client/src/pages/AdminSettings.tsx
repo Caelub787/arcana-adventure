@@ -3444,53 +3444,51 @@ function FeatFormDialog({ open, onOpenChange, onSave, initialData, isLoading, fe
                             autoFocus
                           />
                         </div>
-                        <ScrollArea className="flex-1 max-h-[50vh]">
-                          <div className="space-y-1 pr-2">
-                            {(systemSpells as SystemSpell[]).length === 0 ? (
-                              <div className="text-center py-8 text-stone-400">
-                                <BookOpen className="h-12 w-12 mx-auto mb-3 opacity-30" />
-                                <p>No spells created yet</p>
-                              </div>
-                            ) : (
-                              (systemSpells as SystemSpell[])
-                                .filter(spell => spell.name.toLowerCase().includes(pickerSearch.toLowerCase()) ||
-                                  spell.description?.toLowerCase().includes(pickerSearch.toLowerCase()))
-                                .map((spell) => (
-                                  <div
-                                    key={spell.id}
-                                    className={`p-3 rounded-lg border cursor-pointer transition-colors ${
-                                      newEffect.target === spell.id 
-                                        ? 'bg-cyan-900/30 border-cyan-500' 
-                                        : 'bg-stone-800 border-stone-700 hover:border-cyan-500'
-                                    }`}
-                                    onClick={() => {
-                                      setNewEffect({ ...newEffect, target: spell.id });
-                                      setShowSpellPicker(false);
-                                    }}
-                                  >
-                                    <div className="flex items-center gap-3">
-                                      {spell.icon ? (
-                                        <img src={spell.icon} alt="" className="w-8 h-8 rounded object-cover" />
-                                      ) : (
-                                        <div className="w-8 h-8 bg-stone-700 rounded flex items-center justify-center">
-                                          <Sparkles className="h-4 w-4 text-cyan-400" />
-                                        </div>
-                                      )}
-                                      <div className="flex-1 min-w-0">
-                                        <div className="flex items-center gap-2">
-                                          <span className="font-medium text-stone-100">{spell.name}</span>
-                                          <Badge variant="secondary" className="text-xs text-cyan-400">{spell.energyCost || 0}E</Badge>
-                                        </div>
-                                        {spell.description && (
-                                          <p className="text-xs text-stone-400 truncate">{spell.description}</p>
-                                        )}
+                        <div className="overflow-y-auto max-h-[50vh] space-y-1 pr-2">
+                          {(systemSpells as SystemSpell[]).length === 0 ? (
+                            <div className="text-center py-8 text-stone-400">
+                              <BookOpen className="h-12 w-12 mx-auto mb-3 opacity-30" />
+                              <p>No spells created yet</p>
+                            </div>
+                          ) : (
+                            (systemSpells as SystemSpell[])
+                              .filter(spell => spell.name.toLowerCase().includes(pickerSearch.toLowerCase()) ||
+                                spell.description?.toLowerCase().includes(pickerSearch.toLowerCase()))
+                              .map((spell) => (
+                                <div
+                                  key={spell.id}
+                                  className={`p-3 rounded-lg border cursor-pointer transition-colors ${
+                                    newEffect.target === spell.id 
+                                      ? 'bg-cyan-900/30 border-cyan-500' 
+                                      : 'bg-stone-800 border-stone-700 hover:border-cyan-500'
+                                  }`}
+                                  onClick={() => {
+                                    setNewEffect({ ...newEffect, target: spell.id });
+                                    setShowSpellPicker(false);
+                                  }}
+                                >
+                                  <div className="flex items-center gap-3">
+                                    {spell.icon ? (
+                                      <img src={spell.icon} alt="" className="w-8 h-8 rounded object-cover" />
+                                    ) : (
+                                      <div className="w-8 h-8 bg-stone-700 rounded flex items-center justify-center">
+                                        <Sparkles className="h-4 w-4 text-cyan-400" />
                                       </div>
+                                    )}
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center gap-2">
+                                        <span className="font-medium text-stone-100">{spell.name}</span>
+                                        <Badge variant="secondary" className="text-xs text-cyan-400">{spell.energyCost || 0}E</Badge>
+                                      </div>
+                                      {spell.description && (
+                                        <p className="text-xs text-stone-400 truncate">{spell.description}</p>
+                                      )}
                                     </div>
                                   </div>
-                                ))
-                            )}
-                          </div>
-                        </ScrollArea>
+                                </div>
+                              ))
+                          )}
+                        </div>
                       </DialogContent>
                     </Dialog>
                   </div>
@@ -3535,54 +3533,52 @@ function FeatFormDialog({ open, onOpenChange, onSave, initialData, isLoading, fe
                             autoFocus
                           />
                         </div>
-                        <ScrollArea className="flex-1 max-h-[50vh]">
-                          <div className="space-y-1 pr-2">
-                            {systemItems.length === 0 ? (
-                              <div className="text-center py-8 text-stone-400">
-                                <Package className="h-12 w-12 mx-auto mb-3 opacity-30" />
-                                <p>No system items available</p>
-                              </div>
-                            ) : (
-                              systemItems
-                                .filter((item: any) => item.id && item.name?.toLowerCase().includes(pickerSearch.toLowerCase()))
-                                .map((item: any) => (
-                                  <div
-                                    key={item.id}
-                                    className={`p-3 rounded-lg border cursor-pointer transition-colors ${
-                                      newEffect.target === item.id 
-                                        ? 'bg-orange-900/30 border-orange-500' 
-                                        : 'bg-stone-800 border-stone-700 hover:border-orange-500'
-                                    }`}
-                                    onClick={() => {
-                                      setNewEffect({ ...newEffect, target: item.id });
-                                      setShowItemPicker(false);
-                                    }}
-                                  >
-                                    <div className="flex items-center gap-3">
-                                      {item.image ? (
-                                        <img src={item.image} alt="" className="w-8 h-8 rounded object-cover" />
-                                      ) : (
-                                        <div className="w-8 h-8 bg-stone-700 rounded flex items-center justify-center">
-                                          <Package className="h-4 w-4 text-orange-400" />
-                                        </div>
-                                      )}
-                                      <div className="flex-1 min-w-0">
-                                        <div className="flex items-center gap-2">
-                                          <span className="font-medium text-stone-100">{item.name}</span>
-                                          {item.itemType && (
-                                            <Badge variant="secondary" className="text-xs capitalize">{item.itemType}</Badge>
-                                          )}
-                                        </div>
-                                        {item.description && (
-                                          <p className="text-xs text-stone-400 truncate">{item.description}</p>
+                        <div className="overflow-y-auto max-h-[50vh] space-y-1 pr-2">
+                          {systemItems.length === 0 ? (
+                            <div className="text-center py-8 text-stone-400">
+                              <Package className="h-12 w-12 mx-auto mb-3 opacity-30" />
+                              <p>No system items available</p>
+                            </div>
+                          ) : (
+                            systemItems
+                              .filter((item: any) => item.id && item.name?.toLowerCase().includes(pickerSearch.toLowerCase()))
+                              .map((item: any) => (
+                                <div
+                                  key={item.id}
+                                  className={`p-3 rounded-lg border cursor-pointer transition-colors ${
+                                    newEffect.target === item.id 
+                                      ? 'bg-orange-900/30 border-orange-500' 
+                                      : 'bg-stone-800 border-stone-700 hover:border-orange-500'
+                                  }`}
+                                  onClick={() => {
+                                    setNewEffect({ ...newEffect, target: item.id });
+                                    setShowItemPicker(false);
+                                  }}
+                                >
+                                  <div className="flex items-center gap-3">
+                                    {item.image ? (
+                                      <img src={item.image} alt="" className="w-8 h-8 rounded object-cover" />
+                                    ) : (
+                                      <div className="w-8 h-8 bg-stone-700 rounded flex items-center justify-center">
+                                        <Package className="h-4 w-4 text-orange-400" />
+                                      </div>
+                                    )}
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center gap-2">
+                                        <span className="font-medium text-stone-100">{item.name}</span>
+                                        {item.itemType && (
+                                          <Badge variant="secondary" className="text-xs capitalize">{item.itemType}</Badge>
                                         )}
                                       </div>
+                                      {item.description && (
+                                        <p className="text-xs text-stone-400 truncate">{item.description}</p>
+                                      )}
                                     </div>
                                   </div>
-                                ))
-                            )}
-                          </div>
-                        </ScrollArea>
+                                </div>
+                              ))
+                          )}
+                        </div>
                       </DialogContent>
                     </Dialog>
                   </div>
@@ -3627,49 +3623,47 @@ function FeatFormDialog({ open, onOpenChange, onSave, initialData, isLoading, fe
                             autoFocus
                           />
                         </div>
-                        <ScrollArea className="flex-1 max-h-[50vh]">
-                          <div className="space-y-1 pr-2">
-                            {(customSkills as SystemSkill[]).length === 0 ? (
-                              <div className="text-center py-8 text-stone-400">
-                                <Sparkles className="h-12 w-12 mx-auto mb-3 opacity-30" />
-                                <p>No custom skills created yet</p>
-                              </div>
-                            ) : (
-                              (customSkills as SystemSkill[])
-                                .filter(skill => skill.name.toLowerCase().includes(pickerSearch.toLowerCase()) ||
-                                  skill.description?.toLowerCase().includes(pickerSearch.toLowerCase()))
-                                .map((skill) => (
-                                  <div
-                                    key={skill.id}
-                                    className={`p-3 rounded-lg border cursor-pointer transition-colors ${
-                                      newEffect.target === skill.id 
-                                        ? 'bg-pink-900/30 border-pink-500' 
-                                        : 'bg-stone-800 border-stone-700 hover:border-pink-500'
-                                    }`}
-                                    onClick={() => {
-                                      setNewEffect({ ...newEffect, target: skill.id });
-                                      setShowSkillPicker(false);
-                                    }}
-                                  >
-                                    <div className="flex items-center gap-3">
-                                      <div className="w-8 h-8 bg-stone-700 rounded flex items-center justify-center">
-                                        <Sparkles className="h-4 w-4 text-pink-400" />
+                        <div className="overflow-y-auto max-h-[50vh] space-y-1 pr-2">
+                          {(customSkills as SystemSkill[]).length === 0 ? (
+                            <div className="text-center py-8 text-stone-400">
+                              <Sparkles className="h-12 w-12 mx-auto mb-3 opacity-30" />
+                              <p>No custom skills created yet</p>
+                            </div>
+                          ) : (
+                            (customSkills as SystemSkill[])
+                              .filter(skill => skill.name.toLowerCase().includes(pickerSearch.toLowerCase()) ||
+                                skill.description?.toLowerCase().includes(pickerSearch.toLowerCase()))
+                              .map((skill) => (
+                                <div
+                                  key={skill.id}
+                                  className={`p-3 rounded-lg border cursor-pointer transition-colors ${
+                                    newEffect.target === skill.id 
+                                      ? 'bg-pink-900/30 border-pink-500' 
+                                      : 'bg-stone-800 border-stone-700 hover:border-pink-500'
+                                  }`}
+                                  onClick={() => {
+                                    setNewEffect({ ...newEffect, target: skill.id });
+                                    setShowSkillPicker(false);
+                                  }}
+                                >
+                                  <div className="flex items-center gap-3">
+                                    <div className="w-8 h-8 bg-stone-700 rounded flex items-center justify-center">
+                                      <Sparkles className="h-4 w-4 text-pink-400" />
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center gap-2">
+                                        <span className="font-medium text-stone-100">{skill.name}</span>
+                                        <Badge variant="secondary" className="text-xs capitalize">{skill.parentAttribute}</Badge>
                                       </div>
-                                      <div className="flex-1 min-w-0">
-                                        <div className="flex items-center gap-2">
-                                          <span className="font-medium text-stone-100">{skill.name}</span>
-                                          <Badge variant="secondary" className="text-xs capitalize">{skill.parentAttribute}</Badge>
-                                        </div>
-                                        {skill.description && (
-                                          <p className="text-xs text-stone-400 truncate">{skill.description}</p>
-                                        )}
-                                      </div>
+                                      {skill.description && (
+                                        <p className="text-xs text-stone-400 truncate">{skill.description}</p>
+                                      )}
                                     </div>
                                   </div>
-                                ))
-                            )}
-                          </div>
-                        </ScrollArea>
+                                </div>
+                              ))
+                          )}
+                        </div>
                       </DialogContent>
                     </Dialog>
                   </div>
@@ -3714,49 +3708,47 @@ function FeatFormDialog({ open, onOpenChange, onSave, initialData, isLoading, fe
                             autoFocus
                           />
                         </div>
-                        <ScrollArea className="flex-1 max-h-[50vh]">
-                          <div className="space-y-1 pr-2">
-                            {(systemTraitsForDropdown as SystemTrait[]).length === 0 ? (
-                              <div className="text-center py-8 text-stone-400">
-                                <Wand2 className="h-12 w-12 mx-auto mb-3 opacity-30" />
-                                <p>No traits created yet</p>
-                              </div>
-                            ) : (
-                              (systemTraitsForDropdown as SystemTrait[])
-                                .filter(trait => trait.name.toLowerCase().includes(pickerSearch.toLowerCase()) ||
-                                  trait.description?.toLowerCase().includes(pickerSearch.toLowerCase()))
-                                .map((trait) => (
-                                  <div
-                                    key={trait.id}
-                                    className={`p-3 rounded-lg border cursor-pointer transition-colors ${
-                                      newEffect.target === trait.id 
-                                        ? 'bg-violet-900/30 border-violet-500' 
-                                        : 'bg-stone-800 border-stone-700 hover:border-violet-500'
-                                    }`}
-                                    onClick={() => {
-                                      setNewEffect({ ...newEffect, target: trait.id });
-                                      setShowTraitPicker(false);
-                                    }}
-                                  >
-                                    <div className="flex items-center gap-3">
-                                      <div className="w-8 h-8 bg-stone-700 rounded flex items-center justify-center">
-                                        <Wand2 className="h-4 w-4 text-violet-400" />
+                        <div className="overflow-y-auto max-h-[50vh] space-y-1 pr-2">
+                          {(systemTraitsForDropdown as SystemTrait[]).length === 0 ? (
+                            <div className="text-center py-8 text-stone-400">
+                              <Wand2 className="h-12 w-12 mx-auto mb-3 opacity-30" />
+                              <p>No traits created yet</p>
+                            </div>
+                          ) : (
+                            (systemTraitsForDropdown as SystemTrait[])
+                              .filter(trait => trait.name.toLowerCase().includes(pickerSearch.toLowerCase()) ||
+                                trait.description?.toLowerCase().includes(pickerSearch.toLowerCase()))
+                              .map((trait) => (
+                                <div
+                                  key={trait.id}
+                                  className={`p-3 rounded-lg border cursor-pointer transition-colors ${
+                                    newEffect.target === trait.id 
+                                      ? 'bg-violet-900/30 border-violet-500' 
+                                      : 'bg-stone-800 border-stone-700 hover:border-violet-500'
+                                  }`}
+                                  onClick={() => {
+                                    setNewEffect({ ...newEffect, target: trait.id });
+                                    setShowTraitPicker(false);
+                                  }}
+                                >
+                                  <div className="flex items-center gap-3">
+                                    <div className="w-8 h-8 bg-stone-700 rounded flex items-center justify-center">
+                                      <Wand2 className="h-4 w-4 text-violet-400" />
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center gap-2">
+                                        <span className="font-medium text-stone-100">{trait.name}</span>
+                                        <Badge variant="secondary" className="text-xs capitalize">{trait.parentAttribute}</Badge>
                                       </div>
-                                      <div className="flex-1 min-w-0">
-                                        <div className="flex items-center gap-2">
-                                          <span className="font-medium text-stone-100">{trait.name}</span>
-                                          <Badge variant="secondary" className="text-xs capitalize">{trait.parentAttribute}</Badge>
-                                        </div>
-                                        {trait.description && (
-                                          <p className="text-xs text-stone-400 truncate">{trait.description}</p>
-                                        )}
-                                      </div>
+                                      {trait.description && (
+                                        <p className="text-xs text-stone-400 truncate">{trait.description}</p>
+                                      )}
                                     </div>
                                   </div>
-                                ))
-                            )}
-                          </div>
-                        </ScrollArea>
+                                </div>
+                              ))
+                          )}
+                        </div>
                       </DialogContent>
                     </Dialog>
                   </div>
