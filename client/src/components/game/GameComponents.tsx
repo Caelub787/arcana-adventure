@@ -13063,12 +13063,16 @@ function FeatTreeViewerGrid({
   const lastTouchDistanceRef = useRef<number | null>(null);
   const [isPinching, setIsPinching] = useState(false);
   
+  // Double-click tracking for feat nodes
+  const lastClickTimeRef = useRef(0);
+  const lastClickedFeatRef = useRef<string | null>(null);
+  
   const unlockFeatMutation = useMutation({
     mutationFn: (featId: string) => api.unlockCharacterFeat(characterId, featId),
-    onSuccess: () => {
+    onSuccess: (_, featId) => {
       queryClient.invalidateQueries({ queryKey: ['character-feats', characterId] });
-      toast({ title: 'Feat Unlocked!', description: `You've unlocked ${selectedFeat?.name}` });
-      setSelectedFeat(null);
+      const feat = featById.get(featId);
+      toast({ title: 'Feat Unlocked!', description: `You've unlocked ${feat?.name || selectedFeat?.name}` });
     },
     onError: (err: any) => {
       toast({ title: 'Error', description: err.message, variant: 'destructive' });
@@ -13428,7 +13432,20 @@ function FeatTreeViewerGrid({
                 }}
                 onClick={(e) => {
                   e.stopPropagation();
+                  
+                  const now = Date.now();
+                  const isDoubleClick = lastClickedFeatRef.current === feat.id && now - lastClickTimeRef.current < 400;
+                  
+                  lastClickTimeRef.current = now;
+                  lastClickedFeatRef.current = feat.id;
+                  
+                  // Always show the feat details
                   setSelectedFeat(feat);
+                  
+                  // On double-click, auto-unlock if possible
+                  if (isDoubleClick && canEdit && canUnlock && !unlockFeatMutation.isPending) {
+                    unlockFeatMutation.mutate(feat.id);
+                  }
                 }}
                 data-testid={`feat-node-${feat.id}`}
               >
