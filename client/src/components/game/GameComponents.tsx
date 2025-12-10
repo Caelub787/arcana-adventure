@@ -13042,7 +13042,7 @@ function FeatTreeViewerGrid({
   const totalFeatPoints = 2 + characterLevel + (2 * Math.floor(characterLevel / 3));
   const spentPoints = feats
     .filter((f: Feat) => unlockedFeatIds.has(f.id))
-    .reduce((sum: number, f: Feat) => sum + (f.cost || 1), 0);
+    .reduce((sum: number, f: Feat) => sum + (f.cost ?? 0), 0);
   const availablePoints = totalFeatPoints - spentPoints;
   
   // Pan/zoom state
