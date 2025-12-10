@@ -225,6 +225,7 @@ export interface IStorage {
   updateCharacterTrait(id: string, data: Partial<InsertCharacterTrait>): Promise<CharacterTrait | undefined>;
   removeCharacterTrait(id: string): Promise<void>;
   resetCharacterTraitUses(characterId: string): Promise<void>;
+  restoreShortRestTraitUses(characterId: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1347,9 +1348,26 @@ export class DatabaseStorage implements IStorage {
   }
 
   async resetCharacterTraitUses(characterId: string): Promise<void> {
-    await db.update(characterTraits)
-      .set({ currentUses: 0 })
-      .where(eq(characterTraits.characterId, characterId));
+    // Reset to max uses (usesPerLongRest + usesPerShortRest) for all traits
+    const traits = await this.getCharacterTraits(characterId);
+    for (const trait of traits) {
+      const maxUses = (trait.usesPerLongRest || 0) + (trait.usesPerShortRest || 0);
+      await db.update(characterTraits)
+        .set({ currentUses: maxUses })
+        .where(eq(characterTraits.id, trait.id));
+    }
+  }
+
+  async restoreShortRestTraitUses(characterId: string): Promise<void> {
+    // Restore short rest uses for all traits (add usesPerShortRest to currentUses, capped at max)
+    const traits = await this.getCharacterTraits(characterId);
+    for (const trait of traits) {
+      const maxUses = (trait.usesPerLongRest || 0) + (trait.usesPerShortRest || 0);
+      const newUses = Math.min(maxUses, (trait.currentUses || 0) + (trait.usesPerShortRest || 0));
+      await db.update(characterTraits)
+        .set({ currentUses: newUses })
+        .where(eq(characterTraits.id, trait.id));
+    }
   }
 }
 

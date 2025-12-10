@@ -1995,13 +1995,18 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
       return { finalDamage: damageAmount, reduction: 0, armorName: null, isHealing: true };
     }
     
-    // Fetch target's items to check for equipped armor with matching damage reduction
+    // Fetch target's items and traits to check for damage reduction
     let reduction = 0;
     let armorName: string | null = null;
+    let traitReduction = 0;
+    let traitResistance = false;
+    let traitImmune = false;
+    let traitName: string | null = null;
     
     try {
       const targetItems = await api.getItems(targetCharacter.id);
       const targetHotbars = await api.getHotbars(targetCharacter.id);
+      const targetTraits = await api.getCharacterTraits(targetCharacter.id);
       
       // Find equipped armor items (from armor hotbar slots 0-4: helm, chest, arm, legs, boots)
       const equippedArmorIds = targetHotbars
@@ -2019,26 +2024,60 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
           armorName = armor.name; // Track the last armor that provided reduction
         }
       }
+      
+      // Check traits for damage reduction/resistance/immunity
+      for (const trait of targetTraits) {
+        if (damageType && trait.damageModifierType && trait.damageModifierType !== 'none' && trait.damageModifierDamageType === damageType) {
+          if (trait.damageModifierType === 'immune') {
+            traitImmune = true;
+            traitName = trait.name;
+            break; // Immunity takes precedence
+          } else if (trait.damageModifierType === 'resistance') {
+            traitResistance = true;
+            traitName = trait.name;
+          } else if (trait.damageModifierType === 'reduce') {
+            traitReduction += trait.damageModifierValue || 0;
+            traitName = trait.name;
+          }
+        }
+      }
     } catch (error) {
-      console.error('Failed to fetch target armor for damage reduction:', error);
+      console.error('Failed to fetch target armor/traits for damage reduction:', error);
     }
     
-    const finalDamage = Math.max(0, damageAmount - reduction);
+    // Calculate final damage
+    let finalDamage = damageAmount;
+    
+    // Apply immunity first (takes precedence)
+    if (traitImmune) {
+      console.log('[Damage] Target is immune to', damageType, 'via', traitName);
+      finalDamage = 0;
+    } else {
+      // Apply armor reduction
+      finalDamage = Math.max(0, finalDamage - reduction);
+      
+      // Apply trait flat reduction
+      finalDamage = Math.max(0, finalDamage - traitReduction);
+      
+      // Apply resistance (half damage) after reductions
+      if (traitResistance && finalDamage > 0) {
+        console.log('[Damage] Target has resistance to', damageType, 'via', traitName);
+        finalDamage = Math.floor(finalDamage / 2);
+      }
+    }
     
     // Apply damage using WebSocket - bypasses edit permission checks
-    // Anyone in the campaign can apply combat damage
-    if (finalDamage > 0) {
-      console.log('[Damage] Applying', finalDamage, 'damage to', targetCharacter.name);
-      gameWs.sendCombatDamage(
-        targetCharacter.id,
-        finalDamage,
-        damageType || undefined,
-        character?.name || 'Unknown',
-        false // isHealing
-      );
-    }
+    // Anyone in the campaign can apply combat damage (send single message only)
+    console.log('[Damage] Applying', finalDamage, 'damage to', targetCharacter.name, traitImmune ? '(IMMUNE)' : '');
+    gameWs.sendCombatDamage(
+      targetCharacter.id,
+      finalDamage,
+      damageType || undefined,
+      character?.name || 'Unknown',
+      false // isHealing
+    );
     
-    return { finalDamage, reduction, armorName, isHealing: false };
+    return { finalDamage, reduction: reduction + traitReduction, armorName: armorName || traitName, isHealing: false };
   };
 
   // Handle damage roll (weapon damage dice + mod, or ammunition damage for ranged weapons)
@@ -8362,12 +8401,17 @@ function TraitEditForm({
 }) {
   const [description, setDescription] = useState(trait.description || '');
   const [usesPerLongRest, setUsesPerLongRest] = useState(trait.usesPerLongRest);
+  const [usesPerShortRest, setUsesPerShortRest] = useState(trait.usesPerShortRest || 0);
   const [currentUses, setCurrentUses] = useState(trait.currentUses);
+
+  // Calculate max uses (sum of long rest + short rest uses)
+  const maxUses = usesPerLongRest + usesPerShortRest;
 
   const handleSave = () => {
     onSave({
       description: description.trim() || undefined,
       usesPerLongRest: usesPerLongRest,
+      usesPerShortRest: usesPerShortRest,
       currentUses: currentUses
     });
   };
@@ -8377,6 +8421,13 @@ function TraitEditForm({
       <div className="p-3 bg-stone-800 rounded-lg border border-stone-700">
         <div className="font-medium text-rose-400">{trait.name}</div>
         <div className="text-xs text-stone-500 capitalize">Parent: {trait.parentAttribute}</div>
+        {trait.damageModifierType && trait.damageModifierType !== 'none' && (
+          <div className="text-xs text-amber-400 mt-1">
+            {trait.damageModifierType === 'reduce' && `Reduces ${trait.damageModifierDamageType} damage by ${trait.damageModifierValue}`}
+            {trait.damageModifierType === 'resistance' && `Resistance to ${trait.damageModifierDamageType} (half damage)`}
+            {trait.damageModifierType === 'immune' && `Immune to ${trait.damageModifierDamageType} damage`}
+          </div>
+        )}
       </div>
 
       <div>
@@ -8391,26 +8442,37 @@ function TraitEditForm({
         />
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-3 gap-3">
         <div>
-          <Label className="text-stone-300">Uses Per Long Rest</Label>
-          <Input
-            type="number"
-            min={1}
-            value={usesPerLongRest}
-            onChange={(e) => setUsesPerLongRest(Math.max(1, parseInt(e.target.value) || 1))}
-            className="bg-stone-800 border-stone-700 mt-1"
-            data-testid="input-edit-trait-uses-max"
-          />
-        </div>
-        <div>
-          <Label className="text-stone-300">Current Uses</Label>
+          <Label className="text-stone-300 text-xs">Long Rest Uses</Label>
           <Input
             type="number"
             min={0}
-            max={usesPerLongRest}
+            value={usesPerLongRest}
+            onChange={(e) => setUsesPerLongRest(Math.max(0, parseInt(e.target.value) || 0))}
+            className="bg-stone-800 border-stone-700 mt-1"
+            data-testid="input-edit-trait-uses-long"
+          />
+        </div>
+        <div>
+          <Label className="text-stone-300 text-xs">Short Rest Uses</Label>
+          <Input
+            type="number"
+            min={0}
+            value={usesPerShortRest}
+            onChange={(e) => setUsesPerShortRest(Math.max(0, parseInt(e.target.value) || 0))}
+            className="bg-stone-800 border-stone-700 mt-1"
+            data-testid="input-edit-trait-uses-short"
+          />
+        </div>
+        <div>
+          <Label className="text-stone-300 text-xs">Current Uses</Label>
+          <Input
+            type="number"
+            min={0}
+            max={maxUses}
             value={currentUses}
-            onChange={(e) => setCurrentUses(Math.max(0, Math.min(usesPerLongRest, parseInt(e.target.value) || 0)))}
+            onChange={(e) => setCurrentUses(Math.max(0, Math.min(maxUses, parseInt(e.target.value) || 0)))}
             className="bg-stone-800 border-stone-700 mt-1"
             data-testid="input-edit-trait-uses-current"
           />
@@ -11460,7 +11522,7 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                                     </Badge>
                                   )}
                                 </div>
-                                {/* Simplified display: only action type and damage */}
+                                {/* Simplified display: action type, damage, and energy cost */}
                                 <div className="flex flex-wrap items-center gap-2 mt-1 text-sm">
                                   <span className={spell.castingTime?.toLowerCase().includes('bonus') ? 'text-blue-400 font-medium' : 'text-red-400 font-medium'}>
                                     {spell.castingTime?.toLowerCase().includes('bonus') ? 'Bonus Action' : 'Action'}
@@ -11473,6 +11535,10 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                                       </span>
                                     </>
                                   )}
+                                  <span className="text-stone-500">|</span>
+                                  <span className="text-cyan-400 font-medium">
+                                    {spell.energyCost || 0} Energy
+                                  </span>
                                 </div>
                               </div>
                             </div>

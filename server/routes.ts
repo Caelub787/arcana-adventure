@@ -1739,6 +1739,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Update character HP
       const updatedCharacter = await storage.updateCharacter(character.id, { hp: newHp });
       
+      // Restore short rest trait uses
+      await storage.restoreShortRestTraitUses(character.id);
+      
       // Broadcast to campaign room
       if (character.campaignId) {
         const room = campaignRooms.get(character.campaignId);

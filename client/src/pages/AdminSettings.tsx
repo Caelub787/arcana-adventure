@@ -1345,17 +1345,27 @@ interface TraitFormDialogProps {
   isLoading?: boolean;
 }
 
+const DAMAGE_TYPES = ['Sharp', 'Blunt', 'Piercing', 'Flame', 'Frost', 'Storm', 'Tide', 'Stone', 'Flux', 'Light', 'Dark', 'Sound'];
+
 function TraitFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: TraitFormDialogProps) {
   const [formData, setFormData] = useState<{
     name: string;
     description: string;
     parentAttribute: string;
     usesPerLongRest: number;
+    usesPerShortRest: number;
+    damageModifierType: string;
+    damageModifierDamageType: string;
+    damageModifierValue: number;
   }>({
     name: initialData?.name || '',
     description: initialData?.description || '',
     parentAttribute: initialData?.parentAttribute || 'wit',
     usesPerLongRest: initialData?.usesPerLongRest || 1,
+    usesPerShortRest: initialData?.usesPerShortRest || 0,
+    damageModifierType: initialData?.damageModifierType || 'none',
+    damageModifierDamageType: initialData?.damageModifierDamageType || '',
+    damageModifierValue: initialData?.damageModifierValue || 0,
   });
 
   useEffect(() => {
@@ -1365,6 +1375,10 @@ function TraitFormDialog({ open, onOpenChange, onSave, initialData, isLoading }:
         description: initialData.description || '',
         parentAttribute: initialData.parentAttribute || 'wit',
         usesPerLongRest: initialData.usesPerLongRest || 1,
+        usesPerShortRest: initialData.usesPerShortRest || 0,
+        damageModifierType: initialData.damageModifierType || 'none',
+        damageModifierDamageType: initialData.damageModifierDamageType || '',
+        damageModifierValue: initialData.damageModifierValue || 0,
       });
     } else {
       setFormData({
@@ -1372,6 +1386,10 @@ function TraitFormDialog({ open, onOpenChange, onSave, initialData, isLoading }:
         description: '',
         parentAttribute: 'wit',
         usesPerLongRest: 1,
+        usesPerShortRest: 0,
+        damageModifierType: 'none',
+        damageModifierDamageType: '',
+        damageModifierValue: 0,
       });
     }
   }, [initialData, open]);
@@ -1381,11 +1399,19 @@ function TraitFormDialog({ open, onOpenChange, onSave, initialData, isLoading }:
       toast({ title: 'Error', description: 'Trait name is required', variant: 'destructive' });
       return;
     }
+    if (formData.damageModifierType !== 'none' && !formData.damageModifierDamageType) {
+      toast({ title: 'Error', description: 'Please select a damage type for the damage modifier', variant: 'destructive' });
+      return;
+    }
     onSave({
       name: formData.name.trim(),
       description: formData.description.trim() || undefined,
       parentAttribute: formData.parentAttribute,
       usesPerLongRest: formData.usesPerLongRest,
+      usesPerShortRest: formData.usesPerShortRest,
+      damageModifierType: formData.damageModifierType,
+      damageModifierDamageType: formData.damageModifierType !== 'none' ? formData.damageModifierDamageType : undefined,
+      damageModifierValue: formData.damageModifierType === 'reduce' ? formData.damageModifierValue : undefined,
     });
   };
 
@@ -1444,20 +1470,91 @@ function TraitFormDialog({ open, onOpenChange, onSave, initialData, isLoading }:
             </p>
           </div>
 
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Label className="text-stone-300">Uses Per Long Rest</Label>
+              <Input
+                type="number"
+                min={0}
+                value={formData.usesPerLongRest}
+                onChange={(e) => setFormData({ ...formData, usesPerLongRest: Math.max(0, parseInt(e.target.value) || 0) })}
+                className="bg-stone-800 border-stone-700 mt-1"
+                data-testid="input-trait-uses-long"
+              />
+              <p className="text-xs text-stone-500 mt-1">
+                Uses restored on long rest
+              </p>
+            </div>
+            <div>
+              <Label className="text-stone-300">Uses Per Short Rest</Label>
+              <Input
+                type="number"
+                min={0}
+                value={formData.usesPerShortRest}
+                onChange={(e) => setFormData({ ...formData, usesPerShortRest: Math.max(0, parseInt(e.target.value) || 0) })}
+                className="bg-stone-800 border-stone-700 mt-1"
+                data-testid="input-trait-uses-short"
+              />
+              <p className="text-xs text-stone-500 mt-1">
+                Uses restored on short rest
+              </p>
+            </div>
+          </div>
+
           <div>
-            <Label className="text-stone-300">Uses Per Long Rest</Label>
-            <Input
-              type="number"
-              min={1}
-              value={formData.usesPerLongRest}
-              onChange={(e) => setFormData({ ...formData, usesPerLongRest: Math.max(1, parseInt(e.target.value) || 1) })}
-              className="bg-stone-800 border-stone-700 mt-1"
-              data-testid="input-trait-uses"
-            />
+            <Label className="text-stone-300">Damage Modifier</Label>
+            <Select
+              value={formData.damageModifierType}
+              onValueChange={(value) => setFormData({ ...formData, damageModifierType: value })}
+            >
+              <SelectTrigger className="bg-stone-800 border-stone-700 mt-1" data-testid="select-damage-modifier-type">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">None</SelectItem>
+                <SelectItem value="reduce">Reduce (flat reduction)</SelectItem>
+                <SelectItem value="resistance">Resistance (half damage)</SelectItem>
+                <SelectItem value="immune">Immune (no damage)</SelectItem>
+              </SelectContent>
+            </Select>
             <p className="text-xs text-stone-500 mt-1">
-              How many times this trait can be used before requiring a long rest
+              Apply damage reduction, resistance, or immunity to a damage type
             </p>
           </div>
+
+          {formData.damageModifierType !== 'none' && (
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label className="text-stone-300">Damage Type</Label>
+                <Select
+                  value={formData.damageModifierDamageType}
+                  onValueChange={(value) => setFormData({ ...formData, damageModifierDamageType: value })}
+                >
+                  <SelectTrigger className="bg-stone-800 border-stone-700 mt-1" data-testid="select-damage-modifier-damage-type">
+                    <SelectValue placeholder="Select type..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {DAMAGE_TYPES.map((type) => (
+                      <SelectItem key={type} value={type}>{type}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              {formData.damageModifierType === 'reduce' && (
+                <div>
+                  <Label className="text-stone-300">Reduction Value</Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    value={formData.damageModifierValue}
+                    onChange={(e) => setFormData({ ...formData, damageModifierValue: Math.max(1, parseInt(e.target.value) || 1) })}
+                    className="bg-stone-800 border-stone-700 mt-1"
+                    data-testid="input-damage-modifier-value"
+                  />
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         <DialogFooter>

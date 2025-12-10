@@ -417,6 +417,11 @@ export const systemTraits = pgTable("system_traits", {
   description: text("description"),
   parentAttribute: text("parent_attribute").notNull().default("will"), // might, finesse, wit, presence, will, craft
   usesPerLongRest: integer("uses_per_long_rest").notNull().default(1),
+  usesPerShortRest: integer("uses_per_short_rest").default(0), // Uses restored on short rest
+  // Damage reduction/resistance/immunity
+  damageModifierType: text("damage_modifier_type").default("none"), // "none", "reduce", "resistance", "immune"
+  damageModifierDamageType: text("damage_modifier_damage_type"), // Damage type affected
+  damageModifierValue: integer("damage_modifier_value").default(0), // Value for "reduce" type
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -437,7 +442,12 @@ export const characterTraits = pgTable("character_traits", {
   description: text("description"),
   parentAttribute: text("parent_attribute").notNull().default("will"), // might, finesse, wit, presence, will, craft
   usesPerLongRest: integer("uses_per_long_rest").notNull().default(1),
+  usesPerShortRest: integer("uses_per_short_rest").default(0), // Uses restored on short rest
   currentUses: integer("current_uses").notNull().default(0), // Current uses remaining
+  // Damage reduction/resistance/immunity
+  damageModifierType: text("damage_modifier_type").default("none"), // "none", "reduce", "resistance", "immune"
+  damageModifierDamageType: text("damage_modifier_damage_type"), // Damage type affected
+  damageModifierValue: integer("damage_modifier_value").default(0), // Value for "reduce" type
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
