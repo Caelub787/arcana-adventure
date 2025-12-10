@@ -2111,9 +2111,10 @@ function FeatTreesView() {
     // Only pan with left mouse button or touch
     if (e.pointerType === 'mouse' && e.button !== 0) return;
     
-    // Don't start pan if clicking on a feat
+    // Don't start pan if clicking on a feat or connection delete button
     const target = e.target as HTMLElement;
     if (target.closest('[data-feat-cell]')) return;
+    if (target.closest('[data-connection-delete]')) return;
     
     gestureModeRef.current = 'panning';
     panPointerIdRef.current = e.pointerId;
@@ -2454,6 +2455,7 @@ function FeatTreesView() {
                     strokeWidth={2}
                     className="cursor-pointer hover:stroke-red-500 hover:fill-red-900/50 transition-colors"
                     style={{ pointerEvents: 'all' }}
+                    data-connection-delete="true"
                     onClick={(e) => {
                       e.stopPropagation();
                       deleteConnectionMutation.mutate(conn.id);
@@ -2535,6 +2537,9 @@ function FeatTreesView() {
                       })}
                     </div>
                   )}
+                  <div className="text-[10px] text-amber-400 mt-1 font-medium">
+                    Cost: {feat.cost || 1}
+                  </div>
                 </div>
               </div>
             );
