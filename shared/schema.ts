@@ -481,6 +481,7 @@ export const spells = pgTable("spells", {
   attribute: text("attribute"), // Attribute used for attack rolls (might, finesse, wit, presence, will, craft)
   energyCost: integer("energy_cost").default(1), // Energy cost to cast
   isEquipped: boolean("is_equipped").default(false).notNull(),
+  isAttack: boolean("is_attack").default(true).notNull(), // If true: Attack/Damage rolls, if false: Use/Effect rolls
 });
 
 export const insertSpellSchema = createInsertSchema(spells).omit({

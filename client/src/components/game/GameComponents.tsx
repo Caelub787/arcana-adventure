@@ -2623,10 +2623,11 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
       ? `1d20 = ${roll} + ${attrDisplayName} (${attrMod >= 0 ? '+' : ''}${attrMod})`
       : `1d20 = ${roll}`;
     
+    const rollLabel = spellData.isAttack !== false ? 'Attack' : 'Use';
     triggerRollNotification({
       type: 'attack',
       dieType: 'd20',
-      label: `${spellData.name} Attack`,
+      label: `${spellData.name} ${rollLabel}`,
       result: roll,
       modifier: attrMod,
       total,
@@ -2636,7 +2637,7 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     });
     
     if (character.campaignId) {
-      const chatText = `${spellData.name} Attack: ${calculationBreakdown} = ${total}`;
+      const chatText = `${spellData.name} ${rollLabel}: ${calculationBreakdown} = ${total}`;
       gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', chatText, 'roll');
     }
   };
@@ -2753,9 +2754,10 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
         }
       }
       
+      const aoeEffectLabel = spellData.isAttack !== false ? 'Damage' : 'Effect';
       const label = isHealing 
         ? `${spellData.name} AoE Healing → ${affectedNames.join(', ')}`
-        : `${spellData.name} AoE Damage → ${affectedNames.join(', ')}`;
+        : `${spellData.name} AoE ${aoeEffectLabel} → ${affectedNames.join(', ')}`;
       
       triggerRollNotification({
         type: 'attack',
@@ -2786,7 +2788,8 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
       ? `${diceNotation} = ${result} + Mod (${mod >= 0 ? '+' : ''}${mod})`
       : `${diceNotation} = ${result}`;
     
-    let label = isHealing ? `${spellData.name} Healing` : `${spellData.name} Damage`;
+    const effectLabel = spellData.isAttack !== false ? 'Damage' : 'Effect';
+    let label = isHealing ? `${spellData.name} Healing` : `${spellData.name} ${effectLabel}`;
     const damageTypeDisplay = spellData.damageType ? ` (${spellData.damageType})` : '';
     let finalTotal = total;
     
@@ -2799,9 +2802,9 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
         label = `${spellData.name} Healing → ${targetData.character.name} (+${finalDamage} HP)`;
       } else if (reduction > 0) {
         calculationBreakdown += ` - ${reduction} (${armorName || 'Armor'})`;
-        label = `${spellData.name} Damage → ${targetData.character.name} (-${finalDamage} HP)`;
+        label = `${spellData.name} ${effectLabel} → ${targetData.character.name} (-${finalDamage} HP)`;
       } else {
-        label = `${spellData.name} Damage → ${targetData.character.name} (-${finalDamage} HP)`;
+        label = `${spellData.name} ${effectLabel} → ${targetData.character.name} (-${finalDamage} HP)`;
       }
     }
     
@@ -2818,9 +2821,10 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     });
     
     if (character.campaignId) {
+      const chatEffectLabel = spellData.isAttack !== false ? 'Damage' : 'Effect';
       const chatText = targetedTokenId && targetData?.character
         ? `${label}: ${calculationBreakdown} = ${finalTotal}${damageTypeDisplay}`
-        : `${isHealing ? `${spellData.name} Healing` : `${spellData.name} Damage`}: ${calculationBreakdown} = ${total}${damageTypeDisplay}`;
+        : `${isHealing ? `${spellData.name} Healing` : `${spellData.name} ${chatEffectLabel}`}: ${calculationBreakdown} = ${total}${damageTypeDisplay}`;
       gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', chatText, 'roll');
     }
   };
@@ -2912,12 +2916,11 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     tooltipContent = (
       <>
         <p className="font-bold">{spellData.name}</p>
-        {spellData.school && <p className="text-sm">School: {spellData.school}</p>}
         {(spellData.damageDice || spellData.damage) && <p className="text-sm">Damage: {spellData.damageDice || spellData.damage}{spellData.mod ? ` +${spellData.mod}` : ''} {spellData.damageType || ''}</p>}
-        {spellData.attribute && <p className="text-sm">Attack: {spellData.attribute}</p>}
+        {spellData.attribute && <p className="text-sm">{spellData.isAttack !== false ? 'Attack' : 'Attribute'}: {spellData.attribute}</p>}
         {spellData.rangeNum && <p className="text-sm">Range: {spellData.rangeNum}ft</p>}
         <p className="text-sm text-cyan-400">Energy: {energyCost}</p>
-        <p className="text-xs text-stone-400 mt-1">Click: Attack | Double-click: Damage</p>
+        <p className="text-xs text-stone-400 mt-1">{spellData.isAttack !== false ? 'Click: Attack | Double-click: Damage' : 'Click: Use | Double-click: Effect'}</p>
       </>
     );
   } else if (hotbar?.itemId && itemData) {
@@ -6911,7 +6914,8 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
     });
     
     if (character.campaignId) {
-      const chatText = `${spellData.name} Attack: ${calculationBreakdown} = ${total}`;
+      const chatRollLabel = spellData.isAttack !== false ? 'Attack' : 'Use';
+      const chatText = `${spellData.name} ${chatRollLabel}: ${calculationBreakdown} = ${total}`;
       gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', chatText, 'roll');
     }
   };
@@ -6929,7 +6933,7 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
       triggerRollNotification({
         type: 'attack',
         dieType: 'd20',
-        label: `${spellData.name} - No damage dice!`,
+        label: `${spellData.name} - No damage/effect dice!`,
         result: 0,
         modifier: 0,
         total: 0,
@@ -6947,7 +6951,8 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
       ? `${diceNotation} = ${result} + Mod (${mod >= 0 ? '+' : ''}${mod})`
       : `${diceNotation} = ${result}`;
     
-    const label = isHealing ? `${spellData.name} Healing` : `${spellData.name} Damage`;
+    const effectLabel = spellData.isAttack !== false ? 'Damage' : 'Effect';
+    const label = isHealing ? `${spellData.name} Healing` : `${spellData.name} ${effectLabel}`;
     const damageTypeDisplay = spellData.damageType ? ` (${spellData.damageType})` : '';
     
     triggerRollNotification({
@@ -7114,9 +7119,8 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
             </TooltipTrigger>
             <TooltipContent>
               <p className="font-bold">{spellData.name}</p>
-              {spellData.school && <p className="text-sm">School: {spellData.school}</p>}
               {(spellData.damageDice || spellData.damage) && <p className="text-sm">Damage: {spellData.damageDice || spellData.damage}{spellData.mod ? ` +${spellData.mod}` : ''} {spellData.damageType || ''}</p>}
-              {spellData.attribute && <p className="text-sm">Attack: {spellData.attribute}</p>}
+              {spellData.attribute && <p className="text-sm">{spellData.isAttack !== false ? 'Attack' : 'Attribute'}: {spellData.attribute}</p>}
               {spellData.rangeNum && <p className="text-sm">Range: {spellData.rangeNum}ft</p>}
               <p className="text-sm text-cyan-400">Energy: {energyCost}</p>
               {spellData.castingTime && <p className="text-sm">Casting: {spellData.castingTime}</p>}
