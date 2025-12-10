@@ -4554,11 +4554,14 @@ export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onIn
         }
       }
       
-      // Feat operations
+      // Feat operations - feats can grant spells, traits, and skills
       if (data.type === 'feat_unlocked' || data.type === 'feat_removed') {
         if (data.characterId) {
           queryClient.invalidateQueries({ queryKey: ['character-feats', data.characterId] });
           queryClient.invalidateQueries({ queryKey: [`/api/characters/${data.characterId}`] });
+          queryClient.invalidateQueries({ queryKey: ['spells', data.characterId] });
+          queryClient.invalidateQueries({ queryKey: ['character-traits', data.characterId] });
+          queryClient.invalidateQueries({ queryKey: ['character-custom-skills', data.characterId] });
         }
       }
       

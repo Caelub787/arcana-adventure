@@ -3085,15 +3085,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const charFeat = await storage.unlockCharacterFeat(req.params.id, req.params.featId);
       
-      // Apply trait_grant effects: add traits to character when feat is unlocked
+      // Apply feat effects: add traits, spells, skills to character when feat is unlocked
       if (feat.effects && Array.isArray(feat.effects)) {
         for (const effect of feat.effects as any[]) {
+          // trait_grant - add trait to character
           if (effect.type === 'trait_grant' && effect.target) {
             try {
-              // Fetch the system trait
               const systemTrait = await storage.getSystemTrait(effect.target);
               if (systemTrait) {
-                // Add the trait to the character
                 await storage.addCharacterTrait({
                   characterId: req.params.id,
                   systemTraitId: systemTrait.id,
@@ -3101,11 +3100,68 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   description: systemTrait.description || undefined,
                   parentAttribute: systemTrait.parentAttribute,
                   usesPerLongRest: systemTrait.usesPerLongRest,
+                  usesPerShortRest: systemTrait.usesPerShortRest,
                   currentUses: 0,
                 });
+                console.log(`[feat_grant] Added trait "${systemTrait.name}" to character ${req.params.id}`);
               }
             } catch (traitErr) {
               console.error('[trait_grant] Error adding trait from feat:', traitErr);
+            }
+          }
+          
+          // spell_grant - add spell to character
+          if (effect.type === 'spell_grant' && effect.target) {
+            try {
+              const systemSpell = await storage.getSystemSpell(effect.target);
+              if (systemSpell) {
+                await storage.createSpell({
+                  characterId: req.params.id,
+                  name: systemSpell.name,
+                  description: systemSpell.description || undefined,
+                  image: systemSpell.icon || undefined,
+                  damageDice: systemSpell.damageDice || undefined,
+                  healingDice: systemSpell.healingDice || undefined,
+                  damageType: systemSpell.damageType || undefined,
+                  range: systemSpell.range || undefined,
+                  rangeNum: systemSpell.rangeNum || 30,
+                  aoe: systemSpell.aoe || undefined,
+                  castingTime: systemSpell.castingTime || undefined,
+                  duration: systemSpell.duration || undefined,
+                  level: systemSpell.level || 0,
+                  school: systemSpell.school || undefined,
+                  mod: systemSpell.mod || 0,
+                  attribute: systemSpell.attribute || undefined,
+                  energyCost: systemSpell.energyCost || 1,
+                  isAoe: systemSpell.isAoe || false,
+                  aoeRange: systemSpell.aoeRange || undefined,
+                  aoeShape: systemSpell.aoeShape || undefined,
+                  isAttack: systemSpell.isAttack ?? true,
+                  isEquipped: false,
+                });
+                console.log(`[feat_grant] Added spell "${systemSpell.name}" to character ${req.params.id}`);
+              }
+            } catch (spellErr) {
+              console.error('[spell_grant] Error adding spell from feat:', spellErr);
+            }
+          }
+          
+          // skill_grant - add custom skill to character
+          if (effect.type === 'skill_grant' && effect.target) {
+            try {
+              const systemSkill = await storage.getSystemSkill(effect.target);
+              if (systemSkill) {
+                await storage.addCharacterCustomSkill({
+                  characterId: req.params.id,
+                  systemSkillId: systemSkill.id,
+                  name: systemSkill.name,
+                  parentAttribute: systemSkill.parentAttribute,
+                  value: 0,
+                });
+                console.log(`[feat_grant] Added skill "${systemSkill.name}" to character ${req.params.id}`);
+              }
+            } catch (skillErr) {
+              console.error('[skill_grant] Error adding skill from feat:', skillErr);
             }
           }
         }
