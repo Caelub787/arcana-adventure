@@ -2498,8 +2498,25 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
   const isClickable = isWeaponClickable || isDamagingConsumableClickable || isSkillClickable || isSpellClickable || isTraitClickable;
 
   // Handle spell attack roll (1d20 + attribute modifier)
-  const handleSpellAttackRoll = () => {
+  const handleSpellAttackRoll = async () => {
     if (!spellData) return;
+    
+    // Check energy cost - validate and deduct before casting
+    const energyCost = spellData.energyCost || 0;
+    const currentEnergy = character.energy || 0;
+    
+    if (energyCost > 0 && currentEnergy < energyCost) {
+      triggerRollNotification({
+        type: 'system',
+        label: `Not Enough Energy!`,
+        result: 0,
+        total: 0,
+        username: character.name || 'Unknown',
+        characterName: character.name,
+        calculationBreakdown: `${spellData.name} requires ${energyCost} energy but you only have ${currentEnergy}.`,
+      });
+      return;
+    }
     
     // Check if there's a locked AoE marker on the map - validate spell matches
     if (aoeTargetState?.active && aoeTargetState?.locked && aoeTargetState?.spell) {
@@ -2522,6 +2539,15 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     if (spellData.isAoe && onEnterAoeMode) {
       const casterToken = tokens?.find((t: any) => t.characterId === character.id);
       if (casterToken) {
+        // Deduct energy before entering AoE mode
+        if (energyCost > 0) {
+          try {
+            await api.updateCharacter(character.id, { energy: currentEnergy - energyCost });
+            queryClient.invalidateQueries({ queryKey: ['character', character.id] });
+          } catch (err) {
+            console.error('Failed to deduct energy:', err);
+          }
+        }
         onEnterAoeMode(spellData, casterToken.id);
         return;
       } else {
@@ -2535,6 +2561,16 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
           calculationBreakdown: 'You need a token on the map to cast AoE spells',
         });
         return;
+      }
+    }
+    
+    // Deduct energy cost
+    if (energyCost > 0) {
+      try {
+        await api.updateCharacter(character.id, { energy: currentEnergy - energyCost });
+        queryClient.invalidateQueries({ queryKey: ['character', character.id] });
+      } catch (err) {
+        console.error('Failed to deduct energy:', err);
       }
     }
     
@@ -2837,6 +2873,7 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
         {(spellData.damageDice || spellData.damage) && <p className="text-sm">Damage: {spellData.damageDice || spellData.damage}{spellData.mod ? ` +${spellData.mod}` : ''} {spellData.damageType || ''}</p>}
         {spellData.attribute && <p className="text-sm">Attack: {spellData.attribute}</p>}
         {spellData.rangeNum && <p className="text-sm">Range: {spellData.rangeNum}ft</p>}
+        {spellData.energyCost && <p className="text-sm text-cyan-400">Energy: {spellData.energyCost}</p>}
         <p className="text-xs text-stone-400 mt-1">Click: Attack | Double-click: Damage</p>
       </>
     );
@@ -6074,7 +6111,10 @@ function HotbarsTabContent({ character, isGM, isOwner }: HotbarsTabContentProps)
                   >
                     <div className="flex justify-between items-center">
                       <span className="font-medium text-purple-400 truncate">{spell.name}</span>
-                      <span className="text-stone-500 text-xs">{spell.level === 0 ? 'C' : `L${spell.level}`}</span>
+                      <div className="flex items-center gap-1.5">
+                        {spell.energyCost > 0 && <span className="text-cyan-400 text-[10px]">{spell.energyCost}E</span>}
+                        <span className="text-stone-500 text-xs">{spell.level === 0 ? 'C' : `L${spell.level}`}</span>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -7047,6 +7087,7 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
               {(spellData.damageDice || spellData.damage) && <p className="text-sm">Damage: {spellData.damageDice || spellData.damage}{spellData.mod ? ` +${spellData.mod}` : ''} {spellData.damageType || ''}</p>}
               {spellData.attribute && <p className="text-sm">Attack: {spellData.attribute}</p>}
               {spellData.rangeNum && <p className="text-sm">Range: {spellData.rangeNum}ft</p>}
+              {spellData.energyCost && <p className="text-sm text-cyan-400">Energy: {spellData.energyCost}</p>}
               {spellData.castingTime && <p className="text-sm">Casting: {spellData.castingTime}</p>}
               <p className="text-xs text-stone-400 mt-1">Use from battlemap hotbar to cast</p>
             </TooltipContent>
