@@ -5948,21 +5948,21 @@ function HotbarsTabContent({ character, isGM, isOwner }: HotbarsTabContentProps)
   };
 
   const skillsList = [
-    { key: 'skillAgility', name: 'Agility', category: 'Physical' },
-    { key: 'skillStrength', name: 'Strength', category: 'Physical' },
-    { key: 'skillStealth', name: 'Stealth', category: 'Physical' },
-    { key: 'skillSleightOfHand', name: 'Sleight of Hand', category: 'Physical' },
-    { key: 'skillArcana', name: 'Arcana', category: 'Mental' },
-    { key: 'skillConcentration', name: 'Concentration', category: 'Mental' },
-    { key: 'skillWisdom', name: 'Wisdom', category: 'Mental' },
-    { key: 'skillInvestigation', name: 'Investigation', category: 'Mental' },
-    { key: 'skillPerception', name: 'Perception', category: 'Mental' },
-    { key: 'skillMedicine', name: 'Medicine', category: 'Mental' },
-    { key: 'skillHistory', name: 'History', category: 'Mental' },
-    { key: 'skillCharisma', name: 'Charisma', category: 'Social' },
-    { key: 'skillDeception', name: 'Deception', category: 'Social' },
-    { key: 'skillIntimidation', name: 'Intimidation', category: 'Social' },
-    { key: 'skillCulture', name: 'Culture', category: 'Social' },
+    { key: 'skillAgility', name: 'Agility', category: 'Physical', attr: 'FIN' },
+    { key: 'skillStrength', name: 'Strength', category: 'Physical', attr: 'MIG' },
+    { key: 'skillStealth', name: 'Stealth', category: 'Physical', attr: 'FIN' },
+    { key: 'skillSleightOfHand', name: 'Sleight of Hand', category: 'Physical', attr: 'FIN' },
+    { key: 'skillArcana', name: 'Arcana', category: 'Mental', attr: 'WIT' },
+    { key: 'skillConcentration', name: 'Concentration', category: 'Mental', attr: 'WIL' },
+    { key: 'skillWisdom', name: 'Wisdom', category: 'Mental', attr: 'WIT' },
+    { key: 'skillInvestigation', name: 'Investigation', category: 'Mental', attr: 'WIT' },
+    { key: 'skillPerception', name: 'Perception', category: 'Mental', attr: 'WIT' },
+    { key: 'skillMedicine', name: 'Medicine', category: 'Mental', attr: 'CRA' },
+    { key: 'skillHistory', name: 'History', category: 'Mental', attr: 'WIT' },
+    { key: 'skillCharisma', name: 'Charisma', category: 'Social', attr: 'PRE' },
+    { key: 'skillDeception', name: 'Deception', category: 'Social', attr: 'PRE' },
+    { key: 'skillIntimidation', name: 'Intimidation', category: 'Social', attr: 'PRE' },
+    { key: 'skillCulture', name: 'Culture', category: 'Social', attr: 'WIT' },
   ];
 
   if (isLoading) {
@@ -6226,7 +6226,7 @@ function HotbarsTabContent({ character, isGM, isOwner }: HotbarsTabContentProps)
                       data-testid={`drag-skill-${skill.name.toLowerCase().replace(/ /g, '-')}`}
                     >
                       <div className="flex justify-between items-center">
-                        <span className="font-medium text-stone-300">{skill.name}</span>
+                        <span className="font-medium text-stone-300">{skill.name} <span className="text-stone-500">({skill.attr})</span></span>
                         <span className="text-stone-500">{modifier}</span>
                       </div>
                     </div>
@@ -10750,26 +10750,26 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                 {/* All Skills - Alphabetical Order */}
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                   {[
-                    { key: 'skillAgility', name: 'Agility' },
-                    { key: 'skillArcana', name: 'Arcana' },
-                    { key: 'skillCharisma', name: 'Charisma' },
-                    { key: 'skillConcentration', name: 'Concentration' },
-                    { key: 'skillCulture', name: 'Culture' },
-                    { key: 'skillDeception', name: 'Deception' },
-                    { key: 'skillHistory', name: 'History' },
-                    { key: 'skillIntimidation', name: 'Intimidation' },
-                    { key: 'skillInvestigation', name: 'Investigation' },
-                    { key: 'skillMedicine', name: 'Medicine' },
-                    { key: 'skillPerception', name: 'Perception' },
-                    { key: 'skillSleightOfHand', name: 'Sleight of Hand' },
-                    { key: 'skillStealth', name: 'Stealth' },
-                    { key: 'skillStrength', name: 'Strength' },
-                    { key: 'skillWisdom', name: 'Wisdom' },
+                    { key: 'skillAgility', name: 'Agility', attr: 'FIN' },
+                    { key: 'skillArcana', name: 'Arcana', attr: 'WIT' },
+                    { key: 'skillCharisma', name: 'Charisma', attr: 'PRE' },
+                    { key: 'skillConcentration', name: 'Concentration', attr: 'WIL' },
+                    { key: 'skillCulture', name: 'Culture', attr: 'WIT' },
+                    { key: 'skillDeception', name: 'Deception', attr: 'PRE' },
+                    { key: 'skillHistory', name: 'History', attr: 'WIT' },
+                    { key: 'skillIntimidation', name: 'Intimidation', attr: 'PRE' },
+                    { key: 'skillInvestigation', name: 'Investigation', attr: 'WIT' },
+                    { key: 'skillMedicine', name: 'Medicine', attr: 'CRA' },
+                    { key: 'skillPerception', name: 'Perception', attr: 'WIT' },
+                    { key: 'skillSleightOfHand', name: 'Sleight of Hand', attr: 'FIN' },
+                    { key: 'skillStealth', name: 'Stealth', attr: 'FIN' },
+                    { key: 'skillStrength', name: 'Strength', attr: 'MIG' },
+                    { key: 'skillWisdom', name: 'Wisdom', attr: 'WIT' },
                   ].map(skill => {
                     const value = editingSkills ? skillsData[skill.key as keyof typeof skillsData] : (liveCharacter[skill.key] || 0);
                     return editingSkills ? (
                       <div key={skill.key} className="flex flex-col gap-1 p-3 bg-stone-900 border border-amber-700 rounded-md">
-                        <Label className="text-xs text-stone-400">{skill.name}</Label>
+                        <Label className="text-xs text-stone-400">{skill.name} <span className="text-stone-500">({skill.attr})</span></Label>
                         <Input
                           type="number"
                           min="-2"
@@ -10849,7 +10849,7 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                             }}
                             data-testid={`badge-skill-${skill.key}`}
                           >
-                            <span className="text-xs">{skill.name}</span>
+                            <span className="text-xs">{skill.name} <span className="text-stone-500">({skill.attr})</span></span>
                             <span className="font-bold ml-2">
                               {numericValue >= 0 ? `+${numericValue}` : numericValue}
                               {skillFeatBonus > 0 && <span className="text-purple-400 text-[10px]"> (+{skillFeatBonus})</span>}
