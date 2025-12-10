@@ -6901,10 +6901,11 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
       ? `1d20 = ${roll} + ${attrDisplayName} (${attrMod >= 0 ? '+' : ''}${attrMod})`
       : `1d20 = ${roll}`;
     
+    const rollLabel = spellData.isAttack !== false ? 'Attack' : 'Use';
     triggerRollNotification({
       type: 'attack',
       dieType: 'd20',
-      label: `${spellData.name} Attack`,
+      label: `${spellData.name} ${rollLabel}`,
       result: roll,
       modifier: attrMod,
       total,
@@ -6914,8 +6915,7 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
     });
     
     if (character.campaignId) {
-      const chatRollLabel = spellData.isAttack !== false ? 'Attack' : 'Use';
-      const chatText = `${spellData.name} ${chatRollLabel}: ${calculationBreakdown} = ${total}`;
+      const chatText = `${spellData.name} ${rollLabel}: ${calculationBreakdown} = ${total}`;
       gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', chatText, 'roll');
     }
   };
@@ -8819,6 +8819,7 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
     isAoe: boolean;
     aoeRange: number | string;
     aoeShape: string;
+    isAttack: boolean;
   }>({
     name: '',
     description: '',
@@ -8833,6 +8834,7 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
     isAoe: false,
     aoeRange: '',
     aoeShape: '',
+    isAttack: true,
   });
   
   const spellDamageTypes = ['Sharp', 'Blunt', 'Piercing', 'Flame', 'Frost', 'Storm', 'Tide', 'Stone', 'Flux', 'Light', 'Dark', 'Sound', 'Health'];
@@ -8867,6 +8869,7 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
         isAoe: editSpellData.isAoe || false,
         aoeRange: editSpellData.aoeRange ?? '',
         aoeShape: editSpellData.aoeShape || '',
+        isAttack: editSpellData.isAttack !== false,
       });
     } else if (showAddSpell && spellDialogTab === 'create') {
       setSpellFormData({
@@ -8883,6 +8886,7 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
         isAoe: false,
         aoeRange: '',
         aoeShape: '',
+        isAttack: true,
       });
     }
   }, [editSpellData, showAddSpell, spellDialogTab]);
@@ -8922,6 +8926,7 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
       isAoe: spellFormData.isAoe,
       aoeRange: spellFormData.isAoe ? optionalNum(spellFormData.aoeRange) : undefined,
       aoeShape: spellFormData.isAoe ? spellFormData.aoeShape : undefined,
+      isAttack: spellFormData.isAttack,
     };
 
     if (editSpellData) {
@@ -11956,6 +11961,17 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                         </div>
 
                         <div className="space-y-3">
+                          <div className="flex items-center gap-3">
+                            <Checkbox
+                              id="spell-isattack"
+                              checked={spellFormData.isAttack}
+                              onCheckedChange={(checked) => setSpellFormData({ ...spellFormData, isAttack: checked === true })}
+                              className="border-stone-600"
+                              data-testid="checkbox-spell-isattack"
+                            />
+                            <Label htmlFor="spell-isattack" className="cursor-pointer">Attack?</Label>
+                            <span className="text-xs text-stone-500">(If checked: Attack/Damage rolls. If not: Use/Effect rolls)</span>
+                          </div>
                           <div className="flex items-center gap-3">
                             {!isGM && (
                               <TooltipProvider>
