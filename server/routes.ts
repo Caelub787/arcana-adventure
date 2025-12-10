@@ -847,6 +847,82 @@ export async function registerRoutes(app: Express): Promise<Server> {
           console.log(`[WebSocket] Combat damage: ${attackerName || username} ${actionText} ${character.name} for ${damage} (HP: ${character.hp} → ${newHp})`);
         }
         
+        // Handle combat energy - bypasses normal edit permissions
+        // For Energy damage type spells - adds or subtracts from target's energy
+        if (message.type === "apply_combat_energy") {
+          const { campaignId, characterId, amount, attackerName, isGain } = message;
+          
+          // Verify user has joined this campaign
+          const userCampaign = (ws as any).campaigns.get(campaignId);
+          if (!userCampaign) {
+            ws.send(JSON.stringify({
+              type: "error",
+              message: "Not authorized - You have not joined this campaign"
+            }));
+            return;
+          }
+          
+          // Get the character to apply energy change
+          const character = await storage.getCharacter(characterId);
+          if (!character) {
+            ws.send(JSON.stringify({
+              type: "error",
+              message: "Character not found"
+            }));
+            return;
+          }
+          
+          // Verify the character belongs to this campaign
+          if (character.campaignId !== campaignId) {
+            ws.send(JSON.stringify({
+              type: "error",
+              message: "Character does not belong to this campaign"
+            }));
+            return;
+          }
+          
+          // Apply energy change (gain if isGain is true, otherwise drain)
+          let newEnergy: number;
+          if (isGain) {
+            newEnergy = Math.min(character.energy + amount, character.maxEnergy);
+          } else {
+            newEnergy = Math.max(0, character.energy - amount);
+          }
+          
+          // Update character energy directly - bypassing normal permission checks
+          await storage.updateCharacter(characterId, { energy: newEnergy });
+          
+          // Create a chat message for the combat log
+          const actionText = isGain ? 'restored' : 'drained';
+          const chatText = `${attackerName || username} ${actionText} ${amount} energy ${isGain ? 'to' : 'from'} ${character.name} (Energy: ${character.energy} → ${newEnergy})`;
+          
+          const chatMessage = await storage.createChatMessage({
+            campaignId,
+            userId: authenticatedUserId,
+            sender: username,
+            text: chatText,
+            type: "roll"
+          });
+          
+          // Broadcast to ALL campaign members - everyone needs to see energy changes
+          broadcastToCampaign(campaignId, {
+            type: "character_energy_update",
+            characterId,
+            energy: newEnergy,
+            previousEnergy: character.energy,
+            amount,
+            isGain,
+            attackerName: attackerName || username
+          });
+          
+          broadcastToCampaign(campaignId, {
+            type: "chat_message",
+            message: chatMessage
+          });
+          
+          console.log(`[WebSocket] Combat energy: ${attackerName || username} ${actionText} ${amount} energy ${isGain ? 'to' : 'from'} ${character.name} (Energy: ${character.energy} → ${newEnergy})`);
+        }
+        
         // Handle token updates - broadcast to all
         if (message.type === "token_created" || message.type === "token_deleted" || message.type === "token_updated") {
           const { campaignId } = message;
@@ -3137,6 +3213,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   aoeRange: systemSpell.aoeRange || undefined,
                   aoeShape: systemSpell.aoeShape || undefined,
                   isAttack: systemSpell.isAttack ?? true,
+                  gainEnergy: systemSpell.gainEnergy || false,
                   isEquipped: false,
                 });
                 console.log(`[feat_grant] Added spell "${systemSpell.name}" to character ${req.params.id}`);

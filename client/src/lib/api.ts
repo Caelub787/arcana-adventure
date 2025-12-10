@@ -1347,6 +1347,38 @@ export class GameWebSocket {
     this.send(message);
   }
   
+  // Send combat energy - bypasses normal edit permissions
+  // For Energy damage type spells - adds or subtracts from target's energy
+  sendCombatEnergy(
+    characterId: string, 
+    amount: number, 
+    attackerName?: string,
+    isGain?: boolean
+  ) {
+    if (!this.campaignId) {
+      console.error('Cannot send combat energy: not connected to a campaign');
+      return;
+    }
+    
+    const message = { 
+      type: 'apply_combat_energy', 
+      campaignId: this.campaignId, 
+      characterId,
+      amount,
+      attackerName,
+      isGain: isGain || false
+    };
+    
+    // If not yet joined, queue the message
+    if (!this.joinedCampaign) {
+      console.log('WebSocket: Queueing combat energy until campaign join is confirmed');
+      this.pendingMessages.push(message);
+      return;
+    }
+    
+    this.send(message);
+  }
+  
   // Send AoE targeting state - broadcasts to all campaign members
   // so everyone can see each other's AoE placement
   sendAoeTargeting(

@@ -1974,12 +1974,16 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
 
   // Apply damage to target character with armor damage reduction
   // If damageType is "Health", this heals instead of damaging
+  // If damageType is "Energy", this affects energy instead of HP (gainEnergy determines add vs subtract)
   // Uses WebSocket combat damage which bypasses edit permission checks
-  const applyDamageToTarget = async (damageAmount: number, damageType: string | null, targetCharacter: any): Promise<{ finalDamage: number; reduction: number; armorName: string | null; isHealing: boolean }> => {
+  const applyDamageToTarget = async (damageAmount: number, damageType: string | null, targetCharacter: any, gainEnergy?: boolean): Promise<{ finalDamage: number; reduction: number; armorName: string | null; isHealing: boolean; isEnergy?: boolean }> => {
     if (!targetCharacter?.id) return { finalDamage: damageAmount, reduction: 0, armorName: null, isHealing: false };
     
     // Check if this is healing (Health damage type)
     const isHealing = damageType === 'Health';
+    
+    // Check if this is energy effect
+    const isEnergy = damageType === 'Energy';
     
     // For healing, no armor reduction applies
     if (isHealing) {
@@ -1993,6 +1997,19 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
         true // isHealing
       );
       return { finalDamage: damageAmount, reduction: 0, armorName: null, isHealing: true };
+    }
+    
+    // For energy effects, no armor reduction applies
+    if (isEnergy) {
+      console.log('[Energy] Applying', damageAmount, 'energy', gainEnergy ? 'gain' : 'drain', 'to', targetCharacter.name);
+      // Use WebSocket combat energy which bypasses edit permissions
+      gameWs.sendCombatEnergy(
+        targetCharacter.id,
+        damageAmount,
+        character?.name || 'Unknown',
+        gainEnergy || false // isGain
+      );
+      return { finalDamage: damageAmount, reduction: 0, armorName: null, isHealing: false, isEnergy: true };
     }
     
     // Fetch target's items and traits to check for damage reduction
@@ -2746,10 +2763,11 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
       const damageTypeDisplay = spellData.damageType ? ` (${spellData.damageType})` : '';
       
       const affectedNames: string[] = [];
+      const isEnergyEffect = spellData.damageType === 'Energy';
       for (const token of tokensInAoe) {
         const targetChar = allCharacters?.find((c: any) => c.id === token.characterId);
         if (targetChar) {
-          await applyDamageToTarget(total, spellData.damageType || null, targetChar);
+          await applyDamageToTarget(total, spellData.damageType || null, targetChar, isEnergyEffect ? spellData.gainEnergy : undefined);
           affectedNames.push(targetChar.name);
         }
       }
@@ -2793,12 +2811,16 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     const damageTypeDisplay = spellData.damageType ? ` (${spellData.damageType})` : '';
     let finalTotal = total;
     
-    // Apply damage/healing to target if one is selected
+    // Apply damage/healing/energy to target if one is selected
+    const isEnergyEffect = spellData.damageType === 'Energy';
     if (targetedTokenId && targetData?.character) {
-      const { finalDamage, reduction, armorName, isHealing: wasHealing } = await applyDamageToTarget(total, spellData.damageType || null, targetData.character);
+      const { finalDamage, reduction, armorName, isHealing: wasHealing, isEnergy } = await applyDamageToTarget(total, spellData.damageType || null, targetData.character, isEnergyEffect ? spellData.gainEnergy : undefined);
       finalTotal = finalDamage;
       
-      if (wasHealing) {
+      if (isEnergy) {
+        const energyAction = spellData.gainEnergy ? '+' : '-';
+        label = `${spellData.name} Energy → ${targetData.character.name} (${energyAction}${finalDamage} Energy)`;
+      } else if (wasHealing) {
         label = `${spellData.name} Healing → ${targetData.character.name} (+${finalDamage} HP)`;
       } else if (reduction > 0) {
         calculationBreakdown += ` - ${reduction} (${armorName || 'Armor'})`;
@@ -8850,6 +8872,7 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
     aoeRange: number | string;
     aoeShape: string;
     isAttack: boolean;
+    gainEnergy: boolean;
   }>({
     name: '',
     description: '',
@@ -8865,9 +8888,10 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
     aoeRange: '',
     aoeShape: '',
     isAttack: true,
+    gainEnergy: false,
   });
   
-  const spellDamageTypes = ['Sharp', 'Blunt', 'Piercing', 'Flame', 'Frost', 'Storm', 'Tide', 'Stone', 'Flux', 'Light', 'Dark', 'Sound', 'Health'];
+  const spellDamageTypes = ['Sharp', 'Blunt', 'Piercing', 'Flame', 'Frost', 'Storm', 'Tide', 'Stone', 'Flux', 'Light', 'Dark', 'Sound', 'Health', 'Energy'];
   const spellAttributes = ['might', 'finesse', 'wit', 'presence', 'will', 'craft'];
   
   const normalizeCastingTime = (ct: string | undefined | null): string => {
@@ -8900,6 +8924,7 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
         aoeRange: editSpellData.aoeRange ?? '',
         aoeShape: editSpellData.aoeShape || '',
         isAttack: editSpellData.isAttack !== false,
+        gainEnergy: editSpellData.gainEnergy || false,
       });
     } else if (showAddSpell && spellDialogTab === 'create') {
       setSpellFormData({
@@ -8917,6 +8942,7 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
         aoeRange: '',
         aoeShape: '',
         isAttack: true,
+        gainEnergy: false,
       });
     }
   }, [editSpellData, showAddSpell, spellDialogTab]);
@@ -8957,6 +8983,7 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
       aoeRange: spellFormData.isAoe ? optionalNum(spellFormData.aoeRange) : undefined,
       aoeShape: spellFormData.isAoe ? spellFormData.aoeShape : undefined,
       isAttack: spellFormData.isAttack,
+      gainEnergy: spellFormData.damageType === 'Energy' ? spellFormData.gainEnergy : false,
     };
 
     if (editSpellData) {
@@ -11854,6 +11881,21 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                             </Select>
                           </div>
                         </div>
+
+                        {spellFormData.damageType === 'Energy' && (
+                          <div className="flex items-center gap-2 p-2 bg-stone-800/50 rounded border border-cyan-800/50">
+                            <Checkbox
+                              id="spellGainEnergy"
+                              checked={spellFormData.gainEnergy}
+                              onCheckedChange={(checked) => setSpellFormData({ ...spellFormData, gainEnergy: checked === true })}
+                              disabled={!isGM}
+                              data-testid="checkbox-spell-gain-energy"
+                            />
+                            <Label htmlFor="spellGainEnergy" className="text-sm text-cyan-300 cursor-pointer">
+                              Gain Energy? (If checked, roll adds energy instead of subtracting)
+                            </Label>
+                          </div>
+                        )}
 
                         <div className="grid grid-cols-2 gap-3">
                           <div>

@@ -482,6 +482,7 @@ export const spells = pgTable("spells", {
   energyCost: integer("energy_cost").default(1), // Energy cost to cast
   isEquipped: boolean("is_equipped").default(false).notNull(),
   isAttack: boolean("is_attack").default(true).notNull(), // If true: Attack/Damage rolls, if false: Use/Effect rolls
+  gainEnergy: boolean("gain_energy").default(false), // For Energy damage type: if true adds energy, if false subtracts
 });
 
 export const insertSpellSchema = createInsertSchema(spells).omit({
@@ -684,8 +685,9 @@ export const systemSpells = pgTable("system_spells", {
   rangeNum: integer("range_num").default(30), // Numeric range in feet for distance calculations
   duration: text("duration").default("Instantaneous").notNull(),
   components: text("components").default("V, S").notNull(),
-  damageType: text("damage_type"), // Sharp, Blunt, Piercing, Flame, Frost, Storm, Tide, Stone, Flux, Light, Dark, Sound, Health
+  damageType: text("damage_type"), // Sharp, Blunt, Piercing, Flame, Frost, Storm, Tide, Stone, Flux, Light, Dark, Sound, Health, Energy
   damageDice: text("damage_dice"), // Dice notation e.g. "2d6"
+  gainEnergy: boolean("gain_energy").default(false), // For Energy damage type: if true adds energy, if false subtracts
   mod: integer("mod").default(0), // Flat bonus added after dice roll (like weapons)
   attribute: text("attribute"), // Attribute used for attack rolls (might, finesse, wit, presence, will, craft)
   healingDice: text("healing_dice"),

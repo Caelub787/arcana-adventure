@@ -4002,7 +4002,7 @@ interface SpellFormDialogProps {
   isLoading?: boolean;
 }
 
-const spellDamageTypes = ['Sharp', 'Blunt', 'Piercing', 'Flame', 'Frost', 'Storm', 'Tide', 'Stone', 'Flux', 'Light', 'Dark', 'Sound', 'Health'];
+const spellDamageTypes = ['Sharp', 'Blunt', 'Piercing', 'Flame', 'Frost', 'Storm', 'Tide', 'Stone', 'Flux', 'Light', 'Dark', 'Sound', 'Health', 'Energy'];
 const spellAttributes = ['might', 'finesse', 'wit', 'presence', 'will', 'craft'];
 
 function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: SpellFormDialogProps) {
@@ -4037,6 +4037,7 @@ function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading }:
     aoeRange: number | string;
     aoeShape: string;
     isAttack: boolean;
+    gainEnergy: boolean;
   }>({
     name: initialData?.name || '',
     description: initialData?.description || '',
@@ -4052,6 +4053,7 @@ function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading }:
     aoeRange: initialData?.aoeRange ?? '',
     aoeShape: initialData?.aoeShape || '',
     isAttack: initialData?.isAttack !== false,
+    gainEnergy: initialData?.gainEnergy || false,
   });
 
   const [showSpellImageBrowser, setShowSpellImageBrowser] = useState(false);
@@ -4085,6 +4087,7 @@ function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading }:
         aoeRange: initialData.aoeRange ?? '',
         aoeShape: initialData.aoeShape || '',
         isAttack: initialData.isAttack !== false,
+        gainEnergy: initialData.gainEnergy || false,
       });
     } else {
       setFormData({
@@ -4102,6 +4105,7 @@ function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading }:
         aoeRange: '',
         aoeShape: '',
         isAttack: true,
+        gainEnergy: false,
       });
     }
   }, [initialData, open]);
@@ -4141,6 +4145,7 @@ function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading }:
       aoeRange: formData.isAoe ? optionalNum(formData.aoeRange) : undefined,
       aoeShape: formData.isAoe ? formData.aoeShape : undefined,
       isAttack: formData.isAttack,
+      gainEnergy: formData.damageType === 'Energy' ? formData.gainEnergy : false,
     });
   };
 
@@ -4255,6 +4260,20 @@ function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading }:
                   </Select>
                 </div>
               </div>
+
+              {formData.damageType === 'Energy' && (
+                <div className="flex items-center gap-2 p-2 bg-stone-800/50 rounded border border-cyan-800/50">
+                  <Checkbox
+                    id="gainEnergy"
+                    checked={formData.gainEnergy}
+                    onCheckedChange={(checked) => setFormData({ ...formData, gainEnergy: checked === true })}
+                    data-testid="checkbox-gain-energy"
+                  />
+                  <Label htmlFor="gainEnergy" className="text-sm text-cyan-300 cursor-pointer">
+                    Gain Energy? (If checked, roll adds energy instead of subtracting)
+                  </Label>
+                </div>
+              )}
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
