@@ -3060,20 +3060,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
       
-      // Validate feat points: level + (2 × floor(level/3))
+      // Validate feat points: 2 base + level + (2 × floor(level/3)) = 3 points at level 1
+      // Every level: +1 point. Every level divisible by 3: +2 additional points.
       const level = character.level || 1;
-      const totalFeatPoints = level + (2 * Math.floor(level / 3));
+      const totalFeatPoints = 2 + level + (2 * Math.floor(level / 3));
       
       // Get feat details for each to sum up spent points
       let spentPoints = 0;
       for (const cf of existingFeats) {
         const f = await storage.getFeat(cf.featId);
         if (f) {
-          spentPoints += f.cost || 1;
+          spentPoints += f.cost ?? 0;
         }
       }
       
-      const featCost = feat.cost || 1;
+      const featCost = feat.cost ?? 0;
       const availablePoints = totalFeatPoints - spentPoints;
       
       if (availablePoints < featCost) {
