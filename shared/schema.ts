@@ -585,6 +585,9 @@ export const featTrees = pgTable("feat_trees", {
   description: text("description"),
   gridWidth: integer("grid_width").default(7).notNull(), // Grid columns
   gridHeight: integer("grid_height").default(10).notNull(), // Grid rows
+  defaultViewX: integer("default_view_x"), // Default pan X position
+  defaultViewY: integer("default_view_y"), // Default pan Y position
+  defaultViewZoom: real("default_view_zoom"), // Default zoom level
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

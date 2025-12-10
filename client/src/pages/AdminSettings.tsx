@@ -17,7 +17,7 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Slider } from '@/components/ui/slider';
 import { toast } from '@/hooks/use-toast';
-import { ArrowLeft, Plus, Pencil, Trash2, Sword, Shield, Package, Sparkles, Box, Coins, Search, Users, User, GitBranch, Library, Link, X, GripVertical, Star, Zap, Heart, ShieldCheck, BookOpen, RefreshCw, ZoomIn, ZoomOut, Wand2 } from 'lucide-react';
+import { ArrowLeft, Plus, Pencil, Trash2, Sword, Shield, Package, Sparkles, Box, Coins, Search, Users, User, GitBranch, Library, Link, X, GripVertical, Star, Zap, Heart, ShieldCheck, BookOpen, RefreshCw, ZoomIn, ZoomOut, Wand2, Save } from 'lucide-react';
 import { ImageBrowser } from '@/components/ImageBrowser';
 
 type AdminView = 'dashboard' | 'items' | 'species' | 'spells' | 'skills' | 'traits' | 'feat-trees';
@@ -1927,13 +1927,25 @@ function FeatTreesView() {
     return () => observer.disconnect();
   }, [selectedTreeId]);
 
-  // Reset view when tree changes
+  // Reset view when tree changes - use default view if set
   useEffect(() => {
-    if (selectedTreeId && viewportSize.width > 0) {
-      // Center on origin (0,0)
-      // The motion.div has left:-WORLD_OFFSET, and cells are at WORLD_OFFSET + gridX*CELL_SIZE
-      // Final screen position = gridX * CELL_SIZE + panX (the offsets cancel out)
-      // For origin (0,0) to be at viewport center: panX = viewportWidth/2
+    if (selectedTreeId && viewportSize.width > 0 && treeData) {
+      // Use default view if set
+      if (treeData.tree?.defaultViewX != null && treeData.tree?.defaultViewY != null) {
+        const defaultX = treeData.tree.defaultViewX;
+        const defaultY = treeData.tree.defaultViewY;
+        const defaultZoom = treeData.tree.defaultViewZoom || 1;
+        
+        panRef.current = { x: defaultX, y: defaultY };
+        zoomRef.current = defaultZoom;
+        motionX.set(defaultX);
+        motionY.set(defaultY);
+        motionZoom.set(defaultZoom);
+        forceUpdate(n => n + 1);
+        return;
+      }
+      
+      // Fallback: Center on origin (0,0)
       const centerX = viewportSize.width / 2;
       const centerY = viewportSize.height / 2;
       panRef.current = { x: centerX, y: centerY };
@@ -1943,7 +1955,7 @@ function FeatTreesView() {
       motionZoom.set(1);
       forceUpdate(n => n + 1);
     }
-  }, [selectedTreeId, viewportSize.width]);
+  }, [selectedTreeId, viewportSize.width, treeData?.tree?.defaultViewX, treeData?.tree?.defaultViewY]);
 
   // Wheel zoom handler
   useEffect(() => {
@@ -2129,7 +2141,22 @@ function FeatTreesView() {
 
   const resetView = () => {
     if (viewportSize.width > 0 && treeData) {
-      // Center on the first feat, or origin if no feats
+      // Use default view if set, otherwise center on the first feat
+      if (treeData.tree?.defaultViewX != null && treeData.tree?.defaultViewY != null) {
+        const defaultX = treeData.tree.defaultViewX;
+        const defaultY = treeData.tree.defaultViewY;
+        const defaultZoom = treeData.tree.defaultViewZoom || 1;
+        
+        panRef.current = { x: defaultX, y: defaultY };
+        zoomRef.current = defaultZoom;
+        motionX.set(defaultX);
+        motionY.set(defaultY);
+        motionZoom.set(defaultZoom);
+        forceUpdate(n => n + 1);
+        return;
+      }
+      
+      // Fallback: Center on the first feat, or origin if no feats
       let targetX = 0;
       let targetY = 0;
       
@@ -2158,13 +2185,21 @@ function FeatTreesView() {
     const dx = x2 - x1;
     const dy = y2 - y1;
     const distance = Math.sqrt(dx * dx + dy * dy);
-    const curvature = Math.min(distance * 0.3, 100);
+    
+    // Ensure minimum curvature offset to avoid invisible lines when dx or dy is 0
+    const minOffset = 40;
+    const curvature = Math.max(minOffset, Math.min(distance * 0.3, 100));
     
     // Control points for bezier curve
-    const cx1 = x1 + dx * 0.25;
-    const cy1 = y1 + curvature * (dy > 0 ? 0.5 : -0.5);
-    const cx2 = x2 - dx * 0.25;
-    const cy2 = y2 - curvature * (dy > 0 ? 0.5 : -0.5);
+    // When dx is 0 (vertical line), offset control points horizontally
+    // When dy is 0 (horizontal line), offset control points vertically
+    const horizontalOffset = Math.abs(dx) < 10 ? minOffset : dx * 0.25;
+    const verticalOffset = curvature * (dy >= 0 ? 0.5 : -0.5);
+    
+    const cx1 = x1 + horizontalOffset;
+    const cy1 = y1 + verticalOffset;
+    const cx2 = x2 - horizontalOffset;
+    const cy2 = y2 - verticalOffset;
     
     return `M ${x1} ${y1} C ${cx1} ${cy1}, ${cx2} ${cy2}, ${x2} ${y2}`;
   };
@@ -2209,10 +2244,32 @@ function FeatTreesView() {
             variant="secondary" 
             className="bg-stone-800/80 hover:bg-stone-700 text-xs border border-stone-600"
             onClick={resetView}
-            title="Center on first feat"
+            title="Reset to default view"
           >
             <RefreshCw className="h-3 w-3 mr-1" />
             Reset View
+          </Button>
+          <Button 
+            size="sm" 
+            variant="secondary" 
+            className="bg-amber-800/80 hover:bg-amber-700 text-xs border border-amber-600"
+            onClick={() => {
+              if (selectedTreeId) {
+                updateTreeMutation.mutate({
+                  id: selectedTreeId,
+                  data: {
+                    defaultViewX: Math.round(panRef.current.x),
+                    defaultViewY: Math.round(panRef.current.y),
+                    defaultViewZoom: Math.round(zoomRef.current * 100) / 100,
+                  },
+                });
+                toast({ title: 'Default View Set', description: 'Current view saved as default' });
+              }
+            }}
+            title="Save current view as default"
+          >
+            <Save className="h-3 w-3 mr-1" />
+            Set Default View
           </Button>
           
           {/* Connection mode indicator */}
