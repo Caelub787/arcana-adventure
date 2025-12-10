@@ -700,6 +700,7 @@ export const systemSpells = pgTable("system_spells", {
   aoeShape: text("aoe_shape"), // Shape of the area effect: circle, square, cone, line
   savingThrow: text("saving_throw"),
   effects: jsonb("effects").default([]).notNull(),
+  isAttack: boolean("is_attack").default(true).notNull(), // If true: Attack/Damage rolls, if false: Use/Effect rolls
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

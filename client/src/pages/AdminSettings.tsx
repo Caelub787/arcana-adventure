@@ -4017,6 +4017,7 @@ function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading }:
     isAoe: boolean;
     aoeRange: number | string;
     aoeShape: string;
+    isAttack: boolean;
   }>({
     name: initialData?.name || '',
     description: initialData?.description || '',
@@ -4031,6 +4032,7 @@ function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading }:
     isAoe: initialData?.isAoe || false,
     aoeRange: initialData?.aoeRange ?? '',
     aoeShape: initialData?.aoeShape || '',
+    isAttack: initialData?.isAttack !== false,
   });
 
   const [showSpellImageBrowser, setShowSpellImageBrowser] = useState(false);
@@ -4063,6 +4065,7 @@ function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading }:
         isAoe: initialData.isAoe || false,
         aoeRange: initialData.aoeRange ?? '',
         aoeShape: initialData.aoeShape || '',
+        isAttack: initialData.isAttack !== false,
       });
     } else {
       setFormData({
@@ -4079,6 +4082,7 @@ function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading }:
         isAoe: false,
         aoeRange: '',
         aoeShape: '',
+        isAttack: true,
       });
     }
   }, [initialData, open]);
@@ -4117,6 +4121,7 @@ function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading }:
       isAoe: formData.isAoe,
       aoeRange: formData.isAoe ? optionalNum(formData.aoeRange) : undefined,
       aoeShape: formData.isAoe ? formData.aoeShape : undefined,
+      isAttack: formData.isAttack,
     });
   };
 
@@ -4314,6 +4319,17 @@ function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading }:
               </div>
 
               <div className="space-y-3">
+                <div className="flex items-center gap-3">
+                  <Checkbox
+                    id="admin-spell-isattack"
+                    checked={formData.isAttack}
+                    onCheckedChange={(checked) => setFormData({ ...formData, isAttack: checked === true })}
+                    className="border-stone-600"
+                    data-testid="checkbox-spell-isattack"
+                  />
+                  <Label htmlFor="admin-spell-isattack" className="cursor-pointer">Attack?</Label>
+                  <span className="text-xs text-stone-500">(Attack/Damage vs Use/Effect)</span>
+                </div>
                 <div className="flex items-center gap-3">
                   <Checkbox
                     id="spell-aoe"
