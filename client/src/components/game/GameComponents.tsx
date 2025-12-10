@@ -12965,7 +12965,7 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
   );
 }
 
-// Feat Tree Viewer Grid Component - Simple scrollable grid
+// Feat Tree Viewer Grid Component - Pan/zoom navigation
 function FeatTreeViewerGrid({ 
   treeData, 
   characterFeats, 
@@ -12985,10 +12985,11 @@ function FeatTreeViewerGrid({
   const NODE_WIDTH = 160;
   const NODE_HEIGHT = 100;
   const CELL_SIZE = 100;
-  const PADDING = 50;
+  const WORLD_SIZE = 20000;
+  const WORLD_OFFSET = WORLD_SIZE / 2;
   
   const unlockedFeatIds = new Set(characterFeats.map(cf => cf.featId));
-  const { feats, connections } = treeData;
+  const { feats, connections, tree } = treeData;
   
   // Calculate feat points: 2 base + level + (2 × floor(level/3)) = 3 points at level 1
   const totalFeatPoints = 2 + characterLevel + (2 * Math.floor(characterLevel / 3));
@@ -12996,6 +12997,22 @@ function FeatTreeViewerGrid({
     .filter((f: Feat) => unlockedFeatIds.has(f.id))
     .reduce((sum: number, f: Feat) => sum + (f.cost || 1), 0);
   const availablePoints = totalFeatPoints - spentPoints;
+  
+  // Pan/zoom state
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
+  const panRef = useRef({ x: 0, y: 0 });
+  const zoomRef = useRef(1);
+  const [, forceUpdate] = useState(0);
+  const motionX = useMotionValue(0);
+  const motionY = useMotionValue(0);
+  const motionZoom = useMotionValue(1);
+  
+  // Gesture state
+  type GestureMode = 'idle' | 'panning';
+  const gestureModeRef = useRef<GestureMode>('idle');
+  const panStartRef = useRef({ x: 0, y: 0 });
+  const pointerStartRef = useRef({ x: 0, y: 0 });
   
   const unlockFeatMutation = useMutation({
     mutationFn: (featId: string) => api.unlockCharacterFeat(characterId, featId),
@@ -13020,21 +13037,160 @@ function FeatTreeViewerGrid({
   const featById = new Map<string, Feat>();
   feats.forEach((f: Feat) => featById.set(f.id, f));
   
-  // Calculate bounding box to size the canvas
-  let minX = 0, maxX = 0, minY = 0, maxY = 0;
-  feats.forEach((f: Feat) => {
-    minX = Math.min(minX, f.gridX * CELL_SIZE);
-    maxX = Math.max(maxX, f.gridX * CELL_SIZE + NODE_WIDTH);
-    minY = Math.min(minY, f.gridY * CELL_SIZE);
-    maxY = Math.max(maxY, f.gridY * CELL_SIZE + NODE_HEIGHT);
-  });
+  // Initialize view on mount
+  useEffect(() => {
+    if (!containerRef.current) return;
+    
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const { width, height } = entry.contentRect;
+        if (width > 0 && height > 0) {
+          setViewportSize((prev) => {
+            if (prev.width !== width || prev.height !== height) {
+              return { width, height };
+            }
+            return prev;
+          });
+        }
+      }
+    });
+    
+    observer.observe(containerRef.current);
+    return () => observer.disconnect();
+  }, []);
   
-  const calculatedWidth = maxX - minX + PADDING * 2;
-  const calculatedHeight = maxY - minY + PADDING * 2;
-  const canvasWidth = Math.max(calculatedWidth, 300);
-  const canvasHeightCalc = Math.max(calculatedHeight, 250);
-  const offsetX = -minX + PADDING;
-  const offsetY = -minY + PADDING;
+  // Reset view when viewport or tree changes - use default view if set (world-space coordinates)
+  useEffect(() => {
+    if (viewportSize.width > 0) {
+      // Use default view if set (stored as world-space center coordinates)
+      if (tree?.defaultViewX != null && tree?.defaultViewY != null) {
+        const worldCenterX = tree.defaultViewX;
+        const worldCenterY = tree.defaultViewY;
+        const defaultZoom = tree.defaultViewZoom || 1;
+        
+        // Convert world-space center to viewport-relative pan
+        const panX = viewportSize.width / 2 - worldCenterX * defaultZoom;
+        const panY = viewportSize.height / 2 - worldCenterY * defaultZoom;
+        
+        panRef.current = { x: panX, y: panY };
+        zoomRef.current = defaultZoom;
+        motionX.set(panX);
+        motionY.set(panY);
+        motionZoom.set(defaultZoom);
+        forceUpdate(n => n + 1);
+        return;
+      }
+      
+      // Fallback: Center on origin (0,0) in world space
+      const centerX = viewportSize.width / 2;
+      const centerY = viewportSize.height / 2;
+      panRef.current = { x: centerX, y: centerY };
+      zoomRef.current = 1;
+      motionX.set(centerX);
+      motionY.set(centerY);
+      motionZoom.set(1);
+      forceUpdate(n => n + 1);
+    }
+  }, [viewportSize.width, tree?.defaultViewX, tree?.defaultViewY]);
+  
+  // Wheel zoom handler
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const handleWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      
+      const currentZoom = zoomRef.current;
+      const currentPan = panRef.current;
+      
+      const rect = container.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+      
+      const delta = -e.deltaY * 0.002;
+      const newZoom = Math.max(0.3, Math.min(2, currentZoom + delta));
+      
+      if (Math.abs(newZoom - currentZoom) > 0.001) {
+        // Zoom towards cursor
+        const worldX = ((mouseX + WORLD_OFFSET - currentPan.x) / currentZoom) - WORLD_OFFSET;
+        const worldY = ((mouseY + WORLD_OFFSET - currentPan.y) / currentZoom) - WORLD_OFFSET;
+        
+        const newPan = {
+          x: mouseX + WORLD_OFFSET - (worldX + WORLD_OFFSET) * newZoom,
+          y: mouseY + WORLD_OFFSET - (worldY + WORLD_OFFSET) * newZoom
+        };
+        
+        panRef.current = newPan;
+        zoomRef.current = newZoom;
+        motionX.set(newPan.x);
+        motionY.set(newPan.y);
+        motionZoom.set(newZoom);
+        forceUpdate(n => n + 1);
+      }
+    };
+
+    container.addEventListener('wheel', handleWheel, { passive: false });
+    return () => container.removeEventListener('wheel', handleWheel);
+  }, [motionX, motionY, motionZoom]);
+  
+  // Pan handlers
+  const handlePointerDown = (e: React.PointerEvent) => {
+    if (e.button !== 0) return; // Only left click
+    e.currentTarget.setPointerCapture(e.pointerId);
+    
+    gestureModeRef.current = 'panning';
+    panStartRef.current = { ...panRef.current };
+    pointerStartRef.current = { x: e.clientX, y: e.clientY };
+  };
+  
+  const handlePointerMove = (e: React.PointerEvent) => {
+    if (gestureModeRef.current !== 'panning') return;
+    
+    const dx = e.clientX - pointerStartRef.current.x;
+    const dy = e.clientY - pointerStartRef.current.y;
+    
+    const newPan = {
+      x: panStartRef.current.x + dx,
+      y: panStartRef.current.y + dy,
+    };
+    
+    panRef.current = newPan;
+    motionX.set(newPan.x);
+    motionY.set(newPan.y);
+    forceUpdate(n => n + 1);
+  };
+  
+  const handlePointerUp = (e: React.PointerEvent) => {
+    gestureModeRef.current = 'idle';
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {}
+  };
+  
+  // Generate bezier curve path with minimum curvature
+  const generateCurvePath = (x1: number, y1: number, x2: number, y2: number) => {
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const minCurve = 40;
+    
+    let horizontalOffset = dx * 0.4;
+    if (Math.abs(horizontalOffset) < minCurve) {
+      horizontalOffset = dx >= 0 ? minCurve : -minCurve;
+    }
+    
+    let verticalOffset = dy * 0.3;
+    if (Math.abs(verticalOffset) < minCurve * 0.75) {
+      verticalOffset = dy >= 0 ? minCurve * 0.75 : -minCurve * 0.75;
+    }
+    
+    const cx1 = x1 + horizontalOffset;
+    const cy1 = y1 + verticalOffset;
+    const cx2 = x2 - horizontalOffset;
+    const cy2 = y2 - verticalOffset;
+    
+    return `M ${x1} ${y1} C ${cx1} ${cy1}, ${cx2} ${cy2}, ${x2} ${y2}`;
+  };
 
   return (
     <div className="flex flex-col">
@@ -13050,33 +13206,44 @@ function FeatTreeViewerGrid({
         </div>
       </div>
       
-      {/* Scrollable canvas */}
+      {/* Pan/zoom canvas */}
       <div 
-        className="overflow-auto bg-gradient-to-br from-stone-900 via-purple-950/20 to-stone-900 rounded-lg border border-stone-700"
-        style={{ maxHeight: '300px' }}
+        ref={containerRef}
+        className="relative overflow-hidden bg-gradient-to-br from-stone-900 via-purple-950/20 to-stone-900 rounded-lg border border-stone-700 cursor-grab active:cursor-grabbing"
+        style={{ height: '300px', touchAction: 'none' }}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
       >
-        <div 
-          className="relative"
-          style={{ 
-            width: `${canvasWidth}px`, 
-            height: `${canvasHeightCalc}px`,
-            minWidth: '100%'
+        {/* Infinite canvas world */}
+        <motion.div
+          className="absolute"
+          style={{
+            x: motionX,
+            y: motionY,
+            scale: motionZoom,
+            width: WORLD_SIZE,
+            height: WORLD_SIZE,
+            left: -WORLD_OFFSET,
+            top: -WORLD_OFFSET,
+            transformOrigin: '0 0'
           }}
         >
           {/* Connection lines */}
           <svg 
             className="absolute pointer-events-none"
-            style={{ width: '100%', height: '100%' }}
+            style={{ width: WORLD_SIZE, height: WORLD_SIZE }}
           >
             {connections.map((conn: FeatConnection) => {
               const from = featById.get(conn.fromFeatId);
               const to = featById.get(conn.toFeatId);
               if (!from || !to) return null;
               
-              const x1 = offsetX + from.gridX * CELL_SIZE + NODE_WIDTH / 2;
-              const y1 = offsetY + from.gridY * CELL_SIZE + NODE_HEIGHT / 2;
-              const x2 = offsetX + to.gridX * CELL_SIZE + NODE_WIDTH / 2;
-              const y2 = offsetY + to.gridY * CELL_SIZE + NODE_HEIGHT / 2;
+              const x1 = WORLD_OFFSET + from.gridX * CELL_SIZE + NODE_WIDTH / 2;
+              const y1 = WORLD_OFFSET + from.gridY * CELL_SIZE + NODE_HEIGHT / 2;
+              const x2 = WORLD_OFFSET + to.gridX * CELL_SIZE + NODE_WIDTH / 2;
+              const y2 = WORLD_OFFSET + to.gridY * CELL_SIZE + NODE_HEIGHT / 2;
               
               const fromUnlocked = unlockedFeatIds.has(conn.fromFeatId);
               const toUnlocked = unlockedFeatIds.has(conn.toFeatId);
@@ -13088,10 +13255,13 @@ function FeatTreeViewerGrid({
                 strokeColor = '#eab308';
               }
               
+              const pathD = generateCurvePath(x1, y1, x2, y2);
+              
               return (
-                <line
+                <path
                   key={conn.id}
-                  x1={x1} y1={y1} x2={x2} y2={y2}
+                  d={pathD}
+                  fill="none"
                   stroke={strokeColor}
                   strokeWidth={3}
                 />
@@ -13118,12 +13288,15 @@ function FeatTreeViewerGrid({
                 key={feat.id}
                 className={`absolute rounded-xl border-2 cursor-pointer transition-all ${nodeStyle}`}
                 style={{
-                  left: `${offsetX + feat.gridX * CELL_SIZE}px`,
-                  top: `${offsetY + feat.gridY * CELL_SIZE}px`,
-                  width: `${NODE_WIDTH}px`,
-                  height: `${NODE_HEIGHT}px`,
+                  left: WORLD_OFFSET + feat.gridX * CELL_SIZE,
+                  top: WORLD_OFFSET + feat.gridY * CELL_SIZE,
+                  width: NODE_WIDTH,
+                  height: NODE_HEIGHT,
                 }}
-                onClick={() => setSelectedFeat(feat)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setSelectedFeat(feat);
+                }}
                 data-testid={`feat-node-${feat.id}`}
               >
                 <div className="h-full flex flex-col items-center justify-center p-2 text-center overflow-hidden">
@@ -13138,7 +13311,7 @@ function FeatTreeViewerGrid({
               </div>
             );
           })}
-        </div>
+        </motion.div>
       </div>
       
       {/* Feat Detail Panel */}

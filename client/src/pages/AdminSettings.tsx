@@ -1927,19 +1927,23 @@ function FeatTreesView() {
     return () => observer.disconnect();
   }, [selectedTreeId]);
 
-  // Reset view when tree changes - use default view if set
+  // Reset view when tree changes - use default view if set (world-space coordinates)
   useEffect(() => {
     if (selectedTreeId && viewportSize.width > 0 && treeData) {
-      // Use default view if set
+      // Use default view if set (stored as world-space center coordinates)
       if (treeData.tree?.defaultViewX != null && treeData.tree?.defaultViewY != null) {
-        const defaultX = treeData.tree.defaultViewX;
-        const defaultY = treeData.tree.defaultViewY;
+        const worldCenterX = treeData.tree.defaultViewX;
+        const worldCenterY = treeData.tree.defaultViewY;
         const defaultZoom = treeData.tree.defaultViewZoom || 1;
         
-        panRef.current = { x: defaultX, y: defaultY };
+        // Convert world-space center to viewport-relative pan
+        const panX = viewportSize.width / 2 - worldCenterX * defaultZoom;
+        const panY = viewportSize.height / 2 - worldCenterY * defaultZoom;
+        
+        panRef.current = { x: panX, y: panY };
         zoomRef.current = defaultZoom;
-        motionX.set(defaultX);
-        motionY.set(defaultY);
+        motionX.set(panX);
+        motionY.set(panY);
         motionZoom.set(defaultZoom);
         forceUpdate(n => n + 1);
         return;
@@ -2141,16 +2145,20 @@ function FeatTreesView() {
 
   const resetView = () => {
     if (viewportSize.width > 0 && treeData) {
-      // Use default view if set, otherwise center on the first feat
+      // Use default view if set (world-space coordinates), otherwise center on the first feat
       if (treeData.tree?.defaultViewX != null && treeData.tree?.defaultViewY != null) {
-        const defaultX = treeData.tree.defaultViewX;
-        const defaultY = treeData.tree.defaultViewY;
+        const worldCenterX = treeData.tree.defaultViewX;
+        const worldCenterY = treeData.tree.defaultViewY;
         const defaultZoom = treeData.tree.defaultViewZoom || 1;
         
-        panRef.current = { x: defaultX, y: defaultY };
+        // Convert world-space center to viewport-relative pan
+        const panX = viewportSize.width / 2 - worldCenterX * defaultZoom;
+        const panY = viewportSize.height / 2 - worldCenterY * defaultZoom;
+        
+        panRef.current = { x: panX, y: panY };
         zoomRef.current = defaultZoom;
-        motionX.set(defaultX);
-        motionY.set(defaultY);
+        motionX.set(panX);
+        motionY.set(panY);
         motionZoom.set(defaultZoom);
         forceUpdate(n => n + 1);
         return;
@@ -2254,13 +2262,19 @@ function FeatTreesView() {
             variant="secondary" 
             className="bg-amber-800/80 hover:bg-amber-700 text-xs border border-amber-600"
             onClick={() => {
-              if (selectedTreeId) {
+              if (selectedTreeId && viewportSize.width > 0) {
+                // Store world-space center coordinates instead of viewport-relative pan
+                const zoom = zoomRef.current;
+                const pan = panRef.current;
+                const worldCenterX = (viewportSize.width / 2 - pan.x) / zoom;
+                const worldCenterY = (viewportSize.height / 2 - pan.y) / zoom;
+                
                 updateTreeMutation.mutate({
                   id: selectedTreeId,
                   data: {
-                    defaultViewX: Math.round(panRef.current.x),
-                    defaultViewY: Math.round(panRef.current.y),
-                    defaultViewZoom: Math.round(zoomRef.current * 100) / 100,
+                    defaultViewX: Math.round(worldCenterX),
+                    defaultViewY: Math.round(worldCenterY),
+                    defaultViewZoom: Math.round(zoom * 100) / 100,
                   },
                 });
                 toast({ title: 'Default View Set', description: 'Current view saved as default' });
@@ -2339,12 +2353,12 @@ function FeatTreesView() {
           
           {/* Connection lines SVG */}
           <svg 
-            className="absolute pointer-events-none"
+            className="absolute"
             style={{ 
               width: WORLD_SIZE, 
               height: WORLD_SIZE,
               left: 0,
-              top: 0
+              top: 0,
             }}
           >
             <defs>
@@ -2404,16 +2418,17 @@ function FeatTreesView() {
                     stroke="url(#line-gradient)"
                     strokeWidth={3}
                     markerEnd="url(#arrowhead-skill)"
-                    className="transition-all"
+                    className="transition-all pointer-events-none"
                   />
                   <circle
                     cx={midX}
                     cy={midY}
-                    r={10}
+                    r={14}
                     fill="#1c1917"
                     stroke="#78716c"
-                    strokeWidth={1}
-                    className="cursor-pointer pointer-events-auto hover:stroke-red-500 hover:fill-red-900/50 transition-colors"
+                    strokeWidth={2}
+                    className="cursor-pointer hover:stroke-red-500 hover:fill-red-900/50 transition-colors"
+                    style={{ pointerEvents: 'all' }}
                     onClick={(e) => {
                       e.stopPropagation();
                       deleteConnectionMutation.mutate(conn.id);
