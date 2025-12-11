@@ -170,6 +170,8 @@ export const characters = pgTable("characters", {
   // Background/notes
   biography: text("biography"),
   gmNotes: text("gm_notes"),
+  // Folder organization
+  folderId: varchar("folder_id"), // References characterFolders.id but nullable for unfiled characters
   // Legacy inventory (kept for backward compatibility, use items table for new features)
   inventory: text("inventory").array().default(sql`ARRAY[]::text[]`).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -202,6 +204,23 @@ export const insertTokenSchema = createInsertSchema(tokens).omit({
 
 export type InsertToken = z.infer<typeof insertTokenSchema>;
 export type Token = typeof tokens.$inferSelect;
+
+// Character Folders (for organizing characters in campaigns)
+export const characterFolders = pgTable("character_folders", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  campaignId: varchar("campaign_id").notNull().references(() => campaigns.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  sortOrder: integer("sort_order").default(0).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertCharacterFolderSchema = createInsertSchema(characterFolders).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertCharacterFolder = z.infer<typeof insertCharacterFolderSchema>;
+export type CharacterFolder = typeof characterFolders.$inferSelect;
 
 // Chat Messages table
 export const chatMessages = pgTable("chat_messages", {
