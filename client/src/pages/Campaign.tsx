@@ -19,13 +19,13 @@ import battleMapImage2 from "@assets/generated_images/dark_fantasy_landscape_wit
 import warriorToken from "@assets/generated_images/top_down_warrior_token.png";
 import goblinToken from "@assets/generated_images/top_down_goblin_token.png";
 import { useAuth } from "@/lib/AuthContext";
-import { api, gameWs, type Scene, type CampaignSpecies, type FeatTree } from "@/lib/api";
+import { api, gameWs, type Scene, type CampaignSpecies, type FeatTree, type CharacterFolder } from "@/lib/api";
 import { Textarea } from "@/components/ui/textarea";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { ImageBrowser } from "@/components/ImageBrowser";
-import { Folder, Plus } from "lucide-react";
+import { Folder, FolderPlus, Plus, GripVertical } from "lucide-react";
 
 // Scene Settings Form Component
 function SceneSettingsForm({ scene, onUpdateScene }: { scene: Scene; onUpdateScene: (settings: Partial<Scene>) => void }) {
@@ -691,6 +691,10 @@ export default function Campaign() {
   const [editingSpecies, setEditingSpecies] = useState<CampaignSpecies | null>(null);
   const [speciesFormOpen, setSpeciesFormOpen] = useState(false);
   const [deletingSpecies, setDeletingSpecies] = useState<CampaignSpecies | null>(null);
+  const [foldersSheetOpen, setFoldersSheetOpen] = useState(false);
+  const [newFolderName, setNewFolderName] = useState("");
+  const [editingFolder, setEditingFolder] = useState<{ id: string; name: string } | null>(null);
+  const [draggingCharacterId, setDraggingCharacterId] = useState<string | null>(null);
   const [chatOpen, setChatOpen] = useState(false);
   const [viewingCharacterSheet, setViewingCharacterSheet] = useState<any>(null);
   const [characterSheetDefaultTab, setCharacterSheetDefaultTab] = useState("overview");
@@ -921,6 +925,13 @@ export default function Campaign() {
     enabled: !!effectiveCampaignId && !isNew,
   });
 
+  // Load character folders for the campaign
+  const { data: folders = [], refetch: refetchFolders } = useQuery({
+    queryKey: ['campaign-folders', effectiveCampaignId],
+    queryFn: () => api.getCampaignFolders(effectiveCampaignId!),
+    enabled: !!effectiveCampaignId && !isNew,
+  });
+
   // Load feat trees for species form (to assign racial feat trees)
   const { data: featTrees = [] } = useQuery<FeatTree[]>({
     queryKey: ['/api/admin/feat-trees'],
@@ -965,6 +976,55 @@ export default function Campaign() {
     },
     onError: (error: any) => {
       toast({ title: "Error", description: error.message || "Failed to delete species", variant: "destructive" });
+    },
+  });
+
+  // Character folder mutations
+  const createFolderMutation = useMutation({
+    mutationFn: (data: { name: string; sortOrder?: number }) => api.createCharacterFolder(effectiveCampaignId!, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['campaign-folders', effectiveCampaignId] });
+      setNewFolderName("");
+      toast({ title: "Success", description: "Folder created" });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message || "Failed to create folder", variant: "destructive" });
+    },
+  });
+
+  const updateFolderMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: { name: string } }) => api.updateCharacterFolder(effectiveCampaignId!, id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['campaign-folders', effectiveCampaignId] });
+      setEditingFolder(null);
+      toast({ title: "Success", description: "Folder renamed" });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message || "Failed to rename folder", variant: "destructive" });
+    },
+  });
+
+  const deleteFolderMutation = useMutation({
+    mutationFn: (id: string) => api.deleteCharacterFolder(effectiveCampaignId!, id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['campaign-folders', effectiveCampaignId] });
+      queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${effectiveCampaignId}/characters`] });
+      toast({ title: "Success", description: "Folder deleted" });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message || "Failed to delete folder", variant: "destructive" });
+    },
+  });
+
+  const moveCharacterToFolderMutation = useMutation({
+    mutationFn: ({ characterId, folderId }: { characterId: string; folderId: string | null }) => 
+      api.moveCharacterToFolder(characterId, folderId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${effectiveCampaignId}/characters`] });
+      toast({ title: "Success", description: "Character moved", duration: 1000 });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message || "Failed to move character", variant: "destructive" });
     },
   });
 
@@ -1881,6 +1941,7 @@ export default function Campaign() {
             onAssignCharacter={handleAssignCharacter}
             myPermissions={myPermissions}
             onOpenCampaignSpecies={() => setCampaignSpeciesOpen(true)}
+            onOpenCharacterFolders={() => setFoldersSheetOpen(true)}
           />
           
           {/* Scenes Button (GM Only) - Icon only, directly under Settings */}
@@ -2186,6 +2247,233 @@ export default function Campaign() {
           isLoading={createCampaignSpeciesMutation.isPending || updateCampaignSpeciesMutation.isPending}
           featTrees={featTrees}
         />
+      )}
+
+      {/* Character Folders Sheet (GM Only) */}
+      {role === 'gm' && (
+        <Sheet open={foldersSheetOpen} onOpenChange={setFoldersSheetOpen}>
+          <SheetContent className="bg-stone-900 border-stone-700 text-stone-200 w-full sm:max-w-md overflow-y-auto custom-scrollbar">
+            <SheetHeader>
+              <SheetTitle className="text-amber-500 font-display text-xl sm:text-2xl">Character Folders</SheetTitle>
+            </SheetHeader>
+            
+            <ScrollArea className="h-[calc(100vh-100px)] pr-4">
+              <div className="mt-6 space-y-6">
+                <p className="text-stone-400 text-sm">
+                  Organize characters into folders. Drag and drop characters between folders.
+                </p>
+
+                {/* Create Folder Input */}
+                <div className="flex gap-2">
+                  <Input
+                    value={newFolderName}
+                    onChange={(e) => setNewFolderName(e.target.value)}
+                    placeholder="New folder name..."
+                    className="bg-stone-800 border-stone-700 text-stone-200"
+                    onKeyPress={(e) => e.key === 'Enter' && newFolderName.trim() && createFolderMutation.mutate({ name: newFolderName.trim() })}
+                    data-testid="input-new-folder-name"
+                  />
+                  <Button
+                    onClick={() => newFolderName.trim() && createFolderMutation.mutate({ name: newFolderName.trim() })}
+                    disabled={!newFolderName.trim() || createFolderMutation.isPending}
+                    className="bg-amber-700 hover:bg-amber-600"
+                    data-testid="button-create-folder"
+                  >
+                    <FolderPlus className="h-4 w-4" />
+                  </Button>
+                </div>
+
+                {/* Folders List */}
+                <div className="space-y-4">
+                  {(folders as CharacterFolder[]).sort((a, b) => a.sortOrder - b.sortOrder).map((folder) => {
+                    const folderCharacters = (characters as any[] || []).filter((c: any) => c.folderId === folder.id);
+                    return (
+                      <div
+                        key={folder.id}
+                        className={`p-4 bg-stone-800 rounded-lg border transition-colors ${
+                          draggingCharacterId ? 'border-dashed border-amber-600/50' : 'border-stone-700'
+                        }`}
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          e.currentTarget.classList.add('border-amber-500', 'bg-stone-750');
+                        }}
+                        onDragLeave={(e) => {
+                          e.currentTarget.classList.remove('border-amber-500', 'bg-stone-750');
+                        }}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          e.currentTarget.classList.remove('border-amber-500', 'bg-stone-750');
+                          if (draggingCharacterId) {
+                            moveCharacterToFolderMutation.mutate({ characterId: draggingCharacterId, folderId: folder.id });
+                            setDraggingCharacterId(null);
+                          }
+                        }}
+                        data-testid={`folder-${folder.id}`}
+                      >
+                        {/* Folder Header */}
+                        <div className="flex items-center justify-between mb-3">
+                          {editingFolder?.id === folder.id ? (
+                            <div className="flex gap-2 flex-1 mr-2">
+                              <Input
+                                value={editingFolder.name}
+                                onChange={(e) => setEditingFolder({ ...editingFolder, name: e.target.value })}
+                                className="bg-stone-700 border-stone-600 text-stone-200 h-8 text-sm"
+                                autoFocus
+                                onKeyPress={(e) => {
+                                  if (e.key === 'Enter' && editingFolder.name.trim()) {
+                                    updateFolderMutation.mutate({ id: folder.id, data: { name: editingFolder.name.trim() } });
+                                  }
+                                }}
+                                data-testid="input-edit-folder-name"
+                              />
+                              <Button
+                                size="sm"
+                                onClick={() => editingFolder.name.trim() && updateFolderMutation.mutate({ id: folder.id, data: { name: editingFolder.name.trim() } })}
+                                className="bg-green-700 hover:bg-green-600 h-8 px-2"
+                                disabled={!editingFolder.name.trim()}
+                              >
+                                Save
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => setEditingFolder(null)}
+                                className="h-8 px-2"
+                              >
+                                Cancel
+                              </Button>
+                            </div>
+                          ) : (
+                            <>
+                              <div className="flex items-center gap-2">
+                                <Folder className="h-4 w-4 text-amber-500" />
+                                <h3 className="font-bold text-stone-100">{folder.name}</h3>
+                                <span className="text-xs text-stone-500">({folderCharacters.length})</span>
+                              </div>
+                              <div className="flex gap-1">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => setEditingFolder({ id: folder.id, name: folder.name })}
+                                  className="h-7 w-7 text-stone-400 hover:text-white"
+                                  data-testid={`button-edit-folder-${folder.id}`}
+                                >
+                                  <Edit2 className="h-3.5 w-3.5" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => deleteFolderMutation.mutate(folder.id)}
+                                  disabled={deleteFolderMutation.isPending}
+                                  className="h-7 w-7 text-red-400 hover:text-red-300"
+                                  data-testid={`button-delete-folder-${folder.id}`}
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </Button>
+                              </div>
+                            </>
+                          )}
+                        </div>
+
+                        {/* Characters in Folder */}
+                        <div className="space-y-1">
+                          {folderCharacters.length > 0 ? (
+                            folderCharacters.map((char: any) => (
+                              <div
+                                key={char.id}
+                                draggable
+                                onDragStart={() => setDraggingCharacterId(char.id)}
+                                onDragEnd={() => setDraggingCharacterId(null)}
+                                className="flex items-center gap-2 p-2 bg-stone-700/50 rounded cursor-grab hover:bg-stone-700 transition-colors"
+                                data-testid={`character-row-${char.id}`}
+                              >
+                                <GripVertical className="h-3.5 w-3.5 text-stone-500" />
+                                {char.portrait ? (
+                                  <img src={char.portrait} alt={char.name} className="w-6 h-6 rounded-full object-cover border border-stone-600" />
+                                ) : (
+                                  <div className="w-6 h-6 rounded-full bg-stone-600 flex items-center justify-center">
+                                    <Users className="h-3 w-3 text-stone-400" />
+                                  </div>
+                                )}
+                                <span className="text-sm text-stone-200 truncate">{char.name}</span>
+                              </div>
+                            ))
+                          ) : (
+                            <div className="text-xs text-stone-500 py-2 text-center">
+                              Drop characters here
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {/* Unfiled Section */}
+                  {(() => {
+                    const unfiledCharacters = (characters as any[] || []).filter((c: any) => !c.folderId);
+                    return (
+                      <div
+                        className={`p-4 bg-stone-800/50 rounded-lg border transition-colors ${
+                          draggingCharacterId ? 'border-dashed border-stone-500' : 'border-stone-700/50'
+                        }`}
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          e.currentTarget.classList.add('border-stone-400', 'bg-stone-800');
+                        }}
+                        onDragLeave={(e) => {
+                          e.currentTarget.classList.remove('border-stone-400', 'bg-stone-800');
+                        }}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          e.currentTarget.classList.remove('border-stone-400', 'bg-stone-800');
+                          if (draggingCharacterId) {
+                            moveCharacterToFolderMutation.mutate({ characterId: draggingCharacterId, folderId: null });
+                            setDraggingCharacterId(null);
+                          }
+                        }}
+                        data-testid="folder-unfiled"
+                      >
+                        <div className="flex items-center gap-2 mb-3">
+                          <Users className="h-4 w-4 text-stone-500" />
+                          <h3 className="font-bold text-stone-400">Unfiled</h3>
+                          <span className="text-xs text-stone-500">({unfiledCharacters.length})</span>
+                        </div>
+                        <div className="space-y-1">
+                          {unfiledCharacters.length > 0 ? (
+                            unfiledCharacters.map((char: any) => (
+                              <div
+                                key={char.id}
+                                draggable
+                                onDragStart={() => setDraggingCharacterId(char.id)}
+                                onDragEnd={() => setDraggingCharacterId(null)}
+                                className="flex items-center gap-2 p-2 bg-stone-700/30 rounded cursor-grab hover:bg-stone-700/50 transition-colors"
+                                data-testid={`character-row-${char.id}`}
+                              >
+                                <GripVertical className="h-3.5 w-3.5 text-stone-500" />
+                                {char.portrait ? (
+                                  <img src={char.portrait} alt={char.name} className="w-6 h-6 rounded-full object-cover border border-stone-600" />
+                                ) : (
+                                  <div className="w-6 h-6 rounded-full bg-stone-600 flex items-center justify-center">
+                                    <Users className="h-3 w-3 text-stone-400" />
+                                  </div>
+                                )}
+                                <span className="text-sm text-stone-300 truncate">{char.name}</span>
+                              </div>
+                            ))
+                          ) : (
+                            <div className="text-xs text-stone-500 py-2 text-center">
+                              No unfiled characters
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              </div>
+            </ScrollArea>
+          </SheetContent>
+        </Sheet>
       )}
 
       {/* Delete Species Confirmation */}

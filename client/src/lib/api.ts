@@ -61,6 +61,7 @@ export interface Character {
   skillCulture: number;
   biography?: string;
   gmNotes?: string;
+  folderId?: string | null;
   inventory: string[];
 }
 
@@ -72,6 +73,14 @@ export interface Token {
   x: number;
   y: number;
   image: string;
+}
+
+export interface CharacterFolder {
+  id: string;
+  campaignId: string;
+  name: string;
+  sortOrder: number;
+  createdAt: string;
 }
 
 export interface ChatMessage {
@@ -789,6 +798,36 @@ class ApiClient {
 
   async deleteCampaignSpecies(campaignId: string, speciesId: string): Promise<void> {
     return this.request(`/campaigns/${campaignId}/species/${speciesId}`, { method: 'DELETE' });
+  }
+
+  // Character Folders (for organizing characters in campaigns)
+  async getCampaignFolders(campaignId: string): Promise<CharacterFolder[]> {
+    return this.request(`/campaigns/${campaignId}/folders`);
+  }
+
+  async createCharacterFolder(campaignId: string, data: { name: string; sortOrder?: number }): Promise<CharacterFolder> {
+    return this.request(`/campaigns/${campaignId}/folders`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateCharacterFolder(campaignId: string, folderId: string, data: Partial<CharacterFolder>): Promise<CharacterFolder> {
+    return this.request(`/campaigns/${campaignId}/folders/${folderId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteCharacterFolder(campaignId: string, folderId: string): Promise<void> {
+    return this.request(`/campaigns/${campaignId}/folders/${folderId}`, { method: 'DELETE' });
+  }
+
+  async moveCharacterToFolder(characterId: string, folderId: string | null): Promise<Character> {
+    return this.request(`/characters/${characterId}/folder`, {
+      method: 'PATCH',
+      body: JSON.stringify({ folderId }),
+    });
   }
 
   // Admin Feat Templates

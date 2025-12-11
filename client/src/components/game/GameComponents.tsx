@@ -18,7 +18,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { 
   Sword, Shield, Scroll, Map as MapIcon, Settings, 
   Users, User, Plus, Minus, LogOut, Menu, ChevronRight, ChevronLeft, ChevronDown, ChevronUp,
-  Heart, Zap, Backpack, Sparkles, Dice5, MessageSquare, RefreshCw, X, Trash2, Package, FolderOpen, Lock, Unlock, Camera,
+  Heart, Zap, Backpack, Sparkles, Dice5, MessageSquare, RefreshCw, X, Trash2, Package, FolderOpen, Folder, Lock, Unlock, Camera,
   BarChart3, Grid3X3, ScrollText, Upload, Image as ImageIcon, Layers, Search, TrendingUp, UserMinus, Ban,
   MousePointer, Target, UserCheck, Swords, ArrowRight, Eye, EyeOff, Check, Moon, Coffee, AlertTriangle, GitBranch, Star, BookOpen, Pencil, Dna
 } from "lucide-react";
@@ -4469,9 +4469,10 @@ interface CampaignMenuProps {
   onAssignCharacter?: (char: any) => void;
   myPermissions?: { permissions: Record<string, string> };
   onOpenCampaignSpecies?: () => void;
+  onOpenCharacterFolders?: () => void;
 }
 
-export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onInspectChar, onAddCharacterToken, onChangeMap, characters, members, onAddCharacter, onViewCharacter, onLevelUpAll, chatOpen = false, onChatOpenChange, onAssignCharacter, myPermissions, onOpenCampaignSpecies }: CampaignMenuProps) {
+export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onInspectChar, onAddCharacterToken, onChangeMap, characters, members, onAddCharacter, onViewCharacter, onLevelUpAll, chatOpen = false, onChatOpenChange, onAssignCharacter, myPermissions, onOpenCampaignSpecies, onOpenCharacterFolders }: CampaignMenuProps) {
   const setChatOpen = onChatOpenChange || (() => {});
   const [addCharacterOpen, setAddCharacterOpen] = useState(false);
   const [showLevelUpDialog, setShowLevelUpDialog] = useState(false);
@@ -4979,6 +4980,18 @@ export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onIn
               data-testid="button-campaign-species-settings"
             >
               <Dna className="mr-2 h-4 w-4" /> Campaign Species
+            </Button>
+          )}
+
+          {/* Character Folders Button (GM Only) */}
+          {role === 'gm' && onOpenCharacterFolders && (
+            <Button
+              variant="secondary"
+              className="w-full mb-4 bg-indigo-900/50 hover:bg-indigo-800/50 border border-indigo-700"
+              onClick={onOpenCharacterFolders}
+              data-testid="button-character-folders-settings"
+            >
+              <Folder className="mr-2 h-4 w-4" /> Character Folders
             </Button>
           )}
 
