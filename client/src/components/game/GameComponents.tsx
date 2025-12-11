@@ -4844,14 +4844,16 @@ export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onIn
             <div className="space-y-3">
               {messages.map((msg, i) => {
                 // Parse roll message to extract total for notification-style display
-                // Match number after '=' even if followed by extra text like (HIT!) or (Flame)
+                // Match the LAST "= number" in the string (the final calculated total)
                 const parseRollTotal = (text: string) => {
-                  // Try matching "= number" followed by optional non-digit text
-                  const match = text.match(/=\s*(\d+)(?:\s*\(|$|\s*$)/);
-                  if (match) return parseInt(match[1]);
-                  // Fallback: find any "= number" pattern
-                  const fallback = text.match(/=\s*(\d+)/);
-                  return fallback ? parseInt(fallback[1]) : null;
+                  // Find ALL "= number" patterns and take the last one
+                  const allMatches = text.matchAll(/=\s*(-?\d+)/g);
+                  const matches = Array.from(allMatches);
+                  if (matches.length > 0) {
+                    const lastMatch = matches[matches.length - 1];
+                    return parseInt(lastMatch[1]);
+                  }
+                  return null;
                 };
                 const parseRollLabel = (text: string) => {
                   const colonIndex = text.indexOf(':');
