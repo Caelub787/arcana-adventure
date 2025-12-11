@@ -4469,10 +4469,9 @@ interface CampaignMenuProps {
   onAssignCharacter?: (char: any) => void;
   myPermissions?: { permissions: Record<string, string> };
   onOpenCampaignSpecies?: () => void;
-  onOpenCharacterFolders?: () => void;
 }
 
-export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onInspectChar, onAddCharacterToken, onChangeMap, characters, members, onAddCharacter, onViewCharacter, onLevelUpAll, chatOpen = false, onChatOpenChange, onAssignCharacter, myPermissions, onOpenCampaignSpecies, onOpenCharacterFolders }: CampaignMenuProps) {
+export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onInspectChar, onAddCharacterToken, onChangeMap, characters, members, onAddCharacter, onViewCharacter, onLevelUpAll, chatOpen = false, onChatOpenChange, onAssignCharacter, myPermissions, onOpenCampaignSpecies }: CampaignMenuProps) {
   const setChatOpen = onChatOpenChange || (() => {});
   const [addCharacterOpen, setAddCharacterOpen] = useState(false);
   const [showLevelUpDialog, setShowLevelUpDialog] = useState(false);
@@ -5038,18 +5037,6 @@ export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onIn
               data-testid="button-campaign-species-settings"
             >
               <Dna className="mr-2 h-4 w-4" /> Campaign Species
-            </Button>
-          )}
-
-          {/* Character Folders Button (GM Only) */}
-          {role === 'gm' && onOpenCharacterFolders && (
-            <Button
-              variant="secondary"
-              className="w-full mb-4 bg-indigo-900/50 hover:bg-indigo-800/50 border border-indigo-700"
-              onClick={onOpenCharacterFolders}
-              data-testid="button-character-folders-settings"
-            >
-              <Folder className="mr-2 h-4 w-4" /> Character Folders
             </Button>
           )}
 
