@@ -25,7 +25,8 @@ import {
   type CharacterCustomSkill, type InsertCharacterCustomSkill,
   type SystemTrait, type InsertSystemTrait,
   type CharacterTrait, type InsertCharacterTrait,
-  users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, items, spells, characterPermissions, initiativeEntries, systemSpecies, campaignSpecies, featTemplates, featTrees, feats, featConnections, characterFeats, systemSpells, systemSkills, characterCustomSkills, systemTraits, characterTraits
+  type CharacterFolder, type InsertCharacterFolder,
+  users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, items, spells, characterPermissions, initiativeEntries, systemSpecies, campaignSpecies, featTemplates, featTrees, feats, featConnections, characterFeats, systemSpells, systemSkills, characterCustomSkills, systemTraits, characterTraits, characterFolders
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql, inArray } from "drizzle-orm";
@@ -226,6 +227,13 @@ export interface IStorage {
   removeCharacterTrait(id: string): Promise<void>;
   resetCharacterTraitUses(characterId: string): Promise<void>;
   restoreShortRestTraitUses(characterId: string): Promise<void>;
+
+  // Character Folder operations
+  getCampaignFolders(campaignId: string): Promise<CharacterFolder[]>;
+  getCharacterFolder(id: string): Promise<CharacterFolder | undefined>;
+  createCharacterFolder(folder: InsertCharacterFolder): Promise<CharacterFolder>;
+  updateCharacterFolder(id: string, data: Partial<InsertCharacterFolder>): Promise<CharacterFolder | undefined>;
+  deleteCharacterFolder(id: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1368,6 +1376,44 @@ export class DatabaseStorage implements IStorage {
         .set({ currentUses: newUses })
         .where(eq(characterTraits.id, trait.id));
     }
+  }
+
+  // Character Folder operations
+  async getCampaignFolders(campaignId: string): Promise<CharacterFolder[]> {
+    return await db.select()
+      .from(characterFolders)
+      .where(eq(characterFolders.campaignId, campaignId))
+      .orderBy(characterFolders.sortOrder, characterFolders.name);
+  }
+
+  async getCharacterFolder(id: string): Promise<CharacterFolder | undefined> {
+    const [folder] = await db.select()
+      .from(characterFolders)
+      .where(eq(characterFolders.id, id))
+      .limit(1);
+    return folder;
+  }
+
+  async createCharacterFolder(folder: InsertCharacterFolder): Promise<CharacterFolder> {
+    const [created] = await db.insert(characterFolders).values(folder).returning();
+    return created;
+  }
+
+  async updateCharacterFolder(id: string, data: Partial<InsertCharacterFolder>): Promise<CharacterFolder | undefined> {
+    const [updated] = await db.update(characterFolders)
+      .set(data)
+      .where(eq(characterFolders.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteCharacterFolder(id: string): Promise<void> {
+    // First, move all characters in this folder to "unfiled" (null folder)
+    await db.update(characters)
+      .set({ folderId: null })
+      .where(eq(characters.folderId, id));
+    // Then delete the folder
+    await db.delete(characterFolders).where(eq(characterFolders.id, id));
   }
 }
 

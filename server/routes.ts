@@ -2725,6 +2725,124 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Character Folder routes (for organizing characters in campaigns)
+  app.get("/api/campaigns/:campaignId/folders", requireAuth, async (req, res) => {
+    try {
+      const folders = await storage.getCampaignFolders(req.params.campaignId);
+      res.json(folders);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch character folders" });
+    }
+  });
+
+  app.post("/api/campaigns/:campaignId/folders", requireAuth, async (req, res) => {
+    try {
+      const campaign = await storage.getCampaign(req.params.campaignId);
+      if (!campaign) {
+        return res.status(404).json({ error: "Campaign not found" });
+      }
+
+      // GMs can create folders
+      const isGM = await storage.isGM(req.session.userId!, req.params.campaignId);
+      if (!isGM) {
+        return res.status(403).json({ error: "Only GMs can create character folders" });
+      }
+
+      const { name, sortOrder } = req.body;
+      const folder = await storage.createCharacterFolder({
+        campaignId: req.params.campaignId,
+        name: name || "New Folder",
+        sortOrder: sortOrder || 0
+      });
+      res.json(folder);
+    } catch (err) {
+      res.status(400).json({ error: "Failed to create character folder" });
+    }
+  });
+
+  app.patch("/api/campaigns/:campaignId/folders/:folderId", requireAuth, async (req, res) => {
+    try {
+      const campaign = await storage.getCampaign(req.params.campaignId);
+      if (!campaign) {
+        return res.status(404).json({ error: "Campaign not found" });
+      }
+
+      // GMs can update folders
+      const isGM = await storage.isGM(req.session.userId!, req.params.campaignId);
+      if (!isGM) {
+        return res.status(403).json({ error: "Only GMs can update character folders" });
+      }
+
+      // Verify folder belongs to this campaign
+      const folder = await storage.getCharacterFolder(req.params.folderId);
+      if (!folder || folder.campaignId !== req.params.campaignId) {
+        return res.status(404).json({ error: "Folder not found in this campaign" });
+      }
+
+      const updated = await storage.updateCharacterFolder(req.params.folderId, req.body);
+      res.json(updated);
+    } catch (err) {
+      res.status(400).json({ error: "Failed to update character folder" });
+    }
+  });
+
+  app.delete("/api/campaigns/:campaignId/folders/:folderId", requireAuth, async (req, res) => {
+    try {
+      const campaign = await storage.getCampaign(req.params.campaignId);
+      if (!campaign) {
+        return res.status(404).json({ error: "Campaign not found" });
+      }
+
+      // GMs can delete folders
+      const isGM = await storage.isGM(req.session.userId!, req.params.campaignId);
+      if (!isGM) {
+        return res.status(403).json({ error: "Only GMs can delete character folders" });
+      }
+
+      // Verify folder belongs to this campaign
+      const folder = await storage.getCharacterFolder(req.params.folderId);
+      if (!folder || folder.campaignId !== req.params.campaignId) {
+        return res.status(404).json({ error: "Folder not found in this campaign" });
+      }
+
+      await storage.deleteCharacterFolder(req.params.folderId);
+      res.json({ success: true });
+    } catch (err) {
+      res.status(400).json({ error: "Failed to delete character folder" });
+    }
+  });
+
+  // Move character to a folder
+  app.patch("/api/characters/:characterId/folder", requireAuth, async (req, res) => {
+    try {
+      const character = await storage.getCharacter(req.params.characterId);
+      if (!character) {
+        return res.status(404).json({ error: "Character not found" });
+      }
+
+      // GMs can move characters to folders
+      const isGM = await storage.isGM(req.session.userId!, character.campaignId);
+      if (!isGM) {
+        return res.status(403).json({ error: "Only GMs can organize characters into folders" });
+      }
+
+      const { folderId } = req.body;
+      
+      // If folderId provided, verify it belongs to the same campaign
+      if (folderId) {
+        const folder = await storage.getCharacterFolder(folderId);
+        if (!folder || folder.campaignId !== character.campaignId) {
+          return res.status(404).json({ error: "Folder not found in this campaign" });
+        }
+      }
+
+      const updated = await storage.updateCharacter(req.params.characterId, { folderId: folderId || null });
+      res.json(updated);
+    } catch (err) {
+      res.status(400).json({ error: "Failed to move character to folder" });
+    }
+  });
+
   // Admin emails for system-wide access
   const ADMIN_EMAILS = ['notclaudenot@gmail.com', 'reedmcaleb@gmail.com'];
 
