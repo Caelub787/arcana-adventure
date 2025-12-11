@@ -18,7 +18,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { 
   Sword, Shield, Scroll, Map as MapIcon, Settings, 
   Users, User, Plus, Minus, LogOut, Menu, ChevronRight, ChevronLeft, ChevronDown, ChevronUp,
-  Heart, Zap, Backpack, Sparkles, Dice5, MessageSquare, RefreshCw, X, Trash2, Package, FolderOpen, Folder, Lock, Unlock, Camera,
+  Heart, Zap, Backpack, Sparkles, Dice5, MessageSquare, RefreshCw, X, Trash2, Package, FolderOpen, Folder, FolderPlus, GripVertical, Lock, Unlock, Camera,
   BarChart3, Grid3X3, ScrollText, Upload, Image as ImageIcon, Layers, Search, TrendingUp, UserMinus, Ban,
   MousePointer, Target, UserCheck, Swords, ArrowRight, Eye, EyeOff, Check, Moon, Coffee, AlertTriangle, GitBranch, Star, BookOpen, Pencil, Dna
 } from "lucide-react";
@@ -4489,7 +4489,65 @@ export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onIn
   const [loadingAccess, setLoadingAccess] = useState(false);
   const [pendingDeleteChar, setPendingDeleteChar] = useState<any>(null);
   const [clearingChat, setClearingChat] = useState(false);
+  
+  // Folder state
+  const [draggingCharacterId, setDraggingCharacterId] = useState<string | null>(null);
+  const [newFolderName, setNewFolderName] = useState('');
+  const [editingFolderId, setEditingFolderId] = useState<string | null>(null);
+  const [editingFolderName, setEditingFolderName] = useState('');
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
+  
   const queryClient = useQueryClient();
+  
+  // Folder query
+  const { data: folders = [] } = useQuery({
+    queryKey: ['campaign-folders', campaignId],
+    queryFn: () => api.getCampaignFolders(campaignId!),
+    enabled: !!campaignId,
+  });
+
+  // Folder mutations
+  const createFolderMutation = useMutation({
+    mutationFn: (name: string) => api.createCharacterFolder(campaignId!, { name, sortOrder: folders.length }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['campaign-folders', campaignId] }),
+  });
+
+  const updateFolderMutation = useMutation({
+    mutationFn: ({ id, name }: { id: string; name: string }) => api.updateCharacterFolder(campaignId!, id, { name }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['campaign-folders', campaignId] }),
+  });
+
+  const deleteFolderMutation = useMutation({
+    mutationFn: (id: string) => api.deleteCharacterFolder(campaignId!, id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['campaign-folders', campaignId] });
+      queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${campaignId}/characters`] });
+    },
+  });
+
+  const moveCharacterMutation = useMutation({
+    mutationFn: ({ characterId, folderId }: { characterId: string; folderId: string | null }) => 
+      api.moveCharacterToFolder(characterId, folderId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${campaignId}/characters`] }),
+  });
+  
+  // Folder helper functions
+  const getCharactersInFolder = (folderId: string | null) => {
+    return characters?.filter((c: any) => c.folderId === folderId) || [];
+  };
+  const unfiledCharacters = characters?.filter((c: any) => !c.folderId) || [];
+  
+  const toggleFolder = (folderId: string) => {
+    setExpandedFolders(prev => {
+      const next = new Set(prev);
+      if (next.has(folderId)) {
+        next.delete(folderId);
+      } else {
+        next.add(folderId);
+      }
+      return next;
+    });
+  };
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
   // Fetch existing chat messages from API
@@ -5083,122 +5141,408 @@ export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onIn
                  </Button>
                )}
                
-               {/* Characters List */}
-               <div className="space-y-2">
-                  {characters && characters.length > 0 ? (
-                    characters.map((char: any) => (
-                      <div 
-                        key={char.id} 
-                        className="p-3 bg-stone-900 rounded border border-stone-800 flex justify-between items-center gap-2"
-                        data-testid={`character-item-${char.id}`}
-                      >
-                        <div className="flex items-center gap-3 flex-1 min-w-0">
-                          <div className="h-10 w-10 bg-stone-800 rounded flex items-center justify-center border border-stone-700 shrink-0">
-                            <Sword className="h-5 w-5 text-stone-500" />
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <div className="font-bold text-stone-200 truncate">{char.name}</div>
-                            <div className="text-xs text-stone-500">
-                              Lvl {char.level} {char.class}
-                            </div>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                          <div className="text-xs text-stone-400 hidden sm:block">
-                            HP: {char.hp}/{char.maxHp}
-                          </div>
-                          {onViewCharacter && (
-                            <TooltipProvider>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    onClick={() => onViewCharacter(char)}
-                                    className="h-8 w-8 p-0 bg-amber-900/30 hover:bg-amber-800/50 border border-amber-700 text-amber-200"
-                                    data-testid={`button-view-character-${char.id}`}
-                                  >
-                                    <User className="h-4 w-4" />
-                                  </Button>
-                                </TooltipTrigger>
-                                <TooltipContent side="top" className="bg-stone-800 border-stone-700">
-                                  <p>View Sheet</p>
-                                </TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
-                          )}
-                          {onAssignCharacter && (role === 'gm' || myPermissions?.permissions?.[char.id] === 'edit' || myPermissions?.permissions?.[char.id] === 'owner') && (
-                            <TooltipProvider>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    onClick={() => onAssignCharacter(char)}
-                                    className="h-8 w-8 p-0 bg-green-900/30 hover:bg-green-800/50 border border-green-700 text-green-200"
-                                    data-testid={`button-assign-character-${char.id}`}
-                                  >
-                                    <UserCheck className="h-4 w-4" />
-                                  </Button>
-                                </TooltipTrigger>
-                                <TooltipContent side="top" className="bg-stone-800 border-stone-700">
-                                  <p>Assign Character</p>
-                                </TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
-                          )}
-                          {role === 'gm' && (
-                            <TooltipProvider>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    onClick={() => {
-                                      setSelectedCharForAccess(char);
-                                      setShowAccessDialog(true);
-                                    }}
-                                    className="h-8 w-8 p-0 bg-purple-900/30 hover:bg-purple-800/50 border border-purple-700 text-purple-200"
-                                    data-testid={`button-manage-access-${char.id}`}
-                                  >
-                                    <Shield className="h-4 w-4" />
-                                  </Button>
-                                </TooltipTrigger>
-                                <TooltipContent side="top" className="bg-stone-800 border-stone-700">
-                                  <p>Manage Access</p>
-                                </TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
-                          )}
-                          {role === 'gm' && (
-                            <TooltipProvider>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    onClick={() => handleDeleteCharacter(char)}
-                                    disabled={deleteCharacterMutation.isPending}
-                                    className="h-8 w-8 p-0 text-red-500 hover:text-red-400 hover:bg-red-900/30"
-                                    data-testid={`button-delete-character-${char.id}`}
-                                  >
-                                    <Trash2 className="h-4 w-4" />
-                                  </Button>
-                                </TooltipTrigger>
-                                <TooltipContent side="top" className="bg-stone-800 border-stone-700">
-                                  <p>Delete Character</p>
-                                </TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
-                          )}
-                        </div>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="p-4 text-center text-stone-500 text-sm">
-                      No characters yet
-                    </div>
-                  )}
+               {/* Create Folder Input (GM only) */}
+               {role === 'gm' && (
+                 <div className="flex gap-2">
+                   <Input
+                     placeholder="New folder name..."
+                     value={newFolderName}
+                     onChange={(e) => setNewFolderName(e.target.value)}
+                     className="flex-1 bg-stone-900 border-stone-700 text-stone-200"
+                     data-testid="input-new-folder-name"
+                   />
+                   <Button
+                     variant="secondary"
+                     size="sm"
+                     onClick={() => {
+                       if (newFolderName.trim()) {
+                         createFolderMutation.mutate(newFolderName.trim());
+                         setNewFolderName('');
+                       }
+                     }}
+                     disabled={!newFolderName.trim() || createFolderMutation.isPending}
+                     className="bg-stone-800 hover:bg-stone-700"
+                     data-testid="button-create-folder"
+                   >
+                     <FolderPlus className="h-4 w-4" />
+                   </Button>
+                 </div>
+               )}
+               
+               {/* Folder Sections */}
+               <div className="space-y-3">
+                 {folders.map((folder: any) => {
+                   const folderCharacters = getCharactersInFolder(folder.id);
+                   const isExpanded = expandedFolders.has(folder.id);
+                   
+                   return (
+                     <div
+                       key={folder.id}
+                       className={`bg-stone-850 rounded-lg border border-stone-700 p-2 transition-colors ${draggingCharacterId ? 'border-dashed' : ''}`}
+                       onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add('border-amber-500'); }}
+                       onDragLeave={(e) => { e.currentTarget.classList.remove('border-amber-500'); }}
+                       onDrop={(e) => {
+                         e.preventDefault();
+                         e.currentTarget.classList.remove('border-amber-500');
+                         const charId = e.dataTransfer.getData('text/plain');
+                         if (charId) {
+                           moveCharacterMutation.mutate({ characterId: charId, folderId: folder.id });
+                           setDraggingCharacterId(null);
+                         }
+                       }}
+                       data-testid={`folder-section-${folder.id}`}
+                     >
+                       {/* Folder Header */}
+                       <div
+                         className="flex items-center justify-between p-2 cursor-pointer hover:bg-stone-800/50 rounded"
+                         onClick={() => toggleFolder(folder.id)}
+                       >
+                         <div className="flex items-center gap-2 flex-1 min-w-0">
+                           {isExpanded ? (
+                             <ChevronDown className="h-4 w-4 text-stone-400 shrink-0" />
+                           ) : (
+                             <ChevronRight className="h-4 w-4 text-stone-400 shrink-0" />
+                           )}
+                           <Folder className="h-4 w-4 text-amber-500 shrink-0" />
+                           {editingFolderId === folder.id ? (
+                             <Input
+                               value={editingFolderName}
+                               onChange={(e) => setEditingFolderName(e.target.value)}
+                               onClick={(e) => e.stopPropagation()}
+                               onKeyDown={(e) => {
+                                 if (e.key === 'Enter') {
+                                   updateFolderMutation.mutate({ id: folder.id, name: editingFolderName });
+                                   setEditingFolderId(null);
+                                 } else if (e.key === 'Escape') {
+                                   setEditingFolderId(null);
+                                 }
+                               }}
+                               onBlur={() => {
+                                 if (editingFolderName.trim() && editingFolderName !== folder.name) {
+                                   updateFolderMutation.mutate({ id: folder.id, name: editingFolderName });
+                                 }
+                                 setEditingFolderId(null);
+                               }}
+                               className="h-6 py-0 px-1 text-sm bg-stone-900 border-stone-600"
+                               autoFocus
+                               data-testid={`input-edit-folder-${folder.id}`}
+                             />
+                           ) : (
+                             <span className="font-medium text-stone-200 truncate">{folder.name}</span>
+                           )}
+                           <Badge variant="secondary" className="bg-stone-700 text-stone-300 text-xs shrink-0">
+                             {folderCharacters.length}
+                           </Badge>
+                         </div>
+                         {role === 'gm' && editingFolderId !== folder.id && (
+                           <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+                             <Button
+                               size="sm"
+                               variant="ghost"
+                               onClick={() => {
+                                 setEditingFolderId(folder.id);
+                                 setEditingFolderName(folder.name);
+                               }}
+                               className="h-6 w-6 p-0 text-stone-400 hover:text-stone-200"
+                               data-testid={`button-edit-folder-${folder.id}`}
+                             >
+                               <Pencil className="h-3 w-3" />
+                             </Button>
+                             <Button
+                               size="sm"
+                               variant="ghost"
+                               onClick={() => deleteFolderMutation.mutate(folder.id)}
+                               disabled={deleteFolderMutation.isPending}
+                               className="h-6 w-6 p-0 text-red-400 hover:text-red-300"
+                               data-testid={`button-delete-folder-${folder.id}`}
+                             >
+                               <Trash2 className="h-3 w-3" />
+                             </Button>
+                           </div>
+                         )}
+                       </div>
+                       
+                       {/* Folder Characters */}
+                       {isExpanded && (
+                         <div className="mt-2 space-y-2 pl-6">
+                           {folderCharacters.length > 0 ? (
+                             folderCharacters.map((char: any) => (
+                               <div 
+                                 key={char.id} 
+                                 className="p-3 bg-stone-900 rounded border border-stone-800 flex justify-between items-center gap-2"
+                                 draggable={role === 'gm'}
+                                 onDragStart={(e) => {
+                                   e.dataTransfer.setData('text/plain', char.id.toString());
+                                   setDraggingCharacterId(char.id);
+                                 }}
+                                 onDragEnd={() => setDraggingCharacterId(null)}
+                                 data-testid={`character-item-${char.id}`}
+                               >
+                                 <div className="flex items-center gap-3 flex-1 min-w-0">
+                                   {role === 'gm' && (
+                                     <GripVertical className="h-4 w-4 text-stone-500 cursor-grab shrink-0" />
+                                   )}
+                                   <div className="h-10 w-10 bg-stone-800 rounded flex items-center justify-center border border-stone-700 shrink-0">
+                                     <Sword className="h-5 w-5 text-stone-500" />
+                                   </div>
+                                   <div className="min-w-0 flex-1">
+                                     <div className="font-bold text-stone-200 truncate">{char.name}</div>
+                                     <div className="text-xs text-stone-500">
+                                       Lvl {char.level} {char.class}
+                                     </div>
+                                   </div>
+                                 </div>
+                                 <div className="flex items-center gap-2 shrink-0">
+                                   <div className="text-xs text-stone-400 hidden sm:block">
+                                     HP: {char.hp}/{char.maxHp}
+                                   </div>
+                                   {onViewCharacter && (
+                                     <TooltipProvider>
+                                       <Tooltip>
+                                         <TooltipTrigger asChild>
+                                           <Button
+                                             size="sm"
+                                             variant="ghost"
+                                             onClick={() => onViewCharacter(char)}
+                                             className="h-8 w-8 p-0 bg-amber-900/30 hover:bg-amber-800/50 border border-amber-700 text-amber-200"
+                                             data-testid={`button-view-character-${char.id}`}
+                                           >
+                                             <User className="h-4 w-4" />
+                                           </Button>
+                                         </TooltipTrigger>
+                                         <TooltipContent side="top" className="bg-stone-800 border-stone-700">
+                                           <p>View Sheet</p>
+                                         </TooltipContent>
+                                       </Tooltip>
+                                     </TooltipProvider>
+                                   )}
+                                   {onAssignCharacter && (role === 'gm' || myPermissions?.permissions?.[char.id] === 'edit' || myPermissions?.permissions?.[char.id] === 'owner') && (
+                                     <TooltipProvider>
+                                       <Tooltip>
+                                         <TooltipTrigger asChild>
+                                           <Button
+                                             size="sm"
+                                             variant="ghost"
+                                             onClick={() => onAssignCharacter(char)}
+                                             className="h-8 w-8 p-0 bg-green-900/30 hover:bg-green-800/50 border border-green-700 text-green-200"
+                                             data-testid={`button-assign-character-${char.id}`}
+                                           >
+                                             <UserCheck className="h-4 w-4" />
+                                           </Button>
+                                         </TooltipTrigger>
+                                         <TooltipContent side="top" className="bg-stone-800 border-stone-700">
+                                           <p>Assign Character</p>
+                                         </TooltipContent>
+                                       </Tooltip>
+                                     </TooltipProvider>
+                                   )}
+                                   {role === 'gm' && (
+                                     <TooltipProvider>
+                                       <Tooltip>
+                                         <TooltipTrigger asChild>
+                                           <Button
+                                             size="sm"
+                                             variant="ghost"
+                                             onClick={() => {
+                                               setSelectedCharForAccess(char);
+                                               setShowAccessDialog(true);
+                                             }}
+                                             className="h-8 w-8 p-0 bg-purple-900/30 hover:bg-purple-800/50 border border-purple-700 text-purple-200"
+                                             data-testid={`button-manage-access-${char.id}`}
+                                           >
+                                             <Shield className="h-4 w-4" />
+                                           </Button>
+                                         </TooltipTrigger>
+                                         <TooltipContent side="top" className="bg-stone-800 border-stone-700">
+                                           <p>Manage Access</p>
+                                         </TooltipContent>
+                                       </Tooltip>
+                                     </TooltipProvider>
+                                   )}
+                                   {role === 'gm' && (
+                                     <TooltipProvider>
+                                       <Tooltip>
+                                         <TooltipTrigger asChild>
+                                           <Button
+                                             size="sm"
+                                             variant="ghost"
+                                             onClick={() => handleDeleteCharacter(char)}
+                                             disabled={deleteCharacterMutation.isPending}
+                                             className="h-8 w-8 p-0 text-red-500 hover:text-red-400 hover:bg-red-900/30"
+                                             data-testid={`button-delete-character-${char.id}`}
+                                           >
+                                             <Trash2 className="h-4 w-4" />
+                                           </Button>
+                                         </TooltipTrigger>
+                                         <TooltipContent side="top" className="bg-stone-800 border-stone-700">
+                                           <p>Delete Character</p>
+                                         </TooltipContent>
+                                       </Tooltip>
+                                     </TooltipProvider>
+                                   )}
+                                 </div>
+                               </div>
+                             ))
+                           ) : (
+                             <div className="p-3 text-center text-stone-500 text-sm border border-dashed border-stone-700 rounded">
+                               Drag characters here
+                             </div>
+                           )}
+                         </div>
+                       )}
+                     </div>
+                   );
+                 })}
+                 
+                 {/* Unfiled Characters Section */}
+                 <div
+                   className={`bg-stone-850 rounded-lg border border-stone-700 p-2 transition-colors ${draggingCharacterId ? 'border-dashed' : ''}`}
+                   onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add('border-amber-500'); }}
+                   onDragLeave={(e) => { e.currentTarget.classList.remove('border-amber-500'); }}
+                   onDrop={(e) => {
+                     e.preventDefault();
+                     e.currentTarget.classList.remove('border-amber-500');
+                     const charId = e.dataTransfer.getData('text/plain');
+                     if (charId) {
+                       moveCharacterMutation.mutate({ characterId: charId, folderId: null });
+                       setDraggingCharacterId(null);
+                     }
+                   }}
+                   data-testid="unfiled-characters-section"
+                 >
+                   <div className="flex items-center gap-2 p-2 text-stone-400">
+                     <FolderOpen className="h-4 w-4" />
+                     <span className="font-medium">Unfiled</span>
+                     <Badge variant="secondary" className="bg-stone-700 text-stone-300 text-xs">
+                       {unfiledCharacters.length}
+                     </Badge>
+                   </div>
+                   <div className="mt-2 space-y-2">
+                     {unfiledCharacters.length > 0 ? (
+                       unfiledCharacters.map((char: any) => (
+                         <div 
+                           key={char.id} 
+                           className="p-3 bg-stone-900 rounded border border-stone-800 flex justify-between items-center gap-2"
+                           draggable={role === 'gm'}
+                           onDragStart={(e) => {
+                             e.dataTransfer.setData('text/plain', char.id.toString());
+                             setDraggingCharacterId(char.id);
+                           }}
+                           onDragEnd={() => setDraggingCharacterId(null)}
+                           data-testid={`character-item-${char.id}`}
+                         >
+                           <div className="flex items-center gap-3 flex-1 min-w-0">
+                             {role === 'gm' && (
+                               <GripVertical className="h-4 w-4 text-stone-500 cursor-grab shrink-0" />
+                             )}
+                             <div className="h-10 w-10 bg-stone-800 rounded flex items-center justify-center border border-stone-700 shrink-0">
+                               <Sword className="h-5 w-5 text-stone-500" />
+                             </div>
+                             <div className="min-w-0 flex-1">
+                               <div className="font-bold text-stone-200 truncate">{char.name}</div>
+                               <div className="text-xs text-stone-500">
+                                 Lvl {char.level} {char.class}
+                               </div>
+                             </div>
+                           </div>
+                           <div className="flex items-center gap-2 shrink-0">
+                             <div className="text-xs text-stone-400 hidden sm:block">
+                               HP: {char.hp}/{char.maxHp}
+                             </div>
+                             {onViewCharacter && (
+                               <TooltipProvider>
+                                 <Tooltip>
+                                   <TooltipTrigger asChild>
+                                     <Button
+                                       size="sm"
+                                       variant="ghost"
+                                       onClick={() => onViewCharacter(char)}
+                                       className="h-8 w-8 p-0 bg-amber-900/30 hover:bg-amber-800/50 border border-amber-700 text-amber-200"
+                                       data-testid={`button-view-character-${char.id}`}
+                                     >
+                                       <User className="h-4 w-4" />
+                                     </Button>
+                                   </TooltipTrigger>
+                                   <TooltipContent side="top" className="bg-stone-800 border-stone-700">
+                                     <p>View Sheet</p>
+                                   </TooltipContent>
+                                 </Tooltip>
+                               </TooltipProvider>
+                             )}
+                             {onAssignCharacter && (role === 'gm' || myPermissions?.permissions?.[char.id] === 'edit' || myPermissions?.permissions?.[char.id] === 'owner') && (
+                               <TooltipProvider>
+                                 <Tooltip>
+                                   <TooltipTrigger asChild>
+                                     <Button
+                                       size="sm"
+                                       variant="ghost"
+                                       onClick={() => onAssignCharacter(char)}
+                                       className="h-8 w-8 p-0 bg-green-900/30 hover:bg-green-800/50 border border-green-700 text-green-200"
+                                       data-testid={`button-assign-character-${char.id}`}
+                                     >
+                                       <UserCheck className="h-4 w-4" />
+                                     </Button>
+                                   </TooltipTrigger>
+                                   <TooltipContent side="top" className="bg-stone-800 border-stone-700">
+                                     <p>Assign Character</p>
+                                   </TooltipContent>
+                                 </Tooltip>
+                               </TooltipProvider>
+                             )}
+                             {role === 'gm' && (
+                               <TooltipProvider>
+                                 <Tooltip>
+                                   <TooltipTrigger asChild>
+                                     <Button
+                                       size="sm"
+                                       variant="ghost"
+                                       onClick={() => {
+                                         setSelectedCharForAccess(char);
+                                         setShowAccessDialog(true);
+                                       }}
+                                       className="h-8 w-8 p-0 bg-purple-900/30 hover:bg-purple-800/50 border border-purple-700 text-purple-200"
+                                       data-testid={`button-manage-access-${char.id}`}
+                                     >
+                                       <Shield className="h-4 w-4" />
+                                     </Button>
+                                   </TooltipTrigger>
+                                   <TooltipContent side="top" className="bg-stone-800 border-stone-700">
+                                     <p>Manage Access</p>
+                                   </TooltipContent>
+                                 </Tooltip>
+                               </TooltipProvider>
+                             )}
+                             {role === 'gm' && (
+                               <TooltipProvider>
+                                 <Tooltip>
+                                   <TooltipTrigger asChild>
+                                     <Button
+                                       size="sm"
+                                       variant="ghost"
+                                       onClick={() => handleDeleteCharacter(char)}
+                                       disabled={deleteCharacterMutation.isPending}
+                                       className="h-8 w-8 p-0 text-red-500 hover:text-red-400 hover:bg-red-900/30"
+                                       data-testid={`button-delete-character-${char.id}`}
+                                     >
+                                       <Trash2 className="h-4 w-4" />
+                                     </Button>
+                                   </TooltipTrigger>
+                                   <TooltipContent side="top" className="bg-stone-800 border-stone-700">
+                                     <p>Delete Character</p>
+                                   </TooltipContent>
+                                 </Tooltip>
+                               </TooltipProvider>
+                             )}
+                           </div>
+                         </div>
+                       ))
+                     ) : (
+                       <div className="p-4 text-center text-stone-500 text-sm">
+                         {characters && characters.length > 0 ? 'All characters are in folders' : 'No characters yet'}
+                       </div>
+                     )}
+                   </div>
+                 </div>
                </div>
             </TabsContent>
           </Tabs>
