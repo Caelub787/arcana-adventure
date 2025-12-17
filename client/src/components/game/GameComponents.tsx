@@ -10328,7 +10328,7 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                     data-testid={`tab-${value}`}
                     aria-label={label}
                     className={`
-                      flex flex-col items-center justify-center p-1.5 sm:p-2 rounded-lg border border-transparent
+                      flex-1 flex flex-col items-center justify-center p-1.5 sm:p-2 rounded-lg border border-transparent
                       transition-all duration-200 min-h-[44px] sm:min-h-[56px]
                       data-[state=active]:shadow-md
                       ${getTabColorClasses(color)}
