@@ -68,7 +68,7 @@ export default function Home() {
           initial={{ y: 50, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           transition={{ duration: 0.8, delay: 0.2, ease: "easeOut" }}
-          className="w-full max-w-6xl space-y-8"
+          className="w-full max-w-full px-4 space-y-8"
         >
           
           {/* Favorites Section (At Top) */}

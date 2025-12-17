@@ -10318,7 +10318,7 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
     <div className="w-full h-full bg-stone-900 text-stone-200 flex flex-col overflow-hidden">
       <Tabs defaultValue={defaultTab} className="w-full h-full flex flex-col overflow-hidden">
         {/* Icon-based tabs matching battlemap sidebar - icons on mobile, icons+text on desktop */}
-        <TabsList className="grid w-full grid-cols-7 bg-stone-950 border-b border-stone-700 shrink-0 h-auto p-1 gap-0.5 sm:gap-1">
+        <TabsList className="flex w-full bg-stone-950 border-b border-stone-700 shrink-0 h-auto p-1 gap-0.5 sm:gap-1">
           {tabConfig.map(({ value, icon: Icon, color, label }) => (
             <TooltipProvider key={value}>
               <Tooltip delayDuration={0}>
@@ -10328,14 +10328,14 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                     data-testid={`tab-${value}`}
                     aria-label={label}
                     className={`
-                      flex-1 flex flex-col items-center justify-center p-1.5 sm:p-2 rounded-lg border border-transparent
-                      transition-all duration-200 min-h-[44px] sm:min-h-[56px]
+                      flex-1 basis-0 flex flex-col items-center justify-center p-1.5 sm:p-2 rounded-lg border border-transparent
+                      transition-all duration-200 min-h-[44px] sm:min-h-[56px] min-w-0
                       data-[state=active]:shadow-md
                       ${getTabColorClasses(color)}
                     `}
                   >
-                    <Icon className="h-5 w-5 sm:h-4 sm:w-4" />
-                    <span className="text-[9px] sm:text-xs mt-0.5 leading-tight font-medium">{label}</span>
+                    <Icon className="h-5 w-5 sm:h-4 sm:w-4 shrink-0" />
+                    <span className="text-[9px] sm:text-xs mt-0.5 leading-tight font-medium truncate">{label}</span>
                   </TabsTrigger>
                 </TooltipTrigger>
                 <TooltipContent side="bottom" className="bg-stone-800 border-stone-700 text-stone-200">
