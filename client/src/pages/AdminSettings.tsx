@@ -347,9 +347,9 @@ export default function AdminSettings() {
   };
 
   return (
-    <div className="min-h-screen bg-stone-950 text-stone-200">
-      <div className="w-full px-4 py-6">
-        <div className="flex items-center gap-4 mb-6">
+    <div className="h-screen bg-stone-950 text-stone-200 flex flex-col overflow-hidden">
+      <div className="w-full px-4 py-4 flex flex-col flex-1 min-h-0">
+        <div className="flex items-center gap-4 mb-4 shrink-0">
           <Button
             variant="ghost"
             size="icon"
@@ -679,8 +679,8 @@ interface ItemsViewProps {
 
 function ItemsView({ items, isLoading, searchQuery, setSearchQuery, typeFilter, setTypeFilter, onAddItem, onEditItem, onDeleteItem }: ItemsViewProps) {
   return (
-    <Card className="bg-stone-900 border-stone-700">
-      <CardHeader className="flex flex-row items-center justify-between">
+    <Card className="bg-stone-900 border-stone-700 flex-1 flex flex-col min-h-0">
+      <CardHeader className="flex flex-row items-center justify-between shrink-0">
         <CardTitle className="text-amber-500">System Items</CardTitle>
         <Button
           onClick={onAddItem}
@@ -691,8 +691,8 @@ function ItemsView({ items, isLoading, searchQuery, setSearchQuery, typeFilter, 
           Add Item
         </Button>
       </CardHeader>
-      <CardContent>
-        <div className="flex gap-4 mb-4">
+      <CardContent className="flex-1 flex flex-col min-h-0">
+        <div className="flex gap-4 mb-4 shrink-0">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-500" />
             <Input
@@ -728,7 +728,7 @@ function ItemsView({ items, isLoading, searchQuery, setSearchQuery, typeFilter, 
             <p className="text-sm mt-2">Create items that will be available across all campaigns</p>
           </div>
         ) : (
-          <ScrollArea className="h-[500px]">
+          <ScrollArea className="flex-1 min-h-0">
             <div className="space-y-2">
               {items.map((item: Item) => {
                 const Icon = itemTypeIcons[item.itemType] || Package;
@@ -800,8 +800,8 @@ interface SpeciesViewProps {
 
 function SpeciesView({ species, isLoading, searchQuery, setSearchQuery, onAddSpecies, onEditSpecies, onDeleteSpecies }: SpeciesViewProps) {
   return (
-    <Card className="bg-stone-900 border-stone-700">
-      <CardHeader className="flex flex-row items-center justify-between">
+    <Card className="bg-stone-900 border-stone-700 flex-1 flex flex-col min-h-0">
+      <CardHeader className="flex flex-row items-center justify-between shrink-0">
         <CardTitle className="text-emerald-500">System Species</CardTitle>
         <Button
           onClick={onAddSpecies}
@@ -812,8 +812,8 @@ function SpeciesView({ species, isLoading, searchQuery, setSearchQuery, onAddSpe
           Add Species
         </Button>
       </CardHeader>
-      <CardContent>
-        <div className="mb-4">
+      <CardContent className="flex-1 flex flex-col min-h-0">
+        <div className="mb-4 shrink-0">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-500" />
             <Input
@@ -835,7 +835,7 @@ function SpeciesView({ species, isLoading, searchQuery, setSearchQuery, onAddSpe
             <p className="text-sm mt-2">Create playable species for character creation</p>
           </div>
         ) : (
-          <ScrollArea className="h-[500px]">
+          <ScrollArea className="flex-1 min-h-0">
             <div className="space-y-2">
               {species.map((s: SystemSpecies) => (
                 <div
@@ -901,8 +901,8 @@ interface SpellsViewProps {
 
 function SpellsView({ spells, isLoading, searchQuery, setSearchQuery, onAddSpell, onEditSpell, onDeleteSpell }: SpellsViewProps) {
   return (
-    <Card className="bg-stone-900 border-stone-700">
-      <CardHeader className="flex flex-row items-center justify-between">
+    <Card className="bg-stone-900 border-stone-700 flex-1 flex flex-col min-h-0">
+      <CardHeader className="flex flex-row items-center justify-between shrink-0">
         <CardTitle className="text-blue-500">System Spells</CardTitle>
         <Button
           onClick={onAddSpell}
@@ -913,8 +913,8 @@ function SpellsView({ spells, isLoading, searchQuery, setSearchQuery, onAddSpell
           Add Spell
         </Button>
       </CardHeader>
-      <CardContent>
-        <div className="mb-4">
+      <CardContent className="flex-1 flex flex-col min-h-0">
+        <div className="mb-4 shrink-0">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-500" />
             <Input
@@ -936,7 +936,7 @@ function SpellsView({ spells, isLoading, searchQuery, setSearchQuery, onAddSpell
             <p className="text-sm mt-2">Create spells that can be granted through feats</p>
           </div>
         ) : (
-          <ScrollArea className="h-[500px]">
+          <ScrollArea className="flex-1 min-h-0">
             <div className="space-y-2">
               {spells.map((spell: SystemSpell) => (
                 <div
@@ -1018,8 +1018,8 @@ const parentAttributeColors: Record<string, string> = {
 
 function SkillsView({ skills, isLoading, searchQuery, setSearchQuery, onAddSkill, onEditSkill, onDeleteSkill }: SkillsViewProps) {
   return (
-    <Card className="bg-stone-900 border-stone-700">
-      <CardHeader className="flex flex-row items-center justify-between">
+    <Card className="bg-stone-900 border-stone-700 flex-1 flex flex-col min-h-0">
+      <CardHeader className="flex flex-row items-center justify-between shrink-0">
         <CardTitle className="text-cyan-500">Custom Skills</CardTitle>
         <Button
           onClick={onAddSkill}
@@ -1030,8 +1030,8 @@ function SkillsView({ skills, isLoading, searchQuery, setSearchQuery, onAddSkill
           Add Skill
         </Button>
       </CardHeader>
-      <CardContent>
-        <div className="mb-4">
+      <CardContent className="flex-1 flex flex-col min-h-0">
+        <div className="mb-4 shrink-0">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-500" />
             <Input
@@ -1053,7 +1053,7 @@ function SkillsView({ skills, isLoading, searchQuery, setSearchQuery, onAddSkill
             <p className="text-sm mt-2">Create custom skills that can be added to character sheets</p>
           </div>
         ) : (
-          <ScrollArea className="h-[500px]">
+          <ScrollArea className="flex-1 min-h-0">
             <div className="space-y-2">
               {skills.map((skill: SystemSkill) => (
                 <div
@@ -1247,8 +1247,8 @@ interface TraitsViewProps {
 
 function TraitsView({ traits, isLoading, searchQuery, setSearchQuery, onAddTrait, onEditTrait, onDeleteTrait }: TraitsViewProps) {
   return (
-    <Card className="bg-stone-900 border-stone-700">
-      <CardHeader className="flex flex-row items-center justify-between">
+    <Card className="bg-stone-900 border-stone-700 flex-1 flex flex-col min-h-0">
+      <CardHeader className="flex flex-row items-center justify-between shrink-0">
         <CardTitle className="text-rose-500">Traits</CardTitle>
         <Button
           onClick={onAddTrait}
@@ -1259,8 +1259,8 @@ function TraitsView({ traits, isLoading, searchQuery, setSearchQuery, onAddTrait
           Add Trait
         </Button>
       </CardHeader>
-      <CardContent>
-        <div className="mb-4">
+      <CardContent className="flex-1 flex flex-col min-h-0">
+        <div className="mb-4 shrink-0">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-500" />
             <Input
@@ -1282,7 +1282,7 @@ function TraitsView({ traits, isLoading, searchQuery, setSearchQuery, onAddTrait
             <p className="text-sm mt-2">Create traits with limited uses that reset on long rest</p>
           </div>
         ) : (
-          <ScrollArea className="h-[500px]">
+          <ScrollArea className="flex-1 min-h-0">
             <div className="space-y-2">
               {traits.map((trait: SystemTrait) => (
                 <div
