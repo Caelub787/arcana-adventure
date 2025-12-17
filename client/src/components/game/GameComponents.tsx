@@ -10315,8 +10315,8 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
   };
 
   return (
-    <div className="w-full h-full bg-stone-900 text-stone-200 flex flex-col overflow-hidden">
-      <Tabs defaultValue={defaultTab} className="w-full h-full flex flex-col overflow-hidden">
+    <div className="w-full flex-1 min-h-0 bg-stone-900 text-stone-200 flex flex-col overflow-hidden">
+      <Tabs defaultValue={defaultTab} className="w-full flex-1 min-h-0 flex flex-col overflow-hidden">
         {/* Icon-based tabs matching battlemap sidebar - icons on mobile, icons+text on desktop */}
         <TabsList className="grid grid-cols-7 w-full bg-stone-950 border-b border-stone-700 shrink-0 h-auto p-1 gap-0.5 sm:gap-1">
           {tabConfig.map(({ value, icon: Icon, color, label }) => (
