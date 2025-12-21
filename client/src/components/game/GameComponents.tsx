@@ -1194,6 +1194,15 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
               tabIndex={0}
             >
               <img src={tokenImage} alt="token" className="w-full h-full object-cover pointer-events-none rounded-full" />
+              
+              {/* Nametag - displays character/token name above the token */}
+              <div 
+                className="absolute left-1/2 -translate-x-1/2 -top-4 px-1.5 py-0.5 bg-black/70 rounded text-[10px] text-white whitespace-nowrap max-w-[80px] truncate pointer-events-none"
+                style={{ fontSize: Math.max(8, Math.min(11, tokenSize / 6)) }}
+              >
+                {character?.name || (token.type === 'player' ? 'Player' : 'Enemy')}
+              </div>
+              
               {/* Token border - shows targeting (red), selection (white), or default (blue/red based on type) */}
               <div className={`absolute inset-0 rounded-full ${
                 targetedTokenId === token.id 
