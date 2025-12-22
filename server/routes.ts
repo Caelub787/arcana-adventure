@@ -2827,6 +2827,161 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Scene Folder routes
+  app.get("/api/campaigns/:campaignId/scene-folders", requireAuth, async (req, res) => {
+    try {
+      const folders = await storage.getSceneFolders(req.params.campaignId);
+      res.json(folders);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch scene folders" });
+    }
+  });
+
+  app.post("/api/campaigns/:campaignId/scene-folders", requireAuth, async (req, res) => {
+    try {
+      const campaign = await storage.getCampaign(req.params.campaignId);
+      if (!campaign) {
+        return res.status(404).json({ error: "Campaign not found" });
+      }
+
+      // GMs can create scene folders
+      const isGM = await storage.isGM(req.session.userId!, req.params.campaignId);
+      if (!isGM) {
+        return res.status(403).json({ error: "Only GMs can create scene folders" });
+      }
+
+      const { name, sortOrder } = req.body;
+      const folder = await storage.createSceneFolder({
+        campaignId: req.params.campaignId,
+        name: name || "New Folder",
+        sortOrder: sortOrder || 0
+      });
+      res.json(folder);
+    } catch (err) {
+      res.status(400).json({ error: "Failed to create scene folder" });
+    }
+  });
+
+  app.patch("/api/campaigns/:campaignId/scene-folders/:folderId", requireAuth, async (req, res) => {
+    try {
+      const campaign = await storage.getCampaign(req.params.campaignId);
+      if (!campaign) {
+        return res.status(404).json({ error: "Campaign not found" });
+      }
+
+      // GMs can update scene folders
+      const isGM = await storage.isGM(req.session.userId!, req.params.campaignId);
+      if (!isGM) {
+        return res.status(403).json({ error: "Only GMs can update scene folders" });
+      }
+
+      // Verify folder belongs to this campaign
+      const folder = await storage.getSceneFolder(req.params.folderId);
+      if (!folder || folder.campaignId !== req.params.campaignId) {
+        return res.status(404).json({ error: "Scene folder not found in this campaign" });
+      }
+
+      const updated = await storage.updateSceneFolder(req.params.folderId, req.body);
+      res.json(updated);
+    } catch (err) {
+      res.status(400).json({ error: "Failed to update scene folder" });
+    }
+  });
+
+  app.delete("/api/campaigns/:campaignId/scene-folders/:folderId", requireAuth, async (req, res) => {
+    try {
+      const campaign = await storage.getCampaign(req.params.campaignId);
+      if (!campaign) {
+        return res.status(404).json({ error: "Campaign not found" });
+      }
+
+      // GMs can delete scene folders
+      const isGM = await storage.isGM(req.session.userId!, req.params.campaignId);
+      if (!isGM) {
+        return res.status(403).json({ error: "Only GMs can delete scene folders" });
+      }
+
+      // Verify folder belongs to this campaign
+      const folder = await storage.getSceneFolder(req.params.folderId);
+      if (!folder || folder.campaignId !== req.params.campaignId) {
+        return res.status(404).json({ error: "Scene folder not found in this campaign" });
+      }
+
+      await storage.deleteSceneFolder(req.params.folderId);
+      res.json({ success: true });
+    } catch (err) {
+      res.status(400).json({ error: "Failed to delete scene folder" });
+    }
+  });
+
+  // Move scene to a folder
+  app.patch("/api/scenes/:sceneId/folder", requireAuth, async (req, res) => {
+    try {
+      const scene = await storage.getScene(req.params.sceneId);
+      if (!scene) {
+        return res.status(404).json({ error: "Scene not found" });
+      }
+
+      // GMs can move scenes to folders
+      const isGM = await storage.isGM(req.session.userId!, scene.campaignId);
+      if (!isGM) {
+        return res.status(403).json({ error: "Only GMs can organize scenes into folders" });
+      }
+
+      const { folderId } = req.body;
+      
+      // If folderId provided, verify it belongs to the same campaign
+      if (folderId) {
+        const folder = await storage.getSceneFolder(folderId);
+        if (!folder || folder.campaignId !== scene.campaignId) {
+          return res.status(404).json({ error: "Scene folder not found in this campaign" });
+        }
+      }
+
+      const updated = await storage.updateScene(req.params.sceneId, { folderId: folderId || null });
+      res.json(updated);
+    } catch (err) {
+      res.status(400).json({ error: "Failed to move scene to folder" });
+    }
+  });
+
+  // Set active scene for campaign (what players see)
+  app.patch("/api/campaigns/:campaignId/active-scene", requireAuth, async (req, res) => {
+    try {
+      const campaign = await storage.getCampaign(req.params.campaignId);
+      if (!campaign) {
+        return res.status(404).json({ error: "Campaign not found" });
+      }
+
+      const isGM = await storage.isGM(req.session.userId!, req.params.campaignId);
+      if (!isGM) {
+        return res.status(403).json({ error: "Only GMs can set the active scene" });
+      }
+
+      const { sceneId } = req.body;
+      
+      // If sceneId provided, verify it belongs to this campaign
+      if (sceneId) {
+        const scene = await storage.getScene(sceneId);
+        if (!scene || scene.campaignId !== req.params.campaignId) {
+          return res.status(404).json({ error: "Scene not found in this campaign" });
+        }
+      }
+
+      const updated = await storage.updateCampaign(req.params.campaignId, { activeSceneId: sceneId || null });
+      
+      // Broadcast to WebSocket clients that the active scene has changed
+      broadcastToCampaign(req.params.campaignId, {
+        type: 'activeSceneChanged',
+        sceneId: sceneId || null
+      });
+      
+      res.json(updated);
+    } catch (err) {
+      res.status(400).json({ error: "Failed to set active scene" });
+    }
+  });
+
   // Admin emails for system-wide access
   const ADMIN_EMAILS = ['notclaudenot@gmail.com', 'reedmcaleb@gmail.com'];
 
