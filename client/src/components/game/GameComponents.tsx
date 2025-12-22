@@ -1262,7 +1262,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                 <div 
                   className="absolute left-1/2 -translate-x-1/2 font-display text-white pointer-events-none text-center leading-tight"
                   style={{ 
-                    bottom: character && hpPercent !== null ? 12 : 4,
+                    bottom: character && hpPercent !== null ? 10 : 2,
                     fontSize: Math.max(8, Math.min(11, tokenSize / 5.5)),
                     textShadow: '1px 1px 0 #000, -1px 1px 0 #000, 1px -1px 0 #000, -1px -1px 0 #000, 0 1px 0 #000, 0 -1px 0 #000, 1px 0 0 #000, -1px 0 0 #000',
                     maxWidth: tokenSize * 1.2,
@@ -1278,7 +1278,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
               
               {/* HP Bar - Only show if token is linked to a character */}
               {character && hpPercent !== null && (
-                <div className="absolute bottom-1 left-1 right-1 h-1.5 bg-black/50 rounded-full overflow-hidden">
+                <div className="absolute bottom-0.5 left-0.5 right-0.5 h-1.5 bg-black/50 rounded-full overflow-hidden">
                   <div 
                     className={`h-full transition-all duration-300 ${
                       hpPercent > 60 ? 'bg-green-500' : hpPercent > 30 ? 'bg-yellow-500' : 'bg-red-500'
