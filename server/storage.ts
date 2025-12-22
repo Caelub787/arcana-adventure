@@ -26,7 +26,8 @@ import {
   type SystemTrait, type InsertSystemTrait,
   type CharacterTrait, type InsertCharacterTrait,
   type CharacterFolder, type InsertCharacterFolder,
-  users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, items, spells, characterPermissions, initiativeEntries, systemSpecies, campaignSpecies, featTemplates, featTrees, feats, featConnections, characterFeats, systemSpells, systemSkills, characterCustomSkills, systemTraits, characterTraits, characterFolders
+  type SceneFolder, type InsertSceneFolder,
+  users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, items, spells, characterPermissions, initiativeEntries, systemSpecies, campaignSpecies, featTemplates, featTrees, feats, featConnections, characterFeats, systemSpells, systemSkills, characterCustomSkills, systemTraits, characterTraits, characterFolders, sceneFolders
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql, inArray } from "drizzle-orm";
@@ -234,6 +235,13 @@ export interface IStorage {
   createCharacterFolder(folder: InsertCharacterFolder): Promise<CharacterFolder>;
   updateCharacterFolder(id: string, data: Partial<InsertCharacterFolder>): Promise<CharacterFolder | undefined>;
   deleteCharacterFolder(id: string): Promise<void>;
+
+  // Scene Folder operations
+  getSceneFolders(campaignId: string): Promise<SceneFolder[]>;
+  getSceneFolder(id: string): Promise<SceneFolder | undefined>;
+  createSceneFolder(folder: InsertSceneFolder): Promise<SceneFolder>;
+  updateSceneFolder(id: string, data: Partial<InsertSceneFolder>): Promise<SceneFolder | undefined>;
+  deleteSceneFolder(id: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1414,6 +1422,44 @@ export class DatabaseStorage implements IStorage {
       .where(eq(characters.folderId, id));
     // Then delete the folder
     await db.delete(characterFolders).where(eq(characterFolders.id, id));
+  }
+
+  // Scene Folder operations
+  async getSceneFolders(campaignId: string): Promise<SceneFolder[]> {
+    return await db.select()
+      .from(sceneFolders)
+      .where(eq(sceneFolders.campaignId, campaignId))
+      .orderBy(sceneFolders.sortOrder, sceneFolders.name);
+  }
+
+  async getSceneFolder(id: string): Promise<SceneFolder | undefined> {
+    const [folder] = await db.select()
+      .from(sceneFolders)
+      .where(eq(sceneFolders.id, id))
+      .limit(1);
+    return folder;
+  }
+
+  async createSceneFolder(folder: InsertSceneFolder): Promise<SceneFolder> {
+    const [created] = await db.insert(sceneFolders).values(folder).returning();
+    return created;
+  }
+
+  async updateSceneFolder(id: string, data: Partial<InsertSceneFolder>): Promise<SceneFolder | undefined> {
+    const [updated] = await db.update(sceneFolders)
+      .set(data)
+      .where(eq(sceneFolders.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteSceneFolder(id: string): Promise<void> {
+    // First, move all scenes in this folder to "unfiled" (null folder)
+    await db.update(scenes)
+      .set({ folderId: null })
+      .where(eq(scenes.folderId, id));
+    // Then delete the folder
+    await db.delete(sceneFolders).where(eq(sceneFolders.id, id));
   }
 }
 
