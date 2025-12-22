@@ -20,7 +20,7 @@ import {
   Users, User, Plus, Minus, LogOut, Menu, ChevronRight, ChevronLeft, ChevronDown, ChevronUp,
   Heart, Zap, Backpack, Sparkles, Dice5, MessageSquare, RefreshCw, X, Trash2, Package, FolderOpen, Folder, FolderPlus, GripVertical, Lock, Unlock, Camera,
   BarChart3, Grid3X3, ScrollText, Upload, Image as ImageIcon, Layers, Search, TrendingUp, UserMinus, Ban,
-  MousePointer, Target, UserCheck, Swords, ArrowRight, Eye, EyeOff, Check, Moon, Coffee, AlertTriangle, GitBranch, Star, BookOpen, Pencil, Dna, Type
+  MousePointer, Target, UserCheck, Swords, ArrowRight, Eye, EyeOff, Check, Moon, Coffee, AlertTriangle, GitBranch, Star, BookOpen, Pencil, Dna, Type, Library
 } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { type Scene, type Hotbar, type SystemSpecies, type FeatTreeWithData, type Feat, type FeatConnection, type CharacterFeat, type SystemSkill, type CharacterCustomSkill, api, gameWs } from "@/lib/api";
@@ -4585,6 +4585,8 @@ export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onIn
   const [loadingAccess, setLoadingAccess] = useState(false);
   const [pendingDeleteChar, setPendingDeleteChar] = useState<any>(null);
   const [clearingChat, setClearingChat] = useState(false);
+  const [showTemplateLibrary, setShowTemplateLibrary] = useState(false);
+  const [templateSearchQuery, setTemplateSearchQuery] = useState('');
   
   // Folder state
   const [draggingCharacterId, setDraggingCharacterId] = useState<string | null>(null);
@@ -4625,6 +4627,27 @@ export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onIn
     mutationFn: ({ characterId, folderId }: { characterId: string; folderId: string | null }) => 
       api.moveCharacterToFolder(characterId, folderId),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${campaignId}/characters`] }),
+  });
+
+  // Character template library query
+  const { data: characterTemplates = [] } = useQuery({
+    queryKey: ['character-templates'],
+    queryFn: () => api.getPublicCharacterTemplates(),
+    enabled: showTemplateLibrary,
+  });
+
+  // Mutation to copy template to campaign
+  const copyTemplateMutation = useMutation({
+    mutationFn: (templateId: string) => api.copyTemplateToCompany(campaignId!, templateId),
+    onSuccess: (character) => {
+      queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${campaignId}/characters`] });
+      setShowTemplateLibrary(false);
+      setTemplateSearchQuery('');
+      toast({ title: 'Character Added', description: `${character.name} has been added to the campaign` });
+    },
+    onError: () => {
+      toast({ title: 'Error', description: 'Failed to add character from template', variant: 'destructive' });
+    },
   });
   
   // Folder helper functions
@@ -5222,6 +5245,18 @@ export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onIn
                    data-testid="button-add-character"
                  >
                    <Plus className="mr-2 h-4 w-4" /> Add Character
+                 </Button>
+               )}
+
+               {/* Add from Library Button (GM only) */}
+               {role === 'gm' && (
+                 <Button 
+                   variant="outline" 
+                   className="w-full border-teal-700 text-teal-400 hover:bg-teal-900/30" 
+                   onClick={() => setShowTemplateLibrary(true)}
+                   data-testid="button-add-from-library"
+                 >
+                   <Library className="mr-2 h-4 w-4" /> Add from Library
                  </Button>
                )}
                
@@ -5916,6 +5951,106 @@ export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onIn
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Character Template Library Dialog */}
+      <Dialog open={showTemplateLibrary} onOpenChange={(open) => {
+        setShowTemplateLibrary(open);
+        if (!open) setTemplateSearchQuery('');
+      }}>
+        <DialogContent className="bg-stone-900 border-stone-700 max-w-3xl max-h-[80vh]">
+          <DialogHeader>
+            <DialogTitle className="text-teal-400 flex items-center gap-2">
+              <Library className="h-5 w-5" />
+              Character Template Library
+            </DialogTitle>
+            <DialogDescription className="text-stone-400">
+              Select a character template to add to your campaign
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-stone-500" />
+              <Input
+                placeholder="Search templates..."
+                value={templateSearchQuery}
+                onChange={(e) => setTemplateSearchQuery(e.target.value)}
+                className="pl-10 bg-stone-800 border-stone-700 text-stone-200"
+                data-testid="input-template-search"
+              />
+            </div>
+            
+            <ScrollArea className="h-[400px] pr-4">
+              {characterTemplates.length === 0 ? (
+                <div className="text-center py-8 text-stone-500">
+                  No character templates available
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                  {characterTemplates
+                    .filter((template: any) => 
+                      !templateSearchQuery || 
+                      template.name.toLowerCase().includes(templateSearchQuery.toLowerCase()) ||
+                      template.race?.toLowerCase().includes(templateSearchQuery.toLowerCase()) ||
+                      template.class?.toLowerCase().includes(templateSearchQuery.toLowerCase())
+                    )
+                    .map((template: any) => (
+                      <div
+                        key={template.id}
+                        onClick={() => copyTemplateMutation.mutate(template.id)}
+                        className="relative bg-stone-800 border border-stone-700 rounded-lg p-3 cursor-pointer hover:border-teal-500 hover:bg-stone-750 transition-colors group"
+                        data-testid={`template-card-${template.id}`}
+                      >
+                        <div className="flex flex-col items-center text-center space-y-2">
+                          <div className="w-16 h-16 rounded-full overflow-hidden bg-stone-700 border-2 border-stone-600 group-hover:border-teal-500">
+                            {template.portrait ? (
+                              <img 
+                                src={template.portrait} 
+                                alt={template.name} 
+                                className="w-full h-full object-cover"
+                              />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center">
+                                <User className="h-8 w-8 text-stone-500" />
+                              </div>
+                            )}
+                          </div>
+                          <div>
+                            <div className="font-medium text-stone-200 text-sm truncate max-w-[120px]">
+                              {template.name}
+                            </div>
+                            <div className="text-xs text-stone-400">
+                              Level {template.level || 1} {template.race || 'Unknown'}
+                            </div>
+                            {template.class && (
+                              <div className="text-xs text-teal-400">{template.class}</div>
+                            )}
+                          </div>
+                        </div>
+                        {copyTemplateMutation.isPending && copyTemplateMutation.variables === template.id && (
+                          <div className="absolute inset-0 bg-stone-900/80 rounded-lg flex items-center justify-center">
+                            <div className="text-teal-400 text-sm">Adding...</div>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                </div>
+              )}
+            </ScrollArea>
+          </div>
+          
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowTemplateLibrary(false)}
+              className="border-stone-600 text-stone-300 hover:bg-stone-800"
+              data-testid="button-close-template-library"
+            >
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
