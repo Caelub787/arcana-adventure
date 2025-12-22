@@ -2433,6 +2433,7 @@ export default function Campaign() {
         campaignId={effectiveCampaignId || undefined}
         isGM={role === 'gm'}
         characters={characters as any[]}
+        userId={user?.id}
       />
     </div>
   );

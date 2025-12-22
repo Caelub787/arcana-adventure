@@ -2805,8 +2805,8 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
       }
       
       const { result, dieType } = rollDice(diceNotation);
-      const mod = spellData.mod || 0;
-      const total = result + mod;
+      const mod = typeof spellData.mod === 'number' ? spellData.mod : (parseInt(spellData.mod) || 0);
+      const total = (result || 0) + mod;
       
       let calculationBreakdown = mod !== 0 
         ? `${diceNotation} = ${result} + Mod (${mod >= 0 ? '+' : ''}${mod})`
@@ -2850,8 +2850,8 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     const targetData = getTargetData();
     
     const { result, dieType } = rollDice(diceNotation);
-    const mod = spellData.mod || 0;
-    const total = result + mod;
+    const mod = typeof spellData.mod === 'number' ? spellData.mod : (parseInt(spellData.mod) || 0);
+    const total = (result || 0) + mod;
     
     let calculationBreakdown = mod !== 0 
       ? `${diceNotation} = ${result} + Mod (${mod >= 0 ? '+' : ''}${mod})`
@@ -4217,9 +4217,10 @@ interface InitiativeTrackerProps {
   campaignId?: string;
   isGM: boolean;
   characters?: any[];
+  userId?: string;
 }
 
-export function InitiativeTracker({ open, onOpenChange, sceneId, campaignId, isGM, characters = [] }: InitiativeTrackerProps) {
+export function InitiativeTracker({ open, onOpenChange, sceneId, campaignId, isGM, characters = [], userId }: InitiativeTrackerProps) {
   const queryClient = useQueryClient();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState<number>(0);
@@ -4452,6 +4453,58 @@ export function InitiativeTracker({ open, onOpenChange, sceneId, campaignId, isG
               })}
             </div>
           )}
+
+          {/* Roll Initiative Section - Characters that haven't rolled yet */}
+          {sceneId && (() => {
+            const charactersWithInitiative = new Set(entries.map((e: any) => e.characterId));
+            const charactersNeedingRoll = characters.filter((c: any) => {
+              if (charactersWithInitiative.has(c.id)) return false;
+              // Players can only roll for their own characters, GMs can roll for any
+              if (isGM) return true;
+              return c.userId === userId;
+            });
+            
+            if (charactersNeedingRoll.length === 0) return null;
+            
+            return (
+              <div className="pt-4 border-t border-stone-700">
+                <h4 className="text-sm font-semibold text-stone-400 mb-2">Roll Initiative</h4>
+                <div className="space-y-2 max-h-[150px] overflow-y-auto">
+                  {charactersNeedingRoll.map((char: any) => (
+                    <div 
+                      key={char.id}
+                      className="flex items-center gap-3 p-2 bg-stone-800 border border-stone-700 rounded-lg"
+                    >
+                      {char.portrait ? (
+                        <img 
+                          src={char.portrait} 
+                          alt="" 
+                          className="w-8 h-8 rounded-full object-cover border border-stone-600"
+                        />
+                      ) : (
+                        <div className="w-8 h-8 rounded-full bg-stone-700 flex items-center justify-center">
+                          <User className="w-4 h-4 text-stone-400" />
+                        </div>
+                      )}
+                      <span className="flex-1 text-stone-200 truncate">{char.name}</span>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="border-amber-600 text-amber-500 hover:bg-amber-600/20"
+                        onClick={() => {
+                          gameWs.sendInitiativeRoll(sceneId, char.id);
+                        }}
+                        data-testid={`button-roll-initiative-${char.id}`}
+                      >
+                        <Dice5 className="w-3 h-3 mr-1" />
+                        Roll
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
           
           {/* GM Actions */}
           {isGM && sortedEntries.length > 0 && (
@@ -7400,8 +7453,8 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
     }
     
     const { result, dieType } = rollDice(diceNotation);
-    const mod = spellData.mod || 0;
-    const total = result + mod;
+    const mod = typeof spellData.mod === 'number' ? spellData.mod : (parseInt(spellData.mod) || 0);
+    const total = (result || 0) + mod;
     
     const calculationBreakdown = mod !== 0 
       ? `${diceNotation} = ${result} + Mod (${mod >= 0 ? '+' : ''}${mod})`
@@ -12773,8 +12826,8 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                                 dieType = `d${sides}`;
                               }
                               
-                              const mod = selectedSpell.mod || 0;
-                              const total = result + mod;
+                              const mod = typeof selectedSpell.mod === 'number' ? selectedSpell.mod : (parseInt(selectedSpell.mod) || 0);
+                              const total = (result || 0) + mod;
                               
                               const calculationBreakdown = mod !== 0 
                                 ? `${diceNotation} = ${result} + Mod (${mod >= 0 ? '+' : ''}${mod})`
