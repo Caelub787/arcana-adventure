@@ -3494,7 +3494,7 @@ export function SelectionModeButtons({
   };
 
   // Handle spell selection from picker
-  const handleSpellSelect = (spell: any) => {
+  const handleSpellSelect = async (spell: any) => {
     console.log('[SpellPicker] handleSpellSelect called with spell:', spell);
     console.log('[SpellPicker] character:', character);
     console.log('[SpellPicker] tokens:', tokens);
@@ -3503,6 +3503,33 @@ export function SelectionModeButtons({
     if (!character || !tokens || !onEnterSpellTargeting) {
       console.log('[SpellPicker] Missing required props, returning');
       return;
+    }
+    
+    // Check and deduct energy cost before entering targeting mode
+    const energyCost = spell.energyCost || 0;
+    const currentEnergy = character.energy || 0;
+    
+    if (energyCost > 0 && currentEnergy < energyCost) {
+      triggerRollNotification({
+        type: 'system',
+        label: `Not Enough Energy!`,
+        result: 0,
+        total: 0,
+        username: character.name || 'Unknown',
+        characterName: character.name,
+        calculationBreakdown: `${spell.name} requires ${energyCost} energy but you only have ${currentEnergy}.`,
+      });
+      return;
+    }
+    
+    // Deduct energy cost before entering targeting mode
+    if (energyCost > 0) {
+      try {
+        await api.updateCharacter(character.id, { energy: currentEnergy - energyCost });
+        queryClient.invalidateQueries({ queryKey: ['character', character.id] });
+      } catch (err) {
+        console.error('Failed to deduct energy:', err);
+      }
     }
     
     const casterToken = tokens.find((t: any) => t.characterId === character.id);
