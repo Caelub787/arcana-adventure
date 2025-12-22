@@ -1247,7 +1247,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                 <div 
                   className="absolute left-1/2 -translate-x-1/2 font-display text-white pointer-events-none text-center leading-tight"
                   style={{ 
-                    bottom: character && hpPercent !== null ? 6 : 2,
+                    bottom: character && hpPercent !== null ? -6 : -10,
                     fontSize: Math.max(8, Math.min(11, tokenSize / 5.5)),
                     textShadow: '1px 1px 0 #000, -1px 1px 0 #000, 1px -1px 0 #000, -1px -1px 0 #000, 0 1px 0 #000, 0 -1px 0 #000, 1px 0 0 #000, -1px 0 0 #000',
                     maxWidth: tokenSize * 1.2,
@@ -8952,6 +8952,8 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
   const [gmNotes, setGmNotes] = useState(character?.gmNotes || "");
   const [isEditingBio, setIsEditingBio] = useState(false);
   const [isEditingGmNotes, setIsEditingGmNotes] = useState(false);
+  const [nicknameValue, setNicknameValue] = useState(character?.nickname || "");
+  const [isEditingNickname, setIsEditingNickname] = useState(false);
   
   // Portrait cropping state
   const [showPortraitCrop, setShowPortraitCrop] = useState(false);
@@ -12939,19 +12941,65 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
 
                 {/* Nickname Section */}
                 <div>
-                  <Label className="text-sm text-stone-300 mb-2 block">Nickname (displayed on battlemap)</Label>
-                  <Input
-                    value={character.nickname || ""}
-                    onChange={(e) => {
-                      if (onUpdate && canEdit) {
-                        onUpdate({ nickname: e.target.value || null });
-                      }
-                    }}
-                    placeholder="Leave empty to use character name"
-                    className="bg-stone-900 border-stone-700"
-                    disabled={!canEdit}
-                    data-testid="input-nickname"
-                  />
+                  <div className="flex justify-between items-center mb-2">
+                    <Label className="text-sm text-stone-300">Nickname (displayed on battlemap)</Label>
+                    {canEdit && !isEditingNickname && (
+                      <Button 
+                        size="sm" 
+                        variant="outline" 
+                        onClick={() => {
+                          setNicknameValue(character.nickname || "");
+                          setIsEditingNickname(true);
+                        }}
+                        data-testid="button-edit-nickname"
+                      >
+                        Edit
+                      </Button>
+                    )}
+                  </div>
+                  {isEditingNickname ? (
+                    <div className="space-y-2">
+                      <Input
+                        value={nicknameValue}
+                        onChange={(e) => setNicknameValue(e.target.value)}
+                        placeholder="Leave empty to use character name"
+                        className="bg-stone-900 border-stone-700"
+                        data-testid="input-nickname"
+                      />
+                      <div className="flex gap-2">
+                        <Button 
+                          size="sm" 
+                          onClick={() => {
+                            if (onUpdate) {
+                              onUpdate({ nickname: nicknameValue || null });
+                            }
+                            setIsEditingNickname(false);
+                          }}
+                          data-testid="button-save-nickname"
+                        >
+                          Save
+                        </Button>
+                        <Button 
+                          size="sm" 
+                          variant="outline" 
+                          onClick={() => {
+                            setNicknameValue(character.nickname || "");
+                            setIsEditingNickname(false);
+                          }}
+                          data-testid="button-cancel-nickname"
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div 
+                      className="p-3 bg-stone-900 rounded border border-stone-700 text-stone-300"
+                      data-testid="text-nickname"
+                    >
+                      {character.nickname || <span className="text-stone-500 italic">No nickname set (using character name)</span>}
+                    </div>
+                  )}
                   <p className="text-xs text-stone-500 mt-1">This short name appears on tokens instead of the full character name</p>
                 </div>
 
