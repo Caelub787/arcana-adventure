@@ -1798,6 +1798,16 @@ function CharactersView({ characters, isLoading, searchQuery, setSearchQuery, on
                     <Button
                       variant="ghost"
                       size="sm"
+                      onClick={(e) => { e.stopPropagation(); onEditCharacter(character); }}
+                      className="text-stone-400 hover:text-stone-300"
+                      data-testid={`button-edit-character-${character.id}`}
+                    >
+                      <Pencil className="h-4 w-4 mr-1" />
+                      Rename
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
                       onClick={(e) => { e.stopPropagation(); onDeleteCharacter(character.id); }}
                       className="text-stone-400 hover:text-red-500"
                       data-testid={`button-delete-character-${character.id}`}
