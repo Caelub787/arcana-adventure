@@ -400,7 +400,7 @@ export default function AdminSettings() {
   };
 
   return (
-    <div className="h-screen bg-stone-950 text-stone-200 flex flex-col overflow-hidden">
+    <div className="h-screen bg-stone-950 text-stone-200 flex flex-col overflow-auto">
       <div className="w-full px-4 py-4 flex flex-col flex-1 min-h-0">
         <div className="flex items-center gap-4 mb-4 shrink-0">
           <Button
