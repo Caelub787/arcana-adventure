@@ -43,10 +43,28 @@ export const insertCampaignSchema = createInsertSchema(campaigns).omit({
 export type InsertCampaign = z.infer<typeof insertCampaignSchema>;
 export type Campaign = typeof campaigns.$inferSelect;
 
+// Scene Folders table (for organizing scenes within campaigns)
+export const sceneFolders = pgTable("scene_folders", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  campaignId: varchar("campaign_id").notNull().references(() => campaigns.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  sortOrder: integer("sort_order").default(0).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertSceneFolderSchema = createInsertSchema(sceneFolders).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertSceneFolder = z.infer<typeof insertSceneFolderSchema>;
+export type SceneFolder = typeof sceneFolders.$inferSelect;
+
 // Scenes table (for battlemap scenes within campaigns)
 export const scenes = pgTable("scenes", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   campaignId: varchar("campaign_id").notNull().references(() => campaigns.id, { onDelete: "cascade" }),
+  folderId: varchar("folder_id"), // Optional folder for organization
   name: text("name").notNull(),
   backgroundImage: text("background_image"),
   gridEnabled: boolean("grid_enabled").default(true).notNull(),
