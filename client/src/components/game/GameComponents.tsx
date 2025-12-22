@@ -1247,7 +1247,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                 <div 
                   className="absolute left-1/2 -translate-x-1/2 font-display text-white pointer-events-none text-center leading-tight"
                   style={{ 
-                    bottom: character && hpPercent !== null ? -6 : -10,
+                    bottom: character && hpPercent !== null ? 8 : 2,
                     fontSize: Math.max(8, Math.min(11, tokenSize / 5.5)),
                     textShadow: '1px 1px 0 #000, -1px 1px 0 #000, 1px -1px 0 #000, -1px -1px 0 #000, 0 1px 0 #000, 0 -1px 0 #000, 1px 0 0 #000, -1px 0 0 #000',
                     maxWidth: tokenSize * 1.2,
