@@ -64,6 +64,14 @@ export interface IStorage {
   updateCharacter(id: string, data: Partial<Character>): Promise<Character | undefined>;
   deleteCharacter(id: string): Promise<void>;
   deleteCharacterWithTokens(id: string): Promise<void>;
+  
+  // Character Template operations (admin-created character sheets)
+  getCharacterTemplates(): Promise<Character[]>;
+  getCharacterTemplate(id: string): Promise<Character | undefined>;
+  createCharacterTemplate(data: Partial<InsertCharacter>): Promise<Character>;
+  updateCharacterTemplate(id: string, data: Partial<Character>): Promise<Character | undefined>;
+  deleteCharacterTemplate(id: string): Promise<void>;
+  copyTemplateToCompany(templateId: string, campaignId: string, userId: string): Promise<Character>;
 
   // Token operations
   createToken(token: InsertToken): Promise<Token>;
@@ -511,6 +519,108 @@ export class DatabaseStorage implements IStorage {
     await db.delete(characterPermissions).where(eq(characterPermissions.characterId, id));
     await db.delete(initiativeEntries).where(eq(initiativeEntries.characterId, id));
     await db.delete(characters).where(eq(characters.id, id));
+  }
+
+  // Character Template operations (admin-created character sheets)
+  async getCharacterTemplates(): Promise<Character[]> {
+    return await db.select()
+      .from(characters)
+      .where(eq(characters.isTemplate, true))
+      .orderBy(characters.name);
+  }
+
+  async getCharacterTemplate(id: string): Promise<Character | undefined> {
+    const [template] = await db.select()
+      .from(characters)
+      .where(and(eq(characters.id, id), eq(characters.isTemplate, true)))
+      .limit(1);
+    return template;
+  }
+
+  async createCharacterTemplate(data: Partial<InsertCharacter>): Promise<Character> {
+    const [template] = await db.insert(characters)
+      .values({
+        ...data,
+        isTemplate: true,
+        campaignId: null,
+        userId: null,
+        name: data.name || 'New Character',
+        hp: data.hp ?? 10,
+        maxHp: data.maxHp ?? 10,
+        energy: data.energy ?? 10,
+        maxEnergy: data.maxEnergy ?? 10,
+      } as any)
+      .returning();
+    return template;
+  }
+
+  async updateCharacterTemplate(id: string, data: Partial<Character>): Promise<Character | undefined> {
+    const [template] = await db.update(characters)
+      .set(data)
+      .where(and(eq(characters.id, id), eq(characters.isTemplate, true)))
+      .returning();
+    return template;
+  }
+
+  async deleteCharacterTemplate(id: string): Promise<void> {
+    // Delete related data first
+    await db.delete(items).where(eq(items.characterId, id));
+    await db.delete(hotbars).where(eq(hotbars.characterId, id));
+    await db.delete(spells).where(eq(spells.characterId, id));
+    await db.delete(characters).where(and(eq(characters.id, id), eq(characters.isTemplate, true)));
+  }
+
+  async copyTemplateToCompany(templateId: string, campaignId: string, userId: string): Promise<Character> {
+    // Get the template
+    const template = await this.getCharacterTemplate(templateId);
+    if (!template) {
+      throw new Error('Template not found');
+    }
+    
+    // Create a new character from the template (without id, createdAt, isTemplate)
+    const { id, createdAt, isTemplate, folderId, ...templateData } = template;
+    
+    const [newChar] = await db.insert(characters)
+      .values({
+        ...templateData,
+        campaignId,
+        userId,
+        isTemplate: false,
+        folderId: null, // Put in Unfiled folder
+      })
+      .returning();
+    
+    // Copy items from template to new character
+    const templateItems = await this.getItemsByCharacter(templateId);
+    for (const item of templateItems) {
+      const { id: itemId, createdAt: itemCreatedAt, characterId, ...itemData } = item;
+      await db.insert(items).values({
+        ...itemData,
+        characterId: newChar.id,
+      });
+    }
+    
+    // Copy hotbars from template
+    const templateHotbars = await this.getHotbarsByCharacter(templateId);
+    for (const hotbar of templateHotbars) {
+      const { id: hotbarId, characterId, ...hotbarData } = hotbar;
+      await db.insert(hotbars).values({
+        ...hotbarData,
+        characterId: newChar.id,
+      });
+    }
+    
+    // Copy spells from template
+    const templateSpells = await this.getSpellsByCharacter(templateId);
+    for (const spell of templateSpells) {
+      const { id: spellId, characterId, ...spellData } = spell;
+      await db.insert(spells).values({
+        ...spellData,
+        characterId: newChar.id,
+      });
+    }
+    
+    return newChar;
   }
 
   // Token operations
