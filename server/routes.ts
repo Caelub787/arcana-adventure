@@ -3762,7 +3762,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/campaigns/:campaignId/characters/from-template/:templateId", requireAuth, async (req, res) => {
     try {
       const { campaignId, templateId } = req.params;
-      const userId = req.user!.id;
+      const userId = req.session.userId!;
       
       // Verify user is GM of the campaign
       const campaign = await storage.getCampaign(campaignId);
