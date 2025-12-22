@@ -1602,8 +1602,20 @@ export default function Campaign() {
     updateCampaignMutation.mutate({ currentMap: newMap });
   };
 
-  const handleUpdateScene = (settings: Partial<Scene>) => {
+  const handleUpdateScene = async (settings: Partial<Scene>) => {
     if (activeScene) {
+      // If grid size is changing, re-snap all tokens to the new grid
+      if (settings.gridSize && settings.gridSize !== activeScene.gridSize) {
+        const newGridSize = settings.gridSize;
+        // Re-snap each token to the new grid
+        for (const token of tokens) {
+          const snappedX = Math.round(token.x / newGridSize) * newGridSize;
+          const snappedY = Math.round(token.y / newGridSize) * newGridSize;
+          if (snappedX !== token.x || snappedY !== token.y) {
+            updateTokenMutation.mutate({ id: token.id, x: snappedX, y: snappedY });
+          }
+        }
+      }
       updateSceneMutation.mutate(settings);
     }
   };
