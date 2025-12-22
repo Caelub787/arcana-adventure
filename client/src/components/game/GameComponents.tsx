@@ -20,7 +20,7 @@ import {
   Users, User, Plus, Minus, LogOut, Menu, ChevronRight, ChevronLeft, ChevronDown, ChevronUp,
   Heart, Zap, Backpack, Sparkles, Dice5, MessageSquare, RefreshCw, X, Trash2, Package, FolderOpen, Folder, FolderPlus, GripVertical, Lock, Unlock, Camera,
   BarChart3, Grid3X3, ScrollText, Upload, Image as ImageIcon, Layers, Search, TrendingUp, UserMinus, Ban,
-  MousePointer, Target, UserCheck, Swords, ArrowRight, Eye, EyeOff, Check, Moon, Coffee, AlertTriangle, GitBranch, Star, BookOpen, Pencil, Dna, Type, Library, Filter
+  MousePointer, Target, UserCheck, Swords, ArrowRight, ArrowLeft, Eye, EyeOff, Check, Moon, Coffee, AlertTriangle, GitBranch, Star, BookOpen, Pencil, Dna, Type, Library, Filter
 } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { type Scene, type Hotbar, type SystemSpecies, type FeatTreeWithData, type Feat, type FeatConnection, type CharacterFeat, type SystemSkill, type CharacterCustomSkill, api, gameWs } from "@/lib/api";
@@ -10840,6 +10840,25 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
 
   return (
     <div className="w-full flex-1 min-h-0 bg-stone-900 text-stone-200 flex flex-col overflow-hidden">
+      {/* Back button header for template/admin view */}
+      {isTemplate && onClose && (
+        <div className="flex items-center gap-3 px-4 py-3 bg-stone-950 border-b border-stone-700 shrink-0">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onClose}
+            className="text-stone-400 hover:text-stone-200 hover:bg-stone-800"
+            data-testid="button-back-to-templates"
+          >
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Back to Templates
+          </Button>
+          <span className="text-amber-500 font-medium">{liveCharacter.name}</span>
+          {isTemplate && (
+            <Badge className="bg-purple-600/30 text-purple-300 text-xs">Template</Badge>
+          )}
+        </div>
+      )}
       <Tabs defaultValue={defaultTab} className="w-full flex-1 min-h-0 flex flex-col overflow-hidden">
         {/* Icon-based tabs matching battlemap sidebar - icons on mobile, icons+text on desktop */}
         <TabsList className="grid grid-cols-7 w-full bg-stone-950 border-b border-stone-700 shrink-0 h-auto p-1 gap-0.5 sm:gap-1">
