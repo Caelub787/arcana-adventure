@@ -877,6 +877,7 @@ export default function Campaign() {
     queryKey: [`/api/campaigns/${effectiveCampaignId}/tokens`, sceneIdForTokens],
     queryFn: () => api.getCampaignTokens(effectiveCampaignId!, sceneIdForTokens || undefined),
     enabled: !!effectiveCampaignId && !isNew && !!sceneIdForTokens,
+    staleTime: 0, // Always refetch to get latest token positions
   });
 
   // Load characters for the campaign
@@ -1289,10 +1290,14 @@ export default function Campaign() {
   // Store refs for stable closures in WebSocket handler
   const queryClientRef = useRef(queryClient);
   const toastRef = useRef(toast);
+  const sceneIdForTokensRef = useRef(sceneIdForTokens);
+  const effectiveCampaignIdRef = useRef(effectiveCampaignId);
   useEffect(() => {
     queryClientRef.current = queryClient;
     toastRef.current = toast;
-  }, [queryClient, toast]);
+    sceneIdForTokensRef.current = sceneIdForTokens;
+    effectiveCampaignIdRef.current = effectiveCampaignId;
+  }, [queryClient, toast, sceneIdForTokens, effectiveCampaignId]);
 
   // WebSocket connection
   useEffect(() => {
@@ -1303,9 +1308,23 @@ export default function Campaign() {
       const unsubscribe = gameWs.onMessage((data) => {
         console.log('WebSocket message received:', data.type, data);
         if (data.type === 'token_move') {
+          // Update local state for immediate visual feedback
           setTokens(prev => prev.map(t => 
             t.id === data.tokenId ? { ...t, x: data.x, y: data.y } : t
           ));
+          // Also update the React Query cache to keep it in sync with WebSocket updates
+          // This ensures positions persist when switching scenes
+          const currentCampaignId = effectiveCampaignIdRef.current;
+          const currentSceneId = sceneIdForTokensRef.current;
+          if (currentCampaignId && currentSceneId) {
+            queryClientRef.current.setQueryData(
+              [`/api/campaigns/${currentCampaignId}/tokens`, currentSceneId],
+              (oldData: any[] | undefined) => {
+                if (!oldData) return oldData;
+                return oldData.map((t: any) => t.id === data.tokenId ? { ...t, x: data.x, y: data.y } : t);
+              }
+            );
+          }
         }
         if (data.type === 'character_changed') {
           // Force immediate refetch for character changes
