@@ -8684,40 +8684,48 @@ function CustomSkillForm({
   isLoading?: boolean;
 }) {
   const [mode, setMode] = useState<'library' | 'custom'>('library');
-  const [selectedSkillId, setSelectedSkillId] = useState<string>('');
   const [customName, setCustomName] = useState('');
   const [customDescription, setCustomDescription] = useState('');
   const [customAttribute, setCustomAttribute] = useState('wit');
   const [skillValue, setSkillValue] = useState(0);
+  const [librarySearch, setLibrarySearch] = useState('');
+  const [pendingSkill, setPendingSkill] = useState<SystemSkill | null>(null);
+  const [pendingSkillValue, setPendingSkillValue] = useState(0);
 
   const availableSkills = systemSkills.filter(s => !existingSkillIds.includes(s.id));
+  const filteredSkills = availableSkills.filter(skill =>
+    skill.name.toLowerCase().includes(librarySearch.toLowerCase()) ||
+    skill.description?.toLowerCase().includes(librarySearch.toLowerCase())
+  );
 
-  const handleSave = () => {
-    if (mode === 'library') {
-      const skill = systemSkills.find(s => s.id === selectedSkillId);
-      if (!skill) {
-        toast({ title: 'Error', description: 'Please select a skill', variant: 'destructive' });
-        return;
-      }
-      onSave({
-        systemSkillId: skill.id,
-        name: skill.name,
-        description: skill.description,
-        parentAttribute: skill.parentAttribute,
-        value: skillValue
-      });
-    } else {
-      if (!customName.trim()) {
-        toast({ title: 'Error', description: 'Please enter a skill name', variant: 'destructive' });
-        return;
-      }
-      onSave({
-        name: customName.trim(),
-        description: customDescription.trim() || undefined,
-        parentAttribute: customAttribute,
-        value: skillValue
-      });
+  const handleSaveCustom = () => {
+    if (!customName.trim()) {
+      toast({ title: 'Error', description: 'Please enter a skill name', variant: 'destructive' });
+      return;
     }
+    onSave({
+      name: customName.trim(),
+      description: customDescription.trim() || undefined,
+      parentAttribute: customAttribute,
+      value: skillValue
+    });
+    setCustomName('');
+    setCustomDescription('');
+    setCustomAttribute('wit');
+    setSkillValue(0);
+  };
+
+  const handleAddFromLibrary = () => {
+    if (!pendingSkill) return;
+    onSave({
+      systemSkillId: pendingSkill.id,
+      name: pendingSkill.name,
+      description: pendingSkill.description,
+      parentAttribute: pendingSkill.parentAttribute,
+      value: pendingSkillValue
+    });
+    setPendingSkill(null);
+    setPendingSkillValue(0);
   };
 
   return (
@@ -8734,21 +8742,54 @@ function CustomSkillForm({
               No skills available in library
             </div>
           ) : (
-            <div className="space-y-3">
-              <Label className="text-stone-300">Select Skill</Label>
-              <Select value={selectedSkillId} onValueChange={setSelectedSkillId}>
-                <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-system-skill">
-                  <SelectValue placeholder="Choose a skill..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {availableSkills.map(skill => (
-                    <SelectItem key={skill.id} value={skill.id}>
-                      {skill.name} ({skill.parentAttribute})
-                    </SelectItem>
+            <>
+              <Input
+                placeholder="Search skills..."
+                value={librarySearch}
+                onChange={(e) => setLibrarySearch(e.target.value)}
+                className="bg-stone-800 border-stone-700"
+                data-testid="input-skill-library-search"
+              />
+              <ScrollArea className="h-[300px]">
+                <div className="space-y-2">
+                  {filteredSkills.map(skill => (
+                    <div
+                      key={skill.id}
+                      className="p-3 bg-stone-800 rounded-lg border border-stone-700 hover:border-cyan-500 cursor-pointer transition-colors"
+                      onClick={() => {
+                        setPendingSkill(skill);
+                        setPendingSkillValue(0);
+                      }}
+                      data-testid={`skill-library-item-${skill.id}`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-stone-700 rounded flex items-center justify-center">
+                          <Sparkles className="h-5 w-5 text-cyan-400" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium text-stone-100">{skill.name}</span>
+                            <Badge className="bg-cyan-600/30 text-cyan-300 text-xs capitalize">
+                              {skill.parentAttribute}
+                            </Badge>
+                          </div>
+                          {skill.description && (
+                            <p className="text-xs text-stone-500 mt-1 line-clamp-2">{skill.description}</p>
+                          )}
+                        </div>
+                        <Plus className="h-5 w-5 text-cyan-400 flex-shrink-0" />
+                      </div>
+                    </div>
                   ))}
-                </SelectContent>
-              </Select>
-            </div>
+                  {filteredSkills.length === 0 && (
+                    <div className="text-center py-8 text-stone-400">
+                      <BookOpen className="h-12 w-12 mx-auto mb-3 opacity-30" />
+                      <p>No skills found</p>
+                    </div>
+                  )}
+                </div>
+              </ScrollArea>
+            </>
           )}
         </TabsContent>
 
@@ -8789,32 +8830,78 @@ function CustomSkillForm({
               </SelectContent>
             </Select>
           </div>
+          <div>
+            <Label className="text-stone-300">Skill Value (-2 to 5)</Label>
+            <Input
+              type="number"
+              min={-2}
+              max={5}
+              value={skillValue}
+              onChange={(e) => setSkillValue(Math.max(-2, Math.min(5, parseInt(e.target.value) || 0)))}
+              className="bg-stone-800 border-stone-700 mt-1"
+              data-testid="input-skill-value"
+            />
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button
+              onClick={handleSaveCustom}
+              disabled={isLoading}
+              className="bg-cyan-700 hover:bg-cyan-600"
+              data-testid="button-add-custom-skill-confirm"
+            >
+              {isLoading ? 'Adding...' : 'Add Skill'}
+            </Button>
+          </div>
         </TabsContent>
       </Tabs>
 
-      <div>
-        <Label className="text-stone-300">Skill Value (-2 to 5)</Label>
-        <Input
-          type="number"
-          min={-2}
-          max={5}
-          value={skillValue}
-          onChange={(e) => setSkillValue(Math.max(-2, Math.min(5, parseInt(e.target.value) || 0)))}
-          className="bg-stone-800 border-stone-700 mt-1"
-          data-testid="input-skill-value"
-        />
-      </div>
-
-      <div className="flex justify-end gap-2 pt-2">
-        <Button
-          onClick={handleSave}
-          disabled={isLoading}
-          className="bg-cyan-700 hover:bg-cyan-600"
-          data-testid="button-add-custom-skill-confirm"
-        >
-          {isLoading ? 'Adding...' : 'Add Skill'}
-        </Button>
-      </div>
+      <Dialog open={!!pendingSkill} onOpenChange={(open) => !open && setPendingSkill(null)}>
+        <DialogContent className="bg-stone-900 border-stone-700 max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-cyan-500">Set Skill Value</DialogTitle>
+          </DialogHeader>
+          {pendingSkill && (
+            <div className="space-y-4">
+              <div className="p-3 bg-stone-800 rounded-lg border border-stone-700">
+                <div className="font-medium text-cyan-400">{pendingSkill.name}</div>
+                <div className="text-xs text-stone-500 capitalize">Parent: {pendingSkill.parentAttribute}</div>
+                {pendingSkill.description && (
+                  <p className="text-xs text-stone-400 mt-1">{pendingSkill.description}</p>
+                )}
+              </div>
+              <div>
+                <Label className="text-stone-300">Skill Value (-2 to 5)</Label>
+                <Input
+                  type="number"
+                  min={-2}
+                  max={5}
+                  value={pendingSkillValue}
+                  onChange={(e) => setPendingSkillValue(Math.max(-2, Math.min(5, parseInt(e.target.value) || 0)))}
+                  className="bg-stone-800 border-stone-700 mt-1"
+                  data-testid="input-pending-skill-value"
+                />
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => setPendingSkill(null)}
+                  className="bg-stone-800 border-stone-700"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleAddFromLibrary}
+                  disabled={isLoading}
+                  className="bg-cyan-700 hover:bg-cyan-600"
+                  data-testid="button-confirm-library-skill"
+                >
+                  {isLoading ? 'Adding...' : 'Add Skill'}
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -8909,42 +8996,45 @@ function TraitForm({
   isLoading?: boolean;
 }) {
   const [mode, setMode] = useState<'library' | 'custom'>('library');
-  const [selectedTraitId, setSelectedTraitId] = useState<string>('');
   const [customName, setCustomName] = useState('');
   const [customDescription, setCustomDescription] = useState('');
   const [customAttribute, setCustomAttribute] = useState('wit');
   const [usesPerLongRest, setUsesPerLongRest] = useState(1);
+  const [librarySearch, setLibrarySearch] = useState('');
 
   const availableTraits = systemTraits.filter(t => !existingTraitIds.includes(t.id));
+  const filteredTraits = availableTraits.filter(trait =>
+    trait.name.toLowerCase().includes(librarySearch.toLowerCase()) ||
+    trait.description?.toLowerCase().includes(librarySearch.toLowerCase())
+  );
 
-  const handleSave = () => {
-    if (mode === 'library') {
-      const trait = systemTraits.find(t => t.id === selectedTraitId);
-      if (!trait) {
-        toast({ title: 'Error', description: 'Please select a trait', variant: 'destructive' });
-        return;
-      }
-      onSave({
-        systemTraitId: trait.id,
-        name: trait.name,
-        description: trait.description,
-        parentAttribute: trait.parentAttribute,
-        usesPerLongRest: trait.usesPerLongRest,
-        currentUses: 0
-      });
-    } else {
-      if (!customName.trim()) {
-        toast({ title: 'Error', description: 'Please enter a trait name', variant: 'destructive' });
-        return;
-      }
-      onSave({
-        name: customName.trim(),
-        description: customDescription.trim() || undefined,
-        parentAttribute: customAttribute,
-        usesPerLongRest: usesPerLongRest,
-        currentUses: 0
-      });
+  const handleAddFromLibrary = (trait: SystemTrait) => {
+    onSave({
+      systemTraitId: trait.id,
+      name: trait.name,
+      description: trait.description,
+      parentAttribute: trait.parentAttribute,
+      usesPerLongRest: trait.usesPerLongRest,
+      currentUses: 0
+    });
+  };
+
+  const handleSaveCustom = () => {
+    if (!customName.trim()) {
+      toast({ title: 'Error', description: 'Please enter a trait name', variant: 'destructive' });
+      return;
     }
+    onSave({
+      name: customName.trim(),
+      description: customDescription.trim() || undefined,
+      parentAttribute: customAttribute,
+      usesPerLongRest: usesPerLongRest,
+      currentUses: 0
+    });
+    setCustomName('');
+    setCustomDescription('');
+    setCustomAttribute('wit');
+    setUsesPerLongRest(1);
   };
 
   return (
@@ -8961,30 +9051,54 @@ function TraitForm({
               No traits available in library
             </div>
           ) : (
-            <div className="space-y-3">
-              <Label className="text-stone-300">Select Trait</Label>
-              <Select value={selectedTraitId} onValueChange={setSelectedTraitId}>
-                <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-system-trait">
-                  <SelectValue placeholder="Choose a trait..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {availableTraits.map((trait) => (
-                    <SelectItem key={trait.id} value={trait.id}>
-                      <div className="flex items-center gap-2">
-                        <span>{trait.name}</span>
-                        <span className="text-xs text-stone-500 capitalize">({trait.parentAttribute})</span>
-                        <span className="text-xs text-rose-400">{trait.usesPerLongRest}/rest</span>
+            <>
+              <Input
+                placeholder="Search traits..."
+                value={librarySearch}
+                onChange={(e) => setLibrarySearch(e.target.value)}
+                className="bg-stone-800 border-stone-700"
+                data-testid="input-trait-library-search"
+              />
+              <ScrollArea className="h-[300px]">
+                <div className="space-y-2">
+                  {filteredTraits.map(trait => (
+                    <div
+                      key={trait.id}
+                      className="p-3 bg-stone-800 rounded-lg border border-stone-700 hover:border-rose-500 cursor-pointer transition-colors"
+                      onClick={() => handleAddFromLibrary(trait)}
+                      data-testid={`trait-library-item-${trait.id}`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-stone-700 rounded flex items-center justify-center">
+                          <Star className="h-5 w-5 text-rose-400" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-medium text-stone-100">{trait.name}</span>
+                            <Badge className="bg-rose-600/30 text-rose-300 text-xs capitalize">
+                              {trait.parentAttribute}
+                            </Badge>
+                            <Badge className="bg-amber-600/30 text-amber-300 text-xs">
+                              {trait.usesPerLongRest}/rest
+                            </Badge>
+                          </div>
+                          {trait.description && (
+                            <p className="text-xs text-stone-500 mt-1 line-clamp-2">{trait.description}</p>
+                          )}
+                        </div>
+                        <Plus className="h-5 w-5 text-rose-400 flex-shrink-0" />
                       </div>
-                    </SelectItem>
+                    </div>
                   ))}
-                </SelectContent>
-              </Select>
-              {selectedTraitId && (
-                <div className="p-3 bg-stone-800 rounded-lg border border-stone-700 text-sm text-stone-400">
-                  {systemTraits.find(t => t.id === selectedTraitId)?.description || 'No description'}
+                  {filteredTraits.length === 0 && (
+                    <div className="text-center py-8 text-stone-400">
+                      <BookOpen className="h-12 w-12 mx-auto mb-3 opacity-30" />
+                      <p>No traits found</p>
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
+              </ScrollArea>
+            </>
           )}
         </TabsContent>
 
@@ -9039,19 +9153,19 @@ function TraitForm({
               data-testid="input-custom-trait-uses"
             />
           </div>
+
+          <div className="flex justify-end gap-2 pt-2">
+            <Button
+              onClick={handleSaveCustom}
+              disabled={isLoading}
+              className="bg-rose-700 hover:bg-rose-600"
+              data-testid="button-add-trait-confirm"
+            >
+              {isLoading ? 'Adding...' : 'Add Trait'}
+            </Button>
+          </div>
         </TabsContent>
       </Tabs>
-
-      <div className="flex justify-end gap-2 pt-2">
-        <Button
-          onClick={handleSave}
-          disabled={isLoading}
-          className="bg-rose-700 hover:bg-rose-600"
-          data-testid="button-add-trait-confirm"
-        >
-          {isLoading ? 'Adding...' : 'Add Trait'}
-        </Button>
-      </div>
     </div>
   );
 }
@@ -9849,7 +9963,6 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
     mutationFn: (skillData: Partial<CharacterCustomSkill>) => api.addCharacterCustomSkill(character.id, skillData),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['character-custom-skills', character.id] });
-      setShowAddCustomSkill(false);
       toast({
         title: "Skill Added",
         description: "Custom skill has been added to character",
@@ -9907,7 +10020,6 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
     mutationFn: (traitData: Partial<CharacterTrait>) => api.addCharacterTrait(character.id, traitData),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['character-traits', character.id] });
-      setShowAddTrait(false);
       toast({
         title: "Trait Added",
         description: "Trait has been added to character",
@@ -12795,7 +12907,6 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                               isAttack: spell.isAttack ?? true,
                               gainEnergy: spell.gainEnergy || false,
                             });
-                            setShowSpellLibrary(false);
                             setSpellLibrarySearch('');
                           }}
                           data-testid={`spell-library-item-${spell.id}`}
