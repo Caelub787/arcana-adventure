@@ -2608,23 +2608,6 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
   const handleSpellAttackRoll = async () => {
     if (!spellData) return;
     
-    // Check energy cost - validate and deduct before casting
-    const energyCost = spellData.energyCost || 0;
-    const currentEnergy = character.energy || 0;
-    
-    if (energyCost > 0 && currentEnergy < energyCost) {
-      triggerRollNotification({
-        type: 'system',
-        label: `Not Enough Energy!`,
-        result: 0,
-        total: 0,
-        username: character.name || 'Unknown',
-        characterName: character.name,
-        calculationBreakdown: `${spellData.name} requires ${energyCost} energy but you only have ${currentEnergy}.`,
-      });
-      return;
-    }
-    
     // Check if there's a locked AoE marker on the map - validate spell matches
     if (aoeTargetState?.active && aoeTargetState?.locked && aoeTargetState?.spell) {
       // Check if this is the same spell as the locked marker
@@ -2643,18 +2626,10 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     }
     
     // Check if this is an AoE spell - enter AoE targeting mode instead of rolling
+    // Energy is NOT checked here - users can position AoE freely, energy checked on attack roll only
     if (spellData.isAoe && onEnterAoeMode) {
       const casterToken = tokens?.find((t: any) => t.characterId === character.id);
       if (casterToken) {
-        // Deduct energy before entering AoE mode
-        if (energyCost > 0) {
-          try {
-            await api.updateCharacter(character.id, { energy: currentEnergy - energyCost });
-            queryClient.invalidateQueries({ queryKey: ['character', character.id] });
-          } catch (err) {
-            console.error('Failed to deduct energy:', err);
-          }
-        }
         onEnterAoeMode(spellData, casterToken.id);
         return;
       } else {
@@ -2669,6 +2644,23 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
         });
         return;
       }
+    }
+    
+    // Check energy cost - validate and deduct before casting (only for non-AoE attack rolls)
+    const energyCost = spellData.energyCost || 0;
+    const currentEnergy = character.energy || 0;
+    
+    if (energyCost > 0 && currentEnergy < energyCost) {
+      triggerRollNotification({
+        type: 'system',
+        label: `Not Enough Energy!`,
+        result: 0,
+        total: 0,
+        username: character.name || 'Unknown',
+        characterName: character.name,
+        calculationBreakdown: `${spellData.name} requires ${energyCost} energy but you only have ${currentEnergy}.`,
+      });
+      return;
     }
     
     // Deduct energy cost
@@ -3493,8 +3485,9 @@ export function SelectionModeButtons({
     return colorClasses[color] || colorClasses.stone;
   };
 
-  // Handle spell selection from picker
-  const handleSpellSelect = async (spell: any) => {
+  // Handle spell selection from picker - allow AoE placement without energy check
+  // Energy is only checked/deducted on attack roll, not when entering targeting mode
+  const handleSpellSelect = (spell: any) => {
     console.log('[SpellPicker] handleSpellSelect called with spell:', spell);
     console.log('[SpellPicker] character:', character);
     console.log('[SpellPicker] tokens:', tokens);
@@ -3503,33 +3496,6 @@ export function SelectionModeButtons({
     if (!character || !tokens || !onEnterSpellTargeting) {
       console.log('[SpellPicker] Missing required props, returning');
       return;
-    }
-    
-    // Check and deduct energy cost before entering targeting mode
-    const energyCost = spell.energyCost || 0;
-    const currentEnergy = character.energy || 0;
-    
-    if (energyCost > 0 && currentEnergy < energyCost) {
-      triggerRollNotification({
-        type: 'system',
-        label: `Not Enough Energy!`,
-        result: 0,
-        total: 0,
-        username: character.name || 'Unknown',
-        characterName: character.name,
-        calculationBreakdown: `${spell.name} requires ${energyCost} energy but you only have ${currentEnergy}.`,
-      });
-      return;
-    }
-    
-    // Deduct energy cost before entering targeting mode
-    if (energyCost > 0) {
-      try {
-        await api.updateCharacter(character.id, { energy: currentEnergy - energyCost });
-        queryClient.invalidateQueries({ queryKey: ['character', character.id] });
-      } catch (err) {
-        console.error('Failed to deduct energy:', err);
-      }
     }
     
     const casterToken = tokens.find((t: any) => t.characterId === character.id);
