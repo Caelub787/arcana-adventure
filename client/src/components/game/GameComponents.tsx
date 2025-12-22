@@ -20,13 +20,14 @@ import {
   Users, User, Plus, Minus, LogOut, Menu, ChevronRight, ChevronLeft, ChevronDown, ChevronUp,
   Heart, Zap, Backpack, Sparkles, Dice5, MessageSquare, RefreshCw, X, Trash2, Package, FolderOpen, Folder, FolderPlus, GripVertical, Lock, Unlock, Camera,
   BarChart3, Grid3X3, ScrollText, Upload, Image as ImageIcon, Layers, Search, TrendingUp, UserMinus, Ban,
-  MousePointer, Target, UserCheck, Swords, ArrowRight, Eye, EyeOff, Check, Moon, Coffee, AlertTriangle, GitBranch, Star, BookOpen, Pencil, Dna, Type, Library
+  MousePointer, Target, UserCheck, Swords, ArrowRight, Eye, EyeOff, Check, Moon, Coffee, AlertTriangle, GitBranch, Star, BookOpen, Pencil, Dna, Type, Library, Filter
 } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { type Scene, type Hotbar, type SystemSpecies, type FeatTreeWithData, type Feat, type FeatConnection, type CharacterFeat, type SystemSkill, type CharacterCustomSkill, api, gameWs } from "@/lib/api";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { toast } from "@/hooks/use-toast";
 import bgImage from "@assets/generated_images/dark_fantasy_landscape_with_arcane_ruins.png";
 import parchmentTexture from "@assets/generated_images/aged_parchment_paper_texture.png";
@@ -8691,12 +8692,17 @@ function CustomSkillForm({
   const [librarySearch, setLibrarySearch] = useState('');
   const [pendingSkill, setPendingSkill] = useState<SystemSkill | null>(null);
   const [pendingSkillValue, setPendingSkillValue] = useState(0);
+  const [attributeFilter, setAttributeFilter] = useState('all');
+
+  const hasActiveFilters = attributeFilter !== 'all';
 
   const availableSkills = systemSkills.filter(s => !existingSkillIds.includes(s.id));
-  const filteredSkills = availableSkills.filter(skill =>
-    skill.name.toLowerCase().includes(librarySearch.toLowerCase()) ||
-    skill.description?.toLowerCase().includes(librarySearch.toLowerCase())
-  );
+  const filteredSkills = availableSkills.filter(skill => {
+    const matchesSearch = skill.name.toLowerCase().includes(librarySearch.toLowerCase()) ||
+      skill.description?.toLowerCase().includes(librarySearch.toLowerCase());
+    const matchesAttribute = attributeFilter === 'all' || skill.parentAttribute === attributeFilter;
+    return matchesSearch && matchesAttribute;
+  });
 
   const handleSaveCustom = () => {
     if (!customName.trim()) {
@@ -8743,13 +8749,58 @@ function CustomSkillForm({
             </div>
           ) : (
             <>
-              <Input
-                placeholder="Search skills..."
-                value={librarySearch}
-                onChange={(e) => setLibrarySearch(e.target.value)}
-                className="bg-stone-800 border-stone-700"
-                data-testid="input-skill-library-search"
-              />
+              <div className="flex gap-2">
+                <Input
+                  placeholder="Search skills..."
+                  value={librarySearch}
+                  onChange={(e) => setLibrarySearch(e.target.value)}
+                  className="bg-stone-800 border-stone-700 flex-1"
+                  data-testid="input-skill-library-search"
+                />
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button 
+                      variant="outline" 
+                      size="icon" 
+                      className={`bg-stone-800 border-stone-700 ${hasActiveFilters ? 'border-cyan-500 text-cyan-400' : ''}`}
+                      data-testid="button-skill-filter"
+                    >
+                      <Filter className="h-4 w-4" />
+                      {hasActiveFilters && <span className="absolute -top-1 -right-1 w-2 h-2 bg-cyan-500 rounded-full" />}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-64 bg-stone-900 border-stone-700 p-4">
+                    <div className="space-y-4">
+                      <div className="font-medium text-stone-200">Filter Skills</div>
+                      <div>
+                        <Label className="text-stone-400 text-xs">Parent Attribute</Label>
+                        <Select value={attributeFilter} onValueChange={setAttributeFilter}>
+                          <SelectTrigger className="bg-stone-800 border-stone-700 mt-1" data-testid="select-skill-attribute-filter">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">All</SelectItem>
+                            {PARENT_ATTRIBUTE_OPTIONS.map(attr => (
+                              <SelectItem key={attr} value={attr}>
+                                {attr.charAt(0).toUpperCase() + attr.slice(1)}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setAttributeFilter('all')}
+                        className="w-full bg-stone-800 border-stone-600 hover:bg-stone-700"
+                        data-testid="button-clear-skill-filters"
+                      >
+                        Clear Filters
+                      </Button>
+                    </div>
+                  </PopoverContent>
+                </Popover>
+              </div>
               <ScrollArea className="h-[400px]">
                 <div className="space-y-2">
                   {filteredSkills.map(skill => (
@@ -9001,12 +9052,25 @@ function TraitForm({
   const [customAttribute, setCustomAttribute] = useState('wit');
   const [usesPerLongRest, setUsesPerLongRest] = useState(1);
   const [librarySearch, setLibrarySearch] = useState('');
+  const [attributeFilter, setAttributeFilter] = useState('all');
+  const [damageModifierFilter, setDamageModifierFilter] = useState('all');
+
+  const hasActiveFilters = attributeFilter !== 'all' || damageModifierFilter !== 'all';
+
+  const clearFilters = () => {
+    setAttributeFilter('all');
+    setDamageModifierFilter('all');
+  };
 
   const availableTraits = systemTraits.filter(t => !existingTraitIds.includes(t.id));
-  const filteredTraits = availableTraits.filter(trait =>
-    trait.name.toLowerCase().includes(librarySearch.toLowerCase()) ||
-    trait.description?.toLowerCase().includes(librarySearch.toLowerCase())
-  );
+  const filteredTraits = availableTraits.filter(trait => {
+    const matchesSearch = trait.name.toLowerCase().includes(librarySearch.toLowerCase()) ||
+      trait.description?.toLowerCase().includes(librarySearch.toLowerCase());
+    const matchesAttribute = attributeFilter === 'all' || trait.parentAttribute === attributeFilter;
+    const matchesDamageModifier = damageModifierFilter === 'all' || 
+      (trait as any).damageModifierType === damageModifierFilter;
+    return matchesSearch && matchesAttribute && matchesDamageModifier;
+  });
 
   const handleAddFromLibrary = (trait: SystemTrait) => {
     onSave({
@@ -9052,13 +9116,73 @@ function TraitForm({
             </div>
           ) : (
             <>
-              <Input
-                placeholder="Search traits..."
-                value={librarySearch}
-                onChange={(e) => setLibrarySearch(e.target.value)}
-                className="bg-stone-800 border-stone-700"
-                data-testid="input-trait-library-search"
-              />
+              <div className="flex gap-2">
+                <Input
+                  placeholder="Search traits..."
+                  value={librarySearch}
+                  onChange={(e) => setLibrarySearch(e.target.value)}
+                  className="bg-stone-800 border-stone-700 flex-1"
+                  data-testid="input-trait-library-search"
+                />
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button 
+                      variant="outline" 
+                      size="icon" 
+                      className={`bg-stone-800 border-stone-700 ${hasActiveFilters ? 'border-rose-500 text-rose-400' : ''}`}
+                      data-testid="button-trait-filter"
+                    >
+                      <Filter className="h-4 w-4" />
+                      {hasActiveFilters && <span className="absolute -top-1 -right-1 w-2 h-2 bg-rose-500 rounded-full" />}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-64 bg-stone-900 border-stone-700 p-4">
+                    <div className="space-y-4">
+                      <div className="font-medium text-stone-200">Filter Traits</div>
+                      <div>
+                        <Label className="text-stone-400 text-xs">Parent Attribute</Label>
+                        <Select value={attributeFilter} onValueChange={setAttributeFilter}>
+                          <SelectTrigger className="bg-stone-800 border-stone-700 mt-1" data-testid="select-trait-attribute-filter">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">All</SelectItem>
+                            {PARENT_ATTRIBUTE_OPTIONS.map(attr => (
+                              <SelectItem key={attr} value={attr}>
+                                {attr.charAt(0).toUpperCase() + attr.slice(1)}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <Label className="text-stone-400 text-xs">Damage Modifier</Label>
+                        <Select value={damageModifierFilter} onValueChange={setDamageModifierFilter}>
+                          <SelectTrigger className="bg-stone-800 border-stone-700 mt-1" data-testid="select-trait-damage-modifier-filter">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">All</SelectItem>
+                            <SelectItem value="none">None</SelectItem>
+                            <SelectItem value="reduce">Reduce</SelectItem>
+                            <SelectItem value="resistance">Resistance</SelectItem>
+                            <SelectItem value="immune">Immune</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={clearFilters}
+                        className="w-full bg-stone-800 border-stone-600 hover:bg-stone-700"
+                        data-testid="button-clear-trait-filters"
+                      >
+                        Clear Filters
+                      </Button>
+                    </div>
+                  </PopoverContent>
+                </Popover>
+              </div>
               <ScrollArea className="h-[400px]">
                 <div className="space-y-2">
                   {filteredTraits.map(trait => (
@@ -9588,6 +9712,30 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
   const [showSpellLibrary, setShowSpellLibrary] = useState(false);
   const [spellLibrarySearch, setSpellLibrarySearch] = useState('');
   const [showSpellImageBrowser, setShowSpellImageBrowser] = useState(false);
+  const [spellSchoolLibraryFilter, setSpellSchoolLibraryFilter] = useState('all');
+  const [spellLevelLibraryFilter, setSpellLevelLibraryFilter] = useState('all');
+  const [spellDamageTypeLibraryFilter, setSpellDamageTypeLibraryFilter] = useState('all');
+  const [spellAttributeLibraryFilter, setSpellAttributeLibraryFilter] = useState('all');
+  const [spellAoeLibraryFilter, setSpellAoeLibraryFilter] = useState('all');
+  const [spellConcentrationLibraryFilter, setSpellConcentrationLibraryFilter] = useState('all');
+
+  const hasActiveSpellLibraryFilters = spellSchoolLibraryFilter !== 'all' || 
+    spellLevelLibraryFilter !== 'all' || 
+    spellDamageTypeLibraryFilter !== 'all' || 
+    spellAttributeLibraryFilter !== 'all' || 
+    spellAoeLibraryFilter !== 'all' || 
+    spellConcentrationLibraryFilter !== 'all';
+
+  const clearSpellLibraryFilters = () => {
+    setSpellSchoolLibraryFilter('all');
+    setSpellLevelLibraryFilter('all');
+    setSpellDamageTypeLibraryFilter('all');
+    setSpellAttributeLibraryFilter('all');
+    setSpellAoeLibraryFilter('all');
+    setSpellConcentrationLibraryFilter('all');
+  };
+
+  const spellSchoolOptions = ['Evocation', 'Abjuration', 'Conjuration', 'Divination', 'Enchantment', 'Illusion', 'Necromancy', 'Transmutation'];
   const [spellFormData, setSpellFormData] = useState<{
     name: string;
     description: string;
@@ -12389,22 +12537,147 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                   {/* Library Tab - only show when not editing */}
                   {!editSpellData && spellDialogTab === 'library' && (
                     <div className="space-y-4">
-                      <div className="relative">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-500" />
-                        <Input
-                          placeholder="Search spells..."
-                          value={spellLibrarySearch}
-                          onChange={(e) => setSpellLibrarySearch(e.target.value)}
-                          className="pl-9 bg-stone-800 border-stone-700"
-                          data-testid="input-spell-library-search"
-                        />
+                      <div className="flex gap-2">
+                        <div className="relative flex-1">
+                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-500" />
+                          <Input
+                            placeholder="Search spells..."
+                            value={spellLibrarySearch}
+                            onChange={(e) => setSpellLibrarySearch(e.target.value)}
+                            className="pl-9 bg-stone-800 border-stone-700"
+                            data-testid="input-spell-library-search"
+                          />
+                        </div>
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Button 
+                              variant="outline" 
+                              size="icon" 
+                              className={`bg-stone-800 border-stone-700 ${hasActiveSpellLibraryFilters ? 'border-purple-500 text-purple-400' : ''}`}
+                              data-testid="button-spell-library-filter"
+                            >
+                              <Filter className="h-4 w-4" />
+                              {hasActiveSpellLibraryFilters && <span className="absolute -top-1 -right-1 w-2 h-2 bg-purple-500 rounded-full" />}
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-72 bg-stone-900 border-stone-700 p-4" align="end">
+                            <div className="space-y-3">
+                              <div className="font-medium text-stone-200">Filter Spells</div>
+                              <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                  <Label className="text-stone-400 text-xs">School</Label>
+                                  <Select value={spellSchoolLibraryFilter} onValueChange={setSpellSchoolLibraryFilter}>
+                                    <SelectTrigger className="bg-stone-800 border-stone-700 mt-1 text-xs h-8" data-testid="select-spell-school-filter">
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="all">All</SelectItem>
+                                      {spellSchoolOptions.map(school => (
+                                        <SelectItem key={school} value={school}>{school}</SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                <div>
+                                  <Label className="text-stone-400 text-xs">Level</Label>
+                                  <Select value={spellLevelLibraryFilter} onValueChange={setSpellLevelLibraryFilter}>
+                                    <SelectTrigger className="bg-stone-800 border-stone-700 mt-1 text-xs h-8" data-testid="select-spell-level-filter">
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="all">All</SelectItem>
+                                      <SelectItem value="0">0 (Cantrip)</SelectItem>
+                                      {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(level => (
+                                        <SelectItem key={level} value={String(level)}>{level}</SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                <div>
+                                  <Label className="text-stone-400 text-xs">Damage Type</Label>
+                                  <Select value={spellDamageTypeLibraryFilter} onValueChange={setSpellDamageTypeLibraryFilter}>
+                                    <SelectTrigger className="bg-stone-800 border-stone-700 mt-1 text-xs h-8" data-testid="select-spell-damage-type-filter">
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="all">All</SelectItem>
+                                      {spellDamageTypes.map(type => (
+                                        <SelectItem key={type} value={type}>{type}</SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                <div>
+                                  <Label className="text-stone-400 text-xs">Attribute</Label>
+                                  <Select value={spellAttributeLibraryFilter} onValueChange={setSpellAttributeLibraryFilter}>
+                                    <SelectTrigger className="bg-stone-800 border-stone-700 mt-1 text-xs h-8" data-testid="select-spell-attribute-filter">
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="all">All</SelectItem>
+                                      {spellAttributes.map(attr => (
+                                        <SelectItem key={attr} value={attr}>{attr.charAt(0).toUpperCase() + attr.slice(1)}</SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                <div>
+                                  <Label className="text-stone-400 text-xs">Is AoE</Label>
+                                  <Select value={spellAoeLibraryFilter} onValueChange={setSpellAoeLibraryFilter}>
+                                    <SelectTrigger className="bg-stone-800 border-stone-700 mt-1 text-xs h-8" data-testid="select-spell-aoe-filter">
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="all">All</SelectItem>
+                                      <SelectItem value="yes">Yes</SelectItem>
+                                      <SelectItem value="no">No</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                <div>
+                                  <Label className="text-stone-400 text-xs">Concentration</Label>
+                                  <Select value={spellConcentrationLibraryFilter} onValueChange={setSpellConcentrationLibraryFilter}>
+                                    <SelectTrigger className="bg-stone-800 border-stone-700 mt-1 text-xs h-8" data-testid="select-spell-concentration-filter">
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="all">All</SelectItem>
+                                      <SelectItem value="yes">Yes</SelectItem>
+                                      <SelectItem value="no">No</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                              </div>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={clearSpellLibraryFilters}
+                                className="w-full bg-stone-800 border-stone-600 hover:bg-stone-700"
+                                data-testid="button-clear-spell-library-filters"
+                              >
+                                Clear Filters
+                              </Button>
+                            </div>
+                          </PopoverContent>
+                        </Popover>
                       </div>
                       <div className="space-y-2">
                         {systemSpells
-                          .filter((spell: any) =>
-                            spell.name.toLowerCase().includes(spellLibrarySearch.toLowerCase()) ||
-                            spell.description?.toLowerCase().includes(spellLibrarySearch.toLowerCase())
-                          )
+                          .filter((spell: any) => {
+                            const matchesSearch = spell.name.toLowerCase().includes(spellLibrarySearch.toLowerCase()) ||
+                              spell.description?.toLowerCase().includes(spellLibrarySearch.toLowerCase());
+                            const matchesSchool = spellSchoolLibraryFilter === 'all' || spell.school === spellSchoolLibraryFilter;
+                            const matchesLevel = spellLevelLibraryFilter === 'all' || String(spell.level) === spellLevelLibraryFilter;
+                            const matchesDamageType = spellDamageTypeLibraryFilter === 'all' || spell.damageType === spellDamageTypeLibraryFilter;
+                            const matchesAttribute = spellAttributeLibraryFilter === 'all' || spell.attribute === spellAttributeLibraryFilter;
+                            const matchesAoe = spellAoeLibraryFilter === 'all' || 
+                              (spellAoeLibraryFilter === 'yes' && spell.isAoe) || 
+                              (spellAoeLibraryFilter === 'no' && !spell.isAoe);
+                            const matchesConcentration = spellConcentrationLibraryFilter === 'all' || 
+                              (spellConcentrationLibraryFilter === 'yes' && spell.concentration) || 
+                              (spellConcentrationLibraryFilter === 'no' && !spell.concentration);
+                            return matchesSearch && matchesSchool && matchesLevel && matchesDamageType && matchesAttribute && matchesAoe && matchesConcentration;
+                          })
                           .map((spell: any) => (
                             <div
                               key={spell.id}
@@ -12468,12 +12741,24 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                               </div>
                             </div>
                           ))}
-                        {systemSpells.filter((spell: any) =>
-                          spell.name.toLowerCase().includes(spellLibrarySearch.toLowerCase())
-                        ).length === 0 && (
+                        {systemSpells.filter((spell: any) => {
+                          const matchesSearch = spell.name.toLowerCase().includes(spellLibrarySearch.toLowerCase()) ||
+                            spell.description?.toLowerCase().includes(spellLibrarySearch.toLowerCase());
+                          const matchesSchool = spellSchoolLibraryFilter === 'all' || spell.school === spellSchoolLibraryFilter;
+                          const matchesLevel = spellLevelLibraryFilter === 'all' || String(spell.level) === spellLevelLibraryFilter;
+                          const matchesDamageType = spellDamageTypeLibraryFilter === 'all' || spell.damageType === spellDamageTypeLibraryFilter;
+                          const matchesAttribute = spellAttributeLibraryFilter === 'all' || spell.attribute === spellAttributeLibraryFilter;
+                          const matchesAoe = spellAoeLibraryFilter === 'all' || 
+                            (spellAoeLibraryFilter === 'yes' && spell.isAoe) || 
+                            (spellAoeLibraryFilter === 'no' && !spell.isAoe);
+                          const matchesConcentration = spellConcentrationLibraryFilter === 'all' || 
+                            (spellConcentrationLibraryFilter === 'yes' && spell.concentration) || 
+                            (spellConcentrationLibraryFilter === 'no' && !spell.concentration);
+                          return matchesSearch && matchesSchool && matchesLevel && matchesDamageType && matchesAttribute && matchesAoe && matchesConcentration;
+                        }).length === 0 && (
                           <div className="text-center py-8 text-stone-400">
                             <BookOpen className="h-12 w-12 mx-auto mb-3 opacity-30" />
-                            <p>No spells found in the library</p>
+                            <p>No spells found{hasActiveSpellLibraryFilters ? ' matching filters' : ' in the library'}</p>
                             <p className="text-xs mt-1">Ask your GM to add spells in Admin Settings</p>
                           </div>
                         )}
@@ -14401,9 +14686,20 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
   const [activeTab, setActiveTab] = useState<'templates' | 'create'>('templates');
   const [templateSearch, setTemplateSearch] = useState('');
   const [templateTypeFilter, setTemplateTypeFilter] = useState('all');
+  const [templateRarityFilter, setTemplateRarityFilter] = useState('all');
   const [quantityPickerTemplate, setQuantityPickerTemplate] = useState<any>(null);
   const [addQuantity, setAddQuantity] = useState(1);
   const holdTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const hasActiveItemFilters = templateTypeFilter !== 'all' || templateRarityFilter !== 'all';
+
+  const clearItemFilters = () => {
+    setTemplateTypeFilter('all');
+    setTemplateRarityFilter('all');
+  };
+
+  const itemTypeOptions = ['weapon', 'armor', 'consumable', 'utility', 'container', 'currency'];
+  const rarityOptions = ['common', 'uncommon', 'rare', 'epic', 'legendary'];
   
   const { data: templateData } = useQuery({
     queryKey: ['template-items', campaignId],
@@ -14415,7 +14711,8 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
   const filteredTemplates = allTemplates.filter((item: any) => {
     const matchesSearch = item.name.toLowerCase().includes(templateSearch.toLowerCase());
     const matchesType = templateTypeFilter === 'all' || item.itemType === templateTypeFilter;
-    return matchesSearch && matchesType;
+    const matchesRarity = templateRarityFilter === 'all' || item.rarity === templateRarityFilter;
+    return matchesSearch && matchesType && matchesRarity;
   });
 
   const handleTemplatePointerDown = (template: any) => {
@@ -14771,20 +15068,65 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
                     data-testid="input-template-search"
                   />
                 </div>
-                <Select value={templateTypeFilter} onValueChange={setTemplateTypeFilter}>
-                  <SelectTrigger className="w-[150px] bg-stone-800 border-stone-700">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Types</SelectItem>
-                    <SelectItem value="weapon">Weapons</SelectItem>
-                    <SelectItem value="ammunition">Ammunition</SelectItem>
-                    <SelectItem value="armor">Armor</SelectItem>
-                    <SelectItem value="consumable">Consumables</SelectItem>
-                    <SelectItem value="utility">Utilities</SelectItem>
-                    <SelectItem value="container">Containers</SelectItem>
-                  </SelectContent>
-                </Select>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button 
+                      variant="outline" 
+                      size="icon" 
+                      className={`bg-stone-800 border-stone-700 ${hasActiveItemFilters ? 'border-amber-500 text-amber-400' : ''}`}
+                      data-testid="button-item-library-filter"
+                    >
+                      <Filter className="h-4 w-4" />
+                      {hasActiveItemFilters && <span className="absolute -top-1 -right-1 w-2 h-2 bg-amber-500 rounded-full" />}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-64 bg-stone-900 border-stone-700 p-4" align="end">
+                    <div className="space-y-4">
+                      <div className="font-medium text-stone-200">Filter Items</div>
+                      <div>
+                        <Label className="text-stone-400 text-xs">Item Type</Label>
+                        <Select value={templateTypeFilter} onValueChange={setTemplateTypeFilter}>
+                          <SelectTrigger className="bg-stone-800 border-stone-700 mt-1" data-testid="select-item-type-filter">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">All</SelectItem>
+                            {itemTypeOptions.map(type => (
+                              <SelectItem key={type} value={type}>
+                                {type.charAt(0).toUpperCase() + type.slice(1)}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <Label className="text-stone-400 text-xs">Rarity</Label>
+                        <Select value={templateRarityFilter} onValueChange={setTemplateRarityFilter}>
+                          <SelectTrigger className="bg-stone-800 border-stone-700 mt-1" data-testid="select-item-rarity-filter">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">All</SelectItem>
+                            {rarityOptions.map(rarity => (
+                              <SelectItem key={rarity} value={rarity}>
+                                {rarity.charAt(0).toUpperCase() + rarity.slice(1)}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={clearItemFilters}
+                        className="w-full bg-stone-800 border-stone-600 hover:bg-stone-700"
+                        data-testid="button-clear-item-filters"
+                      >
+                        Clear Filters
+                      </Button>
+                    </div>
+                  </PopoverContent>
+                </Popover>
               </div>
 
               {/* Template Items List */}
