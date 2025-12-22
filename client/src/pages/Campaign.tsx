@@ -2310,6 +2310,7 @@ export default function Campaign() {
              onAoeMouseMove={updateAoeCenter}
              onAoeClick={handleAoeClick}
              otherPlayersAoe={otherPlayersAoe}
+             myPermissions={myPermissions}
            />
            
            {/* Battlemap Dice Overlay for 3D dice rolling */}

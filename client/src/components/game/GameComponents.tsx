@@ -20,7 +20,7 @@ import {
   Users, User, Plus, Minus, LogOut, Menu, ChevronRight, ChevronLeft, ChevronDown, ChevronUp,
   Heart, Zap, Backpack, Sparkles, Dice5, MessageSquare, RefreshCw, X, Trash2, Package, FolderOpen, Folder, FolderPlus, GripVertical, Lock, Unlock, Camera,
   BarChart3, Grid3X3, ScrollText, Upload, Image as ImageIcon, Layers, Search, TrendingUp, UserMinus, Ban,
-  MousePointer, Target, UserCheck, Swords, ArrowRight, Eye, EyeOff, Check, Moon, Coffee, AlertTriangle, GitBranch, Star, BookOpen, Pencil, Dna
+  MousePointer, Target, UserCheck, Swords, ArrowRight, Eye, EyeOff, Check, Moon, Coffee, AlertTriangle, GitBranch, Star, BookOpen, Pencil, Dna, Type
 } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { type Scene, type Hotbar, type SystemSpecies, type FeatTreeWithData, type Feat, type FeatConnection, type CharacterFeat, type SystemSkill, type CharacterCustomSkill, api, gameWs } from "@/lib/api";
@@ -266,9 +266,10 @@ interface BattleMapProps {
   onAoeMouseMove?: (x: number, y: number) => void;
   onAoeClick?: (x: number, y: number) => void;
   otherPlayersAoe?: Map<string, OtherPlayerAoe>;
+  myPermissions?: { permissions?: Record<string, string> };
 }
 
-export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClick, onDeleteToken, role, gridSize, backgroundImage, scene, onViewChange, characters = [], selectionMode = 'select', targetedTokenId, selectedTokenId, aoeTargetState, onAoeMouseMove, onAoeClick, otherPlayersAoe }: BattleMapProps) {
+export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClick, onDeleteToken, role, gridSize, backgroundImage, scene, onViewChange, characters = [], selectionMode = 'select', targetedTokenId, selectedTokenId, aoeTargetState, onAoeMouseMove, onAoeClick, otherPlayersAoe, myPermissions }: BattleMapProps) {
   // Use refs for pan/zoom to avoid re-renders during interaction
   const panRef = useRef({ x: 0, y: 0 });
   const zoomRef = useRef(1);
@@ -300,6 +301,9 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
   // Lock state for preventing map movement
   const [isMapLocked, setIsMapLocked] = useState(false);
   const isMapLockedRef = useRef(false);
+  
+  // Nametag visibility toggle
+  const [showNametags, setShowNametags] = useState(true);
   
   // Gesture state machine to prevent conflicts between pan/zoom/token drag
   type GestureMode = 'idle' | 'panning' | 'pinching' | 'draggingToken';
@@ -985,6 +989,16 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
         >
           {isMapLocked ? <Lock className="h-3 w-3" /> : <Unlock className="h-3 w-3" />}
         </Button>
+        <Button 
+           size="sm" 
+           variant="secondary" 
+           className={`bg-black/50 hover:bg-black/80 text-xs border backdrop-blur-sm ${showNametags ? 'border-amber-500 text-amber-400' : 'border-white/10'}`}
+           onClick={() => setShowNametags(!showNametags)}
+           data-testid="button-toggle-nametags"
+           title={showNametags ? "Hide token names" : "Show token names"}
+        >
+          <Type className="h-3 w-3" />
+        </Button>
       </div>
 
       {/* Draggable World Container - Large scrollable space beyond image bounds */}
@@ -1195,14 +1209,6 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
             >
               <img src={tokenImage} alt="token" className="w-full h-full object-cover pointer-events-none rounded-full" />
               
-              {/* Nametag - displays character/token name above the token */}
-              <div 
-                className="absolute left-1/2 -translate-x-1/2 -top-4 px-1.5 py-0.5 bg-black/70 rounded text-[10px] text-white whitespace-nowrap max-w-[80px] truncate pointer-events-none"
-                style={{ fontSize: Math.max(8, Math.min(11, tokenSize / 6)) }}
-              >
-                {character?.name || (token.type === 'player' ? 'Player' : 'Enemy')}
-              </div>
-              
               {/* Token border - shows targeting (red), selection (white), or default (blue/red based on type) */}
               <div className={`absolute inset-0 rounded-full ${
                 targetedTokenId === token.id 
@@ -1232,6 +1238,20 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                 >
                   <Trash2 className="w-4 h-4 text-white" />
                 </button>
+              )}
+              
+              {/* Nametag - displays character/token name at bottom of token, above HP bar */}
+              {/* Only show if: nametags enabled AND (GM or player has view/edit permission) */}
+              {showNametags && (role === 'gm' || !character || myPermissions?.permissions?.[character.id]) && (
+                <div 
+                  className="absolute left-1/2 -translate-x-1/2 bottom-1 font-display text-white whitespace-nowrap max-w-[90px] truncate pointer-events-none text-center"
+                  style={{ 
+                    fontSize: Math.max(8, Math.min(12, tokenSize / 5)),
+                    textShadow: '1px 1px 0 #000, -1px 1px 0 #000, 1px -1px 0 #000, -1px -1px 0 #000, 0 1px 0 #000, 0 -1px 0 #000, 1px 0 0 #000, -1px 0 0 #000'
+                  }}
+                >
+                  {character?.name || (token.type === 'player' ? 'Player' : 'Enemy')}
+                </div>
               )}
               
               {/* HP Bar - Only show if token is linked to a character */}
