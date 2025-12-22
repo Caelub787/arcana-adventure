@@ -1793,332 +1793,154 @@ interface CharacterFormDialogProps {
 }
 
 function CharacterFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: CharacterFormDialogProps) {
-  const [showImageBrowser, setShowImageBrowser] = useState(false);
-  const [formData, setFormData] = useState<{
-    name: string;
-    portrait: string;
-    level: number;
-    race: string;
-    hp: number;
-    maxHp: number;
-    energy: number;
-    maxEnergy: number;
-    might: number;
-    finesse: number;
-    wit: number;
-    presence: number;
-    will: number;
-    craft: number;
-  }>({
-    name: initialData?.name || '',
-    portrait: initialData?.portrait || '',
-    level: initialData?.level || 1,
-    race: initialData?.race || '',
-    hp: initialData?.hp || 10,
-    maxHp: initialData?.maxHp || 10,
-    energy: initialData?.energy || 10,
-    maxEnergy: initialData?.maxEnergy || 10,
-    might: (initialData as any)?.might || 0,
-    finesse: (initialData as any)?.finesse || 0,
-    wit: (initialData as any)?.wit || 0,
-    presence: (initialData as any)?.presence || 0,
-    will: (initialData as any)?.will || 0,
-    craft: (initialData as any)?.craft || 0,
+  const [name, setName] = useState(initialData?.name || "");
+  const [selectedRace, setSelectedRace] = useState(initialData?.race || "Human");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const { data: systemSpeciesList = [] } = useQuery({
+    queryKey: ['species'],
+    queryFn: () => api.getSpecies('Arcana Adventure'),
+    enabled: open,
   });
 
+  const selectedSpecies = systemSpeciesList.find((s: any) => s.name === selectedRace) || {
+    name: "Human",
+    size: "Medium",
+    naturalArmor: 5,
+    sizeBonus: 0,
+    speed: 30,
+    flySpeed: 0,
+    startingHp: 10,
+    startingMaxHp: 10,
+    startingEnergy: 10,
+    startingMaxEnergy: 10,
+    featTree: ""
+  };
+
   useEffect(() => {
-    if (initialData) {
-      setFormData({
-        name: initialData.name || '',
-        portrait: initialData.portrait || '',
-        level: initialData.level || 1,
-        race: initialData.race || '',
-        hp: initialData.hp || 10,
-        maxHp: initialData.maxHp || 10,
-        energy: initialData.energy || 10,
-        maxEnergy: initialData.maxEnergy || 10,
-        might: (initialData as any)?.might || 0,
-        finesse: (initialData as any)?.finesse || 0,
-        wit: (initialData as any)?.wit || 0,
-        presence: (initialData as any)?.presence || 0,
-        will: (initialData as any)?.will || 0,
-        craft: (initialData as any)?.craft || 0,
-      });
-    } else {
-      setFormData({
-        name: '',
-        portrait: '',
-        level: 1,
-        race: '',
-        hp: 10,
-        maxHp: 10,
-        energy: 10,
-        maxEnergy: 10,
-        might: 0,
-        finesse: 0,
-        wit: 0,
-        presence: 0,
-        will: 0,
-        craft: 0,
-      });
+    if (open) {
+      setName(initialData?.name || "");
+      setSelectedRace(initialData?.race || "Human");
     }
   }, [initialData, open]);
 
-  const handleSave = () => {
-    if (!formData.name.trim()) {
-      toast({ title: 'Error', description: 'Character name is required', variant: 'destructive' });
-      return;
-    }
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim() || isSubmitting) return;
+    
+    setIsSubmitting(true);
+    
     onSave({
-      name: formData.name.trim(),
-      portrait: formData.portrait || undefined,
-      level: formData.level,
-      race: formData.race.trim(),
-      hp: formData.hp,
-      maxHp: formData.maxHp,
-      energy: formData.energy,
-      maxEnergy: formData.maxEnergy,
-      might: formData.might,
-      finesse: formData.finesse,
-      wit: formData.wit,
-      presence: formData.presence,
-      will: formData.will,
-      craft: formData.craft,
+      name: name.trim(),
+      level: 1,
+      class: "",
+      race: selectedSpecies.name,
+      size: selectedSpecies.size || "Medium",
+      naturalArmor: selectedSpecies.naturalArmor || 5,
+      sizeBonus: selectedSpecies.sizeBonus || 0,
+      speed: selectedSpecies.speed || 30,
+      flySpeed: selectedSpecies.flySpeed || 0,
+      featTree: selectedSpecies.featTree || "",
+      hp: selectedSpecies.startingHp || 10,
+      maxHp: selectedSpecies.startingMaxHp || 10,
+      energy: selectedSpecies.startingEnergy || 10,
+      maxEnergy: selectedSpecies.startingMaxEnergy || 10,
+      bonusHpFromLevelUps: 0,
+      lastLevelUpRolled: 1,
+      might: 0,
+      finesse: 0,
+      wit: 0,
+      presence: 0,
+      will: 0,
+      craft: 0,
+      skillAgility: 0,
+      skillArcana: 0,
+      skillCharisma: 0,
+      skillConcentration: 0,
+      skillDeception: 0,
+      skillHistory: 0,
+      skillIntimidation: 0,
+      skillInvestigation: 0,
+      skillMedicine: 0,
+      skillPerception: 0,
+      skillSleightOfHand: 0,
+      skillStealth: 0,
+      skillStrength: 0,
+      skillWisdom: 0,
+      skillCulture: 0,
     } as Partial<Character>);
+    
+    setName("");
+    setSelectedRace("Human");
+    setIsSubmitting(false);
+    onOpenChange(false);
   };
 
-  const clampAttribute = (value: number) => Math.max(-2, Math.min(5, value));
-
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-stone-900 border-stone-700 max-w-2xl max-h-[90vh] overflow-y-auto">
+    <Dialog open={open} onOpenChange={(open) => {
+      if (!open) {
+        setName("");
+        setSelectedRace("Human");
+      }
+      onOpenChange(open);
+    }}>
+      <DialogContent className="bg-stone-900 border-stone-700 text-stone-200 sm:max-w-md">
         <DialogHeader>
-          <DialogTitle className="text-teal-500">
+          <DialogTitle className="text-teal-500 font-display text-2xl">
             {initialData ? 'Edit Character Template' : 'Create Character Template'}
           </DialogTitle>
+          <DialogDescription className="text-stone-400">
+            Enter a name and select a race. You can customize everything else in the character sheet after adding to a campaign.
+          </DialogDescription>
         </DialogHeader>
-
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <Label className="text-stone-300">Character Name *</Label>
-              <Input
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                placeholder="e.g. Elara the Wise"
-                className="bg-stone-800 border-stone-700 mt-1"
-                data-testid="input-character-name"
-              />
-            </div>
-            <div>
-              <Label className="text-stone-300">Race</Label>
-              <Input
-                value={formData.race}
-                onChange={(e) => setFormData({ ...formData, race: e.target.value })}
-                placeholder="e.g. Human, Elf, Dwarf"
-                className="bg-stone-800 border-stone-700 mt-1"
-                data-testid="input-character-race"
-              />
-            </div>
-          </div>
-
-          <div>
-            <Label className="text-stone-300">Portrait</Label>
-            <div className="flex gap-2 mt-1">
-              <Input
-                value={formData.portrait}
-                onChange={(e) => setFormData({ ...formData, portrait: e.target.value })}
-                placeholder="Image URL or browse..."
-                className="bg-stone-800 border-stone-700 flex-1"
-                data-testid="input-character-portrait"
-              />
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setShowImageBrowser(true)}
-                className="border-stone-600"
-                data-testid="button-browse-portrait"
-              >
-                Browse
-              </Button>
-            </div>
-            {formData.portrait && (
-              <div className="mt-2">
-                <img src={formData.portrait} alt="Portrait preview" className="h-20 w-20 rounded-lg object-cover border border-stone-700" />
-              </div>
-            )}
-            <ImageBrowser
-              open={showImageBrowser}
-              onOpenChange={setShowImageBrowser}
-              onSelect={(imageBase64: string) => {
-                setFormData({ ...formData, portrait: imageBase64 });
-                setShowImageBrowser(false);
-              }}
-              title="Select Character Portrait"
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="char-name" className="text-stone-300">Character Name</Label>
+            <Input
+              id="char-name"
+              data-testid="input-character-name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="bg-stone-800 border-stone-700 text-stone-200"
+              placeholder="Enter character name..."
+              autoFocus
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <Label className="text-stone-300">Level</Label>
-              <Input
-                type="number"
-                min={1}
-                value={formData.level}
-                onChange={(e) => setFormData({ ...formData, level: Math.max(1, parseInt(e.target.value) || 1) })}
-                className="bg-stone-800 border-stone-700 mt-1"
-                data-testid="input-character-level"
-              />
-            </div>
+          <div className="space-y-2">
+            <Label htmlFor="char-race" className="text-stone-300">Race</Label>
+            <Select value={selectedRace} onValueChange={setSelectedRace}>
+              <SelectTrigger className="bg-stone-800 border-stone-700 text-stone-200" data-testid="select-character-race">
+                <SelectValue placeholder="Select a race" />
+              </SelectTrigger>
+              <SelectContent className="bg-stone-800 border-stone-700">
+                {systemSpeciesList.length > 0 ? (
+                  systemSpeciesList.map((species: any) => (
+                    <SelectItem key={species.id} value={species.name} className="text-stone-200">
+                      {species.name}
+                    </SelectItem>
+                  ))
+                ) : (
+                  <SelectItem value="Human" className="text-stone-200">Human</SelectItem>
+                )}
+              </SelectContent>
+            </Select>
+            {selectedSpecies && (
+              <p className="text-xs text-stone-500">
+                HP: {selectedSpecies.startingMaxHp || 10} | Energy: {selectedSpecies.startingMaxEnergy || 10} | Speed: {selectedSpecies.speed || 30}ft
+              </p>
+            )}
           </div>
 
-          <div className="border-t border-stone-700 pt-4">
-            <h4 className="text-sm font-medium text-stone-300 mb-3">Health & Energy</h4>
-            <div className="grid grid-cols-4 gap-4">
-              <div>
-                <Label className="text-stone-300 text-xs">HP</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  value={formData.hp}
-                  onChange={(e) => setFormData({ ...formData, hp: Math.max(0, parseInt(e.target.value) || 0) })}
-                  className="bg-stone-800 border-stone-700 mt-1"
-                  data-testid="input-character-hp"
-                />
-              </div>
-              <div>
-                <Label className="text-stone-300 text-xs">Max HP</Label>
-                <Input
-                  type="number"
-                  min={1}
-                  value={formData.maxHp}
-                  onChange={(e) => setFormData({ ...formData, maxHp: Math.max(1, parseInt(e.target.value) || 1) })}
-                  className="bg-stone-800 border-stone-700 mt-1"
-                  data-testid="input-character-maxhp"
-                />
-              </div>
-              <div>
-                <Label className="text-stone-300 text-xs">Energy</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  value={formData.energy}
-                  onChange={(e) => setFormData({ ...formData, energy: Math.max(0, parseInt(e.target.value) || 0) })}
-                  className="bg-stone-800 border-stone-700 mt-1"
-                  data-testid="input-character-energy"
-                />
-              </div>
-              <div>
-                <Label className="text-stone-300 text-xs">Max Energy</Label>
-                <Input
-                  type="number"
-                  min={1}
-                  value={formData.maxEnergy}
-                  onChange={(e) => setFormData({ ...formData, maxEnergy: Math.max(1, parseInt(e.target.value) || 1) })}
-                  className="bg-stone-800 border-stone-700 mt-1"
-                  data-testid="input-character-maxenergy"
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="border-t border-stone-700 pt-4">
-            <h4 className="text-sm font-medium text-stone-300 mb-3">Attributes (-2 to 5)</h4>
-            <div className="grid grid-cols-3 gap-4">
-              <div>
-                <Label className="text-stone-300 text-xs">Might</Label>
-                <Input
-                  type="number"
-                  min={-2}
-                  max={5}
-                  value={formData.might}
-                  onChange={(e) => setFormData({ ...formData, might: clampAttribute(parseInt(e.target.value) || 0) })}
-                  className="bg-stone-800 border-stone-700 mt-1"
-                  data-testid="input-character-might"
-                />
-              </div>
-              <div>
-                <Label className="text-stone-300 text-xs">Finesse</Label>
-                <Input
-                  type="number"
-                  min={-2}
-                  max={5}
-                  value={formData.finesse}
-                  onChange={(e) => setFormData({ ...formData, finesse: clampAttribute(parseInt(e.target.value) || 0) })}
-                  className="bg-stone-800 border-stone-700 mt-1"
-                  data-testid="input-character-finesse"
-                />
-              </div>
-              <div>
-                <Label className="text-stone-300 text-xs">Wit</Label>
-                <Input
-                  type="number"
-                  min={-2}
-                  max={5}
-                  value={formData.wit}
-                  onChange={(e) => setFormData({ ...formData, wit: clampAttribute(parseInt(e.target.value) || 0) })}
-                  className="bg-stone-800 border-stone-700 mt-1"
-                  data-testid="input-character-wit"
-                />
-              </div>
-              <div>
-                <Label className="text-stone-300 text-xs">Presence</Label>
-                <Input
-                  type="number"
-                  min={-2}
-                  max={5}
-                  value={formData.presence}
-                  onChange={(e) => setFormData({ ...formData, presence: clampAttribute(parseInt(e.target.value) || 0) })}
-                  className="bg-stone-800 border-stone-700 mt-1"
-                  data-testid="input-character-presence"
-                />
-              </div>
-              <div>
-                <Label className="text-stone-300 text-xs">Will</Label>
-                <Input
-                  type="number"
-                  min={-2}
-                  max={5}
-                  value={formData.will}
-                  onChange={(e) => setFormData({ ...formData, will: clampAttribute(parseInt(e.target.value) || 0) })}
-                  className="bg-stone-800 border-stone-700 mt-1"
-                  data-testid="input-character-will"
-                />
-              </div>
-              <div>
-                <Label className="text-stone-300 text-xs">Craft</Label>
-                <Input
-                  type="number"
-                  min={-2}
-                  max={5}
-                  value={formData.craft}
-                  onChange={(e) => setFormData({ ...formData, craft: clampAttribute(parseInt(e.target.value) || 0) })}
-                  className="bg-stone-800 border-stone-700 mt-1"
-                  data-testid="input-character-craft"
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <DialogFooter>
-          <Button
-            variant="outline"
-            onClick={() => onOpenChange(false)}
-            className="border-stone-700"
-            data-testid="button-cancel-character"
-          >
-            Cancel
-          </Button>
-          <Button
-            onClick={handleSave}
-            disabled={isLoading}
-            className="bg-teal-700 hover:bg-teal-600"
-            data-testid="button-save-character"
-          >
-            {isLoading ? 'Saving...' : (initialData ? 'Update' : 'Create')}
-          </Button>
-        </DialogFooter>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} className="border-stone-600">
+              Cancel
+            </Button>
+            <Button type="submit" disabled={!name.trim() || isSubmitting || isLoading} className="bg-teal-700 hover:bg-teal-600">
+              {isLoading ? 'Saving...' : (initialData ? 'Update' : 'Create')}
+            </Button>
+          </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   );
