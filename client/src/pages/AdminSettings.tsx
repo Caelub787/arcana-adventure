@@ -2,7 +2,7 @@ import { useState, useRef, useMemo, useCallback, useEffect } from 'react';
 import { useLocation } from 'wouter';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, useMotionValue } from 'framer-motion';
-import { api, type Item, type SystemSpecies, type FeatTree, type Feat, type FeatConnection, type FeatTreeWithData, type FeatTemplate, type SystemSpell, type SystemSkill, type SystemTrait } from '@/lib/api';
+import { api, type Item, type SystemSpecies, type FeatTree, type Feat, type FeatConnection, type FeatTreeWithData, type FeatTemplate, type SystemSpell, type SystemSkill, type SystemTrait, type Character } from '@/lib/api';
 import { useAuth } from '@/lib/AuthContext';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { Button } from '@/components/ui/button';
@@ -20,7 +20,7 @@ import { toast } from '@/hooks/use-toast';
 import { ArrowLeft, Plus, Pencil, Trash2, Sword, Shield, Package, Sparkles, Box, Coins, Search, Users, User, GitBranch, Library, Link, X, GripVertical, Star, Zap, Heart, ShieldCheck, BookOpen, RefreshCw, ZoomIn, ZoomOut, Wand2, Save } from 'lucide-react';
 import { ImageBrowser } from '@/components/ImageBrowser';
 
-type AdminView = 'dashboard' | 'items' | 'species' | 'spells' | 'skills' | 'traits' | 'feat-trees';
+type AdminView = 'dashboard' | 'items' | 'species' | 'spells' | 'skills' | 'traits' | 'feat-trees' | 'characters';
 
 const itemTypeIcons: Record<string, any> = {
   weapon: Sword,
@@ -70,6 +70,10 @@ export default function AdminSettings() {
   const [editingTrait, setEditingTrait] = useState<SystemTrait | null>(null);
   const [traitSearchQuery, setTraitSearchQuery] = useState('');
 
+  const [showAddCharacter, setShowAddCharacter] = useState(false);
+  const [editingCharacter, setEditingCharacter] = useState<Character | null>(null);
+  const [characterSearchQuery, setCharacterSearchQuery] = useState('');
+
   const { data: systemItems = [], isLoading: itemsLoading } = useQuery({
     queryKey: ['system-items'],
     queryFn: () => api.getSystemItems(),
@@ -98,6 +102,12 @@ export default function AdminSettings() {
     queryKey: ['system-traits'],
     queryFn: () => api.getSystemTraits(),
     enabled: isAdmin && currentView === 'traits',
+  });
+
+  const { data: characterTemplates = [], isLoading: charactersLoading } = useQuery({
+    queryKey: ['character-templates'],
+    queryFn: () => api.getCharacterTemplates(),
+    enabled: isAdmin && currentView === 'characters',
   });
 
   const { data: allFeatTrees = [] } = useQuery({
@@ -281,6 +291,41 @@ export default function AdminSettings() {
     },
   });
 
+  const createCharacterMutation = useMutation({
+    mutationFn: (character: Partial<Character>) => api.createCharacterTemplate(character),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['character-templates'] });
+      setShowAddCharacter(false);
+      toast({ title: 'Character Created', description: 'Character template created successfully' });
+    },
+    onError: (error: any) => {
+      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    },
+  });
+
+  const updateCharacterMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Partial<Character> }) => api.updateCharacterTemplate(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['character-templates'] });
+      setEditingCharacter(null);
+      toast({ title: 'Character Updated', description: 'Character template updated successfully' });
+    },
+    onError: (error: any) => {
+      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    },
+  });
+
+  const deleteCharacterMutation = useMutation({
+    mutationFn: (id: string) => api.deleteCharacterTemplate(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['character-templates'] });
+      toast({ title: 'Character Deleted', description: 'Character template deleted successfully' });
+    },
+    onError: (error: any) => {
+      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    },
+  });
+
   if (!isAdmin) {
     return (
       <div className="min-h-screen bg-stone-950 text-stone-200 flex items-center justify-center">
@@ -300,6 +345,7 @@ export default function AdminSettings() {
   const debouncedSpellSearchQuery = useDebouncedValue(spellSearchQuery, 150);
   const debouncedSkillSearchQuery = useDebouncedValue(skillSearchQuery, 150);
   const debouncedTraitSearchQuery = useDebouncedValue(traitSearchQuery, 150);
+  const debouncedCharacterSearchQuery = useDebouncedValue(characterSearchQuery, 150);
   
   const filteredItems = useMemo(() => {
     return systemItems.filter((item: Item) => {
@@ -338,6 +384,13 @@ export default function AdminSettings() {
     });
   }, [systemTraits, debouncedTraitSearchQuery]);
 
+  const filteredCharacters = useMemo(() => {
+    return characterTemplates.filter((character: Character) => {
+      return character.name.toLowerCase().includes(debouncedCharacterSearchQuery.toLowerCase()) ||
+             (character.race?.toLowerCase().includes(debouncedCharacterSearchQuery.toLowerCase()));
+    });
+  }, [characterTemplates, debouncedCharacterSearchQuery]);
+
   const handleBackNavigation = () => {
     if (currentView === 'dashboard') {
       setLocation('/');
@@ -367,7 +420,8 @@ export default function AdminSettings() {
                currentView === 'species' ? 'Species / Races' : 
                currentView === 'spells' ? 'Spells' : 
                currentView === 'skills' ? 'Custom Skills' : 
-               currentView === 'traits' ? 'Traits' : 'Feat Trees'}
+               currentView === 'traits' ? 'Traits' : 
+               currentView === 'characters' ? 'Character Templates' : 'Feat Trees'}
             </p>
           </div>
           <div className="w-[200px]">
@@ -468,6 +522,22 @@ export default function AdminSettings() {
           />
         )}
 
+        {currentView === 'characters' && (
+          <CharactersView
+            characters={filteredCharacters}
+            isLoading={charactersLoading}
+            searchQuery={characterSearchQuery}
+            setSearchQuery={setCharacterSearchQuery}
+            onAddCharacter={() => setShowAddCharacter(true)}
+            onEditCharacter={setEditingCharacter}
+            onDeleteCharacter={(id) => {
+              if (confirm('Are you sure you want to delete this character template?')) {
+                deleteCharacterMutation.mutate(id);
+              }
+            }}
+          />
+        )}
+
         {currentView === 'feat-trees' && (
           <FeatTreesView />
         )}
@@ -558,6 +628,23 @@ export default function AdminSettings() {
             isLoading={updateTraitMutation.isPending}
           />
         )}
+
+        <CharacterFormDialog
+          open={showAddCharacter}
+          onOpenChange={setShowAddCharacter}
+          onSave={(data) => createCharacterMutation.mutate(data)}
+          isLoading={createCharacterMutation.isPending}
+        />
+
+        {editingCharacter && (
+          <CharacterFormDialog
+            open={!!editingCharacter}
+            onOpenChange={() => setEditingCharacter(null)}
+            onSave={(data) => updateCharacterMutation.mutate({ id: editingCharacter.id, data })}
+            initialData={editingCharacter}
+            isLoading={updateCharacterMutation.isPending}
+          />
+        )}
       </div>
     </div>
   );
@@ -642,6 +729,22 @@ function DashboardView({ onNavigate }: { onNavigate: (view: AdminView) => void }
           <CardTitle className="text-rose-500">Traits</CardTitle>
           <CardDescription className="text-stone-400">
             Create traits with limited uses that reset on long rest
+          </CardDescription>
+        </CardHeader>
+      </Card>
+
+      <Card 
+        className="bg-stone-900 border-stone-700 cursor-pointer hover:border-amber-600 transition-colors"
+        onClick={() => onNavigate('characters')}
+        data-testid="card-character-templates"
+      >
+        <CardHeader>
+          <div className="h-12 w-12 rounded-lg bg-teal-700/20 flex items-center justify-center mb-2">
+            <User className="h-6 w-6 text-teal-500" />
+          </div>
+          <CardTitle className="text-teal-500">Character Templates</CardTitle>
+          <CardDescription className="text-stone-400">
+            Create reusable character templates for quick character creation
           </CardDescription>
         </CardHeader>
       </Card>
@@ -1571,6 +1674,447 @@ function TraitFormDialog({ open, onOpenChange, onSave, initialData, isLoading }:
             disabled={isLoading}
             className="bg-rose-700 hover:bg-rose-600"
             data-testid="button-save-trait"
+          >
+            {isLoading ? 'Saving...' : (initialData ? 'Update' : 'Create')}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+interface CharactersViewProps {
+  characters: Character[];
+  isLoading: boolean;
+  searchQuery: string;
+  setSearchQuery: (q: string) => void;
+  onAddCharacter: () => void;
+  onEditCharacter: (character: Character) => void;
+  onDeleteCharacter: (id: string) => void;
+}
+
+function CharactersView({ characters, isLoading, searchQuery, setSearchQuery, onAddCharacter, onEditCharacter, onDeleteCharacter }: CharactersViewProps) {
+  return (
+    <Card className="bg-stone-900 border-stone-700 flex-1 flex flex-col min-h-0">
+      <CardHeader className="flex flex-row items-center justify-between shrink-0">
+        <CardTitle className="text-teal-500">Character Templates</CardTitle>
+        <Button
+          onClick={onAddCharacter}
+          className="bg-teal-700 hover:bg-teal-600"
+          data-testid="button-add-character"
+        >
+          <Plus className="h-4 w-4 mr-2" />
+          Add Character
+        </Button>
+      </CardHeader>
+      <CardContent className="flex-1 flex flex-col min-h-0">
+        <div className="mb-4 shrink-0">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-500" />
+            <Input
+              placeholder="Search characters..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9 bg-stone-800 border-stone-700"
+              data-testid="input-search-characters"
+            />
+          </div>
+        </div>
+
+        {isLoading ? (
+          <div className="text-center py-12 text-stone-400">Loading characters...</div>
+        ) : characters.length === 0 ? (
+          <div className="text-center py-12 text-stone-400">
+            <User className="h-12 w-12 mx-auto mb-3 opacity-50" />
+            <p className="font-bold">No character templates found</p>
+            <p className="text-sm mt-2">Create reusable character templates for quick character creation</p>
+          </div>
+        ) : (
+          <ScrollArea className="flex-1 min-h-0">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {characters.map((character: Character) => (
+                <div
+                  key={character.id}
+                  className="p-4 rounded-lg bg-stone-800 border border-stone-700 hover:border-teal-600 transition-colors"
+                  data-testid={`character-card-${character.id}`}
+                >
+                  <div className="flex items-start gap-3">
+                    {character.portrait ? (
+                      <img src={character.portrait} alt={character.name} className="h-16 w-16 rounded-lg object-cover" />
+                    ) : (
+                      <div className="h-16 w-16 rounded-lg bg-stone-700 flex items-center justify-center">
+                        <User className="h-8 w-8 text-teal-400" />
+                      </div>
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-medium text-stone-200 truncate">{character.name}</h3>
+                      <p className="text-sm text-stone-400">Level {character.level || 1}</p>
+                      <p className="text-sm text-teal-400">{character.race || 'Unknown Race'}</p>
+                    </div>
+                  </div>
+                  <div className="flex justify-end gap-2 mt-3 pt-3 border-t border-stone-700">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => onEditCharacter(character)}
+                      className="text-stone-400 hover:text-teal-500"
+                      data-testid={`button-edit-character-${character.id}`}
+                    >
+                      <Pencil className="h-4 w-4 mr-1" />
+                      Edit
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => onDeleteCharacter(character.id)}
+                      className="text-stone-400 hover:text-red-500"
+                      data-testid={`button-delete-character-${character.id}`}
+                    >
+                      <Trash2 className="h-4 w-4 mr-1" />
+                      Delete
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </ScrollArea>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+interface CharacterFormDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onSave: (data: Partial<Character>) => void;
+  initialData?: Character;
+  isLoading?: boolean;
+}
+
+function CharacterFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: CharacterFormDialogProps) {
+  const [showImageBrowser, setShowImageBrowser] = useState(false);
+  const [formData, setFormData] = useState<{
+    name: string;
+    portrait: string;
+    level: number;
+    race: string;
+    hp: number;
+    maxHp: number;
+    energy: number;
+    maxEnergy: number;
+    might: number;
+    finesse: number;
+    wit: number;
+    presence: number;
+    will: number;
+    craft: number;
+  }>({
+    name: initialData?.name || '',
+    portrait: initialData?.portrait || '',
+    level: initialData?.level || 1,
+    race: initialData?.race || '',
+    hp: initialData?.hp || 10,
+    maxHp: initialData?.maxHp || 10,
+    energy: initialData?.energy || 10,
+    maxEnergy: initialData?.maxEnergy || 10,
+    might: (initialData as any)?.might || 0,
+    finesse: (initialData as any)?.finesse || 0,
+    wit: (initialData as any)?.wit || 0,
+    presence: (initialData as any)?.presence || 0,
+    will: (initialData as any)?.will || 0,
+    craft: (initialData as any)?.craft || 0,
+  });
+
+  useEffect(() => {
+    if (initialData) {
+      setFormData({
+        name: initialData.name || '',
+        portrait: initialData.portrait || '',
+        level: initialData.level || 1,
+        race: initialData.race || '',
+        hp: initialData.hp || 10,
+        maxHp: initialData.maxHp || 10,
+        energy: initialData.energy || 10,
+        maxEnergy: initialData.maxEnergy || 10,
+        might: (initialData as any)?.might || 0,
+        finesse: (initialData as any)?.finesse || 0,
+        wit: (initialData as any)?.wit || 0,
+        presence: (initialData as any)?.presence || 0,
+        will: (initialData as any)?.will || 0,
+        craft: (initialData as any)?.craft || 0,
+      });
+    } else {
+      setFormData({
+        name: '',
+        portrait: '',
+        level: 1,
+        race: '',
+        hp: 10,
+        maxHp: 10,
+        energy: 10,
+        maxEnergy: 10,
+        might: 0,
+        finesse: 0,
+        wit: 0,
+        presence: 0,
+        will: 0,
+        craft: 0,
+      });
+    }
+  }, [initialData, open]);
+
+  const handleSave = () => {
+    if (!formData.name.trim()) {
+      toast({ title: 'Error', description: 'Character name is required', variant: 'destructive' });
+      return;
+    }
+    onSave({
+      name: formData.name.trim(),
+      portrait: formData.portrait || undefined,
+      level: formData.level,
+      race: formData.race.trim(),
+      hp: formData.hp,
+      maxHp: formData.maxHp,
+      energy: formData.energy,
+      maxEnergy: formData.maxEnergy,
+      might: formData.might,
+      finesse: formData.finesse,
+      wit: formData.wit,
+      presence: formData.presence,
+      will: formData.will,
+      craft: formData.craft,
+    } as Partial<Character>);
+  };
+
+  const clampAttribute = (value: number) => Math.max(-2, Math.min(5, value));
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="bg-stone-900 border-stone-700 max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="text-teal-500">
+            {initialData ? 'Edit Character Template' : 'Create Character Template'}
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Label className="text-stone-300">Character Name *</Label>
+              <Input
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                placeholder="e.g. Elara the Wise"
+                className="bg-stone-800 border-stone-700 mt-1"
+                data-testid="input-character-name"
+              />
+            </div>
+            <div>
+              <Label className="text-stone-300">Race</Label>
+              <Input
+                value={formData.race}
+                onChange={(e) => setFormData({ ...formData, race: e.target.value })}
+                placeholder="e.g. Human, Elf, Dwarf"
+                className="bg-stone-800 border-stone-700 mt-1"
+                data-testid="input-character-race"
+              />
+            </div>
+          </div>
+
+          <div>
+            <Label className="text-stone-300">Portrait</Label>
+            <div className="flex gap-2 mt-1">
+              <Input
+                value={formData.portrait}
+                onChange={(e) => setFormData({ ...formData, portrait: e.target.value })}
+                placeholder="Image URL or browse..."
+                className="bg-stone-800 border-stone-700 flex-1"
+                data-testid="input-character-portrait"
+              />
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setShowImageBrowser(true)}
+                className="border-stone-600"
+                data-testid="button-browse-portrait"
+              >
+                Browse
+              </Button>
+            </div>
+            {formData.portrait && (
+              <div className="mt-2">
+                <img src={formData.portrait} alt="Portrait preview" className="h-20 w-20 rounded-lg object-cover border border-stone-700" />
+              </div>
+            )}
+            <ImageBrowser
+              open={showImageBrowser}
+              onOpenChange={setShowImageBrowser}
+              onSelect={(imageBase64: string) => {
+                setFormData({ ...formData, portrait: imageBase64 });
+                setShowImageBrowser(false);
+              }}
+              title="Select Character Portrait"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Label className="text-stone-300">Level</Label>
+              <Input
+                type="number"
+                min={1}
+                value={formData.level}
+                onChange={(e) => setFormData({ ...formData, level: Math.max(1, parseInt(e.target.value) || 1) })}
+                className="bg-stone-800 border-stone-700 mt-1"
+                data-testid="input-character-level"
+              />
+            </div>
+          </div>
+
+          <div className="border-t border-stone-700 pt-4">
+            <h4 className="text-sm font-medium text-stone-300 mb-3">Health & Energy</h4>
+            <div className="grid grid-cols-4 gap-4">
+              <div>
+                <Label className="text-stone-300 text-xs">HP</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  value={formData.hp}
+                  onChange={(e) => setFormData({ ...formData, hp: Math.max(0, parseInt(e.target.value) || 0) })}
+                  className="bg-stone-800 border-stone-700 mt-1"
+                  data-testid="input-character-hp"
+                />
+              </div>
+              <div>
+                <Label className="text-stone-300 text-xs">Max HP</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  value={formData.maxHp}
+                  onChange={(e) => setFormData({ ...formData, maxHp: Math.max(1, parseInt(e.target.value) || 1) })}
+                  className="bg-stone-800 border-stone-700 mt-1"
+                  data-testid="input-character-maxhp"
+                />
+              </div>
+              <div>
+                <Label className="text-stone-300 text-xs">Energy</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  value={formData.energy}
+                  onChange={(e) => setFormData({ ...formData, energy: Math.max(0, parseInt(e.target.value) || 0) })}
+                  className="bg-stone-800 border-stone-700 mt-1"
+                  data-testid="input-character-energy"
+                />
+              </div>
+              <div>
+                <Label className="text-stone-300 text-xs">Max Energy</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  value={formData.maxEnergy}
+                  onChange={(e) => setFormData({ ...formData, maxEnergy: Math.max(1, parseInt(e.target.value) || 1) })}
+                  className="bg-stone-800 border-stone-700 mt-1"
+                  data-testid="input-character-maxenergy"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="border-t border-stone-700 pt-4">
+            <h4 className="text-sm font-medium text-stone-300 mb-3">Attributes (-2 to 5)</h4>
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <Label className="text-stone-300 text-xs">Might</Label>
+                <Input
+                  type="number"
+                  min={-2}
+                  max={5}
+                  value={formData.might}
+                  onChange={(e) => setFormData({ ...formData, might: clampAttribute(parseInt(e.target.value) || 0) })}
+                  className="bg-stone-800 border-stone-700 mt-1"
+                  data-testid="input-character-might"
+                />
+              </div>
+              <div>
+                <Label className="text-stone-300 text-xs">Finesse</Label>
+                <Input
+                  type="number"
+                  min={-2}
+                  max={5}
+                  value={formData.finesse}
+                  onChange={(e) => setFormData({ ...formData, finesse: clampAttribute(parseInt(e.target.value) || 0) })}
+                  className="bg-stone-800 border-stone-700 mt-1"
+                  data-testid="input-character-finesse"
+                />
+              </div>
+              <div>
+                <Label className="text-stone-300 text-xs">Wit</Label>
+                <Input
+                  type="number"
+                  min={-2}
+                  max={5}
+                  value={formData.wit}
+                  onChange={(e) => setFormData({ ...formData, wit: clampAttribute(parseInt(e.target.value) || 0) })}
+                  className="bg-stone-800 border-stone-700 mt-1"
+                  data-testid="input-character-wit"
+                />
+              </div>
+              <div>
+                <Label className="text-stone-300 text-xs">Presence</Label>
+                <Input
+                  type="number"
+                  min={-2}
+                  max={5}
+                  value={formData.presence}
+                  onChange={(e) => setFormData({ ...formData, presence: clampAttribute(parseInt(e.target.value) || 0) })}
+                  className="bg-stone-800 border-stone-700 mt-1"
+                  data-testid="input-character-presence"
+                />
+              </div>
+              <div>
+                <Label className="text-stone-300 text-xs">Will</Label>
+                <Input
+                  type="number"
+                  min={-2}
+                  max={5}
+                  value={formData.will}
+                  onChange={(e) => setFormData({ ...formData, will: clampAttribute(parseInt(e.target.value) || 0) })}
+                  className="bg-stone-800 border-stone-700 mt-1"
+                  data-testid="input-character-will"
+                />
+              </div>
+              <div>
+                <Label className="text-stone-300 text-xs">Craft</Label>
+                <Input
+                  type="number"
+                  min={-2}
+                  max={5}
+                  value={formData.craft}
+                  onChange={(e) => setFormData({ ...formData, craft: clampAttribute(parseInt(e.target.value) || 0) })}
+                  className="bg-stone-800 border-stone-700 mt-1"
+                  data-testid="input-character-craft"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            className="border-stone-700"
+            data-testid="button-cancel-character"
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={handleSave}
+            disabled={isLoading}
+            className="bg-teal-700 hover:bg-teal-600"
+            data-testid="button-save-character"
           >
             {isLoading ? 'Saving...' : (initialData ? 'Update' : 'Create')}
           </Button>

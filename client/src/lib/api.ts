@@ -1049,6 +1049,44 @@ class ApiClient {
     return this.request('/spells');
   }
 
+  // Admin Character Templates
+  async getCharacterTemplates(): Promise<Character[]> {
+    return this.request('/admin/character-templates');
+  }
+
+  async getCharacterTemplate(id: string): Promise<Character> {
+    return this.request(`/admin/character-templates/${id}`);
+  }
+
+  async createCharacterTemplate(data: Partial<Character>): Promise<Character> {
+    return this.request('/admin/character-templates', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateCharacterTemplate(id: string, data: Partial<Character>): Promise<Character> {
+    return this.request(`/admin/character-templates/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteCharacterTemplate(id: string): Promise<void> {
+    return this.request(`/admin/character-templates/${id}`, { method: 'DELETE' });
+  }
+
+  // Public character templates (for campaign use)
+  async getPublicCharacterTemplates(): Promise<Character[]> {
+    return this.request('/character-templates');
+  }
+
+  async copyTemplateToCompany(campaignId: string, templateId: string): Promise<Character> {
+    return this.request(`/campaigns/${campaignId}/characters/from-template/${templateId}`, {
+      method: 'POST',
+    });
+  }
+
   // Admin Feat Trees
   async getFeatTrees(): Promise<FeatTree[]> {
     return this.request('/admin/feat-trees');
