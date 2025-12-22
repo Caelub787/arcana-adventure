@@ -3696,6 +3696,100 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Character Template routes (admin)
+  app.get("/api/admin/character-templates", requireAdmin, async (req, res) => {
+    try {
+      const templates = await storage.getCharacterTemplates();
+      res.json(templates);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch character templates" });
+    }
+  });
+
+  app.get("/api/admin/character-templates/:id", requireAdmin, async (req, res) => {
+    try {
+      const template = await storage.getCharacterTemplate(req.params.id);
+      if (!template) {
+        return res.status(404).json({ error: "Character template not found" });
+      }
+      res.json(template);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch character template" });
+    }
+  });
+
+  app.post("/api/admin/character-templates", requireAdmin, async (req, res) => {
+    try {
+      const template = await storage.createCharacterTemplate(req.body);
+      res.json(template);
+    } catch (err) {
+      res.status(400).json({ error: "Failed to create character template" });
+    }
+  });
+
+  app.patch("/api/admin/character-templates/:id", requireAdmin, async (req, res) => {
+    try {
+      const template = await storage.updateCharacterTemplate(req.params.id, req.body);
+      if (!template) {
+        return res.status(404).json({ error: "Character template not found" });
+      }
+      res.json(template);
+    } catch (err) {
+      res.status(400).json({ error: "Failed to update character template" });
+    }
+  });
+
+  app.delete("/api/admin/character-templates/:id", requireAdmin, async (req, res) => {
+    try {
+      await storage.deleteCharacterTemplate(req.params.id);
+      res.json({ success: true });
+    } catch (err) {
+      res.status(400).json({ error: "Failed to delete character template" });
+    }
+  });
+
+  // Public character templates route (for adding to campaigns)
+  app.get("/api/character-templates", requireAuth, async (req, res) => {
+    try {
+      const templates = await storage.getCharacterTemplates();
+      res.json(templates);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch character templates" });
+    }
+  });
+
+  // Copy character template to campaign
+  app.post("/api/campaigns/:campaignId/characters/from-template/:templateId", requireAuth, async (req, res) => {
+    try {
+      const { campaignId, templateId } = req.params;
+      const userId = req.user!.id;
+      
+      // Verify user is GM of the campaign
+      const campaign = await storage.getCampaign(campaignId);
+      if (!campaign) {
+        return res.status(404).json({ error: "Campaign not found" });
+      }
+      
+      const isGm = await storage.isGM(userId, campaignId);
+      if (!isGm) {
+        return res.status(403).json({ error: "Only GMs can add characters from templates" });
+      }
+      
+      const character = await storage.copyTemplateToCompany(templateId, campaignId, userId);
+      
+      // Broadcast to campaign
+      broadcastToCampaign(campaignId, {
+        type: "character_added",
+        character
+      });
+      
+      res.json(character);
+    } catch (err) {
+      console.error('Error copying template to campaign:', err);
+      res.status(400).json({ error: "Failed to add character from template" });
+    }
+  });
+
   // Public system skills route (for character sheet)
   app.get("/api/skills", requireAuth, async (req, res) => {
     try {
