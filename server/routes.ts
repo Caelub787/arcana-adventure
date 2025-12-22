@@ -2272,8 +2272,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/campaigns/:campaignId/tokens", requireAuth, async (req, res) => {
     try {
-      const tokens = await storage.getCampaignTokens(req.params.campaignId);
-      res.json(tokens);
+      const sceneId = req.query.sceneId as string | undefined;
+      let tokensList;
+      
+      if (sceneId) {
+        tokensList = await storage.getSceneTokens(sceneId);
+      } else {
+        tokensList = await storage.getCampaignTokens(req.params.campaignId);
+      }
+      
+      res.json(tokensList);
     } catch (err) {
       res.status(500).json({ error: "Failed to fetch tokens" });
     }

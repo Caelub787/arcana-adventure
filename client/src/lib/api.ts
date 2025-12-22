@@ -68,11 +68,13 @@ export interface Character {
 export interface Token {
   id: string;
   campaignId: string;
+  sceneId?: string | null;
   characterId?: string;
   type: string;
   x: number;
   y: number;
   image: string;
+  createdAt?: string;
 }
 
 export interface CharacterFolder {

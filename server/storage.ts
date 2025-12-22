@@ -69,6 +69,7 @@ export interface IStorage {
   createToken(token: InsertToken): Promise<Token>;
   getToken(id: string): Promise<Token | undefined>;
   getCampaignTokens(campaignId: string): Promise<Token[]>;
+  getSceneTokens(sceneId: string): Promise<Token[]>;
   updateToken(id: string, data: Partial<Token>): Promise<Token | undefined>;
   deleteToken(id: string): Promise<void>;
   deleteTokensByCharacterId(characterId: string): Promise<void>;
@@ -527,6 +528,12 @@ export class DatabaseStorage implements IStorage {
     return await db.select()
       .from(tokens)
       .where(eq(tokens.campaignId, campaignId));
+  }
+
+  async getSceneTokens(sceneId: string): Promise<Token[]> {
+    return await db.select()
+      .from(tokens)
+      .where(eq(tokens.sceneId, sceneId));
   }
 
   async updateToken(id: string, data: Partial<Token>): Promise<Token | undefined> {
