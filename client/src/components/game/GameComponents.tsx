@@ -8666,6 +8666,7 @@ interface CharacterSheetProps {
   defaultTab?: string;
   campaignId?: string;
   sceneId?: string;
+  isTemplate?: boolean;
 }
 
 // Custom Skill Form for adding new skills to a character
@@ -9170,7 +9171,7 @@ function TraitEditForm({
   );
 }
 
-export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, defaultTab = "overview", campaignId, sceneId }: CharacterSheetProps) {
+export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, defaultTab = "overview", campaignId, sceneId, isTemplate = false }: CharacterSheetProps) {
   const [biography, setBiography] = useState(character?.biography || "");
   const [gmNotes, setGmNotes] = useState(character?.gmNotes || "");
   const [isEditingBio, setIsEditingBio] = useState(false);

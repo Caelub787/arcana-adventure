@@ -19,6 +19,7 @@ import { Slider } from '@/components/ui/slider';
 import { toast } from '@/hooks/use-toast';
 import { ArrowLeft, Plus, Pencil, Trash2, Sword, Shield, Package, Sparkles, Box, Coins, Search, Users, User, GitBranch, Library, Link, X, GripVertical, Star, Zap, Heart, ShieldCheck, BookOpen, RefreshCw, ZoomIn, ZoomOut, Wand2, Save } from 'lucide-react';
 import { ImageBrowser } from '@/components/ImageBrowser';
+import { CharacterSheet } from '@/components/game/GameComponents';
 
 type AdminView = 'dashboard' | 'items' | 'species' | 'spells' | 'skills' | 'traits' | 'feat-trees' | 'characters';
 
@@ -73,6 +74,7 @@ export default function AdminSettings() {
   const [showAddCharacter, setShowAddCharacter] = useState(false);
   const [editingCharacter, setEditingCharacter] = useState<Character | null>(null);
   const [characterSearchQuery, setCharacterSearchQuery] = useState('');
+  const [viewingCharacterSheet, setViewingCharacterSheet] = useState<Character | null>(null);
 
   const { data: systemItems = [], isLoading: itemsLoading } = useQuery({
     queryKey: ['system-items'],
@@ -535,6 +537,7 @@ export default function AdminSettings() {
                 deleteCharacterMutation.mutate(id);
               }
             }}
+            onViewSheet={setViewingCharacterSheet}
           />
         )}
 
@@ -644,6 +647,33 @@ export default function AdminSettings() {
             initialData={editingCharacter}
             isLoading={updateCharacterMutation.isPending}
           />
+        )}
+
+        {viewingCharacterSheet && (
+          <div className="fixed inset-0 z-50 bg-stone-950/95 flex flex-col overflow-hidden">
+            <div className="flex-1 overflow-auto">
+              <CharacterSheet
+                character={viewingCharacterSheet}
+                isGM={true}
+                isOwner={true}
+                isTemplate={true}
+                onUpdate={(updates) => {
+                  updateCharacterMutation.mutate(
+                    { id: viewingCharacterSheet.id, data: updates },
+                    {
+                      onSuccess: (updatedChar) => {
+                        setViewingCharacterSheet(updatedChar);
+                      }
+                    }
+                  );
+                }}
+                onClose={() => {
+                  setViewingCharacterSheet(null);
+                  queryClient.invalidateQueries({ queryKey: ['admin-character-templates'] });
+                }}
+              />
+            </div>
+          </div>
         )}
       </div>
     </div>
@@ -1691,9 +1721,10 @@ interface CharactersViewProps {
   onAddCharacter: () => void;
   onEditCharacter: (character: Character) => void;
   onDeleteCharacter: (id: string) => void;
+  onViewSheet: (character: Character) => void;
 }
 
-function CharactersView({ characters, isLoading, searchQuery, setSearchQuery, onAddCharacter, onEditCharacter, onDeleteCharacter }: CharactersViewProps) {
+function CharactersView({ characters, isLoading, searchQuery, setSearchQuery, onAddCharacter, onEditCharacter, onDeleteCharacter, onViewSheet }: CharactersViewProps) {
   return (
     <Card className="bg-stone-900 border-stone-700 flex-1 flex flex-col min-h-0">
       <CardHeader className="flex flex-row items-center justify-between shrink-0">
@@ -1735,8 +1766,9 @@ function CharactersView({ characters, isLoading, searchQuery, setSearchQuery, on
               {characters.map((character: Character) => (
                 <div
                   key={character.id}
-                  className="p-4 rounded-lg bg-stone-800 border border-stone-700 hover:border-teal-600 transition-colors"
+                  className="p-4 rounded-lg bg-stone-800 border border-stone-700 hover:border-teal-600 transition-colors cursor-pointer"
                   data-testid={`character-card-${character.id}`}
+                  onClick={() => onViewSheet(character)}
                 >
                   <div className="flex items-start gap-3">
                     {character.portrait ? (
@@ -1756,17 +1788,17 @@ function CharactersView({ characters, isLoading, searchQuery, setSearchQuery, on
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => onEditCharacter(character)}
+                      onClick={(e) => { e.stopPropagation(); onViewSheet(character); }}
                       className="text-stone-400 hover:text-teal-500"
-                      data-testid={`button-edit-character-${character.id}`}
+                      data-testid={`button-view-sheet-${character.id}`}
                     >
-                      <Pencil className="h-4 w-4 mr-1" />
-                      Edit
+                      <User className="h-4 w-4 mr-1" />
+                      Open Sheet
                     </Button>
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => onDeleteCharacter(character.id)}
+                      onClick={(e) => { e.stopPropagation(); onDeleteCharacter(character.id); }}
                       className="text-stone-400 hover:text-red-500"
                       data-testid={`button-delete-character-${character.id}`}
                     >
