@@ -127,10 +127,12 @@ export type InsertCampaignBan = z.infer<typeof insertCampaignBanSchema>;
 export type CampaignBan = typeof campaignBans.$inferSelect;
 
 // Characters table (expanded for RPG features)
+// Note: campaignId/userId are nullable to support admin character templates
 export const characters = pgTable("characters", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  campaignId: varchar("campaign_id").notNull().references(() => campaigns.id, { onDelete: "cascade" }),
-  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  campaignId: varchar("campaign_id").references(() => campaigns.id, { onDelete: "cascade" }),
+  userId: varchar("user_id").references(() => users.id, { onDelete: "cascade" }),
+  isTemplate: boolean("is_template").notNull().default(false), // Admin character templates have this = true
   name: text("name").notNull(),
   portrait: text("portrait"),
   class: text("class").default(""), // Kept for backward compat, not used in UI
