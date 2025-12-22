@@ -83,6 +83,14 @@ export interface CharacterFolder {
   createdAt: string;
 }
 
+export interface SceneFolder {
+  id: string;
+  campaignId: string;
+  name: string;
+  sortOrder: number;
+  createdAt: string;
+}
+
 export interface ChatMessage {
   id: string;
   campaignId: string;
@@ -105,6 +113,7 @@ export interface CampaignMember {
 export interface Scene {
   id: string;
   campaignId: string;
+  folderId?: string | null;
   name: string;
   backgroundImage?: string;
   gridEnabled: boolean;
@@ -655,13 +664,6 @@ class ApiClient {
     return this.request(`/scenes/${sceneId}`, { method: 'DELETE' });
   }
 
-  async setActiveScene(campaignId: string, sceneId: string): Promise<void> {
-    return this.request(`/campaigns/${campaignId}/active-scene`, {
-      method: 'POST',
-      body: JSON.stringify({ sceneId }),
-    });
-  }
-
   // Hotbars
   async getHotbars(characterId: string): Promise<Hotbar[]> {
     return this.request(`/characters/${characterId}/hotbars`);
@@ -827,6 +829,43 @@ class ApiClient {
     return this.request(`/characters/${characterId}/folder`, {
       method: 'PATCH',
       body: JSON.stringify({ folderId }),
+    });
+  }
+
+  // Scene Folders (for organizing scenes in campaigns)
+  async getSceneFolders(campaignId: string): Promise<SceneFolder[]> {
+    return this.request(`/campaigns/${campaignId}/scene-folders`);
+  }
+
+  async createSceneFolder(campaignId: string, data: { name: string; sortOrder?: number }): Promise<SceneFolder> {
+    return this.request(`/campaigns/${campaignId}/scene-folders`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateSceneFolder(campaignId: string, folderId: string, data: Partial<SceneFolder>): Promise<SceneFolder> {
+    return this.request(`/campaigns/${campaignId}/scene-folders/${folderId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteSceneFolder(campaignId: string, folderId: string): Promise<void> {
+    return this.request(`/campaigns/${campaignId}/scene-folders/${folderId}`, { method: 'DELETE' });
+  }
+
+  async moveSceneToFolder(sceneId: string, folderId: string | null): Promise<Scene> {
+    return this.request(`/scenes/${sceneId}/folder`, {
+      method: 'PATCH',
+      body: JSON.stringify({ folderId }),
+    });
+  }
+
+  async setActiveScene(campaignId: string, sceneId: string | null): Promise<Campaign> {
+    return this.request(`/campaigns/${campaignId}/active-scene`, {
+      method: 'PATCH',
+      body: JSON.stringify({ sceneId }),
     });
   }
 

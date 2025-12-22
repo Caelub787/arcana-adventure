@@ -19,13 +19,13 @@ import battleMapImage2 from "@assets/generated_images/dark_fantasy_landscape_wit
 import warriorToken from "@assets/generated_images/top_down_warrior_token.png";
 import goblinToken from "@assets/generated_images/top_down_goblin_token.png";
 import { useAuth } from "@/lib/AuthContext";
-import { api, gameWs, type Scene, type CampaignSpecies, type FeatTree, type CharacterFolder } from "@/lib/api";
+import { api, gameWs, type Scene, type CampaignSpecies, type FeatTree, type CharacterFolder, type SceneFolder } from "@/lib/api";
 import { Textarea } from "@/components/ui/textarea";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { ImageBrowser } from "@/components/ImageBrowser";
-import { Folder, FolderPlus, Plus, GripVertical } from "lucide-react";
+import { Folder, FolderPlus, Plus, GripVertical, Eye, Radio, ChevronDown, ChevronRight, Pencil } from "lucide-react";
 
 // Scene Settings Form Component
 function SceneSettingsForm({ scene, onUpdateScene }: { scene: Scene; onUpdateScene: (settings: Partial<Scene>) => void }) {
@@ -714,6 +714,16 @@ export default function Campaign() {
   // Add Token dialog state
   const [addTokenDialogOpen, setAddTokenDialogOpen] = useState(false);
   
+  // GM viewing scene state (separate from active scene for players)
+  const [gmViewingSceneId, setGmViewingSceneId] = useState<string | null>(null);
+  
+  // Scene folder state
+  const [expandedSceneFolders, setExpandedSceneFolders] = useState<Set<string>>(new Set());
+  const [newSceneFolderName, setNewSceneFolderName] = useState('');
+  const [editingSceneFolderId, setEditingSceneFolderId] = useState<string | null>(null);
+  const [editingSceneFolderName, setEditingSceneFolderName] = useState('');
+  const [draggingSceneId, setDraggingSceneId] = useState<string | null>(null);
+  
   // AoE targeting state
   const [aoeTargetState, setAoeTargetState] = useState<AoeTargetState>(createInitialAoeState());
   
@@ -892,17 +902,27 @@ export default function Campaign() {
   });
 
   // Load active scene for the campaign
-  const activeSceneId = campaign && typeof campaign === 'object' && 'activeSceneId' in campaign ? campaign.activeSceneId : null;
+  // For GM: use gmViewingSceneId if set, otherwise fall back to activeSceneId
+  // For Players: always use activeSceneId (they only see the activated scene)
+  const campaignActiveSceneId = campaign && typeof campaign === 'object' && 'activeSceneId' in campaign ? campaign.activeSceneId : null;
+  const effectiveSceneId = role === 'gm' && gmViewingSceneId ? gmViewingSceneId : campaignActiveSceneId;
   const { data: activeScene, isLoading: sceneLoading } = useQuery({
-    queryKey: [`/api/scenes/${activeSceneId}`],
-    queryFn: () => api.getScene(activeSceneId as string),
-    enabled: !!activeSceneId,
+    queryKey: [`/api/scenes/${effectiveSceneId}`],
+    queryFn: () => api.getScene(effectiveSceneId as string),
+    enabled: !!effectiveSceneId,
   });
 
   // Load all scenes for the campaign
   const { data: allScenes } = useQuery({
     queryKey: [`/api/campaigns/${effectiveCampaignId}/scenes`],
     queryFn: () => api.getScenes(effectiveCampaignId!),
+    enabled: !!effectiveCampaignId,
+  });
+
+  // Load scene folders for the campaign
+  const { data: sceneFolders = [] } = useQuery({
+    queryKey: ['scene-folders', effectiveCampaignId],
+    queryFn: () => api.getSceneFolders(effectiveCampaignId!),
     enabled: !!effectiveCampaignId,
   });
 
@@ -1071,17 +1091,82 @@ export default function Campaign() {
     },
   });
 
-  // Set active scene mutation
+  // Set active scene mutation (for players)
   const setActiveSceneMutation = useMutation({
     mutationFn: (sceneId: string) => api.setActiveScene(effectiveCampaignId!, sceneId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${effectiveCampaignId}`] });
-      toast({ title: "Success", description: "Active scene changed" });
+      toast({ title: "Scene Activated", description: "Players can now see this scene" });
     },
     onError: (error: any) => {
       toast({ title: "Error", description: error.message || "Failed to change active scene", variant: "destructive" });
     },
   });
+
+  // Scene folder mutations
+  const createSceneFolderMutation = useMutation({
+    mutationFn: (name: string) => api.createSceneFolder(effectiveCampaignId!, { name, sortOrder: sceneFolders.length }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['scene-folders', effectiveCampaignId] });
+      setNewSceneFolderName('');
+      toast({ title: "Success", description: "Folder created" });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message || "Failed to create folder", variant: "destructive" });
+    },
+  });
+
+  const updateSceneFolderMutation = useMutation({
+    mutationFn: ({ id, name }: { id: string; name: string }) => api.updateSceneFolder(effectiveCampaignId!, id, { name }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['scene-folders', effectiveCampaignId] });
+      setEditingSceneFolderId(null);
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message || "Failed to update folder", variant: "destructive" });
+    },
+  });
+
+  const deleteSceneFolderMutation = useMutation({
+    mutationFn: (id: string) => api.deleteSceneFolder(effectiveCampaignId!, id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['scene-folders', effectiveCampaignId] });
+      queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${effectiveCampaignId}/scenes`] });
+      toast({ title: "Success", description: "Folder deleted" });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message || "Failed to delete folder", variant: "destructive" });
+    },
+  });
+
+  const moveSceneToFolderMutation = useMutation({
+    mutationFn: ({ sceneId, folderId }: { sceneId: string; folderId: string | null }) => 
+      api.moveSceneToFolder(sceneId, folderId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${effectiveCampaignId}/scenes`] });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message || "Failed to move scene", variant: "destructive" });
+    },
+  });
+
+  // Helper functions for scene folders
+  const getScenesInFolder = (folderId: string | null) => {
+    return allScenes?.filter((s: Scene) => s.folderId === folderId) || [];
+  };
+  const unfiledScenes = allScenes?.filter((s: Scene) => !s.folderId) || [];
+
+  const toggleSceneFolder = (folderId: string) => {
+    setExpandedSceneFolders(prev => {
+      const next = new Set(prev);
+      if (next.has(folderId)) {
+        next.delete(folderId);
+      } else {
+        next.add(folderId);
+      }
+      return next;
+    });
+  };
 
   // Update character mutation
   const updateCharacterMutation = useMutation({
@@ -1683,8 +1768,21 @@ export default function Campaign() {
     }
   };
 
+  // View scene (GM only - changes what GM is editing, doesn't affect players)
+  const handleViewScene = (sceneId: string) => {
+    setGmViewingSceneId(sceneId);
+    setScenesManagementOpen(false);
+  };
+
+  // Activate scene (sets what players see)
+  const handleActivateScene = (sceneId: string) => {
+    setActiveSceneMutation.mutate(sceneId);
+  };
+
+  // Legacy switch function (for backward compat) - activates and views
   const handleSwitchScene = (sceneId: string) => {
     setActiveSceneMutation.mutate(sceneId);
+    setGmViewingSceneId(sceneId);
     setScenesManagementOpen(false);
   };
 
@@ -1992,66 +2090,324 @@ export default function Campaign() {
                   </Button>
                 </div>
 
-                {/* Scenes List */}
+                {/* Create Folder Input */}
+                <div className="space-y-3">
+                  <Label className="text-stone-300 font-bold">Create Folder</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="New folder name..."
+                      value={newSceneFolderName}
+                      onChange={(e) => setNewSceneFolderName(e.target.value)}
+                      className="flex-1 bg-stone-800 border-stone-700 text-stone-200"
+                      onKeyPress={(e) => e.key === 'Enter' && newSceneFolderName.trim() && createSceneFolderMutation.mutate(newSceneFolderName.trim())}
+                      data-testid="input-new-scene-folder-name"
+                    />
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => {
+                        if (newSceneFolderName.trim()) {
+                          createSceneFolderMutation.mutate(newSceneFolderName.trim());
+                        }
+                      }}
+                      disabled={!newSceneFolderName.trim() || createSceneFolderMutation.isPending}
+                      className="bg-stone-800 hover:bg-stone-700"
+                      data-testid="button-create-scene-folder"
+                    >
+                      <FolderPlus className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Scenes List with Folders */}
                 <div className="space-y-3">
                   <Label className="text-stone-300 font-bold">All Scenes</Label>
-                  <div className="space-y-2">
-                    {allScenes && allScenes.length > 0 ? (
-                      allScenes.map((scene: Scene) => (
+                  
+                  {/* Scene Folders */}
+                  {sceneFolders.map((folder: SceneFolder) => {
+                    const folderScenes = getScenesInFolder(folder.id);
+                    const isExpanded = expandedSceneFolders.has(folder.id);
+                    
+                    return (
+                      <div
+                        key={folder.id}
+                        className={`bg-stone-850 rounded-lg border border-stone-700 p-2 transition-colors ${draggingSceneId ? 'border-dashed' : ''}`}
+                        onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add('border-amber-500'); }}
+                        onDragLeave={(e) => { e.currentTarget.classList.remove('border-amber-500'); }}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          e.currentTarget.classList.remove('border-amber-500');
+                          const sceneId = e.dataTransfer.getData('text/plain');
+                          if (sceneId) {
+                            moveSceneToFolderMutation.mutate({ sceneId, folderId: folder.id });
+                            setDraggingSceneId(null);
+                          }
+                        }}
+                        data-testid={`scene-folder-${folder.id}`}
+                      >
+                        {/* Folder Header */}
                         <div
-                          key={scene.id}
-                          className={`p-3 rounded border transition-all ${
-                            scene.id === activeScene?.id
-                              ? 'bg-amber-900/30 border-amber-700'
-                              : 'bg-stone-800 border-stone-700 hover:bg-stone-750'
-                          }`}
-                          data-testid={`scene-item-${scene.id}`}
+                          className="flex items-center justify-between p-2 cursor-pointer hover:bg-stone-800/50 rounded"
+                          onClick={() => toggleSceneFolder(folder.id)}
                         >
-                          <div className="flex justify-between items-center">
-                            <div className="flex-1">
-                              <div className="font-bold text-stone-200">{scene.name}</div>
-                              <div className="text-xs text-stone-400 mt-1">
-                                {scene.gridEnabled ? `${scene.gridType} grid (${scene.gridSize}px)` : 'Grid disabled'}
-                              </div>
+                          <div className="flex items-center gap-2 flex-1 min-w-0">
+                            {isExpanded ? (
+                              <ChevronDown className="h-4 w-4 text-stone-400 shrink-0" />
+                            ) : (
+                              <ChevronRight className="h-4 w-4 text-stone-400 shrink-0" />
+                            )}
+                            <Folder className="h-4 w-4 text-amber-500 shrink-0" />
+                            {editingSceneFolderId === folder.id ? (
+                              <Input
+                                value={editingSceneFolderName}
+                                onChange={(e) => setEditingSceneFolderName(e.target.value)}
+                                onClick={(e) => e.stopPropagation()}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    updateSceneFolderMutation.mutate({ id: folder.id, name: editingSceneFolderName });
+                                  } else if (e.key === 'Escape') {
+                                    setEditingSceneFolderId(null);
+                                  }
+                                }}
+                                onBlur={() => {
+                                  if (editingSceneFolderName.trim() && editingSceneFolderName !== folder.name) {
+                                    updateSceneFolderMutation.mutate({ id: folder.id, name: editingSceneFolderName });
+                                  }
+                                  setEditingSceneFolderId(null);
+                                }}
+                                className="h-6 py-0 px-1 text-sm bg-stone-900 border-stone-600"
+                                autoFocus
+                                data-testid={`input-edit-scene-folder-${folder.id}`}
+                              />
+                            ) : (
+                              <span className="font-medium text-stone-200 truncate">{folder.name}</span>
+                            )}
+                            <span className="text-xs text-stone-500 shrink-0">({folderScenes.length})</span>
+                          </div>
+                          {editingSceneFolderId !== folder.id && (
+                            <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => {
+                                  setEditingSceneFolderId(folder.id);
+                                  setEditingSceneFolderName(folder.name);
+                                }}
+                                className="h-6 w-6 p-0 text-stone-400 hover:text-stone-200"
+                                data-testid={`button-edit-scene-folder-${folder.id}`}
+                              >
+                                <Pencil className="h-3 w-3" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => deleteSceneFolderMutation.mutate(folder.id)}
+                                disabled={deleteSceneFolderMutation.isPending}
+                                className="h-6 w-6 p-0 text-red-400 hover:text-red-300"
+                                data-testid={`button-delete-scene-folder-${folder.id}`}
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </Button>
                             </div>
-                            <div className="flex gap-2">
-                              {scene.id !== activeScene?.id && (
+                          )}
+                        </div>
+                        
+                        {/* Folder Scenes */}
+                        {isExpanded && (
+                          <div className="mt-2 space-y-2 pl-6">
+                            {folderScenes.length > 0 ? (
+                              folderScenes.map((scene: Scene) => {
+                                const isViewing = gmViewingSceneId === scene.id || (!gmViewingSceneId && scene.id === campaignActiveSceneId);
+                                const isActive = scene.id === campaignActiveSceneId;
+                                
+                                return (
+                                  <div
+                                    key={scene.id}
+                                    className={`p-3 rounded border transition-all ${
+                                      isViewing ? 'bg-blue-900/30 border-blue-700' : 'bg-stone-800 border-stone-700'
+                                    }`}
+                                    draggable
+                                    onDragStart={(e) => {
+                                      e.dataTransfer.setData('text/plain', scene.id);
+                                      setDraggingSceneId(scene.id);
+                                    }}
+                                    onDragEnd={() => setDraggingSceneId(null)}
+                                    data-testid={`scene-item-${scene.id}`}
+                                  >
+                                    <div className="flex items-center gap-2 mb-2">
+                                      <GripVertical className="h-4 w-4 text-stone-500 cursor-grab shrink-0" />
+                                      <div className="flex-1 min-w-0">
+                                        <div className="font-bold text-stone-200 truncate">{scene.name}</div>
+                                        <div className="text-xs text-stone-400">
+                                          {scene.gridEnabled ? `${scene.gridType} grid` : 'Grid disabled'}
+                                        </div>
+                                      </div>
+                                    </div>
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      {isViewing && (
+                                        <span className="text-xs text-blue-400 font-bold px-2 py-0.5 bg-blue-900/30 rounded flex items-center gap-1">
+                                          <Eye className="h-3 w-3" /> Viewing
+                                        </span>
+                                      )}
+                                      {isActive && (
+                                        <span className="text-xs text-amber-400 font-bold px-2 py-0.5 bg-amber-900/30 rounded flex items-center gap-1">
+                                          <Radio className="h-3 w-3" /> Active
+                                        </span>
+                                      )}
+                                      <div className="flex-1" />
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => handleViewScene(scene.id)}
+                                        className="h-7 px-2 bg-blue-900/30 border-blue-700 hover:bg-blue-800/50 text-blue-200"
+                                        data-testid={`button-view-scene-${scene.id}`}
+                                      >
+                                        <Eye className="h-3 w-3 mr-1" /> View
+                                      </Button>
+                                      {!isActive && (
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          onClick={() => handleActivateScene(scene.id)}
+                                          disabled={setActiveSceneMutation.isPending}
+                                          className="h-7 px-2 bg-amber-900/30 border-amber-700 hover:bg-amber-800/50 text-amber-200"
+                                          data-testid={`button-activate-scene-${scene.id}`}
+                                        >
+                                          <Radio className="h-3 w-3 mr-1" /> Activate
+                                        </Button>
+                                      )}
+                                      {allScenes && allScenes.length > 1 && (
+                                        <Button
+                                          size="sm"
+                                          variant="ghost"
+                                          onClick={() => handleDeleteScene(scene.id)}
+                                          disabled={deleteSceneMutation.isPending}
+                                          className="h-7 w-7 p-0 text-red-400 hover:text-red-300"
+                                          data-testid={`button-delete-scene-${scene.id}`}
+                                        >
+                                          <Trash2 className="h-3 w-3" />
+                                        </Button>
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              })
+                            ) : (
+                              <div className="p-3 text-center text-stone-500 text-sm border border-dashed border-stone-700 rounded">
+                                Drag scenes here
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                  
+                  {/* Unfiled Scenes */}
+                  <div
+                    className={`bg-stone-850 rounded-lg border border-stone-700 p-2 transition-colors ${draggingSceneId ? 'border-dashed' : ''}`}
+                    onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add('border-amber-500'); }}
+                    onDragLeave={(e) => { e.currentTarget.classList.remove('border-amber-500'); }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      e.currentTarget.classList.remove('border-amber-500');
+                      const sceneId = e.dataTransfer.getData('text/plain');
+                      if (sceneId) {
+                        moveSceneToFolderMutation.mutate({ sceneId, folderId: null });
+                        setDraggingSceneId(null);
+                      }
+                    }}
+                    data-testid="scene-folder-unfiled"
+                  >
+                    <div className="flex items-center gap-2 p-2 text-stone-400">
+                      <Layers className="h-4 w-4" />
+                      <span className="font-medium">Unfiled Scenes</span>
+                      <span className="text-xs text-stone-500">({unfiledScenes.length})</span>
+                    </div>
+                    <div className="space-y-2 mt-2">
+                      {unfiledScenes.length > 0 ? (
+                        unfiledScenes.map((scene: Scene) => {
+                          const isViewing = gmViewingSceneId === scene.id || (!gmViewingSceneId && scene.id === campaignActiveSceneId);
+                          const isActive = scene.id === campaignActiveSceneId;
+                          
+                          return (
+                            <div
+                              key={scene.id}
+                              className={`p-3 rounded border transition-all ${
+                                isViewing ? 'bg-blue-900/30 border-blue-700' : 'bg-stone-800 border-stone-700'
+                              }`}
+                              draggable
+                              onDragStart={(e) => {
+                                e.dataTransfer.setData('text/plain', scene.id);
+                                setDraggingSceneId(scene.id);
+                              }}
+                              onDragEnd={() => setDraggingSceneId(null)}
+                              data-testid={`scene-item-${scene.id}`}
+                            >
+                              <div className="flex items-center gap-2 mb-2">
+                                <GripVertical className="h-4 w-4 text-stone-500 cursor-grab shrink-0" />
+                                <div className="flex-1 min-w-0">
+                                  <div className="font-bold text-stone-200 truncate">{scene.name}</div>
+                                  <div className="text-xs text-stone-400">
+                                    {scene.gridEnabled ? `${scene.gridType} grid` : 'Grid disabled'}
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                {isViewing && (
+                                  <span className="text-xs text-blue-400 font-bold px-2 py-0.5 bg-blue-900/30 rounded flex items-center gap-1">
+                                    <Eye className="h-3 w-3" /> Viewing
+                                  </span>
+                                )}
+                                {isActive && (
+                                  <span className="text-xs text-amber-400 font-bold px-2 py-0.5 bg-amber-900/30 rounded flex items-center gap-1">
+                                    <Radio className="h-3 w-3" /> Active
+                                  </span>
+                                )}
+                                <div className="flex-1" />
                                 <Button
                                   size="sm"
                                   variant="outline"
-                                  onClick={() => handleSwitchScene(scene.id)}
-                                  className="bg-stone-700 border-stone-600 hover:bg-stone-600"
-                                  data-testid={`button-switch-scene-${scene.id}`}
+                                  onClick={() => handleViewScene(scene.id)}
+                                  className="h-7 px-2 bg-blue-900/30 border-blue-700 hover:bg-blue-800/50 text-blue-200"
+                                  data-testid={`button-view-scene-${scene.id}`}
                                 >
-                                  Switch
+                                  <Eye className="h-3 w-3 mr-1" /> View
                                 </Button>
-                              )}
-                              {scene.id === activeScene?.id && (
-                                <span className="text-xs text-amber-500 font-bold px-2 py-1 bg-amber-900/20 rounded">
-                                  Active
-                                </span>
-                              )}
-                              {allScenes.length > 1 && (
-                                <Button
-                                  size="sm"
-                                  variant="destructive"
-                                  onClick={() => handleDeleteScene(scene.id)}
-                                  disabled={deleteSceneMutation.isPending}
-                                  className="bg-red-900/30 hover:bg-red-800/50"
-                                  data-testid={`button-delete-scene-${scene.id}`}
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
-                              )}
+                                {!isActive && (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => handleActivateScene(scene.id)}
+                                    disabled={setActiveSceneMutation.isPending}
+                                    className="h-7 px-2 bg-amber-900/30 border-amber-700 hover:bg-amber-800/50 text-amber-200"
+                                    data-testid={`button-activate-scene-${scene.id}`}
+                                  >
+                                    <Radio className="h-3 w-3 mr-1" /> Activate
+                                  </Button>
+                                )}
+                                {allScenes && allScenes.length > 1 && (
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => handleDeleteScene(scene.id)}
+                                    disabled={deleteSceneMutation.isPending}
+                                    className="h-7 w-7 p-0 text-red-400 hover:text-red-300"
+                                    data-testid={`button-delete-scene-${scene.id}`}
+                                  >
+                                    <Trash2 className="h-3 w-3" />
+                                  </Button>
+                                )}
+                              </div>
                             </div>
-                          </div>
+                          );
+                        })
+                      ) : (
+                        <div className="p-3 text-center text-stone-500 text-sm">
+                          {allScenes && allScenes.length > 0 ? 'All scenes are in folders' : 'No scenes yet'}
                         </div>
-                      ))
-                    ) : (
-                      <div className="p-4 text-center text-stone-500 text-sm">
-                        No scenes yet
-                      </div>
-                    )}
+                      )}
+                    </div>
                   </div>
                 </div>
 
@@ -2059,7 +2415,16 @@ export default function Campaign() {
                 <div className="space-y-4 pt-4 border-t border-stone-700">
                   <div className="flex items-center justify-between mb-4">
                     <Label className="text-stone-300 font-bold text-lg">Scene Settings</Label>
-                    <span className="text-xs text-stone-500">Active: {activeScene.name}</span>
+                    <div className="flex flex-col items-end gap-1">
+                      <span className="text-xs text-blue-400 flex items-center gap-1">
+                        <Eye className="h-3 w-3" /> Viewing: {activeScene.name}
+                      </span>
+                      {campaignActiveSceneId && (
+                        <span className="text-xs text-stone-500">
+                          Active for Players: {allScenes?.find((s: Scene) => s.id === campaignActiveSceneId)?.name || 'None'}
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   <SceneSettingsForm 
