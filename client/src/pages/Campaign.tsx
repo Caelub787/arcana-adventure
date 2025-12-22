@@ -1607,7 +1607,7 @@ export default function Campaign() {
       // If grid size is changing, re-snap all tokens to the new grid
       if (settings.gridSize && settings.gridSize !== activeScene.gridSize) {
         const newGridSize = settings.gridSize;
-        // Re-snap each token to the new grid
+        // Re-snap each token to the new grid (using same Math.round as drag snapping)
         for (const token of tokens) {
           const snappedX = Math.round(token.x / newGridSize) * newGridSize;
           const snappedY = Math.round(token.y / newGridSize) * newGridSize;
