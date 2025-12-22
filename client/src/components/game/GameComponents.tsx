@@ -1251,7 +1251,9 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                     fontSize: Math.max(8, Math.min(11, tokenSize / 5.5)),
                     textShadow: '1px 1px 0 #000, -1px 1px 0 #000, 1px -1px 0 #000, -1px -1px 0 #000, 0 1px 0 #000, 0 -1px 0 #000, 1px 0 0 #000, -1px 0 0 #000',
                     maxWidth: tokenSize * 1.2,
-                    wordBreak: 'break-word',
+                    wordBreak: 'normal',
+                    overflowWrap: 'break-word',
+                    whiteSpace: 'pre-wrap',
                     lineHeight: 1.1
                   }}
                 >
