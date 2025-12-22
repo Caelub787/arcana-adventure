@@ -1068,7 +1068,7 @@ export default function Campaign() {
 
   // Create scene mutation
   const createSceneMutation = useMutation({
-    mutationFn: (name: string) => api.createScene(effectiveCampaignId!, { name, campaignId: effectiveCampaignId!, backgroundImage: battleMapImage1 }),
+    mutationFn: (name: string) => api.createScene(effectiveCampaignId!, { name, campaignId: effectiveCampaignId!, backgroundImage: "/attached_assets/default_battlemap.webp" }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${effectiveCampaignId}/scenes`] });
       toast({ title: "Success", description: "Scene created successfully" });

@@ -208,6 +208,7 @@ export type Character = typeof characters.$inferSelect;
 export const tokens = pgTable("tokens", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   campaignId: varchar("campaign_id").notNull().references(() => campaigns.id, { onDelete: "cascade" }),
+  sceneId: varchar("scene_id").references(() => scenes.id, { onDelete: "cascade" }),
   characterId: varchar("character_id").references(() => characters.id, { onDelete: "cascade" }),
   type: text("type").notNull(), // "player" or "enemy"
   x: real("x").notNull(),
