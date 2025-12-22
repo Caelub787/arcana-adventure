@@ -170,6 +170,7 @@ export const characters = pgTable("characters", {
   // Background/notes
   biography: text("biography"),
   gmNotes: text("gm_notes"),
+  nickname: text("nickname"), // Short name displayed on battlemap tokens instead of full name
   // Folder organization
   folderId: varchar("folder_id"), // References characterFolders.id but nullable for unfiled characters
   // Legacy inventory (kept for backward compatibility, use items table for new features)

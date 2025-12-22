@@ -992,12 +992,12 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
         <Button 
            size="sm" 
            variant="secondary" 
-           className={`bg-black/50 hover:bg-black/80 text-xs border backdrop-blur-sm ${showNametags ? 'border-amber-500 text-amber-400' : 'border-white/10'}`}
+           className="bg-black/50 hover:bg-black/80 text-xs border border-white/10 backdrop-blur-sm"
            onClick={() => setShowNametags(!showNametags)}
            data-testid="button-toggle-nametags"
            title={showNametags ? "Hide token names" : "Show token names"}
         >
-          <Type className="h-3 w-3" />
+          {showNametags ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
         </Button>
       </div>
 
@@ -1242,15 +1242,20 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
               
               {/* Nametag - displays character/token name at bottom of token, above HP bar */}
               {/* Only show if: nametags enabled AND (GM or player has view/edit permission) */}
+              {/* Uses nickname if set, otherwise full name. Long names wrap to multiple lines */}
               {showNametags && (role === 'gm' || !character || myPermissions?.permissions?.[character.id]) && (
                 <div 
-                  className="absolute left-1/2 -translate-x-1/2 bottom-1 font-display text-white whitespace-nowrap max-w-[90px] truncate pointer-events-none text-center"
+                  className="absolute left-1/2 -translate-x-1/2 font-display text-white pointer-events-none text-center leading-tight"
                   style={{ 
-                    fontSize: Math.max(8, Math.min(12, tokenSize / 5)),
-                    textShadow: '1px 1px 0 #000, -1px 1px 0 #000, 1px -1px 0 #000, -1px -1px 0 #000, 0 1px 0 #000, 0 -1px 0 #000, 1px 0 0 #000, -1px 0 0 #000'
+                    bottom: character && hpPercent !== null ? 6 : 2,
+                    fontSize: Math.max(8, Math.min(11, tokenSize / 5.5)),
+                    textShadow: '1px 1px 0 #000, -1px 1px 0 #000, 1px -1px 0 #000, -1px -1px 0 #000, 0 1px 0 #000, 0 -1px 0 #000, 1px 0 0 #000, -1px 0 0 #000',
+                    maxWidth: tokenSize * 1.2,
+                    wordBreak: 'break-word',
+                    lineHeight: 1.1
                   }}
                 >
-                  {character?.name || (token.type === 'player' ? 'Player' : 'Enemy')}
+                  {character?.nickname || character?.name || (token.type === 'player' ? 'Player' : 'Enemy')}
                 </div>
               )}
               
@@ -12929,6 +12934,24 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                   }}
                   title="Select Character Portrait"
                 />
+
+                {/* Nickname Section */}
+                <div>
+                  <Label className="text-sm text-stone-300 mb-2 block">Nickname (displayed on battlemap)</Label>
+                  <Input
+                    value={character.nickname || ""}
+                    onChange={(e) => {
+                      if (onUpdate && canEdit) {
+                        onUpdate({ nickname: e.target.value || null });
+                      }
+                    }}
+                    placeholder="Leave empty to use character name"
+                    className="bg-stone-900 border-stone-700"
+                    disabled={!canEdit}
+                    data-testid="input-nickname"
+                  />
+                  <p className="text-xs text-stone-500 mt-1">This short name appears on tokens instead of the full character name</p>
+                </div>
 
                 {/* Portrait Cropping Dialog */}
                 <Dialog open={showPortraitCrop} onOpenChange={setShowPortraitCrop}>
