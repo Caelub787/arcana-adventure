@@ -585,8 +585,11 @@ class ApiClient {
     });
   }
 
-  async getCampaignTokens(campaignId: string): Promise<Token[]> {
-    return this.request(`/campaigns/${campaignId}/tokens`);
+  async getCampaignTokens(campaignId: string, sceneId?: string): Promise<Token[]> {
+    const url = sceneId 
+      ? `/campaigns/${campaignId}/tokens?sceneId=${sceneId}`
+      : `/campaigns/${campaignId}/tokens`;
+    return this.request(url);
   }
 
   async updateToken(id: string, data: Partial<Token>): Promise<Token> {

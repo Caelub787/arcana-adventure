@@ -864,10 +864,19 @@ export default function Campaign() {
     enabled: !!effectiveCampaignId && !isNew,
   });
 
-  // Load tokens for the campaign
+  // Get campaign's active scene ID (what players see)
+  const campaignActiveSceneId = campaign && typeof campaign === 'object' && 'activeSceneId' in campaign ? (campaign as any).activeSceneId as string | null : null;
+
+  // Determine which scene ID to use for tokens
+  // For GM: use gmViewingSceneId if set, otherwise use activeSceneId
+  // For Players: always use activeSceneId
+  const sceneIdForTokens = role === 'gm' && gmViewingSceneId ? gmViewingSceneId : campaignActiveSceneId;
+  
+  // Load tokens for the current scene
   const { data: tokensData, isLoading: tokensLoading } = useQuery({
-    queryKey: [`/api/campaigns/${effectiveCampaignId}/tokens`],
-    enabled: !!effectiveCampaignId && !isNew,
+    queryKey: [`/api/campaigns/${effectiveCampaignId}/tokens`, sceneIdForTokens],
+    queryFn: () => api.getCampaignTokens(effectiveCampaignId!, sceneIdForTokens || undefined),
+    enabled: !!effectiveCampaignId && !isNew && !!sceneIdForTokens,
   });
 
   // Load characters for the campaign
@@ -904,7 +913,6 @@ export default function Campaign() {
   // Load active scene for the campaign
   // For GM: use gmViewingSceneId if set, otherwise fall back to activeSceneId
   // For Players: always use activeSceneId (they only see the activated scene)
-  const campaignActiveSceneId = campaign && typeof campaign === 'object' && 'activeSceneId' in campaign ? campaign.activeSceneId : null;
   const effectiveSceneId = role === 'gm' && gmViewingSceneId ? gmViewingSceneId : campaignActiveSceneId;
   const { data: activeScene, isLoading: sceneLoading } = useQuery({
     queryKey: [`/api/scenes/${effectiveSceneId}`],
@@ -1028,7 +1036,7 @@ export default function Campaign() {
     mutationFn: (tokenId: string) => api.deleteToken(tokenId),
     onSuccess: (_, tokenId) => {
       setTokens(prev => prev.filter(t => t.id !== tokenId));
-      queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${effectiveCampaignId}/tokens`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${effectiveCampaignId}/tokens`, sceneIdForTokens] });
       toast({ title: "Success", description: "Token removed from battlemap" });
     },
     onError: (error: any) => {
@@ -1036,11 +1044,11 @@ export default function Campaign() {
     },
   });
 
-  // Create token mutation
+  // Create token mutation - includes sceneId for per-scene tokens
   const createTokenMutation = useMutation({
-    mutationFn: (tokenData: any) => api.createToken(effectiveCampaignId!, tokenData),
+    mutationFn: (tokenData: any) => api.createToken(effectiveCampaignId!, { ...tokenData, sceneId: sceneIdForTokens }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${effectiveCampaignId}/tokens`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${effectiveCampaignId}/tokens`, sceneIdForTokens] });
     },
     onError: (error: any) => {
       toast({ title: "Error", description: error.message || "Failed to create token", variant: "destructive" });
@@ -1443,17 +1451,25 @@ export default function Campaign() {
         }
         
         // Handle token CRUD - real-time token updates
+        // Only apply updates if the token belongs to the current scene (or is legacy with null sceneId)
+        const currentSceneId = role === 'gm' && gmViewingSceneId ? gmViewingSceneId : campaignActiveSceneId;
         if (data.type === 'token_created' && data.token) {
-          setTokens(prev => {
-            // Avoid duplicates
-            if (prev.some(t => t.id === data.token.id)) return prev;
-            return [...prev, data.token];
-          });
+          // Only add if token belongs to current scene or is legacy (null sceneId)
+          if (data.token.sceneId === currentSceneId || !data.token.sceneId) {
+            setTokens(prev => {
+              // Avoid duplicates
+              if (prev.some(t => t.id === data.token.id)) return prev;
+              return [...prev, data.token];
+            });
+          }
         }
         if (data.type === 'token_updated' && data.token) {
-          setTokens(prev => prev.map(t => 
-            t.id === data.token.id ? data.token : t
-          ));
+          // Only update if token belongs to current scene or is legacy (null sceneId)
+          if (data.token.sceneId === currentSceneId || !data.token.sceneId) {
+            setTokens(prev => prev.map(t => 
+              t.id === data.token.id ? data.token : t
+            ));
+          }
         }
         if (data.type === 'token_deleted' && data.tokenId) {
           setTokens(prev => prev.filter(t => t.id !== data.tokenId));
