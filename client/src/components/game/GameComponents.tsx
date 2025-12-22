@@ -5104,7 +5104,7 @@ export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onIn
       <Sheet>
         <SheetTrigger asChild>
           <Button variant="ghost" size="icon" className="text-white/50 hover:text-white hover:bg-white/10">
-            <Settings className="h-5 w-5" />
+            <Settings className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 1px black) drop-shadow(0 0 1px black)' }} />
           </Button>
         </SheetTrigger>
         <SheetContent className="bg-stone-950 border-l-stone-800 text-stone-200 w-full sm:max-w-md overflow-y-auto">

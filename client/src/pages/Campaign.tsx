@@ -1804,7 +1804,7 @@ export default function Campaign() {
             className="text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto"
             data-testid="button-back-home"
           >
-            <ArrowLeft />
+            <ArrowLeft style={{ filter: 'drop-shadow(0 0 1px black) drop-shadow(0 0 1px black)' }} />
           </Button>
           
           {/* Chat Button - Left side, mirrored to settings */}
@@ -1818,7 +1818,7 @@ export default function Campaign() {
                   className="text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto"
                   data-testid="button-chat"
                 >
-                  <MessageSquare className="h-5 w-5" />
+                  <MessageSquare className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 1px black) drop-shadow(0 0 1px black)' }} />
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="right" className="bg-stone-800 border-stone-700 text-stone-200">
@@ -1839,7 +1839,7 @@ export default function Campaign() {
                     className="text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto"
                     data-testid="button-dice-roller"
                   >
-                    <Dices className="h-5 w-5" />
+                    <Dices className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 1px black) drop-shadow(0 0 1px black)' }} />
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent side="right" className="bg-stone-800 border-stone-700 text-stone-200">
@@ -1907,7 +1907,7 @@ export default function Campaign() {
                     className="text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto relative z-[60]"
                     data-testid="button-scenes"
                   >
-                    <Layers className="h-5 w-5" />
+                    <Layers className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 1px black) drop-shadow(0 0 1px black)' }} />
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent side="left" className="bg-stone-800 border-stone-700 text-stone-200">
@@ -1928,7 +1928,7 @@ export default function Campaign() {
                   className="text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto"
                   data-testid="button-initiative"
                 >
-                  <Swords className="h-5 w-5" />
+                  <Swords className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 1px black) drop-shadow(0 0 1px black)' }} />
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="left" className="bg-stone-800 border-stone-700 text-stone-200">
