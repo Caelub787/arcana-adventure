@@ -8750,7 +8750,7 @@ function CustomSkillForm({
                 className="bg-stone-800 border-stone-700"
                 data-testid="input-skill-library-search"
               />
-              <ScrollArea className="h-[300px]">
+              <ScrollArea className="h-[400px]">
                 <div className="space-y-2">
                   {filteredSkills.map(skill => (
                     <div
@@ -9059,7 +9059,7 @@ function TraitForm({
                 className="bg-stone-800 border-stone-700"
                 data-testid="input-trait-library-search"
               />
-              <ScrollArea className="h-[300px]">
+              <ScrollArea className="h-[400px]">
                 <div className="space-y-2">
                   {filteredTraits.map(trait => (
                     <div
@@ -9433,10 +9433,11 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
     enabled: !!character?.id,
   });
 
-  // Fetch system skills (admin-defined custom skills)
+  // Fetch system skills (admin-defined custom skills) - cached for 5 minutes
   const { data: systemSkills = [] } = useQuery({
     queryKey: ['public-skills'],
     queryFn: () => api.getPublicSkills(),
+    staleTime: 5 * 60 * 1000,
   });
 
   // Fetch character's custom skills
@@ -9446,10 +9447,11 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
     enabled: !!character?.id,
   });
 
-  // Fetch system traits (admin-defined traits)
+  // Fetch system traits (admin-defined traits) - cached for 5 minutes
   const { data: systemTraits = [] } = useQuery({
     queryKey: ['public-traits'],
     queryFn: () => api.getPublicTraits(),
+    staleTime: 5 * 60 * 1000,
   });
 
   // Fetch character's traits
@@ -10204,11 +10206,11 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
     enabled: !!character.id
   });
 
-  // Fetch system spell library for adding from library
+  // Fetch system spell library for adding from library - cached for 5 minutes
   const { data: systemSpells = [] } = useQuery({
     queryKey: ['system-spells'],
     queryFn: () => api.getSystemSpells(),
-    enabled: showAddSpell || showSpellLibrary
+    staleTime: 5 * 60 * 1000,
   });
 
   // Spell mutations
@@ -11789,7 +11791,7 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
 
             {/* Add Custom Skill Dialog */}
             <Dialog open={showAddCustomSkill} onOpenChange={setShowAddCustomSkill}>
-              <DialogContent className="bg-stone-900 border-stone-700 max-w-md">
+              <DialogContent className="bg-stone-900 border-stone-700 max-w-xl max-h-[85vh] overflow-hidden flex flex-col">
                 <DialogHeader>
                   <DialogTitle className="text-cyan-500">Add Custom Skill</DialogTitle>
                 </DialogHeader>
@@ -11962,7 +11964,7 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
 
             {/* Add Trait Dialog */}
             <Dialog open={showAddTrait} onOpenChange={setShowAddTrait}>
-              <DialogContent className="bg-stone-900 border-stone-700 max-w-md">
+              <DialogContent className="bg-stone-900 border-stone-700 max-w-xl max-h-[85vh] overflow-hidden flex flex-col">
                 <DialogHeader>
                   <DialogTitle className="text-rose-500">Add Trait</DialogTitle>
                 </DialogHeader>
