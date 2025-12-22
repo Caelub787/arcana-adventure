@@ -815,18 +815,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // Update character HP directly - bypassing normal permission checks
           await storage.updateCharacter(characterId, { hp: newHp });
           
-          // Create a chat message for the combat log
           const actionText = isHealing ? 'healed' : 'damaged';
-          const dmgTypeText = damageType ? ` ${damageType}` : '';
-          const chatText = `${attackerName || username} ${actionText} ${character.name} for ${damage}${dmgTypeText} (HP: ${character.hp} → ${newHp})`;
-          
-          const chatMessage = await storage.createChatMessage({
-            campaignId,
-            userId: authenticatedUserId,
-            sender: username,
-            text: chatText,
-            type: "roll"
-          });
           
           // Broadcast to ALL campaign members - everyone needs to see HP changes
           broadcastToCampaign(campaignId, {
@@ -837,11 +826,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
             damage,
             isHealing,
             attackerName: attackerName || username
-          });
-          
-          broadcastToCampaign(campaignId, {
-            type: "chat_message",
-            message: chatMessage
           });
           
           console.log(`[WebSocket] Combat damage: ${attackerName || username} ${actionText} ${character.name} for ${damage} (HP: ${character.hp} → ${newHp})`);
