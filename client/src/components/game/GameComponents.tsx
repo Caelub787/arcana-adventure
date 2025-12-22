@@ -7397,8 +7397,35 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
   };
 
   // Handle spell attack roll (1d20 + attribute modifier)
-  const handleSpellAttackRoll = () => {
+  const handleSpellAttackRoll = async () => {
     if (!spellData) return;
+    
+    // Check and deduct energy cost
+    const energyCost = spellData.energyCost || 0;
+    const currentEnergy = character.energy || 0;
+    
+    if (energyCost > 0 && currentEnergy < energyCost) {
+      triggerRollNotification({
+        type: 'system',
+        label: `Not Enough Energy!`,
+        result: 0,
+        total: 0,
+        username: character.name || 'Unknown',
+        characterName: character.name,
+        calculationBreakdown: `${spellData.name} requires ${energyCost} energy but you only have ${currentEnergy}.`,
+      });
+      return;
+    }
+    
+    // Deduct energy cost
+    if (energyCost > 0) {
+      try {
+        await api.updateCharacter(character.id, { energy: currentEnergy - energyCost });
+        queryClient.invalidateQueries({ queryKey: ['character', character.id] });
+      } catch (err) {
+        console.error('Failed to deduct energy:', err);
+      }
+    }
     
     const attrName = spellData.attribute || 'wit';
     const attrMod = getAttributeModifier(attrName);
@@ -7430,7 +7457,7 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
   };
 
   // Handle spell damage roll (damage dice + mod)
-  const handleSpellDamageRoll = () => {
+  const handleSpellDamageRoll = async () => {
     if (!spellData) return;
     
     // Check if spell has healing (Health damage type heals instead of damages)
@@ -12769,7 +12796,34 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                           variant="outline"
                           size="sm"
                           className="bg-purple-900/50 hover:bg-purple-800/50 border-purple-700 text-purple-300"
-                          onClick={() => {
+                          onClick={async () => {
+                            // Check and deduct energy cost
+                            const energyCost = selectedSpell.energyCost || 0;
+                            const currentEnergy = character.energy || 0;
+                            
+                            if (energyCost > 0 && currentEnergy < energyCost) {
+                              triggerRollNotification({
+                                type: 'system',
+                                label: `Not Enough Energy!`,
+                                result: 0,
+                                total: 0,
+                                username: character.name || 'Unknown',
+                                characterName: character.name,
+                                calculationBreakdown: `${selectedSpell.name} requires ${energyCost} energy but you only have ${currentEnergy}.`,
+                              });
+                              return;
+                            }
+                            
+                            // Deduct energy cost
+                            if (energyCost > 0) {
+                              try {
+                                await api.updateCharacter(character.id, { energy: currentEnergy - energyCost });
+                                queryClient.invalidateQueries({ queryKey: ['character', character.id] });
+                              } catch (err) {
+                                console.error('Failed to deduct energy:', err);
+                              }
+                            }
+                            
                             const attrName = selectedSpell.attribute || 'wit';
                             const attrKey = attrName.toLowerCase() as keyof typeof character;
                             const attrMod = typeof character[attrKey] === 'number' ? (character[attrKey] as number) : 0;
