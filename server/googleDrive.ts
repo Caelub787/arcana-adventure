@@ -148,8 +148,25 @@ export async function getImageBase64(fileId: string): Promise<string> {
   // The thumbnail URL can be modified to get different sizes by changing the =s parameter
   if (thumbnailLink) {
     // Modify thumbnail URL to get a larger size (default is small)
-    // Format: https://...=s220 -> change to =s2000 for larger size
-    const resizedUrl = thumbnailLink.replace(/=s\d+$/, `=s${LARGE_IMAGE_RESIZE_WIDTH}`);
+    // Google Drive thumbnails have various formats:
+    // - https://...=s220 (simple size)
+    // - https://...=w220-h165-c (width/height with crop)
+    // - https://...=s220-k (with additional flags)
+    // We need to replace or append the size parameter
+    let resizedUrl = thumbnailLink;
+    
+    if (thumbnailLink.includes('=s')) {
+      // Replace existing =s{size} parameter (may have trailing flags)
+      resizedUrl = thumbnailLink.replace(/=s\d+/, `=s${LARGE_IMAGE_RESIZE_WIDTH}`);
+    } else if (thumbnailLink.includes('=w')) {
+      // Replace existing =w{width} parameter
+      resizedUrl = thumbnailLink.replace(/=w\d+/, `=w${LARGE_IMAGE_RESIZE_WIDTH}`);
+    } else {
+      // Append size parameter if none exists
+      resizedUrl = thumbnailLink + `=s${LARGE_IMAGE_RESIZE_WIDTH}`;
+    }
+    
+    console.log(`Resizing large image (${Math.round(fileSize / 1024 / 1024)}MB) via thumbnail: ${resizedUrl.substring(0, 100)}...`);
     
     try {
       // Fetch the resized thumbnail
@@ -162,12 +179,16 @@ export async function getImageBase64(fileId: string): Promise<string> {
       const buffer = Buffer.from(arrayBuffer);
       const base64 = buffer.toString('base64');
       
+      console.log(`Successfully resized image to ${Math.round(buffer.length / 1024)}KB`);
+      
       // Thumbnails are typically JPEG
       return `data:image/jpeg;base64,${base64}`;
     } catch (error) {
       console.error('Failed to fetch resized thumbnail, falling back to original:', error);
       // Fall through to try direct download as last resort
     }
+  } else {
+    console.log(`No thumbnail link available for large image (${Math.round(fileSize / 1024 / 1024)}MB), attempting direct download`);
   }
   
   // Last resort: try direct download even for large files (may cause memory pressure)
