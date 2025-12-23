@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { api, Note, SearchableEntity } from "@/lib/api";
@@ -34,6 +35,7 @@ import {
   Search,
   Loader2,
   GripHorizontal,
+  X,
 } from "lucide-react";
 import { ReferencePicker, getEntityIcon, getEntityColor } from "./ReferencePicker";
 
@@ -69,13 +71,23 @@ interface CanvasEditorProps {
   canvasData: CanvasData;
   onChange: (data: CanvasData) => void;
   readOnly?: boolean;
+  onClose?: () => void;
+  title?: string;
+  onTitleChange?: (title: string) => void;
 }
 
 const MIN_ZOOM = 0.25;
 const MAX_ZOOM = 2;
 const DEFAULT_ZOOM = 1;
 
-export function CanvasEditor({ canvasData, onChange, readOnly = false }: CanvasEditorProps) {
+export function CanvasEditor({ 
+  canvasData, 
+  onChange, 
+  readOnly = false,
+  onClose,
+  title,
+  onTitleChange,
+}: CanvasEditorProps) {
   const [, setLocation] = useLocation();
   const containerRef = useRef<HTMLDivElement>(null);
   
@@ -93,6 +105,7 @@ export function CanvasEditor({ canvasData, onChange, readOnly = false }: CanvasE
   const [isConnecting, setIsConnecting] = useState(false);
   const [connectionStart, setConnectionStart] = useState<{ nodeId: string; x: number; y: number } | null>(null);
   const [connectionEnd, setConnectionEnd] = useState<{ x: number; y: number } | null>(null);
+  const [hoveredDropTarget, setHoveredDropTarget] = useState<string | null>(null);
   
   const dragStartRef = useRef<{ nodeId: string; startX: number; startY: number; nodeX: number; nodeY: number } | null>(null);
   const panStartRef = useRef<{ pointerX: number; pointerY: number; panX: number; panY: number } | null>(null);
@@ -110,6 +123,14 @@ export function CanvasEditor({ canvasData, onChange, readOnly = false }: CanvasE
     staleTime: 30000,
   });
 
+  useEffect(() => {
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = originalOverflow;
+    };
+  }, []);
+
   const screenToWorld = useCallback((screenX: number, screenY: number) => {
     const rect = containerRef.current?.getBoundingClientRect();
     if (!rect) return { x: 0, y: 0 };
@@ -123,6 +144,13 @@ export function CanvasEditor({ canvasData, onChange, readOnly = false }: CanvasE
     if (!rect) return { x: 0, y: 0 };
     return screenToWorld(rect.left + rect.width / 2, rect.top + rect.height / 2);
   }, [screenToWorld]);
+
+  const findNodeAtPosition = useCallback((worldX: number, worldY: number) => {
+    return canvasData.nodes.find((n) => 
+      worldX >= n.x && worldX <= n.x + n.width &&
+      worldY >= n.y && worldY <= n.y + n.height
+    );
+  }, [canvasData.nodes]);
 
   const updateNode = useCallback((nodeId: string, updates: Partial<CanvasNode>) => {
     if (readOnly) return;
@@ -240,17 +268,23 @@ export function CanvasEditor({ canvasData, onChange, readOnly = false }: CanvasE
         }
       }
       if (e.key === "Escape") {
-        setSelectedNodeId(null);
-        setSelectedConnectionId(null);
-        setIsConnecting(false);
-        setConnectionStart(null);
-        setConnectionEnd(null);
+        if (isConnecting) {
+          setIsConnecting(false);
+          setConnectionStart(null);
+          setConnectionEnd(null);
+          setHoveredDropTarget(null);
+        } else if (selectedNodeId || selectedConnectionId) {
+          setSelectedNodeId(null);
+          setSelectedConnectionId(null);
+        } else if (onClose) {
+          onClose();
+        }
       }
     };
     
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [selectedNodeId, selectedConnectionId, deleteNode, deleteConnection]);
+  }, [selectedNodeId, selectedConnectionId, deleteNode, deleteConnection, isConnecting, onClose]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -366,6 +400,13 @@ export function CanvasEditor({ canvasData, onChange, readOnly = false }: CanvasE
     if (isConnecting && connectionStart) {
       const world = screenToWorld(e.clientX, e.clientY);
       setConnectionEnd(world);
+      
+      const targetNode = findNodeAtPosition(world.x, world.y);
+      if (targetNode && targetNode.id !== connectionStart.nodeId) {
+        setHoveredDropTarget(targetNode.id);
+      } else {
+        setHoveredDropTarget(null);
+      }
     }
     
     if (isPanning && panStartRef.current) {
@@ -407,10 +448,7 @@ export function CanvasEditor({ canvasData, onChange, readOnly = false }: CanvasE
   const handleCanvasPointerUp = (e: React.PointerEvent) => {
     if (isConnecting && connectionStart) {
       const world = screenToWorld(e.clientX, e.clientY);
-      const targetNode = canvasData.nodes.find((n) => 
-        world.x >= n.x && world.x <= n.x + n.width &&
-        world.y >= n.y && world.y <= n.y + n.height
-      );
+      const targetNode = findNodeAtPosition(world.x, world.y);
       if (targetNode && targetNode.id !== connectionStart.nodeId) {
         addConnection(connectionStart.nodeId, targetNode.id);
       }
@@ -426,6 +464,7 @@ export function CanvasEditor({ canvasData, onChange, readOnly = false }: CanvasE
     setIsConnecting(false);
     setConnectionStart(null);
     setConnectionEnd(null);
+    setHoveredDropTarget(null);
     panStartRef.current = null;
     dragStartRef.current = null;
     resizeStartRef.current = null;
@@ -484,6 +523,8 @@ export function CanvasEditor({ canvasData, onChange, readOnly = false }: CanvasE
       x: node.x + node.width,
       y: node.y + node.height / 2,
     });
+    
+    containerRef.current?.setPointerCapture(e.pointerId);
   };
 
   const handleNoteSelect = (note: Note) => {
@@ -523,12 +564,17 @@ export function CanvasEditor({ canvasData, onChange, readOnly = false }: CanvasE
 
   const renderNode = (node: CanvasNode) => {
     const isSelected = selectedNodeId === node.id;
+    const isDropTarget = hoveredDropTarget === node.id;
     
     return (
       <div
         key={node.id}
-        className={`absolute bg-stone-800 rounded-lg border-2 transition-colors cursor-move ${
-          isSelected ? "border-indigo-500 shadow-lg shadow-indigo-500/20" : "border-stone-600 hover:border-stone-500"
+        className={`absolute bg-stone-800 rounded-lg border-2 transition-all cursor-move group ${
+          isDropTarget 
+            ? "border-green-400 shadow-lg shadow-green-400/30 scale-105" 
+            : isSelected 
+              ? "border-indigo-500 shadow-lg shadow-indigo-500/20" 
+              : "border-stone-600 hover:border-stone-500"
         }`}
         style={{
           left: node.x,
@@ -603,10 +649,16 @@ export function CanvasEditor({ canvasData, onChange, readOnly = false }: CanvasE
         {!readOnly && (
           <>
             <div
-              className="absolute -right-2 top-1/2 -translate-y-1/2 w-4 h-4 bg-indigo-500 rounded-full cursor-crosshair border-2 border-indigo-400 opacity-60 hover:opacity-100 hover:scale-125 transition-all shadow-lg shadow-indigo-500/50"
+              className={`absolute -right-3 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full cursor-crosshair border-2 transition-all ${
+                isConnecting 
+                  ? "bg-indigo-400 border-indigo-300 opacity-100 scale-110" 
+                  : "bg-indigo-500 border-indigo-400 opacity-80 hover:opacity-100 hover:scale-125 group-hover:opacity-100"
+              } shadow-lg shadow-indigo-500/50`}
               onPointerDown={(e) => handleConnectionHandlePointerDown(e, node)}
               data-testid={`connection-handle-${node.id}`}
-            />
+            >
+              <div className="absolute inset-0 rounded-full bg-indigo-400 animate-ping opacity-30" />
+            </div>
             <div
               className="absolute -right-1 -bottom-1 w-3 h-3 bg-stone-500 rounded-sm cursor-se-resize opacity-0 group-hover:opacity-100 hover:opacity-100"
               onPointerDown={(e) => handleResizePointerDown(e, node)}
@@ -618,8 +670,32 @@ export function CanvasEditor({ canvasData, onChange, readOnly = false }: CanvasE
     );
   };
 
-  return (
-    <div className="fixed inset-0 z-50 bg-stone-950">
+  const canvasContent = (
+    <div className="fixed inset-0 z-[9999] bg-stone-950">
+      <div className="absolute top-4 right-4 z-30">
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={onClose}
+          className="h-10 w-10 rounded-full bg-stone-800/90 hover:bg-stone-700 text-stone-300 hover:text-white border border-stone-700"
+          data-testid="button-close-canvas"
+        >
+          <X className="h-5 w-5" />
+        </Button>
+      </div>
+      
+      {title !== undefined && (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20">
+          <Input
+            value={title}
+            onChange={(e) => onTitleChange?.(e.target.value)}
+            placeholder="Canvas title"
+            className="text-lg font-display bg-stone-900/90 border-stone-700 text-center min-w-[200px] max-w-[400px]"
+            data-testid="input-canvas-title"
+          />
+        </div>
+      )}
+      
       {!readOnly && (
         <div className="absolute top-4 left-4 z-20 flex flex-col gap-2">
           <div className="flex items-center gap-2 bg-stone-900/90 backdrop-blur-sm rounded-lg p-2 border border-stone-800">
@@ -671,7 +747,7 @@ export function CanvasEditor({ canvasData, onChange, readOnly = false }: CanvasE
             </Button>
           </div>
           <div className="text-xs text-stone-500 bg-stone-900/90 backdrop-blur-sm rounded px-2 py-1 border border-stone-800">
-            Zoom: {Math.round(zoom * 100)}%
+            Zoom: {Math.round(zoom * 100)}% {isConnecting && <span className="text-indigo-400 ml-2">• Connecting...</span>}
           </div>
         </div>
       )}
@@ -692,36 +768,36 @@ export function CanvasEditor({ canvasData, onChange, readOnly = false }: CanvasE
           <defs>
             <marker
               id="arrowhead"
-              markerWidth="8"
-              markerHeight="6"
-              refX="7"
-              refY="3"
+              markerWidth="10"
+              markerHeight="8"
+              refX="9"
+              refY="4"
               orient="auto"
               markerUnits="strokeWidth"
             >
-              <path d="M0,0 L0,6 L8,3 z" fill="rgb(120 113 108)" />
+              <path d="M0,0 L0,8 L10,4 z" fill="rgb(120 113 108)" />
             </marker>
             <marker
               id="arrowhead-selected"
-              markerWidth="8"
-              markerHeight="6"
-              refX="7"
-              refY="3"
+              markerWidth="10"
+              markerHeight="8"
+              refX="9"
+              refY="4"
               orient="auto"
               markerUnits="strokeWidth"
             >
-              <path d="M0,0 L0,6 L8,3 z" fill="rgb(99 102 241)" />
+              <path d="M0,0 L0,8 L10,4 z" fill="rgb(99 102 241)" />
             </marker>
             <marker
               id="arrowhead-preview"
-              markerWidth="8"
-              markerHeight="6"
-              refX="7"
-              refY="3"
+              markerWidth="10"
+              markerHeight="8"
+              refX="9"
+              refY="4"
               orient="auto"
               markerUnits="strokeWidth"
             >
-              <path d="M0,0 L0,6 L8,3 z" fill="rgb(99 102 241)" />
+              <path d="M0,0 L0,8 L10,4 z" fill="rgb(129 140 248)" />
             </marker>
           </defs>
           
@@ -729,15 +805,22 @@ export function CanvasEditor({ canvasData, onChange, readOnly = false }: CanvasE
             <g key={connection.id}>
               <path
                 d={getConnectionPath(connection)}
-                stroke={selectedConnectionId === connection.id ? "rgb(99 102 241)" : (connection.color || "rgb(120 113 108)")}
-                strokeWidth={selectedConnectionId === connection.id ? 1.5 : 1}
+                stroke="transparent"
+                strokeWidth={12}
                 fill="none"
-                markerEnd={selectedConnectionId === connection.id ? "url(#arrowhead-selected)" : "url(#arrowhead)"}
                 className="cursor-pointer pointer-events-auto"
                 onClick={() => {
                   setSelectedConnectionId(connection.id);
                   setSelectedNodeId(null);
                 }}
+              />
+              <path
+                d={getConnectionPath(connection)}
+                stroke={selectedConnectionId === connection.id ? "rgb(99 102 241)" : (connection.color || "rgb(120 113 108)")}
+                strokeWidth={selectedConnectionId === connection.id ? 2.5 : 2}
+                fill="none"
+                markerEnd={selectedConnectionId === connection.id ? "url(#arrowhead-selected)" : "url(#arrowhead)"}
+                className="pointer-events-none"
                 data-testid={`connection-${connection.id}`}
               />
               {connection.label && (
@@ -755,11 +838,12 @@ export function CanvasEditor({ canvasData, onChange, readOnly = false }: CanvasE
           {isConnecting && connectionStart && connectionEnd && (
             <path
               d={`M ${connectionStart.x} ${connectionStart.y} C ${(connectionStart.x + connectionEnd.x) / 2} ${connectionStart.y}, ${(connectionStart.x + connectionEnd.x) / 2} ${connectionEnd.y}, ${connectionEnd.x} ${connectionEnd.y}`}
-              stroke="rgb(99 102 241)"
-              strokeWidth={1.5}
-              strokeDasharray="4"
+              stroke="rgb(129 140 248)"
+              strokeWidth={2.5}
+              strokeDasharray="6 3"
               fill="none"
               markerEnd="url(#arrowhead-preview)"
+              className="pointer-events-none"
             />
           )}
         </svg>
@@ -823,4 +907,6 @@ export function CanvasEditor({ canvasData, onChange, readOnly = false }: CanvasE
       </Dialog>
     </div>
   );
+
+  return createPortal(canvasContent, document.body);
 }

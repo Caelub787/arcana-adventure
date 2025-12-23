@@ -1009,16 +1009,37 @@ export default function Notes() {
     </div>
   );
 
-  const renderNoteEditor = () => (
+  const renderNoteEditor = () => {
+    if (currentNote?.type === "canvas") {
+      if (noteLoading) {
+        return (
+          <div className="flex-1 flex items-center justify-center">
+            <Loader2 className="h-6 w-6 animate-spin text-stone-500" />
+          </div>
+        );
+      }
+      return (
+        <CanvasEditor
+          canvasData={canvasData}
+          onChange={setCanvasData}
+          readOnly={false}
+          onClose={() => setLocation("/notes")}
+          title={noteTitle}
+          onTitleChange={setNoteTitle}
+        />
+      );
+    }
+    
+    return (
     <div className="flex-1 flex flex-col overflow-hidden">
       <div className="flex items-center justify-between p-4 border-b border-stone-800">
         <Button
           variant="ghost"
           size="sm"
-          onClick={() => currentNote?.type === "canvas" ? setLocation("/notes") : setNoteMode("read")}
+          onClick={() => setNoteMode("read")}
           data-testid="button-back-to-notes"
         >
-          <ArrowLeft className="h-4 w-4 mr-2" /> {currentNote?.type === "canvas" ? "Back" : "Done"}
+          <ArrowLeft className="h-4 w-4 mr-2" /> Done
         </Button>
         <div className="flex items-center gap-2">
           <Button
@@ -1048,28 +1069,6 @@ export default function Notes() {
       {noteLoading ? (
         <div className="flex-1 flex items-center justify-center">
           <Loader2 className="h-6 w-6 animate-spin text-stone-500" />
-        </div>
-      ) : currentNote?.type === "canvas" ? (
-        <div className="flex-1 flex flex-col overflow-hidden">
-          <div className="flex items-center gap-2 p-4 border-b border-stone-800">
-            <Input
-              value={noteTitle}
-              onChange={(e) => setNoteTitle(e.target.value)}
-              placeholder="Canvas title"
-              className="text-xl font-display border-none bg-transparent focus-visible:ring-0 px-0 flex-1"
-              data-testid="input-canvas-title"
-            />
-            {updateNoteMutation.isPending && (
-              <span className="text-xs text-stone-500">Saving...</span>
-            )}
-          </div>
-          <div className="flex-1">
-            <CanvasEditor
-              canvasData={canvasData}
-              onChange={setCanvasData}
-              readOnly={false}
-            />
-          </div>
         </div>
       ) : (
         <div className="flex-1 flex flex-col p-4 md:p-6 overflow-auto">
@@ -1119,6 +1118,7 @@ export default function Notes() {
       )}
     </div>
   );
+  };
 
   return (
     <div className="relative min-h-screen w-full overflow-hidden bg-black font-sans text-stone-100">
