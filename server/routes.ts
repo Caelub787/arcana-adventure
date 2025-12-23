@@ -2350,7 +2350,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Kick a player (GM only)
+  // Set member role (Owner only - can promote/demote to assistant_gm)
+  app.patch("/api/campaigns/:campaignId/members/:memberId/role", requireAuth, async (req, res) => {
+    try {
+      const { campaignId, memberId } = req.params;
+      const { role } = req.body;
+      
+      // Validate role
+      if (role !== 'player' && role !== 'assistant_gm') {
+        return res.status(400).json({ error: "Invalid role. Must be 'player' or 'assistant_gm'" });
+      }
+      
+      // Only the campaign owner can change roles
+      const isOwner = await storage.isOwner(req.session.userId!, campaignId);
+      if (!isOwner) {
+        return res.status(403).json({ error: "Only the campaign owner can change member roles" });
+      }
+      
+      // Get the member to ensure they exist and aren't the owner
+      const members = await storage.getCampaignMembers(campaignId);
+      const targetMember = members.find(m => m.id === memberId);
+      if (!targetMember) {
+        return res.status(404).json({ error: "Member not found" });
+      }
+      
+      // Can't change the owner's role
+      const campaign = await storage.getCampaign(campaignId);
+      if (targetMember.userId === campaign?.gmUserId) {
+        return res.status(400).json({ error: "Cannot change the campaign owner's role" });
+      }
+      
+      const updatedMember = await storage.setMemberRole(campaignId, memberId, role);
+      res.json(updatedMember);
+    } catch (err) {
+      console.error('Error setting member role:', err);
+      res.status(500).json({ error: "Failed to update member role" });
+    }
+  });
+
+  // Kick a player (GM/Assistant GM - but cannot kick owner)
   app.post("/api/campaigns/:campaignId/kick/:userId", requireAuth, async (req, res) => {
     try {
       const { campaignId, userId } = req.params;
@@ -2360,12 +2398,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Campaign not found" });
       }
 
-      if (campaign.gmUserId !== req.session.userId) {
-        return res.status(403).json({ error: "Only the GM can kick players" });
+      // Allow owner or assistant GMs to kick
+      const canKick = await storage.isGM(req.session.userId!, campaignId);
+      if (!canKick) {
+        return res.status(403).json({ error: "Only GMs can kick players" });
       }
 
+      // Cannot kick the campaign owner
       if (userId === campaign.gmUserId) {
-        return res.status(400).json({ error: "Cannot kick the GM" });
+        return res.status(400).json({ error: "Cannot kick the campaign owner" });
       }
 
       await storage.kickMember(campaignId, userId);
@@ -2375,7 +2416,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Ban a player (GM only)
+  // Ban a player (GM/Assistant GM - but cannot ban owner)
   app.post("/api/campaigns/:campaignId/ban/:userId", requireAuth, async (req, res) => {
     try {
       const { campaignId, userId } = req.params;
@@ -2386,12 +2427,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Campaign not found" });
       }
 
-      if (campaign.gmUserId !== req.session.userId) {
-        return res.status(403).json({ error: "Only the GM can ban players" });
+      // Allow owner or assistant GMs to ban
+      const canBan = await storage.isGM(req.session.userId!, campaignId);
+      if (!canBan) {
+        return res.status(403).json({ error: "Only GMs can ban players" });
       }
 
+      // Cannot ban the campaign owner
       if (userId === campaign.gmUserId) {
-        return res.status(400).json({ error: "Cannot ban the GM" });
+        return res.status(400).json({ error: "Cannot ban the campaign owner" });
       }
 
       const ban = await storage.banMember(campaignId, userId, reason);
@@ -2401,7 +2445,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Unban a player (GM only)
+  // Unban a player (GM/Assistant GM)
   app.delete("/api/campaigns/:campaignId/bans/:userId", requireAuth, async (req, res) => {
     try {
       const { campaignId, userId } = req.params;
@@ -2411,8 +2455,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Campaign not found" });
       }
 
-      if (campaign.gmUserId !== req.session.userId) {
-        return res.status(403).json({ error: "Only the GM can unban players" });
+      // Allow owner or assistant GMs to unban
+      const canUnban = await storage.isGM(req.session.userId!, campaignId);
+      if (!canUnban) {
+        return res.status(403).json({ error: "Only GMs can unban players" });
       }
 
       await storage.unbanMember(campaignId, userId);
@@ -2422,7 +2468,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Get banned players list (GM only)
+  // Get banned players list (GM/Assistant GM)
   app.get("/api/campaigns/:campaignId/bans", requireAuth, async (req, res) => {
     try {
       const { campaignId } = req.params;
@@ -2432,8 +2478,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Campaign not found" });
       }
 
-      if (campaign.gmUserId !== req.session.userId) {
-        return res.status(403).json({ error: "Only the GM can view banned players" });
+      // Allow owner or assistant GMs to view bans
+      const canView = await storage.isGM(req.session.userId!, campaignId);
+      if (!canView) {
+        return res.status(403).json({ error: "Only GMs can view banned players" });
       }
 
       const bans = await storage.getCampaignBans(campaignId);
@@ -2443,7 +2491,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // GM level-up all characters route
+  // GM level-up all characters route (GM/Assistant GM)
   app.post("/api/campaigns/:campaignId/level-up-all", async (req, res) => {
     try {
       if (!req.session.userId) {
@@ -2455,8 +2503,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Campaign not found" });
       }
       
-      if (campaign.gmUserId !== req.session.userId) {
-        return res.status(403).json({ error: "Only GM can level up all characters" });
+      // Allow owner or assistant GMs
+      const canLevelUp = await storage.isGM(req.session.userId, req.params.campaignId);
+      if (!canLevelUp) {
+        return res.status(403).json({ error: "Only GMs can level up all characters" });
       }
       
       const { mode, targetLevel } = req.body;

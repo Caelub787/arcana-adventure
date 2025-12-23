@@ -77,6 +77,8 @@ export interface IStorage {
   setAssignedCharacter(campaignId: string, userId: string, characterId: string | null): Promise<void>;
   getAssignedCharacter(campaignId: string, userId: string): Promise<string | null>;
   isGM(userId: string, campaignId: string): Promise<boolean>;
+  isOwner(userId: string, campaignId: string): Promise<boolean>;
+  setMemberRole(campaignId: string, memberId: string, role: 'player' | 'assistant_gm'): Promise<CampaignMember | undefined>;
 
   // Character operations
   createCharacter(character: InsertCharacter): Promise<Character>;
@@ -710,12 +712,12 @@ export class DatabaseStorage implements IStorage {
       return false;
     }
 
-    // Check if user is the GM of the campaign
+    // Check if user is the GM (owner) of the campaign
     if (campaign.gmUserId === userId) {
       return true;
     }
 
-    // Also check campaign members table
+    // Also check campaign members table - both 'gm' and 'assistant_gm' have GM permissions
     const [member] = await db.select()
       .from(campaignMembers)
       .where(and(
@@ -724,7 +726,26 @@ export class DatabaseStorage implements IStorage {
       ))
       .limit(1);
 
-    return member?.role === 'gm';
+    return member?.role === 'gm' || member?.role === 'assistant_gm';
+  }
+
+  async isOwner(userId: string, campaignId: string): Promise<boolean> {
+    const campaign = await this.getCampaign(campaignId);
+    if (!campaign) {
+      return false;
+    }
+    return campaign.gmUserId === userId;
+  }
+
+  async setMemberRole(campaignId: string, memberId: string, role: 'player' | 'assistant_gm'): Promise<CampaignMember | undefined> {
+    const [member] = await db.update(campaignMembers)
+      .set({ role })
+      .where(and(
+        eq(campaignMembers.id, memberId),
+        eq(campaignMembers.campaignId, campaignId)
+      ))
+      .returning();
+    return member;
   }
 
   // Character operations

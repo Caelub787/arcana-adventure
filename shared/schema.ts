@@ -143,7 +143,7 @@ export const campaignMembers = pgTable("campaign_members", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   campaignId: varchar("campaign_id").notNull().references(() => campaigns.id, { onDelete: "cascade" }),
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-  role: text("role").notNull().default("player"), // "gm" or "player"
+  role: text("role").notNull().default("player"), // "gm", "assistant_gm", or "player"
   favorite: boolean("favorite").default(false).notNull(),
   assignedCharacterId: varchar("assigned_character_id"), // Character auto-assigned to player on load
   joinedAt: timestamp("joined_at").defaultNow().notNull(),
