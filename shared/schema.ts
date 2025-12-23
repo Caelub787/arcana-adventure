@@ -10,6 +10,8 @@ export const users = pgTable("users", {
   username: text("username").notNull().unique(),
   name: text("name").notNull(),
   password: text("password").notNull(),
+  avatarUrl: text("avatar_url"), // User profile picture
+  bio: text("bio"), // Optional user bio
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -20,6 +22,52 @@ export const insertUserSchema = createInsertSchema(users).omit({
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
+
+// Friend Requests table (pending friend requests)
+export const friendRequests = pgTable("friend_requests", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  senderId: varchar("sender_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  recipientId: varchar("recipient_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  status: text("status").notNull().default("pending"), // "pending", "accepted", "declined"
+  message: text("message"), // Optional message with request
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  respondedAt: timestamp("responded_at"),
+}, (table) => ({
+  uniqueRequest: uniqueIndex("friend_requests_sender_recipient_unique").on(
+    table.senderId,
+    table.recipientId
+  ),
+}));
+
+export const insertFriendRequestSchema = createInsertSchema(friendRequests).omit({
+  id: true,
+  createdAt: true,
+  respondedAt: true,
+});
+
+export type InsertFriendRequest = z.infer<typeof insertFriendRequestSchema>;
+export type FriendRequest = typeof friendRequests.$inferSelect;
+
+// Friendships table (confirmed friendships - bidirectional)
+export const friendships = pgTable("friendships", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  friendId: varchar("friend_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  uniqueFriendship: uniqueIndex("friendships_user_friend_unique").on(
+    table.userId,
+    table.friendId
+  ),
+}));
+
+export const insertFriendshipSchema = createInsertSchema(friendships).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertFriendship = z.infer<typeof insertFriendshipSchema>;
+export type Friendship = typeof friendships.$inferSelect;
 
 // Campaigns table
 export const campaigns = pgTable("campaigns", {

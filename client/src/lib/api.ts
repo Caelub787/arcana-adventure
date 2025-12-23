@@ -422,6 +422,29 @@ export interface CharacterTrait {
   createdAt: string;
 }
 
+export interface UserProfile {
+  id: string;
+  username: string;
+  name: string;
+  avatarUrl?: string;
+  bio?: string;
+}
+
+export interface FriendRequest {
+  id: string;
+  senderId: string;
+  recipientId: string;
+  status: string;
+  message?: string;
+  createdAt: string;
+  respondedAt?: string;
+}
+
+export interface FriendRequestWithUser extends FriendRequest {
+  sender?: UserProfile;
+  recipient?: UserProfile;
+}
+
 class ApiClient {
   private baseUrl = '/api';
 
@@ -1241,6 +1264,75 @@ class ApiClient {
       method: 'POST',
       body: JSON.stringify({ inCombat, currentTurnCharacterId }),
     });
+  }
+
+  // Profile endpoints
+  async getProfile(): Promise<UserProfile> {
+    return this.request('/profile');
+  }
+
+  async updateProfile(data: { name?: string; bio?: string }): Promise<UserProfile> {
+    return this.request('/profile', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateAvatar(avatarUrl: string): Promise<UserProfile> {
+    return this.request('/profile/avatar', {
+      method: 'PUT',
+      body: JSON.stringify({ avatarUrl }),
+    });
+  }
+
+  // Friend request endpoints
+  async sendFriendRequest(recipientUsername: string, message?: string): Promise<FriendRequest> {
+    return this.request('/friends/requests', {
+      method: 'POST',
+      body: JSON.stringify({ recipientUsername, message }),
+    });
+  }
+
+  async getIncomingFriendRequests(): Promise<FriendRequestWithUser[]> {
+    return this.request('/friends/requests/incoming');
+  }
+
+  async getOutgoingFriendRequests(): Promise<FriendRequestWithUser[]> {
+    return this.request('/friends/requests/outgoing');
+  }
+
+  async acceptFriendRequest(requestId: string): Promise<{ success: boolean }> {
+    return this.request(`/friends/requests/${requestId}/accept`, {
+      method: 'POST',
+    });
+  }
+
+  async declineFriendRequest(requestId: string): Promise<{ success: boolean }> {
+    return this.request(`/friends/requests/${requestId}/decline`, {
+      method: 'POST',
+    });
+  }
+
+  async cancelFriendRequest(requestId: string): Promise<{ success: boolean }> {
+    return this.request(`/friends/requests/${requestId}`, {
+      method: 'DELETE',
+    });
+  }
+
+  // Friendship endpoints
+  async getFriends(): Promise<UserProfile[]> {
+    return this.request('/friends');
+  }
+
+  async removeFriend(friendId: string): Promise<{ success: boolean }> {
+    return this.request(`/friends/${friendId}`, {
+      method: 'DELETE',
+    });
+  }
+
+  // User search
+  async searchUserByUsername(username: string): Promise<UserProfile> {
+    return this.request(`/users/search?username=${encodeURIComponent(username)}`);
   }
 }
 

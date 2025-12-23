@@ -27,7 +27,9 @@ import {
   type CharacterTrait, type InsertCharacterTrait,
   type CharacterFolder, type InsertCharacterFolder,
   type SceneFolder, type InsertSceneFolder,
-  users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, items, spells, characterPermissions, initiativeEntries, systemSpecies, campaignSpecies, featTemplates, featTrees, feats, featConnections, characterFeats, systemSpells, systemSkills, characterCustomSkills, systemTraits, characterTraits, characterFolders, sceneFolders
+  type FriendRequest, type InsertFriendRequest,
+  type Friendship, type InsertFriendship,
+  users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, items, spells, characterPermissions, initiativeEntries, systemSpecies, campaignSpecies, featTemplates, featTrees, feats, featConnections, characterFeats, systemSpells, systemSkills, characterCustomSkills, systemTraits, characterTraits, characterFolders, sceneFolders, friendRequests, friendships
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql, inArray } from "drizzle-orm";
@@ -251,6 +253,22 @@ export interface IStorage {
   createSceneFolder(folder: InsertSceneFolder): Promise<SceneFolder>;
   updateSceneFolder(id: string, data: Partial<InsertSceneFolder>): Promise<SceneFolder | undefined>;
   deleteSceneFolder(id: string): Promise<void>;
+
+  // Profile operations
+  updateUserProfile(userId: string, data: { name?: string; avatarUrl?: string; bio?: string }): Promise<User | undefined>;
+
+  // Friend Request operations
+  createFriendRequest(senderId: string, recipientId: string, message?: string): Promise<FriendRequest>;
+  getFriendRequest(id: string): Promise<FriendRequest | undefined>;
+  getPendingFriendRequests(userId: string): Promise<FriendRequest[]>;
+  getSentFriendRequests(userId: string): Promise<FriendRequest[]>;
+  respondToFriendRequest(requestId: string, accept: boolean): Promise<void>;
+  deleteFriendRequest(id: string): Promise<void>;
+
+  // Friendship operations
+  getFriends(userId: string): Promise<User[]>;
+  areFriends(userId1: string, userId2: string): Promise<boolean>;
+  removeFriend(userId: string, friendId: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1577,6 +1595,132 @@ export class DatabaseStorage implements IStorage {
       .where(eq(scenes.folderId, id));
     // Then delete the folder
     await db.delete(sceneFolders).where(eq(sceneFolders.id, id));
+  }
+
+  // Profile operations
+  async updateUserProfile(userId: string, data: { name?: string; avatarUrl?: string; bio?: string }): Promise<User | undefined> {
+    const updateData: Partial<User> = {};
+    if (data.name !== undefined) updateData.name = data.name;
+    if (data.avatarUrl !== undefined) updateData.avatarUrl = data.avatarUrl;
+    if (data.bio !== undefined) updateData.bio = data.bio;
+    
+    if (Object.keys(updateData).length === 0) {
+      return this.getUser(userId);
+    }
+    
+    const [updated] = await db.update(users)
+      .set(updateData)
+      .where(eq(users.id, userId))
+      .returning();
+    return updated;
+  }
+
+  // Friend Request operations
+  async createFriendRequest(senderId: string, recipientId: string, message?: string): Promise<FriendRequest> {
+    const [request] = await db.insert(friendRequests)
+      .values({
+        senderId,
+        recipientId,
+        message: message || null,
+        status: 'pending',
+      })
+      .returning();
+    return request;
+  }
+
+  async getFriendRequest(id: string): Promise<FriendRequest | undefined> {
+    const [request] = await db.select()
+      .from(friendRequests)
+      .where(eq(friendRequests.id, id))
+      .limit(1);
+    return request;
+  }
+
+  async getPendingFriendRequests(userId: string): Promise<FriendRequest[]> {
+    return await db.select()
+      .from(friendRequests)
+      .where(and(
+        eq(friendRequests.recipientId, userId),
+        eq(friendRequests.status, 'pending')
+      ))
+      .orderBy(desc(friendRequests.createdAt));
+  }
+
+  async getSentFriendRequests(userId: string): Promise<FriendRequest[]> {
+    return await db.select()
+      .from(friendRequests)
+      .where(and(
+        eq(friendRequests.senderId, userId),
+        eq(friendRequests.status, 'pending')
+      ))
+      .orderBy(desc(friendRequests.createdAt));
+  }
+
+  async respondToFriendRequest(requestId: string, accept: boolean): Promise<void> {
+    const request = await this.getFriendRequest(requestId);
+    if (!request) {
+      throw new Error('Friend request not found');
+    }
+
+    if (request.status !== 'pending') {
+      throw new Error('Friend request has already been responded to');
+    }
+
+    if (accept) {
+      // Create friendships in both directions
+      await db.insert(friendships)
+        .values([
+          { userId: request.senderId, friendId: request.recipientId },
+          { userId: request.recipientId, friendId: request.senderId },
+        ]);
+    }
+
+    // Update the request status
+    await db.update(friendRequests)
+      .set({
+        status: accept ? 'accepted' : 'declined',
+        respondedAt: new Date(),
+      })
+      .where(eq(friendRequests.id, requestId));
+  }
+
+  async deleteFriendRequest(id: string): Promise<void> {
+    await db.delete(friendRequests).where(eq(friendRequests.id, id));
+  }
+
+  // Friendship operations
+  async getFriends(userId: string): Promise<User[]> {
+    const friendshipRecords = await db.select()
+      .from(friendships)
+      .innerJoin(users, eq(friendships.friendId, users.id))
+      .where(eq(friendships.userId, userId));
+    
+    return friendshipRecords.map(record => record.users);
+  }
+
+  async areFriends(userId1: string, userId2: string): Promise<boolean> {
+    const [friendship] = await db.select()
+      .from(friendships)
+      .where(and(
+        eq(friendships.userId, userId1),
+        eq(friendships.friendId, userId2)
+      ))
+      .limit(1);
+    return !!friendship;
+  }
+
+  async removeFriend(userId: string, friendId: string): Promise<void> {
+    // Delete both directions
+    await db.delete(friendships)
+      .where(and(
+        eq(friendships.userId, userId),
+        eq(friendships.friendId, friendId)
+      ));
+    await db.delete(friendships)
+      .where(and(
+        eq(friendships.userId, friendId),
+        eq(friendships.friendId, userId)
+      ));
   }
 }
 

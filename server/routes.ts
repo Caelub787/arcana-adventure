@@ -4821,5 +4821,251 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ======== PROFILE & FRIENDS ROUTES ========
+
+  // Helper to sanitize user data (never return password or email)
+  const sanitizeUser = (user: any) => ({
+    id: user.id,
+    username: user.username,
+    name: user.name,
+    avatarUrl: user.avatarUrl,
+    bio: user.bio,
+  });
+
+  // Get current user's profile
+  app.get("/api/profile", requireAuth, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+      res.json(sanitizeUser(user));
+    } catch (e) {
+      console.error("Failed to get profile:", e);
+      res.status(500).json({ error: "Failed to get profile" });
+    }
+  });
+
+  // Update profile (name, bio)
+  app.put("/api/profile", requireAuth, async (req, res) => {
+    try {
+      const { name, bio } = req.body;
+      const updated = await storage.updateUserProfile(req.session.userId!, { name, bio });
+      if (!updated) {
+        return res.status(404).json({ error: "User not found" });
+      }
+      res.json(sanitizeUser(updated));
+    } catch (e) {
+      console.error("Failed to update profile:", e);
+      res.status(500).json({ error: "Failed to update profile" });
+    }
+  });
+
+  // Update avatar (accepts base64 image in body)
+  app.put("/api/profile/avatar", requireAuth, async (req, res) => {
+    try {
+      const { avatarUrl } = req.body;
+      if (!avatarUrl) {
+        return res.status(400).json({ error: "avatarUrl is required" });
+      }
+      const updated = await storage.updateUserProfile(req.session.userId!, { avatarUrl });
+      if (!updated) {
+        return res.status(404).json({ error: "User not found" });
+      }
+      res.json(sanitizeUser(updated));
+    } catch (e) {
+      console.error("Failed to update avatar:", e);
+      res.status(500).json({ error: "Failed to update avatar" });
+    }
+  });
+
+  // Send friend request
+  app.post("/api/friends/requests", requireAuth, async (req, res) => {
+    try {
+      const { recipientUsername, message } = req.body;
+      if (!recipientUsername) {
+        return res.status(400).json({ error: "recipientUsername is required" });
+      }
+
+      const recipient = await storage.getUserByUsername(recipientUsername);
+      if (!recipient) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      if (recipient.id === req.session.userId) {
+        return res.status(400).json({ error: "Cannot send friend request to yourself" });
+      }
+
+      // Check if already friends
+      const alreadyFriends = await storage.areFriends(req.session.userId!, recipient.id);
+      if (alreadyFriends) {
+        return res.status(400).json({ error: "You are already friends with this user" });
+      }
+
+      // Check for existing pending request in either direction
+      const existingIncoming = await storage.getPendingFriendRequests(req.session.userId!);
+      const existingOutgoing = await storage.getSentFriendRequests(req.session.userId!);
+      
+      if (existingOutgoing.some(r => r.recipientId === recipient.id)) {
+        return res.status(400).json({ error: "Friend request already sent to this user" });
+      }
+      if (existingIncoming.some(r => r.senderId === recipient.id)) {
+        return res.status(400).json({ error: "This user has already sent you a friend request" });
+      }
+
+      const request = await storage.createFriendRequest(req.session.userId!, recipient.id, message);
+      res.status(201).json(request);
+    } catch (e) {
+      console.error("Failed to send friend request:", e);
+      res.status(500).json({ error: "Failed to send friend request" });
+    }
+  });
+
+  // Get incoming pending requests
+  app.get("/api/friends/requests/incoming", requireAuth, async (req, res) => {
+    try {
+      const requests = await storage.getPendingFriendRequests(req.session.userId!);
+      // Enrich with sender info
+      const enrichedRequests = await Promise.all(requests.map(async (request) => {
+        const sender = await storage.getUser(request.senderId);
+        return {
+          ...request,
+          sender: sender ? sanitizeUser(sender) : null,
+        };
+      }));
+      res.json(enrichedRequests);
+    } catch (e) {
+      console.error("Failed to get incoming friend requests:", e);
+      res.status(500).json({ error: "Failed to get incoming friend requests" });
+    }
+  });
+
+  // Get outgoing pending requests
+  app.get("/api/friends/requests/outgoing", requireAuth, async (req, res) => {
+    try {
+      const requests = await storage.getSentFriendRequests(req.session.userId!);
+      // Enrich with recipient info
+      const enrichedRequests = await Promise.all(requests.map(async (request) => {
+        const recipient = await storage.getUser(request.recipientId);
+        return {
+          ...request,
+          recipient: recipient ? sanitizeUser(recipient) : null,
+        };
+      }));
+      res.json(enrichedRequests);
+    } catch (e) {
+      console.error("Failed to get outgoing friend requests:", e);
+      res.status(500).json({ error: "Failed to get outgoing friend requests" });
+    }
+  });
+
+  // Accept a friend request
+  app.post("/api/friends/requests/:id/accept", requireAuth, async (req, res) => {
+    try {
+      const request = await storage.getFriendRequest(req.params.id);
+      if (!request) {
+        return res.status(404).json({ error: "Friend request not found" });
+      }
+
+      if (request.recipientId !== req.session.userId) {
+        return res.status(403).json({ error: "Not authorized to accept this request" });
+      }
+
+      await storage.respondToFriendRequest(req.params.id, true);
+      res.json({ success: true });
+    } catch (e: any) {
+      console.error("Failed to accept friend request:", e);
+      res.status(500).json({ error: e.message || "Failed to accept friend request" });
+    }
+  });
+
+  // Decline a friend request
+  app.post("/api/friends/requests/:id/decline", requireAuth, async (req, res) => {
+    try {
+      const request = await storage.getFriendRequest(req.params.id);
+      if (!request) {
+        return res.status(404).json({ error: "Friend request not found" });
+      }
+
+      if (request.recipientId !== req.session.userId) {
+        return res.status(403).json({ error: "Not authorized to decline this request" });
+      }
+
+      await storage.respondToFriendRequest(req.params.id, false);
+      res.json({ success: true });
+    } catch (e: any) {
+      console.error("Failed to decline friend request:", e);
+      res.status(500).json({ error: e.message || "Failed to decline friend request" });
+    }
+  });
+
+  // Cancel a sent request
+  app.delete("/api/friends/requests/:id", requireAuth, async (req, res) => {
+    try {
+      const request = await storage.getFriendRequest(req.params.id);
+      if (!request) {
+        return res.status(404).json({ error: "Friend request not found" });
+      }
+
+      if (request.senderId !== req.session.userId) {
+        return res.status(403).json({ error: "Not authorized to cancel this request" });
+      }
+
+      await storage.deleteFriendRequest(req.params.id);
+      res.json({ success: true });
+    } catch (e) {
+      console.error("Failed to cancel friend request:", e);
+      res.status(500).json({ error: "Failed to cancel friend request" });
+    }
+  });
+
+  // Get all friends
+  app.get("/api/friends", requireAuth, async (req, res) => {
+    try {
+      const friends = await storage.getFriends(req.session.userId!);
+      res.json(friends.map(sanitizeUser));
+    } catch (e) {
+      console.error("Failed to get friends:", e);
+      res.status(500).json({ error: "Failed to get friends" });
+    }
+  });
+
+  // Remove a friend
+  app.delete("/api/friends/:friendId", requireAuth, async (req, res) => {
+    try {
+      // Verify they are actually friends
+      const areFriends = await storage.areFriends(req.session.userId!, req.params.friendId);
+      if (!areFriends) {
+        return res.status(404).json({ error: "Friendship not found" });
+      }
+
+      await storage.removeFriend(req.session.userId!, req.params.friendId);
+      res.json({ success: true });
+    } catch (e) {
+      console.error("Failed to remove friend:", e);
+      res.status(500).json({ error: "Failed to remove friend" });
+    }
+  });
+
+  // Search for user by exact username
+  app.get("/api/users/search", requireAuth, async (req, res) => {
+    try {
+      const username = req.query.username as string;
+      if (!username) {
+        return res.status(400).json({ error: "username query parameter is required" });
+      }
+
+      const user = await storage.getUserByUsername(username);
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      res.json(sanitizeUser(user));
+    } catch (e) {
+      console.error("Failed to search for user:", e);
+      res.status(500).json({ error: "Failed to search for user" });
+    }
+  });
+
   return httpServer;
 }
