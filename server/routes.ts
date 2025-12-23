@@ -5801,6 +5801,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.delete("/api/token-active-effects/:id", requireAuth, async (req, res) => {
     try {
+      // First get the active effect to find the token and verify GM access
+      const activeEffect = await storage.getTokenActiveEffect(req.params.id);
+      if (!activeEffect) {
+        return res.status(404).json({ error: "Active effect not found" });
+      }
+      
+      const token = await storage.getToken(activeEffect.tokenId);
+      if (!token) {
+        return res.status(404).json({ error: "Token not found" });
+      }
+      
+      const campaign = await storage.getCampaign(token.campaignId);
+      if (!campaign) {
+        return res.status(404).json({ error: "Campaign not found" });
+      }
+      
+      const isGM = campaign.gmUserId === req.session.userId;
+      if (!isGM) {
+        return res.status(403).json({ error: "Only the GM can remove effects from tokens" });
+      }
+      
       await storage.removeTokenActiveEffect(req.params.id);
       res.json({ success: true });
     } catch (err) {

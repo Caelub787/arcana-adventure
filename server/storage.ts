@@ -340,6 +340,7 @@ export interface IStorage {
 
   // Token Active Effects operations
   getTokenActiveEffects(tokenId: string): Promise<(TokenActiveEffect & { effect: TokenEffect })[]>;
+  getTokenActiveEffect(id: string): Promise<TokenActiveEffect | undefined>;
   addTokenActiveEffect(activeEffect: InsertTokenActiveEffect): Promise<TokenActiveEffect>;
   removeTokenActiveEffect(id: string): Promise<void>;
   clearTokenActiveEffects(tokenId: string): Promise<void>;
@@ -2235,6 +2236,14 @@ export class DatabaseStorage implements IStorage {
       ...r.token_active_effects,
       effect: r.token_effects,
     }));
+  }
+
+  async getTokenActiveEffect(id: string): Promise<TokenActiveEffect | undefined> {
+    const [result] = await db.select()
+      .from(tokenActiveEffects)
+      .where(eq(tokenActiveEffects.id, id))
+      .limit(1);
+    return result;
   }
 
   async addTokenActiveEffect(activeEffect: InsertTokenActiveEffect): Promise<TokenActiveEffect> {
