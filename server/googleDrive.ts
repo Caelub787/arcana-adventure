@@ -99,28 +99,80 @@ export async function listImages(folderId?: string): Promise<{ id: string; name:
   }));
 }
 
-// Maximum file size for image downloads (10MB)
-const MAX_IMAGE_SIZE = 10 * 1024 * 1024;
+// Maximum file size for direct image downloads (10MB)
+// Images larger than this will use Google Drive's thumbnail resizing
+const MAX_DIRECT_IMAGE_SIZE = 10 * 1024 * 1024;
+
+// Maximum allowed size for resized images (50MB original -> ~2-5MB resized)
+const MAX_RESIZABLE_IMAGE_SIZE = 100 * 1024 * 1024;
+
+// Target width for large image resizing (maintains aspect ratio)
+const LARGE_IMAGE_RESIZE_WIDTH = 2000;
 
 // Get a direct image URL (base64 encoded for use in app)
+// For large images, automatically fetches a resized version via Google Drive thumbnails
 export async function getImageBase64(fileId: string): Promise<string> {
   const drive = await getGoogleDriveClient();
   
   // First get file metadata to check mime type and size
   const metadata = await drive.files.get({
     fileId,
-    fields: 'mimeType,size',
+    fields: 'mimeType,size,thumbnailLink',
   });
   
   const mimeType = metadata.data.mimeType || 'image/png';
   const fileSize = parseInt(metadata.data.size || '0', 10);
+  const thumbnailLink = metadata.data.thumbnailLink;
   
-  // Check file size to prevent memory issues
-  if (fileSize > MAX_IMAGE_SIZE) {
-    throw new Error(`Image file is too large (${Math.round(fileSize / 1024 / 1024)}MB). Maximum size is 10MB.`);
+  // For images under the direct limit, download the full file
+  if (fileSize <= MAX_DIRECT_IMAGE_SIZE) {
+    const response = await drive.files.get({
+      fileId,
+      alt: 'media',
+    }, {
+      responseType: 'arraybuffer',
+    });
+    
+    const buffer = Buffer.from(response.data as ArrayBuffer);
+    const base64 = buffer.toString('base64');
+    
+    return `data:${mimeType};base64,${base64}`;
   }
   
-  // Download the file content
+  // For large images, check if within resizable limit
+  if (fileSize > MAX_RESIZABLE_IMAGE_SIZE) {
+    throw new Error(`Image file is too large (${Math.round(fileSize / 1024 / 1024)}MB). Maximum size is ${Math.round(MAX_RESIZABLE_IMAGE_SIZE / 1024 / 1024)}MB.`);
+  }
+  
+  // For large images, use Google Drive's thumbnail resizing
+  // The thumbnail URL can be modified to get different sizes by changing the =s parameter
+  if (thumbnailLink) {
+    // Modify thumbnail URL to get a larger size (default is small)
+    // Format: https://...=s220 -> change to =s2000 for larger size
+    const resizedUrl = thumbnailLink.replace(/=s\d+$/, `=s${LARGE_IMAGE_RESIZE_WIDTH}`);
+    
+    try {
+      // Fetch the resized thumbnail
+      const response = await fetch(resizedUrl);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch resized image: ${response.status}`);
+      }
+      
+      const arrayBuffer = await response.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
+      const base64 = buffer.toString('base64');
+      
+      // Thumbnails are typically JPEG
+      return `data:image/jpeg;base64,${base64}`;
+    } catch (error) {
+      console.error('Failed to fetch resized thumbnail, falling back to original:', error);
+      // Fall through to try direct download as last resort
+    }
+  }
+  
+  // Last resort: try direct download even for large files (may cause memory pressure)
+  console.warn(`Downloading large image directly (${Math.round(fileSize / 1024 / 1024)}MB) - consider using smaller images`);
+  
   const response = await drive.files.get({
     fileId,
     alt: 'media',
