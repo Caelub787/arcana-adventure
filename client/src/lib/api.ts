@@ -1490,6 +1490,21 @@ class ApiClient {
   async deleteNoteShare(noteId: string, shareId: string): Promise<{ success: boolean }> {
     return this.request(`/notes/${noteId}/shares/${shareId}`, { method: 'DELETE' });
   }
+
+  // Entity search for note references
+  async searchEntities(query: string, type?: string): Promise<SearchableEntity[]> {
+    const params = new URLSearchParams({ q: query });
+    if (type && type !== 'all') params.append('type', type);
+    return this.request(`/search/entities?${params.toString()}`);
+  }
+}
+
+export interface SearchableEntity {
+  id: string;
+  type: 'spell' | 'trait' | 'skill' | 'item' | 'species';
+  name: string;
+  description?: string;
+  icon?: string;
 }
 
 export const api = new ApiClient();

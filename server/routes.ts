@@ -5068,6 +5068,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ============================================
+  // ENTITY SEARCH (for note references)
+  // ============================================
+
+  app.get("/api/search/entities", requireAuth, async (req, res) => {
+    try {
+      const query = req.query.q as string || '';
+      const type = req.query.type as string | undefined;
+      
+      if (!query || query.length < 1) {
+        return res.json([]);
+      }
+      
+      const results = await storage.searchEntities(query, type);
+      res.json(results);
+    } catch (e) {
+      console.error("Failed to search entities:", e);
+      res.status(500).json({ error: "Failed to search entities" });
+    }
+  });
+
+  // ============================================
   // NOTES SYSTEM ROUTES
   // ============================================
 

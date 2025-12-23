@@ -74,7 +74,10 @@ import {
   X,
   Edit,
   Eye,
+  Link2,
 } from "lucide-react";
+import { ReferencePicker, ReferenceInlineDisplay } from "@/components/notes/ReferencePicker";
+import type { SearchableEntity } from "@/lib/api";
 
 import bgImage from "@assets/generated_images/dark_fantasy_landscape_with_arcane_ruins.png";
 
@@ -237,6 +240,10 @@ export default function Notes() {
   const [noteContent, setNoteContent] = useState("");
   const debouncedTitle = useDebouncedValue(noteTitle, 1000);
   const debouncedContent = useDebouncedValue(noteContent, 1000);
+
+  const [referencePickerOpen, setReferencePickerOpen] = useState(false);
+  const [cursorPosition, setCursorPosition] = useState<number>(0);
+  const textareaRef = React.useRef<HTMLTextAreaElement>(null);
 
   const noteId = params.id;
   const isEditing = !!noteId;
@@ -546,6 +553,85 @@ export default function Notes() {
     });
   };
 
+  const handleContentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const newContent = e.target.value;
+    const pos = e.target.selectionStart;
+    setNoteContent(newContent);
+    setCursorPosition(pos);
+
+    if (pos >= 2) {
+      const lastTwoChars = newContent.slice(pos - 2, pos);
+      if (lastTwoChars === "[[") {
+        setReferencePickerOpen(true);
+      }
+    }
+  };
+
+  const handleReferenceSelect = (entity: SearchableEntity) => {
+    const referenceText = `[[${entity.type}:${entity.id}|${entity.name}]]`;
+    
+    const beforeCursor = noteContent.slice(0, cursorPosition - 2);
+    const afterCursor = noteContent.slice(cursorPosition);
+    const newContent = beforeCursor + referenceText + afterCursor;
+    
+    setNoteContent(newContent);
+    setReferencePickerOpen(false);
+
+    setTimeout(() => {
+      if (textareaRef.current) {
+        const newCursorPos = beforeCursor.length + referenceText.length;
+        textareaRef.current.focus();
+        textareaRef.current.setSelectionRange(newCursorPos, newCursorPos);
+      }
+    }, 0);
+
+    if (noteId) {
+      api.createNoteReference(noteId, {
+        entityType: entity.type,
+        entityId: entity.id,
+        displayName: entity.name,
+      }).catch((err) => {
+        console.error("Failed to save reference:", err);
+      });
+    }
+  };
+
+  const handleInsertReferenceClick = () => {
+    if (textareaRef.current) {
+      setCursorPosition(textareaRef.current.selectionStart);
+    }
+    setReferencePickerOpen(true);
+  };
+
+  const handleReferenceSelectFromButton = (entity: SearchableEntity) => {
+    const referenceText = `[[${entity.type}:${entity.id}|${entity.name}]]`;
+    
+    const beforeCursor = noteContent.slice(0, cursorPosition);
+    const afterCursor = noteContent.slice(cursorPosition);
+    const newContent = beforeCursor + referenceText + afterCursor;
+    
+    setNoteContent(newContent);
+    setReferencePickerOpen(false);
+
+    setTimeout(() => {
+      if (textareaRef.current) {
+        const newCursorPos = beforeCursor.length + referenceText.length;
+        textareaRef.current.focus();
+        textareaRef.current.setSelectionRange(newCursorPos, newCursorPos);
+      }
+    }, 0);
+
+    if (noteId) {
+      api.createNoteReference(noteId, {
+        entityType: entity.type,
+        entityId: entity.id,
+        displayName: entity.name,
+      }).catch((err) => {
+        console.error("Failed to save reference:", err);
+      });
+    }
+  };
+
   const rootFolders = folders.filter((f) => !f.parentId);
 
   const sortedNotes = [...notes]
@@ -756,9 +842,9 @@ export default function Notes() {
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </div>
-                <p className="text-xs text-stone-500 line-clamp-2 mb-3">
-                  {note.content?.substring(0, 100) || "No content"}
-                </p>
+                <div className="text-xs text-stone-500 line-clamp-2 mb-3">
+                  <ReferenceInlineDisplay content={note.content?.substring(0, 150) || "No content"} />
+                </div>
                 <p className="text-xs text-stone-600">
                   {format(new Date(note.updatedAt), "MMM d, yyyy")}
                 </p>
@@ -827,13 +913,38 @@ export default function Notes() {
             className="text-2xl font-display border-none bg-transparent focus-visible:ring-0 px-0 mb-4"
             data-testid="input-note-title"
           />
-          <Textarea
-            value={noteContent}
-            onChange={(e) => setNoteContent(e.target.value)}
-            placeholder="Start writing... (Markdown supported)"
-            className="flex-1 resize-none border-stone-800 bg-stone-900/30 min-h-[300px]"
-            data-testid="textarea-note-content"
-          />
+          <div className="flex items-center gap-2 mb-2">
+            <ReferencePicker
+              open={referencePickerOpen}
+              onOpenChange={setReferencePickerOpen}
+              onSelect={handleReferenceSelectFromButton}
+              triggerElement={
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="border-stone-700 hover:bg-stone-800"
+                  onClick={handleInsertReferenceClick}
+                  data-testid="button-insert-reference"
+                >
+                  <Link2 className="h-4 w-4 mr-2" />
+                  Insert Reference
+                </Button>
+              }
+            />
+            <span className="text-xs text-stone-500">
+              or type <kbd className="px-1.5 py-0.5 bg-stone-800 rounded text-stone-400">[[</kbd> to link entities
+            </span>
+          </div>
+          <div className="relative flex-1">
+            <Textarea
+              ref={textareaRef}
+              value={noteContent}
+              onChange={handleContentChange}
+              placeholder="Start writing... Type [[ to link game entities (Markdown supported)"
+              className="flex-1 resize-none border-stone-800 bg-stone-900/30 min-h-[300px] w-full h-full"
+              data-testid="textarea-note-content"
+            />
+          </div>
           {updateNoteMutation.isPending && (
             <p className="text-xs text-stone-500 mt-2">Saving...</p>
           )}

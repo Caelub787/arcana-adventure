@@ -38,7 +38,18 @@ import {
 import { db } from "./db";
 import { eq, and, desc, sql, inArray } from "drizzle-orm";
 
+export interface SearchableEntity {
+  id: string;
+  type: 'spell' | 'trait' | 'skill' | 'item' | 'species';
+  name: string;
+  description?: string;
+  icon?: string;
+}
+
 export interface IStorage {
+  // Entity search for notes reference picker
+  searchEntities(query: string, type?: string): Promise<SearchableEntity[]>;
+
   // User operations
   getUser(id: string): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
@@ -308,6 +319,120 @@ export interface IStorage {
 }
 
 export class DatabaseStorage implements IStorage {
+  // Entity search for notes reference picker
+  async searchEntities(query: string, type?: string): Promise<SearchableEntity[]> {
+    const results: SearchableEntity[] = [];
+    const searchPattern = `%${query}%`;
+    const limit = 20;
+
+    // Search SystemSpells
+    if (!type || type === 'all' || type === 'spell') {
+      const spellResults = await db.select({
+        id: systemSpells.id,
+        name: systemSpells.name,
+        description: systemSpells.description,
+        icon: systemSpells.icon,
+      })
+        .from(systemSpells)
+        .where(sql`${systemSpells.name} ILIKE ${searchPattern}`)
+        .limit(limit);
+      
+      results.push(...spellResults.map(s => ({
+        id: s.id,
+        type: 'spell' as const,
+        name: s.name,
+        description: s.description ?? undefined,
+        icon: s.icon ?? undefined,
+      })));
+    }
+
+    // Search SystemTraits
+    if (!type || type === 'all' || type === 'trait') {
+      const traitResults = await db.select({
+        id: systemTraits.id,
+        name: systemTraits.name,
+        description: systemTraits.description,
+      })
+        .from(systemTraits)
+        .where(sql`${systemTraits.name} ILIKE ${searchPattern}`)
+        .limit(limit);
+      
+      results.push(...traitResults.map(t => ({
+        id: t.id,
+        type: 'trait' as const,
+        name: t.name,
+        description: t.description ?? undefined,
+      })));
+    }
+
+    // Search SystemSkills
+    if (!type || type === 'all' || type === 'skill') {
+      const skillResults = await db.select({
+        id: systemSkills.id,
+        name: systemSkills.name,
+        description: systemSkills.description,
+      })
+        .from(systemSkills)
+        .where(sql`${systemSkills.name} ILIKE ${searchPattern}`)
+        .limit(limit);
+      
+      results.push(...skillResults.map(s => ({
+        id: s.id,
+        type: 'skill' as const,
+        name: s.name,
+        description: s.description ?? undefined,
+      })));
+    }
+
+    // Search System Items (items with isTemplate = true and no characterId)
+    if (!type || type === 'all' || type === 'item') {
+      const itemResults = await db.select({
+        id: items.id,
+        name: items.name,
+        description: items.description,
+        image: items.image,
+      })
+        .from(items)
+        .where(and(
+          sql`${items.name} ILIKE ${searchPattern}`,
+          eq(items.isTemplate, true)
+        ))
+        .limit(limit);
+      
+      results.push(...itemResults.map(i => ({
+        id: i.id,
+        type: 'item' as const,
+        name: i.name,
+        description: i.description ?? undefined,
+        icon: i.image ?? undefined,
+      })));
+    }
+
+    // Search SystemSpecies
+    if (!type || type === 'all' || type === 'species') {
+      const speciesResults = await db.select({
+        id: systemSpecies.id,
+        name: systemSpecies.name,
+        description: systemSpecies.description,
+        defaultImage: systemSpecies.defaultImage,
+      })
+        .from(systemSpecies)
+        .where(sql`${systemSpecies.name} ILIKE ${searchPattern}`)
+        .limit(limit);
+      
+      results.push(...speciesResults.map(s => ({
+        id: s.id,
+        type: 'species' as const,
+        name: s.name,
+        description: s.description ?? undefined,
+        icon: s.defaultImage ?? undefined,
+      })));
+    }
+
+    // Sort by name and limit total results
+    return results.sort((a, b) => a.name.localeCompare(b.name)).slice(0, 50);
+  }
+
   // User operations
   async getUser(id: string): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.id, id)).limit(1);
