@@ -1261,17 +1261,17 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                 </button>
               )}
               
-              {/* Effects Icon - GM only, shows popup to apply effects */}
-              {role === 'gm' && allTokenEffects && allTokenEffects.length > 0 && (
+              {/* Effects Icon - GM only, shows popup to apply effects - only visible when holding */}
+              {showDeleteButton === token.id && role === 'gm' && allTokenEffects && allTokenEffects.length > 0 && (
                 <Popover>
                   <PopoverTrigger asChild>
                     <button
                       onPointerDown={(e) => e.stopPropagation()}
                       onClick={(e) => e.stopPropagation()}
-                      className="absolute -top-2 -right-2 w-6 h-6 bg-violet-600 hover:bg-violet-700 rounded-full flex items-center justify-center shadow-lg border border-violet-400 z-30 pointer-events-auto"
+                      className="absolute -top-3 -right-3 w-7 h-7 bg-violet-600 hover:bg-violet-700 rounded-full flex items-center justify-center shadow-lg border-2 border-violet-400 z-30 pointer-events-auto touch-auto"
                       data-testid={`button-effects-${token.id}`}
                     >
-                      <Flame className="w-3 h-3 text-white" />
+                      <Flame className="w-4 h-4 text-white" />
                     </button>
                   </PopoverTrigger>
                   <PopoverContent className="w-48 bg-stone-900 border-stone-700 p-2">
@@ -1332,22 +1332,30 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                 </div>
               )}
               
-              {/* Active Effects Display - Show on right side of token */}
+              {/* Active Effects Display - Show on right side INSIDE the token */}
               {tokenActiveEffects && tokenActiveEffects[token.id] && tokenActiveEffects[token.id].length > 0 && (
-                <div className="absolute -right-1 top-1/2 -translate-y-1/2 flex flex-col gap-0.5 z-20">
-                  {tokenActiveEffects[token.id].slice(0, 4).map((ae) => (
+                <div 
+                  className="absolute flex flex-col gap-px z-20"
+                  style={{
+                    right: 2,
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                  }}
+                >
+                  {tokenActiveEffects[token.id].slice(0, 3).map((ae) => (
                     <Popover key={ae.id}>
                       <PopoverTrigger asChild>
                         <button
                           onPointerDown={(e) => e.stopPropagation()}
                           onClick={(e) => e.stopPropagation()}
-                          className="w-4 h-4 rounded-full bg-stone-800 border border-violet-500 shadow-sm flex items-center justify-center overflow-hidden"
+                          className="rounded-sm bg-black/60 border border-violet-500/70 shadow-sm flex items-center justify-center overflow-hidden"
+                          style={{ width: Math.max(10, tokenSize * 0.22), height: Math.max(10, tokenSize * 0.22) }}
                           title={ae.effect.name}
                         >
                           {ae.effect.imageUrl ? (
                             <img src={ae.effect.imageUrl} className="w-full h-full object-cover" />
                           ) : (
-                            <Flame className="w-2.5 h-2.5 text-violet-400" />
+                            <Flame className="w-2 h-2 text-violet-400" />
                           )}
                         </button>
                       </PopoverTrigger>
@@ -1376,9 +1384,12 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                       </PopoverContent>
                     </Popover>
                   ))}
-                  {tokenActiveEffects[token.id].length > 4 && (
-                    <div className="w-4 h-4 rounded-full bg-stone-700 border border-stone-600 text-[8px] text-stone-300 flex items-center justify-center">
-                      +{tokenActiveEffects[token.id].length - 4}
+                  {tokenActiveEffects[token.id].length > 3 && (
+                    <div 
+                      className="rounded-sm bg-stone-700/80 border border-stone-600 text-stone-300 flex items-center justify-center"
+                      style={{ width: Math.max(10, tokenSize * 0.22), height: Math.max(10, tokenSize * 0.22), fontSize: Math.max(6, tokenSize * 0.12) }}
+                    >
+                      +{tokenActiveEffects[token.id].length - 3}
                     </div>
                   )}
                 </div>
