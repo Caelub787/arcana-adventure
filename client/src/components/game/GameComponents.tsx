@@ -1365,7 +1365,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                         <button
                           onPointerDown={(e) => e.stopPropagation()}
                           onClick={(e) => e.stopPropagation()}
-                          className="rounded-sm bg-black/60 border border-violet-500/70 shadow-sm flex items-center justify-center overflow-hidden"
+                          className="rounded-sm bg-black/60 border border-violet-500/70 shadow-sm flex items-center justify-center overflow-hidden relative"
                           style={{ width: Math.max(10, tokenSize * 0.22), height: Math.max(10, tokenSize * 0.22) }}
                           title={ae.effect.name}
                         >
@@ -1373,6 +1373,18 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                             <img src={ae.effect.imageUrl} className="w-full h-full object-cover" />
                           ) : (
                             <Flame className="w-2 h-2 text-violet-400" />
+                          )}
+                          {ae.duration !== null && ae.duration > 0 && (
+                            <div 
+                              className="absolute -bottom-0.5 -right-0.5 bg-amber-600 text-white rounded-full flex items-center justify-center font-bold"
+                              style={{ 
+                                width: Math.max(8, tokenSize * 0.12), 
+                                height: Math.max(8, tokenSize * 0.12),
+                                fontSize: Math.max(6, tokenSize * 0.08)
+                              }}
+                            >
+                              {ae.duration}
+                            </div>
                           )}
                         </button>
                       </PopoverTrigger>
@@ -1386,6 +1398,9 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                         )}
                         {ae.effect.causesDamage && (
                           <p className="text-xs text-red-400">{ae.effect.diceAmount} {ae.effect.damageType} damage</p>
+                        )}
+                        {ae.duration !== null && ae.duration > 0 && (
+                          <p className="text-xs text-amber-400 mt-1">{ae.duration} {ae.effect.timing === 'start_of_round' ? 'rounds' : 'turns'} remaining</p>
                         )}
                         {role === 'gm' && (
                           <button
