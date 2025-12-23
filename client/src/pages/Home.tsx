@@ -8,6 +8,7 @@ import bgImage from "@assets/home_background.webp";
 import { useAuth } from "@/lib/AuthContext";
 import { api } from "@/lib/api";
 import { useQuery } from "@tanstack/react-query";
+import ProfileDropdown from "@/components/ProfileDropdown";
 
 export default function Home() {
   const [location, setLocation] = useLocation();
@@ -41,11 +42,9 @@ export default function Home() {
       {/* Content Layer */}
       <div className="relative z-10 flex min-h-screen flex-col items-center justify-center p-6">
         
-        {/* User & Logout */}
-        <div className="absolute top-4 right-4 flex items-center gap-4">
-          <div className="text-stone-400 text-sm">
-            Welcome, <span className="text-amber-500 font-bold">{user?.username || "Traveler"}</span>
-          </div>
+        {/* Profile Dropdown */}
+        <div className="absolute top-4 right-4">
+          <ProfileDropdown onLogout={handleLogout} />
         </div>
 
         {/* Title */}
@@ -169,16 +168,6 @@ export default function Home() {
                 </Card>
               </Link>
             )}
-          </div>
-          
-          <div className="flex justify-center pt-8 pb-4">
-            <Button 
-              variant="outline" 
-              onClick={handleLogout}
-              className="border-stone-800 bg-stone-950/50 text-stone-500 hover:bg-red-950/20 hover:text-red-400 hover:border-red-900/30 w-full max-w-xs"
-            >
-              Logout
-            </Button>
           </div>
 
         </motion.div>
