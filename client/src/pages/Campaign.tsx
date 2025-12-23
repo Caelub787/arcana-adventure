@@ -1127,6 +1127,19 @@ export default function Campaign() {
     }
   });
 
+  // Toggle token invisibility mutation
+  const toggleInvisibilityMutation = useMutation({
+    mutationFn: ({ tokenId, isInvisible }: { tokenId: string; isInvisible: boolean }) => 
+      api.updateToken(tokenId, { isInvisible } as any),
+    onSuccess: (_, { isInvisible }) => {
+      queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${effectiveCampaignId}/tokens`] });
+      toast({ title: isInvisible ? 'Token hidden from players' : 'Token visible to players' });
+    },
+    onError: () => {
+      toast({ title: 'Failed to toggle invisibility', variant: 'destructive' });
+    }
+  });
+
   // Create scene mutation
   const createSceneMutation = useMutation({
     mutationFn: (name: string) => api.createScene(effectiveCampaignId!, { name, campaignId: effectiveCampaignId!, backgroundImage: "/attached_assets/default_battlemap.webp" }),
@@ -1688,6 +1701,10 @@ export default function Campaign() {
 
   const handleRemoveEffect = (activeEffectId: string) => {
     removeEffectMutation.mutate(activeEffectId);
+  };
+
+  const handleToggleInvisibility = (tokenId: string, isInvisible: boolean) => {
+    toggleInvisibilityMutation.mutate({ tokenId, isInvisible });
   };
 
   const handleTokenClick = (token: any) => {
@@ -2800,6 +2817,7 @@ export default function Campaign() {
              allTokenEffects={tokenEffectsQuery.data}
              onApplyEffect={handleApplyEffect}
              onRemoveEffect={handleRemoveEffect}
+             onToggleInvisibility={handleToggleInvisibility}
            />
            
            {/* Battlemap Dice Overlay for 3D dice rolling */}

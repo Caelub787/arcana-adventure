@@ -274,9 +274,10 @@ interface BattleMapProps {
   allTokenEffects?: TokenEffect[];
   onApplyEffect?: (tokenId: string, effectId: string) => void;
   onRemoveEffect?: (activeEffectId: string) => void;
+  onToggleInvisibility?: (tokenId: string, isInvisible: boolean) => void;
 }
 
-export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClick, onDeleteToken, role, gridSize, backgroundImage, scene, onViewChange, characters = [], selectionMode = 'select', targetedTokenId, selectedTokenId, aoeTargetState, onAoeMouseMove, onAoeClick, otherPlayersAoe, myPermissions, tokenActiveEffects, allTokenEffects, onApplyEffect, onRemoveEffect }: BattleMapProps) {
+export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClick, onDeleteToken, role, gridSize, backgroundImage, scene, onViewChange, characters = [], selectionMode = 'select', targetedTokenId, selectedTokenId, aoeTargetState, onAoeMouseMove, onAoeClick, otherPlayersAoe, myPermissions, tokenActiveEffects, allTokenEffects, onApplyEffect, onRemoveEffect, onToggleInvisibility }: BattleMapProps) {
   // Use refs for pan/zoom to avoid re-renders during interaction
   const panRef = useRef({ x: 0, y: 0 });
   const zoomRef = useRef(1);
@@ -1102,6 +1103,12 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
 
         {/* Tokens - Keep original coordinate system */}
         {tokens.map((token) => {
+          // Invisible tokens: GMs see at 40% opacity, non-GMs can't see at all
+          const isInvisible = (token as any).isInvisible === true;
+          if (isInvisible && role !== 'gm') {
+            return null; // Non-GMs can't see invisible tokens
+          }
+          
           const character = getCharacterForToken(token);
           const tokenImage = character?.portrait || token.image;
           const hpPercent = character ? (character.hp / character.maxHp) * 100 : null;
@@ -1237,7 +1244,8 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                 width: tokenSize, 
                 height: tokenSize,
                 left: displayX + 9000 + tokenOffset,
-                top: displayY + 9000 + tokenOffset
+                top: displayY + 9000 + tokenOffset,
+                opacity: isInvisible ? 0.4 : 1 // Invisible tokens shown at 40% opacity for GMs
               }}
               aria-label={`${token.type} token`}
               role="button"
@@ -1285,6 +1293,26 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                   data-testid={`button-effects-${token.id}`}
                 >
                   <Flame className="w-4 h-4 text-white" />
+                </button>
+              )}
+              
+              {/* Invisibility Toggle - GM only, toggles token visibility for non-GMs */}
+              {showDeleteButton === token.id && role === 'gm' && onToggleInvisibility && (
+                <button
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onToggleInvisibility(token.id, !isInvisible);
+                  }}
+                  className={`absolute -bottom-3 -right-3 w-7 h-7 rounded-full flex items-center justify-center shadow-lg border-2 z-30 pointer-events-auto touch-auto ${
+                    isInvisible 
+                      ? 'bg-cyan-600 hover:bg-cyan-700 border-cyan-400' 
+                      : 'bg-slate-600 hover:bg-slate-700 border-slate-400'
+                  }`}
+                  data-testid={`button-invisible-${token.id}`}
+                  title={isInvisible ? 'Make visible' : 'Make invisible'}
+                >
+                  {isInvisible ? <Eye className="w-4 h-4 text-white" /> : <EyeOff className="w-4 h-4 text-white" />}
                 </button>
               )}
               
