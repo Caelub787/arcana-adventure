@@ -285,6 +285,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
   const initializedSceneRef = useRef<string | null>(null);
   const [showDeleteButton, setShowDeleteButton] = useState<string | null>(null);
   const [tokenToDelete, setTokenToDelete] = useState<string | null>(null);
+  const [effectsDialogToken, setEffectsDialogToken] = useState<string | null>(null);
   const holdTimerRef = useRef<NodeJS.Timeout | null>(null);
   
   // Track token being dragged with its current visual position
@@ -1261,47 +1262,19 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                 </button>
               )}
               
-              {/* Effects Icon - GM only, shows popup to apply effects - only visible when holding */}
+              {/* Effects Icon - GM only, opens dialog to apply/remove effects - only visible when holding */}
               {showDeleteButton === token.id && role === 'gm' && allTokenEffects && allTokenEffects.length > 0 && (
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <button
-                      onPointerDown={(e) => e.stopPropagation()}
-                      onClick={(e) => e.stopPropagation()}
-                      className="absolute -top-3 -right-3 w-7 h-7 bg-violet-600 hover:bg-violet-700 rounded-full flex items-center justify-center shadow-lg border-2 border-violet-400 z-30 pointer-events-auto touch-auto"
-                      data-testid={`button-effects-${token.id}`}
-                    >
-                      <Flame className="w-4 h-4 text-white" />
-                    </button>
-                  </PopoverTrigger>
-                  <PopoverContent 
-                    className="w-48 bg-stone-900 border-stone-700 p-2 z-50"
-                    onPointerDownOutside={(e) => e.preventDefault()}
-                    onInteractOutside={(e) => e.preventDefault()}
-                  >
-                    <div className="text-xs text-stone-400 mb-2">Apply Effect</div>
-                    <div className="space-y-1">
-                      {allTokenEffects.map(effect => (
-                        <button
-                          key={effect.id}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            console.log('[ApplyEffect] Clicked:', token.id, effect.id);
-                            onApplyEffect?.(token.id, effect.id);
-                          }}
-                          className="w-full flex items-center gap-2 p-1.5 rounded hover:bg-stone-800 text-left"
-                        >
-                          {effect.imageUrl ? (
-                            <img src={effect.imageUrl} className="w-4 h-4 rounded" />
-                          ) : (
-                            <Flame className="w-4 h-4 text-violet-400" />
-                          )}
-                          <span className="text-sm text-stone-200 truncate">{effect.name}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </PopoverContent>
-                </Popover>
+                <button
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setEffectsDialogToken(token.id);
+                  }}
+                  className="absolute -top-3 -right-3 w-7 h-7 bg-violet-600 hover:bg-violet-700 rounded-full flex items-center justify-center shadow-lg border-2 border-violet-400 z-30 pointer-events-auto touch-auto"
+                  data-testid={`button-effects-${token.id}`}
+                >
+                  <Flame className="w-4 h-4 text-white" />
+                </button>
               )}
               
               {/* Nametag - displays character/token name at bottom of token, above HP bar */}
@@ -1697,6 +1670,78 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Token Effects Dialog - Apply or remove effects */}
+      <Dialog open={!!effectsDialogToken} onOpenChange={(open) => !open && setEffectsDialogToken(null)}>
+        <DialogContent className="bg-stone-900 border-stone-700 max-w-xs">
+          <DialogHeader>
+            <DialogTitle className="text-stone-200 flex items-center gap-2">
+              <Flame className="w-5 h-5 text-violet-400" />
+              Token Effects
+            </DialogTitle>
+            <DialogDescription className="text-stone-400">
+              Click to apply or remove effects
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 max-h-64 overflow-y-auto">
+            {allTokenEffects?.map(effect => {
+              const activeEffect = effectsDialogToken && tokenActiveEffects?.[effectsDialogToken]?.find(
+                ae => ae.effectId === effect.id
+              );
+              const isActive = !!activeEffect;
+              
+              return (
+                <button
+                  key={effect.id}
+                  onClick={() => {
+                    if (!effectsDialogToken) return;
+                    if (isActive && activeEffect) {
+                      onRemoveEffect?.(activeEffect.id);
+                    } else {
+                      onApplyEffect?.(effectsDialogToken, effect.id);
+                    }
+                  }}
+                  className={`w-full flex items-center gap-3 p-2 rounded border transition-colors ${
+                    isActive 
+                      ? 'bg-violet-600/20 border-violet-500 hover:bg-violet-600/30' 
+                      : 'bg-stone-800 border-stone-700 hover:bg-stone-700'
+                  }`}
+                >
+                  <div className="w-8 h-8 rounded overflow-hidden flex-shrink-0">
+                    {effect.imageUrl ? (
+                      <img src={effect.imageUrl} className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full bg-violet-600 flex items-center justify-center">
+                        <Flame className="w-4 h-4 text-white" />
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex-1 text-left">
+                    <div className="text-sm text-stone-200">{effect.name}</div>
+                    {effect.description && (
+                      <div className="text-xs text-stone-400 line-clamp-1">{effect.description}</div>
+                    )}
+                  </div>
+                  {isActive && (
+                    <div className="w-6 h-6 rounded-full bg-violet-500 flex items-center justify-center flex-shrink-0">
+                      <Check className="w-4 h-4 text-white" />
+                    </div>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              onClick={() => setEffectsDialogToken(null)}
+              className="w-full border-stone-600"
+            >
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
     </div>
   );
