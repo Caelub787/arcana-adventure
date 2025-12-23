@@ -2,7 +2,7 @@ import { useState, useRef, useMemo, useCallback, useEffect } from 'react';
 import { useLocation } from 'wouter';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, useMotionValue } from 'framer-motion';
-import { api, type Item, type SystemSpecies, type FeatTree, type Feat, type FeatConnection, type FeatTreeWithData, type FeatTemplate, type SystemSpell, type SystemSkill, type SystemTrait, type Character } from '@/lib/api';
+import { api, type Item, type SystemSpecies, type FeatTree, type Feat, type FeatConnection, type FeatTreeWithData, type FeatTemplate, type SystemSpell, type SystemSkill, type SystemTrait, type Character, type TokenEffect } from '@/lib/api';
 import { useAuth } from '@/lib/AuthContext';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { Button } from '@/components/ui/button';
@@ -17,11 +17,11 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Slider } from '@/components/ui/slider';
 import { toast } from '@/hooks/use-toast';
-import { ArrowLeft, Plus, Pencil, Trash2, Sword, Shield, Package, Sparkles, Box, Coins, Search, Users, User, GitBranch, Library, Link, X, GripVertical, Star, Zap, Heart, ShieldCheck, BookOpen, RefreshCw, ZoomIn, ZoomOut, Wand2, Save } from 'lucide-react';
+import { ArrowLeft, Plus, Pencil, Trash2, Sword, Shield, Package, Sparkles, Box, Coins, Search, Users, User, GitBranch, Library, Link, X, GripVertical, Star, Zap, Heart, ShieldCheck, BookOpen, RefreshCw, ZoomIn, ZoomOut, Wand2, Save, Flame } from 'lucide-react';
 import { ImageBrowser } from '@/components/ImageBrowser';
 import { CharacterSheet } from '@/components/game/GameComponents';
 
-type AdminView = 'dashboard' | 'items' | 'species' | 'spells' | 'skills' | 'traits' | 'feat-trees' | 'characters';
+type AdminView = 'dashboard' | 'items' | 'species' | 'spells' | 'skills' | 'traits' | 'feat-trees' | 'characters' | 'token-effects';
 
 const itemTypeIcons: Record<string, any> = {
   weapon: Sword,
@@ -76,6 +76,10 @@ export default function AdminSettings() {
   const [characterSearchQuery, setCharacterSearchQuery] = useState('');
   const [viewingCharacterSheet, setViewingCharacterSheet] = useState<Character | null>(null);
 
+  const [showAddTokenEffect, setShowAddTokenEffect] = useState(false);
+  const [editingTokenEffect, setEditingTokenEffect] = useState<TokenEffect | null>(null);
+  const [tokenEffectSearchQuery, setTokenEffectSearchQuery] = useState('');
+
   const { data: systemItems = [], isLoading: itemsLoading } = useQuery({
     queryKey: ['system-items'],
     queryFn: () => api.getSystemItems(),
@@ -110,6 +114,12 @@ export default function AdminSettings() {
     queryKey: ['character-templates'],
     queryFn: () => api.getCharacterTemplates(),
     enabled: isAdmin && currentView === 'characters',
+  });
+
+  const { data: tokenEffects = [], isLoading: tokenEffectsLoading } = useQuery({
+    queryKey: ['token-effects'],
+    queryFn: () => api.getTokenEffects(),
+    enabled: isAdmin && currentView === 'token-effects',
   });
 
   const { data: allFeatTrees = [] } = useQuery({
@@ -328,6 +338,41 @@ export default function AdminSettings() {
     },
   });
 
+  const createTokenEffectMutation = useMutation({
+    mutationFn: (effect: Partial<TokenEffect>) => api.createTokenEffect(effect),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['token-effects'] });
+      setShowAddTokenEffect(false);
+      toast({ title: 'Effect Created', description: 'Token effect created successfully' });
+    },
+    onError: (error: any) => {
+      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    },
+  });
+
+  const updateTokenEffectMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Partial<TokenEffect> }) => api.updateTokenEffect(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['token-effects'] });
+      setEditingTokenEffect(null);
+      toast({ title: 'Effect Updated', description: 'Token effect updated successfully' });
+    },
+    onError: (error: any) => {
+      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    },
+  });
+
+  const deleteTokenEffectMutation = useMutation({
+    mutationFn: (id: string) => api.deleteTokenEffect(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['token-effects'] });
+      toast({ title: 'Effect Deleted', description: 'Token effect deleted successfully' });
+    },
+    onError: (error: any) => {
+      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    },
+  });
+
   if (!isAdmin) {
     return (
       <div className="min-h-screen bg-stone-950 text-stone-200 flex items-center justify-center">
@@ -348,6 +393,7 @@ export default function AdminSettings() {
   const debouncedSkillSearchQuery = useDebouncedValue(skillSearchQuery, 150);
   const debouncedTraitSearchQuery = useDebouncedValue(traitSearchQuery, 150);
   const debouncedCharacterSearchQuery = useDebouncedValue(characterSearchQuery, 150);
+  const debouncedTokenEffectSearchQuery = useDebouncedValue(tokenEffectSearchQuery, 150);
   
   const filteredItems = useMemo(() => {
     return systemItems.filter((item: Item) => {
@@ -393,6 +439,13 @@ export default function AdminSettings() {
     });
   }, [characterTemplates, debouncedCharacterSearchQuery]);
 
+  const filteredTokenEffects = useMemo(() => {
+    return tokenEffects.filter((effect: TokenEffect) => {
+      return effect.name.toLowerCase().includes(debouncedTokenEffectSearchQuery.toLowerCase()) ||
+             (effect.description?.toLowerCase().includes(debouncedTokenEffectSearchQuery.toLowerCase()));
+    });
+  }, [tokenEffects, debouncedTokenEffectSearchQuery]);
+
   const handleBackNavigation = () => {
     if (currentView === 'dashboard') {
       setLocation('/');
@@ -423,7 +476,8 @@ export default function AdminSettings() {
                currentView === 'spells' ? 'Spells' : 
                currentView === 'skills' ? 'Custom Skills' : 
                currentView === 'traits' ? 'Traits' : 
-               currentView === 'characters' ? 'Character Templates' : 'Feat Trees'}
+               currentView === 'characters' ? 'Character Templates' : 
+               currentView === 'token-effects' ? 'Token Effects' : 'Feat Trees'}
             </p>
           </div>
           <div className="w-[200px]">
@@ -541,6 +595,22 @@ export default function AdminSettings() {
           />
         )}
 
+        {currentView === 'token-effects' && (
+          <TokenEffectsView
+            effects={filteredTokenEffects}
+            isLoading={tokenEffectsLoading}
+            searchQuery={tokenEffectSearchQuery}
+            setSearchQuery={setTokenEffectSearchQuery}
+            onAddEffect={() => setShowAddTokenEffect(true)}
+            onEditEffect={setEditingTokenEffect}
+            onDeleteEffect={(id) => {
+              if (confirm('Are you sure you want to delete this effect?')) {
+                deleteTokenEffectMutation.mutate(id);
+              }
+            }}
+          />
+        )}
+
         {currentView === 'feat-trees' && (
           <FeatTreesView />
         )}
@@ -646,6 +716,23 @@ export default function AdminSettings() {
             onSave={(data) => updateCharacterMutation.mutate({ id: editingCharacter.id, data })}
             initialData={editingCharacter}
             isLoading={updateCharacterMutation.isPending}
+          />
+        )}
+
+        <TokenEffectFormDialog
+          open={showAddTokenEffect}
+          onOpenChange={setShowAddTokenEffect}
+          onSave={(data) => createTokenEffectMutation.mutate(data)}
+          isLoading={createTokenEffectMutation.isPending}
+        />
+
+        {editingTokenEffect && (
+          <TokenEffectFormDialog
+            open={!!editingTokenEffect}
+            onOpenChange={() => setEditingTokenEffect(null)}
+            onSave={(data) => updateTokenEffectMutation.mutate({ id: editingTokenEffect.id, data })}
+            initialData={editingTokenEffect}
+            isLoading={updateTokenEffectMutation.isPending}
           />
         )}
 
@@ -759,6 +846,22 @@ function DashboardView({ onNavigate }: { onNavigate: (view: AdminView) => void }
           <CardTitle className="text-rose-500">Traits</CardTitle>
           <CardDescription className="text-stone-400">
             Create traits with limited uses that reset on long rest
+          </CardDescription>
+        </CardHeader>
+      </Card>
+
+      <Card 
+        className="bg-stone-900 border-stone-700 cursor-pointer hover:border-amber-600 transition-colors"
+        onClick={() => onNavigate('token-effects')}
+        data-testid="card-token-effects"
+      >
+        <CardHeader>
+          <div className="h-12 w-12 rounded-lg bg-violet-700/20 flex items-center justify-center mb-2">
+            <Flame className="h-6 w-6 text-violet-500" />
+          </div>
+          <CardTitle className="text-violet-500">Token Effects</CardTitle>
+          <CardDescription className="text-stone-400">
+            Define status effects like poison, burning, or stun that can be applied to tokens in combat
           </CardDescription>
         </CardHeader>
       </Card>
@@ -1710,6 +1813,346 @@ function TraitFormDialog({ open, onOpenChange, onSave, initialData, isLoading }:
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+interface TokenEffectsViewProps {
+  effects: TokenEffect[];
+  isLoading: boolean;
+  searchQuery: string;
+  setSearchQuery: (q: string) => void;
+  onAddEffect: () => void;
+  onEditEffect: (effect: TokenEffect) => void;
+  onDeleteEffect: (id: string) => void;
+}
+
+const TOKEN_EFFECT_DAMAGE_TYPES = ['Sharp', 'Blunt', 'Piercing', 'Flame', 'Frost', 'Storm', 'Tide', 'Stone', 'Flux', 'Light', 'Dark', 'Sound', 'Poison'];
+
+function TokenEffectsView({ effects, isLoading, searchQuery, setSearchQuery, onAddEffect, onEditEffect, onDeleteEffect }: TokenEffectsViewProps) {
+  return (
+    <Card className="bg-stone-900 border-stone-700 flex-1 flex flex-col min-h-0">
+      <CardHeader className="flex flex-row items-center justify-between shrink-0">
+        <CardTitle className="text-violet-500">Token Effects</CardTitle>
+        <Button
+          onClick={onAddEffect}
+          className="bg-violet-700 hover:bg-violet-600"
+          data-testid="button-add-effect"
+        >
+          <Plus className="h-4 w-4 mr-2" />
+          Add Effect
+        </Button>
+      </CardHeader>
+      <CardContent className="flex-1 flex flex-col min-h-0">
+        <div className="mb-4 shrink-0">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-500" />
+            <Input
+              placeholder="Search effects..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9 bg-stone-800 border-stone-700"
+              data-testid="input-search-effects"
+            />
+          </div>
+        </div>
+
+        {isLoading ? (
+          <div className="text-center py-12 text-stone-400">Loading effects...</div>
+        ) : effects.length === 0 ? (
+          <div className="text-center py-12 text-stone-400">
+            <Flame className="h-12 w-12 mx-auto mb-3 opacity-50" />
+            <p className="font-bold">No token effects found</p>
+            <p className="text-sm mt-2">Create status effects that can be applied to tokens</p>
+          </div>
+        ) : (
+          <ScrollArea className="flex-1 min-h-0">
+            <div className="space-y-2">
+              {effects.map((effect: TokenEffect) => (
+                <div
+                  key={effect.id}
+                  className="flex items-center gap-4 p-3 rounded-lg bg-stone-800 border border-stone-700 hover:border-stone-600"
+                  data-testid={`effect-row-${effect.id}`}
+                >
+                  <div className="h-12 w-12 rounded bg-stone-700 flex items-center justify-center overflow-hidden">
+                    {effect.imageUrl ? (
+                      <img src={effect.imageUrl} alt={effect.name} className="h-full w-full object-cover" />
+                    ) : (
+                      <Flame className="h-6 w-6 text-violet-400" />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium truncate">{effect.name}</span>
+                      <Badge className={effect.timing === 'start_of_round' ? 'bg-blue-600 text-xs' : 'bg-orange-600 text-xs'}>
+                        {effect.timing === 'start_of_round' ? 'Start of Round' : 'Start of Turn'}
+                      </Badge>
+                    </div>
+                    <div className="text-sm text-stone-400 flex flex-wrap gap-2">
+                      {effect.causesDamage && effect.diceAmount && (
+                        <span>Damage: {effect.diceAmount} {effect.damageType}</span>
+                      )}
+                      {effect.description && (
+                        <span className="truncate">{effect.description}</span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => onEditEffect(effect)}
+                      className="text-stone-400 hover:text-violet-500"
+                      data-testid={`button-edit-effect-${effect.id}`}
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => onDeleteEffect(effect.id)}
+                      className="text-stone-400 hover:text-red-500"
+                      data-testid={`button-delete-effect-${effect.id}`}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </ScrollArea>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+interface TokenEffectFormDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onSave: (data: Partial<TokenEffect>) => void;
+  initialData?: TokenEffect;
+  isLoading?: boolean;
+}
+
+function TokenEffectFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: TokenEffectFormDialogProps) {
+  const [formData, setFormData] = useState<{
+    name: string;
+    imageUrl: string;
+    description: string;
+    timing: string;
+    causesDamage: boolean;
+    damageType: string;
+    diceAmount: string;
+  }>({
+    name: initialData?.name || '',
+    imageUrl: initialData?.imageUrl || '',
+    description: initialData?.description || '',
+    timing: initialData?.timing || 'start_of_turn',
+    causesDamage: initialData?.causesDamage || false,
+    damageType: initialData?.damageType || '',
+    diceAmount: initialData?.diceAmount || '',
+  });
+
+  const [showImageBrowser, setShowImageBrowser] = useState(false);
+
+  useEffect(() => {
+    if (initialData) {
+      setFormData({
+        name: initialData.name || '',
+        imageUrl: initialData.imageUrl || '',
+        description: initialData.description || '',
+        timing: initialData.timing || 'start_of_turn',
+        causesDamage: initialData.causesDamage || false,
+        damageType: initialData.damageType || '',
+        diceAmount: initialData.diceAmount || '',
+      });
+    } else {
+      setFormData({
+        name: '',
+        imageUrl: '',
+        description: '',
+        timing: 'start_of_turn',
+        causesDamage: false,
+        damageType: '',
+        diceAmount: '',
+      });
+    }
+  }, [initialData, open]);
+
+  const handleSave = () => {
+    if (!formData.name.trim()) {
+      toast({ title: 'Error', description: 'Effect name is required', variant: 'destructive' });
+      return;
+    }
+    if (formData.causesDamage && !formData.damageType) {
+      toast({ title: 'Error', description: 'Damage type is required when effect causes damage', variant: 'destructive' });
+      return;
+    }
+    if (formData.causesDamage && !formData.diceAmount) {
+      toast({ title: 'Error', description: 'Dice amount is required when effect causes damage', variant: 'destructive' });
+      return;
+    }
+    onSave({
+      name: formData.name.trim(),
+      imageUrl: formData.imageUrl.trim() || null,
+      description: formData.description.trim() || null,
+      timing: formData.timing,
+      causesDamage: formData.causesDamage,
+      damageType: formData.causesDamage ? formData.damageType : null,
+      diceAmount: formData.causesDamage ? formData.diceAmount.trim() : null,
+    });
+  };
+
+  return (
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="bg-stone-900 border-stone-700 max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-violet-500">
+              {initialData ? 'Edit Token Effect' : 'Create Token Effect'}
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div>
+              <Label className="text-stone-300">Effect Name *</Label>
+              <Input
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                placeholder="e.g. Burning, Poisoned, Stunned"
+                className="bg-stone-800 border-stone-700 mt-1"
+                data-testid="input-effect-name"
+              />
+            </div>
+
+            <div>
+              <Label className="text-stone-300">Image URL</Label>
+              <div className="flex gap-2 mt-1">
+                <Input
+                  value={formData.imageUrl}
+                  onChange={(e) => setFormData({ ...formData, imageUrl: e.target.value })}
+                  placeholder="https://example.com/image.png"
+                  className="bg-stone-800 border-stone-700 flex-1"
+                  data-testid="input-effect-image"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  onClick={() => setShowImageBrowser(true)}
+                  className="border-stone-700"
+                  data-testid="button-browse-image"
+                >
+                  <Library className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+
+            <div>
+              <Label className="text-stone-300">Description</Label>
+              <Textarea
+                value={formData.description}
+                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                placeholder="Describe what this effect does..."
+                className="bg-stone-800 border-stone-700 mt-1"
+                rows={3}
+                data-testid="input-effect-description"
+              />
+            </div>
+
+            <div>
+              <Label className="text-stone-300">Timing</Label>
+              <Select
+                value={formData.timing}
+                onValueChange={(value) => setFormData({ ...formData, timing: value })}
+              >
+                <SelectTrigger className="bg-stone-800 border-stone-700 mt-1" data-testid="select-effect-timing">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="start_of_turn">Start of Turn</SelectItem>
+                  <SelectItem value="start_of_round">Start of Round</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-stone-500 mt-1">
+                When the effect triggers during combat
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="causesDamage"
+                checked={formData.causesDamage}
+                onCheckedChange={(checked) => setFormData({ ...formData, causesDamage: !!checked })}
+                data-testid="checkbox-causes-damage"
+              />
+              <Label htmlFor="causesDamage" className="text-stone-300 cursor-pointer">
+                Causes Damage
+              </Label>
+            </div>
+
+            {formData.causesDamage && (
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-stone-300">Damage Type</Label>
+                  <Select
+                    value={formData.damageType}
+                    onValueChange={(value) => setFormData({ ...formData, damageType: value })}
+                  >
+                    <SelectTrigger className="bg-stone-800 border-stone-700 mt-1" data-testid="select-damage-type">
+                      <SelectValue placeholder="Select type..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {TOKEN_EFFECT_DAMAGE_TYPES.map((type) => (
+                        <SelectItem key={type} value={type}>{type}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-stone-300">Dice Amount</Label>
+                  <Input
+                    value={formData.diceAmount}
+                    onChange={(e) => setFormData({ ...formData, diceAmount: e.target.value })}
+                    placeholder="e.g. 1d6, 2d4"
+                    className="bg-stone-800 border-stone-700 mt-1"
+                    data-testid="input-dice-amount"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+              className="border-stone-700"
+              data-testid="button-cancel-effect"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSave}
+              disabled={isLoading}
+              className="bg-violet-700 hover:bg-violet-600"
+              data-testid="button-save-effect"
+            >
+              {isLoading ? 'Saving...' : (initialData ? 'Update' : 'Create')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <ImageBrowser
+        open={showImageBrowser}
+        onOpenChange={(open) => !open && setShowImageBrowser(false)}
+        onSelect={(url) => {
+          setFormData({ ...formData, imageUrl: url });
+          setShowImageBrowser(false);
+        }}
+      />
+    </>
   );
 }
 
