@@ -1070,16 +1070,17 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
           </>
         )}
 
-        {/* Map Background - Positioned in the space, can scroll beyond it */}
-        <div 
-          className="absolute bg-cover bg-center opacity-80 transition-all duration-500"
+        {/* Map Background - Positioned in the space, displays full image at natural aspect ratio */}
+        <img 
+          src={scene?.backgroundImage || backgroundImage || battleMapImage1}
+          alt="Battle map background"
+          className="absolute opacity-80 transition-all duration-500 max-w-none"
           style={{ 
-            backgroundImage: `url(${scene?.backgroundImage || backgroundImage || battleMapImage1})`,
-            width: '2000px',
-            height: '2000px',
             left: '9000px',
-            top: '9000px'
+            top: '9000px',
+            transformOrigin: 'top left'
           }}
+          draggable={false}
         />
 
         {/* Tokens - Keep original coordinate system */}
