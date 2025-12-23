@@ -76,9 +76,12 @@ import {
   Eye,
   Link2,
   Grid3X3,
+  Network,
+  List,
 } from "lucide-react";
 import { ReferencePicker, ReferenceInlineDisplay } from "@/components/notes/ReferencePicker";
 import { CanvasEditor, CanvasData } from "@/components/notes/CanvasEditor";
+import { NotesGraph } from "@/components/notes/NotesGraph";
 import type { SearchableEntity } from "@/lib/api";
 
 import bgImage from "@assets/generated_images/dark_fantasy_landscape_with_arcane_ruins.png";
@@ -221,6 +224,7 @@ export default function Notes() {
   const [showSharedNotes, setShowSharedNotes] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [viewMode, setViewMode] = useState<"list" | "graph">("list");
 
   const [folderDialogOpen, setFolderDialogOpen] = useState(false);
   const [editingFolder, setEditingFolder] = useState<NoteFolder | null>(null);
@@ -1085,9 +1089,31 @@ export default function Notes() {
             >
               <ArrowLeft className="h-5 w-5" />
             </Button>
-            <h1 className="font-display text-2xl font-bold text-amber-500">
+            <h1 className="font-display text-2xl font-bold text-amber-500 flex-1">
               {campaignId ? "Campaign Notes" : "My Notes"}
             </h1>
+            {!isEditing && (
+              <div className="flex items-center gap-2">
+                <Button
+                  variant={viewMode === "list" ? "default" : "ghost"}
+                  size="icon"
+                  onClick={() => setViewMode("list")}
+                  className={viewMode === "list" ? "bg-amber-700 hover:bg-amber-600" : "text-stone-400 hover:text-white"}
+                  data-testid="button-list-view"
+                >
+                  <List className="h-5 w-5" />
+                </Button>
+                <Button
+                  variant={viewMode === "graph" ? "default" : "ghost"}
+                  size="icon"
+                  onClick={() => setViewMode("graph")}
+                  className={viewMode === "graph" ? "bg-amber-700 hover:bg-amber-600" : "text-stone-400 hover:text-white"}
+                  data-testid="button-graph-view"
+                >
+                  <Network className="h-5 w-5" />
+                </Button>
+              </div>
+            )}
           </header>
 
           {campaignId && (
@@ -1106,7 +1132,14 @@ export default function Notes() {
             </div>
           )}
 
-          {isEditing ? renderNoteEditor() : renderNoteList()}
+          {isEditing ? renderNoteEditor() : viewMode === "graph" ? (
+            <div className="flex-1 relative">
+              <NotesGraph
+                notes={sortedNotes}
+                onNoteClick={(noteId) => setLocation(`/notes/${noteId}`)}
+              />
+            </div>
+          ) : renderNoteList()}
         </div>
       </div>
 
