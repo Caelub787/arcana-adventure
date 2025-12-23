@@ -2515,7 +2515,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/campaigns/:campaignId/scenes", requireAuth, async (req, res) => {
     try {
+      const campaign = await storage.getCampaign(req.params.campaignId);
+      if (!campaign) {
+        return res.status(404).json({ error: "Campaign not found" });
+      }
+      
       const scenes = await storage.getCampaignScenes(req.params.campaignId);
+      
+      // GMs can see all scenes, players only see active scene
+      if (campaign.gmUserId !== req.session.userId) {
+        const activeScenes = scenes.filter(s => s.id === campaign.activeSceneId);
+        return res.json(activeScenes);
+      }
+      
       res.json(scenes);
     } catch (err) {
       res.status(500).json({ error: "Failed to fetch scenes" });
@@ -2528,6 +2540,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!scene) {
         return res.status(404).json({ error: "Scene not found" });
       }
+      
+      // Check if user is GM or if scene is the active scene
+      const campaign = await storage.getCampaign(scene.campaignId);
+      if (!campaign) {
+        return res.status(404).json({ error: "Campaign not found" });
+      }
+      
+      // Players can only view the active scene
+      const isGM = campaign.gmUserId === req.session.userId;
+      const isActiveScene = campaign.activeSceneId === scene.id;
+      
+      if (!isGM && !isActiveScene) {
+        return res.status(403).json({ error: "Only the GM can view non-active scenes" });
+      }
+      
       res.json(scene);
     } catch (err) {
       res.status(500).json({ error: "Failed to fetch scene" });
