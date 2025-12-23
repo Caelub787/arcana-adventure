@@ -4934,6 +4934,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
               newHp
             });
           }
+          
+          // Handle duration decrement and expiration
+          if (activeEffect.duration !== null && activeEffect.duration > 0) {
+            const newDuration = activeEffect.duration - 1;
+            if (newDuration <= 0) {
+              // Effect has expired - remove it
+              await storage.removeTokenActiveEffect(activeEffect.id);
+              
+              // Broadcast effect removal
+              broadcastToCampaign(scene.campaignId, {
+                type: "effect_expired",
+                tokenId: token.id,
+                effectId: effect.id,
+                effectName: effect.name,
+                characterName: character.name
+              });
+              
+              // Create chat message for effect expiration
+              await storage.createChatMessage({
+                campaignId: scene.campaignId,
+                userId: req.session.userId!,
+                sender: 'System',
+                text: `**${effect.name}** effect on ${character.name} has expired.`,
+                type: 'system'
+              });
+            } else {
+              // Decrement duration
+              await storage.updateTokenActiveEffectDuration(activeEffect.id, newDuration);
+              
+              // Broadcast duration update
+              broadcastToCampaign(scene.campaignId, {
+                type: "effect_duration_update",
+                tokenId: token.id,
+                activeEffectId: activeEffect.id,
+                effectId: effect.id,
+                remainingDuration: newDuration
+              });
+            }
+          }
         }
       }
       
@@ -5835,12 +5874,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Token effect not found" });
       }
 
+      // Use provided duration, or default from effect definition if effect has duration enabled
+      const effectDuration = duration !== undefined ? duration : 
+        (effect.hasDuration && effect.defaultDuration ? effect.defaultDuration : null);
+
       const activeEffect = await storage.addTokenActiveEffect({
         tokenId: req.params.tokenId,
         effectId,
         sourceType: sourceType || null,
         sourceId: sourceId || null,
-        duration: duration || null,
+        duration: effectDuration,
       });
       res.status(201).json(activeEffect);
     } catch (err) {
