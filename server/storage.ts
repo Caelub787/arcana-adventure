@@ -36,11 +36,11 @@ import {
   users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, items, spells, characterPermissions, initiativeEntries, systemSpecies, campaignSpecies, featTemplates, featTrees, feats, featConnections, characterFeats, systemSpells, systemSkills, characterCustomSkills, systemTraits, characterTraits, characterFolders, sceneFolders, friendRequests, friendships, noteFolders, notes, noteReferences, noteShares
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, desc, sql, inArray } from "drizzle-orm";
+import { eq, and, desc, sql, inArray, or } from "drizzle-orm";
 
 export interface SearchableEntity {
   id: string;
-  type: 'spell' | 'trait' | 'skill' | 'item' | 'species';
+  type: 'spell' | 'trait' | 'skill' | 'item' | 'species' | 'character';
   name: string;
   description?: string;
   icon?: string;
@@ -48,7 +48,7 @@ export interface SearchableEntity {
 
 export interface IStorage {
   // Entity search for notes reference picker
-  searchEntities(query: string, type?: string): Promise<SearchableEntity[]>;
+  searchEntities(query: string, type?: string, userId?: string): Promise<SearchableEntity[]>;
 
   // User operations
   getUser(id: string): Promise<User | undefined>;
@@ -320,7 +320,7 @@ export interface IStorage {
 
 export class DatabaseStorage implements IStorage {
   // Entity search for notes reference picker
-  async searchEntities(query: string, type?: string): Promise<SearchableEntity[]> {
+  async searchEntities(query: string, type?: string, userId?: string): Promise<SearchableEntity[]> {
     const results: SearchableEntity[] = [];
     const searchPattern = `%${query}%`;
     const limit = 20;
@@ -426,6 +426,43 @@ export class DatabaseStorage implements IStorage {
         name: s.name,
         description: s.description ?? undefined,
         icon: s.defaultImage ?? undefined,
+      })));
+    }
+
+    // Search Characters with permission filtering
+    if ((!type || type === 'all' || type === 'character') && userId) {
+      // Get campaigns where user is GM
+      const gmCampaigns = await db.select({ id: campaigns.id })
+        .from(campaigns)
+        .where(eq(campaigns.gmUserId, userId));
+      
+      const gmCampaignIds = gmCampaigns.map(c => c.id);
+      
+      // Find characters: either owned by user OR in campaigns where user is GM
+      const characterResults = await db.select({
+        id: characters.id,
+        name: characters.name,
+        portrait: characters.portrait,
+        race: characters.race,
+        userId: characters.userId,
+        campaignId: characters.campaignId,
+      })
+        .from(characters)
+        .where(and(
+          sql`${characters.name} ILIKE ${searchPattern}`,
+          or(
+            eq(characters.userId, userId),
+            gmCampaignIds.length > 0 ? inArray(characters.campaignId, gmCampaignIds) : sql`false`
+          )
+        ))
+        .limit(limit);
+      
+      results.push(...characterResults.map(c => ({
+        id: c.id,
+        type: 'character' as const,
+        name: c.name,
+        description: `${c.race}`,
+        icon: c.portrait ?? undefined,
       })));
     }
 

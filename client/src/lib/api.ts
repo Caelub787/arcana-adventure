@@ -1501,7 +1501,7 @@ class ApiClient {
 
 export interface SearchableEntity {
   id: string;
-  type: 'spell' | 'trait' | 'skill' | 'item' | 'species';
+  type: 'spell' | 'trait' | 'skill' | 'item' | 'species' | 'character';
   name: string;
   description?: string;
   icon?: string;

@@ -5076,11 +5076,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const query = req.query.q as string || '';
       const type = req.query.type as string | undefined;
       
-      if (!query || query.length < 1) {
-        return res.json([]);
-      }
-      
-      const results = await storage.searchEntities(query, type);
+      const results = await storage.searchEntities(query, type, req.session.userId!);
       res.json(results);
     } catch (e) {
       console.error("Failed to search entities:", e);

@@ -722,6 +722,10 @@ export default function Notes() {
         case "item":
           data = { name: "Item", description: "Item details are character-specific and cannot be displayed here." };
           break;
+        case "character":
+          const character = await api.getCharacter(entityId);
+          data = character || { name: "Character", description: "Character not found or access denied." };
+          break;
         default:
           data = { name: entityType, description: "Unknown entity type" };
       }
@@ -1731,6 +1735,48 @@ export default function Notes() {
                         <p className="text-stone-300 mt-1">+{entityData.naturalArmor}</p>
                       </div>
                     )}
+                  </>
+                )}
+
+                {selectedEntityType?.toLowerCase() === "character" && (
+                  <>
+                    {entityData.portrait && (
+                      <div className="flex justify-center">
+                        <img 
+                          src={entityData.portrait} 
+                          alt={entityData.name}
+                          className="w-24 h-24 rounded-full object-cover border-2 border-stone-700"
+                        />
+                      </div>
+                    )}
+                    <div className="grid grid-cols-2 gap-4">
+                      {entityData.race && (
+                        <div>
+                          <Label className="text-stone-400 text-xs uppercase tracking-wide">Race</Label>
+                          <p className="text-stone-300 mt-1 capitalize">{entityData.race}</p>
+                        </div>
+                      )}
+                      {entityData.level !== undefined && (
+                        <div>
+                          <Label className="text-stone-400 text-xs uppercase tracking-wide">Level</Label>
+                          <p className="text-stone-300 mt-1">{entityData.level}</p>
+                        </div>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      {entityData.hp !== undefined && entityData.maxHp !== undefined && (
+                        <div>
+                          <Label className="text-stone-400 text-xs uppercase tracking-wide">HP</Label>
+                          <p className="text-stone-300 mt-1">{entityData.hp} / {entityData.maxHp}</p>
+                        </div>
+                      )}
+                      {entityData.energy !== undefined && entityData.maxEnergy !== undefined && (
+                        <div>
+                          <Label className="text-stone-400 text-xs uppercase tracking-wide">Energy</Label>
+                          <p className="text-stone-300 mt-1">{entityData.energy} / {entityData.maxEnergy}</p>
+                        </div>
+                      )}
+                    </div>
                   </>
                 )}
               </div>

@@ -40,6 +40,7 @@ const ENTITY_TYPES = [
   { value: "trait", label: "Traits", icon: Shield },
   { value: "skill", label: "Skills", icon: Zap },
   { value: "species", label: "Species", icon: Users },
+  { value: "character", label: "Characters", icon: Swords },
 ];
 
 const MAX_RESULTS = 50;
@@ -56,6 +57,8 @@ function getEntityIcon(type: string) {
       return <Zap className="h-4 w-4" />;
     case "species":
       return <Users className="h-4 w-4" />;
+    case "character":
+      return <Swords className="h-4 w-4" />;
     default:
       return <Swords className="h-4 w-4" />;
   }
@@ -73,6 +76,8 @@ function getEntityColor(type: string) {
       return "bg-green-900/50 text-green-300 border-green-700";
     case "species":
       return "bg-rose-900/50 text-rose-300 border-rose-700";
+    case "character":
+      return "bg-indigo-900/50 text-indigo-300 border-indigo-700";
     default:
       return "bg-stone-800/50 text-stone-300 border-stone-700";
   }
@@ -201,14 +206,10 @@ export function ReferencePicker({
                   Retry
                 </Button>
               </div>
-            ) : showLoading && debouncedSearch.length > 0 ? (
+            ) : showLoading ? (
               <div className="flex items-center justify-center py-8 text-stone-500">
                 <Loader2 className="h-5 w-5 animate-spin mr-2" />
-                Searching...
-              </div>
-            ) : searchQuery.length === 0 ? (
-              <div className="text-center py-8 text-stone-500 text-sm">
-                Type to search for entities
+                {searchQuery.length === 0 ? "Loading..." : "Searching..."}
               </div>
             ) : entities.length === 0 ? (
               <div className="text-center py-8 text-stone-500 text-sm">
