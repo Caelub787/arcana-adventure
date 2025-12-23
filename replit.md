@@ -37,6 +37,14 @@ Preferred communication style: Simple, everyday language.
         - **Feat Library**: All feats are automatically saved to a reusable library. Enhanced template selector with search, effect previews, and tier badges when adding feats from library.
     - **Spell Management System**: System for defining and managing spells with properties like damage dice, type, range, energy cost, and attribute. Spells are granted via feats, roll like weapons, and support 13 damage types, including "Health" for healing.
     - **Feat Points System**: Characters earn feat points based on level for unlocking feats.
+    - **Notes System**: Obsidian-like note-taking with folders, markdown support, and auto-save.
+        - **Note Types**: Regular text notes and canvas pages for visual mind-mapping.
+        - **Entity References**: Type `[[` to search and link game entities (spells, items, traits, skills, species).
+        - **Canvas Editor**: Infinite pan/zoom canvas with draggable text, note link, and entity nodes connected by curved lines.
+        - **Graph View**: Force-directed visualization showing all notes and their connections.
+        - **Sharing**: Share notes with friends with view or edit permissions.
+        - **Campaign Notes**: Notes can be scoped to campaigns via "Campaign Notes" button.
+    - **Social Features**: User profiles with avatars/bios, friend system with requests, and user search.
 
 ### Backend
 - **Technology Stack**: Express.js with TypeScript, `express-session` for session management.
