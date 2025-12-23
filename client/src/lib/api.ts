@@ -1539,31 +1539,31 @@ class ApiClient {
     return this.request(`/search/entities?${params.toString()}`);
   }
 
-  // Token Effects CRUD
+  // Token Effects - public read, admin write
   async getTokenEffects(): Promise<TokenEffect[]> {
     return this.request('/token-effects');
   }
 
   async getTokenEffect(id: string): Promise<TokenEffect> {
-    return this.request(`/token-effects/${id}`);
+    return this.request(`/admin/token-effects/${id}`);
   }
 
   async createTokenEffect(effect: Partial<TokenEffect>): Promise<TokenEffect> {
-    return this.request('/token-effects', {
+    return this.request('/admin/token-effects', {
       method: 'POST',
       body: JSON.stringify(effect),
     });
   }
 
   async updateTokenEffect(id: string, effect: Partial<TokenEffect>): Promise<TokenEffect> {
-    return this.request(`/token-effects/${id}`, {
-      method: 'PATCH',
+    return this.request(`/admin/token-effects/${id}`, {
+      method: 'PUT',
       body: JSON.stringify(effect),
     });
   }
 
   async deleteTokenEffect(id: string): Promise<void> {
-    return this.request(`/token-effects/${id}`, { method: 'DELETE' });
+    return this.request(`/admin/token-effects/${id}`, { method: 'DELETE' });
   }
 
   // Spell Effects

@@ -5423,6 +5423,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // TOKEN EFFECTS SYSTEM ROUTES
   // ============================================
 
+  // Public route for getting all token effects (for battle map display)
+  app.get("/api/token-effects", requireAuth, async (req, res) => {
+    try {
+      const effects = await storage.getTokenEffects();
+      res.json(effects);
+    } catch (err) {
+      console.error("Failed to fetch token effects:", err);
+      res.status(500).json({ error: "Failed to fetch token effects" });
+    }
+  });
+
   // Admin Token Effects CRUD routes
   app.get("/api/admin/token-effects", requireAdmin, async (req, res) => {
     try {

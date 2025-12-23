@@ -17,7 +17,7 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Slider } from '@/components/ui/slider';
 import { toast } from '@/hooks/use-toast';
-import { ArrowLeft, Plus, Pencil, Trash2, Sword, Shield, Package, Sparkles, Box, Coins, Search, Users, User, GitBranch, Library, Link, X, GripVertical, Star, Zap, Heart, ShieldCheck, BookOpen, RefreshCw, ZoomIn, ZoomOut, Wand2, Save, Flame } from 'lucide-react';
+import { ArrowLeft, Plus, Pencil, Trash2, Sword, Shield, Package, Sparkles, Box, Coins, Search, Users, User, GitBranch, Library, Link, X, GripVertical, Star, Zap, Heart, ShieldCheck, BookOpen, RefreshCw, ZoomIn, ZoomOut, Wand2, Save, Flame, Upload, Image as ImageIcon } from 'lucide-react';
 import { ImageBrowser } from '@/components/ImageBrowser';
 import { CharacterSheet } from '@/components/game/GameComponents';
 
@@ -1953,6 +1953,18 @@ function TokenEffectFormDialog({ open, onOpenChange, onSave, initialData, isLoad
   });
 
   const [showImageBrowser, setShowImageBrowser] = useState(false);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        setFormData({ ...formData, imageUrl: event.target?.result as string });
+      };
+      reader.readAsDataURL(file);
+    }
+  };
 
   useEffect(() => {
     if (initialData) {
@@ -2025,25 +2037,57 @@ function TokenEffectFormDialog({ open, onOpenChange, onSave, initialData, isLoad
             </div>
 
             <div>
-              <Label className="text-stone-300">Image URL</Label>
-              <div className="flex gap-2 mt-1">
-                <Input
-                  value={formData.imageUrl}
-                  onChange={(e) => setFormData({ ...formData, imageUrl: e.target.value })}
-                  placeholder="https://example.com/image.png"
-                  className="bg-stone-800 border-stone-700 flex-1"
-                  data-testid="input-effect-image"
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  onClick={() => setShowImageBrowser(true)}
-                  className="border-stone-700"
-                  data-testid="button-browse-image"
-                >
-                  <Library className="h-4 w-4" />
-                </Button>
+              <Label className="text-stone-300">Effect Image</Label>
+              <div className="flex items-center gap-3 mt-2">
+                {formData.imageUrl ? (
+                  <div className="relative">
+                    <img src={formData.imageUrl} alt="Effect" className="h-16 w-16 rounded object-cover border border-stone-700" />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="absolute -top-2 -right-2 h-6 w-6 bg-red-600 hover:bg-red-500 rounded-full"
+                      onClick={() => setFormData({ ...formData, imageUrl: '' })}
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="h-16 w-16 rounded bg-stone-800 border border-stone-700 flex items-center justify-center">
+                    <ImageIcon className="h-6 w-6 text-stone-500" />
+                  </div>
+                )}
+                <div className="flex flex-col gap-2">
+                  <input
+                    type="file"
+                    ref={imageInputRef}
+                    onChange={handleImageUpload}
+                    accept="image/*"
+                    className="hidden"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => imageInputRef.current?.click()}
+                    className="border-stone-700"
+                    data-testid="button-upload-image"
+                  >
+                    <Upload className="h-4 w-4 mr-2" />
+                    Upload
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowImageBrowser(true)}
+                    className="border-stone-700"
+                    data-testid="button-browse-image"
+                  >
+                    <Library className="h-4 w-4 mr-2" />
+                    Browse
+                  </Button>
+                </div>
               </div>
             </div>
 
