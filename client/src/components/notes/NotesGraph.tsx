@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Note, api, SystemSpell, SystemTrait, SystemSkill, SystemSpecies, Item, SearchableEntity } from "@/lib/api";
-import { ZoomIn, ZoomOut, RotateCcw, X, Sparkles, Package, Shield, Zap, Users, FileText } from "lucide-react";
+import { ZoomIn, ZoomOut, RotateCcw, X, Sparkles, Package, Shield, Zap, Users, FileText, Tag } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CanvasData } from "./CanvasEditor";
 
@@ -180,8 +180,11 @@ export function NotesGraph({ notes, onNoteClick }: NotesGraphProps) {
 
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
+  const [showLabels, setShowLabels] = useState(false);
   const isPanningRef = useRef(false);
-  const panStartRef = useRef<{ pointerX: number; pointerY: number; panX: number; panY: number } | null>(null);
+  const isDraggingRef = useRef(false);
+  const panStartRef = useRef<{ pointerX: number; pointerY: number; panX: number; panY: number; startedOnNode: GraphNode | null } | null>(null);
+  const DRAG_THRESHOLD = 5;
 
   const { data: spells = [] } = useQuery({
     queryKey: ['/api/spells'],
@@ -355,34 +358,68 @@ export function NotesGraph({ notes, onNoteClick }: NotesGraphProps) {
 
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
     const target = e.target as HTMLElement;
-    if (target.closest('.graph-node') || target.closest('.entity-popup')) return;
+    if (target.closest('.entity-popup')) return;
+    
+    const nodeElement = target.closest('.graph-node');
+    let startedOnNode: GraphNode | null = null;
+    
+    if (nodeElement) {
+      const nodeId = nodeElement.getAttribute('data-node-id');
+      if (nodeId) {
+        startedOnNode = nodes.find(n => n.id === nodeId) || null;
+      }
+    }
     
     isPanningRef.current = true;
+    isDraggingRef.current = false;
     panStartRef.current = {
       pointerX: e.clientX,
       pointerY: e.clientY,
       panX: panRef.current.x,
       panY: panRef.current.y,
+      startedOnNode,
     };
     (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
-  }, []);
+  }, [nodes]);
 
   const handlePointerMove = useCallback((e: React.PointerEvent) => {
     if (!isPanningRef.current || !panStartRef.current) return;
+    
     const dx = e.clientX - panStartRef.current.pointerX;
     const dy = e.clientY - panStartRef.current.pointerY;
-    const newPan = {
-      x: panStartRef.current.panX + dx,
-      y: panStartRef.current.panY + dy,
-    };
-    panRef.current = newPan;
-    setPan(newPan);
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    
+    if (distance > DRAG_THRESHOLD) {
+      isDraggingRef.current = true;
+      setHoveredNodeId(null);
+    }
+    
+    if (isDraggingRef.current) {
+      const newPan = {
+        x: panStartRef.current.panX + dx,
+        y: panStartRef.current.panY + dy,
+      };
+      panRef.current = newPan;
+      setPan(newPan);
+    }
   }, []);
 
   const handlePointerUp = useCallback(() => {
+    const clickedNode = panStartRef.current?.startedOnNode;
+    const wasDragging = isDraggingRef.current;
+    
     isPanningRef.current = false;
+    isDraggingRef.current = false;
     panStartRef.current = null;
-  }, []);
+    
+    if (clickedNode && !wasDragging) {
+      if (clickedNode.type === 'note' && clickedNode.noteId && onNoteClick) {
+        onNoteClick(clickedNode.noteId);
+      } else {
+        setSelectedNode(clickedNode);
+      }
+    }
+  }, [onNoteClick]);
 
   const resetView = useCallback(() => {
     const rect = containerRef.current?.getBoundingClientRect();
@@ -441,13 +478,13 @@ export function NotesGraph({ notes, onNoteClick }: NotesGraphProps) {
     setZoom(newZoom);
   };
 
-  const handleNodeClick = (node: GraphNode) => {
+  const handleNodeClick = useCallback((node: GraphNode) => {
     if (node.type === 'note' && node.noteId && onNoteClick) {
       onNoteClick(node.noteId);
     } else {
       setSelectedNode(node);
     }
-  };
+  }, [onNoteClick]);
 
   const isConnected = (nodeId: string) => {
     if (!hoveredNodeId) return false;
@@ -520,16 +557,17 @@ export function NotesGraph({ notes, onNoteClick }: NotesGraphProps) {
               const opacity = hoveredNodeId ? (connected ? 1 : 0.3) : 1;
               const scale = isHovered ? 1.5 : 1;
               const radius = NODE_RADIUS * scale;
+              const displayName = node.name.length > 18 ? node.name.substring(0, 18) + '...' : node.name;
 
               return (
                 <g
                   key={node.id}
                   className="graph-node cursor-pointer transition-all duration-150"
                   style={{ opacity }}
-                  onMouseEnter={() => setHoveredNodeId(node.id)}
+                  onMouseEnter={() => !isDraggingRef.current && setHoveredNodeId(node.id)}
                   onMouseLeave={() => setHoveredNodeId(null)}
-                  onClick={() => handleNodeClick(node)}
                   data-testid={`graph-node-${node.id}`}
+                  data-node-id={node.id}
                 >
                   {isHovered && (
                     <circle
@@ -548,28 +586,51 @@ export function NotesGraph({ notes, onNoteClick }: NotesGraphProps) {
                     stroke={colors.stroke}
                     strokeWidth={1.5 / zoom}
                   />
-                  {isHovered && (
-                    <g>
+                  {showLabels && !isHovered && (
+                    <g className="pointer-events-none">
                       <rect
-                        x={node.x - 60}
-                        y={node.y + radius + 8}
-                        width={120}
-                        height={24}
-                        rx={4}
+                        x={node.x - 50 / zoom}
+                        y={node.y + NODE_RADIUS + 4 / zoom}
+                        width={100 / zoom}
+                        height={18 / zoom}
+                        rx={3 / zoom}
+                        fill="rgba(28, 25, 23, 0.85)"
+                        stroke={colors.stroke}
+                        strokeWidth={0.5 / zoom}
+                      />
+                      <text
+                        x={node.x}
+                        y={node.y + NODE_RADIUS + 16 / zoom}
+                        textAnchor="middle"
+                        fill="#d6d3d1"
+                        fontSize={10 / zoom}
+                        fontFamily="system-ui"
+                      >
+                        {displayName}
+                      </text>
+                    </g>
+                  )}
+                  {isHovered && (
+                    <g className="pointer-events-none">
+                      <rect
+                        x={node.x - 60 / zoom}
+                        y={node.y + radius + 8 / zoom}
+                        width={120 / zoom}
+                        height={24 / zoom}
+                        rx={4 / zoom}
                         fill="rgba(28, 25, 23, 0.95)"
                         stroke="#44403c"
                         strokeWidth={1 / zoom}
                       />
                       <text
                         x={node.x}
-                        y={node.y + radius + 24}
+                        y={node.y + radius + 20 / zoom}
                         textAnchor="middle"
                         fill="#e7e5e4"
                         fontSize={12 / zoom}
                         fontFamily="system-ui"
-                        className="pointer-events-none"
                       >
-                        {node.name.length > 18 ? node.name.substring(0, 18) + '...' : node.name}
+                        {displayName}
                       </text>
                     </g>
                   )}
@@ -646,6 +707,16 @@ export function NotesGraph({ notes, onNoteClick }: NotesGraphProps) {
           data-testid="button-reset-view"
         >
           <RotateCcw className="h-4 w-4" />
+        </Button>
+        <Button
+          variant="outline"
+          size="icon"
+          onClick={() => setShowLabels(!showLabels)}
+          className={`bg-stone-900/80 border-stone-700 hover:bg-stone-800 ${showLabels ? 'text-amber-400 border-amber-600' : ''}`}
+          data-testid="button-toggle-labels"
+          title={showLabels ? "Hide labels" : "Show labels"}
+        >
+          <Tag className="h-4 w-4" />
         </Button>
       </div>
 
