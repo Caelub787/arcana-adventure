@@ -923,6 +923,8 @@ export const tokenEffects = pgTable("token_effects", {
   causesDamage: boolean("causes_damage").default(false).notNull(),
   damageType: text("damage_type"), // Sharp, Blunt, Piercing, Flame, Frost, Storm, Tide, Stone, Flux, Light, Dark, Sound, Health
   diceAmount: text("dice_amount"), // Dice notation e.g. "1d6", "2d4"
+  hasDuration: boolean("has_duration").default(false).notNull(), // Whether this effect expires after a set time
+  defaultDuration: integer("default_duration"), // Default number of rounds/turns until effect expires
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
