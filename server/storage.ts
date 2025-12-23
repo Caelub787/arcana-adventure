@@ -2279,6 +2279,14 @@ export class DatabaseStorage implements IStorage {
   async clearTokenActiveEffects(tokenId: string): Promise<void> {
     await db.delete(tokenActiveEffects).where(eq(tokenActiveEffects.tokenId, tokenId));
   }
+
+  async updateTokenActiveEffectDuration(id: string, duration: number | null): Promise<TokenActiveEffect | undefined> {
+    const [updated] = await db.update(tokenActiveEffects)
+      .set({ duration })
+      .where(eq(tokenActiveEffects.id, id))
+      .returning();
+    return updated;
+  }
 }
 
 export const storage = new DatabaseStorage();
