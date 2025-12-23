@@ -5067,5 +5067,313 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ============================================
+  // NOTES SYSTEM ROUTES
+  // ============================================
+
+  // Note Folder endpoints
+  app.get("/api/notes/folders", requireAuth, async (req, res) => {
+    try {
+      const campaignId = req.query.campaignId as string | undefined;
+      const folders = await storage.getUserNoteFolders(req.session.userId!, campaignId);
+      res.json(folders);
+    } catch (e) {
+      console.error("Failed to get note folders:", e);
+      res.status(500).json({ error: "Failed to get note folders" });
+    }
+  });
+
+  app.post("/api/notes/folders", requireAuth, async (req, res) => {
+    try {
+      const folder = await storage.createNoteFolder({
+        ...req.body,
+        userId: req.session.userId!,
+      });
+      res.status(201).json(folder);
+    } catch (e) {
+      console.error("Failed to create note folder:", e);
+      res.status(500).json({ error: "Failed to create note folder" });
+    }
+  });
+
+  app.put("/api/notes/folders/:id", requireAuth, async (req, res) => {
+    try {
+      const folder = await storage.getNoteFolder(req.params.id);
+      if (!folder) {
+        return res.status(404).json({ error: "Folder not found" });
+      }
+      if (folder.userId !== req.session.userId) {
+        return res.status(403).json({ error: "Not authorized to update this folder" });
+      }
+      const updated = await storage.updateNoteFolder(req.params.id, req.body);
+      res.json(updated);
+    } catch (e) {
+      console.error("Failed to update note folder:", e);
+      res.status(500).json({ error: "Failed to update note folder" });
+    }
+  });
+
+  app.delete("/api/notes/folders/:id", requireAuth, async (req, res) => {
+    try {
+      const folder = await storage.getNoteFolder(req.params.id);
+      if (!folder) {
+        return res.status(404).json({ error: "Folder not found" });
+      }
+      if (folder.userId !== req.session.userId) {
+        return res.status(403).json({ error: "Not authorized to delete this folder" });
+      }
+      await storage.deleteNoteFolder(req.params.id);
+      res.json({ success: true });
+    } catch (e) {
+      console.error("Failed to delete note folder:", e);
+      res.status(500).json({ error: "Failed to delete note folder" });
+    }
+  });
+
+  // Note endpoints
+  app.get("/api/notes", requireAuth, async (req, res) => {
+    try {
+      const folderId = req.query.folderId as string | undefined;
+      const campaignId = req.query.campaignId as string | undefined;
+      const notes = await storage.getUserNotes(req.session.userId!, folderId, campaignId);
+      res.json(notes);
+    } catch (e) {
+      console.error("Failed to get notes:", e);
+      res.status(500).json({ error: "Failed to get notes" });
+    }
+  });
+
+  app.get("/api/notes/shared", requireAuth, async (req, res) => {
+    try {
+      const notes = await storage.getSharedNotes(req.session.userId!);
+      res.json(notes);
+    } catch (e) {
+      console.error("Failed to get shared notes:", e);
+      res.status(500).json({ error: "Failed to get shared notes" });
+    }
+  });
+
+  app.get("/api/notes/search", requireAuth, async (req, res) => {
+    try {
+      const query = req.query.q as string;
+      if (!query) {
+        return res.status(400).json({ error: "Search query is required" });
+      }
+      const notes = await storage.searchNotes(req.session.userId!, query);
+      res.json(notes);
+    } catch (e) {
+      console.error("Failed to search notes:", e);
+      res.status(500).json({ error: "Failed to search notes" });
+    }
+  });
+
+  app.post("/api/notes", requireAuth, async (req, res) => {
+    try {
+      const note = await storage.createNote({
+        ...req.body,
+        userId: req.session.userId!,
+      });
+      res.status(201).json(note);
+    } catch (e) {
+      console.error("Failed to create note:", e);
+      res.status(500).json({ error: "Failed to create note" });
+    }
+  });
+
+  app.get("/api/notes/:id", requireAuth, async (req, res) => {
+    try {
+      const access = await storage.canAccessNote(req.session.userId!, req.params.id);
+      if (!access.canAccess) {
+        return res.status(403).json({ error: "Not authorized to view this note" });
+      }
+      const note = await storage.getNote(req.params.id);
+      res.json(note);
+    } catch (e) {
+      console.error("Failed to get note:", e);
+      res.status(500).json({ error: "Failed to get note" });
+    }
+  });
+
+  app.put("/api/notes/:id", requireAuth, async (req, res) => {
+    try {
+      const access = await storage.canAccessNote(req.session.userId!, req.params.id);
+      if (!access.canAccess) {
+        return res.status(403).json({ error: "Not authorized to update this note" });
+      }
+      if (access.permission !== 'owner' && access.permission !== 'edit') {
+        return res.status(403).json({ error: "Edit permission required" });
+      }
+      const updated = await storage.updateNote(req.params.id, req.body);
+      res.json(updated);
+    } catch (e) {
+      console.error("Failed to update note:", e);
+      res.status(500).json({ error: "Failed to update note" });
+    }
+  });
+
+  app.delete("/api/notes/:id", requireAuth, async (req, res) => {
+    try {
+      const note = await storage.getNote(req.params.id);
+      if (!note) {
+        return res.status(404).json({ error: "Note not found" });
+      }
+      if (note.userId !== req.session.userId) {
+        return res.status(403).json({ error: "Only the owner can delete this note" });
+      }
+      await storage.deleteNote(req.params.id);
+      res.json({ success: true });
+    } catch (e) {
+      console.error("Failed to delete note:", e);
+      res.status(500).json({ error: "Failed to delete note" });
+    }
+  });
+
+  // Note Reference endpoints
+  app.get("/api/notes/:id/references", requireAuth, async (req, res) => {
+    try {
+      const access = await storage.canAccessNote(req.session.userId!, req.params.id);
+      if (!access.canAccess) {
+        return res.status(403).json({ error: "Not authorized to view this note" });
+      }
+      const references = await storage.getNoteReferences(req.params.id);
+      res.json(references);
+    } catch (e) {
+      console.error("Failed to get note references:", e);
+      res.status(500).json({ error: "Failed to get note references" });
+    }
+  });
+
+  app.post("/api/notes/:id/references", requireAuth, async (req, res) => {
+    try {
+      const access = await storage.canAccessNote(req.session.userId!, req.params.id);
+      if (!access.canAccess || (access.permission !== 'owner' && access.permission !== 'edit')) {
+        return res.status(403).json({ error: "Edit permission required" });
+      }
+      const reference = await storage.createNoteReference({
+        ...req.body,
+        noteId: req.params.id,
+      });
+      res.status(201).json(reference);
+    } catch (e) {
+      console.error("Failed to create note reference:", e);
+      res.status(500).json({ error: "Failed to create note reference" });
+    }
+  });
+
+  app.delete("/api/notes/:id/references/:refId", requireAuth, async (req, res) => {
+    try {
+      const access = await storage.canAccessNote(req.session.userId!, req.params.id);
+      if (!access.canAccess || (access.permission !== 'owner' && access.permission !== 'edit')) {
+        return res.status(403).json({ error: "Edit permission required" });
+      }
+      await storage.deleteNoteReference(req.params.refId);
+      res.json({ success: true });
+    } catch (e) {
+      console.error("Failed to delete note reference:", e);
+      res.status(500).json({ error: "Failed to delete note reference" });
+    }
+  });
+
+  app.get("/api/backlinks", requireAuth, async (req, res) => {
+    try {
+      const entityType = req.query.entityType as string;
+      const entityId = req.query.entityId as string;
+      if (!entityType || !entityId) {
+        return res.status(400).json({ error: "entityType and entityId are required" });
+      }
+      const backlinks = await storage.getBacklinks(entityType, entityId);
+      res.json(backlinks);
+    } catch (e) {
+      console.error("Failed to get backlinks:", e);
+      res.status(500).json({ error: "Failed to get backlinks" });
+    }
+  });
+
+  // Note Share endpoints
+  app.get("/api/notes/:id/shares", requireAuth, async (req, res) => {
+    try {
+      const note = await storage.getNote(req.params.id);
+      if (!note) {
+        return res.status(404).json({ error: "Note not found" });
+      }
+      if (note.userId !== req.session.userId) {
+        return res.status(403).json({ error: "Only the owner can view shares" });
+      }
+      const shares = await storage.getNoteShares(req.params.id);
+      res.json(shares);
+    } catch (e) {
+      console.error("Failed to get note shares:", e);
+      res.status(500).json({ error: "Failed to get note shares" });
+    }
+  });
+
+  app.post("/api/notes/:id/shares", requireAuth, async (req, res) => {
+    try {
+      const note = await storage.getNote(req.params.id);
+      if (!note) {
+        return res.status(404).json({ error: "Note not found" });
+      }
+      if (note.userId !== req.session.userId) {
+        return res.status(403).json({ error: "Only the owner can share this note" });
+      }
+      const { friendId, permission } = req.body;
+      if (!friendId) {
+        return res.status(400).json({ error: "friendId is required" });
+      }
+      const areFriends = await storage.areFriends(req.session.userId!, friendId);
+      if (!areFriends) {
+        return res.status(400).json({ error: "Can only share with friends" });
+      }
+      const share = await storage.createNoteShare({
+        noteId: req.params.id,
+        ownerId: req.session.userId!,
+        sharedWithId: friendId,
+        permission: permission || 'view',
+      });
+      res.status(201).json(share);
+    } catch (e) {
+      console.error("Failed to share note:", e);
+      res.status(500).json({ error: "Failed to share note" });
+    }
+  });
+
+  app.put("/api/notes/:id/shares/:shareId", requireAuth, async (req, res) => {
+    try {
+      const note = await storage.getNote(req.params.id);
+      if (!note) {
+        return res.status(404).json({ error: "Note not found" });
+      }
+      if (note.userId !== req.session.userId) {
+        return res.status(403).json({ error: "Only the owner can update shares" });
+      }
+      const { permission } = req.body;
+      if (!permission) {
+        return res.status(400).json({ error: "permission is required" });
+      }
+      const updated = await storage.updateNoteShare(req.params.shareId, permission);
+      res.json(updated);
+    } catch (e) {
+      console.error("Failed to update note share:", e);
+      res.status(500).json({ error: "Failed to update note share" });
+    }
+  });
+
+  app.delete("/api/notes/:id/shares/:shareId", requireAuth, async (req, res) => {
+    try {
+      const note = await storage.getNote(req.params.id);
+      if (!note) {
+        return res.status(404).json({ error: "Note not found" });
+      }
+      if (note.userId !== req.session.userId) {
+        return res.status(403).json({ error: "Only the owner can remove shares" });
+      }
+      await storage.deleteNoteShare(req.params.shareId);
+      res.json({ success: true });
+    } catch (e) {
+      console.error("Failed to delete note share:", e);
+      res.status(500).json({ error: "Failed to delete note share" });
+    }
+  });
+
   return httpServer;
 }

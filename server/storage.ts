@@ -29,7 +29,11 @@ import {
   type SceneFolder, type InsertSceneFolder,
   type FriendRequest, type InsertFriendRequest,
   type Friendship, type InsertFriendship,
-  users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, items, spells, characterPermissions, initiativeEntries, systemSpecies, campaignSpecies, featTemplates, featTrees, feats, featConnections, characterFeats, systemSpells, systemSkills, characterCustomSkills, systemTraits, characterTraits, characterFolders, sceneFolders, friendRequests, friendships
+  type NoteFolder, type InsertNoteFolder,
+  type Note, type InsertNote,
+  type NoteReference, type InsertNoteReference,
+  type NoteShare, type InsertNoteShare,
+  users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, items, spells, characterPermissions, initiativeEntries, systemSpecies, campaignSpecies, featTemplates, featTrees, feats, featConnections, characterFeats, systemSpells, systemSkills, characterCustomSkills, systemTraits, characterTraits, characterFolders, sceneFolders, friendRequests, friendships, noteFolders, notes, noteReferences, noteShares
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql, inArray } from "drizzle-orm";
@@ -269,6 +273,38 @@ export interface IStorage {
   getFriends(userId: string): Promise<User[]>;
   areFriends(userId1: string, userId2: string): Promise<boolean>;
   removeFriend(userId: string, friendId: string): Promise<void>;
+
+  // Note Folder operations
+  createNoteFolder(folder: InsertNoteFolder): Promise<NoteFolder>;
+  getNoteFolder(id: string): Promise<NoteFolder | undefined>;
+  getUserNoteFolders(userId: string, campaignId?: string): Promise<NoteFolder[]>;
+  updateNoteFolder(id: string, data: Partial<NoteFolder>): Promise<NoteFolder | undefined>;
+  deleteNoteFolder(id: string): Promise<void>;
+
+  // Note operations
+  createNote(note: InsertNote): Promise<Note>;
+  getNote(id: string): Promise<Note | undefined>;
+  getUserNotes(userId: string, folderId?: string, campaignId?: string): Promise<Note[]>;
+  getSharedNotes(userId: string): Promise<Note[]>;
+  updateNote(id: string, data: Partial<Note>): Promise<Note | undefined>;
+  deleteNote(id: string): Promise<void>;
+  searchNotes(userId: string, query: string): Promise<Note[]>;
+
+  // Note Reference operations
+  createNoteReference(ref: InsertNoteReference): Promise<NoteReference>;
+  getNoteReferences(noteId: string): Promise<NoteReference[]>;
+  getBacklinks(entityType: string, entityId: string): Promise<NoteReference[]>;
+  deleteNoteReference(id: string): Promise<void>;
+  deleteNoteReferences(noteId: string): Promise<void>;
+
+  // Note Share operations
+  createNoteShare(share: InsertNoteShare): Promise<NoteShare>;
+  getNoteShares(noteId: string): Promise<NoteShare[]>;
+  getFolderShares(folderId: string): Promise<NoteShare[]>;
+  getSharedWithUser(userId: string): Promise<NoteShare[]>;
+  updateNoteShare(id: string, permission: string): Promise<NoteShare | undefined>;
+  deleteNoteShare(id: string): Promise<void>;
+  canAccessNote(userId: string, noteId: string): Promise<{ canAccess: boolean; permission: string | null }>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1721,6 +1757,205 @@ export class DatabaseStorage implements IStorage {
         eq(friendships.userId, friendId),
         eq(friendships.friendId, userId)
       ));
+  }
+
+  // Note Folder operations
+  async createNoteFolder(folder: InsertNoteFolder): Promise<NoteFolder> {
+    const [newFolder] = await db.insert(noteFolders).values(folder).returning();
+    return newFolder;
+  }
+
+  async getNoteFolder(id: string): Promise<NoteFolder | undefined> {
+    const [folder] = await db.select()
+      .from(noteFolders)
+      .where(eq(noteFolders.id, id))
+      .limit(1);
+    return folder;
+  }
+
+  async getUserNoteFolders(userId: string, campaignId?: string): Promise<NoteFolder[]> {
+    if (campaignId) {
+      return await db.select()
+        .from(noteFolders)
+        .where(and(
+          eq(noteFolders.userId, userId),
+          eq(noteFolders.campaignId, campaignId)
+        ))
+        .orderBy(noteFolders.sortOrder);
+    }
+    return await db.select()
+      .from(noteFolders)
+      .where(eq(noteFolders.userId, userId))
+      .orderBy(noteFolders.sortOrder);
+  }
+
+  async updateNoteFolder(id: string, data: Partial<NoteFolder>): Promise<NoteFolder | undefined> {
+    const [folder] = await db.update(noteFolders)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(noteFolders.id, id))
+      .returning();
+    return folder;
+  }
+
+  async deleteNoteFolder(id: string): Promise<void> {
+    await db.delete(noteFolders).where(eq(noteFolders.id, id));
+  }
+
+  // Note operations
+  async createNote(note: InsertNote): Promise<Note> {
+    const [newNote] = await db.insert(notes).values(note).returning();
+    return newNote;
+  }
+
+  async getNote(id: string): Promise<Note | undefined> {
+    const [note] = await db.select()
+      .from(notes)
+      .where(eq(notes.id, id))
+      .limit(1);
+    return note;
+  }
+
+  async getUserNotes(userId: string, folderId?: string, campaignId?: string): Promise<Note[]> {
+    const conditions = [eq(notes.userId, userId)];
+    if (folderId) {
+      conditions.push(eq(notes.folderId, folderId));
+    }
+    if (campaignId) {
+      conditions.push(eq(notes.campaignId, campaignId));
+    }
+    return await db.select()
+      .from(notes)
+      .where(and(...conditions))
+      .orderBy(desc(notes.isPinned), notes.sortOrder, desc(notes.updatedAt));
+  }
+
+  async getSharedNotes(userId: string): Promise<Note[]> {
+    const shares = await db.select()
+      .from(noteShares)
+      .innerJoin(notes, eq(noteShares.noteId, notes.id))
+      .where(eq(noteShares.sharedWithId, userId));
+    return shares.map(s => s.notes);
+  }
+
+  async updateNote(id: string, data: Partial<Note>): Promise<Note | undefined> {
+    const [note] = await db.update(notes)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(notes.id, id))
+      .returning();
+    return note;
+  }
+
+  async deleteNote(id: string): Promise<void> {
+    await db.delete(notes).where(eq(notes.id, id));
+  }
+
+  async searchNotes(userId: string, query: string): Promise<Note[]> {
+    const searchPattern = `%${query}%`;
+    return await db.select()
+      .from(notes)
+      .where(and(
+        eq(notes.userId, userId),
+        sql`(${notes.title} ILIKE ${searchPattern} OR ${notes.content} ILIKE ${searchPattern})`
+      ))
+      .orderBy(desc(notes.updatedAt));
+  }
+
+  // Note Reference operations
+  async createNoteReference(ref: InsertNoteReference): Promise<NoteReference> {
+    const [newRef] = await db.insert(noteReferences).values(ref).returning();
+    return newRef;
+  }
+
+  async getNoteReferences(noteId: string): Promise<NoteReference[]> {
+    return await db.select()
+      .from(noteReferences)
+      .where(eq(noteReferences.noteId, noteId));
+  }
+
+  async getBacklinks(entityType: string, entityId: string): Promise<NoteReference[]> {
+    return await db.select()
+      .from(noteReferences)
+      .where(and(
+        eq(noteReferences.entityType, entityType),
+        eq(noteReferences.entityId, entityId)
+      ));
+  }
+
+  async deleteNoteReference(id: string): Promise<void> {
+    await db.delete(noteReferences).where(eq(noteReferences.id, id));
+  }
+
+  async deleteNoteReferences(noteId: string): Promise<void> {
+    await db.delete(noteReferences).where(eq(noteReferences.noteId, noteId));
+  }
+
+  // Note Share operations
+  async createNoteShare(share: InsertNoteShare): Promise<NoteShare> {
+    const [newShare] = await db.insert(noteShares).values(share).returning();
+    return newShare;
+  }
+
+  async getNoteShares(noteId: string): Promise<NoteShare[]> {
+    return await db.select()
+      .from(noteShares)
+      .where(eq(noteShares.noteId, noteId));
+  }
+
+  async getFolderShares(folderId: string): Promise<NoteShare[]> {
+    return await db.select()
+      .from(noteShares)
+      .where(eq(noteShares.folderId, folderId));
+  }
+
+  async getSharedWithUser(userId: string): Promise<NoteShare[]> {
+    return await db.select()
+      .from(noteShares)
+      .where(eq(noteShares.sharedWithId, userId));
+  }
+
+  async updateNoteShare(id: string, permission: string): Promise<NoteShare | undefined> {
+    const [share] = await db.update(noteShares)
+      .set({ permission })
+      .where(eq(noteShares.id, id))
+      .returning();
+    return share;
+  }
+
+  async deleteNoteShare(id: string): Promise<void> {
+    await db.delete(noteShares).where(eq(noteShares.id, id));
+  }
+
+  async canAccessNote(userId: string, noteId: string): Promise<{ canAccess: boolean; permission: string | null }> {
+    const note = await this.getNote(noteId);
+    if (!note) {
+      return { canAccess: false, permission: null };
+    }
+    if (note.userId === userId) {
+      return { canAccess: true, permission: 'owner' };
+    }
+    const [share] = await db.select()
+      .from(noteShares)
+      .where(and(
+        eq(noteShares.noteId, noteId),
+        eq(noteShares.sharedWithId, userId)
+      ))
+      .limit(1);
+    if (share) {
+      return { canAccess: true, permission: share.permission };
+    }
+    if (note.folderId) {
+      const [folderShare] = await db.select()
+        .from(noteShares)
+        .where(and(
+          eq(noteShares.folderId, note.folderId),
+          eq(noteShares.sharedWithId, userId)
+        ))
+        .limit(1);
+      if (folderShare) {
+        return { canAccess: true, permission: folderShare.permission };
+      }
+    }
+    return { canAccess: false, permission: null };
   }
 }
 

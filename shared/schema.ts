@@ -802,3 +802,108 @@ export const insertSystemSpellSchema = createInsertSchema(systemSpells).omit({
 
 export type InsertSystemSpell = z.infer<typeof insertSystemSpellSchema>;
 export type SystemSpell = typeof systemSpells.$inferSelect;
+
+// ============================================
+// NOTES SYSTEM (Obsidian-like notes with sharing)
+// ============================================
+
+// Note Folders table (for organizing notes hierarchically)
+export const noteFolders = pgTable("note_folders", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  campaignId: varchar("campaign_id").references(() => campaigns.id, { onDelete: "cascade" }), // null = personal folder
+  parentId: varchar("parent_id").references((): any => noteFolders.id, { onDelete: "cascade" }), // For nested folders
+  name: text("name").notNull(),
+  color: text("color"), // Optional folder color
+  sortOrder: integer("sort_order").default(0).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertNoteFolderSchema = createInsertSchema(noteFolders).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertNoteFolder = z.infer<typeof insertNoteFolderSchema>;
+export type NoteFolder = typeof noteFolders.$inferSelect;
+
+// Notes table (main note documents - can be regular notes or canvas pages)
+export const notes = pgTable("notes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  campaignId: varchar("campaign_id").references(() => campaigns.id, { onDelete: "cascade" }), // null = personal note
+  folderId: varchar("folder_id").references(() => noteFolders.id, { onDelete: "set null" }),
+  title: text("title").notNull(),
+  content: text("content").default("").notNull(), // Markdown content for regular notes
+  type: text("type").default("note").notNull(), // "note" or "canvas"
+  canvasData: jsonb("canvas_data"), // For canvas pages: nodes, positions, connections
+  icon: text("icon"), // Optional custom icon
+  coverImage: text("cover_image"), // Optional cover image
+  isPinned: boolean("is_pinned").default(false).notNull(),
+  isArchived: boolean("is_archived").default(false).notNull(),
+  sortOrder: integer("sort_order").default(0).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertNoteSchema = createInsertSchema(notes).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertNote = z.infer<typeof insertNoteSchema>;
+export type Note = typeof notes.$inferSelect;
+
+// Note References table (links from notes to game entities)
+export const noteReferences = pgTable("note_references", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  noteId: varchar("note_id").notNull().references(() => notes.id, { onDelete: "cascade" }),
+  entityType: text("entity_type").notNull(), // "character", "item", "spell", "trait", "skill", "species", "campaign", "scene", "note"
+  entityId: varchar("entity_id").notNull(), // ID of the referenced entity
+  label: text("label"), // Optional display label (defaults to entity name)
+  position: integer("position"), // Position in the note content (character offset)
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertNoteReferenceSchema = createInsertSchema(noteReferences).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertNoteReference = z.infer<typeof insertNoteReferenceSchema>;
+export type NoteReference = typeof noteReferences.$inferSelect;
+
+// Note Backlinks view (for finding notes that reference a specific entity)
+// This is derived from noteReferences - use a query to find backlinks
+
+// Note Shares table (sharing notes/folders with friends)
+export const noteShares = pgTable("note_shares", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  noteId: varchar("note_id").references(() => notes.id, { onDelete: "cascade" }),
+  folderId: varchar("folder_id").references(() => noteFolders.id, { onDelete: "cascade" }),
+  ownerId: varchar("owner_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  sharedWithId: varchar("shared_with_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  permission: text("permission").default("view").notNull(), // "view" or "edit"
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertNoteShareSchema = createInsertSchema(noteShares).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertNoteShare = z.infer<typeof insertNoteShareSchema>;
+export type NoteShare = typeof noteShares.$inferSelect;
+
+// Canvas Node data structure (stored in canvasData jsonb)
+// {
+//   nodes: [
+//     { id: string, type: "text" | "note" | "entity", x: number, y: number, width: number, height: number, content?: string, noteId?: string, entityType?: string, entityId?: string }
+//   ],
+//   connections: [
+//     { id: string, fromNodeId: string, toNodeId: string, label?: string, color?: string }
+//   ]
+// }

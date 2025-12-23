@@ -445,6 +445,56 @@ export interface FriendRequestWithUser extends FriendRequest {
   recipient?: UserProfile;
 }
 
+export interface NoteFolder {
+  id: string;
+  userId: string;
+  campaignId?: string | null;
+  parentId?: string | null;
+  name: string;
+  color?: string | null;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Note {
+  id: string;
+  userId: string;
+  campaignId?: string | null;
+  folderId?: string | null;
+  title: string;
+  content: string;
+  type: string;
+  canvasData?: any;
+  icon?: string | null;
+  coverImage?: string | null;
+  isPinned: boolean;
+  isArchived: boolean;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface NoteReference {
+  id: string;
+  noteId: string;
+  entityType: string;
+  entityId: string;
+  label?: string | null;
+  position?: number | null;
+  createdAt: string;
+}
+
+export interface NoteShare {
+  id: string;
+  noteId?: string | null;
+  folderId?: string | null;
+  ownerId: string;
+  sharedWithId: string;
+  permission: string;
+  createdAt: string;
+}
+
 class ApiClient {
   private baseUrl = '/api';
 
@@ -1333,6 +1383,112 @@ class ApiClient {
   // User search
   async searchUserByUsername(username: string): Promise<UserProfile> {
     return this.request(`/users/search?username=${encodeURIComponent(username)}`);
+  }
+
+  // Note Folder endpoints
+  async getNoteFolders(campaignId?: string): Promise<NoteFolder[]> {
+    const params = campaignId ? `?campaignId=${encodeURIComponent(campaignId)}` : '';
+    return this.request(`/notes/folders${params}`);
+  }
+
+  async createNoteFolder(folder: Partial<NoteFolder>): Promise<NoteFolder> {
+    return this.request('/notes/folders', {
+      method: 'POST',
+      body: JSON.stringify(folder),
+    });
+  }
+
+  async updateNoteFolder(id: string, data: Partial<NoteFolder>): Promise<NoteFolder> {
+    return this.request(`/notes/folders/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteNoteFolder(id: string): Promise<{ success: boolean }> {
+    return this.request(`/notes/folders/${id}`, { method: 'DELETE' });
+  }
+
+  // Note endpoints
+  async getNotes(folderId?: string, campaignId?: string): Promise<Note[]> {
+    const params = new URLSearchParams();
+    if (folderId) params.append('folderId', folderId);
+    if (campaignId) params.append('campaignId', campaignId);
+    const queryString = params.toString();
+    return this.request(`/notes${queryString ? `?${queryString}` : ''}`);
+  }
+
+  async getSharedNotes(): Promise<Note[]> {
+    return this.request('/notes/shared');
+  }
+
+  async searchNotes(query: string): Promise<Note[]> {
+    return this.request(`/notes/search?q=${encodeURIComponent(query)}`);
+  }
+
+  async createNote(note: Partial<Note>): Promise<Note> {
+    return this.request('/notes', {
+      method: 'POST',
+      body: JSON.stringify(note),
+    });
+  }
+
+  async getNote(id: string): Promise<Note> {
+    return this.request(`/notes/${id}`);
+  }
+
+  async updateNote(id: string, data: Partial<Note>): Promise<Note> {
+    return this.request(`/notes/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteNote(id: string): Promise<{ success: boolean }> {
+    return this.request(`/notes/${id}`, { method: 'DELETE' });
+  }
+
+  // Note Reference endpoints
+  async getNoteReferences(noteId: string): Promise<NoteReference[]> {
+    return this.request(`/notes/${noteId}/references`);
+  }
+
+  async createNoteReference(noteId: string, ref: Partial<NoteReference>): Promise<NoteReference> {
+    return this.request(`/notes/${noteId}/references`, {
+      method: 'POST',
+      body: JSON.stringify(ref),
+    });
+  }
+
+  async deleteNoteReference(noteId: string, refId: string): Promise<{ success: boolean }> {
+    return this.request(`/notes/${noteId}/references/${refId}`, { method: 'DELETE' });
+  }
+
+  async getBacklinks(entityType: string, entityId: string): Promise<NoteReference[]> {
+    return this.request(`/backlinks?entityType=${encodeURIComponent(entityType)}&entityId=${encodeURIComponent(entityId)}`);
+  }
+
+  // Note Share endpoints
+  async getNoteShares(noteId: string): Promise<NoteShare[]> {
+    return this.request(`/notes/${noteId}/shares`);
+  }
+
+  async shareNote(noteId: string, friendId: string, permission?: string): Promise<NoteShare> {
+    return this.request(`/notes/${noteId}/shares`, {
+      method: 'POST',
+      body: JSON.stringify({ friendId, permission: permission || 'view' }),
+    });
+  }
+
+  async updateNoteShare(noteId: string, shareId: string, permission: string): Promise<NoteShare> {
+    return this.request(`/notes/${noteId}/shares/${shareId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ permission }),
+    });
+  }
+
+  async deleteNoteShare(noteId: string, shareId: string): Promise<{ success: boolean }> {
+    return this.request(`/notes/${noteId}/shares/${shareId}`, { method: 'DELETE' });
   }
 }
 
