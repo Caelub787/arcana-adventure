@@ -280,6 +280,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
   const [, forceUpdate] = useState(0); // Only for zoom display updates
   const initializedSceneRef = useRef<string | null>(null);
   const [showDeleteButton, setShowDeleteButton] = useState<string | null>(null);
+  const [tokenToDelete, setTokenToDelete] = useState<string | null>(null);
   const holdTimerRef = useRef<NodeJS.Timeout | null>(null);
   
   // Track token being dragged with its current visual position
@@ -1247,12 +1248,9 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                   onClick={(e) => {
                     e.stopPropagation();
                     e.preventDefault();
-                    if (onDeleteToken) {
-                      onDeleteToken(token.id);
-                      setShowDeleteButton(null);
-                    }
+                    setTokenToDelete(token.id);
                   }}
-                  className="absolute -top-3 -right-3 w-7 h-7 bg-red-600 hover:bg-red-700 rounded-full flex items-center justify-center shadow-lg border-2 border-red-400 z-30 pointer-events-auto touch-auto"
+                  className="absolute -top-3 -left-3 w-7 h-7 bg-red-600 hover:bg-red-700 rounded-full flex items-center justify-center shadow-lg border-2 border-red-400 z-30 pointer-events-auto touch-auto"
                   data-testid={`button-delete-token-${token.id}`}
                 >
                   <Trash2 className="w-4 h-4 text-white" />
@@ -1562,6 +1560,33 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
           );
         })}
       </motion.div>
+
+      {/* Token Delete Confirmation Dialog */}
+      <AlertDialog open={!!tokenToDelete} onOpenChange={(open) => !open && setTokenToDelete(null)}>
+        <AlertDialogContent className="bg-stone-900 border-stone-700">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-stone-200">Delete Token</AlertDialogTitle>
+            <AlertDialogDescription className="text-stone-400">
+              Are you sure you want to delete this token? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="border-stone-600">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700"
+              onClick={() => {
+                if (tokenToDelete && onDeleteToken) {
+                  onDeleteToken(tokenToDelete);
+                }
+                setTokenToDelete(null);
+                setShowDeleteButton(null);
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
     </div>
   );
