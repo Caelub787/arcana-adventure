@@ -1942,6 +1942,8 @@ function TokenEffectFormDialog({ open, onOpenChange, onSave, initialData, isLoad
     causesDamage: boolean;
     damageType: string;
     diceAmount: string;
+    hasDuration: boolean;
+    defaultDuration: number;
   }>({
     name: initialData?.name || '',
     imageUrl: initialData?.imageUrl || '',
@@ -1950,6 +1952,8 @@ function TokenEffectFormDialog({ open, onOpenChange, onSave, initialData, isLoad
     causesDamage: initialData?.causesDamage || false,
     damageType: initialData?.damageType || '',
     diceAmount: initialData?.diceAmount || '',
+    hasDuration: initialData?.hasDuration || false,
+    defaultDuration: initialData?.defaultDuration || 3,
   });
 
   const [showImageBrowser, setShowImageBrowser] = useState(false);
@@ -1976,6 +1980,8 @@ function TokenEffectFormDialog({ open, onOpenChange, onSave, initialData, isLoad
         causesDamage: initialData.causesDamage || false,
         damageType: initialData.damageType || '',
         diceAmount: initialData.diceAmount || '',
+        hasDuration: initialData.hasDuration || false,
+        defaultDuration: initialData.defaultDuration || 3,
       });
     } else {
       setFormData({
@@ -1986,6 +1992,8 @@ function TokenEffectFormDialog({ open, onOpenChange, onSave, initialData, isLoad
         causesDamage: false,
         damageType: '',
         diceAmount: '',
+        hasDuration: false,
+        defaultDuration: 3,
       });
     }
   }, [initialData, open]);
@@ -2011,6 +2019,8 @@ function TokenEffectFormDialog({ open, onOpenChange, onSave, initialData, isLoad
       causesDamage: formData.causesDamage,
       damageType: formData.causesDamage ? formData.damageType : null,
       diceAmount: formData.causesDamage ? formData.diceAmount.trim() : null,
+      hasDuration: formData.hasDuration,
+      defaultDuration: formData.hasDuration ? formData.defaultDuration : null,
     });
   };
 
@@ -2162,6 +2172,36 @@ function TokenEffectFormDialog({ open, onOpenChange, onSave, initialData, isLoad
                     data-testid="input-dice-amount"
                   />
                 </div>
+              </div>
+            )}
+
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="hasDuration"
+                checked={formData.hasDuration}
+                onCheckedChange={(checked) => setFormData({ ...formData, hasDuration: !!checked })}
+                data-testid="checkbox-has-duration"
+              />
+              <Label htmlFor="hasDuration" className="text-stone-300 cursor-pointer">
+                Has Duration (auto-expires)
+              </Label>
+            </div>
+
+            {formData.hasDuration && (
+              <div>
+                <Label className="text-stone-300">Duration (rounds/turns)</Label>
+                <Input
+                  type="number"
+                  min="1"
+                  value={formData.defaultDuration}
+                  onChange={(e) => setFormData({ ...formData, defaultDuration: parseInt(e.target.value) || 1 })}
+                  placeholder="Number of rounds/turns"
+                  className="bg-stone-800 border-stone-700 mt-1 w-32"
+                  data-testid="input-default-duration"
+                />
+                <p className="text-xs text-stone-500 mt-1">
+                  Effect will expire after this many {formData.timing === 'start_of_round' ? 'rounds' : 'turns'}
+                </p>
               </div>
             )}
           </div>
