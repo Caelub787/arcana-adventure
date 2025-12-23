@@ -2,7 +2,7 @@ import { useState, useRef, useMemo, useCallback, useEffect } from 'react';
 import { useLocation } from 'wouter';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, useMotionValue } from 'framer-motion';
-import { api, type Item, type SystemSpecies, type FeatTree, type Feat, type FeatConnection, type FeatTreeWithData, type FeatTemplate, type SystemSpell, type SystemSkill, type SystemTrait, type Character, type TokenEffect } from '@/lib/api';
+import { api, type Item, type SystemSpecies, type FeatTree, type Feat, type FeatConnection, type FeatTreeWithData, type FeatTemplate, type SystemSpell, type SystemSkill, type SystemTrait, type Character, type TokenEffect, type SpellEffect, type ItemEffect } from '@/lib/api';
 import { useAuth } from '@/lib/AuthContext';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { Button } from '@/components/ui/button';
@@ -5092,6 +5092,162 @@ function SpeciesFormDialog({ open, onOpenChange, onSave, initialData, isLoading,
   );
 }
 
+function SpellEffectsSection({ spellId }: { spellId: string }) {
+  const { data: spellEffects, refetch } = useQuery({
+    queryKey: ['spell-effects', spellId],
+    queryFn: () => api.getSpellEffects(spellId),
+  });
+
+  const { data: allEffects } = useQuery({
+    queryKey: ['token-effects'],
+    queryFn: () => api.getTokenEffects(),
+  });
+
+  const [selectedEffectId, setSelectedEffectId] = useState('');
+  const [triggerCondition, setTriggerCondition] = useState('always');
+
+  const addMutation = useMutation({
+    mutationFn: () => api.addSpellEffect(spellId, selectedEffectId, triggerCondition),
+    onSuccess: () => {
+      refetch();
+      setSelectedEffectId('');
+      toast({ title: 'Effect added' });
+    },
+  });
+
+  const removeMutation = useMutation({
+    mutationFn: (id: string) => api.removeSpellEffect(id),
+    onSuccess: () => refetch(),
+  });
+
+  const availableEffects = allEffects?.filter(e => !spellEffects?.some(se => se.effectId === e.id)) || [];
+
+  return (
+    <div className="space-y-3">
+      {spellEffects?.map(se => (
+        <div key={se.id} className="flex items-center gap-2 p-2 bg-stone-800 rounded">
+          {se.effect.imageUrl && <img src={se.effect.imageUrl} className="h-6 w-6 rounded" />}
+          <span className="flex-1 text-sm">{se.effect.name}</span>
+          <Badge variant="outline" className="text-xs">{se.triggerCondition}</Badge>
+          <Button size="icon" variant="ghost" onClick={() => removeMutation.mutate(se.id)}>
+            <X className="h-4 w-4 text-red-400" />
+          </Button>
+        </div>
+      ))}
+
+      {availableEffects.length > 0 && (
+        <div className="flex gap-2">
+          <Select value={selectedEffectId} onValueChange={setSelectedEffectId}>
+            <SelectTrigger className="flex-1 bg-stone-800 border-stone-700">
+              <SelectValue placeholder="Select effect" />
+            </SelectTrigger>
+            <SelectContent>
+              {availableEffects.map(e => (
+                <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={triggerCondition} onValueChange={setTriggerCondition}>
+            <SelectTrigger className="w-32 bg-stone-800 border-stone-700">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="always">Always</SelectItem>
+              <SelectItem value="success">On Success</SelectItem>
+              <SelectItem value="failure">On Failure</SelectItem>
+            </SelectContent>
+          </Select>
+          <Button size="sm" disabled={!selectedEffectId} onClick={() => addMutation.mutate()}>
+            Add
+          </Button>
+        </div>
+      )}
+
+      {spellEffects?.length === 0 && availableEffects.length === 0 && (
+        <p className="text-sm text-stone-500">No token effects defined. Create effects in the Token Effects section first.</p>
+      )}
+    </div>
+  );
+}
+
+function ItemEffectsSection({ itemId }: { itemId: string }) {
+  const { data: itemEffects, refetch } = useQuery({
+    queryKey: ['item-effects', itemId],
+    queryFn: () => api.getItemEffects(itemId),
+  });
+
+  const { data: allEffects } = useQuery({
+    queryKey: ['token-effects'],
+    queryFn: () => api.getTokenEffects(),
+  });
+
+  const [selectedEffectId, setSelectedEffectId] = useState('');
+  const [triggerCondition, setTriggerCondition] = useState('always');
+
+  const addMutation = useMutation({
+    mutationFn: () => api.addItemEffect(itemId, selectedEffectId, triggerCondition),
+    onSuccess: () => {
+      refetch();
+      setSelectedEffectId('');
+      toast({ title: 'Effect added' });
+    },
+  });
+
+  const removeMutation = useMutation({
+    mutationFn: (id: string) => api.removeItemEffect(id),
+    onSuccess: () => refetch(),
+  });
+
+  const availableEffects = allEffects?.filter(e => !itemEffects?.some(ie => ie.effectId === e.id)) || [];
+
+  return (
+    <div className="space-y-3">
+      {itemEffects?.map(ie => (
+        <div key={ie.id} className="flex items-center gap-2 p-2 bg-stone-800 rounded">
+          {ie.effect.imageUrl && <img src={ie.effect.imageUrl} className="h-6 w-6 rounded" />}
+          <span className="flex-1 text-sm">{ie.effect.name}</span>
+          <Badge variant="outline" className="text-xs">{ie.triggerCondition}</Badge>
+          <Button size="icon" variant="ghost" onClick={() => removeMutation.mutate(ie.id)}>
+            <X className="h-4 w-4 text-red-400" />
+          </Button>
+        </div>
+      ))}
+
+      {availableEffects.length > 0 && (
+        <div className="flex gap-2">
+          <Select value={selectedEffectId} onValueChange={setSelectedEffectId}>
+            <SelectTrigger className="flex-1 bg-stone-800 border-stone-700">
+              <SelectValue placeholder="Select effect" />
+            </SelectTrigger>
+            <SelectContent>
+              {availableEffects.map(e => (
+                <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={triggerCondition} onValueChange={setTriggerCondition}>
+            <SelectTrigger className="w-32 bg-stone-800 border-stone-700">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="always">Always</SelectItem>
+              <SelectItem value="success">On Success</SelectItem>
+              <SelectItem value="failure">On Failure</SelectItem>
+            </SelectContent>
+          </Select>
+          <Button size="sm" disabled={!selectedEffectId} onClick={() => addMutation.mutate()}>
+            Add
+          </Button>
+        </div>
+      )}
+
+      {itemEffects?.length === 0 && availableEffects.length === 0 && (
+        <p className="text-sm text-stone-500">No token effects defined. Create effects in the Token Effects section first.</p>
+      )}
+    </div>
+  );
+}
+
 interface SpellFormDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -5510,6 +5666,16 @@ function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading }:
               </div>
             </div>
           </div>
+
+          {initialData && (
+            <div className="border-t border-stone-700 pt-4 mt-4">
+              <Label className="flex items-center gap-2 mb-3">
+                <Flame className="h-4 w-4 text-violet-400" />
+                Token Effects
+              </Label>
+              <SpellEffectsSection spellId={initialData.id} />
+            </div>
+          )}
         </div>
 
         <DialogFooter className="shrink-0">
@@ -6114,6 +6280,16 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
                 </div>
               )}
             </div>
+
+            {initialData && formData.itemType === 'weapon' && (
+              <div className="border-t border-stone-700 pt-4 mt-4">
+                <Label className="flex items-center gap-2 mb-3">
+                  <Flame className="h-4 w-4 text-violet-400" />
+                  Token Effects
+                </Label>
+                <ItemEffectsSection itemId={initialData.id} />
+              </div>
+            )}
           </div>
         </div>
 
