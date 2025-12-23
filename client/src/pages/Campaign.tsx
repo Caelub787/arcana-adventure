@@ -4,7 +4,7 @@ import { motion } from "framer-motion";
 import { CharacterCreation, BattleMap, CampaignMenu, CharacterSheet, BattleMapHotbars, SelectionModeButtons, InitiativeTracker, type SelectionMode } from "@/components/game/GameComponents";
 import { BattlemapDiceOverlay, triggerBattlemapDiceRoll } from "@/components/game/BattlemapDiceOverlay";
 import { type AoeTargetState, createInitialAoeState } from "@/lib/aoeHelpers";
-import { RollNotificationContainer, triggerInitiativeNotification } from "@/components/game/RollNotification";
+import { RollNotificationContainer, triggerInitiativeNotification, triggerEffectRollNotification } from "@/components/game/RollNotification";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Loader2, Settings, Map as MapIcon, Layers, Trash2, MessageSquare, User, BarChart3, Zap, Backpack, Sparkles, Grid3X3, ScrollText, Swords, Dices, Users, Dna, Edit2 } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -1447,6 +1447,19 @@ export default function Campaign() {
             data.modifier,
             data.total,
             data.username,
+            data.characterName
+          );
+        }
+        
+        // Handle effect roll notifications - token effects triggering damage/healing
+        if (data.type === 'effect_roll') {
+          triggerEffectRollNotification(
+            data.effectName,
+            data.rolls,
+            data.bonus,
+            data.total,
+            data.damageType,
+            data.isHealing,
             data.characterName
           );
         }

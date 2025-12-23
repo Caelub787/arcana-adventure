@@ -36,7 +36,7 @@ import parchmentTexture from "@assets/generated_images/aged_parchment_paper_text
 import battleMapImage1 from "@/assets/rocky_coast_battlemap.jpg";
 import warriorToken from "@assets/generated_images/top_down_warrior_token.png";
 import goblinToken from "@assets/generated_images/top_down_goblin_token.png";
-import { triggerSkillRollNotification, triggerRollNotification } from './RollNotification';
+import { triggerSkillRollNotification, triggerRollNotification, triggerEffectRollNotification } from './RollNotification';
 import { ImageBrowser } from '@/components/ImageBrowser';
 import { BattlemapAoeOverlay } from './BattlemapAoeOverlay';
 import { type AoeTargetState, getTokensInAoe } from '@/lib/aoeHelpers';
@@ -4470,20 +4470,10 @@ export function InitiativeTracker({ open, onOpenChange, sceneId, campaignId, isG
       });
       
       // Process effect triggers for the first character (start of round + start of turn)
+      // Visual notifications are handled via WebSocket broadcast in Campaign.tsx
       if (sceneId && firstCharacterId) {
         try {
-          const result = await api.processEffectTriggers(sceneId, firstCharacterId, 'start_of_turn', true);
-          
-          if (result.processed && result.processed.length > 0) {
-            for (const effect of result.processed) {
-              toast({
-                title: effect.effectName,
-                description: `${effect.characterName} ${effect.isHealing ? 'healed' : 'took'} ${effect.total} ${effect.damageType || ''} damage`,
-                variant: effect.isHealing ? 'default' : 'destructive',
-              });
-            }
-            queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${campaignId}/characters`] });
-          }
+          await api.processEffectTriggers(sceneId, firstCharacterId, 'start_of_turn', true);
         } catch (err) {
           console.error('Failed to process effect triggers:', err);
         }
@@ -4514,23 +4504,10 @@ export function InitiativeTracker({ open, onOpenChange, sceneId, campaignId, isG
     });
     
     // Process effect triggers for the character whose turn is starting
+    // Visual notifications are handled via WebSocket broadcast in Campaign.tsx
     if (sceneId && nextCharacterId) {
       try {
-        const result = await api.processEffectTriggers(sceneId, nextCharacterId, 'start_of_turn', isNewRound);
-        
-        // Show notifications for each processed effect
-        if (result.processed && result.processed.length > 0) {
-          for (const effect of result.processed) {
-            toast({
-              title: effect.effectName,
-              description: `${effect.characterName} ${effect.isHealing ? 'healed' : 'took'} ${effect.total} ${effect.damageType || ''} damage (${effect.rolls.join(' + ')}${effect.bonus > 0 ? ` + ${effect.bonus}` : ''})`,
-              variant: effect.isHealing ? 'default' : 'destructive',
-            });
-          }
-          
-          // Refresh character data to show updated HP
-          queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${campaignId}/characters`] });
-        }
+        await api.processEffectTriggers(sceneId, nextCharacterId, 'start_of_turn', isNewRound);
       } catch (err) {
         console.error('Failed to process effect triggers:', err);
       }

@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Dices, Swords, Sparkles, Target, Shield, Zap } from 'lucide-react';
+import { Dices, Swords, Sparkles, Target, Shield, Zap, Flame, Heart } from 'lucide-react';
 import { type DieType } from '@/lib/diceSystem';
 
 export interface RollNotification {
   id: string;
-  type: 'dice' | 'initiative' | 'attack' | 'skill' | 'save' | 'custom' | 'system';
+  type: 'dice' | 'initiative' | 'attack' | 'skill' | 'save' | 'custom' | 'system' | 'effect';
   dieType?: DieType;
   label: string;
   result: number;
@@ -16,6 +16,7 @@ export interface RollNotification {
   timestamp: number;
   calculationBreakdown?: string;
   duration?: number;
+  isHealing?: boolean;
 }
 
 const ROLL_ICONS = {
@@ -26,6 +27,7 @@ const ROLL_ICONS = {
   save: Shield,
   custom: Sparkles,
   system: Sparkles,
+  effect: Flame,
 };
 
 const ROLL_COLORS = {
@@ -36,6 +38,7 @@ const ROLL_COLORS = {
   save: 'from-purple-500 to-violet-600',
   custom: 'from-pink-500 to-fuchsia-600',
   system: 'from-stone-500 to-stone-600',
+  effect: 'from-orange-500 to-red-600',
 };
 
 const DIE_COLORS: Partial<Record<DieType, string>> = {
@@ -48,10 +51,19 @@ const DIE_COLORS: Partial<Record<DieType, string>> = {
 };
 
 function RollCard({ notification, onComplete }: { notification: RollNotification; onComplete: (id: string) => void }) {
-  const Icon = ROLL_ICONS[notification.type] || Dices;
+  // For effect type, use Heart icon for healing, Flame for damage
+  const Icon = notification.type === 'effect' && notification.isHealing 
+    ? Heart 
+    : (ROLL_ICONS[notification.type] || Dices);
+  
+  // For effect type, use green for healing, orange-red for damage
+  const effectColor = notification.isHealing 
+    ? 'from-emerald-500 to-green-600' 
+    : 'from-orange-500 to-red-600';
+  
   const colorClass = notification.dieType 
     ? DIE_COLORS[notification.dieType] || ROLL_COLORS[notification.type]
-    : ROLL_COLORS[notification.type];
+    : (notification.type === 'effect' ? effectColor : ROLL_COLORS[notification.type]);
   
   const notificationDuration = notification.duration ?? (notification.type === 'system' ? 2000 : 3500);
   
@@ -283,5 +295,30 @@ export function triggerSkillRollNotification(
     total,
     username,
     characterName,
+  });
+}
+
+export function triggerEffectRollNotification(
+  effectName: string,
+  rolls: number[],
+  bonus: number,
+  total: number,
+  damageType: string,
+  isHealing: boolean,
+  characterName: string
+) {
+  const rollsText = rolls.join(' + ') + (bonus > 0 ? ` + ${bonus}` : '');
+  const actionText = isHealing ? 'heals' : 'takes';
+  
+  triggerRollNotification({
+    type: 'effect',
+    label: effectName,
+    result: rolls.reduce((a, b) => a + b, 0),
+    modifier: bonus,
+    total,
+    username: 'System',
+    characterName,
+    calculationBreakdown: `${characterName} ${actionText} ${total} ${damageType || ''} (${rollsText})`,
+    isHealing,
   });
 }
