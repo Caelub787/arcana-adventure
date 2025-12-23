@@ -4784,6 +4784,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       const results: any[] = [];
+      // Track current HP to accumulate damage from multiple effects
+      let currentHp = character.hp;
       
       // Process each token's active effects
       for (const token of characterTokens) {
@@ -4819,11 +4821,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
               total += roll;
             }
             
-            // Apply damage to character
+            // Calculate new HP from current accumulated HP value
+            const previousHp = currentHp;
             const isHealing = effect.damageType === 'Health';
             const newHp = isHealing 
-              ? Math.min(character.maxHp, character.hp + total)
-              : Math.max(0, character.hp - total);
+              ? Math.min(character.maxHp, currentHp + total)
+              : Math.max(0, currentHp - total);
+            
+            // Update accumulated HP for subsequent effects
+            currentHp = newHp;
             
             await storage.updateCharacter(characterId, { hp: newHp });
             
@@ -4836,12 +4842,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
               type: 'system'
             });
             
-            // Broadcast HP update
+            // Broadcast HP update with correct previous HP for this specific effect
             broadcastToCampaign(scene.campaignId, {
               type: "character_hp_update",
               characterId,
               hp: newHp,
-              previousHp: character.hp,
+              previousHp,
               damage: isHealing ? -total : total,
               isHealing,
               attackerName: effect.name
@@ -4877,9 +4883,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
               characterName: character.name,
               newHp
             });
-            
-            // Update character HP in memory for subsequent effects
-            character.hp = newHp;
           }
         }
       }

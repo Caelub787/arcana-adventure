@@ -32,6 +32,7 @@ Preferred communication style: Simple, everyday language.
         - **Effect Definitions**: Admin-created effects with name, image, description, timing, and optional damage (dice + type).
         - **Spell/Item Integration**: Effects can be linked to spells and weapons with trigger conditions (always, on success, on failure).
         - **Battle Map Display**: Effects icon on token top-right for GMs to apply effects, active effects shown on right side of tokens (max 4 visible with overflow indicator).
+        - **Automatic Effect Processing**: When combat advances (start of turn or new round), effects automatically trigger dice rolls, apply damage/healing to characters, create chat messages, and broadcast WebSocket notifications. Multiple effects on the same turn accumulate correctly.
         - **Token Management**: Delete button moved to left side with confirmation dialog for safety.
     - **Feat Tree System**: Comprehensive, interactive skill tree editor for character progression.
         - **Feat Nodes**: Draggable nodes with tier-based visual styling (Bronze to Legendary).
