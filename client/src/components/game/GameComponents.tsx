@@ -4815,9 +4815,11 @@ interface CampaignMenuProps {
   onAssignCharacter?: (char: any) => void;
   myPermissions?: { permissions: Record<string, string> };
   onOpenCampaignSpecies?: () => void;
+  isOwner?: boolean;
+  gmUserId?: string;
 }
 
-export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onInspectChar, onAddCharacterToken, onChangeMap, characters, members, onAddCharacter, onViewCharacter, onLevelUpAll, chatOpen = false, onChatOpenChange, onAssignCharacter, myPermissions, onOpenCampaignSpecies }: CampaignMenuProps) {
+export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onInspectChar, onAddCharacterToken, onChangeMap, characters, members, onAddCharacter, onViewCharacter, onLevelUpAll, chatOpen = false, onChatOpenChange, onAssignCharacter, myPermissions, onOpenCampaignSpecies, isOwner = false, gmUserId }: CampaignMenuProps) {
   const setChatOpen = onChatOpenChange || (() => {});
   const [addCharacterOpen, setAddCharacterOpen] = useState(false);
   const [showLevelUpDialog, setShowLevelUpDialog] = useState(false);
@@ -5128,6 +5130,30 @@ export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onIn
     if (confirm(`Are you sure you want to unban ${ban.username || 'this player'}?`)) {
       unbanMutation.mutate(ban.userId);
     }
+  };
+
+  // Role change mutation (owner only)
+  const setMemberRoleMutation = useMutation({
+    mutationFn: ({ memberId, newRole }: { memberId: string; newRole: 'player' | 'assistant_gm' }) => 
+      api.setMemberRole(campaignId!, memberId, newRole),
+    onSuccess: (_, { newRole }) => {
+      queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${campaignId}/members`] });
+      toast({
+        title: "Role Updated",
+        description: newRole === 'assistant_gm' ? "Player promoted to Assistant GM" : "Demoted to Player",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to change role",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleRoleChange = (member: any, newRole: 'player' | 'assistant_gm') => {
+    setMemberRoleMutation.mutate({ memberId: member.id, newRole });
   };
 
   // Delete character mutation
@@ -5445,10 +5471,29 @@ export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onIn
                           </Avatar>
                           <div>
                             <div className="text-amber-500 font-medium" data-testid={`text-username-${member.id}`}>@{member.username || 'Unknown'}</div>
-                            <div className="text-xs text-stone-500">{member.role === 'gm' ? 'GM' : 'Player'}</div>
+                            {/* Role display - Owner can change non-owner roles */}
+                            {isOwner && member.userId !== gmUserId ? (
+                              <Select
+                                value={member.role === 'assistant_gm' ? 'assistant_gm' : 'player'}
+                                onValueChange={(value: 'player' | 'assistant_gm') => handleRoleChange(member, value)}
+                                disabled={setMemberRoleMutation.isPending}
+                              >
+                                <SelectTrigger className="h-6 w-[120px] text-xs bg-stone-900 border-stone-700 px-2" data-testid={`select-role-${member.id}`}>
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent className="bg-stone-900 border-stone-700">
+                                  <SelectItem value="player" className="text-xs">Player</SelectItem>
+                                  <SelectItem value="assistant_gm" className="text-xs">Assistant GM</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            ) : (
+                              <div className="text-xs text-stone-500">
+                                {member.role === 'gm' ? 'GM' : member.role === 'assistant_gm' ? 'Assistant GM' : 'Player'}
+                              </div>
+                            )}
                           </div>
                         </div>
-                        {role === 'gm' && member.role !== 'gm' && campaignId && (
+                        {role === 'gm' && member.userId !== gmUserId && campaignId && (
                           <div className="flex items-center gap-1">
                             <TooltipProvider>
                               <Tooltip>

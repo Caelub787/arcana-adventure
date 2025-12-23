@@ -746,6 +746,13 @@ class ApiClient {
   async getCampaignBans(campaignId: string): Promise<CampaignBan[]> {
     return this.request(`/campaigns/${campaignId}/bans`);
   }
+
+  async setMemberRole(campaignId: string, memberId: string, role: 'player' | 'assistant_gm'): Promise<CampaignMember> {
+    return this.request(`/campaigns/${campaignId}/members/${memberId}/role`, {
+      method: 'PATCH',
+      body: JSON.stringify({ role }),
+    });
+  }
   
   // Chat
   async getChatMessages(campaignId: string): Promise<ChatMessage[]> {

@@ -2116,6 +2116,8 @@ export default function Campaign() {
             onAssignCharacter={handleAssignCharacter}
             myPermissions={myPermissions}
             onOpenCampaignSpecies={() => setCampaignSpeciesOpen(true)}
+            isOwner={!!(campaign && typeof campaign === 'object' && 'gmUserId' in campaign && (campaign as any).gmUserId === user?.id)}
+            gmUserId={(campaign && typeof campaign === 'object' && 'gmUserId' in campaign ? (campaign as any).gmUserId as string : undefined)}
           />
           
           {/* Scenes Button (GM Only) - Icon only, directly under Settings */}
