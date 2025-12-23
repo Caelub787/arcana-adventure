@@ -5157,8 +5157,8 @@ function SpellEffectsSection({ spellId }: { spellId: string }) {
               <SelectItem value="failure">On Failure</SelectItem>
             </SelectContent>
           </Select>
-          <Button size="sm" disabled={!selectedEffectId} onClick={() => addMutation.mutate()}>
-            Add
+          <Button size="sm" disabled={!selectedEffectId || addMutation.isPending} onClick={() => addMutation.mutate()}>
+            {addMutation.isPending ? '...' : 'Add'}
           </Button>
         </div>
       )}
@@ -5235,8 +5235,8 @@ function ItemEffectsSection({ itemId }: { itemId: string }) {
               <SelectItem value="failure">On Failure</SelectItem>
             </SelectContent>
           </Select>
-          <Button size="sm" disabled={!selectedEffectId} onClick={() => addMutation.mutate()}>
-            Add
+          <Button size="sm" disabled={!selectedEffectId || addMutation.isPending} onClick={() => addMutation.mutate()}>
+            {addMutation.isPending ? '...' : 'Add'}
           </Button>
         </div>
       )}

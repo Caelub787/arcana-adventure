@@ -21,11 +21,11 @@ import {
   Users, User, Plus, Minus, LogOut, Menu, ChevronRight, ChevronLeft, ChevronDown, ChevronUp,
   Heart, Zap, Backpack, Sparkles, Dice5, MessageSquare, RefreshCw, X, Trash2, Package, FolderOpen, Folder, FolderPlus, GripVertical, Lock, Unlock, Camera,
   BarChart3, Grid3X3, ScrollText, Upload, Image as ImageIcon, Layers, Search, TrendingUp, UserMinus, Ban,
-  MousePointer, Target, UserCheck, Swords, ArrowRight, ArrowLeft, Eye, EyeOff, Check, Moon, Coffee, AlertTriangle, GitBranch, Star, BookOpen, Pencil, Dna, Type, Library, Filter, MoreVertical
+  MousePointer, Target, UserCheck, Swords, ArrowRight, ArrowLeft, Eye, EyeOff, Check, Moon, Coffee, AlertTriangle, GitBranch, Star, BookOpen, Pencil, Dna, Type, Library, Filter, MoreVertical, Flame
 } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useForm } from "react-hook-form";
-import { type Scene, type Hotbar, type SystemSpecies, type FeatTreeWithData, type Feat, type FeatConnection, type CharacterFeat, type SystemSkill, type CharacterCustomSkill, api, gameWs } from "@/lib/api";
+import { type Scene, type Hotbar, type SystemSpecies, type FeatTreeWithData, type Feat, type FeatConnection, type CharacterFeat, type SystemSkill, type CharacterCustomSkill, type TokenEffect, type TokenActiveEffect, api, gameWs } from "@/lib/api";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -270,9 +270,13 @@ interface BattleMapProps {
   onAoeClick?: (x: number, y: number) => void;
   otherPlayersAoe?: Map<string, OtherPlayerAoe>;
   myPermissions?: { permissions?: Record<string, string> };
+  tokenActiveEffects?: Record<string, TokenActiveEffect[]>;
+  allTokenEffects?: TokenEffect[];
+  onApplyEffect?: (tokenId: string, effectId: string) => void;
+  onRemoveEffect?: (activeEffectId: string) => void;
 }
 
-export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClick, onDeleteToken, role, gridSize, backgroundImage, scene, onViewChange, characters = [], selectionMode = 'select', targetedTokenId, selectedTokenId, aoeTargetState, onAoeMouseMove, onAoeClick, otherPlayersAoe, myPermissions }: BattleMapProps) {
+export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClick, onDeleteToken, role, gridSize, backgroundImage, scene, onViewChange, characters = [], selectionMode = 'select', targetedTokenId, selectedTokenId, aoeTargetState, onAoeMouseMove, onAoeClick, otherPlayersAoe, myPermissions, tokenActiveEffects, allTokenEffects, onApplyEffect, onRemoveEffect }: BattleMapProps) {
   // Use refs for pan/zoom to avoid re-renders during interaction
   const panRef = useRef({ x: 0, y: 0 });
   const zoomRef = useRef(1);
@@ -1257,6 +1261,44 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                 </button>
               )}
               
+              {/* Effects Icon - GM only, shows popup to apply effects */}
+              {role === 'gm' && allTokenEffects && allTokenEffects.length > 0 && (
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <button
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onClick={(e) => e.stopPropagation()}
+                      className="absolute -top-2 -right-2 w-6 h-6 bg-violet-600 hover:bg-violet-700 rounded-full flex items-center justify-center shadow-lg border border-violet-400 z-30 pointer-events-auto"
+                      data-testid={`button-effects-${token.id}`}
+                    >
+                      <Flame className="w-3 h-3 text-white" />
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-48 bg-stone-900 border-stone-700 p-2">
+                    <div className="text-xs text-stone-400 mb-2">Apply Effect</div>
+                    <div className="space-y-1">
+                      {allTokenEffects.map(effect => (
+                        <button
+                          key={effect.id}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onApplyEffect?.(token.id, effect.id);
+                          }}
+                          className="w-full flex items-center gap-2 p-1.5 rounded hover:bg-stone-800 text-left"
+                        >
+                          {effect.imageUrl ? (
+                            <img src={effect.imageUrl} className="w-4 h-4 rounded" />
+                          ) : (
+                            <Flame className="w-4 h-4 text-violet-400" />
+                          )}
+                          <span className="text-sm text-stone-200 truncate">{effect.name}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </PopoverContent>
+                </Popover>
+              )}
+              
               {/* Nametag - displays character/token name at bottom of token, above HP bar */}
               {/* Only show if: nametags enabled AND (GM or player has view/edit permission) */}
               {/* Uses nickname if set, otherwise full name. Long names wrap to multiple lines */}
@@ -1287,6 +1329,58 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                     }`}
                     style={{ width: `${Math.max(0, Math.min(100, hpPercent))}%` }}
                   />
+                </div>
+              )}
+              
+              {/* Active Effects Display - Show on right side of token */}
+              {tokenActiveEffects && tokenActiveEffects[token.id] && tokenActiveEffects[token.id].length > 0 && (
+                <div className="absolute -right-1 top-1/2 -translate-y-1/2 flex flex-col gap-0.5 z-20">
+                  {tokenActiveEffects[token.id].slice(0, 4).map((ae) => (
+                    <Popover key={ae.id}>
+                      <PopoverTrigger asChild>
+                        <button
+                          onPointerDown={(e) => e.stopPropagation()}
+                          onClick={(e) => e.stopPropagation()}
+                          className="w-4 h-4 rounded-full bg-stone-800 border border-violet-500 shadow-sm flex items-center justify-center overflow-hidden"
+                          title={ae.effect.name}
+                        >
+                          {ae.effect.imageUrl ? (
+                            <img src={ae.effect.imageUrl} className="w-full h-full object-cover" />
+                          ) : (
+                            <Flame className="w-2.5 h-2.5 text-violet-400" />
+                          )}
+                        </button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-40 bg-stone-900 border-stone-700 p-2">
+                        <div className="flex items-center gap-2 mb-1">
+                          {ae.effect.imageUrl && <img src={ae.effect.imageUrl} className="w-6 h-6 rounded" />}
+                          <span className="font-medium text-sm text-stone-200">{ae.effect.name}</span>
+                        </div>
+                        {ae.effect.description && (
+                          <p className="text-xs text-stone-400 mb-2">{ae.effect.description}</p>
+                        )}
+                        {ae.effect.causesDamage && (
+                          <p className="text-xs text-red-400">{ae.effect.diceAmount} {ae.effect.damageType} damage</p>
+                        )}
+                        {role === 'gm' && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onRemoveEffect?.(ae.id);
+                            }}
+                            className="mt-2 w-full text-xs text-red-400 hover:text-red-300 border border-stone-700 rounded px-2 py-1"
+                          >
+                            Remove Effect
+                          </button>
+                        )}
+                      </PopoverContent>
+                    </Popover>
+                  ))}
+                  {tokenActiveEffects[token.id].length > 4 && (
+                    <div className="w-4 h-4 rounded-full bg-stone-700 border border-stone-600 text-[8px] text-stone-300 flex items-center justify-center">
+                      +{tokenActiveEffects[token.id].length - 4}
+                    </div>
+                  )}
                 </div>
               )}
               

@@ -19,7 +19,7 @@ import battleMapImage2 from "@assets/generated_images/dark_fantasy_landscape_wit
 import warriorToken from "@assets/generated_images/top_down_warrior_token.png";
 import goblinToken from "@assets/generated_images/top_down_goblin_token.png";
 import { useAuth } from "@/lib/AuthContext";
-import { api, gameWs, type Scene, type CampaignSpecies, type FeatTree, type CharacterFolder, type SceneFolder } from "@/lib/api";
+import { api, gameWs, type Scene, type CampaignSpecies, type FeatTree, type CharacterFolder, type SceneFolder, type TokenEffect, type TokenActiveEffect } from "@/lib/api";
 import { Textarea } from "@/components/ui/textarea";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -957,6 +957,34 @@ export default function Campaign() {
     enabled: role === 'gm' && speciesFormOpen,
   });
 
+  // Token effects queries
+  const tokenEffectsQuery = useQuery({
+    queryKey: ['token-effects'],
+    queryFn: () => api.getTokenEffects(),
+  });
+
+  const tokenActiveEffectsQuery = useQuery({
+    queryKey: ['token-active-effects', activeScene?.id, tokens.map(t => t.id).join(',')],
+    queryFn: async () => {
+      if (!tokens.length) return {};
+      const results: Record<string, TokenActiveEffect[]> = {};
+      await Promise.all(
+        tokens.map(async (token) => {
+          try {
+            const effects = await api.getTokenActiveEffects(token.id);
+            if (effects.length > 0) {
+              results[token.id] = effects;
+            }
+          } catch (e) {
+            // Token might not have any effects, ignore errors
+          }
+        })
+      );
+      return results;
+    },
+    enabled: tokens.length > 0,
+  });
+
   // Campaign species mutations
   const createCampaignSpeciesMutation = useMutation({
     mutationFn: (data: Partial<CampaignSpecies>) => api.createCampaignSpecies(effectiveCampaignId!, data),
@@ -1073,6 +1101,30 @@ export default function Campaign() {
     onError: (error: any) => {
       toast({ title: "Error", description: error.message || "Failed to update scene", variant: "destructive" });
     },
+  });
+
+  // Token effect mutations
+  const applyEffectMutation = useMutation({
+    mutationFn: ({ tokenId, effectId }: { tokenId: string; effectId: string }) => 
+      api.applyTokenEffect(tokenId, effectId, 'manual'),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['token-active-effects'] });
+      toast({ title: 'Effect applied' });
+    },
+    onError: () => {
+      toast({ title: 'Failed to apply effect', variant: 'destructive' });
+    }
+  });
+
+  const removeEffectMutation = useMutation({
+    mutationFn: (activeEffectId: string) => api.removeTokenActiveEffect(activeEffectId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['token-active-effects'] });
+      toast({ title: 'Effect removed' });
+    },
+    onError: () => {
+      toast({ title: 'Failed to remove effect', variant: 'destructive' });
+    }
   });
 
   // Create scene mutation
@@ -1615,6 +1667,14 @@ export default function Campaign() {
     // Send to WebSocket only - it handles both DB save and broadcast to all clients
     // This is faster than using REST API which adds network round-trip delay
     gameWs.sendTokenMove(id, x, y);
+  };
+
+  const handleApplyEffect = (tokenId: string, effectId: string) => {
+    applyEffectMutation.mutate({ tokenId, effectId });
+  };
+
+  const handleRemoveEffect = (activeEffectId: string) => {
+    removeEffectMutation.mutate(activeEffectId);
   };
 
   const handleTokenClick = (token: any) => {
@@ -2723,6 +2783,10 @@ export default function Campaign() {
              onAoeClick={handleAoeClick}
              otherPlayersAoe={otherPlayersAoe}
              myPermissions={myPermissions}
+             tokenActiveEffects={tokenActiveEffectsQuery.data}
+             allTokenEffects={tokenEffectsQuery.data}
+             onApplyEffect={handleApplyEffect}
+             onRemoveEffect={handleRemoveEffect}
            />
            
            {/* Battlemap Dice Overlay for 3D dice rolling */}

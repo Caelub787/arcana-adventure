@@ -28,6 +28,11 @@ Preferred communication style: Simple, everyday language.
     - **Roll Notification System**: Visual, animated notifications for all server-authoritative dice rolls integrated into chat.
     - **Targeting System**: Token targeting with range validation, hit detection (HIT!/MISS!/Crit Success!/Crit Failure!), and GM access to character hotbars.
     - **Armor Damage Reduction System**: Configurable armor items with damage reduction properties by type (Sharp/Blunt/Piercing/Flame/Frost/Storm/Tide/Stone/Flux/Light/Dark/Sound) and slot.
+    - **Token Effects System**: Combat status effects (poison, burning, stun, etc.) with admin-defined effects, timing configuration (start of round vs start of turn), and optional damage settings.
+        - **Effect Definitions**: Admin-created effects with name, image, description, timing, and optional damage (dice + type).
+        - **Spell/Item Integration**: Effects can be linked to spells and weapons with trigger conditions (always, on success, on failure).
+        - **Battle Map Display**: Effects icon on token top-right for GMs to apply effects, active effects shown on right side of tokens (max 4 visible with overflow indicator).
+        - **Token Management**: Delete button moved to left side with confirmation dialog for safety.
     - **Feat Tree System**: Comprehensive, interactive skill tree editor for character progression.
         - **Feat Nodes**: Draggable nodes with tier-based visual styling (Bronze to Legendary).
         - **Prerequisites**: Curved SVG connection lines, requiring at least one prerequisite to be unlocked.
