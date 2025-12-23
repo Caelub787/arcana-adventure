@@ -264,6 +264,7 @@ export const tokens = pgTable("tokens", {
   x: real("x").notNull(),
   y: real("y").notNull(),
   image: text("image").notNull(),
+  isInvisible: boolean("is_invisible").default(false).notNull(), // GM sees 40% opacity, non-edit users see nothing
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
