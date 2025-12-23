@@ -14093,18 +14093,18 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
 
       {/* Feat Tree Viewer Dialog */}
       <Dialog open={showFeatTreeViewer} onOpenChange={setShowFeatTreeViewer}>
-        <DialogContent className="sm:max-w-[600px] max-h-[80vh] bg-stone-900 border-stone-700 overflow-hidden flex flex-col">
+        <DialogContent className="w-[95vw] max-w-[95vw] h-[90vh] max-h-[90vh] sm:w-[90vw] sm:max-w-[90vw] bg-stone-900 border-stone-700 overflow-hidden flex flex-col p-3 sm:p-6">
           <DialogHeader className="shrink-0">
-            <DialogTitle className="text-purple-400 flex items-center gap-2">
-              <GitBranch className="h-5 w-5" />
+            <DialogTitle className="text-purple-400 flex items-center gap-2 text-base sm:text-lg">
+              <GitBranch className="h-4 w-4 sm:h-5 sm:w-5" />
               {featTreeData?.tree?.name || 'Feat Tree'}
             </DialogTitle>
             {featTreeData?.tree?.description && (
-              <DialogDescription>{featTreeData.tree.description}</DialogDescription>
+              <DialogDescription className="text-xs sm:text-sm">{featTreeData.tree.description}</DialogDescription>
             )}
           </DialogHeader>
           
-          <div className="flex-1 min-h-[400px] overflow-auto">
+          <div className="flex-1 min-h-0 overflow-hidden">
             {!featTreeData ? (
               <div className="text-center py-12 text-stone-400">
                 <GitBranch className="h-12 w-12 mx-auto mb-3 opacity-50" />
