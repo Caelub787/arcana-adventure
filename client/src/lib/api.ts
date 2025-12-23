@@ -1617,6 +1617,25 @@ class ApiClient {
   async clearTokenActiveEffects(tokenId: string): Promise<void> {
     return this.request(`/tokens/${tokenId}/active-effects`, { method: 'DELETE' });
   }
+
+  async processEffectTriggers(sceneId: string, characterId: string, timing: 'start_of_turn' | 'start_of_round', isNewRound?: boolean): Promise<{
+    processed: Array<{
+      effectId: string;
+      effectName: string;
+      rolls: number[];
+      bonus: number;
+      total: number;
+      damageType: string;
+      isHealing: boolean;
+      characterName: string;
+      newHp: number;
+    }>;
+  }> {
+    return this.request(`/scenes/${sceneId}/effect-triggers`, {
+      method: 'POST',
+      body: JSON.stringify({ characterId, timing, isNewRound }),
+    });
+  }
 }
 
 export interface SearchableEntity {

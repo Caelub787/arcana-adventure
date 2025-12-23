@@ -4456,16 +4456,38 @@ export function InitiativeTracker({ open, onOpenChange, sceneId, campaignId, isG
     return char?.portrait;
   };
 
-  const handleStartCombat = () => {
+  const handleStartCombat = async () => {
     if (sortedEntries.length > 0) {
+      const firstCharacterId = sortedEntries[0].characterId;
+      
       combatMutation.mutate({ 
         inCombat: true, 
-        currentTurnCharacterId: sortedEntries[0].characterId 
+        currentTurnCharacterId: firstCharacterId 
       });
       toast({
         title: "Combat Started",
-        description: `${getCharacterName(sortedEntries[0].characterId)}'s turn!`,
+        description: `${getCharacterName(firstCharacterId)}'s turn!`,
       });
+      
+      // Process effect triggers for the first character (start of round + start of turn)
+      if (sceneId && firstCharacterId) {
+        try {
+          const result = await api.processEffectTriggers(sceneId, firstCharacterId, 'start_of_turn', true);
+          
+          if (result.processed && result.processed.length > 0) {
+            for (const effect of result.processed) {
+              toast({
+                title: effect.effectName,
+                description: `${effect.characterName} ${effect.isHealing ? 'healed' : 'took'} ${effect.total} ${effect.damageType || ''} damage`,
+                variant: effect.isHealing ? 'default' : 'destructive',
+              });
+            }
+            queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${campaignId}/characters`] });
+          }
+        } catch (err) {
+          console.error('Failed to process effect triggers:', err);
+        }
+      }
     }
   };
 
@@ -4477,15 +4499,42 @@ export function InitiativeTracker({ open, onOpenChange, sceneId, campaignId, isG
     });
   };
 
-  const handleNextTurn = () => {
+  const handleNextTurn = async () => {
     const currentIndex = sortedEntries.findIndex(e => e.characterId === currentTurnCharacterId);
     const nextIndex = (currentIndex + 1) % sortedEntries.length;
     const nextCharacterId = sortedEntries[nextIndex].characterId;
+    const isNewRound = nextIndex === 0;
+    
+    // Update combat state first
     combatMutation.mutate({ inCombat: true, currentTurnCharacterId: nextCharacterId });
+    
     toast({
-      title: "Next Turn",
+      title: isNewRound ? "New Round" : "Next Turn",
       description: `${getCharacterName(nextCharacterId)}'s turn!`,
     });
+    
+    // Process effect triggers for the character whose turn is starting
+    if (sceneId && nextCharacterId) {
+      try {
+        const result = await api.processEffectTriggers(sceneId, nextCharacterId, 'start_of_turn', isNewRound);
+        
+        // Show notifications for each processed effect
+        if (result.processed && result.processed.length > 0) {
+          for (const effect of result.processed) {
+            toast({
+              title: effect.effectName,
+              description: `${effect.characterName} ${effect.isHealing ? 'healed' : 'took'} ${effect.total} ${effect.damageType || ''} damage (${effect.rolls.join(' + ')}${effect.bonus > 0 ? ` + ${effect.bonus}` : ''})`,
+              variant: effect.isHealing ? 'default' : 'destructive',
+            });
+          }
+          
+          // Refresh character data to show updated HP
+          queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${campaignId}/characters`] });
+        }
+      } catch (err) {
+        console.error('Failed to process effect triggers:', err);
+      }
+    }
   };
 
   const handleSaveEdit = (id: string) => {

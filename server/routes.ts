@@ -4748,6 +4748,149 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Process effect triggers for start of turn/round
+  // This endpoint is called when a character's turn starts to process their active token effects
+  app.post("/api/scenes/:sceneId/effect-triggers", requireAuth, async (req, res) => {
+    try {
+      const { characterId, timing, isNewRound } = req.body;
+      // timing: 'start_of_turn' | 'start_of_round'
+      
+      const scene = await storage.getScene(req.params.sceneId);
+      if (!scene) {
+        return res.status(404).json({ error: "Scene not found" });
+      }
+      
+      const campaign = await storage.getCampaign(scene.campaignId);
+      if (!campaign || campaign.gmUserId !== req.session.userId) {
+        return res.status(403).json({ error: "Only GMs can trigger effects" });
+      }
+      
+      const user = await storage.getUser(req.session.userId!);
+      if (!user) {
+        return res.status(401).json({ error: "User not found" });
+      }
+      
+      // Get all tokens in this campaign that belong to the character
+      const allTokens = await storage.getCampaignTokens(scene.campaignId);
+      const characterTokens = allTokens.filter((t: { characterId?: string | null }) => t.characterId === characterId);
+      
+      if (characterTokens.length === 0) {
+        return res.json({ processed: [], message: "No tokens found for character" });
+      }
+      
+      const character = await storage.getCharacter(characterId);
+      if (!character) {
+        return res.status(404).json({ error: "Character not found" });
+      }
+      
+      const results: any[] = [];
+      
+      // Process each token's active effects
+      for (const token of characterTokens) {
+        const activeEffects = await storage.getTokenActiveEffects(token.id);
+        
+        for (const activeEffect of activeEffects) {
+          const effect = activeEffect.effect;
+          
+          // Check if this effect should trigger based on timing
+          const shouldTrigger = 
+            (timing === 'start_of_turn' && effect.timing === 'start_of_turn') ||
+            (timing === 'start_of_round' && effect.timing === 'start_of_round') ||
+            (isNewRound && effect.timing === 'start_of_round');
+          
+          if (!shouldTrigger) continue;
+          
+          // If effect causes damage, roll dice and apply
+          if (effect.causesDamage && effect.diceAmount) {
+            // Parse dice notation (e.g., "1d6", "2d4+2")
+            const diceMatch = effect.diceAmount.match(/^(\d+)d(\d+)(?:\+(\d+))?$/i);
+            if (!diceMatch) continue;
+            
+            const numDice = parseInt(diceMatch[1], 10);
+            const dieSize = parseInt(diceMatch[2], 10);
+            const bonus = diceMatch[3] ? parseInt(diceMatch[3], 10) : 0;
+            
+            // Roll the dice
+            let total = bonus;
+            const rolls: number[] = [];
+            for (let i = 0; i < numDice; i++) {
+              const roll = crypto.randomInt(1, dieSize + 1);
+              rolls.push(roll);
+              total += roll;
+            }
+            
+            // Apply damage to character
+            const isHealing = effect.damageType === 'Health';
+            const newHp = isHealing 
+              ? Math.min(character.maxHp, character.hp + total)
+              : Math.max(0, character.hp - total);
+            
+            await storage.updateCharacter(characterId, { hp: newHp });
+            
+            // Create chat message
+            const chatMessage = await storage.createChatMessage({
+              campaignId: scene.campaignId,
+              userId: req.session.userId!,
+              sender: 'System',
+              text: `**${effect.name}** ${isHealing ? 'heals' : 'damages'} ${character.name} for **${total}** ${effect.damageType || ''} (${rolls.join(' + ')}${bonus > 0 ? ` + ${bonus}` : ''})`,
+              type: 'system'
+            });
+            
+            // Broadcast HP update
+            broadcastToCampaign(scene.campaignId, {
+              type: "character_hp_update",
+              characterId,
+              hp: newHp,
+              previousHp: character.hp,
+              damage: isHealing ? -total : total,
+              isHealing,
+              attackerName: effect.name
+            });
+            
+            // Broadcast chat message
+            broadcastToCampaign(scene.campaignId, {
+              type: "chat_message",
+              message: chatMessage
+            });
+            
+            // Broadcast effect roll notification
+            broadcastToCampaign(scene.campaignId, {
+              type: "effect_roll",
+              effectName: effect.name,
+              effectImage: effect.imageUrl,
+              characterName: character.name,
+              rolls,
+              bonus,
+              total,
+              damageType: effect.damageType,
+              isHealing
+            });
+            
+            results.push({
+              effectId: effect.id,
+              effectName: effect.name,
+              rolls,
+              bonus,
+              total,
+              damageType: effect.damageType,
+              isHealing,
+              characterName: character.name,
+              newHp
+            });
+            
+            // Update character HP in memory for subsequent effects
+            character.hp = newHp;
+          }
+        }
+      }
+      
+      res.json({ processed: results });
+    } catch (e) {
+      console.error("Failed to process effect triggers:", e);
+      res.status(500).json({ error: "Failed to process effect triggers" });
+    }
+  });
+
   // Clear all initiative entries for a scene
   app.delete("/api/scenes/:sceneId/initiative", requireAuth, async (req, res) => {
     try {
