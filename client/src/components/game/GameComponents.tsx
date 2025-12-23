@@ -1012,6 +1012,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
 
       {/* Draggable World Container - Large scrollable space beyond image bounds */}
       {/* Using custom pointer handlers instead of Framer Motion drag for stability */}
+      {/* GPU-accelerated with will-change and contain for smooth pan/zoom performance */}
       <motion.div 
         className={`absolute ${aoeTargetState?.active ? 'cursor-crosshair' : (isMapLocked || draggingToken ? 'cursor-default' : 'cursor-grab active:cursor-grabbing')} touch-none`}
         style={{ 
@@ -1022,7 +1023,10 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
           scale: motionZoom,
           left: '-9000px',
           top: '-9000px',
-          transformOrigin: "0 0"
+          transformOrigin: "0 0",
+          willChange: 'transform',
+          backfaceVisibility: 'hidden',
+          contain: 'layout style paint'
         }}
         onPointerDown={handleMapPointerDown}
         onPointerMove={handleMapPointerMove}
@@ -1077,14 +1081,21 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
         )}
 
         {/* Map Background - Positioned in the space, displays full image at natural aspect ratio */}
+        {/* GPU-accelerated with will-change and translateZ for smooth pan/zoom performance */}
         <img 
           src={scene?.backgroundImage || backgroundImage || battleMapImage1}
           alt="Battle map background"
-          className="absolute opacity-80 transition-all duration-500 max-w-none"
+          className="absolute opacity-80 max-w-none"
+          loading="lazy"
+          decoding="async"
           style={{ 
             left: '9000px',
             top: '9000px',
-            transformOrigin: 'top left'
+            transformOrigin: 'top left',
+            willChange: 'transform',
+            transform: 'translateZ(0)',
+            imageRendering: 'auto',
+            backfaceVisibility: 'hidden'
           }}
           draggable={false}
         />
