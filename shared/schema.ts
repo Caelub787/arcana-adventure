@@ -925,6 +925,7 @@ export const tokenEffects = pgTable("token_effects", {
   diceAmount: text("dice_amount"), // Dice notation e.g. "1d6", "2d4"
   hasDuration: boolean("has_duration").default(false).notNull(), // Whether this effect expires after a set time
   defaultDuration: integer("default_duration"), // Default number of rounds/turns until effect expires
+  durationType: text("duration_type").default("turns"), // "turns" (player's turn) or "rounds" (full combat round)
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

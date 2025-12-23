@@ -4936,8 +4936,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
           
           // Handle duration decrement and expiration
-          if (activeEffect.duration !== null && activeEffect.duration > 0) {
-            const newDuration = activeEffect.duration - 1;
+          // Duration only decrements based on durationType: 'turns' = on player's turn, 'rounds' = at start of round
+          const shouldDecrementDuration = activeEffect.duration !== null && activeEffect.duration > 0 && (
+            (effect.durationType === 'rounds' && isNewRound) ||
+            (effect.durationType !== 'rounds' && timing === 'start_of_turn')
+          );
+          
+          if (shouldDecrementDuration) {
+            const newDuration = activeEffect.duration! - 1;
             if (newDuration <= 0) {
               // Effect has expired - remove it
               await storage.removeTokenActiveEffect(activeEffect.id);

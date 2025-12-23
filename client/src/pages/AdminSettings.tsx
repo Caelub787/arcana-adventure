@@ -1944,6 +1944,7 @@ function TokenEffectFormDialog({ open, onOpenChange, onSave, initialData, isLoad
     diceAmount: string;
     hasDuration: boolean;
     defaultDuration: number;
+    durationType: string;
   }>({
     name: initialData?.name || '',
     imageUrl: initialData?.imageUrl || '',
@@ -1954,6 +1955,7 @@ function TokenEffectFormDialog({ open, onOpenChange, onSave, initialData, isLoad
     diceAmount: initialData?.diceAmount || '',
     hasDuration: initialData?.hasDuration || false,
     defaultDuration: initialData?.defaultDuration || 3,
+    durationType: initialData?.durationType || 'turns',
   });
 
   const [showImageBrowser, setShowImageBrowser] = useState(false);
@@ -1982,6 +1984,7 @@ function TokenEffectFormDialog({ open, onOpenChange, onSave, initialData, isLoad
         diceAmount: initialData.diceAmount || '',
         hasDuration: initialData.hasDuration || false,
         defaultDuration: initialData.defaultDuration || 3,
+        durationType: initialData.durationType || 'turns',
       });
     } else {
       setFormData({
@@ -1994,6 +1997,7 @@ function TokenEffectFormDialog({ open, onOpenChange, onSave, initialData, isLoad
         diceAmount: '',
         hasDuration: false,
         defaultDuration: 3,
+        durationType: 'turns',
       });
     }
   }, [initialData, open]);
@@ -2021,6 +2025,7 @@ function TokenEffectFormDialog({ open, onOpenChange, onSave, initialData, isLoad
       diceAmount: formData.causesDamage ? formData.diceAmount.trim() : null,
       hasDuration: formData.hasDuration,
       defaultDuration: formData.hasDuration ? formData.defaultDuration : null,
+      durationType: formData.hasDuration ? formData.durationType : null,
     });
   };
 
@@ -2188,19 +2193,40 @@ function TokenEffectFormDialog({ open, onOpenChange, onSave, initialData, isLoad
             </div>
 
             {formData.hasDuration && (
-              <div>
-                <Label className="text-stone-300">Duration (rounds/turns)</Label>
-                <Input
-                  type="number"
-                  min="1"
-                  value={formData.defaultDuration}
-                  onChange={(e) => setFormData({ ...formData, defaultDuration: parseInt(e.target.value) || 1 })}
-                  placeholder="Number of rounds/turns"
-                  className="bg-stone-800 border-stone-700 mt-1 w-32"
-                  data-testid="input-default-duration"
-                />
-                <p className="text-xs text-stone-500 mt-1">
-                  Effect will expire after this many {formData.timing === 'start_of_round' ? 'rounds' : 'turns'}
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label className="text-stone-300">Duration</Label>
+                    <Input
+                      type="number"
+                      min="1"
+                      value={formData.defaultDuration}
+                      onChange={(e) => setFormData({ ...formData, defaultDuration: parseInt(e.target.value) || 1 })}
+                      placeholder="Number"
+                      className="bg-stone-800 border-stone-700 mt-1"
+                      data-testid="input-default-duration"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-stone-300">Expires After</Label>
+                    <Select
+                      value={formData.durationType}
+                      onValueChange={(value) => setFormData({ ...formData, durationType: value })}
+                    >
+                      <SelectTrigger className="bg-stone-800 border-stone-700 mt-1" data-testid="select-duration-type">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="turns">Turns</SelectItem>
+                        <SelectItem value="rounds">Rounds</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <p className="text-xs text-stone-500">
+                  {formData.durationType === 'rounds' 
+                    ? 'Decreases at the start of each combat round (when initiative resets to first)'
+                    : 'Decreases at the start of the affected character\'s turn'}
                 </p>
               </div>
             )}

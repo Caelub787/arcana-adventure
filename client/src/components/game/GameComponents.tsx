@@ -1400,7 +1400,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                           <p className="text-xs text-red-400">{ae.effect.diceAmount} {ae.effect.damageType} damage</p>
                         )}
                         {ae.duration !== null && ae.duration > 0 && (
-                          <p className="text-xs text-amber-400 mt-1">{ae.duration} {ae.effect.timing === 'start_of_round' ? 'rounds' : 'turns'} remaining</p>
+                          <p className="text-xs text-amber-400 mt-1">{ae.duration} {ae.effect.durationType === 'rounds' ? 'rounds' : 'turns'} remaining</p>
                         )}
                         {role === 'gm' && (
                           <button
