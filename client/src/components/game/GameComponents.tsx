@@ -5161,6 +5161,17 @@ export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onIn
             </Button>
           )}
 
+          {/* Campaign Notes Button */}
+          <a href={`/notes?campaign=${campaignId}`} className="block">
+            <Button
+              variant="secondary"
+              className="w-full mb-4 bg-indigo-900/50 hover:bg-indigo-800/50 border border-indigo-700"
+              data-testid="button-campaign-notes"
+            >
+              <BookOpen className="mr-2 h-4 w-4" /> Campaign Notes
+            </Button>
+          </a>
+
           <Tabs defaultValue="players" className="w-full">
             <TabsList className="w-full grid grid-cols-2 bg-stone-900">
               <TabsTrigger value="players">Players</TabsTrigger>

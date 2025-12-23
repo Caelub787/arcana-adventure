@@ -248,17 +248,25 @@ export default function Notes() {
   const noteId = params.id;
   const isEditing = !!noteId;
 
+  const [campaignId, setCampaignId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const campaign = urlParams.get('campaign');
+    setCampaignId(campaign);
+  }, []);
+
   const { data: folders = [], isLoading: foldersLoading } = useQuery<NoteFolder[]>({
-    queryKey: ["/api/notes/folders"],
-    queryFn: () => api.getNoteFolders(),
+    queryKey: ["/api/notes/folders", campaignId],
+    queryFn: () => api.getNoteFolders(campaignId ?? undefined),
     enabled: !!user,
   });
 
   const { data: notes = [], isLoading: notesLoading } = useQuery<Note[]>({
-    queryKey: ["/api/notes", selectedFolderId, showSharedNotes],
+    queryKey: ["/api/notes", selectedFolderId, showSharedNotes, campaignId],
     queryFn: () => {
       if (showSharedNotes) return api.getSharedNotes();
-      return api.getNotes(selectedFolderId ?? undefined);
+      return api.getNotes(selectedFolderId ?? undefined, campaignId ?? undefined);
     },
     enabled: !!user,
   });
@@ -501,6 +509,7 @@ export default function Notes() {
         name: folderName,
         color: folderColor,
         parentId: folderParentId,
+        campaignId: campaignId ?? undefined,
       });
     }
   };
@@ -511,6 +520,7 @@ export default function Notes() {
       content: "",
       folderId: selectedFolderId,
       type: "markdown",
+      campaignId: campaignId ?? undefined,
     });
   };
 
@@ -1009,9 +1019,25 @@ export default function Notes() {
               <ArrowLeft className="h-5 w-5" />
             </Button>
             <h1 className="font-display text-2xl font-bold text-amber-500">
-              My Notes
+              {campaignId ? "Campaign Notes" : "My Notes"}
             </h1>
           </header>
+
+          {campaignId && (
+            <div className="flex items-center gap-2 py-3 px-4 border-b border-stone-800 bg-stone-950/40">
+              <Badge className="bg-indigo-900/50 text-indigo-300">Campaign Notes</Badge>
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={() => window.history.back()}
+                className="text-stone-400"
+                data-testid="button-back-to-campaign"
+              >
+                <ArrowLeft className="h-4 w-4 mr-1" />
+                Back to Campaign
+              </Button>
+            </div>
+          )}
 
           {isEditing ? renderNoteEditor() : renderNoteList()}
         </div>
