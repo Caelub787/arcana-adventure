@@ -14457,9 +14457,9 @@ function FeatTreeViewerGrid({
   };
 
   return (
-    <div className="flex flex-col">
+    <div className="flex flex-col h-full min-h-0 relative">
       {/* Points display */}
-      <div className="flex items-center justify-between mb-3 p-2 bg-purple-900/30 rounded-lg border border-purple-700/50">
+      <div className="flex items-center justify-between mb-2 p-2 bg-purple-900/30 rounded-lg border border-purple-700/50 shrink-0">
         <div className="flex items-center gap-2">
           <Star className="h-4 w-4 text-purple-400" />
           <span className="text-sm text-purple-300">Feat Points</span>
@@ -14470,11 +14470,11 @@ function FeatTreeViewerGrid({
         </div>
       </div>
       
-      {/* Pan/zoom canvas */}
+      {/* Pan/zoom canvas - fills available space */}
       <div 
         ref={containerRef}
-        className="relative overflow-hidden bg-gradient-to-br from-stone-900 via-purple-950/20 to-stone-900 rounded-lg border border-stone-700 cursor-grab active:cursor-grabbing"
-        style={{ height: '300px', touchAction: 'none', userSelect: 'none', WebkitUserSelect: 'none' }}
+        className="relative overflow-hidden bg-gradient-to-br from-stone-900 via-purple-950/20 to-stone-900 rounded-lg border border-stone-700 cursor-grab active:cursor-grabbing flex-1 min-h-0"
+        style={{ touchAction: 'none', userSelect: 'none', WebkitUserSelect: 'none' }}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
@@ -14592,9 +14592,9 @@ function FeatTreeViewerGrid({
         </motion.div>
       </div>
       
-      {/* Feat Detail Panel */}
+      {/* Feat Detail Panel - Overlay at bottom */}
       {selectedFeat && (
-        <div className="mt-3 bg-gradient-to-br from-stone-800 to-stone-900 rounded-lg p-4 border border-stone-700">
+        <div className="absolute bottom-2 left-2 right-2 bg-gradient-to-br from-stone-800/95 to-stone-900/95 backdrop-blur-sm rounded-lg p-3 border border-stone-700 shadow-xl max-h-[40%] overflow-y-auto">
           <div className="flex items-start justify-between mb-3">
             <div>
               <h3 className="font-bold text-lg text-amber-500">{selectedFeat.name}</h3>
