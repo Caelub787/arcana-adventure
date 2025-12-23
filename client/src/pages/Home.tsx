@@ -3,7 +3,7 @@ import { motion } from "framer-motion";
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Play, Users, Settings, ScrollText, Plus, Heart, Loader2, Shield } from "lucide-react";
+import { Play, Users, BookOpen, ScrollText, Plus, Heart, Loader2, Shield } from "lucide-react";
 import bgImage from "@assets/home_background.webp";
 import { useAuth } from "@/lib/AuthContext";
 import { api } from "@/lib/api";
@@ -135,20 +135,22 @@ export default function Home() {
               </Card>
             </Link>
 
-            {/* Settings */}
-            <Card className="group cursor-pointer border-stone-800 bg-stone-950/60 backdrop-blur-sm transition-all hover:-translate-y-1 hover:border-purple-600/50 hover:bg-stone-900/80 hover:shadow-[0_0_30px_rgba(147,51,234,0.2)]">
-              <CardHeader>
-                <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-purple-900/30 text-purple-500 group-hover:bg-purple-600 group-hover:text-white transition-colors">
-                  <Settings className="h-6 w-6" />
-                </div>
-                <CardTitle className="font-display text-xl text-stone-200 group-hover:text-purple-400">Settings</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-stone-500 group-hover:text-stone-400">
-                  Configure audio, graphics, and account preferences.
-                </p>
-              </CardContent>
-            </Card>
+            {/* Notes */}
+            <Link href="/notes">
+              <Card className="group cursor-pointer border-stone-800 bg-stone-950/60 backdrop-blur-sm transition-all hover:-translate-y-1 hover:border-purple-600/50 hover:bg-stone-900/80 hover:shadow-[0_0_30px_rgba(147,51,234,0.2)]" data-testid="card-notes">
+                <CardHeader>
+                  <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-purple-900/30 text-purple-500 group-hover:bg-purple-600 group-hover:text-white transition-colors">
+                    <BookOpen className="h-6 w-6" />
+                  </div>
+                  <CardTitle className="font-display text-xl text-stone-200 group-hover:text-purple-400">Notes</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-sm text-stone-500 group-hover:text-stone-400">
+                    Create notes, link references, and share with friends.
+                  </p>
+                </CardContent>
+              </Card>
+            </Link>
 
             {/* Admin Settings - Only visible to admins */}
             {isAdmin && (

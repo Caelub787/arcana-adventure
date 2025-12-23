@@ -13,6 +13,7 @@ import SignUp from "@/pages/SignUp";
 import ForgotPassword from "@/pages/ForgotPassword";
 import ResetPassword from "@/pages/ResetPassword";
 import AdminSettings from "@/pages/AdminSettings";
+import Notes from "@/pages/Notes";
 import Join from "@/pages/Join";
 import { AuthProvider, useAuth } from "./lib/AuthContext";
 
@@ -56,6 +57,12 @@ function Router() {
       </Route>
       <Route path="/admin">
         {() => <ProtectedRoute component={AdminSettings} />}
+      </Route>
+      <Route path="/notes">
+        {() => <ProtectedRoute component={Notes} />}
+      </Route>
+      <Route path="/notes/:id">
+        {() => <ProtectedRoute component={Notes} />}
       </Route>
       <Route path="/join/:code">
         {() => <ProtectedRoute component={Join} />}
