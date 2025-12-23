@@ -64,7 +64,11 @@ Preferred communication style: Simple, everyday language.
 
 ### Authentication & Authorization
 - **Authentication**: `bcryptjs` for password hashing, session-based authentication using `express-session` with PostgreSQL storage.
-- **Authorization**: GM and Player roles with granular permissions and campaign management controls.
+- **Authorization**: Three-tier role system:
+    - **Owner (Primary GM)**: Full campaign control including role management
+    - **Assistant GM**: Elevated permissions via isGM() for most GM actions, but cannot kick/ban the owner or change roles
+    - **Player**: Standard player permissions
+  Role changes available via dropdown in campaign settings (owner-only).
 - **Security**: Hashed passwords, session cookies, CSRF protection, and PII sanitization.
 
 ## External Dependencies
