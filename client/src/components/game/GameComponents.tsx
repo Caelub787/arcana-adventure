@@ -15,6 +15,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Textarea } from "@/components/ui/textarea";
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { 
   Sword, Shield, Scroll, Map as MapIcon, Settings, 
   Users, User, Plus, Minus, LogOut, Menu, ChevronRight, ChevronLeft, ChevronDown, ChevronUp,
@@ -5185,13 +5186,18 @@ export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onIn
                     members.map((member: any) => (
                       <div 
                         key={member.id} 
-                        className="p-3 bg-stone-900 rounded border border-stone-800 flex justify-between items-center"
+                        className="p-3 bg-stone-800/50 rounded-lg flex justify-between items-center"
                         data-testid={`member-item-${member.id}`}
                       >
-                        <div className="flex items-center gap-3">
-                          <span className="text-2xl">{member.role === 'gm' ? '🧙‍♂️' : '🛡️'}</span>
+                        <div className="flex items-center gap-2">
+                          <Avatar className="h-8 w-8 border border-stone-700">
+                            <AvatarImage src={member.avatarUrl} alt={member.username || 'User'} />
+                            <AvatarFallback className="bg-stone-700 text-stone-300 text-xs">
+                              {(member.username || 'U').slice(0, 2).toUpperCase()}
+                            </AvatarFallback>
+                          </Avatar>
                           <div>
-                            <div className="font-bold text-stone-200">{member.username || 'Unknown'}</div>
+                            <div className="text-amber-500 font-medium" data-testid={`text-username-${member.id}`}>@{member.username || 'Unknown'}</div>
                             <div className="text-xs text-stone-500">{member.role === 'gm' ? 'GM' : 'Player'}</div>
                           </div>
                         </div>

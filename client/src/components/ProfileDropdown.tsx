@@ -5,7 +5,6 @@ import { api, type UserProfile } from "@/lib/api";
 import { useAuth } from "@/lib/AuthContext";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import {
@@ -34,7 +33,6 @@ export default function ProfileDropdown({ onLogout }: ProfileDropdownProps) {
   const queryClient = useQueryClient();
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [friendsPanelOpen, setFriendsPanelOpen] = useState(false);
-  const [name, setName] = useState("");
   const [bio, setBio] = useState("");
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [newAvatarBase64, setNewAvatarBase64] = useState<string | null>(null);
@@ -63,7 +61,6 @@ export default function ProfileDropdown({ onLogout }: ProfileDropdownProps) {
 
   const handleEditOpen = () => {
     if (profile) {
-      setName(profile.name || "");
       setBio(profile.bio || "");
       setAvatarPreview(profile.avatarUrl || null);
       setNewAvatarBase64(null);
@@ -86,8 +83,8 @@ export default function ProfileDropdown({ onLogout }: ProfileDropdownProps) {
 
   const handleSave = async () => {
     try {
-      if (name !== profile?.name || bio !== profile?.bio) {
-        await updateProfileMutation.mutateAsync({ name, bio });
+      if (bio !== profile?.bio) {
+        await updateProfileMutation.mutateAsync({ bio });
       }
       if (newAvatarBase64) {
         await updateAvatarMutation.mutateAsync(newAvatarBase64);
@@ -101,7 +98,7 @@ export default function ProfileDropdown({ onLogout }: ProfileDropdownProps) {
   const isSaving =
     updateProfileMutation.isPending || updateAvatarMutation.isPending;
 
-  const displayName = profile?.name || user?.username || "User";
+  const displayName = user?.username || "User";
   const avatarUrl = profile?.avatarUrl;
 
   return (
@@ -110,7 +107,7 @@ export default function ProfileDropdown({ onLogout }: ProfileDropdownProps) {
         <DropdownMenuTrigger asChild>
           <Button
             variant="ghost"
-            className="relative h-10 w-10 rounded-full p-0 hover:ring-2 hover:ring-amber-500/50 transition-all"
+            className="relative h-12 w-12 rounded-full p-0 flex items-center justify-center hover:ring-2 hover:ring-amber-500/50 transition-all"
             data-testid="button-profile-dropdown"
           >
             <Avatar className="h-10 w-10 border-2 border-stone-700">
@@ -133,13 +130,7 @@ export default function ProfileDropdown({ onLogout }: ProfileDropdownProps) {
                 className="text-sm font-medium text-amber-500"
                 data-testid="text-profile-name"
               >
-                {displayName}
-              </p>
-              <p
-                className="text-xs text-stone-500"
-                data-testid="text-profile-username"
-              >
-                @{user?.username || "unknown"}
+                @{user?.username || "User"}
               </p>
             </div>
           </DropdownMenuLabel>
@@ -187,7 +178,7 @@ export default function ProfileDropdown({ onLogout }: ProfileDropdownProps) {
                   <AvatarImage src={avatarPreview} alt="Avatar preview" />
                 ) : null}
                 <AvatarFallback className="bg-stone-800 text-amber-500 text-2xl">
-                  {name.charAt(0).toUpperCase() || "U"}
+                  {(user?.username || "U").charAt(0).toUpperCase()}
                 </AvatarFallback>
               </Avatar>
               <input
@@ -207,19 +198,6 @@ export default function ProfileDropdown({ onLogout }: ProfileDropdownProps) {
               >
                 Upload Avatar
               </Button>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="name" className="text-stone-400">
-                Display Name
-              </Label>
-              <Input
-                id="name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="border-stone-700 bg-stone-900 text-stone-200 focus:ring-amber-500"
-                placeholder="Enter your display name"
-                data-testid="input-profile-name"
-              />
             </div>
             <div className="space-y-2">
               <Label htmlFor="bio" className="text-stone-400">

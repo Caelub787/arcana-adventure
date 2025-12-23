@@ -225,6 +225,7 @@ export default function Notes() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [viewMode, setViewMode] = useState<"list" | "graph">("list");
+  const [noteMode, setNoteMode] = useState<"read" | "edit">("read");
 
   const [folderDialogOpen, setFolderDialogOpen] = useState(false);
   const [editingFolder, setEditingFolder] = useState<NoteFolder | null>(null);
@@ -303,8 +304,10 @@ export default function Notes() {
       setNoteContent(currentNote.content || "");
       if (currentNote.type === "canvas" && currentNote.canvasData) {
         setCanvasData(currentNote.canvasData as CanvasData);
+        setNoteMode("edit");
       } else {
         setCanvasData({ nodes: [], connections: [] });
+        setNoteMode("read");
       }
     }
   }, [currentNote]);
@@ -632,7 +635,7 @@ export default function Notes() {
       api.createNoteReference(noteId, {
         entityType: entity.type,
         entityId: entity.id,
-        displayName: entity.name,
+        label: entity.name,
       }).catch((err) => {
         console.error("Failed to save reference:", err);
       });
@@ -668,7 +671,7 @@ export default function Notes() {
       api.createNoteReference(noteId, {
         entityType: entity.type,
         entityId: entity.id,
-        displayName: entity.name,
+        label: entity.name,
       }).catch((err) => {
         console.error("Failed to save reference:", err);
       });
@@ -676,6 +679,30 @@ export default function Notes() {
   };
 
   const rootFolders = folders.filter((f) => !f.parentId);
+
+  const formatEntityReferences = (content: string): React.ReactNode[] => {
+    const regex = /\[\[([^:]+):([^\|]+)\|([^\]]+)\]\]/g;
+    const parts: React.ReactNode[] = [];
+    let lastIndex = 0;
+    let match;
+
+    while ((match = regex.exec(content)) !== null) {
+      if (match.index > lastIndex) {
+        parts.push(content.slice(lastIndex, match.index));
+      }
+      const displayName = match[3];
+      parts.push(
+        <span key={match.index} className="text-amber-500">[{displayName}]</span>
+      );
+      lastIndex = regex.lastIndex;
+    }
+
+    if (lastIndex < content.length) {
+      parts.push(content.slice(lastIndex));
+    }
+
+    return parts.length > 0 ? parts : [content];
+  };
 
   const sortedNotes = [...notes]
     .filter((n) => !n.isArchived)
@@ -892,9 +919,6 @@ export default function Notes() {
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </div>
-                <div className="text-xs text-stone-500 line-clamp-2 mb-3">
-                  <ReferenceInlineDisplay content={note.content?.substring(0, 150) || "No content"} />
-                </div>
                 <p className="text-xs text-stone-600">
                   {format(new Date(note.updatedAt), "MMM d, yyyy")}
                 </p>
@@ -923,7 +947,7 @@ export default function Notes() {
     </div>
   );
 
-  const renderNoteEditor = () => (
+  const renderNoteReadView = () => (
     <div className="flex-1 flex flex-col overflow-hidden">
       <div className="flex items-center justify-between p-4 border-b border-stone-800">
         <Button
@@ -933,6 +957,68 @@ export default function Notes() {
           data-testid="button-back-to-notes"
         >
           <ArrowLeft className="h-4 w-4 mr-2" /> Back
+        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setNoteMode("edit")}
+            className="text-amber-400 hover:text-amber-300"
+            data-testid="button-edit-note"
+          >
+            <Edit className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => noteId && openShareDialog(noteId)}
+            data-testid="button-share-note"
+          >
+            <Share2 className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              if (currentNote) {
+                setNoteToDelete(currentNote);
+                setDeleteNoteDialogOpen(true);
+              }
+            }}
+            className="text-red-400 hover:text-red-300"
+            data-testid="button-delete-note"
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
+      {noteLoading ? (
+        <div className="flex-1 flex items-center justify-center">
+          <Loader2 className="h-6 w-6 animate-spin text-stone-500" />
+        </div>
+      ) : (
+        <div className="flex-1 flex flex-col p-4 md:p-6 overflow-auto">
+          <h1 className="text-3xl font-display font-bold text-stone-100 mb-6" data-testid="text-note-read-title">
+            {currentNote?.title}
+          </h1>
+          <div className="flex-1 text-stone-300 whitespace-pre-wrap leading-relaxed" data-testid="text-note-read-content">
+            {formatEntityReferences(currentNote?.content || "")}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
+  const renderNoteEditor = () => (
+    <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex items-center justify-between p-4 border-b border-stone-800">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => currentNote?.type === "canvas" ? setLocation("/notes") : setNoteMode("read")}
+          data-testid="button-back-to-notes"
+        >
+          <ArrowLeft className="h-4 w-4 mr-2" /> {currentNote?.type === "canvas" ? "Back" : "Done"}
         </Button>
         <div className="flex items-center gap-2">
           <Button
@@ -1132,7 +1218,9 @@ export default function Notes() {
             </div>
           )}
 
-          {isEditing ? renderNoteEditor() : viewMode === "graph" ? (
+          {isEditing ? (
+            currentNote?.type === "canvas" || noteMode === "edit" ? renderNoteEditor() : renderNoteReadView()
+          ) : viewMode === "graph" ? (
             <div className="flex-1 relative">
               <NotesGraph
                 notes={sortedNotes}
