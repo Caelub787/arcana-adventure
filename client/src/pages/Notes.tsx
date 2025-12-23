@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useLocation, useParams } from "wouter";
 import { motion } from "framer-motion";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, Note, NoteFolder, NoteShare, UserProfile } from "@/lib/api";
+import { api, Note, NoteFolder, NoteShare, UserProfile, SystemSpell, SystemSkill, SystemTrait, SystemSpecies, Item } from "@/lib/api";
 import { useAuth } from "@/lib/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -253,6 +253,12 @@ export default function Notes() {
   const [referencePickerOpen, setReferencePickerOpen] = useState(false);
   const [cursorPosition, setCursorPosition] = useState<number>(0);
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
+
+  const [entityDialogOpen, setEntityDialogOpen] = useState(false);
+  const [selectedEntityType, setSelectedEntityType] = useState<string | null>(null);
+  const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
+  const [entityData, setEntityData] = useState<any>(null);
+  const [entityLoading, setEntityLoading] = useState(false);
 
   const noteId = params.id;
   const isEditing = !!noteId;
@@ -690,6 +696,44 @@ export default function Notes() {
 
   const rootFolders = folders.filter((f) => !f.parentId);
 
+  const handleEntityClick = async (entityType: string, entityId: string) => {
+    setSelectedEntityType(entityType);
+    setSelectedEntityId(entityId);
+    setEntityDialogOpen(true);
+    setEntityLoading(true);
+    setEntityData(null);
+
+    try {
+      let data: any = null;
+      switch (entityType.toLowerCase()) {
+        case "spell":
+          data = await api.getSystemSpell(entityId);
+          break;
+        case "skill":
+          data = await api.getSystemSkill(entityId);
+          break;
+        case "trait":
+          data = await api.getSystemTrait(entityId);
+          break;
+        case "species":
+          const speciesList = await api.getSpecies();
+          data = speciesList.find((s: SystemSpecies) => s.id === entityId) || null;
+          break;
+        case "item":
+          data = { name: "Item", description: "Item details are character-specific and cannot be displayed here." };
+          break;
+        default:
+          data = { name: entityType, description: "Unknown entity type" };
+      }
+      setEntityData(data);
+    } catch (error) {
+      console.error("Failed to fetch entity:", error);
+      setEntityData({ name: "Error", description: "Failed to load entity details" });
+    } finally {
+      setEntityLoading(false);
+    }
+  };
+
   const formatEntityReferences = (content: string): React.ReactNode[] => {
     const regex = /\[\[([^:]+):([^\|]+)\|([^\]]+)\]\]/g;
     const parts: React.ReactNode[] = [];
@@ -700,9 +744,18 @@ export default function Notes() {
       if (match.index > lastIndex) {
         parts.push(content.slice(lastIndex, match.index));
       }
+      const entityType = match[1];
+      const entityId = match[2];
       const displayName = match[3];
       parts.push(
-        <span key={match.index} className="text-amber-500">[{displayName}]</span>
+        <span
+          key={match.index}
+          className="text-amber-500 cursor-pointer hover:text-amber-400 hover:underline transition-colors"
+          onClick={() => handleEntityClick(entityType, entityId)}
+          data-testid={`entity-ref-${entityType}-${entityId}`}
+        >
+          [{displayName}]
+        </span>
       );
       lastIndex = regex.lastIndex;
     }
@@ -1532,6 +1585,166 @@ export default function Notes() {
               onClick={() => setShareDialogOpen(false)}
             >
               Done
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={entityDialogOpen} onOpenChange={setEntityDialogOpen}>
+        <DialogContent className="bg-stone-950 border-stone-800 text-stone-100 max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              {selectedEntityType && (
+                <Badge className="bg-amber-700/50 text-amber-300 capitalize">
+                  {selectedEntityType}
+                </Badge>
+              )}
+              {entityData?.name || "Entity Details"}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="py-4">
+            {entityLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-6 w-6 animate-spin text-amber-500" />
+              </div>
+            ) : entityData ? (
+              <div className="space-y-4">
+                {entityData.description && (
+                  <div>
+                    <Label className="text-stone-400 text-xs uppercase tracking-wide">Description</Label>
+                    <p className="text-stone-300 mt-1">{entityData.description}</p>
+                  </div>
+                )}
+                
+                {selectedEntityType?.toLowerCase() === "spell" && (
+                  <>
+                    {entityData.school && (
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <Label className="text-stone-400 text-xs uppercase tracking-wide">School</Label>
+                          <p className="text-stone-300 mt-1 capitalize">{entityData.school}</p>
+                        </div>
+                        <div>
+                          <Label className="text-stone-400 text-xs uppercase tracking-wide">Level</Label>
+                          <p className="text-stone-300 mt-1">{entityData.level}</p>
+                        </div>
+                      </div>
+                    )}
+                    <div className="grid grid-cols-2 gap-4">
+                      {entityData.castingTime && (
+                        <div>
+                          <Label className="text-stone-400 text-xs uppercase tracking-wide">Casting Time</Label>
+                          <p className="text-stone-300 mt-1">{entityData.castingTime}</p>
+                        </div>
+                      )}
+                      {entityData.range && (
+                        <div>
+                          <Label className="text-stone-400 text-xs uppercase tracking-wide">Range</Label>
+                          <p className="text-stone-300 mt-1">{entityData.range}</p>
+                        </div>
+                      )}
+                    </div>
+                    {entityData.duration && (
+                      <div>
+                        <Label className="text-stone-400 text-xs uppercase tracking-wide">Duration</Label>
+                        <p className="text-stone-300 mt-1">{entityData.duration}</p>
+                      </div>
+                    )}
+                    {(entityData.damageDice || entityData.damageType) && (
+                      <div className="grid grid-cols-2 gap-4">
+                        {entityData.damageDice && (
+                          <div>
+                            <Label className="text-stone-400 text-xs uppercase tracking-wide">Damage</Label>
+                            <p className="text-stone-300 mt-1">{entityData.damageDice}</p>
+                          </div>
+                        )}
+                        {entityData.damageType && (
+                          <div>
+                            <Label className="text-stone-400 text-xs uppercase tracking-wide">Damage Type</Label>
+                            <p className="text-stone-300 mt-1 capitalize">{entityData.damageType}</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    {entityData.energyCost !== undefined && (
+                      <div>
+                        <Label className="text-stone-400 text-xs uppercase tracking-wide">Energy Cost</Label>
+                        <p className="text-stone-300 mt-1">{entityData.energyCost}</p>
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {selectedEntityType?.toLowerCase() === "skill" && (
+                  <>
+                    {entityData.parentAttribute && (
+                      <div>
+                        <Label className="text-stone-400 text-xs uppercase tracking-wide">Parent Attribute</Label>
+                        <p className="text-stone-300 mt-1 capitalize">{entityData.parentAttribute}</p>
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {selectedEntityType?.toLowerCase() === "trait" && (
+                  <>
+                    {entityData.parentAttribute && (
+                      <div>
+                        <Label className="text-stone-400 text-xs uppercase tracking-wide">Parent Attribute</Label>
+                        <p className="text-stone-300 mt-1 capitalize">{entityData.parentAttribute}</p>
+                      </div>
+                    )}
+                    {entityData.usesPerLongRest !== undefined && entityData.usesPerLongRest > 0 && (
+                      <div>
+                        <Label className="text-stone-400 text-xs uppercase tracking-wide">Uses Per Long Rest</Label>
+                        <p className="text-stone-300 mt-1">{entityData.usesPerLongRest}</p>
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {selectedEntityType?.toLowerCase() === "species" && (
+                  <>
+                    <div className="grid grid-cols-3 gap-4">
+                      {entityData.size && (
+                        <div>
+                          <Label className="text-stone-400 text-xs uppercase tracking-wide">Size</Label>
+                          <p className="text-stone-300 mt-1 capitalize">{entityData.size}</p>
+                        </div>
+                      )}
+                      {entityData.speed !== undefined && (
+                        <div>
+                          <Label className="text-stone-400 text-xs uppercase tracking-wide">Speed</Label>
+                          <p className="text-stone-300 mt-1">{entityData.speed} ft</p>
+                        </div>
+                      )}
+                      {entityData.lifespan !== undefined && (
+                        <div>
+                          <Label className="text-stone-400 text-xs uppercase tracking-wide">Lifespan</Label>
+                          <p className="text-stone-300 mt-1">{entityData.lifespan} years</p>
+                        </div>
+                      )}
+                    </div>
+                    {entityData.naturalArmor !== undefined && entityData.naturalArmor > 0 && (
+                      <div>
+                        <Label className="text-stone-400 text-xs uppercase tracking-wide">Natural Armor</Label>
+                        <p className="text-stone-300 mt-1">+{entityData.naturalArmor}</p>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            ) : (
+              <p className="text-stone-500 text-center py-4">No data available</p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="secondary"
+              onClick={() => setEntityDialogOpen(false)}
+              data-testid="button-close-entity-dialog"
+            >
+              Close
             </Button>
           </DialogFooter>
         </DialogContent>
