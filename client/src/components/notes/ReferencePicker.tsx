@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useRef } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, SearchableEntity } from "@/lib/api";
+import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Popover,
   PopoverContent,
@@ -19,6 +21,8 @@ import {
   Package,
   Search,
   Loader2,
+  AlertCircle,
+  RefreshCw,
 } from "lucide-react";
 
 interface ReferencePickerProps {
@@ -37,6 +41,8 @@ const ENTITY_TYPES = [
   { value: "skill", label: "Skills", icon: Zap },
   { value: "species", label: "Species", icon: Users },
 ];
+
+const MAX_RESULTS = 50;
 
 function getEntityIcon(type: string) {
   switch (type) {
@@ -81,28 +87,57 @@ export function ReferencePicker({
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedType, setSelectedType] = useState("all");
   const inputRef = useRef<HTMLInputElement>(null);
+  const queryClient = useQueryClient();
 
-  const { data: entities = [], isLoading } = useQuery({
-    queryKey: ["/api/search/entities", searchQuery, selectedType],
-    queryFn: () => api.searchEntities(searchQuery, selectedType),
-    enabled: open && searchQuery.length > 0,
-    staleTime: 30000,
+  const debouncedSearch = useDebouncedValue(searchQuery, 300);
+
+  const { data: entities = [], isLoading, isError, error, refetch, isFetching } = useQuery({
+    queryKey: ["/api/search/entities", debouncedSearch, selectedType],
+    queryFn: async () => {
+      const results = await api.searchEntities(debouncedSearch, selectedType);
+      return results.slice(0, MAX_RESULTS);
+    },
+    enabled: open && debouncedSearch.length > 0,
+    staleTime: 1000 * 60 * 5,
+    retry: 3,
+    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 10000),
   });
 
   useEffect(() => {
-    if (open && inputRef.current) {
-      setTimeout(() => inputRef.current?.focus(), 0);
+    if (open) {
+      if (inputRef.current) {
+        setTimeout(() => inputRef.current?.focus(), 0);
+      }
+
+      const popularTypes = ["spell", "item", "trait"];
+      popularTypes.forEach((type) => {
+        queryClient.prefetchQuery({
+          queryKey: ["/api/search/entities", "", type],
+          queryFn: async () => {
+            const results = await api.searchEntities("", type);
+            return results.slice(0, MAX_RESULTS);
+          },
+          staleTime: 1000 * 60 * 5,
+        });
+      });
     }
     if (!open) {
       setSearchQuery("");
       setSelectedType("all");
     }
-  }, [open]);
+  }, [open, queryClient]);
 
   const handleSelect = (entity: SearchableEntity) => {
     onSelect(entity);
     onOpenChange(false);
   };
+
+  const handleRetry = () => {
+    refetch();
+  };
+
+  const isSearching = searchQuery !== debouncedSearch;
+  const showLoading = isLoading || isFetching || isSearching;
 
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
@@ -124,6 +159,9 @@ export function ReferencePicker({
               className="pl-9 bg-stone-900 border-stone-700 text-sm"
               data-testid="input-reference-search"
             />
+            {isSearching && (
+              <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-500 animate-spin" />
+            )}
           </div>
         </div>
 
@@ -145,7 +183,25 @@ export function ReferencePicker({
 
         <ScrollArea className="h-60">
           <div className="p-2">
-            {isLoading ? (
+            {isError ? (
+              <div className="flex flex-col items-center justify-center py-8 text-stone-500">
+                <AlertCircle className="h-8 w-8 text-red-500 mb-2" />
+                <p className="text-sm text-red-400 mb-2">Failed to load entities</p>
+                <p className="text-xs text-stone-500 mb-3 text-center px-4">
+                  {error instanceof Error ? error.message : "An error occurred"}
+                </p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleRetry}
+                  className="text-xs"
+                  data-testid="button-retry-search"
+                >
+                  <RefreshCw className="h-3 w-3 mr-1" />
+                  Retry
+                </Button>
+              </div>
+            ) : showLoading && debouncedSearch.length > 0 ? (
               <div className="flex items-center justify-center py-8 text-stone-500">
                 <Loader2 className="h-5 w-5 animate-spin mr-2" />
                 Searching...
@@ -187,6 +243,11 @@ export function ReferencePicker({
                     </div>
                   </button>
                 ))}
+                {entities.length === MAX_RESULTS && (
+                  <p className="text-xs text-stone-500 text-center py-2">
+                    Showing first {MAX_RESULTS} results. Refine your search for more specific results.
+                  </p>
+                )}
               </div>
             )}
           </div>

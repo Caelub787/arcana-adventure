@@ -74,7 +74,6 @@ interface CanvasEditorProps {
 const MIN_ZOOM = 0.25;
 const MAX_ZOOM = 2;
 const DEFAULT_ZOOM = 1;
-const GRID_SIZE = 20;
 
 export function CanvasEditor({ canvasData, onChange, readOnly = false }: CanvasEditorProps) {
   const [, setLocation] = useLocation();
@@ -604,7 +603,7 @@ export function CanvasEditor({ canvasData, onChange, readOnly = false }: CanvasE
         {!readOnly && (
           <>
             <div
-              className="absolute -right-1 top-1/2 -translate-y-1/2 w-3 h-3 bg-indigo-500 rounded-full cursor-crosshair opacity-0 hover:opacity-100 transition-opacity"
+              className="absolute -right-2 top-1/2 -translate-y-1/2 w-4 h-4 bg-indigo-500 rounded-full cursor-crosshair border-2 border-indigo-400 opacity-60 hover:opacity-100 hover:scale-125 transition-all shadow-lg shadow-indigo-500/50"
               onPointerDown={(e) => handleConnectionHandlePointerDown(e, node)}
               data-testid={`connection-handle-${node.id}`}
             />
@@ -620,7 +619,7 @@ export function CanvasEditor({ canvasData, onChange, readOnly = false }: CanvasE
   };
 
   return (
-    <div className="relative w-full h-full overflow-hidden bg-stone-950">
+    <div className="fixed inset-0 z-50 bg-stone-950">
       {!readOnly && (
         <div className="absolute top-4 left-4 z-20 flex flex-col gap-2">
           <div className="flex items-center gap-2 bg-stone-900/90 backdrop-blur-sm rounded-lg p-2 border border-stone-800">
@@ -691,35 +690,49 @@ export function CanvasEditor({ canvasData, onChange, readOnly = false }: CanvasE
           style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transformOrigin: "0 0" }}
         >
           <defs>
-            <pattern
-              id="grid"
-              width={GRID_SIZE}
-              height={GRID_SIZE}
-              patternUnits="userSpaceOnUse"
+            <marker
+              id="arrowhead"
+              markerWidth="8"
+              markerHeight="6"
+              refX="7"
+              refY="3"
+              orient="auto"
+              markerUnits="strokeWidth"
             >
-              <path
-                d={`M ${GRID_SIZE} 0 L 0 0 0 ${GRID_SIZE}`}
-                fill="none"
-                stroke="rgb(68 64 60)"
-                strokeWidth="0.5"
-              />
-            </pattern>
+              <path d="M0,0 L0,6 L8,3 z" fill="rgb(120 113 108)" />
+            </marker>
+            <marker
+              id="arrowhead-selected"
+              markerWidth="8"
+              markerHeight="6"
+              refX="7"
+              refY="3"
+              orient="auto"
+              markerUnits="strokeWidth"
+            >
+              <path d="M0,0 L0,6 L8,3 z" fill="rgb(99 102 241)" />
+            </marker>
+            <marker
+              id="arrowhead-preview"
+              markerWidth="8"
+              markerHeight="6"
+              refX="7"
+              refY="3"
+              orient="auto"
+              markerUnits="strokeWidth"
+            >
+              <path d="M0,0 L0,6 L8,3 z" fill="rgb(99 102 241)" />
+            </marker>
           </defs>
-          <rect
-            x={-10000}
-            y={-10000}
-            width={20000}
-            height={20000}
-            fill="url(#grid)"
-          />
           
           {canvasData.connections.map((connection) => (
             <g key={connection.id}>
               <path
                 d={getConnectionPath(connection)}
                 stroke={selectedConnectionId === connection.id ? "rgb(99 102 241)" : (connection.color || "rgb(120 113 108)")}
-                strokeWidth={selectedConnectionId === connection.id ? 3 : 2}
+                strokeWidth={selectedConnectionId === connection.id ? 1.5 : 1}
                 fill="none"
+                markerEnd={selectedConnectionId === connection.id ? "url(#arrowhead-selected)" : "url(#arrowhead)"}
                 className="cursor-pointer pointer-events-auto"
                 onClick={() => {
                   setSelectedConnectionId(connection.id);
@@ -743,9 +756,10 @@ export function CanvasEditor({ canvasData, onChange, readOnly = false }: CanvasE
             <path
               d={`M ${connectionStart.x} ${connectionStart.y} C ${(connectionStart.x + connectionEnd.x) / 2} ${connectionStart.y}, ${(connectionStart.x + connectionEnd.x) / 2} ${connectionEnd.y}, ${connectionEnd.x} ${connectionEnd.y}`}
               stroke="rgb(99 102 241)"
-              strokeWidth={2}
+              strokeWidth={1.5}
               strokeDasharray="4"
               fill="none"
+              markerEnd="url(#arrowhead-preview)"
             />
           )}
         </svg>

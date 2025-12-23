@@ -1,21 +1,27 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
-import { Note } from "@/lib/api";
-import { FileText, Grid3X3, ZoomIn, ZoomOut, RotateCcw } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { Note, api, SystemSpell, SystemTrait, SystemSkill, SystemSpecies, Item, SearchableEntity } from "@/lib/api";
+import { ZoomIn, ZoomOut, RotateCcw, X, Sparkles, Package, Shield, Zap, Users, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { CanvasData, CanvasNode } from "./CanvasEditor";
+import { CanvasData } from "./CanvasEditor";
 
 interface NotesGraphProps {
   notes: Note[];
   onNoteClick?: (noteId: string) => void;
 }
 
+type EntityType = 'note' | 'spell' | 'item' | 'trait' | 'skill' | 'species';
+
 interface GraphNode {
   id: string;
-  note: Note;
+  type: EntityType;
+  name: string;
+  description?: string;
   x: number;
   y: number;
   vx: number;
   vy: number;
+  noteId?: string;
 }
 
 interface GraphEdge {
@@ -23,34 +29,66 @@ interface GraphEdge {
   toId: string;
 }
 
-const MIN_ZOOM = 0.25;
-const MAX_ZOOM = 2;
-const DEFAULT_ZOOM = 1;
-const NODE_WIDTH = 180;
-const NODE_HEIGHT = 60;
-const REPULSION_STRENGTH = 5000;
-const ATTRACTION_STRENGTH = 0.05;
+const MIN_ZOOM = 0.1;
+const MAX_ZOOM = 3;
+const DEFAULT_ZOOM = 0.8;
+const NODE_RADIUS = 8;
+const REPULSION_STRENGTH = 3000;
+const ATTRACTION_STRENGTH = 0.08;
 const DAMPING = 0.85;
-const MIN_DISTANCE = 120;
+const MIN_DISTANCE = 80;
+const CENTER_GRAVITY = 0.01;
 
-function parseConnections(notes: Note[]): GraphEdge[] {
+const NODE_COLORS: Record<EntityType, { fill: string; stroke: string; glow: string }> = {
+  note: { fill: '#6366f1', stroke: '#818cf8', glow: 'rgba(99, 102, 241, 0.4)' },
+  spell: { fill: '#a855f7', stroke: '#c084fc', glow: 'rgba(168, 85, 247, 0.4)' },
+  item: { fill: '#f59e0b', stroke: '#fbbf24', glow: 'rgba(245, 158, 11, 0.4)' },
+  trait: { fill: '#22c55e', stroke: '#4ade80', glow: 'rgba(34, 197, 94, 0.4)' },
+  skill: { fill: '#06b6d4', stroke: '#22d3ee', glow: 'rgba(6, 182, 212, 0.4)' },
+  species: { fill: '#ec4899', stroke: '#f472b6', glow: 'rgba(236, 72, 153, 0.4)' },
+};
+
+function getEntityIcon(type: EntityType) {
+  switch (type) {
+    case 'note': return <FileText className="h-3 w-3" />;
+    case 'spell': return <Sparkles className="h-3 w-3" />;
+    case 'item': return <Package className="h-3 w-3" />;
+    case 'trait': return <Shield className="h-3 w-3" />;
+    case 'skill': return <Zap className="h-3 w-3" />;
+    case 'species': return <Users className="h-3 w-3" />;
+    default: return <FileText className="h-3 w-3" />;
+  }
+}
+
+function parseConnections(notes: Note[], entityMap: Map<string, GraphNode>): GraphEdge[] {
   const edges: GraphEdge[] = [];
-  const noteIds = new Set(notes.map((n) => n.id));
+  const seenEdges = new Set<string>();
+
+  const addEdge = (fromId: string, toId: string) => {
+    const key1 = `${fromId}-${toId}`;
+    const key2 = `${toId}-${fromId}`;
+    if (!seenEdges.has(key1) && !seenEdges.has(key2) && fromId !== toId) {
+      seenEdges.add(key1);
+      edges.push({ fromId, toId });
+    }
+  };
 
   for (const note of notes) {
     const content = note.content || "";
-    const referencePattern = /\[\[note:([^\]|]+)\|?[^\]]*\]\]/g;
+    const referencePattern = /\[\[(\w+):([^\]|]+)\|?[^\]]*\]\]/g;
     let match;
     while ((match = referencePattern.exec(content)) !== null) {
-      const referencedId = match[1];
-      if (noteIds.has(referencedId) && referencedId !== note.id) {
-        const exists = edges.some(
-          (e) =>
-            (e.fromId === note.id && e.toId === referencedId) ||
-            (e.fromId === referencedId && e.toId === note.id)
-        );
-        if (!exists) {
-          edges.push({ fromId: note.id, toId: referencedId });
+      const entityType = match[1];
+      const entityId = match[2];
+      
+      if (entityType === 'note') {
+        if (notes.some(n => n.id === entityId)) {
+          addEdge(`note-${note.id}`, `note-${entityId}`);
+        }
+      } else {
+        const entityKey = `${entityType}-${entityId}`;
+        if (entityMap.has(entityKey)) {
+          addEdge(`note-${note.id}`, entityKey);
         }
       }
     }
@@ -59,15 +97,8 @@ function parseConnections(notes: Note[]): GraphEdge[] {
       const canvasData = note.canvasData as CanvasData;
       if (canvasData.nodes) {
         for (const node of canvasData.nodes) {
-          if (node.type === "note" && node.noteId && noteIds.has(node.noteId) && node.noteId !== note.id) {
-            const exists = edges.some(
-              (e) =>
-                (e.fromId === note.id && e.toId === node.noteId) ||
-                (e.fromId === node.noteId && e.toId === note.id)
-            );
-            if (!exists) {
-              edges.push({ fromId: note.id, toId: node.noteId! });
-            }
+          if (node.type === "note" && node.noteId && notes.some(n => n.id === node.noteId)) {
+            addEdge(`note-${note.id}`, `note-${node.noteId}`);
           }
         }
       }
@@ -77,23 +108,69 @@ function parseConnections(notes: Note[]): GraphEdge[] {
   return edges;
 }
 
-function initializeNodes(notes: Note[]): GraphNode[] {
-  const count = notes.length;
-  const cols = Math.ceil(Math.sqrt(count));
-  const spacing = 250;
+function initializeNodes(
+  notes: Note[],
+  spells: SystemSpell[],
+  traits: SystemTrait[],
+  skills: SystemSkill[],
+  species: SystemSpecies[],
+  items: Item[]
+): { nodes: GraphNode[]; entityMap: Map<string, GraphNode> } {
+  const nodes: GraphNode[] = [];
+  const entityMap = new Map<string, GraphNode>();
+  
+  const radius = Math.max(200, Math.sqrt(notes.length + spells.length + traits.length + skills.length + species.length + items.length) * 50);
+  let index = 0;
+  
+  const addNode = (id: string, type: EntityType, name: string, description?: string, noteId?: string) => {
+    const angle = (index / (notes.length + spells.length + traits.length + skills.length + species.length + items.length)) * Math.PI * 2;
+    const r = radius * (0.3 + Math.random() * 0.7);
+    const node: GraphNode = {
+      id,
+      type,
+      name,
+      description,
+      x: Math.cos(angle) * r + (Math.random() - 0.5) * 100,
+      y: Math.sin(angle) * r + (Math.random() - 0.5) * 100,
+      vx: 0,
+      vy: 0,
+      noteId,
+    };
+    nodes.push(node);
+    entityMap.set(id, node);
+    index++;
+  };
 
-  return notes.map((note, i) => ({
-    id: note.id,
-    note,
-    x: (i % cols) * spacing - ((cols - 1) * spacing) / 2,
-    y: Math.floor(i / cols) * spacing - ((Math.ceil(count / cols) - 1) * spacing) / 2,
-    vx: 0,
-    vy: 0,
-  }));
+  for (const note of notes) {
+    addNode(`note-${note.id}`, 'note', note.title, note.content?.substring(0, 200), note.id);
+  }
+
+  for (const spell of spells) {
+    addNode(`spell-${spell.id}`, 'spell', spell.name, spell.description);
+  }
+
+  for (const trait of traits) {
+    addNode(`trait-${trait.id}`, 'trait', trait.name, trait.description);
+  }
+
+  for (const skill of skills) {
+    addNode(`skill-${skill.id}`, 'skill', skill.name, skill.description);
+  }
+
+  for (const s of species) {
+    addNode(`species-${s.id}`, 'species', s.name, s.description);
+  }
+
+  for (const item of items) {
+    addNode(`item-${item.id}`, 'item', item.name, item.description);
+  }
+
+  return { nodes, entityMap };
 }
 
 export function NotesGraph({ notes, onNoteClick }: NotesGraphProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const svgRef = useRef<SVGSVGElement>(null);
   const animationRef = useRef<number>(0);
 
   const [zoom, setZoom] = useState(DEFAULT_ZOOM);
@@ -102,38 +179,79 @@ export function NotesGraph({ notes, onNoteClick }: NotesGraphProps) {
   const zoomRef = useRef(DEFAULT_ZOOM);
 
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
+  const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
   const [isPanning, setIsPanning] = useState(false);
   const panStartRef = useRef<{ pointerX: number; pointerY: number; panX: number; panY: number } | null>(null);
 
-  const edges = useMemo(() => parseConnections(notes), [notes]);
-  const [nodes, setNodes] = useState<GraphNode[]>(() => initializeNodes(notes));
-  const nodesRef = useRef<GraphNode[]>(nodes);
+  const { data: spells = [] } = useQuery({
+    queryKey: ['/api/spells'],
+    queryFn: () => api.getPublicSpells(),
+    staleTime: 60000,
+  });
+
+  const { data: traits = [] } = useQuery({
+    queryKey: ['/api/traits'],
+    queryFn: () => api.getPublicTraits(),
+    staleTime: 60000,
+  });
+
+  const { data: skills = [] } = useQuery({
+    queryKey: ['/api/skills'],
+    queryFn: () => api.getPublicSkills(),
+    staleTime: 60000,
+  });
+
+  const { data: species = [] } = useQuery({
+    queryKey: ['/api/species'],
+    queryFn: () => api.getSpecies(),
+    staleTime: 60000,
+  });
+
+  const { data: systemItems = [] } = useQuery({
+    queryKey: ['/api/admin/system-items'],
+    queryFn: () => api.getSystemItems().catch(() => []),
+    staleTime: 60000,
+  });
+
+  const { nodes: initialNodes, entityMap } = useMemo(
+    () => initializeNodes(notes, spells, traits, skills, species, systemItems),
+    [notes, spells, traits, skills, species, systemItems]
+  );
+
+  const edges = useMemo(() => parseConnections(notes, entityMap), [notes, entityMap]);
+  const [nodes, setNodes] = useState<GraphNode[]>(initialNodes);
+  const nodesRef = useRef<GraphNode[]>(initialNodes);
   const [isSimulating, setIsSimulating] = useState(true);
 
   useEffect(() => {
-    const newNodes = initializeNodes(notes);
+    const { nodes: newNodes, entityMap: newEntityMap } = initializeNodes(notes, spells, traits, skills, species, systemItems);
     setNodes(newNodes);
     nodesRef.current = newNodes;
     setIsSimulating(true);
-  }, [notes]);
+  }, [notes, spells, traits, skills, species, systemItems]);
+
+  const connectedNodesMap = useMemo(() => {
+    const map = new Map<string, Set<string>>();
+    for (const edge of edges) {
+      if (!map.has(edge.fromId)) map.set(edge.fromId, new Set());
+      if (!map.has(edge.toId)) map.set(edge.toId, new Set());
+      map.get(edge.fromId)!.add(edge.toId);
+      map.get(edge.toId)!.add(edge.fromId);
+    }
+    return map;
+  }, [edges]);
 
   useEffect(() => {
     if (!isSimulating) return;
 
     let iterations = 0;
-    const maxIterations = 200;
+    const maxIterations = 300;
 
     const simulate = () => {
       const currentNodes = nodesRef.current;
       if (currentNodes.length === 0) {
         setIsSimulating(false);
         return;
-      }
-
-      const connectedPairs = new Set<string>();
-      for (const edge of edges) {
-        connectedPairs.add(`${edge.fromId}-${edge.toId}`);
-        connectedPairs.add(`${edge.toId}-${edge.fromId}`);
       }
 
       for (let i = 0; i < currentNodes.length; i++) {
@@ -152,23 +270,24 @@ export function NotesGraph({ notes, onNoteClick }: NotesGraphProps) {
           fy += (dy / dist) * repulsion;
         }
 
-        for (const edge of edges) {
-          let otherId: string | null = null;
-          if (edge.fromId === currentNodes[i].id) otherId = edge.toId;
-          else if (edge.toId === currentNodes[i].id) otherId = edge.fromId;
-          if (!otherId) continue;
+        const connected = connectedNodesMap.get(currentNodes[i].id);
+        if (connected) {
+          for (const otherId of Array.from(connected)) {
+            const other = currentNodes.find((n) => n.id === otherId);
+            if (!other) continue;
 
-          const other = currentNodes.find((n) => n.id === otherId);
-          if (!other) continue;
+            const dx = other.x - currentNodes[i].x;
+            const dy = other.y - currentNodes[i].y;
+            const dist = Math.sqrt(dx * dx + dy * dy) || 1;
 
-          const dx = other.x - currentNodes[i].x;
-          const dy = other.y - currentNodes[i].y;
-          const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-
-          const attraction = (dist - MIN_DISTANCE) * ATTRACTION_STRENGTH;
-          fx += (dx / dist) * attraction;
-          fy += (dy / dist) * attraction;
+            const attraction = (dist - MIN_DISTANCE) * ATTRACTION_STRENGTH;
+            fx += (dx / dist) * attraction;
+            fy += (dy / dist) * attraction;
+          }
         }
+
+        fx -= currentNodes[i].x * CENTER_GRAVITY;
+        fy -= currentNodes[i].y * CENTER_GRAVITY;
 
         currentNodes[i].vx = (currentNodes[i].vx + fx) * DAMPING;
         currentNodes[i].vy = (currentNodes[i].vy + fy) * DAMPING;
@@ -185,7 +304,7 @@ export function NotesGraph({ notes, onNoteClick }: NotesGraphProps) {
       setNodes([...currentNodes]);
 
       iterations++;
-      if (maxVelocity < 0.1 || iterations >= maxIterations) {
+      if (maxVelocity < 0.05 || iterations >= maxIterations) {
         setIsSimulating(false);
       } else {
         animationRef.current = requestAnimationFrame(simulate);
@@ -199,7 +318,7 @@ export function NotesGraph({ notes, onNoteClick }: NotesGraphProps) {
         cancelAnimationFrame(animationRef.current);
       }
     };
-  }, [isSimulating, edges]);
+  }, [isSimulating, connectedNodesMap]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -212,7 +331,7 @@ export function NotesGraph({ notes, onNoteClick }: NotesGraphProps) {
       const mouseY = e.clientY - rect.top;
 
       const delta = -e.deltaY * 0.001;
-      const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoomRef.current + delta));
+      const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoomRef.current * (1 + delta)));
 
       if (Math.abs(newZoom - zoomRef.current) > 0.001) {
         const worldX = (mouseX - panRef.current.x) / zoomRef.current;
@@ -235,16 +354,17 @@ export function NotesGraph({ notes, onNoteClick }: NotesGraphProps) {
   }, []);
 
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
-    if (e.target === containerRef.current || (e.target as HTMLElement).closest(".graph-background")) {
-      setIsPanning(true);
-      panStartRef.current = {
-        pointerX: e.clientX,
-        pointerY: e.clientY,
-        panX: panRef.current.x,
-        panY: panRef.current.y,
-      };
-      (e.target as HTMLElement).setPointerCapture(e.pointerId);
-    }
+    const target = e.target as HTMLElement;
+    if (target.closest('.graph-node') || target.closest('.entity-popup')) return;
+    
+    setIsPanning(true);
+    panStartRef.current = {
+      pointerX: e.clientX,
+      pointerY: e.clientY,
+      panX: panRef.current.x,
+      panY: panRef.current.y,
+    };
+    (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
   }, []);
 
   const handlePointerMove = useCallback((e: React.PointerEvent) => {
@@ -276,10 +396,10 @@ export function NotesGraph({ notes, onNoteClick }: NotesGraphProps) {
 
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     for (const node of nodes) {
-      minX = Math.min(minX, node.x - NODE_WIDTH / 2);
-      minY = Math.min(minY, node.y - NODE_HEIGHT / 2);
-      maxX = Math.max(maxX, node.x + NODE_WIDTH / 2);
-      maxY = Math.max(maxY, node.y + NODE_HEIGHT / 2);
+      minX = Math.min(minX, node.x - NODE_RADIUS * 2);
+      minY = Math.min(minY, node.y - NODE_RADIUS * 2);
+      maxX = Math.max(maxX, node.x + NODE_RADIUS * 2);
+      maxY = Math.max(maxY, node.y + NODE_RADIUS * 2);
     }
 
     const contentWidth = maxX - minX;
@@ -310,50 +430,46 @@ export function NotesGraph({ notes, onNoteClick }: NotesGraphProps) {
   }, [isSimulating]);
 
   const handleZoomIn = () => {
-    const newZoom = Math.min(MAX_ZOOM, zoomRef.current + 0.2);
+    const newZoom = Math.min(MAX_ZOOM, zoomRef.current * 1.3);
     zoomRef.current = newZoom;
     setZoom(newZoom);
   };
 
   const handleZoomOut = () => {
-    const newZoom = Math.max(MIN_ZOOM, zoomRef.current - 0.2);
+    const newZoom = Math.max(MIN_ZOOM, zoomRef.current / 1.3);
     zoomRef.current = newZoom;
     setZoom(newZoom);
   };
 
-  const renderEdge = (edge: GraphEdge, index: number) => {
-    const fromNode = nodes.find((n) => n.id === edge.fromId);
-    const toNode = nodes.find((n) => n.id === edge.toId);
-    if (!fromNode || !toNode) return null;
-
-    const dx = toNode.x - fromNode.x;
-    const dy = toNode.y - fromNode.y;
-    const midX = (fromNode.x + toNode.x) / 2;
-    const midY = (fromNode.y + toNode.y) / 2;
-    const offset = 30;
-    const perpX = -dy / (Math.sqrt(dx * dx + dy * dy) || 1) * offset;
-    const perpY = dx / (Math.sqrt(dx * dx + dy * dy) || 1) * offset;
-    const ctrlX = midX + perpX;
-    const ctrlY = midY + perpY;
-
-    const d = `M ${fromNode.x} ${fromNode.y} Q ${ctrlX} ${ctrlY} ${toNode.x} ${toNode.y}`;
-
-    return (
-      <path
-        key={`edge-${index}`}
-        d={d}
-        stroke="#78716c"
-        strokeWidth={2}
-        fill="none"
-        className="opacity-60"
-      />
-    );
+  const handleNodeClick = (node: GraphNode) => {
+    if (node.type === 'note' && node.noteId && onNoteClick) {
+      onNoteClick(node.noteId);
+    } else {
+      setSelectedNode(node);
+    }
   };
 
-  const truncateTitle = (title: string, maxLength: number = 25) => {
-    if (title.length <= maxLength) return title;
-    return title.slice(0, maxLength) + "...";
+  const isConnected = (nodeId: string) => {
+    if (!hoveredNodeId) return false;
+    if (nodeId === hoveredNodeId) return true;
+    return connectedNodesMap.get(hoveredNodeId)?.has(nodeId) || false;
   };
+
+  const isEdgeConnected = (edge: GraphEdge) => {
+    if (!hoveredNodeId) return false;
+    return edge.fromId === hoveredNodeId || edge.toId === hoveredNodeId;
+  };
+
+  const nodeMap = useMemo(() => {
+    const map = new Map<string, GraphNode>();
+    for (const node of nodes) {
+      map.set(node.id, node);
+    }
+    return map;
+  }, [nodes]);
+
+  const noteCount = notes.length;
+  const entityCount = spells.length + traits.length + skills.length + species.length + systemItems.length;
 
   return (
     <div className="relative w-full h-full overflow-hidden bg-stone-950">
@@ -366,98 +482,142 @@ export function NotesGraph({ notes, onNoteClick }: NotesGraphProps) {
         onPointerLeave={handlePointerUp}
         data-testid="notes-graph-container"
       >
-        <div
-          className="graph-background absolute inset-0"
-          style={{
-            backgroundImage: `
-              radial-gradient(circle at 1px 1px, #44403c 1px, transparent 0)
-            `,
-            backgroundSize: `${40 * zoom}px ${40 * zoom}px`,
-            backgroundPosition: `${pan.x}px ${pan.y}px`,
-          }}
-        />
-
         <svg
-          className="absolute inset-0 pointer-events-none"
-          style={{
-            transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
-            transformOrigin: "0 0",
-          }}
+          ref={svgRef}
+          className="absolute inset-0 w-full h-full"
+          style={{ background: 'transparent' }}
         >
-          {edges.map((edge, i) => renderEdge(edge, i))}
-        </svg>
+          <g transform={`translate(${pan.x}, ${pan.y}) scale(${zoom})`}>
+            {edges.map((edge, i) => {
+              const fromNode = nodeMap.get(edge.fromId);
+              const toNode = nodeMap.get(edge.toId);
+              if (!fromNode || !toNode) return null;
 
-        <div
-          className="absolute"
-          style={{
-            transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
-            transformOrigin: "0 0",
-          }}
-        >
-          {nodes.map((node) => {
-            const isCanvas = node.note.type === "canvas";
-            const isPinned = node.note.isPinned;
-            const isHovered = hoveredNodeId === node.id;
+              const connected = isEdgeConnected(edge);
+              const opacity = hoveredNodeId ? (connected ? 0.8 : 0.1) : 0.3;
+              const strokeWidth = connected ? 1.5 : 1;
+              const strokeColor = connected ? '#a8a29e' : '#57534e';
 
-            return (
-              <div
-                key={node.id}
-                className={`absolute rounded-lg border-2 cursor-pointer transition-all duration-150 ${
-                  isCanvas ? "bg-indigo-700/90" : "bg-stone-700/90"
-                } ${isPinned ? "border-yellow-500" : "border-stone-600"} ${
-                  isHovered ? "shadow-lg shadow-amber-900/40 scale-105" : ""
-                }`}
-                style={{
-                  left: node.x - NODE_WIDTH / 2,
-                  top: node.y - NODE_HEIGHT / 2,
-                  width: NODE_WIDTH,
-                  height: NODE_HEIGHT,
-                }}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onNoteClick?.(node.id);
-                }}
-                onMouseEnter={() => setHoveredNodeId(node.id)}
-                onMouseLeave={() => setHoveredNodeId(null)}
-                data-testid={`graph-node-${node.id}`}
-              >
-                <div className="flex items-center gap-2 p-3 h-full">
-                  {isCanvas ? (
-                    <Grid3X3 className="h-4 w-4 text-indigo-300 flex-shrink-0" />
-                  ) : (
-                    <FileText className="h-4 w-4 text-stone-400 flex-shrink-0" />
+              return (
+                <line
+                  key={`edge-${i}`}
+                  x1={fromNode.x}
+                  y1={fromNode.y}
+                  x2={toNode.x}
+                  y2={toNode.y}
+                  stroke={strokeColor}
+                  strokeWidth={strokeWidth / zoom}
+                  opacity={opacity}
+                  className="transition-opacity duration-150"
+                />
+              );
+            })}
+
+            {nodes.map((node) => {
+              const colors = NODE_COLORS[node.type];
+              const connected = isConnected(node.id);
+              const isHovered = hoveredNodeId === node.id;
+              const opacity = hoveredNodeId ? (connected ? 1 : 0.3) : 1;
+              const scale = isHovered ? 1.5 : 1;
+              const radius = NODE_RADIUS * scale;
+
+              return (
+                <g
+                  key={node.id}
+                  className="graph-node cursor-pointer transition-all duration-150"
+                  style={{ opacity }}
+                  onMouseEnter={() => setHoveredNodeId(node.id)}
+                  onMouseLeave={() => setHoveredNodeId(null)}
+                  onClick={() => handleNodeClick(node)}
+                  data-testid={`graph-node-${node.id}`}
+                >
+                  {isHovered && (
+                    <circle
+                      cx={node.x}
+                      cy={node.y}
+                      r={radius + 4}
+                      fill={colors.glow}
+                      className="animate-pulse"
+                    />
                   )}
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium text-stone-100 truncate">
-                      {truncateTitle(node.note.title)}
-                    </div>
-                    <div className="text-xs text-stone-400 truncate">
-                      {node.note.content?.substring(0, 40) || "No content"}
-                    </div>
-                  </div>
-                </div>
-
-                {isHovered && (
-                  <div
-                    className="absolute z-50 p-3 bg-stone-900 border border-stone-700 rounded-lg shadow-xl max-w-xs pointer-events-none"
-                    style={{
-                      left: NODE_WIDTH + 8,
-                      top: 0,
-                    }}
-                  >
-                    <div className="font-medium text-stone-100 mb-1">
-                      {node.note.title}
-                    </div>
-                    <div className="text-xs text-stone-400 line-clamp-3">
-                      {node.note.content?.substring(0, 150) || "No content"}
-                    </div>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
+                  <circle
+                    cx={node.x}
+                    cy={node.y}
+                    r={radius}
+                    fill={colors.fill}
+                    stroke={colors.stroke}
+                    strokeWidth={1.5 / zoom}
+                  />
+                  {isHovered && (
+                    <g>
+                      <rect
+                        x={node.x - 60}
+                        y={node.y + radius + 8}
+                        width={120}
+                        height={24}
+                        rx={4}
+                        fill="rgba(28, 25, 23, 0.95)"
+                        stroke="#44403c"
+                        strokeWidth={1 / zoom}
+                      />
+                      <text
+                        x={node.x}
+                        y={node.y + radius + 24}
+                        textAnchor="middle"
+                        fill="#e7e5e4"
+                        fontSize={12 / zoom}
+                        fontFamily="system-ui"
+                        className="pointer-events-none"
+                      >
+                        {node.name.length > 18 ? node.name.substring(0, 18) + '...' : node.name}
+                      </text>
+                    </g>
+                  )}
+                </g>
+              );
+            })}
+          </g>
+        </svg>
       </div>
+
+      {selectedNode && selectedNode.type !== 'note' && (
+        <div 
+          className="entity-popup absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 
+                     bg-stone-900 border border-stone-700 rounded-lg shadow-2xl p-4 max-w-sm z-50"
+        >
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <div 
+                className="w-8 h-8 rounded-full flex items-center justify-center"
+                style={{ backgroundColor: NODE_COLORS[selectedNode.type].fill }}
+              >
+                {getEntityIcon(selectedNode.type)}
+              </div>
+              <div>
+                <div className="text-sm font-medium text-stone-100">{selectedNode.name}</div>
+                <div className="text-xs text-stone-400 capitalize">{selectedNode.type}</div>
+              </div>
+            </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6 text-stone-400 hover:text-stone-200"
+              onClick={() => setSelectedNode(null)}
+              data-testid="button-close-entity-popup"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+          {selectedNode.description && (
+            <p className="text-sm text-stone-300 line-clamp-4">
+              {selectedNode.description}
+            </p>
+          )}
+          <div className="mt-3 text-xs text-stone-500">
+            {connectedNodesMap.get(selectedNode.id)?.size || 0} connections
+          </div>
+        </div>
+      )}
 
       <div className="absolute top-4 right-4 flex flex-col gap-2">
         <Button
@@ -489,9 +649,29 @@ export function NotesGraph({ notes, onNoteClick }: NotesGraphProps) {
         </Button>
       </div>
 
-      <div className="absolute bottom-4 left-4 text-xs text-stone-500">
-        {nodes.length} notes • {edges.length} connections
-        {isSimulating && " • Arranging..."}
+      <div className="absolute bottom-4 left-4 flex flex-col gap-1">
+        <div className="text-xs text-stone-500">
+          {noteCount} notes • {entityCount} entities • {edges.length} connections
+          {isSimulating && " • Arranging..."}
+        </div>
+        <div className="flex flex-wrap gap-2 mt-1">
+          {[
+            { type: 'note' as EntityType, label: 'Notes' },
+            { type: 'spell' as EntityType, label: 'Spells' },
+            { type: 'item' as EntityType, label: 'Items' },
+            { type: 'trait' as EntityType, label: 'Traits' },
+            { type: 'skill' as EntityType, label: 'Skills' },
+            { type: 'species' as EntityType, label: 'Species' },
+          ].map(({ type, label }) => (
+            <div key={type} className="flex items-center gap-1">
+              <div
+                className="w-2.5 h-2.5 rounded-full"
+                style={{ backgroundColor: NODE_COLORS[type].fill }}
+              />
+              <span className="text-xs text-stone-500">{label}</span>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
