@@ -1198,9 +1198,8 @@ function SpellsView({ spells, isLoading, searchQuery, setSearchQuery, onAddSpell
                       <span>Range: {spell.range}</span>
                       <span>| {spell.duration}</span>
                       {spell.damageDice && <span>| Damage: {spell.damageDice} {spell.damageType}</span>}
-                      {spell.energyCost && <span className="text-cyan-400">| Energy: {spell.energyCost}</span>}
+                      {spell.energyCost !== undefined && <span className="text-cyan-400">| Energy: {spell.energyCost}</span>}
                       {spell.isAoe && <span>| AoE{spell.aoeShape ? `: ${spell.aoeShape.charAt(0).toUpperCase() + spell.aoeShape.slice(1)}` : ''}{spell.aoeRange ? ` ${spell.aoeRange}ft` : ''}</span>}
-                      {spell.concentration && <span>| Concentration</span>}
                     </div>
                   </div>
                   <div className="flex gap-2">

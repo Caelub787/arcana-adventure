@@ -9769,8 +9769,8 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
   
   // Magic/Spell state
   const [spellSearch, setSpellSearch] = useState("");
-  const [spellLevelFilter, setSpellLevelFilter] = useState("all");
-  const [spellSchoolFilter, setSpellSchoolFilter] = useState("all");
+  const [spellEnergyFilter, setSpellEnergyFilter] = useState("all");
+  const [spellActionTypeFilter, setSpellActionTypeFilter] = useState("all");
   const [spellSort, setSpellSort] = useState("name-asc");
   const [showAddSpell, setShowAddSpell] = useState(false);
   const [spellDialogTab, setSpellDialogTab] = useState<'library' | 'create'>('library');
@@ -9782,30 +9782,30 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
   const [showSpellLibrary, setShowSpellLibrary] = useState(false);
   const [spellLibrarySearch, setSpellLibrarySearch] = useState('');
   const [showSpellImageBrowser, setShowSpellImageBrowser] = useState(false);
-  const [spellSchoolLibraryFilter, setSpellSchoolLibraryFilter] = useState('all');
-  const [spellLevelLibraryFilter, setSpellLevelLibraryFilter] = useState('all');
+  const [spellActionTypeLibraryFilter, setSpellActionTypeLibraryFilter] = useState('all');
+  const [spellEnergyLibraryFilter, setSpellEnergyLibraryFilter] = useState('all');
   const [spellDamageTypeLibraryFilter, setSpellDamageTypeLibraryFilter] = useState('all');
   const [spellAttributeLibraryFilter, setSpellAttributeLibraryFilter] = useState('all');
   const [spellAoeLibraryFilter, setSpellAoeLibraryFilter] = useState('all');
-  const [spellConcentrationLibraryFilter, setSpellConcentrationLibraryFilter] = useState('all');
+  const [spellDurationLibraryFilter, setSpellDurationLibraryFilter] = useState('all');
 
-  const hasActiveSpellLibraryFilters = spellSchoolLibraryFilter !== 'all' || 
-    spellLevelLibraryFilter !== 'all' || 
+  const hasActiveSpellLibraryFilters = spellActionTypeLibraryFilter !== 'all' || 
+    spellEnergyLibraryFilter !== 'all' || 
     spellDamageTypeLibraryFilter !== 'all' || 
     spellAttributeLibraryFilter !== 'all' || 
     spellAoeLibraryFilter !== 'all' || 
-    spellConcentrationLibraryFilter !== 'all';
+    spellDurationLibraryFilter !== 'all';
 
   const clearSpellLibraryFilters = () => {
-    setSpellSchoolLibraryFilter('all');
-    setSpellLevelLibraryFilter('all');
+    setSpellActionTypeLibraryFilter('all');
+    setSpellEnergyLibraryFilter('all');
     setSpellDamageTypeLibraryFilter('all');
     setSpellAttributeLibraryFilter('all');
     setSpellAoeLibraryFilter('all');
-    setSpellConcentrationLibraryFilter('all');
+    setSpellDurationLibraryFilter('all');
   };
 
-  const spellSchoolOptions = ['Evocation', 'Abjuration', 'Conjuration', 'Divination', 'Enchantment', 'Illusion', 'Necromancy', 'Transmutation'];
+  const spellDurationOptions = ['Instant', '1 round', '1 minute', '10 minutes', '1 hour', '8 hours', '24 hours', 'Until dispelled'];
   const [spellFormData, setSpellFormData] = useState<{
     name: string;
     description: string;
@@ -12654,30 +12654,29 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                               <div className="font-medium text-stone-200">Filter Spells</div>
                               <div className="grid grid-cols-2 gap-3">
                                 <div>
-                                  <Label className="text-stone-400 text-xs">School</Label>
-                                  <Select value={spellSchoolLibraryFilter} onValueChange={setSpellSchoolLibraryFilter}>
-                                    <SelectTrigger className="bg-stone-800 border-stone-700 mt-1 text-xs h-8" data-testid="select-spell-school-filter">
+                                  <Label className="text-stone-400 text-xs">Action Type</Label>
+                                  <Select value={spellActionTypeLibraryFilter} onValueChange={setSpellActionTypeLibraryFilter}>
+                                    <SelectTrigger className="bg-stone-800 border-stone-700 mt-1 text-xs h-8" data-testid="select-spell-action-type-filter">
                                       <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
                                       <SelectItem value="all">All</SelectItem>
-                                      {spellSchoolOptions.map(school => (
-                                        <SelectItem key={school} value={school}>{school}</SelectItem>
-                                      ))}
+                                      <SelectItem value="action">Action</SelectItem>
+                                      <SelectItem value="bonus action">Bonus Action</SelectItem>
                                     </SelectContent>
                                   </Select>
                                 </div>
                                 <div>
-                                  <Label className="text-stone-400 text-xs">Level</Label>
-                                  <Select value={spellLevelLibraryFilter} onValueChange={setSpellLevelLibraryFilter}>
-                                    <SelectTrigger className="bg-stone-800 border-stone-700 mt-1 text-xs h-8" data-testid="select-spell-level-filter">
+                                  <Label className="text-stone-400 text-xs">Energy</Label>
+                                  <Select value={spellEnergyLibraryFilter} onValueChange={setSpellEnergyLibraryFilter}>
+                                    <SelectTrigger className="bg-stone-800 border-stone-700 mt-1 text-xs h-8" data-testid="select-spell-energy-filter">
                                       <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
                                       <SelectItem value="all">All</SelectItem>
-                                      <SelectItem value="0">0 (Cantrip)</SelectItem>
-                                      {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(level => (
-                                        <SelectItem key={level} value={String(level)}>{level}</SelectItem>
+                                      <SelectItem value="0">0</SelectItem>
+                                      {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(energy => (
+                                        <SelectItem key={energy} value={String(energy)}>{energy}</SelectItem>
                                       ))}
                                     </SelectContent>
                                   </Select>
@@ -12724,15 +12723,16 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                                   </Select>
                                 </div>
                                 <div>
-                                  <Label className="text-stone-400 text-xs">Concentration</Label>
-                                  <Select value={spellConcentrationLibraryFilter} onValueChange={setSpellConcentrationLibraryFilter}>
-                                    <SelectTrigger className="bg-stone-800 border-stone-700 mt-1 text-xs h-8" data-testid="select-spell-concentration-filter">
+                                  <Label className="text-stone-400 text-xs">Duration</Label>
+                                  <Select value={spellDurationLibraryFilter} onValueChange={setSpellDurationLibraryFilter}>
+                                    <SelectTrigger className="bg-stone-800 border-stone-700 mt-1 text-xs h-8" data-testid="select-spell-duration-filter">
                                       <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
                                       <SelectItem value="all">All</SelectItem>
-                                      <SelectItem value="yes">Yes</SelectItem>
-                                      <SelectItem value="no">No</SelectItem>
+                                      {spellDurationOptions.map(duration => (
+                                        <SelectItem key={duration} value={duration}>{duration}</SelectItem>
+                                      ))}
                                     </SelectContent>
                                   </Select>
                                 </div>
@@ -12755,17 +12755,16 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                           .filter((spell: any) => {
                             const matchesSearch = spell.name.toLowerCase().includes(spellLibrarySearch.toLowerCase()) ||
                               spell.description?.toLowerCase().includes(spellLibrarySearch.toLowerCase());
-                            const matchesSchool = spellSchoolLibraryFilter === 'all' || spell.school === spellSchoolLibraryFilter;
-                            const matchesLevel = spellLevelLibraryFilter === 'all' || String(spell.level) === spellLevelLibraryFilter;
+                            const matchesActionType = spellActionTypeLibraryFilter === 'all' || 
+                              spell.castingTime?.toLowerCase() === spellActionTypeLibraryFilter;
+                            const matchesEnergy = spellEnergyLibraryFilter === 'all' || String(spell.energyCost) === spellEnergyLibraryFilter;
                             const matchesDamageType = spellDamageTypeLibraryFilter === 'all' || spell.damageType === spellDamageTypeLibraryFilter;
                             const matchesAttribute = spellAttributeLibraryFilter === 'all' || spell.attribute === spellAttributeLibraryFilter;
                             const matchesAoe = spellAoeLibraryFilter === 'all' || 
                               (spellAoeLibraryFilter === 'yes' && spell.isAoe) || 
                               (spellAoeLibraryFilter === 'no' && !spell.isAoe);
-                            const matchesConcentration = spellConcentrationLibraryFilter === 'all' || 
-                              (spellConcentrationLibraryFilter === 'yes' && spell.concentration) || 
-                              (spellConcentrationLibraryFilter === 'no' && !spell.concentration);
-                            return matchesSearch && matchesSchool && matchesLevel && matchesDamageType && matchesAttribute && matchesAoe && matchesConcentration;
+                            const matchesDuration = spellDurationLibraryFilter === 'all' || spell.duration === spellDurationLibraryFilter;
+                            return matchesSearch && matchesActionType && matchesEnergy && matchesDamageType && matchesAttribute && matchesAoe && matchesDuration;
                           })
                           .map((spell: any) => (
                             <div
@@ -12810,8 +12809,8 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                                 <div className="flex-1">
                                   <div className="flex items-center gap-2">
                                     <span className="font-medium text-stone-100">{spell.name}</span>
-                                    <Badge className="bg-purple-600/30 text-purple-300 text-xs">
-                                      {spell.level === 0 ? 'Cantrip' : `Lvl ${spell.level}`}
+                                    <Badge className="bg-cyan-600/30 text-cyan-300 text-xs">
+                                      {spell.energyCost !== undefined ? `${spell.energyCost} Energy` : '0 Energy'}
                                     </Badge>
                                   </div>
                                   <div className="flex flex-wrap gap-2 mt-1 text-xs text-stone-400">
@@ -12833,17 +12832,16 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                         {systemSpells.filter((spell: any) => {
                           const matchesSearch = spell.name.toLowerCase().includes(spellLibrarySearch.toLowerCase()) ||
                             spell.description?.toLowerCase().includes(spellLibrarySearch.toLowerCase());
-                          const matchesSchool = spellSchoolLibraryFilter === 'all' || spell.school === spellSchoolLibraryFilter;
-                          const matchesLevel = spellLevelLibraryFilter === 'all' || String(spell.level) === spellLevelLibraryFilter;
+                          const matchesActionType = spellActionTypeLibraryFilter === 'all' || 
+                            spell.castingTime?.toLowerCase() === spellActionTypeLibraryFilter;
+                          const matchesEnergy = spellEnergyLibraryFilter === 'all' || String(spell.energyCost) === spellEnergyLibraryFilter;
                           const matchesDamageType = spellDamageTypeLibraryFilter === 'all' || spell.damageType === spellDamageTypeLibraryFilter;
                           const matchesAttribute = spellAttributeLibraryFilter === 'all' || spell.attribute === spellAttributeLibraryFilter;
                           const matchesAoe = spellAoeLibraryFilter === 'all' || 
                             (spellAoeLibraryFilter === 'yes' && spell.isAoe) || 
                             (spellAoeLibraryFilter === 'no' && !spell.isAoe);
-                          const matchesConcentration = spellConcentrationLibraryFilter === 'all' || 
-                            (spellConcentrationLibraryFilter === 'yes' && spell.concentration) || 
-                            (spellConcentrationLibraryFilter === 'no' && !spell.concentration);
-                          return matchesSearch && matchesSchool && matchesLevel && matchesDamageType && matchesAttribute && matchesAoe && matchesConcentration;
+                          const matchesDuration = spellDurationLibraryFilter === 'all' || spell.duration === spellDurationLibraryFilter;
+                          return matchesSearch && matchesActionType && matchesEnergy && matchesDamageType && matchesAttribute && matchesAoe && matchesDuration;
                         }).length === 0 && (
                           <div className="text-center py-8 text-stone-400">
                             <BookOpen className="h-12 w-12 mx-auto mb-3 opacity-30" />
@@ -13298,8 +13296,8 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                             <div className="flex-1">
                               <div className="flex items-center gap-2">
                                 <span className="font-medium text-stone-100">{spell.name}</span>
-                                <Badge className="bg-purple-600/30 text-purple-300 text-xs">
-                                  {spell.level === 0 ? 'Cantrip' : `Lvl ${spell.level}`}
+                                <Badge className="bg-cyan-600/30 text-cyan-300 text-xs">
+                                  {spell.energyCost !== undefined ? `${spell.energyCost} Energy` : '0 Energy'}
                                 </Badge>
                               </div>
                               <div className="flex flex-wrap gap-2 mt-1 text-xs text-stone-400">
@@ -13349,14 +13347,12 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                     </DialogHeader>
                     <div className="space-y-4">
                       <div className="flex gap-2">
-                        <Badge className={`${getSpellLevelBgColor(selectedSpell.level)}`}>
-                          {selectedSpell.level === 0 ? 'Cantrip' : `Level ${selectedSpell.level}`}
+                        <Badge className="bg-cyan-600/30 text-cyan-300">
+                          {selectedSpell.energyCost !== undefined ? `${selectedSpell.energyCost} Energy` : '0 Energy'}
                         </Badge>
-                        {selectedSpell.school && (
-                          <Badge className={getSchoolBadgeColor(selectedSpell.school)}>
-                            {selectedSpell.school}
-                          </Badge>
-                        )}
+                        <Badge className={selectedSpell.castingTime?.toLowerCase().includes('bonus') ? 'bg-blue-600/30 text-blue-300' : 'bg-red-600/30 text-red-300'}>
+                          {selectedSpell.castingTime?.toLowerCase().includes('bonus') ? 'Bonus Action' : 'Action'}
+                        </Badge>
                         {selectedSpell.isEquipped && (
                           <Badge variant="outline" className="bg-amber-900 text-amber-100 border-amber-700">
                             Equipped
