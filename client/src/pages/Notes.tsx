@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useLocation, useParams } from "wouter";
 import { motion } from "framer-motion";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -298,16 +298,26 @@ export default function Notes() {
     enabled: shareDialogOpen,
   });
 
+  // Track which note ID we last loaded to avoid resetting mode on data refresh
+  const lastLoadedNoteIdRef = useRef<string | null>(null);
+
   useEffect(() => {
     if (currentNote) {
-      setNoteTitle(currentNote.title);
-      setNoteContent(currentNote.content || "");
-      if (currentNote.type === "canvas" && currentNote.canvasData) {
-        setCanvasData(currentNote.canvasData as CanvasData);
-        setNoteMode("edit");
-      } else {
-        setCanvasData({ nodes: [], connections: [] });
-        setNoteMode("read");
+      // Only reset mode when loading a NEW note, not when the same note updates
+      const isNewNote = lastLoadedNoteIdRef.current !== currentNote.id;
+      
+      if (isNewNote) {
+        setNoteTitle(currentNote.title);
+        setNoteContent(currentNote.content || "");
+        lastLoadedNoteIdRef.current = currentNote.id;
+        
+        if (currentNote.type === "canvas" && currentNote.canvasData) {
+          setCanvasData(currentNote.canvasData as CanvasData);
+          setNoteMode("edit");
+        } else {
+          setCanvasData({ nodes: [], connections: [] });
+          setNoteMode("read");
+        }
       }
     }
   }, [currentNote]);

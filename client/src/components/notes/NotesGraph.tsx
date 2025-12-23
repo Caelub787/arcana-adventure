@@ -180,7 +180,7 @@ export function NotesGraph({ notes, onNoteClick }: NotesGraphProps) {
 
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
-  const [isPanning, setIsPanning] = useState(false);
+  const isPanningRef = useRef(false);
   const panStartRef = useRef<{ pointerX: number; pointerY: number; panX: number; panY: number } | null>(null);
 
   const { data: spells = [] } = useQuery({
@@ -357,7 +357,7 @@ export function NotesGraph({ notes, onNoteClick }: NotesGraphProps) {
     const target = e.target as HTMLElement;
     if (target.closest('.graph-node') || target.closest('.entity-popup')) return;
     
-    setIsPanning(true);
+    isPanningRef.current = true;
     panStartRef.current = {
       pointerX: e.clientX,
       pointerY: e.clientY,
@@ -368,7 +368,7 @@ export function NotesGraph({ notes, onNoteClick }: NotesGraphProps) {
   }, []);
 
   const handlePointerMove = useCallback((e: React.PointerEvent) => {
-    if (!isPanning || !panStartRef.current) return;
+    if (!isPanningRef.current || !panStartRef.current) return;
     const dx = e.clientX - panStartRef.current.pointerX;
     const dy = e.clientY - panStartRef.current.pointerY;
     const newPan = {
@@ -377,10 +377,10 @@ export function NotesGraph({ notes, onNoteClick }: NotesGraphProps) {
     };
     panRef.current = newPan;
     setPan(newPan);
-  }, [isPanning]);
+  }, []);
 
   const handlePointerUp = useCallback(() => {
-    setIsPanning(false);
+    isPanningRef.current = false;
     panStartRef.current = null;
   }, []);
 
