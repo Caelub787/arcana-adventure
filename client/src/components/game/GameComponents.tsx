@@ -1266,15 +1266,25 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                 <Popover>
                   <PopoverTrigger asChild>
                     <button
-                      onPointerDown={(e) => e.stopPropagation()}
-                      onClick={(e) => e.stopPropagation()}
+                      onPointerDown={(e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                      }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                      }}
                       className="absolute -top-3 -right-3 w-7 h-7 bg-violet-600 hover:bg-violet-700 rounded-full flex items-center justify-center shadow-lg border-2 border-violet-400 z-30 pointer-events-auto touch-auto"
                       data-testid={`button-effects-${token.id}`}
                     >
                       <Flame className="w-4 h-4 text-white" />
                     </button>
                   </PopoverTrigger>
-                  <PopoverContent className="w-48 bg-stone-900 border-stone-700 p-2">
+                  <PopoverContent 
+                    className="w-48 bg-stone-900 border-stone-700 p-2 z-50"
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onClick={(e) => e.stopPropagation()}
+                  >
                     <div className="text-xs text-stone-400 mb-2">Apply Effect</div>
                     <div className="space-y-1">
                       {allTokenEffects.map(effect => (
@@ -1282,6 +1292,8 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                           key={effect.id}
                           onClick={(e) => {
                             e.stopPropagation();
+                            e.preventDefault();
+                            console.log('[ApplyEffect] Clicked:', token.id, effect.id);
                             onApplyEffect?.(token.id, effect.id);
                           }}
                           className="w-full flex items-center gap-2 p-1.5 rounded hover:bg-stone-800 text-left"
