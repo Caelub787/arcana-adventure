@@ -21,8 +21,9 @@ import {
   Users, User, Plus, Minus, LogOut, Menu, ChevronRight, ChevronLeft, ChevronDown, ChevronUp,
   Heart, Zap, Backpack, Sparkles, Dice5, MessageSquare, RefreshCw, X, Trash2, Package, FolderOpen, Folder, FolderPlus, GripVertical, Lock, Unlock, Camera,
   BarChart3, Grid3X3, ScrollText, Upload, Image as ImageIcon, Layers, Search, TrendingUp, UserMinus, Ban,
-  MousePointer, Target, UserCheck, Swords, ArrowRight, ArrowLeft, Eye, EyeOff, Check, Moon, Coffee, AlertTriangle, GitBranch, Star, BookOpen, Pencil, Dna, Type, Library, Filter
+  MousePointer, Target, UserCheck, Swords, ArrowRight, ArrowLeft, Eye, EyeOff, Check, Moon, Coffee, AlertTriangle, GitBranch, Star, BookOpen, Pencil, Dna, Type, Library, Filter, MoreVertical
 } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useForm } from "react-hook-form";
 import { type Scene, type Hotbar, type SystemSpecies, type FeatTreeWithData, type Feat, type FeatConnection, type CharacterFeat, type SystemSkill, type CharacterCustomSkill, api, gameWs } from "@/lib/api";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -5406,7 +5407,7 @@ export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onIn
                              folderCharacters.map((char: any) => (
                                <div 
                                  key={char.id} 
-                                 className="p-3 bg-stone-900 rounded border border-stone-800 flex justify-between items-center gap-2"
+                                 className="p-2 bg-stone-900 rounded border border-stone-800 flex justify-between items-center gap-2"
                                  draggable={role === 'gm'}
                                  onDragStart={(e) => {
                                    e.dataTransfer.setData('text/plain', char.id.toString());
@@ -5415,109 +5416,75 @@ export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onIn
                                  onDragEnd={() => setDraggingCharacterId(null)}
                                  data-testid={`character-item-${char.id}`}
                                >
-                                 <div className="flex items-center gap-3 flex-1 min-w-0">
+                                 <div className="flex items-center gap-2 flex-1 min-w-0">
                                    {role === 'gm' && (
                                      <GripVertical className="h-4 w-4 text-stone-500 cursor-grab shrink-0" />
                                    )}
-                                   <div className="h-10 w-10 bg-stone-800 rounded flex items-center justify-center border border-stone-700 shrink-0">
-                                     <Sword className="h-5 w-5 text-stone-500" />
-                                   </div>
                                    <div className="min-w-0 flex-1">
-                                     <div className="font-bold text-stone-200 truncate">{char.name}</div>
-                                     <div className="text-xs text-stone-500">
-                                       Lvl {char.level} {char.class}
-                                     </div>
+                                     <div className="font-medium text-stone-200 truncate text-sm">{char.name}</div>
                                    </div>
                                  </div>
-                                 <div className="flex items-center gap-2 shrink-0">
-                                   <div className="text-xs text-stone-400 hidden sm:block">
-                                     HP: {char.hp}/{char.maxHp}
-                                   </div>
-                                   {onViewCharacter && (
-                                     <TooltipProvider>
-                                       <Tooltip>
-                                         <TooltipTrigger asChild>
-                                           <Button
-                                             size="sm"
-                                             variant="ghost"
-                                             onClick={() => onViewCharacter(char)}
-                                             className="h-8 w-8 p-0 bg-amber-900/30 hover:bg-amber-800/50 border border-amber-700 text-amber-200"
-                                             data-testid={`button-view-character-${char.id}`}
-                                           >
-                                             <User className="h-4 w-4" />
-                                           </Button>
-                                         </TooltipTrigger>
-                                         <TooltipContent side="top" className="bg-stone-800 border-stone-700">
-                                           <p>View Sheet</p>
-                                         </TooltipContent>
-                                       </Tooltip>
-                                     </TooltipProvider>
-                                   )}
-                                   {onAssignCharacter && (role === 'gm' || myPermissions?.permissions?.[char.id] === 'edit' || myPermissions?.permissions?.[char.id] === 'owner') && (
-                                     <TooltipProvider>
-                                       <Tooltip>
-                                         <TooltipTrigger asChild>
-                                           <Button
-                                             size="sm"
-                                             variant="ghost"
-                                             onClick={() => onAssignCharacter(char)}
-                                             className="h-8 w-8 p-0 bg-green-900/30 hover:bg-green-800/50 border border-green-700 text-green-200"
-                                             data-testid={`button-assign-character-${char.id}`}
-                                           >
-                                             <UserCheck className="h-4 w-4" />
-                                           </Button>
-                                         </TooltipTrigger>
-                                         <TooltipContent side="top" className="bg-stone-800 border-stone-700">
-                                           <p>Assign Character</p>
-                                         </TooltipContent>
-                                       </Tooltip>
-                                     </TooltipProvider>
-                                   )}
-                                   {role === 'gm' && (
-                                     <TooltipProvider>
-                                       <Tooltip>
-                                         <TooltipTrigger asChild>
-                                           <Button
-                                             size="sm"
-                                             variant="ghost"
-                                             onClick={() => {
-                                               setSelectedCharForAccess(char);
-                                               setShowAccessDialog(true);
-                                             }}
-                                             className="h-8 w-8 p-0 bg-purple-900/30 hover:bg-purple-800/50 border border-purple-700 text-purple-200"
-                                             data-testid={`button-manage-access-${char.id}`}
-                                           >
-                                             <Shield className="h-4 w-4" />
-                                           </Button>
-                                         </TooltipTrigger>
-                                         <TooltipContent side="top" className="bg-stone-800 border-stone-700">
-                                           <p>Manage Access</p>
-                                         </TooltipContent>
-                                       </Tooltip>
-                                     </TooltipProvider>
-                                   )}
-                                   {role === 'gm' && (
-                                     <TooltipProvider>
-                                       <Tooltip>
-                                         <TooltipTrigger asChild>
-                                           <Button
-                                             size="sm"
-                                             variant="ghost"
-                                             onClick={() => handleDeleteCharacter(char)}
-                                             disabled={deleteCharacterMutation.isPending}
-                                             className="h-8 w-8 p-0 text-red-500 hover:text-red-400 hover:bg-red-900/30"
-                                             data-testid={`button-delete-character-${char.id}`}
-                                           >
-                                             <Trash2 className="h-4 w-4" />
-                                           </Button>
-                                         </TooltipTrigger>
-                                         <TooltipContent side="top" className="bg-stone-800 border-stone-700">
-                                           <p>Delete Character</p>
-                                         </TooltipContent>
-                                       </Tooltip>
-                                     </TooltipProvider>
-                                   )}
-                                 </div>
+                                 <DropdownMenu>
+                                   <DropdownMenuTrigger asChild>
+                                     <Button
+                                       size="sm"
+                                       variant="ghost"
+                                       className="h-7 w-7 p-0 text-stone-400 hover:text-stone-200"
+                                       data-testid={`button-character-menu-${char.id}`}
+                                     >
+                                       <MoreVertical className="h-4 w-4" />
+                                     </Button>
+                                   </DropdownMenuTrigger>
+                                   <DropdownMenuContent align="end" className="bg-stone-900 border-stone-700">
+                                     {onViewCharacter && (
+                                       <DropdownMenuItem
+                                         onClick={() => onViewCharacter(char)}
+                                         className="text-amber-200 focus:bg-amber-900/30 focus:text-amber-200"
+                                         data-testid={`button-view-character-${char.id}`}
+                                       >
+                                         <User className="h-4 w-4 mr-2" />
+                                         View Sheet
+                                       </DropdownMenuItem>
+                                     )}
+                                     {onAssignCharacter && (role === 'gm' || myPermissions?.permissions?.[char.id] === 'edit' || myPermissions?.permissions?.[char.id] === 'owner') && (
+                                       <DropdownMenuItem
+                                         onClick={() => onAssignCharacter(char)}
+                                         className="text-green-200 focus:bg-green-900/30 focus:text-green-200"
+                                         data-testid={`button-assign-character-${char.id}`}
+                                       >
+                                         <UserCheck className="h-4 w-4 mr-2" />
+                                         Assign Character
+                                       </DropdownMenuItem>
+                                     )}
+                                     {role === 'gm' && (
+                                       <DropdownMenuItem
+                                         onClick={() => {
+                                           setSelectedCharForAccess(char);
+                                           setShowAccessDialog(true);
+                                         }}
+                                         className="text-purple-200 focus:bg-purple-900/30 focus:text-purple-200"
+                                         data-testid={`button-manage-access-${char.id}`}
+                                       >
+                                         <Shield className="h-4 w-4 mr-2" />
+                                         Manage Access
+                                       </DropdownMenuItem>
+                                     )}
+                                     {role === 'gm' && (
+                                       <>
+                                         <DropdownMenuSeparator className="bg-stone-700" />
+                                         <DropdownMenuItem
+                                           onClick={() => handleDeleteCharacter(char)}
+                                           disabled={deleteCharacterMutation.isPending}
+                                           className="text-red-400 focus:bg-red-900/30 focus:text-red-400"
+                                           data-testid={`button-delete-character-${char.id}`}
+                                         >
+                                           <Trash2 className="h-4 w-4 mr-2" />
+                                           Delete
+                                         </DropdownMenuItem>
+                                       </>
+                                     )}
+                                   </DropdownMenuContent>
+                                 </DropdownMenu>
                                </div>
                              ))
                            ) : (
@@ -5559,7 +5526,7 @@ export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onIn
                        unfiledCharacters.map((char: any) => (
                          <div 
                            key={char.id} 
-                           className="p-3 bg-stone-900 rounded border border-stone-800 flex justify-between items-center gap-2"
+                           className="p-2 bg-stone-900 rounded border border-stone-800 flex justify-between items-center gap-2"
                            draggable={role === 'gm'}
                            onDragStart={(e) => {
                              e.dataTransfer.setData('text/plain', char.id.toString());
@@ -5568,109 +5535,75 @@ export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onIn
                            onDragEnd={() => setDraggingCharacterId(null)}
                            data-testid={`character-item-${char.id}`}
                          >
-                           <div className="flex items-center gap-3 flex-1 min-w-0">
+                           <div className="flex items-center gap-2 flex-1 min-w-0">
                              {role === 'gm' && (
                                <GripVertical className="h-4 w-4 text-stone-500 cursor-grab shrink-0" />
                              )}
-                             <div className="h-10 w-10 bg-stone-800 rounded flex items-center justify-center border border-stone-700 shrink-0">
-                               <Sword className="h-5 w-5 text-stone-500" />
-                             </div>
                              <div className="min-w-0 flex-1">
-                               <div className="font-bold text-stone-200 truncate">{char.name}</div>
-                               <div className="text-xs text-stone-500">
-                                 Lvl {char.level} {char.class}
-                               </div>
+                               <div className="font-medium text-stone-200 truncate text-sm">{char.name}</div>
                              </div>
                            </div>
-                           <div className="flex items-center gap-2 shrink-0">
-                             <div className="text-xs text-stone-400 hidden sm:block">
-                               HP: {char.hp}/{char.maxHp}
-                             </div>
-                             {onViewCharacter && (
-                               <TooltipProvider>
-                                 <Tooltip>
-                                   <TooltipTrigger asChild>
-                                     <Button
-                                       size="sm"
-                                       variant="ghost"
-                                       onClick={() => onViewCharacter(char)}
-                                       className="h-8 w-8 p-0 bg-amber-900/30 hover:bg-amber-800/50 border border-amber-700 text-amber-200"
-                                       data-testid={`button-view-character-${char.id}`}
-                                     >
-                                       <User className="h-4 w-4" />
-                                     </Button>
-                                   </TooltipTrigger>
-                                   <TooltipContent side="top" className="bg-stone-800 border-stone-700">
-                                     <p>View Sheet</p>
-                                   </TooltipContent>
-                                 </Tooltip>
-                               </TooltipProvider>
-                             )}
-                             {onAssignCharacter && (role === 'gm' || myPermissions?.permissions?.[char.id] === 'edit' || myPermissions?.permissions?.[char.id] === 'owner') && (
-                               <TooltipProvider>
-                                 <Tooltip>
-                                   <TooltipTrigger asChild>
-                                     <Button
-                                       size="sm"
-                                       variant="ghost"
-                                       onClick={() => onAssignCharacter(char)}
-                                       className="h-8 w-8 p-0 bg-green-900/30 hover:bg-green-800/50 border border-green-700 text-green-200"
-                                       data-testid={`button-assign-character-${char.id}`}
-                                     >
-                                       <UserCheck className="h-4 w-4" />
-                                     </Button>
-                                   </TooltipTrigger>
-                                   <TooltipContent side="top" className="bg-stone-800 border-stone-700">
-                                     <p>Assign Character</p>
-                                   </TooltipContent>
-                                 </Tooltip>
-                               </TooltipProvider>
-                             )}
-                             {role === 'gm' && (
-                               <TooltipProvider>
-                                 <Tooltip>
-                                   <TooltipTrigger asChild>
-                                     <Button
-                                       size="sm"
-                                       variant="ghost"
-                                       onClick={() => {
-                                         setSelectedCharForAccess(char);
-                                         setShowAccessDialog(true);
-                                       }}
-                                       className="h-8 w-8 p-0 bg-purple-900/30 hover:bg-purple-800/50 border border-purple-700 text-purple-200"
-                                       data-testid={`button-manage-access-${char.id}`}
-                                     >
-                                       <Shield className="h-4 w-4" />
-                                     </Button>
-                                   </TooltipTrigger>
-                                   <TooltipContent side="top" className="bg-stone-800 border-stone-700">
-                                     <p>Manage Access</p>
-                                   </TooltipContent>
-                                 </Tooltip>
-                               </TooltipProvider>
-                             )}
-                             {role === 'gm' && (
-                               <TooltipProvider>
-                                 <Tooltip>
-                                   <TooltipTrigger asChild>
-                                     <Button
-                                       size="sm"
-                                       variant="ghost"
-                                       onClick={() => handleDeleteCharacter(char)}
-                                       disabled={deleteCharacterMutation.isPending}
-                                       className="h-8 w-8 p-0 text-red-500 hover:text-red-400 hover:bg-red-900/30"
-                                       data-testid={`button-delete-character-${char.id}`}
-                                     >
-                                       <Trash2 className="h-4 w-4" />
-                                     </Button>
-                                   </TooltipTrigger>
-                                   <TooltipContent side="top" className="bg-stone-800 border-stone-700">
-                                     <p>Delete Character</p>
-                                   </TooltipContent>
-                                 </Tooltip>
-                               </TooltipProvider>
-                             )}
-                           </div>
+                           <DropdownMenu>
+                             <DropdownMenuTrigger asChild>
+                               <Button
+                                 size="sm"
+                                 variant="ghost"
+                                 className="h-7 w-7 p-0 text-stone-400 hover:text-stone-200"
+                                 data-testid={`button-character-menu-${char.id}`}
+                               >
+                                 <MoreVertical className="h-4 w-4" />
+                               </Button>
+                             </DropdownMenuTrigger>
+                             <DropdownMenuContent align="end" className="bg-stone-900 border-stone-700">
+                               {onViewCharacter && (
+                                 <DropdownMenuItem
+                                   onClick={() => onViewCharacter(char)}
+                                   className="text-amber-200 focus:bg-amber-900/30 focus:text-amber-200"
+                                   data-testid={`button-view-character-${char.id}`}
+                                 >
+                                   <User className="h-4 w-4 mr-2" />
+                                   View Sheet
+                                 </DropdownMenuItem>
+                               )}
+                               {onAssignCharacter && (role === 'gm' || myPermissions?.permissions?.[char.id] === 'edit' || myPermissions?.permissions?.[char.id] === 'owner') && (
+                                 <DropdownMenuItem
+                                   onClick={() => onAssignCharacter(char)}
+                                   className="text-green-200 focus:bg-green-900/30 focus:text-green-200"
+                                   data-testid={`button-assign-character-${char.id}`}
+                                 >
+                                   <UserCheck className="h-4 w-4 mr-2" />
+                                   Assign Character
+                                 </DropdownMenuItem>
+                               )}
+                               {role === 'gm' && (
+                                 <DropdownMenuItem
+                                   onClick={() => {
+                                     setSelectedCharForAccess(char);
+                                     setShowAccessDialog(true);
+                                   }}
+                                   className="text-purple-200 focus:bg-purple-900/30 focus:text-purple-200"
+                                   data-testid={`button-manage-access-${char.id}`}
+                                 >
+                                   <Shield className="h-4 w-4 mr-2" />
+                                   Manage Access
+                                 </DropdownMenuItem>
+                               )}
+                               {role === 'gm' && (
+                                 <>
+                                   <DropdownMenuSeparator className="bg-stone-700" />
+                                   <DropdownMenuItem
+                                     onClick={() => handleDeleteCharacter(char)}
+                                     disabled={deleteCharacterMutation.isPending}
+                                     className="text-red-400 focus:bg-red-900/30 focus:text-red-400"
+                                     data-testid={`button-delete-character-${char.id}`}
+                                   >
+                                     <Trash2 className="h-4 w-4 mr-2" />
+                                     Delete
+                                   </DropdownMenuItem>
+                                 </>
+                               )}
+                             </DropdownMenuContent>
+                           </DropdownMenu>
                          </div>
                        ))
                      ) : (
