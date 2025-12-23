@@ -495,6 +495,47 @@ export interface NoteShare {
   createdAt: string;
 }
 
+export interface TokenEffect {
+  id: string;
+  name: string;
+  imageUrl: string | null;
+  description: string | null;
+  timing: string;
+  causesDamage: boolean;
+  damageType: string | null;
+  diceAmount: string | null;
+  createdAt: Date;
+}
+
+export interface SpellEffect {
+  id: string;
+  spellId: string;
+  effectId: string;
+  triggerCondition: string;
+  createdAt: Date;
+  effect: TokenEffect;
+}
+
+export interface ItemEffect {
+  id: string;
+  itemId: string;
+  effectId: string;
+  triggerCondition: string;
+  createdAt: Date;
+  effect: TokenEffect;
+}
+
+export interface TokenActiveEffect {
+  id: string;
+  tokenId: string;
+  effectId: string;
+  sourceType: string | null;
+  sourceId: string | null;
+  appliedAt: Date;
+  duration: number | null;
+  effect: TokenEffect;
+}
+
 class ApiClient {
   private baseUrl = '/api';
 
@@ -1496,6 +1537,85 @@ class ApiClient {
     const params = new URLSearchParams({ q: query });
     if (type && type !== 'all') params.append('type', type);
     return this.request(`/search/entities?${params.toString()}`);
+  }
+
+  // Token Effects CRUD
+  async getTokenEffects(): Promise<TokenEffect[]> {
+    return this.request('/token-effects');
+  }
+
+  async getTokenEffect(id: string): Promise<TokenEffect> {
+    return this.request(`/token-effects/${id}`);
+  }
+
+  async createTokenEffect(effect: Partial<TokenEffect>): Promise<TokenEffect> {
+    return this.request('/token-effects', {
+      method: 'POST',
+      body: JSON.stringify(effect),
+    });
+  }
+
+  async updateTokenEffect(id: string, effect: Partial<TokenEffect>): Promise<TokenEffect> {
+    return this.request(`/token-effects/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(effect),
+    });
+  }
+
+  async deleteTokenEffect(id: string): Promise<void> {
+    return this.request(`/token-effects/${id}`, { method: 'DELETE' });
+  }
+
+  // Spell Effects
+  async getSpellEffects(spellId: string): Promise<SpellEffect[]> {
+    return this.request(`/spells/${spellId}/effects`);
+  }
+
+  async addSpellEffect(spellId: string, effectId: string, triggerCondition: string): Promise<SpellEffect> {
+    return this.request(`/spells/${spellId}/effects`, {
+      method: 'POST',
+      body: JSON.stringify({ effectId, triggerCondition }),
+    });
+  }
+
+  async removeSpellEffect(id: string): Promise<void> {
+    return this.request(`/spell-effects/${id}`, { method: 'DELETE' });
+  }
+
+  // Item Effects
+  async getItemEffects(itemId: string): Promise<ItemEffect[]> {
+    return this.request(`/items/${itemId}/effects`);
+  }
+
+  async addItemEffect(itemId: string, effectId: string, triggerCondition: string): Promise<ItemEffect> {
+    return this.request(`/items/${itemId}/effects`, {
+      method: 'POST',
+      body: JSON.stringify({ effectId, triggerCondition }),
+    });
+  }
+
+  async removeItemEffect(id: string): Promise<void> {
+    return this.request(`/item-effects/${id}`, { method: 'DELETE' });
+  }
+
+  // Token Active Effects
+  async getTokenActiveEffects(tokenId: string): Promise<TokenActiveEffect[]> {
+    return this.request(`/tokens/${tokenId}/active-effects`);
+  }
+
+  async applyTokenEffect(tokenId: string, effectId: string, sourceType?: string, sourceId?: string, duration?: number): Promise<TokenActiveEffect> {
+    return this.request(`/tokens/${tokenId}/active-effects`, {
+      method: 'POST',
+      body: JSON.stringify({ effectId, sourceType, sourceId, duration }),
+    });
+  }
+
+  async removeTokenActiveEffect(id: string): Promise<void> {
+    return this.request(`/token-active-effects/${id}`, { method: 'DELETE' });
+  }
+
+  async clearTokenActiveEffects(tokenId: string): Promise<void> {
+    return this.request(`/tokens/${tokenId}/active-effects`, { method: 'DELETE' });
   }
 }
 

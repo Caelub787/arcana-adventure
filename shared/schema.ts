@@ -907,3 +907,81 @@ export type NoteShare = typeof noteShares.$inferSelect;
 //     { id: string, fromNodeId: string, toNodeId: string, label?: string, color?: string }
 //   ]
 // }
+
+// ============================================
+// TOKEN EFFECTS SYSTEM (Status effects for combat)
+// ============================================
+
+// Token Effects table (admin-defined status effects)
+export const tokenEffects = pgTable("token_effects", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  imageUrl: text("image_url"),
+  description: text("description"),
+  timing: text("timing").notNull().default("start_of_turn"), // "start_of_round" or "start_of_turn"
+  causesDamage: boolean("causes_damage").default(false).notNull(),
+  damageType: text("damage_type"), // Sharp, Blunt, Piercing, Flame, Frost, Storm, Tide, Stone, Flux, Light, Dark, Sound, Health
+  diceAmount: text("dice_amount"), // Dice notation e.g. "1d6", "2d4"
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertTokenEffectSchema = createInsertSchema(tokenEffects).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertTokenEffect = z.infer<typeof insertTokenEffectSchema>;
+export type TokenEffect = typeof tokenEffects.$inferSelect;
+
+// Spell Effects junction table (linking effects to spells with trigger conditions)
+export const spellEffects = pgTable("spell_effects", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  spellId: varchar("spell_id").notNull().references(() => systemSpells.id, { onDelete: "cascade" }),
+  effectId: varchar("effect_id").notNull().references(() => tokenEffects.id, { onDelete: "cascade" }),
+  triggerCondition: text("trigger_condition").notNull().default("always"), // "success", "failure", "always"
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertSpellEffectSchema = createInsertSchema(spellEffects).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertSpellEffect = z.infer<typeof insertSpellEffectSchema>;
+export type SpellEffect = typeof spellEffects.$inferSelect;
+
+// Item Effects junction table (linking effects to items/weapons with trigger conditions)
+export const itemEffects = pgTable("item_effects", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  itemId: varchar("item_id").notNull().references(() => items.id, { onDelete: "cascade" }),
+  effectId: varchar("effect_id").notNull().references(() => tokenEffects.id, { onDelete: "cascade" }),
+  triggerCondition: text("trigger_condition").notNull().default("always"), // "success", "failure", "always"
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertItemEffectSchema = createInsertSchema(itemEffects).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertItemEffect = z.infer<typeof insertItemEffectSchema>;
+export type ItemEffect = typeof itemEffects.$inferSelect;
+
+// Token Active Effects table (tracking active effects on tokens in combat)
+export const tokenActiveEffects = pgTable("token_active_effects", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tokenId: varchar("token_id").notNull().references(() => tokens.id, { onDelete: "cascade" }),
+  effectId: varchar("effect_id").notNull().references(() => tokenEffects.id, { onDelete: "cascade" }),
+  sourceType: text("source_type"), // "spell", "item", "manual" - how the effect was applied
+  sourceId: varchar("source_id"), // ID of the spell or item that applied the effect
+  appliedAt: timestamp("applied_at").defaultNow().notNull(),
+  duration: integer("duration"), // Number of rounds remaining, null = permanent until removed
+});
+
+export const insertTokenActiveEffectSchema = createInsertSchema(tokenActiveEffects).omit({
+  id: true,
+  appliedAt: true,
+});
+
+export type InsertTokenActiveEffect = z.infer<typeof insertTokenActiveEffectSchema>;
+export type TokenActiveEffect = typeof tokenActiveEffects.$inferSelect;

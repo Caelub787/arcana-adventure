@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertUserSchema, insertCampaignSchema, insertCharacterSchema, insertTokenSchema, insertChatMessageSchema, insertSceneSchema, insertHotbarSchema, insertItemSchema, insertSpellSchema, initiativeEntries } from "@shared/schema";
+import { insertUserSchema, insertCampaignSchema, insertCharacterSchema, insertTokenSchema, insertChatMessageSchema, insertSceneSchema, insertHotbarSchema, insertItemSchema, insertSpellSchema, initiativeEntries, insertTokenEffectSchema, insertTokenActiveEffectSchema } from "@shared/schema";
 import bcrypt from "bcryptjs";
 import { WebSocketServer } from "ws";
 import { sendPasswordResetEmail } from "./email";
@@ -5416,6 +5416,265 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (e) {
       console.error("Failed to delete note share:", e);
       res.status(500).json({ error: "Failed to delete note share" });
+    }
+  });
+
+  // ============================================
+  // TOKEN EFFECTS SYSTEM ROUTES
+  // ============================================
+
+  // Admin Token Effects CRUD routes
+  app.get("/api/admin/token-effects", requireAdmin, async (req, res) => {
+    try {
+      const effects = await storage.getTokenEffects();
+      res.json(effects);
+    } catch (err) {
+      console.error("Failed to fetch token effects:", err);
+      res.status(500).json({ error: "Failed to fetch token effects" });
+    }
+  });
+
+  app.post("/api/admin/token-effects", requireAdmin, async (req, res) => {
+    try {
+      const effectData = insertTokenEffectSchema.parse(req.body);
+      const effect = await storage.createTokenEffect(effectData);
+      res.status(201).json(effect);
+    } catch (err) {
+      console.error("Failed to create token effect:", err);
+      res.status(400).json({ error: "Failed to create token effect" });
+    }
+  });
+
+  app.get("/api/admin/token-effects/:id", requireAdmin, async (req, res) => {
+    try {
+      const effect = await storage.getTokenEffect(req.params.id);
+      if (!effect) {
+        return res.status(404).json({ error: "Token effect not found" });
+      }
+      res.json(effect);
+    } catch (err) {
+      console.error("Failed to fetch token effect:", err);
+      res.status(500).json({ error: "Failed to fetch token effect" });
+    }
+  });
+
+  app.put("/api/admin/token-effects/:id", requireAdmin, async (req, res) => {
+    try {
+      const effect = await storage.getTokenEffect(req.params.id);
+      if (!effect) {
+        return res.status(404).json({ error: "Token effect not found" });
+      }
+      const updated = await storage.updateTokenEffect(req.params.id, req.body);
+      res.json(updated);
+    } catch (err) {
+      console.error("Failed to update token effect:", err);
+      res.status(400).json({ error: "Failed to update token effect" });
+    }
+  });
+
+  app.delete("/api/admin/token-effects/:id", requireAdmin, async (req, res) => {
+    try {
+      const effect = await storage.getTokenEffect(req.params.id);
+      if (!effect) {
+        return res.status(404).json({ error: "Token effect not found" });
+      }
+      await storage.deleteTokenEffect(req.params.id);
+      res.json({ success: true });
+    } catch (err) {
+      console.error("Failed to delete token effect:", err);
+      res.status(400).json({ error: "Failed to delete token effect" });
+    }
+  });
+
+  // Admin Spell Effects association routes
+  app.get("/api/admin/spells/:spellId/effects", requireAdmin, async (req, res) => {
+    try {
+      const effects = await storage.getSpellEffects(req.params.spellId);
+      res.json(effects);
+    } catch (err) {
+      console.error("Failed to fetch spell effects:", err);
+      res.status(500).json({ error: "Failed to fetch spell effects" });
+    }
+  });
+
+  app.post("/api/admin/spells/:spellId/effects", requireAdmin, async (req, res) => {
+    try {
+      const { effectId, triggerCondition } = req.body;
+      if (!effectId) {
+        return res.status(400).json({ error: "effectId is required" });
+      }
+      const effect = await storage.getTokenEffect(effectId);
+      if (!effect) {
+        return res.status(404).json({ error: "Token effect not found" });
+      }
+      const spellEffect = await storage.addSpellEffect(
+        req.params.spellId,
+        effectId,
+        triggerCondition || "always"
+      );
+      res.status(201).json(spellEffect);
+    } catch (err) {
+      console.error("Failed to add spell effect:", err);
+      res.status(400).json({ error: "Failed to add spell effect" });
+    }
+  });
+
+  app.delete("/api/admin/spell-effects/:id", requireAdmin, async (req, res) => {
+    try {
+      await storage.removeSpellEffect(req.params.id);
+      res.json({ success: true });
+    } catch (err) {
+      console.error("Failed to remove spell effect:", err);
+      res.status(400).json({ error: "Failed to remove spell effect" });
+    }
+  });
+
+  // Admin Item Effects association routes
+  app.get("/api/admin/items/:itemId/effects", requireAdmin, async (req, res) => {
+    try {
+      const effects = await storage.getItemEffects(req.params.itemId);
+      res.json(effects);
+    } catch (err) {
+      console.error("Failed to fetch item effects:", err);
+      res.status(500).json({ error: "Failed to fetch item effects" });
+    }
+  });
+
+  app.post("/api/admin/items/:itemId/effects", requireAdmin, async (req, res) => {
+    try {
+      const { effectId, triggerCondition } = req.body;
+      if (!effectId) {
+        return res.status(400).json({ error: "effectId is required" });
+      }
+      const effect = await storage.getTokenEffect(effectId);
+      if (!effect) {
+        return res.status(404).json({ error: "Token effect not found" });
+      }
+      const itemEffect = await storage.addItemEffect(
+        req.params.itemId,
+        effectId,
+        triggerCondition || "always"
+      );
+      res.status(201).json(itemEffect);
+    } catch (err) {
+      console.error("Failed to add item effect:", err);
+      res.status(400).json({ error: "Failed to add item effect" });
+    }
+  });
+
+  app.delete("/api/admin/item-effects/:id", requireAdmin, async (req, res) => {
+    try {
+      await storage.removeItemEffect(req.params.id);
+      res.json({ success: true });
+    } catch (err) {
+      console.error("Failed to remove item effect:", err);
+      res.status(400).json({ error: "Failed to remove item effect" });
+    }
+  });
+
+  // Token Active Effects routes (requires GM role or token owner)
+  app.get("/api/tokens/:tokenId/active-effects", requireAuth, async (req, res) => {
+    try {
+      const token = await storage.getToken(req.params.tokenId);
+      if (!token) {
+        return res.status(404).json({ error: "Token not found" });
+      }
+
+      const campaign = await storage.getCampaign(token.campaignId);
+      if (!campaign) {
+        return res.status(404).json({ error: "Campaign not found" });
+      }
+
+      const isGM = campaign.gmUserId === req.session.userId;
+      const isMember = await storage.isCampaignMember(token.campaignId, req.session.userId!);
+      
+      if (!isGM && !isMember) {
+        return res.status(403).json({ error: "Not authorized to view this token" });
+      }
+
+      const effects = await storage.getTokenActiveEffects(req.params.tokenId);
+      res.json(effects);
+    } catch (err) {
+      console.error("Failed to fetch token active effects:", err);
+      res.status(500).json({ error: "Failed to fetch token active effects" });
+    }
+  });
+
+  app.post("/api/tokens/:tokenId/active-effects", requireAuth, async (req, res) => {
+    try {
+      const token = await storage.getToken(req.params.tokenId);
+      if (!token) {
+        return res.status(404).json({ error: "Token not found" });
+      }
+
+      const campaign = await storage.getCampaign(token.campaignId);
+      if (!campaign) {
+        return res.status(404).json({ error: "Campaign not found" });
+      }
+
+      const isGM = campaign.gmUserId === req.session.userId;
+      
+      if (!isGM) {
+        return res.status(403).json({ error: "Only the GM can apply effects to tokens" });
+      }
+
+      const { effectId, sourceType, sourceId, duration } = req.body;
+      if (!effectId) {
+        return res.status(400).json({ error: "effectId is required" });
+      }
+
+      const effect = await storage.getTokenEffect(effectId);
+      if (!effect) {
+        return res.status(404).json({ error: "Token effect not found" });
+      }
+
+      const activeEffect = await storage.addTokenActiveEffect({
+        tokenId: req.params.tokenId,
+        effectId,
+        sourceType: sourceType || null,
+        sourceId: sourceId || null,
+        duration: duration || null,
+      });
+      res.status(201).json(activeEffect);
+    } catch (err) {
+      console.error("Failed to apply token effect:", err);
+      res.status(400).json({ error: "Failed to apply token effect" });
+    }
+  });
+
+  app.delete("/api/token-active-effects/:id", requireAuth, async (req, res) => {
+    try {
+      await storage.removeTokenActiveEffect(req.params.id);
+      res.json({ success: true });
+    } catch (err) {
+      console.error("Failed to remove token active effect:", err);
+      res.status(400).json({ error: "Failed to remove token active effect" });
+    }
+  });
+
+  app.delete("/api/tokens/:tokenId/active-effects", requireAuth, async (req, res) => {
+    try {
+      const token = await storage.getToken(req.params.tokenId);
+      if (!token) {
+        return res.status(404).json({ error: "Token not found" });
+      }
+
+      const campaign = await storage.getCampaign(token.campaignId);
+      if (!campaign) {
+        return res.status(404).json({ error: "Campaign not found" });
+      }
+
+      const isGM = campaign.gmUserId === req.session.userId;
+      
+      if (!isGM) {
+        return res.status(403).json({ error: "Only the GM can clear effects from tokens" });
+      }
+
+      await storage.clearTokenActiveEffects(req.params.tokenId);
+      res.json({ success: true });
+    } catch (err) {
+      console.error("Failed to clear token active effects:", err);
+      res.status(400).json({ error: "Failed to clear token active effects" });
     }
   });
 

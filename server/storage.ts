@@ -33,7 +33,11 @@ import {
   type Note, type InsertNote,
   type NoteReference, type InsertNoteReference,
   type NoteShare, type InsertNoteShare,
-  users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, items, spells, characterPermissions, initiativeEntries, systemSpecies, campaignSpecies, featTemplates, featTrees, feats, featConnections, characterFeats, systemSpells, systemSkills, characterCustomSkills, systemTraits, characterTraits, characterFolders, sceneFolders, friendRequests, friendships, noteFolders, notes, noteReferences, noteShares
+  type TokenEffect, type InsertTokenEffect,
+  type SpellEffect, type InsertSpellEffect,
+  type ItemEffect, type InsertItemEffect,
+  type TokenActiveEffect, type InsertTokenActiveEffect,
+  users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, items, spells, characterPermissions, initiativeEntries, systemSpecies, campaignSpecies, featTemplates, featTrees, feats, featConnections, characterFeats, systemSpells, systemSkills, characterCustomSkills, systemTraits, characterTraits, characterFolders, sceneFolders, friendRequests, friendships, noteFolders, notes, noteReferences, noteShares, tokenEffects, spellEffects, itemEffects, tokenActiveEffects
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql, inArray, or } from "drizzle-orm";
@@ -316,6 +320,29 @@ export interface IStorage {
   updateNoteShare(id: string, permission: string): Promise<NoteShare | undefined>;
   deleteNoteShare(id: string): Promise<void>;
   canAccessNote(userId: string, noteId: string): Promise<{ canAccess: boolean; permission: string | null }>;
+
+  // Token Effects CRUD operations
+  getTokenEffects(): Promise<TokenEffect[]>;
+  getTokenEffect(id: string): Promise<TokenEffect | undefined>;
+  createTokenEffect(effect: InsertTokenEffect): Promise<TokenEffect>;
+  updateTokenEffect(id: string, effect: Partial<InsertTokenEffect>): Promise<TokenEffect | undefined>;
+  deleteTokenEffect(id: string): Promise<void>;
+
+  // Spell Effects (junction table) operations
+  getSpellEffects(spellId: string): Promise<(SpellEffect & { effect: TokenEffect })[]>;
+  addSpellEffect(spellId: string, effectId: string, triggerCondition: string): Promise<SpellEffect>;
+  removeSpellEffect(id: string): Promise<void>;
+
+  // Item Effects (junction table) operations
+  getItemEffects(itemId: string): Promise<(ItemEffect & { effect: TokenEffect })[]>;
+  addItemEffect(itemId: string, effectId: string, triggerCondition: string): Promise<ItemEffect>;
+  removeItemEffect(id: string): Promise<void>;
+
+  // Token Active Effects operations
+  getTokenActiveEffects(tokenId: string): Promise<(TokenActiveEffect & { effect: TokenEffect })[]>;
+  addTokenActiveEffect(activeEffect: InsertTokenActiveEffect): Promise<TokenActiveEffect>;
+  removeTokenActiveEffect(id: string): Promise<void>;
+  clearTokenActiveEffects(tokenId: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2119,6 +2146,108 @@ export class DatabaseStorage implements IStorage {
       }
     }
     return { canAccess: false, permission: null };
+  }
+
+  // Token Effects CRUD operations
+  async getTokenEffects(): Promise<TokenEffect[]> {
+    return await db.select().from(tokenEffects);
+  }
+
+  async getTokenEffect(id: string): Promise<TokenEffect | undefined> {
+    const [effect] = await db.select().from(tokenEffects).where(eq(tokenEffects.id, id)).limit(1);
+    return effect;
+  }
+
+  async createTokenEffect(effect: InsertTokenEffect): Promise<TokenEffect> {
+    const [newEffect] = await db.insert(tokenEffects).values(effect).returning();
+    return newEffect;
+  }
+
+  async updateTokenEffect(id: string, effect: Partial<InsertTokenEffect>): Promise<TokenEffect | undefined> {
+    const [updated] = await db.update(tokenEffects)
+      .set(effect)
+      .where(eq(tokenEffects.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteTokenEffect(id: string): Promise<void> {
+    await db.delete(tokenEffects).where(eq(tokenEffects.id, id));
+  }
+
+  // Spell Effects (junction table) operations
+  async getSpellEffects(spellId: string): Promise<(SpellEffect & { effect: TokenEffect })[]> {
+    const results = await db.select()
+      .from(spellEffects)
+      .innerJoin(tokenEffects, eq(spellEffects.effectId, tokenEffects.id))
+      .where(eq(spellEffects.spellId, spellId));
+    return results.map(r => ({
+      ...r.spell_effects,
+      effect: r.token_effects,
+    }));
+  }
+
+  async addSpellEffect(spellId: string, effectId: string, triggerCondition: string): Promise<SpellEffect> {
+    const [newSpellEffect] = await db.insert(spellEffects).values({
+      spellId,
+      effectId,
+      triggerCondition,
+    }).returning();
+    return newSpellEffect;
+  }
+
+  async removeSpellEffect(id: string): Promise<void> {
+    await db.delete(spellEffects).where(eq(spellEffects.id, id));
+  }
+
+  // Item Effects (junction table) operations
+  async getItemEffects(itemId: string): Promise<(ItemEffect & { effect: TokenEffect })[]> {
+    const results = await db.select()
+      .from(itemEffects)
+      .innerJoin(tokenEffects, eq(itemEffects.effectId, tokenEffects.id))
+      .where(eq(itemEffects.itemId, itemId));
+    return results.map(r => ({
+      ...r.item_effects,
+      effect: r.token_effects,
+    }));
+  }
+
+  async addItemEffect(itemId: string, effectId: string, triggerCondition: string): Promise<ItemEffect> {
+    const [newItemEffect] = await db.insert(itemEffects).values({
+      itemId,
+      effectId,
+      triggerCondition,
+    }).returning();
+    return newItemEffect;
+  }
+
+  async removeItemEffect(id: string): Promise<void> {
+    await db.delete(itemEffects).where(eq(itemEffects.id, id));
+  }
+
+  // Token Active Effects operations
+  async getTokenActiveEffects(tokenId: string): Promise<(TokenActiveEffect & { effect: TokenEffect })[]> {
+    const results = await db.select()
+      .from(tokenActiveEffects)
+      .innerJoin(tokenEffects, eq(tokenActiveEffects.effectId, tokenEffects.id))
+      .where(eq(tokenActiveEffects.tokenId, tokenId));
+    return results.map(r => ({
+      ...r.token_active_effects,
+      effect: r.token_effects,
+    }));
+  }
+
+  async addTokenActiveEffect(activeEffect: InsertTokenActiveEffect): Promise<TokenActiveEffect> {
+    const [newActiveEffect] = await db.insert(tokenActiveEffects).values(activeEffect).returning();
+    return newActiveEffect;
+  }
+
+  async removeTokenActiveEffect(id: string): Promise<void> {
+    await db.delete(tokenActiveEffects).where(eq(tokenActiveEffects.id, id));
+  }
+
+  async clearTokenActiveEffects(tokenId: string): Promise<void> {
+    await db.delete(tokenActiveEffects).where(eq(tokenActiveEffects.tokenId, tokenId));
   }
 }
 
