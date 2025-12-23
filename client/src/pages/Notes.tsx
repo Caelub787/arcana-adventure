@@ -75,8 +75,10 @@ import {
   Edit,
   Eye,
   Link2,
+  Grid3X3,
 } from "lucide-react";
 import { ReferencePicker, ReferenceInlineDisplay } from "@/components/notes/ReferencePicker";
+import { CanvasEditor, CanvasData } from "@/components/notes/CanvasEditor";
 import type { SearchableEntity } from "@/lib/api";
 
 import bgImage from "@assets/generated_images/dark_fantasy_landscape_with_arcane_ruins.png";
@@ -238,8 +240,10 @@ export default function Notes() {
 
   const [noteTitle, setNoteTitle] = useState("");
   const [noteContent, setNoteContent] = useState("");
+  const [canvasData, setCanvasData] = useState<CanvasData>({ nodes: [], connections: [] });
   const debouncedTitle = useDebouncedValue(noteTitle, 1000);
   const debouncedContent = useDebouncedValue(noteContent, 1000);
+  const debouncedCanvasData = useDebouncedValue(canvasData, 1000);
 
   const [referencePickerOpen, setReferencePickerOpen] = useState(false);
   const [cursorPosition, setCursorPosition] = useState<number>(0);
@@ -293,6 +297,11 @@ export default function Notes() {
     if (currentNote) {
       setNoteTitle(currentNote.title);
       setNoteContent(currentNote.content || "");
+      if (currentNote.type === "canvas" && currentNote.canvasData) {
+        setCanvasData(currentNote.canvasData as CanvasData);
+      } else {
+        setCanvasData({ nodes: [], connections: [] });
+      }
     }
   }, [currentNote]);
 
@@ -474,6 +483,15 @@ export default function Notes() {
     }
   }, [debouncedTitle, debouncedContent]);
 
+  useEffect(() => {
+    if (noteId && currentNote?.type === "canvas" && !noteLoading) {
+      updateNoteMutation.mutate({
+        id: noteId,
+        data: { canvasData: debouncedCanvasData },
+      });
+    }
+  }, [debouncedCanvasData]);
+
   const resetFolderForm = () => {
     setFolderName("");
     setFolderColor(null);
@@ -520,6 +538,17 @@ export default function Notes() {
       content: "",
       folderId: selectedFolderId,
       type: "markdown",
+      campaignId: campaignId ?? undefined,
+    });
+  };
+
+  const handleCreateCanvas = () => {
+    createNoteMutation.mutate({
+      title: "Untitled Canvas",
+      content: "",
+      type: "canvas",
+      canvasData: { nodes: [], connections: [] },
+      folderId: selectedFolderId ?? undefined,
       campaignId: campaignId ?? undefined,
     });
   };
@@ -783,15 +812,22 @@ export default function Notes() {
             >
               <CardContent className="p-4">
                 <div className="flex items-start justify-between gap-2 mb-2">
-                  <h3
-                    className="font-medium text-stone-200 flex-1 truncate"
-                    data-testid={`text-note-title-${note.id}`}
-                  >
-                    {note.isPinned && (
-                      <Pin className="inline h-3 w-3 mr-1 text-amber-500" />
+                  <div className="flex items-center gap-2 flex-1 min-w-0">
+                    {note.type === "canvas" ? (
+                      <Grid3X3 className="h-4 w-4 text-indigo-400 flex-shrink-0" />
+                    ) : (
+                      <FileText className="h-4 w-4 text-stone-500 flex-shrink-0" />
                     )}
-                    {note.title}
-                  </h3>
+                    <h3
+                      className="font-medium text-stone-200 flex-1 truncate"
+                      data-testid={`text-note-title-${note.id}`}
+                    >
+                      {note.isPinned && (
+                        <Pin className="inline h-3 w-3 mr-1 text-amber-500" />
+                      )}
+                      {note.title}
+                    </h3>
+                  </div>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <button
@@ -864,13 +900,22 @@ export default function Notes() {
         </div>
       )}
 
-      <Button
-        onClick={handleCreateNote}
-        className="fixed bottom-6 right-6 h-14 w-14 rounded-full bg-amber-700 hover:bg-amber-600 shadow-lg shadow-amber-900/30"
-        data-testid="button-create-note"
-      >
-        <Plus className="h-6 w-6" />
-      </Button>
+      <div className="fixed bottom-6 right-6 flex gap-3">
+        <Button
+          onClick={handleCreateCanvas}
+          className="h-14 w-14 rounded-full bg-indigo-700 hover:bg-indigo-600 shadow-lg shadow-indigo-900/30"
+          data-testid="button-new-canvas"
+        >
+          <Grid3X3 className="h-6 w-6" />
+        </Button>
+        <Button
+          onClick={handleCreateNote}
+          className="h-14 w-14 rounded-full bg-amber-700 hover:bg-amber-600 shadow-lg shadow-amber-900/30"
+          data-testid="button-create-note"
+        >
+          <Plus className="h-6 w-6" />
+        </Button>
+      </div>
     </div>
   );
 
@@ -913,6 +958,28 @@ export default function Notes() {
       {noteLoading ? (
         <div className="flex-1 flex items-center justify-center">
           <Loader2 className="h-6 w-6 animate-spin text-stone-500" />
+        </div>
+      ) : currentNote?.type === "canvas" ? (
+        <div className="flex-1 flex flex-col overflow-hidden">
+          <div className="flex items-center gap-2 p-4 border-b border-stone-800">
+            <Input
+              value={noteTitle}
+              onChange={(e) => setNoteTitle(e.target.value)}
+              placeholder="Canvas title"
+              className="text-xl font-display border-none bg-transparent focus-visible:ring-0 px-0 flex-1"
+              data-testid="input-canvas-title"
+            />
+            {updateNoteMutation.isPending && (
+              <span className="text-xs text-stone-500">Saving...</span>
+            )}
+          </div>
+          <div className="flex-1">
+            <CanvasEditor
+              canvasData={canvasData}
+              onChange={setCanvasData}
+              readOnly={false}
+            />
+          </div>
         </div>
       ) : (
         <div className="flex-1 flex flex-col p-4 md:p-6 overflow-auto">
