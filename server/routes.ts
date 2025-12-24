@@ -986,6 +986,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
             console.log(`[AoE Server] Broadcast from ${username}: active=${active}, sent to ${sentCount} other clients`);
           }
         }
+        
+        // Handle roll notification - broadcast to all campaign members except sender
+        // so everyone can see each other's attack/damage/spell rolls
+        if (message.type === "roll_notification") {
+          const { campaignId, notification } = message;
+          
+          // Verify user has joined this campaign
+          const userCampaign = (ws as any).campaigns.get(campaignId);
+          if (!userCampaign) return;
+          
+          // Broadcast roll notification to all OTHER campaign members
+          const room = campaignRooms.get(campaignId);
+          if (room) {
+            const rollMessage = JSON.stringify({
+              type: "roll_notification",
+              notification: {
+                ...notification,
+                userId: authenticatedUserId,
+                username
+              }
+            });
+            
+            room.forEach((client) => {
+              // Send to all clients except the sender (sender already sees it locally)
+              if (client !== ws && client.readyState === 1) {
+                client.send(rollMessage);
+              }
+            });
+          }
+        }
       } catch (err) {
         console.error("WebSocket error:", err);
         ws.send(JSON.stringify({

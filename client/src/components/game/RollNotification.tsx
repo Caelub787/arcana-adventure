@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Dices, Swords, Sparkles, Target, Shield, Zap, Flame, Heart } from 'lucide-react';
 import { type DieType } from '@/lib/diceSystem';
+import { gameWs } from '@/lib/api';
 
 export interface RollNotification {
   id: string;
@@ -208,6 +209,23 @@ export function RollNotificationContainer() {
     };
   }, [addNotification]);
   
+  // Listen for roll notifications from other players via WebSocket
+  useEffect(() => {
+    const unsubscribe = gameWs.onMessage((data: any) => {
+      if (data.type === 'roll_notification' && data.notification) {
+        // Add the incoming notification from another player
+        const notification: RollNotification = {
+          ...data.notification,
+          id: crypto.randomUUID(),
+          timestamp: Date.now(),
+        };
+        addNotification(notification);
+      }
+    });
+    
+    return () => { unsubscribe(); };
+  }, [addNotification]);
+  
   return (
     <div
       ref={containerRef}
@@ -227,15 +245,33 @@ export function RollNotificationContainer() {
   );
 }
 
-export function triggerRollNotification(notification: Omit<RollNotification, 'id' | 'timestamp'>) {
+export function triggerRollNotification(notification: Omit<RollNotification, 'id' | 'timestamp'>, broadcast = true) {
   const fullNotification: RollNotification = {
     ...notification,
     id: crypto.randomUUID(),
     timestamp: Date.now(),
   };
   
+  // Display locally
   const event = new CustomEvent('roll-notification', { detail: fullNotification });
   window.dispatchEvent(event);
+  
+  // Broadcast to other players via WebSocket (for attack, damage, skill rolls)
+  // Skip broadcasting for system notifications and when explicitly disabled
+  if (broadcast && notification.type !== 'system') {
+    gameWs.sendRollNotification({
+      type: notification.type,
+      dieType: notification.dieType,
+      label: notification.label,
+      result: notification.result,
+      modifier: notification.modifier,
+      total: notification.total,
+      username: notification.username,
+      characterName: notification.characterName,
+      calculationBreakdown: notification.calculationBreakdown,
+      isHealing: notification.isHealing,
+    });
+  }
 }
 
 export function triggerDiceRollNotification(

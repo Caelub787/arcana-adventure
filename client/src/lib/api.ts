@@ -1997,6 +1997,39 @@ export class GameWebSocket {
       locked: false
     });
   }
+  
+  // Send roll notification - broadcasts to all campaign members
+  // so everyone can see each other's attack/damage/spell rolls
+  sendRollNotification(notification: {
+    type: string;
+    dieType?: string;
+    label: string;
+    result: number;
+    modifier?: number;
+    total: number;
+    username?: string;
+    characterName?: string;
+    calculationBreakdown?: string;
+    isHealing?: boolean;
+  }) {
+    if (!this.campaignId) {
+      return;
+    }
+    
+    const message = { 
+      type: 'roll_notification',
+      campaignId: this.campaignId,
+      notification
+    };
+    
+    // If not yet joined, queue the message
+    if (!this.joinedCampaign) {
+      this.pendingMessages.push(message);
+      return;
+    }
+    
+    this.send(message);
+  }
 }
 
 export const gameWs = new GameWebSocket();
