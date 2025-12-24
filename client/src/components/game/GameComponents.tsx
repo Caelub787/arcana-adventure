@@ -1317,9 +1317,10 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
               )}
               
               {/* Nametag - displays character/token name at bottom of token, above HP bar */}
-              {/* Only show if: nametags enabled AND (GM or player has view/edit permission) */}
+              {/* Only show if: nametags enabled AND (GM or player has view/edit permission for the character) */}
+              {/* Players without permission don't see any name at all */}
               {/* Uses nickname if set, otherwise full name. Long names wrap to multiple lines */}
-              {showNametags && (role === 'gm' || !character || myPermissions?.permissions?.[character.id]) && (
+              {showNametags && (role === 'gm' || (character && myPermissions?.permissions?.[character.id])) && (
                 <div 
                   className="absolute left-1/2 -translate-x-1/2 font-display text-white pointer-events-none text-center leading-tight"
                   style={{ 
