@@ -14972,13 +14972,23 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
   const itemTypeOptions = ['weapon', 'armor', 'consumable', 'utility', 'container', 'currency'];
   const rarityOptions = ['common', 'uncommon', 'rare', 'epic', 'legendary'];
   
+  // For character templates (no campaignId), fetch system items directly
+  const { data: systemItemsOnly } = useQuery({
+    queryKey: ['system-items'],
+    queryFn: () => api.getSystemItems(),
+    enabled: !campaignId && open,
+  });
+
   const { data: templateData } = useQuery({
     queryKey: ['template-items', campaignId],
-    queryFn: () => campaignId ? api.getTemplateItems(campaignId) : Promise.resolve({ campaignItems: [], systemItems: [] }),
+    queryFn: () => api.getTemplateItems(campaignId!),
     enabled: !!campaignId && open,
   });
 
-  const allTemplates = [...(templateData?.systemItems || []), ...(templateData?.campaignItems || [])];
+  // Combine items from either source - campaign templates or system items only
+  const allTemplates = campaignId 
+    ? [...(templateData?.systemItems || []), ...(templateData?.campaignItems || [])]
+    : (systemItemsOnly || []);
   const filteredTemplates = allTemplates.filter((item: any) => {
     const matchesSearch = item.name.toLowerCase().includes(templateSearch.toLowerCase());
     const matchesType = templateTypeFilter === 'all' || item.itemType === templateTypeFilter;
