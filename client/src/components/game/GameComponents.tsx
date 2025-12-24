@@ -10224,7 +10224,7 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
     return level % 3 === 0 ? 2 : 1;
   };
   
-  // Handle level-up HP roll
+  // Handle level-up HP roll - auto-confirms immediately
   const handleLevelUpHpRoll = () => {
     const currentLevel = liveCharacter.level || 1;
     const diceCount = calculateDiceCount(currentLevel);
@@ -10236,39 +10236,31 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
     }
     const total = diceRolls.reduce((sum, roll) => sum + roll, 0);
     
-    setLevelUpHpResult({
+    // Set result for display
+    const result = {
       diceRolls,
       total,
       diceCount,
       dieSize: hpPerLevel
-    });
-  };
-  
-  // Confirm level-up HP and save to database
-  const confirmLevelUpHp = () => {
-    if (!levelUpHpResult) return;
+    };
+    setLevelUpHpResult(result);
     
-    const newBonusHp = (liveCharacter.bonusHpFromLevelUps || 0) + levelUpHpResult.total;
+    // Auto-confirm: immediately save to database
+    const newBonusHp = (liveCharacter.bonusHpFromLevelUps || 0) + total;
     const newMaxHp = (currentSpecies?.startingMaxHp || 10) + newBonusHp;
-    const currentLevel = liveCharacter.level || 1;
     
-    // Update character with new HP values
     updateCharacterMutation.mutate({
       bonusHpFromLevelUps: newBonusHp,
       lastLevelUpRolled: currentLevel,
       maxHp: newMaxHp,
-      hp: Math.min(liveCharacter.hp + levelUpHpResult.total, newMaxHp)
+      hp: Math.min(liveCharacter.hp + total, newMaxHp)
     });
     
-    // Close dialog and reset state
-    setShowLevelUpHpDialog(false);
-    setLevelUpHpResult(null);
-    
     // Send to chat as a dice roll notification
-    gameWs.sendDiceRoll(`d${hpPerLevel}`, levelUpHpResult.total, `Level ${currentLevel} HP Roll`, liveCharacter.id);
+    gameWs.sendDiceRoll(`d${hpPerLevel}`, total, `Level ${currentLevel} HP Roll`, liveCharacter.id);
   };
   
-  // Handle level-up Energy roll
+  // Handle level-up Energy roll - auto-confirms immediately
   const handleLevelUpEnergyRoll = () => {
     const currentLevel = liveCharacter.level || 1;
     const diceCount = calculateEnergyDiceCount(currentLevel);
@@ -10281,36 +10273,28 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
     }
     const total = diceRolls.reduce((sum, roll) => sum + roll, 0);
     
-    setLevelUpEnergyResult({
+    // Set result for display
+    const result = {
       diceRolls,
       total,
       diceCount,
       dieSize
-    });
-  };
-  
-  // Confirm level-up Energy and save to database
-  const confirmLevelUpEnergy = () => {
-    if (!levelUpEnergyResult) return;
+    };
+    setLevelUpEnergyResult(result);
     
-    const newBonusEnergy = (liveCharacter.bonusEnergyFromLevelUps || 0) + levelUpEnergyResult.total;
+    // Auto-confirm: immediately save to database
+    const newBonusEnergy = (liveCharacter.bonusEnergyFromLevelUps || 0) + total;
     const newMaxEnergy = (currentSpecies?.startingMaxEnergy || 10) + newBonusEnergy;
-    const currentLevel = liveCharacter.level || 1;
     
-    // Update character with new Energy values (also add to current energy)
     updateCharacterMutation.mutate({
       bonusEnergyFromLevelUps: newBonusEnergy,
       lastEnergyLevelUpRolled: currentLevel,
       maxEnergy: newMaxEnergy,
-      energy: Math.min(liveCharacter.energy + levelUpEnergyResult.total, newMaxEnergy)
+      energy: Math.min(liveCharacter.energy + total, newMaxEnergy)
     });
     
-    // Close dialog and reset state
-    setShowLevelUpEnergyDialog(false);
-    setLevelUpEnergyResult(null);
-    
     // Send to chat as a dice roll notification
-    gameWs.sendDiceRoll(`d6`, levelUpEnergyResult.total, `Level ${currentLevel} Energy Roll`, liveCharacter.id);
+    gameWs.sendDiceRoll(`d6`, total, `Level ${currentLevel} Energy Roll`, liveCharacter.id);
   };
   
   const canEdit = isOwner || isGM;
@@ -14454,25 +14438,20 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
           
           <DialogFooter>
             <Button 
-              variant="outline" 
               onClick={() => {
                 setShowLevelUpHpDialog(false);
                 setLevelUpHpResult(null);
               }} 
-              data-testid="button-cancel-level-up"
+              data-testid="button-close-level-up"
+              className={levelUpHpResult ? "bg-green-600 hover:bg-green-500" : ""}
             >
-              Cancel
+              {levelUpHpResult ? (
+                <>
+                  <Check className="h-4 w-4 mr-2" />
+                  Done
+                </>
+              ) : 'Cancel'}
             </Button>
-            {levelUpHpResult && (
-              <Button 
-                onClick={confirmLevelUpHp}
-                className="bg-green-600 hover:bg-green-500"
-                data-testid="button-confirm-level-up"
-              >
-                <Check className="h-4 w-4 mr-2" />
-                Confirm
-              </Button>
-            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -14563,25 +14542,20 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
           
           <DialogFooter>
             <Button 
-              variant="outline" 
               onClick={() => {
                 setShowLevelUpEnergyDialog(false);
                 setLevelUpEnergyResult(null);
               }} 
-              data-testid="button-cancel-energy-level-up"
+              data-testid="button-close-energy-level-up"
+              className={levelUpEnergyResult ? "bg-blue-600 hover:bg-blue-500" : ""}
             >
-              Cancel
+              {levelUpEnergyResult ? (
+                <>
+                  <Check className="h-4 w-4 mr-2" />
+                  Done
+                </>
+              ) : 'Cancel'}
             </Button>
-            {levelUpEnergyResult && (
-              <Button 
-                onClick={confirmLevelUpEnergy}
-                className="bg-blue-600 hover:bg-blue-500"
-                data-testid="button-confirm-energy-level-up"
-              >
-                <Check className="h-4 w-4 mr-2" />
-                Confirm
-              </Button>
-            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
