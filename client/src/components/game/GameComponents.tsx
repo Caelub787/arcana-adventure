@@ -4500,6 +4500,7 @@ export function InitiativeTracker({ open, onOpenChange, sceneId, campaignId, isG
   const queryClient = useQueryClient();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState<number>(0);
+  const [inactiveCollapsed, setInactiveCollapsed] = useState(true);
 
   const { data: initiativeData, isLoading } = useQuery({
     queryKey: [`/api/scenes/${sceneId}/initiative`],
@@ -4627,7 +4628,7 @@ export function InitiativeTracker({ open, onOpenChange, sceneId, campaignId, isG
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-stone-900 border-stone-700 text-stone-200 sm:max-w-md">
+      <DialogContent className="bg-stone-900 border-stone-700 text-stone-200 sm:max-w-lg max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-amber-500 font-display text-2xl flex items-center gap-2">
             <Zap className="w-6 h-6" />
@@ -4653,7 +4654,7 @@ export function InitiativeTracker({ open, onOpenChange, sceneId, campaignId, isG
               <p className="text-xs mt-1">Characters can roll initiative from their character sheet</p>
             </div>
           ) : (
-            <div className="space-y-2 max-h-[300px] overflow-y-auto">
+            <div className="space-y-2 max-h-[50vh] overflow-y-auto">
               {sortedEntries.map((entry, index) => {
                 const isCurrentTurn = inCombat && entry.characterId === currentTurnCharacterId;
                 const portrait = getCharacterPortrait(entry.characterId);
@@ -4759,7 +4760,7 @@ export function InitiativeTracker({ open, onOpenChange, sceneId, campaignId, isG
             </div>
           )}
 
-          {/* Roll Initiative Section - Characters that haven't rolled yet */}
+          {/* Roll Initiative Section - Characters that haven't rolled yet (Collapsible) */}
           {sceneId && (() => {
             const charactersWithInitiative = new Set(entries.map((e: any) => e.characterId));
             const charactersNeedingRoll = characters.filter((c: any) => {
@@ -4773,40 +4774,55 @@ export function InitiativeTracker({ open, onOpenChange, sceneId, campaignId, isG
             
             return (
               <div className="pt-4 border-t border-stone-700">
-                <h4 className="text-sm font-semibold text-stone-400 mb-2">Roll Initiative</h4>
-                <div className="space-y-2 max-h-[150px] overflow-y-auto">
-                  {charactersNeedingRoll.map((char: any) => (
-                    <div 
-                      key={char.id}
-                      className="flex items-center gap-3 p-2 bg-stone-800 border border-stone-700 rounded-lg"
-                    >
-                      {char.portrait ? (
-                        <img 
-                          src={char.portrait} 
-                          alt="" 
-                          className="w-8 h-8 rounded-full object-cover border border-stone-600"
-                        />
-                      ) : (
-                        <div className="w-8 h-8 rounded-full bg-stone-700 flex items-center justify-center">
-                          <User className="w-4 h-4 text-stone-400" />
-                        </div>
-                      )}
-                      <span className="flex-1 text-stone-200 truncate">{char.name}</span>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="border-amber-600 text-amber-500 hover:bg-amber-600/20"
-                        onClick={() => {
-                          gameWs.sendInitiativeRoll(sceneId, char.id);
-                        }}
-                        data-testid={`button-roll-initiative-${char.id}`}
+                <button
+                  onClick={() => setInactiveCollapsed(!inactiveCollapsed)}
+                  className="flex items-center justify-between w-full text-left mb-2 hover:bg-stone-800/50 rounded p-1 -m-1"
+                  data-testid="button-toggle-inactive-characters"
+                >
+                  <h4 className="text-sm font-semibold text-stone-400">
+                    Not in Initiative ({charactersNeedingRoll.length})
+                  </h4>
+                  {inactiveCollapsed ? (
+                    <ChevronRight className="w-4 h-4 text-stone-400" />
+                  ) : (
+                    <ChevronDown className="w-4 h-4 text-stone-400" />
+                  )}
+                </button>
+                {!inactiveCollapsed && (
+                  <div className="space-y-2 max-h-[150px] overflow-y-auto">
+                    {charactersNeedingRoll.map((char: any) => (
+                      <div 
+                        key={char.id}
+                        className="flex items-center gap-3 p-2 bg-stone-800 border border-stone-700 rounded-lg"
                       >
-                        <Dice5 className="w-3 h-3 mr-1" />
-                        Roll
-                      </Button>
-                    </div>
-                  ))}
-                </div>
+                        {char.portrait ? (
+                          <img 
+                            src={char.portrait} 
+                            alt="" 
+                            className="w-8 h-8 rounded-full object-cover border border-stone-600"
+                          />
+                        ) : (
+                          <div className="w-8 h-8 rounded-full bg-stone-700 flex items-center justify-center">
+                            <User className="w-4 h-4 text-stone-400" />
+                          </div>
+                        )}
+                        <span className="flex-1 text-stone-200 truncate">{char.name}</span>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="border-amber-600 text-amber-500 hover:bg-amber-600/20"
+                          onClick={() => {
+                            gameWs.sendInitiativeRoll(sceneId, char.id);
+                          }}
+                          data-testid={`button-roll-initiative-${char.id}`}
+                        >
+                          <Dice5 className="w-3 h-3 mr-1" />
+                          Roll
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             );
           })()}
