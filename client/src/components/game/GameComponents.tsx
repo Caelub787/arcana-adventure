@@ -12303,13 +12303,17 @@ export function CharacterSheet({ character, isGM, isOwner, accessLevel = 'view',
                         liveCharacter.skillWisdom || 0
                       ];
                   
-                  // Custom skill values (add to totals)
+                  // Custom skill values (add to totals) - use RAW skill value only, not combined with attribute
                   const customSkillValues = editingSkills
                     ? characterCustomSkills.map((cs: CharacterCustomSkill) => {
                         const val = customSkillsEditData[cs.id];
-                        return val === '' ? 0 : Number(val ?? cs.value ?? 0);
+                        // Use edit state value, or fall back to raw skill value from database
+                        if (val !== undefined) {
+                          return val === '' ? 0 : Number(val);
+                        }
+                        return cs.value ?? 0;
                       })
-                    : characterCustomSkills.map((cs: CharacterCustomSkill) => cs.value || 0);
+                    : characterCustomSkills.map((cs: CharacterCustomSkill) => cs.value ?? 0);
                   
                   // Combine all skill values for point calculation
                   const skillValues = [...standardSkillValues, ...customSkillValues];
@@ -12530,8 +12534,12 @@ export function CharacterSheet({ character, isGM, isOwner, accessLevel = 'view',
                         : (customSkill.value || 0);
                       const totalMod = skillValue + attrValue;
                       
-                      // In edit mode, show editable input
+                      // In edit mode, show editable input with RAW skill value (not combined with attribute)
                       if (editingSkills) {
+                        // Use only the raw skill value from edit state, not the combined totalMod
+                        const rawSkillValue = customSkillsEditData[customSkill.id] !== undefined 
+                          ? customSkillsEditData[customSkill.id] 
+                          : (customSkill.value ?? 0);
                         return (
                           <div key={customSkill.id} className="flex flex-col gap-1 p-3 bg-stone-900 border border-cyan-700 rounded-md">
                             <Label className="text-xs text-cyan-300">{customSkill.name} <span className="text-stone-500 capitalize">({parentAttr})</span></Label>
@@ -12539,7 +12547,7 @@ export function CharacterSheet({ character, isGM, isOwner, accessLevel = 'view',
                               type="number"
                               min="-2"
                               max="5"
-                              value={customSkillsEditData[customSkill.id] ?? customSkill.value ?? 0}
+                              value={rawSkillValue}
                               onChange={(e) => {
                                 if (e.target.value === '') {
                                   setCustomSkillsEditData({
