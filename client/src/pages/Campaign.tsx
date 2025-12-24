@@ -1446,9 +1446,9 @@ export default function Campaign() {
           
           // Show toast only for the affected user (don't spam other users)
           if (data.targetUserId === user?.id) {
-            const accessDesc = data.accessLevel === 'control' ? 'control' : 
-                               data.accessLevel === 'ally' ? 'ally (full stats)' :
-                               data.accessLevel === 'view' ? 'view (name only)' : 'no';
+            const accessDesc = data.accessLevel === 'edit' ? 'edit (can edit)' : 
+                               data.accessLevel === 'view' ? 'view (full stats)' :
+                               data.accessLevel === 'name' ? 'name (token only)' : 'none';
             toastRef.current({ 
               title: "Access Changed", 
               description: `Access to ${data.characterName || 'a character'} is now ${accessDesc}`,
@@ -1791,7 +1791,7 @@ export default function Campaign() {
         } else if (role === 'player') {
           // Players can only assign characters they have edit access to
           const permission = myPermissions?.permissions?.[charData.id];
-          if (permission === 'owner' || permission === 'control') {
+          if (permission === 'owner' || permission === 'edit') {
             setCharacter(charData);
             // Persist the assignment
             if (effectiveCampaignId) {
@@ -2952,11 +2952,11 @@ export default function Campaign() {
               isGM={role === 'gm'}
               isOwner={
                 viewingCharacterSheet.userId === user?.id || 
-                myPermissions?.permissions?.[viewingCharacterSheet.id] === 'control'
+                myPermissions?.permissions?.[viewingCharacterSheet.id] === 'edit'
               }
               accessLevel={
                 viewingCharacterSheet.userId === user?.id ? 'owner' :
-                (myPermissions?.permissions?.[viewingCharacterSheet.id] as 'view' | 'ally' | 'control' | undefined) || 'ally'
+                (myPermissions?.permissions?.[viewingCharacterSheet.id] as 'name' | 'view' | 'edit' | undefined) || 'view'
               }
               onUpdate={handleUpdateCharacter}
               onClose={() => setViewingCharacterSheet(null)}

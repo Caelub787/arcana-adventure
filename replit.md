@@ -74,9 +74,9 @@ Preferred communication style: Simple, everyday language.
   Role changes available via dropdown in campaign settings (owner-only).
 - **Character Access Levels**: Four-tier permission system for character visibility:
     - **None**: No access to the character
-    - **View**: Name-only access (minimal visibility)
-    - **Ally**: Full stats and inventory visible (can see but not edit)
-    - **Control**: Can edit the character
+    - **Name**: Token name only access (minimal visibility - just sees name on battle map tokens)
+    - **View**: Full stats and inventory visible (can see but not edit)
+    - **Edit**: Can edit the character (full control)
   GMs can grant access via character settings, including "All Players" quick action for bulk permission setting.
 - **Security**: Hashed passwords, session cookies, CSRF protection, and PII sanitization.
 

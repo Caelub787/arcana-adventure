@@ -61,7 +61,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
    * Access is granted if:
    * - User is the character owner
    * - User is the campaign GM
-   * - User has explicit 'view', 'ally', or 'control' permission
+   * - User has explicit 'name', 'view', or 'edit' permission
    */
   async function broadcastToAuthorizedUsers(
     campaignId: string,
@@ -118,9 +118,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         continue;
       }
 
-      // Check explicit permission - view, ally, or control all grant at least basic access
+      // Check explicit permission - name, view, or edit all grant at least basic access
       const accessLevel = permissionMap.get(userId);
-      if (accessLevel === 'view' || accessLevel === 'ally' || accessLevel === 'control') {
+      if (accessLevel === 'name' || accessLevel === 'view' || accessLevel === 'edit') {
         const clients = userClientMap.get(userId);
         clients?.forEach(client => client.send(messageString));
       }
@@ -1130,7 +1130,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   async function checkCharacterAccess(
     characterId: string,
     userId: string,
-    requiredLevel: 'view' | 'ally' | 'control'
+    requiredLevel: 'name' | 'view' | 'edit'
   ): Promise<{ allowed: boolean; isOwner: boolean; isGM: boolean; character?: any; campaign?: any; permission?: any }> {
     console.log(`[checkCharacterAccess] Checking access for character ${characterId} by user ${userId} (${requiredLevel})`);
     
@@ -1180,15 +1180,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return { allowed: false, isOwner, isGM, character, campaign };
     }
     
-    // Permission hierarchy: control > ally > view > none
-    // 'view' level: grants name-only access, allows view/ally/control
-    // 'ally' level: grants full stats viewing, allows ally/control
-    // 'control' level: grants editing, allows only control
+    // Permission hierarchy: edit > view > name > none
+    // 'name' level: grants name-only access on token
+    // 'view' level: grants full stats viewing
+    // 'edit' level: grants editing/control
     const levelHierarchy: Record<string, number> = {
       'none': 0,
-      'view': 1,
-      'ally': 2,
-      'control': 3
+      'name': 1,
+      'view': 2,
+      'edit': 3
     };
     
     const userLevel = levelHierarchy[permission.accessLevel] || 0;
@@ -1671,9 +1671,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return true;
         }
         
-        // Check permission from map
+        // Check permission from map - name, view, or edit all grant access to see the character
         const accessLevel = permissionMap.get(char.id);
-        return accessLevel === 'view' || accessLevel === 'edit';
+        return accessLevel === 'name' || accessLevel === 'view' || accessLevel === 'edit';
       });
       
       res.json(filteredCharacters);
@@ -1721,7 +1721,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // Regular character - use normal permission checks
-      const access = await checkCharacterAccess(req.params.id, req.session.userId!, 'control');
+      const access = await checkCharacterAccess(req.params.id, req.session.userId!, 'edit');
       
       if (!access.campaign) {
         return res.status(404).json({ error: "Campaign not found" });
@@ -1798,7 +1798,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Short Rest - Restores HP based on species hpPerLevel die roll, requires 2 rations
   app.post("/api/characters/:id/short-rest", requireAuth, async (req, res) => {
     try {
-      const access = await checkCharacterAccess(req.params.id, req.session.userId!, 'control');
+      const access = await checkCharacterAccess(req.params.id, req.session.userId!, 'edit');
       
       if (!access.character) {
         return res.status(404).json({ error: "Character not found" });
@@ -1931,7 +1931,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Long Rest - Restores ALL HP and Energy, recovers 1 exhaustion, requires 4 rations
   app.post("/api/characters/:id/long-rest", requireAuth, async (req, res) => {
     try {
-      const access = await checkCharacterAccess(req.params.id, req.session.userId!, 'control');
+      const access = await checkCharacterAccess(req.params.id, req.session.userId!, 'edit');
       
       if (!access.character) {
         return res.status(404).json({ error: "Character not found" });
@@ -2119,7 +2119,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/characters/:characterId/hotbars", requireAuth, async (req, res) => {
     try {
-      const access = await checkCharacterAccess(req.params.characterId, req.session.userId!, 'control');
+      const access = await checkCharacterAccess(req.params.characterId, req.session.userId!, 'edit');
       
       if (!access.character) {
         return res.status(404).json({ error: "Character not found" });
@@ -2269,7 +2269,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/characters/:characterId/spells", requireAuth, async (req, res) => {
     try {
-      const access = await checkCharacterAccess(req.params.characterId, req.session.userId!, 'control');
+      const access = await checkCharacterAccess(req.params.characterId, req.session.userId!, 'edit');
       
       if (!access.character) {
         return res.status(404).json({ error: "Character not found" });
@@ -2308,7 +2308,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Spell not found" });
       }
 
-      const access = await checkCharacterAccess(currentSpell.characterId, req.session.userId!, 'control');
+      const access = await checkCharacterAccess(currentSpell.characterId, req.session.userId!, 'edit');
       
       if (!access.character) {
         return res.status(404).json({ error: "Character not found" });
@@ -2349,7 +2349,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Spell not found" });
       }
 
-      const access = await checkCharacterAccess(currentSpell.characterId, req.session.userId!, 'control');
+      const access = await checkCharacterAccess(currentSpell.characterId, req.session.userId!, 'edit');
       
       if (!access.character) {
         return res.status(404).json({ error: "Character not found" });
@@ -4442,7 +4442,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/characters/:characterId/items", requireAuth, async (req, res) => {
     try {
-      const access = await checkCharacterAccess(req.params.characterId, req.session.userId!, 'control');
+      const access = await checkCharacterAccess(req.params.characterId, req.session.userId!, 'edit');
       
       if (!access.character) {
         return res.status(404).json({ error: "Character not found" });
@@ -4485,7 +4485,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Item has no associated character" });
       }
 
-      const access = await checkCharacterAccess(currentItem.characterId, req.session.userId!, 'control');
+      const access = await checkCharacterAccess(currentItem.characterId, req.session.userId!, 'edit');
       
       if (!access.character) {
         return res.status(404).json({ error: "Character not found" });
@@ -4569,7 +4569,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Item has no associated character" });
       }
 
-      const access = await checkCharacterAccess(item.characterId, req.session.userId!, 'control');
+      const access = await checkCharacterAccess(item.characterId, req.session.userId!, 'edit');
       
       if (!access.character) {
         return res.status(404).json({ error: "Character not found" });
@@ -4597,7 +4597,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Item has no associated character" });
       }
       
-      const access = await checkCharacterAccess(item.characterId, req.session.userId!, 'control');
+      const access = await checkCharacterAccess(item.characterId, req.session.userId!, 'edit');
       
       if (!access.character) {
         return res.status(404).json({ error: "Character not found" });
@@ -4686,7 +4686,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.put("/api/characters/:id/permissions/:userId", requireAuth, async (req, res) => {
     try {
       const { accessLevel } = req.body;
-      if (!["none", "view", "ally", "control"].includes(accessLevel)) {
+      if (!["none", "name", "view", "edit"].includes(accessLevel)) {
         return res.status(400).json({ error: "Invalid access level" });
       }
       
@@ -4730,7 +4730,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.put("/api/characters/:id/permissions/all", requireAuth, async (req, res) => {
     try {
       const { accessLevel } = req.body;
-      if (!["none", "view", "ally", "control"].includes(accessLevel)) {
+      if (!["none", "name", "view", "edit"].includes(accessLevel)) {
         return res.status(400).json({ error: "Invalid access level" });
       }
       

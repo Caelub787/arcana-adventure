@@ -629,14 +629,14 @@ export type Hotbar = typeof hotbars.$inferSelect;
 // Character Permissions table (for managing who can view/edit characters)
 // Access level hierarchy:
 // - "none": No access at all
-// - "view": Can only see the character's name (minimal info)
-// - "ally": Can see full stats, inventory, abilities (formerly called "view")
-// - "control": Can edit the character (formerly called "edit")
+// - "name": Can only see the character's name on tokens (token name only)
+// - "view": Can see full stats, inventory, abilities (read-only access)
+// - "edit": Can edit the character (full control)
 export const characterPermissions = pgTable("character_permissions", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   characterId: varchar("character_id").notNull().references(() => characters.id, { onDelete: "cascade" }),
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-  accessLevel: text("access_level").notNull().default("none"), // "none", "view", "ally", "control"
+  accessLevel: text("access_level").notNull().default("none"), // "none", "name", "view", "edit"
 }, (table) => ({
   uniqueCharacterUser: uniqueIndex("character_permissions_char_user_unique").on(
     table.characterId,

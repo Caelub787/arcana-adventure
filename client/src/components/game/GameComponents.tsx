@@ -5770,7 +5770,7 @@ export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onIn
                                          View Sheet
                                        </DropdownMenuItem>
                                      )}
-                                     {onAssignCharacter && (role === 'gm' || myPermissions?.permissions?.[char.id] === 'control' || myPermissions?.permissions?.[char.id] === 'owner') && (
+                                     {onAssignCharacter && (role === 'gm' || myPermissions?.permissions?.[char.id] === 'edit' || myPermissions?.permissions?.[char.id] === 'owner') && (
                                        <DropdownMenuItem
                                          onClick={() => onAssignCharacter(char)}
                                          className="text-green-200 focus:bg-green-900/30 focus:text-green-200"
@@ -5889,7 +5889,7 @@ export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onIn
                                    View Sheet
                                  </DropdownMenuItem>
                                )}
-                               {onAssignCharacter && (role === 'gm' || myPermissions?.permissions?.[char.id] === 'control' || myPermissions?.permissions?.[char.id] === 'owner') && (
+                               {onAssignCharacter && (role === 'gm' || myPermissions?.permissions?.[char.id] === 'edit' || myPermissions?.permissions?.[char.id] === 'owner') && (
                                  <DropdownMenuItem
                                    onClick={() => onAssignCharacter(char)}
                                    className="text-green-200 focus:bg-green-900/30 focus:text-green-200"
@@ -6278,7 +6278,6 @@ export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onIn
                     try {
                       const result = await api.setCharacterPermissionForAllPlayers(selectedCharForAccess.id, 'none');
                       toast({ title: "Access Updated", description: `Removed access for ${result.updated} players` });
-                      // Refresh access levels
                       const permissions = await api.getCharacterPermissions(selectedCharForAccess.id);
                       const levels: Record<string, string> = {};
                       permissions.forEach((p: any) => { levels[p.userId] = p.accessLevel; });
@@ -6296,8 +6295,27 @@ export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onIn
                   onClick={async () => {
                     if (!selectedCharForAccess) return;
                     try {
+                      const result = await api.setCharacterPermissionForAllPlayers(selectedCharForAccess.id, 'name');
+                      toast({ title: "Access Updated", description: `Set Name (token name only) for ${result.updated} players` });
+                      const permissions = await api.getCharacterPermissions(selectedCharForAccess.id);
+                      const levels: Record<string, string> = {};
+                      permissions.forEach((p: any) => { levels[p.userId] = p.accessLevel; });
+                      setAccessLevels(levels);
+                    } catch (err) {
+                      toast({ title: "Error", description: "Failed to update permissions", variant: "destructive" });
+                    }
+                  }}
+                  className="text-stone-200 focus:bg-stone-700"
+                  data-testid="button-all-players-name"
+                >
+                  Name (Token name only)
+                </DropdownMenuItem>
+                <DropdownMenuItem 
+                  onClick={async () => {
+                    if (!selectedCharForAccess) return;
+                    try {
                       const result = await api.setCharacterPermissionForAllPlayers(selectedCharForAccess.id, 'view');
-                      toast({ title: "Access Updated", description: `Set View (name only) for ${result.updated} players` });
+                      toast({ title: "Access Updated", description: `Set View (full stats) for ${result.updated} players` });
                       const permissions = await api.getCharacterPermissions(selectedCharForAccess.id);
                       const levels: Record<string, string> = {};
                       permissions.forEach((p: any) => { levels[p.userId] = p.accessLevel; });
@@ -6309,14 +6327,14 @@ export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onIn
                   className="text-stone-200 focus:bg-stone-700"
                   data-testid="button-all-players-view"
                 >
-                  View (Name only)
+                  View (Full stats)
                 </DropdownMenuItem>
                 <DropdownMenuItem 
                   onClick={async () => {
                     if (!selectedCharForAccess) return;
                     try {
-                      const result = await api.setCharacterPermissionForAllPlayers(selectedCharForAccess.id, 'ally');
-                      toast({ title: "Access Updated", description: `Set Ally (full stats) for ${result.updated} players` });
+                      const result = await api.setCharacterPermissionForAllPlayers(selectedCharForAccess.id, 'edit');
+                      toast({ title: "Access Updated", description: `Set Edit (can edit) for ${result.updated} players` });
                       const permissions = await api.getCharacterPermissions(selectedCharForAccess.id);
                       const levels: Record<string, string> = {};
                       permissions.forEach((p: any) => { levels[p.userId] = p.accessLevel; });
@@ -6326,28 +6344,9 @@ export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onIn
                     }
                   }}
                   className="text-stone-200 focus:bg-stone-700"
-                  data-testid="button-all-players-ally"
+                  data-testid="button-all-players-edit"
                 >
-                  Ally (Full stats)
-                </DropdownMenuItem>
-                <DropdownMenuItem 
-                  onClick={async () => {
-                    if (!selectedCharForAccess) return;
-                    try {
-                      const result = await api.setCharacterPermissionForAllPlayers(selectedCharForAccess.id, 'control');
-                      toast({ title: "Access Updated", description: `Set Control (can edit) for ${result.updated} players` });
-                      const permissions = await api.getCharacterPermissions(selectedCharForAccess.id);
-                      const levels: Record<string, string> = {};
-                      permissions.forEach((p: any) => { levels[p.userId] = p.accessLevel; });
-                      setAccessLevels(levels);
-                    } catch (err) {
-                      toast({ title: "Error", description: "Failed to update permissions", variant: "destructive" });
-                    }
-                  }}
-                  className="text-stone-200 focus:bg-stone-700"
-                  data-testid="button-all-players-control"
-                >
-                  Control (Can edit)
+                  Edit (Can edit)
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -6355,7 +6354,7 @@ export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onIn
 
           {/* Access level legend */}
           <div className="text-xs text-stone-500 px-1 mt-1">
-            <span className="font-medium">Levels:</span> None → View (name only) → Ally (full stats) → Control (can edit)
+            <span className="font-medium">Levels:</span> None → Name (token name only) → View (full stats) → Edit (can edit)
           </div>
           
           {/* Individual Player Access */}
@@ -6374,7 +6373,7 @@ export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onIn
                       {isOwner && <Badge className="bg-amber-600 text-xs">Owner</Badge>}
                     </div>
                     <Select
-                      value={isOwner ? "control" : (accessLevels[member.userId] || "none")}
+                      value={isOwner ? "edit" : (accessLevels[member.userId] || "none")}
                       onValueChange={(val) => handleSetAccess(member.userId, val)}
                       disabled={isOwner}
                     >
@@ -6383,9 +6382,9 @@ export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onIn
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="none">None</SelectItem>
+                        <SelectItem value="name">Name</SelectItem>
                         <SelectItem value="view">View</SelectItem>
-                        <SelectItem value="ally">Ally</SelectItem>
-                        <SelectItem value="control">Control</SelectItem>
+                        <SelectItem value="edit">Edit</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -9135,15 +9134,15 @@ function InventoryItemRow({ item, depth, expandedContainers, toggleContainer, se
 
 // 6. Character Sheet Component
 // Access level hierarchy:
-// - 'view': Name only (minimal access - can only see name and portrait)
-// - 'ally': Full stats visible (can see all stats, inventory, abilities)
-// - 'control': Can edit the character
-// - 'owner': Character owner (same as control but also shown as owner)
+// - 'name': Token name only (minimal access - can only see name)
+// - 'view': Full stats visible (can see all stats, inventory, abilities)
+// - 'edit': Can edit the character
+// - 'owner': Character owner (same as edit but also shown as owner)
 interface CharacterSheetProps {
   character: any;
   isGM: boolean;
   isOwner: boolean;
-  accessLevel?: 'view' | 'ally' | 'control' | 'owner';
+  accessLevel?: 'name' | 'view' | 'edit' | 'owner';
   onUpdate?: (updates: any) => void;
   onClose?: () => void;
   defaultTab?: string;
@@ -9891,10 +9890,10 @@ function TraitEditForm({
   );
 }
 
-export function CharacterSheet({ character, isGM, isOwner, accessLevel = 'ally', onUpdate, onClose, defaultTab = "overview", campaignId, sceneId, isTemplate = false }: CharacterSheetProps) {
-  // View-only mode: user only has 'view' access (name only, no stats)
+export function CharacterSheet({ character, isGM, isOwner, accessLevel = 'view', onUpdate, onClose, defaultTab = "overview", campaignId, sceneId, isTemplate = false }: CharacterSheetProps) {
+  // Name-only mode: user only has 'name' access (token name only, no stats)
   // They can see name and portrait but not stats, inventory, or abilities
-  const isViewOnly = accessLevel === 'view' && !isGM && !isOwner;
+  const isViewOnly = accessLevel === 'name' && !isGM && !isOwner;
   const [biography, setBiography] = useState(character?.biography || "");
   const [gmNotes, setGmNotes] = useState(character?.gmNotes || "");
   const [isEditingBio, setIsEditingBio] = useState(false);
