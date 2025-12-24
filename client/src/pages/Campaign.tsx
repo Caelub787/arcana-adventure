@@ -2848,6 +2848,7 @@ export default function Campaign() {
              scene={activeScene}
              onViewChange={setCurrentView}
              characters={characters as any[]}
+             allSpecies={[...(systemSpecies || []), ...campaignSpeciesList].map(s => ({ name: s.name, size: s.size }))}
              selectionMode={selectionMode}
              targetedTokenId={targetedTokenId}
              selectedTokenId={selectedTokenId}

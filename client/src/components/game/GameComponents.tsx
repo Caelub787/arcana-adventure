@@ -251,6 +251,16 @@ export interface OtherPlayerAoe {
   locked: boolean;
 }
 
+// Helper to get grid span based on species size
+function getTokenGridSpan(size: string | undefined): number {
+  switch (size) {
+    case 'Huge': return 4;
+    case 'Gargantuan': return 6;
+    case 'Large': return 2;
+    default: return 1; // Tiny, Small, Medium all use 1x1
+  }
+}
+
 // 2. BattleMap
 interface BattleMapProps {
   tokens: Token[];
@@ -264,6 +274,7 @@ interface BattleMapProps {
   scene?: Scene;
   onViewChange?: (viewState: { x: number; y: number; zoom: number }) => void;
   characters?: any[];
+  allSpecies?: { name: string; size: string }[];
   selectionMode?: SelectionMode;
   targetedTokenId?: string | null;
   selectedTokenId?: string | null;
@@ -279,7 +290,7 @@ interface BattleMapProps {
   onToggleInvisibility?: (tokenId: string, isInvisible: boolean) => void;
 }
 
-export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClick, onDeleteToken, role, gridSize, backgroundImage, scene, onViewChange, characters = [], selectionMode = 'select', targetedTokenId, selectedTokenId, aoeTargetState, onAoeMouseMove, onAoeClick, otherPlayersAoe, myPermissions, tokenActiveEffects, allTokenEffects, onApplyEffect, onRemoveEffect, onToggleInvisibility }: BattleMapProps) {
+export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClick, onDeleteToken, role, gridSize, backgroundImage, scene, onViewChange, characters = [], allSpecies = [], selectionMode = 'select', targetedTokenId, selectedTokenId, aoeTargetState, onAoeMouseMove, onAoeClick, otherPlayersAoe, myPermissions, tokenActiveEffects, allTokenEffects, onApplyEffect, onRemoveEffect, onToggleInvisibility }: BattleMapProps) {
   // Use refs for pan/zoom to avoid re-renders during interaction
   const panRef = useRef({ x: 0, y: 0 });
   const zoomRef = useRef(1);
@@ -1117,17 +1128,22 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
           const effectiveGridSize = scene?.gridSize || gridSize;
           const canDrag = role === 'gm' || token.type === 'player';
           
+          // Get species size for grid span calculation
+          const speciesData = character?.race ? allSpecies.find(s => s.name === character.race) : null;
+          const gridSpan = getTokenGridSpan(speciesData?.size);
+          
           const isDragging = draggingToken?.id === token.id;
           const displayX = isDragging ? draggingToken.visualX : token.x;
           const displayY = isDragging ? draggingToken.visualY : token.y;
           
-          // Token size is 90% of grid to fit within cells with some padding
-          const tokenSize = effectiveGridSize * 0.9;
+          // Token size is 90% of grid span to fit within cells with some padding
+          // For Huge (4x4) and Gargantuan (6x6) tokens, they take up multiple grid cells
+          const tokenSize = effectiveGridSize * gridSpan * 0.9;
           // Center the token in the visible cell area (accounting for grid line thickness)
           // The grid line takes up gridThickness pixels at the left/top edge of each cell
           // So the usable cell area is (gridSize - gridThickness) pixels, starting at gridThickness
           const gridThickness = scene?.gridThickness ?? 1;
-          const usableCellSize = effectiveGridSize - gridThickness;
+          const usableCellSize = effectiveGridSize * gridSpan - gridThickness;
           const tokenOffset = gridThickness + (usableCellSize - tokenSize) / 2;
           
           const handleTokenPointerDown = (e: React.PointerEvent) => {

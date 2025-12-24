@@ -14,7 +14,7 @@ Preferred communication style: Simple, everyday language.
 - **State Management**: React Context for authentication, TanStack Query for server state, local React hooks for component state.
 - **Real-time Communication**: WebSockets for live updates across campaigns.
 - **Key Features**:
-    - **Battle Map**: Infinite grid space, fluid pan & zoom, GM scene management, configurable square/hexagon grids, real-time draggable character tokens with HP bars, custom background uploads, and viewport-independent centering.
+    - **Battle Map**: Infinite grid space, fluid pan & zoom, GM scene management, configurable square/hexagon grids, real-time draggable character tokens with HP bars, custom background uploads, and viewport-independent centering. **Size-based Token Scaling**: Tokens automatically scale based on species size (Large = 2x2, Huge = 4x4, Gargantuan = 6x6 grid cells).
     - **Scene Management**: Folder-based organization for scenes with drag-drop support. **View/Activate buttons** separate GM editing from player visibility - GMs can "View" a scene privately for editing while a different scene remains "Active" for players. WebSocket-synced active scene changes.
     - **Character Sheet**: Mobile-optimized design, responsive layout, single-scroll interface, and real-time updates.
     - **Species/Race System**: Database-driven management of custom species with auto-filled attributes. Supports both **System Species** (admin-created, global) and **Campaign Species** (GM-created, campaign-local with "(Campaign)" badge).
