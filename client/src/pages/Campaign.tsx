@@ -1680,6 +1680,15 @@ export default function Campaign() {
             return updated;
           });
         }
+        
+        // Handle member list updates (join/leave/kick/role changes)
+        if (data.type === 'members_updated' && data.members) {
+          // Update the members cache with the new list
+          queryClientRef.current.setQueryData(
+            [`/api/campaigns/${effectiveCampaignId}/members`],
+            data.members
+          );
+        }
       });
 
       return () => {

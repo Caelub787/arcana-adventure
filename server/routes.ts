@@ -1497,6 +1497,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         role: "player"
       });
 
+      // Broadcast member joined to all campaign members
+      const updatedMembers = await storage.getCampaignMembers(campaign.id);
+      broadcastToCampaign(campaign.id, {
+        type: "members_updated",
+        members: updatedMembers
+      });
+
       res.json(campaign);
     } catch (err) {
       res.status(400).json({ error: "Failed to join campaign" });
@@ -1530,7 +1537,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/campaigns/:id/leave", requireAuth, async (req, res) => {
     try {
-      await storage.removeCampaignMember(req.params.id, req.session.userId!);
+      const campaignId = req.params.id;
+      await storage.removeCampaignMember(campaignId, req.session.userId!);
+      
+      // Broadcast member left to all remaining campaign members
+      const updatedMembers = await storage.getCampaignMembers(campaignId);
+      broadcastToCampaign(campaignId, {
+        type: "members_updated",
+        members: updatedMembers
+      });
+      
       res.json({ success: true });
     } catch (err) {
       res.status(400).json({ error: "Failed to leave campaign" });
@@ -2413,6 +2429,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       const updatedMember = await storage.setMemberRole(campaignId, memberId, role);
+      
+      // Broadcast role change to all campaign members
+      const updatedMembers = await storage.getCampaignMembers(campaignId);
+      broadcastToCampaign(campaignId, {
+        type: "members_updated",
+        members: updatedMembers
+      });
+      
       res.json(updatedMember);
     } catch (err) {
       console.error('Error setting member role:', err);
@@ -2442,6 +2466,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       await storage.kickMember(campaignId, userId);
+      
+      // Broadcast member list update to all remaining campaign members
+      const updatedMembers = await storage.getCampaignMembers(campaignId);
+      broadcastToCampaign(campaignId, {
+        type: "members_updated",
+        members: updatedMembers
+      });
+      
       res.json({ success: true });
     } catch (err) {
       res.status(400).json({ error: "Failed to kick player" });
@@ -2471,6 +2503,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const ban = await storage.banMember(campaignId, userId, reason);
+      
+      // Broadcast member list update to all remaining campaign members
+      const updatedMembers = await storage.getCampaignMembers(campaignId);
+      broadcastToCampaign(campaignId, {
+        type: "members_updated",
+        members: updatedMembers
+      });
+      
       res.json(ban);
     } catch (err) {
       res.status(400).json({ error: "Failed to ban player" });
