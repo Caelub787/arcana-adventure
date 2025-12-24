@@ -1107,6 +1107,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   }
 
+  // Admin emails for system-wide access (defined early for use in checkCharacterAccess)
+  const ADMIN_EMAILS = ['notclaudenot@gmail.com', 'reedmcaleb@gmail.com'];
+
+  // Helper to check if user is admin (defined early for use in checkCharacterAccess)
+  const isAdminUser = async (userId: string | undefined): Promise<boolean> => {
+    if (!userId) return false;
+    const user = await storage.getUser(userId);
+    return user ? ADMIN_EMAILS.includes(user.email.toLowerCase()) : false;
+  };
+
   /**
    * checkCharacterAccess - Helper function to check character permissions
    * 
@@ -1115,6 +1125,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
    * - GM status in the campaign
    * - Campaign membership verification
    * - Explicit permissions granted by the GM
+   * - Admin access for character templates
    */
   async function checkCharacterAccess(
     characterId: string,
@@ -1127,6 +1138,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (!character) {
       console.log(`[checkCharacterAccess] Character not found`);
       return { allowed: false, isOwner: false, isGM: false };
+    }
+    
+    // Handle character templates (admin-created, no campaign)
+    if (character.isTemplate && !character.campaignId) {
+      const userIsAdmin = await isAdminUser(userId);
+      console.log(`[checkCharacterAccess] Character is template, user isAdmin: ${userIsAdmin}`);
+      if (userIsAdmin) {
+        return { allowed: true, isOwner: true, isGM: true, character };
+      }
+      // Non-admins cannot access character templates directly
+      return { allowed: false, isOwner: false, isGM: false, character };
     }
     
     const campaign = await storage.getCampaign(character.campaignId);
@@ -3138,16 +3160,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(400).json({ error: "Failed to set active scene" });
     }
   });
-
-  // Admin emails for system-wide access
-  const ADMIN_EMAILS = ['notclaudenot@gmail.com', 'reedmcaleb@gmail.com'];
-
-  // Helper to check if user is admin
-  const isAdminUser = async (userId: string | undefined): Promise<boolean> => {
-    if (!userId) return false;
-    const user = await storage.getUser(userId);
-    return user ? ADMIN_EMAILS.includes(user.email.toLowerCase()) : false;
-  };
 
   // Admin middleware
   const requireAdmin: typeof requireAuth = async (req, res, next) => {
