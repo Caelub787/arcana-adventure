@@ -2,7 +2,7 @@ import { useState, useRef, useMemo, useCallback, useEffect } from 'react';
 import { useLocation } from 'wouter';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, useMotionValue } from 'framer-motion';
-import { api, type Item, type SystemSpecies, type FeatTree, type Feat, type FeatConnection, type FeatTreeWithData, type FeatTemplate, type SystemSpell, type SystemSkill, type SystemTrait, type Character, type TokenEffect, type SpellEffect, type ItemEffect } from '@/lib/api';
+import { api, type Item, type SystemSpecies, type FeatTree, type Feat, type FeatConnection, type FeatTreeWithData, type FeatTemplate, type SystemSpell, type SystemSkill, type SystemTrait, type Character, type TokenEffect, type SpellEffect, type ItemEffect, type CharacterTemplateFolder } from '@/lib/api';
 import { useAuth } from '@/lib/AuthContext';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { Button } from '@/components/ui/button';
@@ -17,7 +17,7 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Slider } from '@/components/ui/slider';
 import { toast } from '@/hooks/use-toast';
-import { ArrowLeft, Plus, Pencil, Trash2, Sword, Shield, Package, Sparkles, Box, Coins, Search, Users, User, GitBranch, Library, Link, X, GripVertical, Star, Zap, Heart, ShieldCheck, BookOpen, RefreshCw, ZoomIn, ZoomOut, Wand2, Save, Flame, Upload, Image as ImageIcon } from 'lucide-react';
+import { ArrowLeft, Plus, Pencil, Trash2, Sword, Shield, Package, Sparkles, Box, Coins, Search, Users, User, GitBranch, Library, Link, X, GripVertical, Star, Zap, Heart, ShieldCheck, BookOpen, RefreshCw, ZoomIn, ZoomOut, Wand2, Save, Flame, Upload, Image as ImageIcon, Folder, FolderPlus, ChevronDown, ChevronRight, Layers } from 'lucide-react';
 import { ImageBrowser } from '@/components/ImageBrowser';
 import { CharacterSheet } from '@/components/game/GameComponents';
 
@@ -75,6 +75,11 @@ export default function AdminSettings() {
   const [editingCharacter, setEditingCharacter] = useState<Character | null>(null);
   const [characterSearchQuery, setCharacterSearchQuery] = useState('');
   const [viewingCharacterSheet, setViewingCharacterSheet] = useState<Character | null>(null);
+  const [expandedTemplateFolders, setExpandedTemplateFolders] = useState<Set<string>>(new Set());
+  const [newTemplateFolderName, setNewTemplateFolderName] = useState('');
+  const [editingTemplateFolderId, setEditingTemplateFolderId] = useState<string | null>(null);
+  const [editingTemplateFolderName, setEditingTemplateFolderName] = useState('');
+  const [draggingTemplateId, setDraggingTemplateId] = useState<string | null>(null);
 
   const [showAddTokenEffect, setShowAddTokenEffect] = useState(false);
   const [editingTokenEffect, setEditingTokenEffect] = useState<TokenEffect | null>(null);
@@ -113,6 +118,12 @@ export default function AdminSettings() {
   const { data: characterTemplates = [], isLoading: charactersLoading } = useQuery({
     queryKey: ['character-templates'],
     queryFn: () => api.getCharacterTemplates(),
+    enabled: isAdmin && currentView === 'characters',
+  });
+
+  const { data: templateFolders = [], isLoading: templateFoldersLoading } = useQuery({
+    queryKey: ['character-template-folders'],
+    queryFn: () => api.getCharacterTemplateFolders(),
     enabled: isAdmin && currentView === 'characters',
   });
 
@@ -337,6 +348,66 @@ export default function AdminSettings() {
       toast({ title: 'Error', description: error.message, variant: 'destructive' });
     },
   });
+
+  const createTemplateFolderMutation = useMutation({
+    mutationFn: (name: string) => api.createCharacterTemplateFolder({ name }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['character-template-folders'] });
+      setNewTemplateFolderName('');
+      toast({ title: 'Folder Created', description: 'Template folder created successfully' });
+    },
+    onError: (error: any) => {
+      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    },
+  });
+
+  const updateTemplateFolderMutation = useMutation({
+    mutationFn: ({ id, name }: { id: string; name: string }) => api.updateCharacterTemplateFolder(id, { name }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['character-template-folders'] });
+      setEditingTemplateFolderId(null);
+      toast({ title: 'Folder Updated', description: 'Template folder updated successfully' });
+    },
+    onError: (error: any) => {
+      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    },
+  });
+
+  const deleteTemplateFolderMutation = useMutation({
+    mutationFn: (id: string) => api.deleteCharacterTemplateFolder(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['character-template-folders'] });
+      queryClient.invalidateQueries({ queryKey: ['character-templates'] });
+      toast({ title: 'Folder Deleted', description: 'Template folder deleted. Templates moved to Unfiled.' });
+    },
+    onError: (error: any) => {
+      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    },
+  });
+
+  const moveTemplateToFolderMutation = useMutation({
+    mutationFn: ({ templateId, folderId }: { templateId: string; folderId: string | null }) => 
+      api.updateCharacterTemplate(templateId, { folderId }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['character-templates'] });
+      toast({ title: 'Template Moved', description: 'Template moved successfully' });
+    },
+    onError: (error: any) => {
+      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    },
+  });
+
+  const toggleTemplateFolder = (folderId: string) => {
+    setExpandedTemplateFolders(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(folderId)) {
+        newSet.delete(folderId);
+      } else {
+        newSet.add(folderId);
+      }
+      return newSet;
+    });
+  };
 
   const createTokenEffectMutation = useMutation({
     mutationFn: (effect: Partial<TokenEffect>) => api.createTokenEffect(effect),
@@ -581,7 +652,7 @@ export default function AdminSettings() {
         {currentView === 'characters' && (
           <CharactersView
             characters={filteredCharacters}
-            isLoading={charactersLoading}
+            isLoading={charactersLoading || templateFoldersLoading}
             searchQuery={characterSearchQuery}
             setSearchQuery={setCharacterSearchQuery}
             onAddCharacter={() => setShowAddCharacter(true)}
@@ -592,6 +663,26 @@ export default function AdminSettings() {
               }
             }}
             onViewSheet={setViewingCharacterSheet}
+            folders={templateFolders}
+            expandedFolders={expandedTemplateFolders}
+            toggleFolder={toggleTemplateFolder}
+            newFolderName={newTemplateFolderName}
+            setNewFolderName={setNewTemplateFolderName}
+            onCreateFolder={(name) => createTemplateFolderMutation.mutate(name)}
+            isCreatingFolder={createTemplateFolderMutation.isPending}
+            editingFolderId={editingTemplateFolderId}
+            setEditingFolderId={setEditingTemplateFolderId}
+            editingFolderName={editingTemplateFolderName}
+            setEditingFolderName={setEditingTemplateFolderName}
+            onUpdateFolder={(id, name) => updateTemplateFolderMutation.mutate({ id, name })}
+            onDeleteFolder={(id) => {
+              if (confirm('Delete this folder? Templates inside will be moved to Unfiled.')) {
+                deleteTemplateFolderMutation.mutate(id);
+              }
+            }}
+            draggingTemplateId={draggingTemplateId}
+            setDraggingTemplateId={setDraggingTemplateId}
+            onMoveTemplateToFolder={(templateId, folderId) => moveTemplateToFolderMutation.mutate({ templateId, folderId })}
           />
         )}
 
@@ -707,6 +798,7 @@ export default function AdminSettings() {
           onOpenChange={setShowAddCharacter}
           onSave={(data) => createCharacterMutation.mutate(data)}
           isLoading={createCharacterMutation.isPending}
+          folders={templateFolders}
         />
 
         {editingCharacter && (
@@ -716,6 +808,7 @@ export default function AdminSettings() {
             onSave={(data) => updateCharacterMutation.mutate({ id: editingCharacter.id, data })}
             initialData={editingCharacter}
             isLoading={updateCharacterMutation.isPending}
+            folders={templateFolders}
           />
         )}
 
@@ -2274,9 +2367,116 @@ interface CharactersViewProps {
   onEditCharacter: (character: Character) => void;
   onDeleteCharacter: (id: string) => void;
   onViewSheet: (character: Character) => void;
+  folders: CharacterTemplateFolder[];
+  expandedFolders: Set<string>;
+  toggleFolder: (folderId: string) => void;
+  newFolderName: string;
+  setNewFolderName: (name: string) => void;
+  onCreateFolder: (name: string) => void;
+  isCreatingFolder: boolean;
+  editingFolderId: string | null;
+  setEditingFolderId: (id: string | null) => void;
+  editingFolderName: string;
+  setEditingFolderName: (name: string) => void;
+  onUpdateFolder: (id: string, name: string) => void;
+  onDeleteFolder: (id: string) => void;
+  draggingTemplateId: string | null;
+  setDraggingTemplateId: (id: string | null) => void;
+  onMoveTemplateToFolder: (templateId: string, folderId: string | null) => void;
 }
 
-function CharactersView({ characters, isLoading, searchQuery, setSearchQuery, onAddCharacter, onEditCharacter, onDeleteCharacter, onViewSheet }: CharactersViewProps) {
+function CharactersView({ 
+  characters, isLoading, searchQuery, setSearchQuery, onAddCharacter, onEditCharacter, onDeleteCharacter, onViewSheet,
+  folders, expandedFolders, toggleFolder, newFolderName, setNewFolderName, onCreateFolder, isCreatingFolder,
+  editingFolderId, setEditingFolderId, editingFolderName, setEditingFolderName, onUpdateFolder, onDeleteFolder,
+  draggingTemplateId, setDraggingTemplateId, onMoveTemplateToFolder
+}: CharactersViewProps) {
+  const getTemplatesInFolder = (folderId: string) => 
+    characters.filter((c: Character) => c.folderId === folderId);
+  const unfiledTemplates = characters.filter((c: Character) => !c.folderId);
+
+  const renderCharacterCard = (character: Character) => (
+    <div
+      key={character.id}
+      className="p-4 rounded-lg bg-stone-800 border border-stone-700 hover:border-teal-600 transition-colors cursor-pointer"
+      data-testid={`character-card-${character.id}`}
+      draggable
+      onDragStart={(e) => {
+        e.dataTransfer.setData('text/plain', character.id);
+        setDraggingTemplateId(character.id);
+      }}
+      onDragEnd={() => setDraggingTemplateId(null)}
+      onClick={() => onViewSheet(character)}
+    >
+      <div className="flex items-start gap-3">
+        <GripVertical className="h-4 w-4 text-stone-500 cursor-grab shrink-0 mt-1" />
+        {character.portrait ? (
+          <img src={character.portrait} alt={character.name} className="h-14 w-14 rounded-lg object-cover" />
+        ) : (
+          <div className="h-14 w-14 rounded-lg bg-stone-700 flex items-center justify-center">
+            <User className="h-7 w-7 text-teal-400" />
+          </div>
+        )}
+        <div className="flex-1 min-w-0">
+          <h3 className="font-medium text-stone-200 truncate">{character.name}</h3>
+          <p className="text-sm text-stone-400">Level {character.level || 1}</p>
+          <p className="text-sm text-teal-400">{character.race || 'Unknown Race'}</p>
+        </div>
+      </div>
+      <div className="flex flex-wrap justify-end gap-2 mt-3 pt-3 border-t border-stone-700">
+        <Select
+          value={character.folderId || '_unfiled'}
+          onValueChange={(value) => {
+            onMoveTemplateToFolder(character.id, value === '_unfiled' ? null : value);
+          }}
+        >
+          <SelectTrigger 
+            className="h-8 w-[120px] bg-stone-700 border-stone-600 text-xs"
+            onClick={(e) => e.stopPropagation()}
+            data-testid={`select-folder-${character.id}`}
+          >
+            <Folder className="h-3 w-3 mr-1" />
+            <SelectValue placeholder="Move to..." />
+          </SelectTrigger>
+          <SelectContent onClick={(e) => e.stopPropagation()}>
+            <SelectItem value="_unfiled">Unfiled</SelectItem>
+            {folders.map((folder) => (
+              <SelectItem key={folder.id} value={folder.id}>{folder.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={(e) => { e.stopPropagation(); onViewSheet(character); }}
+          className="text-stone-400 hover:text-teal-500"
+          data-testid={`button-view-sheet-${character.id}`}
+        >
+          <User className="h-4 w-4 mr-1" />
+          Open
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={(e) => { e.stopPropagation(); onEditCharacter(character); }}
+          className="text-stone-400 hover:text-stone-300"
+          data-testid={`button-edit-character-${character.id}`}
+        >
+          <Pencil className="h-4 w-4" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={(e) => { e.stopPropagation(); onDeleteCharacter(character.id); }}
+          className="text-stone-400 hover:text-red-500"
+          data-testid={`button-delete-character-${character.id}`}
+        >
+          <Trash2 className="h-4 w-4" />
+        </Button>
+      </div>
+    </div>
+  );
+
   return (
     <Card className="bg-stone-900 border-stone-700 flex-1 flex flex-col min-h-0">
       <CardHeader className="flex flex-row items-center justify-between shrink-0">
@@ -2291,7 +2491,7 @@ function CharactersView({ characters, isLoading, searchQuery, setSearchQuery, on
         </Button>
       </CardHeader>
       <CardContent className="flex-1 flex flex-col min-h-0">
-        <div className="mb-4 shrink-0">
+        <div className="mb-4 shrink-0 space-y-3">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-500" />
             <Input
@@ -2302,11 +2502,31 @@ function CharactersView({ characters, isLoading, searchQuery, setSearchQuery, on
               data-testid="input-search-characters"
             />
           </div>
+          <div className="flex gap-2">
+            <Input
+              placeholder="New folder name..."
+              value={newFolderName}
+              onChange={(e) => setNewFolderName(e.target.value)}
+              className="flex-1 bg-stone-800 border-stone-700 text-stone-200"
+              onKeyPress={(e) => e.key === 'Enter' && newFolderName.trim() && onCreateFolder(newFolderName.trim())}
+              data-testid="input-new-template-folder-name"
+            />
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => newFolderName.trim() && onCreateFolder(newFolderName.trim())}
+              disabled={!newFolderName.trim() || isCreatingFolder}
+              className="bg-stone-800 hover:bg-stone-700"
+              data-testid="button-create-template-folder"
+            >
+              <FolderPlus className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
 
         {isLoading ? (
           <div className="text-center py-12 text-stone-400">Loading characters...</div>
-        ) : characters.length === 0 ? (
+        ) : characters.length === 0 && folders.length === 0 ? (
           <div className="text-center py-12 text-stone-400">
             <User className="h-12 w-12 mx-auto mb-3 opacity-50" />
             <p className="font-bold">No character templates found</p>
@@ -2314,62 +2534,142 @@ function CharactersView({ characters, isLoading, searchQuery, setSearchQuery, on
           </div>
         ) : (
           <ScrollArea className="flex-1 min-h-0">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {characters.map((character: Character) => (
-                <div
-                  key={character.id}
-                  className="p-4 rounded-lg bg-stone-800 border border-stone-700 hover:border-teal-600 transition-colors cursor-pointer"
-                  data-testid={`character-card-${character.id}`}
-                  onClick={() => onViewSheet(character)}
-                >
-                  <div className="flex items-start gap-3">
-                    {character.portrait ? (
-                      <img src={character.portrait} alt={character.name} className="h-16 w-16 rounded-lg object-cover" />
-                    ) : (
-                      <div className="h-16 w-16 rounded-lg bg-stone-700 flex items-center justify-center">
-                        <User className="h-8 w-8 text-teal-400" />
+            <div className="space-y-4 pr-2">
+              {folders.map((folder: CharacterTemplateFolder) => {
+                const folderTemplates = getTemplatesInFolder(folder.id);
+                const isExpanded = expandedFolders.has(folder.id);
+                
+                return (
+                  <div
+                    key={folder.id}
+                    className={`bg-stone-850 rounded-lg border border-stone-700 p-2 transition-colors ${draggingTemplateId ? 'border-dashed' : ''}`}
+                    onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add('border-teal-500'); }}
+                    onDragLeave={(e) => { e.currentTarget.classList.remove('border-teal-500'); }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      e.currentTarget.classList.remove('border-teal-500');
+                      const templateId = e.dataTransfer.getData('text/plain');
+                      if (templateId) {
+                        onMoveTemplateToFolder(templateId, folder.id);
+                        setDraggingTemplateId(null);
+                      }
+                    }}
+                    data-testid={`template-folder-${folder.id}`}
+                  >
+                    <div
+                      className="flex items-center justify-between p-2 cursor-pointer hover:bg-stone-800/50 rounded"
+                      onClick={() => toggleFolder(folder.id)}
+                    >
+                      <div className="flex items-center gap-2 flex-1 min-w-0">
+                        {isExpanded ? (
+                          <ChevronDown className="h-4 w-4 text-stone-400 shrink-0" />
+                        ) : (
+                          <ChevronRight className="h-4 w-4 text-stone-400 shrink-0" />
+                        )}
+                        <Folder className="h-4 w-4 text-teal-500 shrink-0" />
+                        {editingFolderId === folder.id ? (
+                          <Input
+                            value={editingFolderName}
+                            onChange={(e) => setEditingFolderName(e.target.value)}
+                            onClick={(e) => e.stopPropagation()}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                onUpdateFolder(folder.id, editingFolderName);
+                              } else if (e.key === 'Escape') {
+                                setEditingFolderId(null);
+                              }
+                            }}
+                            onBlur={() => {
+                              if (editingFolderName.trim() && editingFolderName !== folder.name) {
+                                onUpdateFolder(folder.id, editingFolderName);
+                              }
+                              setEditingFolderId(null);
+                            }}
+                            className="h-6 py-0 px-1 text-sm bg-stone-900 border-stone-600"
+                            autoFocus
+                            data-testid={`input-edit-template-folder-${folder.id}`}
+                          />
+                        ) : (
+                          <span className="font-medium text-stone-200 truncate">{folder.name}</span>
+                        )}
+                        <span className="text-xs text-stone-500 shrink-0">({folderTemplates.length})</span>
+                      </div>
+                      {editingFolderId !== folder.id && (
+                        <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => {
+                              setEditingFolderId(folder.id);
+                              setEditingFolderName(folder.name);
+                            }}
+                            className="h-6 w-6 p-0 text-stone-400 hover:text-stone-200"
+                            data-testid={`button-edit-template-folder-${folder.id}`}
+                          >
+                            <Pencil className="h-3 w-3" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => onDeleteFolder(folder.id)}
+                            className="h-6 w-6 p-0 text-red-400 hover:text-red-300"
+                            data-testid={`button-delete-template-folder-${folder.id}`}
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                    
+                    {isExpanded && (
+                      <div className="mt-2 space-y-3 pl-6">
+                        {folderTemplates.length > 0 ? (
+                          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                            {folderTemplates.map(renderCharacterCard)}
+                          </div>
+                        ) : (
+                          <div className="p-3 text-center text-stone-500 text-sm border border-dashed border-stone-700 rounded">
+                            Drag templates here
+                          </div>
+                        )}
                       </div>
                     )}
-                    <div className="flex-1 min-w-0">
-                      <h3 className="font-medium text-stone-200 truncate">{character.name}</h3>
-                      <p className="text-sm text-stone-400">Level {character.level || 1}</p>
-                      <p className="text-sm text-teal-400">{character.race || 'Unknown Race'}</p>
-                    </div>
                   </div>
-                  <div className="flex justify-end gap-2 mt-3 pt-3 border-t border-stone-700">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={(e) => { e.stopPropagation(); onViewSheet(character); }}
-                      className="text-stone-400 hover:text-teal-500"
-                      data-testid={`button-view-sheet-${character.id}`}
-                    >
-                      <User className="h-4 w-4 mr-1" />
-                      Open Sheet
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={(e) => { e.stopPropagation(); onEditCharacter(character); }}
-                      className="text-stone-400 hover:text-stone-300"
-                      data-testid={`button-edit-character-${character.id}`}
-                    >
-                      <Pencil className="h-4 w-4 mr-1" />
-                      Rename
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={(e) => { e.stopPropagation(); onDeleteCharacter(character.id); }}
-                      className="text-stone-400 hover:text-red-500"
-                      data-testid={`button-delete-character-${character.id}`}
-                    >
-                      <Trash2 className="h-4 w-4 mr-1" />
-                      Delete
-                    </Button>
-                  </div>
+                );
+              })}
+              
+              <div
+                className={`bg-stone-850 rounded-lg border border-stone-700 p-2 transition-colors ${draggingTemplateId ? 'border-dashed' : ''}`}
+                onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add('border-teal-500'); }}
+                onDragLeave={(e) => { e.currentTarget.classList.remove('border-teal-500'); }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  e.currentTarget.classList.remove('border-teal-500');
+                  const templateId = e.dataTransfer.getData('text/plain');
+                  if (templateId) {
+                    onMoveTemplateToFolder(templateId, null);
+                    setDraggingTemplateId(null);
+                  }
+                }}
+                data-testid="template-folder-unfiled"
+              >
+                <div className="flex items-center gap-2 p-2 text-stone-400">
+                  <Layers className="h-4 w-4" />
+                  <span className="font-medium">Unfiled Templates</span>
+                  <span className="text-xs text-stone-500">({unfiledTemplates.length})</span>
                 </div>
-              ))}
+                <div className="mt-2">
+                  {unfiledTemplates.length > 0 ? (
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                      {unfiledTemplates.map(renderCharacterCard)}
+                    </div>
+                  ) : (
+                    <div className="p-3 text-center text-stone-500 text-sm border border-dashed border-stone-700 rounded">
+                      No unfiled templates
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           </ScrollArea>
         )}
@@ -2384,11 +2684,13 @@ interface CharacterFormDialogProps {
   onSave: (data: Partial<Character>) => void;
   initialData?: Character;
   isLoading?: boolean;
+  folders?: CharacterTemplateFolder[];
 }
 
-function CharacterFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: CharacterFormDialogProps) {
+function CharacterFormDialog({ open, onOpenChange, onSave, initialData, isLoading, folders = [] }: CharacterFormDialogProps) {
   const [name, setName] = useState(initialData?.name || "");
   const [selectedRace, setSelectedRace] = useState(initialData?.race || "Human");
+  const [selectedFolderId, setSelectedFolderId] = useState<string | null>(initialData?.folderId || null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const { data: systemSpeciesList = [] } = useQuery({
@@ -2415,6 +2717,7 @@ function CharacterFormDialog({ open, onOpenChange, onSave, initialData, isLoadin
     if (open) {
       setName(initialData?.name || "");
       setSelectedRace(initialData?.race || "Human");
+      setSelectedFolderId(initialData?.folderId || null);
     }
   }, [initialData, open]);
 
@@ -2441,6 +2744,7 @@ function CharacterFormDialog({ open, onOpenChange, onSave, initialData, isLoadin
       maxEnergy: selectedSpecies.startingMaxEnergy || 10,
       bonusHpFromLevelUps: 0,
       lastLevelUpRolled: 1,
+      folderId: selectedFolderId,
       might: 0,
       finesse: 0,
       wit: 0,
@@ -2466,6 +2770,7 @@ function CharacterFormDialog({ open, onOpenChange, onSave, initialData, isLoadin
     
     setName("");
     setSelectedRace("Human");
+    setSelectedFolderId(null);
     setIsSubmitting(false);
     onOpenChange(false);
   };
@@ -2475,6 +2780,7 @@ function CharacterFormDialog({ open, onOpenChange, onSave, initialData, isLoadin
       if (!open) {
         setName("");
         setSelectedRace("Human");
+        setSelectedFolderId(null);
       }
       onOpenChange(open);
     }}>
@@ -2525,6 +2831,26 @@ function CharacterFormDialog({ open, onOpenChange, onSave, initialData, isLoadin
               </p>
             )}
           </div>
+
+          {folders.length > 0 && (
+            <div className="space-y-2">
+              <Label htmlFor="char-folder" className="text-stone-300">Folder (Optional)</Label>
+              <Select value={selectedFolderId || '_unfiled'} onValueChange={(v) => setSelectedFolderId(v === '_unfiled' ? null : v)}>
+                <SelectTrigger className="bg-stone-800 border-stone-700 text-stone-200" data-testid="select-character-folder">
+                  <Folder className="h-4 w-4 mr-2 text-teal-500" />
+                  <SelectValue placeholder="Select a folder" />
+                </SelectTrigger>
+                <SelectContent className="bg-stone-800 border-stone-700">
+                  <SelectItem value="_unfiled" className="text-stone-200">Unfiled</SelectItem>
+                  {folders.map((folder) => (
+                    <SelectItem key={folder.id} value={folder.id} className="text-stone-200">
+                      {folder.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)} className="border-stone-600">

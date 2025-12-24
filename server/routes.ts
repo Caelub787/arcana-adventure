@@ -3909,6 +3909,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Character Template Folder routes (admin)
+  app.get("/api/admin/character-template-folders", requireAdmin, async (req, res) => {
+    try {
+      const folders = await storage.getCharacterTemplateFolders();
+      res.json(folders);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch character template folders" });
+    }
+  });
+
+  app.post("/api/admin/character-template-folders", requireAdmin, async (req, res) => {
+    try {
+      const folder = await storage.createCharacterTemplateFolder(req.body);
+      res.json(folder);
+    } catch (err) {
+      res.status(400).json({ error: "Failed to create character template folder" });
+    }
+  });
+
+  app.patch("/api/admin/character-template-folders/:id", requireAdmin, async (req, res) => {
+    try {
+      const folder = await storage.updateCharacterTemplateFolder(req.params.id, req.body);
+      if (!folder) {
+        return res.status(404).json({ error: "Character template folder not found" });
+      }
+      res.json(folder);
+    } catch (err) {
+      res.status(400).json({ error: "Failed to update character template folder" });
+    }
+  });
+
+  app.delete("/api/admin/character-template-folders/:id", requireAdmin, async (req, res) => {
+    try {
+      await storage.deleteCharacterTemplateFolder(req.params.id);
+      res.json({ success: true });
+    } catch (err) {
+      res.status(400).json({ error: "Failed to delete character template folder" });
+    }
+  });
+
   // Public character templates route (for adding to campaigns)
   app.get("/api/character-templates", requireAuth, async (req, res) => {
     try {

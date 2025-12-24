@@ -26,6 +26,7 @@ import {
   type SystemTrait, type InsertSystemTrait,
   type CharacterTrait, type InsertCharacterTrait,
   type CharacterFolder, type InsertCharacterFolder,
+  type CharacterTemplateFolder, type InsertCharacterTemplateFolder,
   type SceneFolder, type InsertSceneFolder,
   type FriendRequest, type InsertFriendRequest,
   type Friendship, type InsertFriendship,
@@ -37,7 +38,7 @@ import {
   type SpellEffect, type InsertSpellEffect,
   type ItemEffect, type InsertItemEffect,
   type TokenActiveEffect, type InsertTokenActiveEffect,
-  users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, items, spells, characterPermissions, initiativeEntries, systemSpecies, campaignSpecies, featTemplates, featTrees, feats, featConnections, characterFeats, systemSpells, systemSkills, characterCustomSkills, systemTraits, characterTraits, characterFolders, sceneFolders, friendRequests, friendships, noteFolders, notes, noteReferences, noteShares, tokenEffects, spellEffects, itemEffects, tokenActiveEffects
+  users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, items, spells, characterPermissions, initiativeEntries, systemSpecies, campaignSpecies, featTemplates, featTrees, feats, featConnections, characterFeats, systemSpells, systemSkills, characterCustomSkills, systemTraits, characterTraits, characterFolders, characterTemplateFolders, sceneFolders, friendRequests, friendships, noteFolders, notes, noteReferences, noteShares, tokenEffects, spellEffects, itemEffects, tokenActiveEffects
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql, inArray, or } from "drizzle-orm";
@@ -95,6 +96,13 @@ export interface IStorage {
   updateCharacterTemplate(id: string, data: Partial<Character>): Promise<Character | undefined>;
   deleteCharacterTemplate(id: string): Promise<void>;
   copyTemplateToCompany(templateId: string, campaignId: string, userId: string): Promise<Character>;
+
+  // Character Template Folder operations
+  getCharacterTemplateFolders(): Promise<CharacterTemplateFolder[]>;
+  getCharacterTemplateFolder(id: string): Promise<CharacterTemplateFolder | undefined>;
+  createCharacterTemplateFolder(data: InsertCharacterTemplateFolder): Promise<CharacterTemplateFolder>;
+  updateCharacterTemplateFolder(id: string, data: Partial<CharacterTemplateFolder>): Promise<CharacterTemplateFolder | undefined>;
+  deleteCharacterTemplateFolder(id: string): Promise<void>;
 
   // Token operations
   createToken(token: InsertToken): Promise<Token>;
@@ -906,6 +914,45 @@ export class DatabaseStorage implements IStorage {
     }
     
     return newChar;
+  }
+
+  // Character Template Folder operations
+  async getCharacterTemplateFolders(): Promise<CharacterTemplateFolder[]> {
+    return await db.select()
+      .from(characterTemplateFolders)
+      .orderBy(characterTemplateFolders.sortOrder, characterTemplateFolders.name);
+  }
+
+  async getCharacterTemplateFolder(id: string): Promise<CharacterTemplateFolder | undefined> {
+    const [folder] = await db.select()
+      .from(characterTemplateFolders)
+      .where(eq(characterTemplateFolders.id, id))
+      .limit(1);
+    return folder;
+  }
+
+  async createCharacterTemplateFolder(data: InsertCharacterTemplateFolder): Promise<CharacterTemplateFolder> {
+    const [folder] = await db.insert(characterTemplateFolders)
+      .values(data)
+      .returning();
+    return folder;
+  }
+
+  async updateCharacterTemplateFolder(id: string, data: Partial<CharacterTemplateFolder>): Promise<CharacterTemplateFolder | undefined> {
+    const [folder] = await db.update(characterTemplateFolders)
+      .set(data)
+      .where(eq(characterTemplateFolders.id, id))
+      .returning();
+    return folder;
+  }
+
+  async deleteCharacterTemplateFolder(id: string): Promise<void> {
+    // Move templates in this folder to unfiled (null folderId)
+    await db.update(characters)
+      .set({ folderId: null })
+      .where(and(eq(characters.folderId, id), eq(characters.isTemplate, true)));
+    // Delete the folder
+    await db.delete(characterTemplateFolders).where(eq(characterTemplateFolders.id, id));
   }
 
   // Token operations

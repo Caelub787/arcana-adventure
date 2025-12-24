@@ -93,6 +93,13 @@ export interface SceneFolder {
   createdAt: string;
 }
 
+export interface CharacterTemplateFolder {
+  id: string;
+  name: string;
+  sortOrder: number;
+  createdAt: string;
+}
+
 export interface ChatMessage {
   id: string;
   campaignId: string;
@@ -1195,6 +1202,29 @@ class ApiClient {
 
   async deleteCharacterTemplate(id: string): Promise<void> {
     return this.request(`/admin/character-templates/${id}`, { method: 'DELETE' });
+  }
+
+  // Admin Character Template Folders
+  async getCharacterTemplateFolders(): Promise<CharacterTemplateFolder[]> {
+    return this.request('/admin/character-template-folders');
+  }
+
+  async createCharacterTemplateFolder(data: { name: string; sortOrder?: number }): Promise<CharacterTemplateFolder> {
+    return this.request('/admin/character-template-folders', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateCharacterTemplateFolder(id: string, data: Partial<CharacterTemplateFolder>): Promise<CharacterTemplateFolder> {
+    return this.request(`/admin/character-template-folders/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteCharacterTemplateFolder(id: string): Promise<void> {
+    return this.request(`/admin/character-template-folders/${id}`, { method: 'DELETE' });
   }
 
   // Public character templates (for campaign use)

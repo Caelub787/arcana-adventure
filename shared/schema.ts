@@ -293,6 +293,22 @@ export const insertCharacterFolderSchema = createInsertSchema(characterFolders).
 export type InsertCharacterFolder = z.infer<typeof insertCharacterFolderSchema>;
 export type CharacterFolder = typeof characterFolders.$inferSelect;
 
+// Character Template Folders (for organizing admin character templates)
+export const characterTemplateFolders = pgTable("character_template_folders", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  sortOrder: integer("sort_order").default(0).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertCharacterTemplateFolderSchema = createInsertSchema(characterTemplateFolders).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertCharacterTemplateFolder = z.infer<typeof insertCharacterTemplateFolderSchema>;
+export type CharacterTemplateFolder = typeof characterTemplateFolders.$inferSelect;
+
 // Chat Messages table
 export const chatMessages = pgTable("chat_messages", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
