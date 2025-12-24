@@ -51,7 +51,7 @@ Preferred communication style: Simple, everyday language.
         - **Entity References**: Type `[[` to search and link game entities (spells, items, traits, skills, species, characters). Opening the reference picker with blank search shows all available entities. References are clickable in read mode, displaying entity details in a popup dialog.
         - **Permission-Based Characters**: Users can reference characters they own or all characters in campaigns where they are GM. Character references show portrait, race, level, HP, and energy.
         - **Canvas Editor**: Infinite pan/zoom canvas with draggable text, note link, and entity nodes connected by curved lines.
-        - **Graph View**: Force-directed visualization showing all notes and their connections.
+        - **Graph View**: Force-directed visualization showing all notes, entities, and characters. Characters appear as orange nodes with their portraits, 40% larger than other nodes for visibility.
         - **Sharing**: Share notes with friends with view or edit permissions.
         - **Campaign Notes**: Notes can be scoped to campaigns via "Campaign Notes" button.
     - **Social Features**: User profiles with avatars/bios, friend system with requests, and user search.
@@ -72,6 +72,12 @@ Preferred communication style: Simple, everyday language.
     - **Assistant GM**: Elevated permissions via isGM() for most GM actions, but cannot kick/ban the owner or change roles
     - **Player**: Standard player permissions
   Role changes available via dropdown in campaign settings (owner-only).
+- **Character Access Levels**: Four-tier permission system for character visibility:
+    - **None**: No access to the character
+    - **View**: Name-only access (minimal visibility)
+    - **Ally**: Full stats and inventory visible (can see but not edit)
+    - **Control**: Can edit the character
+  GMs can grant access via character settings, including "All Players" quick action for bulk permission setting.
 - **Security**: Hashed passwords, session cookies, CSRF protection, and PII sanitization.
 
 ## External Dependencies

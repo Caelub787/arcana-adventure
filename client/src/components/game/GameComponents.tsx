@@ -5755,7 +5755,7 @@ export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onIn
                                          View Sheet
                                        </DropdownMenuItem>
                                      )}
-                                     {onAssignCharacter && (role === 'gm' || myPermissions?.permissions?.[char.id] === 'edit' || myPermissions?.permissions?.[char.id] === 'owner') && (
+                                     {onAssignCharacter && (role === 'gm' || myPermissions?.permissions?.[char.id] === 'control' || myPermissions?.permissions?.[char.id] === 'owner') && (
                                        <DropdownMenuItem
                                          onClick={() => onAssignCharacter(char)}
                                          className="text-green-200 focus:bg-green-900/30 focus:text-green-200"
@@ -5874,7 +5874,7 @@ export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onIn
                                    View Sheet
                                  </DropdownMenuItem>
                                )}
-                               {onAssignCharacter && (role === 'gm' || myPermissions?.permissions?.[char.id] === 'edit' || myPermissions?.permissions?.[char.id] === 'owner') && (
+                               {onAssignCharacter && (role === 'gm' || myPermissions?.permissions?.[char.id] === 'control' || myPermissions?.permissions?.[char.id] === 'owner') && (
                                  <DropdownMenuItem
                                    onClick={() => onAssignCharacter(char)}
                                    className="text-green-200 focus:bg-green-900/30 focus:text-green-200"
@@ -6021,48 +6021,148 @@ export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onIn
             </DialogDescription>
           </DialogHeader>
           
-          <div className="space-y-2 mt-4">
+          <div className="space-y-3 mt-4">
             {characters && characters.length > 0 ? (
-              characters.map((char: any) => (
-                <div
-                  key={char.id}
-                  className="flex items-center gap-3 p-3 bg-stone-900 border border-stone-800 rounded-lg hover:border-amber-600/50 cursor-pointer transition-colors"
-                  onClick={() => {
-                    if (onAddCharacterToken) {
-                      onAddCharacterToken(char);
-                    }
-                    setAddTokenDialogOpen(false);
-                  }}
-                  data-testid={`select-character-token-${char.id}`}
-                >
-                  {/* Character Portrait */}
-                  <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-stone-700 flex-shrink-0">
-                    {char.portrait ? (
-                      <img src={char.portrait} alt={char.name} className="w-full h-full object-cover" />
-                    ) : (
-                      <div className="w-full h-full bg-stone-800 flex items-center justify-center">
-                        <Users className="h-6 w-6 text-stone-600" />
+              <>
+                {/* Folder Sections */}
+                {folders.map((folder: any) => {
+                  const folderCharacters = getCharactersInFolder(folder.id);
+                  const isExpanded = expandedFolders.has(folder.id);
+                  
+                  if (folderCharacters.length === 0) return null;
+                  
+                  return (
+                    <div
+                      key={folder.id}
+                      className="bg-stone-900 rounded-lg border border-stone-800"
+                      data-testid={`token-folder-section-${folder.id}`}
+                    >
+                      {/* Folder Header */}
+                      <div
+                        className="flex items-center gap-2 p-3 cursor-pointer hover:bg-stone-800/50 rounded-t-lg"
+                        onClick={() => toggleFolder(folder.id)}
+                      >
+                        {isExpanded ? (
+                          <ChevronDown className="h-4 w-4 text-stone-400 shrink-0" />
+                        ) : (
+                          <ChevronRight className="h-4 w-4 text-stone-400 shrink-0" />
+                        )}
+                        <Folder className="h-4 w-4 text-amber-500 shrink-0" />
+                        <span className="font-medium text-stone-200 truncate flex-1">{folder.name}</span>
+                        <Badge variant="secondary" className="bg-stone-700 text-stone-300 text-xs shrink-0">
+                          {folderCharacters.length}
+                        </Badge>
+                      </div>
+                      
+                      {/* Folder Characters */}
+                      {isExpanded && (
+                        <div className="border-t border-stone-800">
+                          {folderCharacters.map((char: any) => (
+                            <div
+                              key={char.id}
+                              className="flex items-center gap-3 p-3 hover:bg-stone-800/50 cursor-pointer transition-colors border-b border-stone-800 last:border-b-0"
+                              onClick={() => {
+                                if (onAddCharacterToken) {
+                                  onAddCharacterToken(char);
+                                }
+                                setAddTokenDialogOpen(false);
+                              }}
+                              data-testid={`select-character-token-${char.id}`}
+                            >
+                              {/* Character Portrait */}
+                              <div className="w-10 h-10 rounded-full overflow-hidden border-2 border-stone-700 flex-shrink-0">
+                                {char.portrait ? (
+                                  <img src={char.portrait} alt={char.name} className="w-full h-full object-cover" />
+                                ) : (
+                                  <div className="w-full h-full bg-stone-800 flex items-center justify-center">
+                                    <Users className="h-5 w-5 text-stone-600" />
+                                  </div>
+                                )}
+                              </div>
+                              
+                              {/* Character Info */}
+                              <div className="flex-1 min-w-0">
+                                <div className="font-bold text-stone-100 truncate">{char.name}</div>
+                                <div className="text-xs text-stone-400">
+                                  {char.race} {char.class} • Level {char.level || 1}
+                                </div>
+                              </div>
+                              
+                              {/* HP Display */}
+                              <div className="text-right flex-shrink-0">
+                                <div className="text-sm font-bold text-red-400">
+                                  {char.currentHp ?? char.hp ?? char.maxHp ?? 10}/{char.maxHp ?? 10}
+                                </div>
+                                <div className="text-xs text-stone-500">HP</div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+                
+                {/* Unfiled Characters Section */}
+                {unfiledCharacters.length > 0 && (
+                  <div
+                    className="bg-stone-900 rounded-lg border border-stone-800"
+                    data-testid="token-unfiled-characters-section"
+                  >
+                    {/* Only show header if there are folders */}
+                    {folders.length > 0 && (
+                      <div className="flex items-center gap-2 p-3 text-stone-400 border-b border-stone-800">
+                        <FolderOpen className="h-4 w-4" />
+                        <span className="font-medium">Unfiled</span>
+                        <Badge variant="secondary" className="bg-stone-700 text-stone-300 text-xs">
+                          {unfiledCharacters.length}
+                        </Badge>
                       </div>
                     )}
+                    
+                    {unfiledCharacters.map((char: any) => (
+                      <div
+                        key={char.id}
+                        className="flex items-center gap-3 p-3 hover:bg-stone-800/50 cursor-pointer transition-colors border-b border-stone-800 last:border-b-0"
+                        onClick={() => {
+                          if (onAddCharacterToken) {
+                            onAddCharacterToken(char);
+                          }
+                          setAddTokenDialogOpen(false);
+                        }}
+                        data-testid={`select-character-token-${char.id}`}
+                      >
+                        {/* Character Portrait */}
+                        <div className="w-10 h-10 rounded-full overflow-hidden border-2 border-stone-700 flex-shrink-0">
+                          {char.portrait ? (
+                            <img src={char.portrait} alt={char.name} className="w-full h-full object-cover" />
+                          ) : (
+                            <div className="w-full h-full bg-stone-800 flex items-center justify-center">
+                              <Users className="h-5 w-5 text-stone-600" />
+                            </div>
+                          )}
+                        </div>
+                        
+                        {/* Character Info */}
+                        <div className="flex-1 min-w-0">
+                          <div className="font-bold text-stone-100 truncate">{char.name}</div>
+                          <div className="text-xs text-stone-400">
+                            {char.race} {char.class} • Level {char.level || 1}
+                          </div>
+                        </div>
+                        
+                        {/* HP Display */}
+                        <div className="text-right flex-shrink-0">
+                          <div className="text-sm font-bold text-red-400">
+                            {char.currentHp ?? char.hp ?? char.maxHp ?? 10}/{char.maxHp ?? 10}
+                          </div>
+                          <div className="text-xs text-stone-500">HP</div>
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                  
-                  {/* Character Info */}
-                  <div className="flex-1 min-w-0">
-                    <div className="font-bold text-stone-100 truncate">{char.name}</div>
-                    <div className="text-xs text-stone-400">
-                      {char.race} {char.class} • Level {char.level || 1}
-                    </div>
-                  </div>
-                  
-                  {/* HP Display */}
-                  <div className="text-right flex-shrink-0">
-                    <div className="text-sm font-bold text-red-400">
-                      {char.currentHp ?? char.maxHp ?? 10}/{char.maxHp ?? 10}
-                    </div>
-                    <div className="text-xs text-stone-500">HP</div>
-                  </div>
-                </div>
-              ))
+                )}
+              </>
             ) : (
               <div className="text-center py-8 text-stone-500">
                 <Users className="h-12 w-12 mx-auto mb-2 opacity-50" />
@@ -6143,7 +6243,108 @@ export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onIn
               Manage Access: {selectedCharForAccess?.name}
             </DialogTitle>
           </DialogHeader>
-          <div className="space-y-3 mt-4">
+          
+          {/* Quick Actions - All Players */}
+          <div className="flex items-center justify-between p-3 bg-stone-800/50 rounded-lg border border-stone-700 mt-2">
+            <div className="flex items-center gap-2">
+              <Users className="h-4 w-4 text-amber-400" />
+              <span className="text-stone-200 font-medium">All Players</span>
+            </div>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="bg-stone-700 border-stone-600 hover:bg-stone-600" data-testid="button-all-players-access">
+                  Set Access <ChevronDown className="h-3 w-3 ml-1" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className="bg-stone-800 border-stone-700">
+                <DropdownMenuItem 
+                  onClick={async () => {
+                    if (!selectedCharForAccess) return;
+                    try {
+                      const result = await api.setCharacterPermissionForAllPlayers(selectedCharForAccess.id, 'none');
+                      toast({ title: "Access Updated", description: `Removed access for ${result.updated} players` });
+                      // Refresh access levels
+                      const permissions = await api.getCharacterPermissions(selectedCharForAccess.id);
+                      const levels: Record<string, string> = {};
+                      permissions.forEach((p: any) => { levels[p.userId] = p.accessLevel; });
+                      setAccessLevels(levels);
+                    } catch (err) {
+                      toast({ title: "Error", description: "Failed to update permissions", variant: "destructive" });
+                    }
+                  }}
+                  className="text-stone-200 focus:bg-stone-700"
+                  data-testid="button-all-players-none"
+                >
+                  None (No access)
+                </DropdownMenuItem>
+                <DropdownMenuItem 
+                  onClick={async () => {
+                    if (!selectedCharForAccess) return;
+                    try {
+                      const result = await api.setCharacterPermissionForAllPlayers(selectedCharForAccess.id, 'view');
+                      toast({ title: "Access Updated", description: `Set View (name only) for ${result.updated} players` });
+                      const permissions = await api.getCharacterPermissions(selectedCharForAccess.id);
+                      const levels: Record<string, string> = {};
+                      permissions.forEach((p: any) => { levels[p.userId] = p.accessLevel; });
+                      setAccessLevels(levels);
+                    } catch (err) {
+                      toast({ title: "Error", description: "Failed to update permissions", variant: "destructive" });
+                    }
+                  }}
+                  className="text-stone-200 focus:bg-stone-700"
+                  data-testid="button-all-players-view"
+                >
+                  View (Name only)
+                </DropdownMenuItem>
+                <DropdownMenuItem 
+                  onClick={async () => {
+                    if (!selectedCharForAccess) return;
+                    try {
+                      const result = await api.setCharacterPermissionForAllPlayers(selectedCharForAccess.id, 'ally');
+                      toast({ title: "Access Updated", description: `Set Ally (full stats) for ${result.updated} players` });
+                      const permissions = await api.getCharacterPermissions(selectedCharForAccess.id);
+                      const levels: Record<string, string> = {};
+                      permissions.forEach((p: any) => { levels[p.userId] = p.accessLevel; });
+                      setAccessLevels(levels);
+                    } catch (err) {
+                      toast({ title: "Error", description: "Failed to update permissions", variant: "destructive" });
+                    }
+                  }}
+                  className="text-stone-200 focus:bg-stone-700"
+                  data-testid="button-all-players-ally"
+                >
+                  Ally (Full stats)
+                </DropdownMenuItem>
+                <DropdownMenuItem 
+                  onClick={async () => {
+                    if (!selectedCharForAccess) return;
+                    try {
+                      const result = await api.setCharacterPermissionForAllPlayers(selectedCharForAccess.id, 'control');
+                      toast({ title: "Access Updated", description: `Set Control (can edit) for ${result.updated} players` });
+                      const permissions = await api.getCharacterPermissions(selectedCharForAccess.id);
+                      const levels: Record<string, string> = {};
+                      permissions.forEach((p: any) => { levels[p.userId] = p.accessLevel; });
+                      setAccessLevels(levels);
+                    } catch (err) {
+                      toast({ title: "Error", description: "Failed to update permissions", variant: "destructive" });
+                    }
+                  }}
+                  className="text-stone-200 focus:bg-stone-700"
+                  data-testid="button-all-players-control"
+                >
+                  Control (Can edit)
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+
+          {/* Access level legend */}
+          <div className="text-xs text-stone-500 px-1 mt-1">
+            <span className="font-medium">Levels:</span> None → View (name only) → Ally (full stats) → Control (can edit)
+          </div>
+          
+          {/* Individual Player Access */}
+          <div className="space-y-3 mt-2">
             {loadingAccess ? (
               <div className="text-center py-4 text-stone-400">Loading...</div>
             ) : members?.filter((m: any) => m.role !== 'gm').length === 0 ? (
@@ -6158,7 +6359,7 @@ export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onIn
                       {isOwner && <Badge className="bg-amber-600 text-xs">Owner</Badge>}
                     </div>
                     <Select
-                      value={isOwner ? "edit" : (accessLevels[member.userId] || "none")}
+                      value={isOwner ? "control" : (accessLevels[member.userId] || "none")}
                       onValueChange={(val) => handleSetAccess(member.userId, val)}
                       disabled={isOwner}
                     >
@@ -6168,7 +6369,8 @@ export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onIn
                       <SelectContent>
                         <SelectItem value="none">None</SelectItem>
                         <SelectItem value="view">View</SelectItem>
-                        <SelectItem value="edit">Edit</SelectItem>
+                        <SelectItem value="ally">Ally</SelectItem>
+                        <SelectItem value="control">Control</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -8917,10 +9119,16 @@ function InventoryItemRow({ item, depth, expandedContainers, toggleContainer, se
 }
 
 // 6. Character Sheet Component
+// Access level hierarchy:
+// - 'view': Name only (minimal access - can only see name and portrait)
+// - 'ally': Full stats visible (can see all stats, inventory, abilities)
+// - 'control': Can edit the character
+// - 'owner': Character owner (same as control but also shown as owner)
 interface CharacterSheetProps {
   character: any;
   isGM: boolean;
   isOwner: boolean;
+  accessLevel?: 'view' | 'ally' | 'control' | 'owner';
   onUpdate?: (updates: any) => void;
   onClose?: () => void;
   defaultTab?: string;
@@ -9668,7 +9876,10 @@ function TraitEditForm({
   );
 }
 
-export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, defaultTab = "overview", campaignId, sceneId, isTemplate = false }: CharacterSheetProps) {
+export function CharacterSheet({ character, isGM, isOwner, accessLevel = 'ally', onUpdate, onClose, defaultTab = "overview", campaignId, sceneId, isTemplate = false }: CharacterSheetProps) {
+  // View-only mode: user only has 'view' access (name only, no stats)
+  // They can see name and portrait but not stats, inventory, or abilities
+  const isViewOnly = accessLevel === 'view' && !isGM && !isOwner;
   const [biography, setBiography] = useState(character?.biography || "");
   const [gmNotes, setGmNotes] = useState(character?.gmNotes || "");
   const [isEditingBio, setIsEditingBio] = useState(false);
@@ -10140,20 +10351,26 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
   
   // Level-up HP state
   const [showLevelUpHpDialog, setShowLevelUpHpDialog] = useState(false);
-  const [levelUpHpResult, setLevelUpHpResult] = useState<{diceRolls: number[], total: number, diceCount: number, dieSize: number} | null>(null);
+  const [levelUpHpResult, setLevelUpHpResult] = useState<{diceRolls: number[], total: number, diceCount: number, dieSize: number, forLevel: number} | null>(null);
+  const [rollingHpLevel, setRollingHpLevel] = useState(2);
+  const [targetHpLevel, setTargetHpLevel] = useState(2); // Track target level at dialog open
   
   // Level-up Energy state
   const [showLevelUpEnergyDialog, setShowLevelUpEnergyDialog] = useState(false);
-  const [levelUpEnergyResult, setLevelUpEnergyResult] = useState<{diceRolls: number[], total: number, diceCount: number, dieSize: number} | null>(null);
+  const [levelUpEnergyResult, setLevelUpEnergyResult] = useState<{diceRolls: number[], total: number, diceCount: number, dieSize: number, forLevel: number} | null>(null);
+  const [rollingEnergyLevel, setRollingEnergyLevel] = useState(2);
+  const [targetEnergyLevel, setTargetEnergyLevel] = useState(2); // Track target level at dialog open
   
   // Feat tree viewer state
   const [showFeatTreeViewer, setShowFeatTreeViewer] = useState(false);
   
   // Calculate if character can level up HP (level > lastLevelUpRolled)
   const canLevelUpHp = (liveCharacter.level || 1) > (liveCharacter.lastLevelUpRolled || 1);
+  const missedHpLevels = Math.max(0, (liveCharacter.level || 1) - (liveCharacter.lastLevelUpRolled || 1));
   
   // Calculate if character can level up Energy (level > lastEnergyLevelUpRolled)
   const canLevelUpEnergy = (liveCharacter.level || 1) > (liveCharacter.lastEnergyLevelUpRolled || 1);
+  const missedEnergyLevels = Math.max(0, (liveCharacter.level || 1) - (liveCharacter.lastEnergyLevelUpRolled || 1));
   
   // Get current species for HP per level calculation
   const currentSpecies = systemSpecies.find((s: SystemSpecies) => s.name === liveCharacter.race);
@@ -10226,8 +10443,8 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
   
   // Handle level-up HP roll - auto-confirms immediately
   const handleLevelUpHpRoll = () => {
-    const currentLevel = liveCharacter.level || 1;
-    const diceCount = calculateDiceCount(currentLevel);
+    // Roll for the current rolling level (not character's current level)
+    const diceCount = calculateDiceCount(rollingHpLevel);
     
     // Roll the dice
     const diceRolls: number[] = [];
@@ -10241,7 +10458,8 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
       diceRolls,
       total,
       diceCount,
-      dieSize: hpPerLevel
+      dieSize: hpPerLevel,
+      forLevel: rollingHpLevel
     };
     setLevelUpHpResult(result);
     
@@ -10251,19 +10469,22 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
     
     updateCharacterMutation.mutate({
       bonusHpFromLevelUps: newBonusHp,
-      lastLevelUpRolled: currentLevel,
+      lastLevelUpRolled: rollingHpLevel,
       maxHp: newMaxHp,
       hp: Math.min(liveCharacter.hp + total, newMaxHp)
     });
     
     // Send to chat as a dice roll notification
-    gameWs.sendDiceRoll(`d${hpPerLevel}`, total, `Level ${currentLevel} HP Roll`, liveCharacter.id);
+    gameWs.sendDiceRoll(`d${hpPerLevel}`, total, `Level ${rollingHpLevel} HP Roll`, liveCharacter.id);
+    
+    // Advance to next level for next roll
+    setRollingHpLevel(prev => prev + 1);
   };
   
   // Handle level-up Energy roll - auto-confirms immediately
   const handleLevelUpEnergyRoll = () => {
-    const currentLevel = liveCharacter.level || 1;
-    const diceCount = calculateEnergyDiceCount(currentLevel);
+    // Roll for the current rolling level (not character's current level)
+    const diceCount = calculateEnergyDiceCount(rollingEnergyLevel);
     const dieSize = 6; // Energy always uses d6
     
     // Roll the dice
@@ -10278,7 +10499,8 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
       diceRolls,
       total,
       diceCount,
-      dieSize
+      dieSize,
+      forLevel: rollingEnergyLevel
     };
     setLevelUpEnergyResult(result);
     
@@ -10288,13 +10510,16 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
     
     updateCharacterMutation.mutate({
       bonusEnergyFromLevelUps: newBonusEnergy,
-      lastEnergyLevelUpRolled: currentLevel,
+      lastEnergyLevelUpRolled: rollingEnergyLevel,
       maxEnergy: newMaxEnergy,
       energy: Math.min(liveCharacter.energy + total, newMaxEnergy)
     });
     
     // Send to chat as a dice roll notification
-    gameWs.sendDiceRoll(`d6`, total, `Level ${currentLevel} Energy Roll`, liveCharacter.id);
+    gameWs.sendDiceRoll(`d6`, total, `Level ${rollingEnergyLevel} Energy Roll`, liveCharacter.id);
+    
+    // Advance to next level for next roll
+    setRollingEnergyLevel(prev => prev + 1);
   };
   
   const canEdit = isOwner || isGM;
@@ -11138,6 +11363,50 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
     return `${colors[color]?.base || ''} ${colors[color]?.active || ''}`;
   };
 
+  // View-only mode: Show simplified character card with just name and portrait
+  if (isViewOnly) {
+    return (
+      <div className="w-full flex-1 min-h-0 bg-stone-900 text-stone-200 flex flex-col overflow-hidden p-6">
+        <Card className="bg-stone-800 border-stone-700 max-w-md mx-auto">
+          <CardHeader className="text-center">
+            <div className="flex justify-center mb-4">
+              {liveCharacter.portrait ? (
+                <Avatar className="h-32 w-32 rounded-lg border-2 border-amber-500">
+                  <AvatarImage src={liveCharacter.portrait} alt={liveCharacter.name} className="object-cover" />
+                  <AvatarFallback className="text-2xl bg-stone-700 text-amber-500 rounded-lg">
+                    {liveCharacter.name?.charAt(0) || '?'}
+                  </AvatarFallback>
+                </Avatar>
+              ) : (
+                <Avatar className="h-32 w-32 rounded-lg border-2 border-stone-600 bg-stone-700">
+                  <AvatarFallback className="text-2xl text-amber-500 rounded-lg">
+                    {liveCharacter.name?.charAt(0) || '?'}
+                  </AvatarFallback>
+                </Avatar>
+              )}
+            </div>
+            <CardTitle className="text-amber-500 text-2xl" data-testid="text-character-name-viewonly">
+              {liveCharacter.name}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="text-center">
+            <div className="text-stone-400 text-sm space-y-2">
+              <p className="flex items-center justify-center gap-2">
+                <Eye className="h-4 w-4" />
+                <span>View Access Only</span>
+              </p>
+              <p className="text-xs text-stone-500 mt-4">
+                You can see this character's name but cannot view their stats, inventory, or other details.
+                <br />
+                Ask the GM for Ally or Control access to see more.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="w-full flex-1 min-h-0 bg-stone-900 text-stone-200 flex flex-col overflow-hidden">
       {/* Back button header for template/admin view */}
@@ -11585,13 +11854,15 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                           size="sm"
                           onClick={() => {
                             setLevelUpHpResult(null);
+                            setRollingHpLevel((liveCharacter.lastLevelUpRolled || 1) + 1);
+                            setTargetHpLevel(liveCharacter.level || 1); // Capture target at dialog open
                             setShowLevelUpHpDialog(true);
                           }}
                           className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white"
                           data-testid="button-level-up-hp"
                         >
                           <TrendingUp className="h-4 w-4 mr-2" />
-                          Roll Level {liveCharacter.level} HP ({calculateDiceCount(liveCharacter.level || 1)}d{hpPerLevel})
+                          Roll HP{missedHpLevels > 1 ? ` (${missedHpLevels} levels)` : ` - Level ${(liveCharacter.lastLevelUpRolled || 1) + 1}`}
                         </Button>
                       )}
                     </div>
@@ -11668,13 +11939,15 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                           size="sm"
                           onClick={() => {
                             setLevelUpEnergyResult(null);
+                            setRollingEnergyLevel((liveCharacter.lastEnergyLevelUpRolled || 1) + 1);
+                            setTargetEnergyLevel(liveCharacter.level || 1); // Capture target at dialog open
                             setShowLevelUpEnergyDialog(true);
                           }}
                           className="w-full bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white"
                           data-testid="button-level-up-energy"
                         >
                           <TrendingUp className="h-4 w-4 mr-2" />
-                          Roll Level {liveCharacter.level} Energy ({calculateEnergyDiceCount(liveCharacter.level || 1)}d6)
+                          Roll Energy{missedEnergyLevels > 1 ? ` (${missedEnergyLevels} levels)` : ` - Level ${(liveCharacter.lastEnergyLevelUpRolled || 1) + 1}`}
                         </Button>
                       )}
                     </div>
@@ -14363,10 +14636,15 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
           <DialogHeader>
             <DialogTitle className="text-green-400 flex items-center gap-2">
               <TrendingUp className="h-5 w-5" />
-              Level Up HP - Level {liveCharacter.level || 1}
+              Level Up HP - Level {levelUpHpResult?.forLevel || rollingHpLevel}
+              {targetHpLevel - (levelUpHpResult?.forLevel || rollingHpLevel) + 1 > 1 && (
+                <span className="text-sm text-stone-400 font-normal">
+                  ({targetHpLevel - (levelUpHpResult?.forLevel || rollingHpLevel) + 1} remaining)
+                </span>
+              )}
             </DialogTitle>
             <DialogDescription>
-              Roll {calculateDiceCount(liveCharacter.level || 1)}d{hpPerLevel} to increase your maximum HP.
+              Roll {calculateDiceCount(rollingHpLevel)}d{hpPerLevel} to increase your maximum HP.
             </DialogDescription>
           </DialogHeader>
           
@@ -14397,7 +14675,7 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                 data-testid="button-roll-hp"
               >
                 <Dice5 className="h-6 w-6 mr-2" />
-                Roll {calculateDiceCount(liveCharacter.level || 1)}d{hpPerLevel}
+                Roll {calculateDiceCount(rollingHpLevel)}d{hpPerLevel} for Level {rollingHpLevel}
               </Button>
             ) : (
               <div className="space-y-3">
@@ -14405,7 +14683,7 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                 <div className="bg-gradient-to-r from-green-900/50 to-emerald-900/50 rounded-lg p-4 border border-green-700/50">
                   <div className="text-center">
                     <div className="text-sm text-stone-400 mb-2">
-                      Rolled {levelUpHpResult.diceCount}d{levelUpHpResult.dieSize}
+                      Level {levelUpHpResult.forLevel}: Rolled {levelUpHpResult.diceCount}d{levelUpHpResult.dieSize}
                     </div>
                     <div className="flex items-center justify-center gap-2 flex-wrap mb-3">
                       {levelUpHpResult.diceRolls.map((roll, index) => (
@@ -14423,15 +14701,20 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                   </div>
                 </div>
                 
-                {/* New Max HP Preview */}
-                <div className="bg-stone-800 rounded-lg p-3 border border-stone-700">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-stone-400">New Max HP:</span>
-                    <span className="text-amber-400 font-bold">
-                      {(currentSpecies?.startingMaxHp || 10) + (liveCharacter.bonusHpFromLevelUps || 0) + levelUpHpResult.total}
-                    </span>
-                  </div>
-                </div>
+                {/* Roll Next Level button if more levels remain */}
+                {rollingHpLevel <= targetHpLevel && (
+                  <Button
+                    onClick={() => {
+                      setLevelUpHpResult(null);
+                      handleLevelUpHpRoll();
+                    }}
+                    className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white h-12"
+                    data-testid="button-roll-hp-next"
+                  >
+                    <Dice5 className="h-5 w-5 mr-2" />
+                    Roll Level {rollingHpLevel} ({calculateDiceCount(rollingHpLevel)}d{hpPerLevel})
+                  </Button>
+                )}
               </div>
             )}
           </div>
@@ -14443,14 +14726,14 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                 setLevelUpHpResult(null);
               }} 
               data-testid="button-close-level-up"
-              className={levelUpHpResult ? "bg-green-600 hover:bg-green-500" : ""}
+              className={levelUpHpResult && rollingHpLevel > targetHpLevel ? "bg-green-600 hover:bg-green-500" : ""}
             >
-              {levelUpHpResult ? (
+              {levelUpHpResult && rollingHpLevel > targetHpLevel ? (
                 <>
                   <Check className="h-4 w-4 mr-2" />
                   Done
                 </>
-              ) : 'Cancel'}
+              ) : levelUpHpResult ? 'Close' : 'Cancel'}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -14467,10 +14750,15 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
           <DialogHeader>
             <DialogTitle className="text-blue-400 flex items-center gap-2">
               <TrendingUp className="h-5 w-5" />
-              Level Up Energy - Level {liveCharacter.level || 1}
+              Level Up Energy - Level {levelUpEnergyResult?.forLevel || rollingEnergyLevel}
+              {targetEnergyLevel - (levelUpEnergyResult?.forLevel || rollingEnergyLevel) + 1 > 1 && (
+                <span className="text-sm text-stone-400 font-normal">
+                  ({targetEnergyLevel - (levelUpEnergyResult?.forLevel || rollingEnergyLevel) + 1} remaining)
+                </span>
+              )}
             </DialogTitle>
             <DialogDescription>
-              Roll {calculateEnergyDiceCount(liveCharacter.level || 1)}d6 to increase your maximum Energy.
+              Roll {calculateEnergyDiceCount(rollingEnergyLevel)}d6 to increase your maximum Energy.
             </DialogDescription>
           </DialogHeader>
           
@@ -14501,7 +14789,7 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                 data-testid="button-roll-energy"
               >
                 <Dice5 className="h-6 w-6 mr-2" />
-                Roll {calculateEnergyDiceCount(liveCharacter.level || 1)}d6
+                Roll {calculateEnergyDiceCount(rollingEnergyLevel)}d6 for Level {rollingEnergyLevel}
               </Button>
             ) : (
               <div className="space-y-3">
@@ -14509,7 +14797,7 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                 <div className="bg-gradient-to-r from-blue-900/50 to-cyan-900/50 rounded-lg p-4 border border-blue-700/50">
                   <div className="text-center">
                     <div className="text-sm text-stone-400 mb-2">
-                      Rolled {levelUpEnergyResult.diceCount}d{levelUpEnergyResult.dieSize}
+                      Level {levelUpEnergyResult.forLevel}: Rolled {levelUpEnergyResult.diceCount}d{levelUpEnergyResult.dieSize}
                     </div>
                     <div className="flex items-center justify-center gap-2 flex-wrap mb-3">
                       {levelUpEnergyResult.diceRolls.map((roll, index) => (
@@ -14527,15 +14815,20 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                   </div>
                 </div>
                 
-                {/* New Max Energy Preview */}
-                <div className="bg-stone-800 rounded-lg p-3 border border-stone-700">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-stone-400">New Max Energy:</span>
-                    <span className="text-amber-400 font-bold">
-                      {(currentSpecies?.startingMaxEnergy || 10) + (liveCharacter.bonusEnergyFromLevelUps || 0) + levelUpEnergyResult.total}
-                    </span>
-                  </div>
-                </div>
+                {/* Roll Next Level button if more levels remain */}
+                {rollingEnergyLevel <= targetEnergyLevel && (
+                  <Button
+                    onClick={() => {
+                      setLevelUpEnergyResult(null);
+                      handleLevelUpEnergyRoll();
+                    }}
+                    className="w-full bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white h-12"
+                    data-testid="button-roll-energy-next"
+                  >
+                    <Dice5 className="h-5 w-5 mr-2" />
+                    Roll Level {rollingEnergyLevel} ({calculateEnergyDiceCount(rollingEnergyLevel)}d6)
+                  </Button>
+                )}
               </div>
             )}
           </div>
@@ -14547,14 +14840,14 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                 setLevelUpEnergyResult(null);
               }} 
               data-testid="button-close-energy-level-up"
-              className={levelUpEnergyResult ? "bg-blue-600 hover:bg-blue-500" : ""}
+              className={levelUpEnergyResult && rollingEnergyLevel > targetEnergyLevel ? "bg-blue-600 hover:bg-blue-500" : ""}
             >
-              {levelUpEnergyResult ? (
+              {levelUpEnergyResult && rollingEnergyLevel > targetEnergyLevel ? (
                 <>
                   <Check className="h-4 w-4 mr-2" />
                   Done
                 </>
-              ) : 'Cancel'}
+              ) : levelUpEnergyResult ? 'Close' : 'Cancel'}
             </Button>
           </DialogFooter>
         </DialogContent>

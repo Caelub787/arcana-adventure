@@ -1439,17 +1439,22 @@ export default function Campaign() {
         }
         if (data.type === 'permission_update') {
           console.log('Permission update received:', data);
-          // Force immediate refetch for permission changes
+          // Force immediate refetch for permission changes and character list
+          // Characters list may change since visibility depends on permissions
           queryClientRef.current.refetchQueries({ queryKey: [`/api/campaigns/${effectiveCampaignId}/my-permissions`] });
+          queryClientRef.current.refetchQueries({ queryKey: [`/api/campaigns/${effectiveCampaignId}/characters`] });
           
-          // Show toast for the affected user
-          const accessDesc = data.accessLevel === 'edit' ? 'edit' : 
-                             data.accessLevel === 'view' ? 'view only' : 'no';
-          toastRef.current({ 
-            title: "Access Changed", 
-            description: `Access to ${data.characterName || 'a character'} is now ${accessDesc}`,
-            variant: data.accessLevel === 'none' ? 'destructive' : 'default'
-          });
+          // Show toast only for the affected user (don't spam other users)
+          if (data.targetUserId === user?.id) {
+            const accessDesc = data.accessLevel === 'control' ? 'control' : 
+                               data.accessLevel === 'ally' ? 'ally (full stats)' :
+                               data.accessLevel === 'view' ? 'view (name only)' : 'no';
+            toastRef.current({ 
+              title: "Access Changed", 
+              description: `Access to ${data.characterName || 'a character'} is now ${accessDesc}`,
+              variant: data.accessLevel === 'none' ? 'destructive' : 'default'
+            });
+          }
         }
         if (data.type === 'initiative_update' || data.type === 'combat_update') {
           // Force immediate refetch for initiative/combat updates
@@ -1786,7 +1791,7 @@ export default function Campaign() {
         } else if (role === 'player') {
           // Players can only assign characters they have edit access to
           const permission = myPermissions?.permissions?.[charData.id];
-          if (permission === 'owner' || permission === 'edit') {
+          if (permission === 'owner' || permission === 'control') {
             setCharacter(charData);
             // Persist the assignment
             if (effectiveCampaignId) {
@@ -2946,7 +2951,11 @@ export default function Campaign() {
               isGM={role === 'gm'}
               isOwner={
                 viewingCharacterSheet.userId === user?.id || 
-                myPermissions?.permissions?.[viewingCharacterSheet.id] === 'edit'
+                myPermissions?.permissions?.[viewingCharacterSheet.id] === 'control'
+              }
+              accessLevel={
+                viewingCharacterSheet.userId === user?.id ? 'owner' :
+                (myPermissions?.permissions?.[viewingCharacterSheet.id] as 'view' | 'ally' | 'control' | undefined) || 'ally'
               }
               onUpdate={handleUpdateCharacter}
               onClose={() => setViewingCharacterSheet(null)}

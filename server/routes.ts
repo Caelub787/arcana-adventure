@@ -61,7 +61,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
    * Access is granted if:
    * - User is the character owner
    * - User is the campaign GM
-   * - User has explicit 'view' or 'edit' permission
+   * - User has explicit 'view', 'ally', or 'control' permission
    */
   async function broadcastToAuthorizedUsers(
     campaignId: string,
@@ -118,9 +118,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         continue;
       }
 
-      // Check explicit permission
+      // Check explicit permission - view, ally, or control all grant at least basic access
       const accessLevel = permissionMap.get(userId);
-      if (accessLevel === 'view' || accessLevel === 'edit') {
+      if (accessLevel === 'view' || accessLevel === 'ally' || accessLevel === 'control') {
         const clients = userClientMap.get(userId);
         clients?.forEach(client => client.send(messageString));
       }
@@ -1130,7 +1130,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   async function checkCharacterAccess(
     characterId: string,
     userId: string,
-    requiredLevel: 'view' | 'edit'
+    requiredLevel: 'view' | 'ally' | 'control'
   ): Promise<{ allowed: boolean; isOwner: boolean; isGM: boolean; character?: any; campaign?: any; permission?: any }> {
     console.log(`[checkCharacterAccess] Checking access for character ${characterId} by user ${userId} (${requiredLevel})`);
     
@@ -1180,25 +1180,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return { allowed: false, isOwner, isGM, character, campaign };
     }
     
-    if (requiredLevel === 'view') {
-      return { 
-        allowed: permission.accessLevel === 'view' || permission.accessLevel === 'edit', 
-        isOwner, 
-        isGM, 
-        character, 
-        campaign,
-        permission
-      };
-    } else {
-      return { 
-        allowed: permission.accessLevel === 'edit', 
-        isOwner, 
-        isGM, 
-        character, 
-        campaign,
-        permission
-      };
-    }
+    // Permission hierarchy: control > ally > view > none
+    // 'view' level: grants name-only access, allows view/ally/control
+    // 'ally' level: grants full stats viewing, allows ally/control
+    // 'control' level: grants editing, allows only control
+    const levelHierarchy: Record<string, number> = {
+      'none': 0,
+      'view': 1,
+      'ally': 2,
+      'control': 3
+    };
+    
+    const userLevel = levelHierarchy[permission.accessLevel] || 0;
+    const requiredLevelNum = levelHierarchy[requiredLevel] || 0;
+    
+    return { 
+      allowed: userLevel >= requiredLevelNum, 
+      isOwner, 
+      isGM, 
+      character, 
+      campaign,
+      permission
+    };
   }
 
   // Auth routes
@@ -1718,7 +1721,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // Regular character - use normal permission checks
-      const access = await checkCharacterAccess(req.params.id, req.session.userId!, 'edit');
+      const access = await checkCharacterAccess(req.params.id, req.session.userId!, 'control');
       
       if (!access.campaign) {
         return res.status(404).json({ error: "Campaign not found" });
@@ -1795,7 +1798,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Short Rest - Restores HP based on species hpPerLevel die roll, requires 2 rations
   app.post("/api/characters/:id/short-rest", requireAuth, async (req, res) => {
     try {
-      const access = await checkCharacterAccess(req.params.id, req.session.userId!, 'edit');
+      const access = await checkCharacterAccess(req.params.id, req.session.userId!, 'control');
       
       if (!access.character) {
         return res.status(404).json({ error: "Character not found" });
@@ -1928,7 +1931,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Long Rest - Restores ALL HP and Energy, recovers 1 exhaustion, requires 4 rations
   app.post("/api/characters/:id/long-rest", requireAuth, async (req, res) => {
     try {
-      const access = await checkCharacterAccess(req.params.id, req.session.userId!, 'edit');
+      const access = await checkCharacterAccess(req.params.id, req.session.userId!, 'control');
       
       if (!access.character) {
         return res.status(404).json({ error: "Character not found" });
@@ -2116,7 +2119,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/characters/:characterId/hotbars", requireAuth, async (req, res) => {
     try {
-      const access = await checkCharacterAccess(req.params.characterId, req.session.userId!, 'edit');
+      const access = await checkCharacterAccess(req.params.characterId, req.session.userId!, 'control');
       
       if (!access.character) {
         return res.status(404).json({ error: "Character not found" });
@@ -2155,6 +2158,55 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(400).json({ 
             error: `${item.name} is ${slotLabels[item.armorSlot || ''] || 'Unknown'} armor - it can only go in the ${slotLabels[requiredSlot]} slot` 
           });
+        }
+      }
+
+      // Stack items when adding stackable items (consumables, ammunition) to hotbar
+      // If a matching item already exists in a hotbar slot, merge quantities instead of adding a new slot
+      if (hotbarData.itemId && (hotbarData.hotbarType === 'consumables' || hotbarData.hotbarType === 'weapons' || hotbarData.hotbarType === 'utility')) {
+        const newItem = await storage.getItem(hotbarData.itemId);
+        
+        if (newItem && (newItem.itemType === 'consumable' || newItem.itemType === 'ammunition' || (newItem.quantity || 1) > 1)) {
+          // Get existing hotbars of the same type for this character
+          const existingHotbars = await storage.getHotbarsByCharacter(req.params.characterId);
+          const sameTypeHotbars = existingHotbars.filter(h => h.hotbarType === hotbarData.hotbarType && h.itemId);
+          
+          // Find a matching item in existing hotbar slots (same name, type, and ammunition type if applicable)
+          for (const existingHotbar of sameTypeHotbars) {
+            if (!existingHotbar.itemId || existingHotbar.itemId === hotbarData.itemId) continue;
+            
+            const existingItem = await storage.getItem(existingHotbar.itemId);
+            if (!existingItem) continue;
+            
+            // Match by name and itemType (and ammunitionType for ammunition)
+            const nameMatch = existingItem.name === newItem.name;
+            const typeMatch = existingItem.itemType === newItem.itemType;
+            const ammoMatch = newItem.itemType !== 'ammunition' || existingItem.ammunitionType === newItem.ammunitionType;
+            
+            if (nameMatch && typeMatch && ammoMatch) {
+              // Found a matching item - merge quantities
+              const newQuantity = (existingItem.quantity || 1) + (newItem.quantity || 1);
+              await storage.updateItem(existingItem.id, { quantity: newQuantity });
+              
+              // Delete the item being added (it's been merged)
+              await storage.deleteItem(newItem.id);
+              
+              // Return the existing hotbar entry (no need to create a new slot)
+              // Also broadcast that items have changed
+              if (access.character?.campaignId) {
+                broadcastToCampaign(access.character.campaignId, {
+                  type: "hotbar_updated",
+                  characterId: req.params.characterId
+                });
+                broadcastToCampaign(access.character.campaignId, {
+                  type: "items_updated",
+                  characterId: req.params.characterId
+                });
+              }
+              
+              return res.json(existingHotbar);
+            }
+          }
         }
       }
 
@@ -2217,7 +2269,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/characters/:characterId/spells", requireAuth, async (req, res) => {
     try {
-      const access = await checkCharacterAccess(req.params.characterId, req.session.userId!, 'edit');
+      const access = await checkCharacterAccess(req.params.characterId, req.session.userId!, 'control');
       
       if (!access.character) {
         return res.status(404).json({ error: "Character not found" });
@@ -2256,7 +2308,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Spell not found" });
       }
 
-      const access = await checkCharacterAccess(currentSpell.characterId, req.session.userId!, 'edit');
+      const access = await checkCharacterAccess(currentSpell.characterId, req.session.userId!, 'control');
       
       if (!access.character) {
         return res.status(404).json({ error: "Character not found" });
@@ -2297,7 +2349,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Spell not found" });
       }
 
-      const access = await checkCharacterAccess(currentSpell.characterId, req.session.userId!, 'edit');
+      const access = await checkCharacterAccess(currentSpell.characterId, req.session.userId!, 'control');
       
       if (!access.character) {
         return res.status(404).json({ error: "Character not found" });
@@ -4390,7 +4442,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/characters/:characterId/items", requireAuth, async (req, res) => {
     try {
-      const access = await checkCharacterAccess(req.params.characterId, req.session.userId!, 'edit');
+      const access = await checkCharacterAccess(req.params.characterId, req.session.userId!, 'control');
       
       if (!access.character) {
         return res.status(404).json({ error: "Character not found" });
@@ -4433,7 +4485,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Item has no associated character" });
       }
 
-      const access = await checkCharacterAccess(currentItem.characterId, req.session.userId!, 'edit');
+      const access = await checkCharacterAccess(currentItem.characterId, req.session.userId!, 'control');
       
       if (!access.character) {
         return res.status(404).json({ error: "Character not found" });
@@ -4517,7 +4569,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Item has no associated character" });
       }
 
-      const access = await checkCharacterAccess(item.characterId, req.session.userId!, 'edit');
+      const access = await checkCharacterAccess(item.characterId, req.session.userId!, 'control');
       
       if (!access.character) {
         return res.status(404).json({ error: "Character not found" });
@@ -4545,7 +4597,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Item has no associated character" });
       }
       
-      const access = await checkCharacterAccess(item.characterId, req.session.userId!, 'edit');
+      const access = await checkCharacterAccess(item.characterId, req.session.userId!, 'control');
       
       if (!access.character) {
         return res.status(404).json({ error: "Character not found" });
@@ -4634,7 +4686,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.put("/api/characters/:id/permissions/:userId", requireAuth, async (req, res) => {
     try {
       const { accessLevel } = req.body;
-      if (!["none", "view", "edit"].includes(accessLevel)) {
+      if (!["none", "view", "ally", "control"].includes(accessLevel)) {
         return res.status(400).json({ error: "Invalid access level" });
       }
       
@@ -4654,52 +4706,74 @@ export async function registerRoutes(app: Express): Promise<Server> {
         accessLevel
       );
       
-      // Broadcast permission update to affected user via WebSocket
+      // Broadcast permission update to ALL campaign members via WebSocket
+      // All clients need to refresh their view since character visibility may have changed
       const campaignId = character.campaignId;
-      const room = campaignRooms.get(campaignId);
-      console.log(`[Permission Update] Campaign: ${campaignId}, Room exists: ${!!room}, Room size: ${room?.size || 0}`);
+      console.log(`[Permission Update] Broadcasting to campaign: ${campaignId}, character: ${character.name}, target: ${req.params.userId}, level: ${accessLevel}`);
       
-      if (room) {
-        const permissionUpdateMessage = JSON.stringify({
-          type: 'permission_update',
-          campaignId,
-          characterId: req.params.id,
-          characterName: character.name,
-          targetUserId: req.params.userId,
-          accessLevel,
-        });
-        
-        // Send to all clients of the affected user in this campaign room
-        const clients = Array.from(room);
-        let sentToTarget = false;
-        let sentToGM = false;
-        
-        for (const client of clients) {
-          const clientUserId = (client as any).userId;
-          console.log(`[Permission Update] Checking client userId: ${clientUserId}, target: ${req.params.userId}, GM: ${req.session.userId}`);
-          
-          if (client.readyState === 1 && clientUserId === req.params.userId) {
-            client.send(permissionUpdateMessage);
-            sentToTarget = true;
-            console.log(`[Permission Update] Sent to target user: ${req.params.userId}`);
-          }
-        }
-        
-        // Also notify the GM who made the change
-        for (const client of clients) {
-          if (client.readyState === 1 && (client as any).userId === req.session.userId) {
-            client.send(permissionUpdateMessage);
-            sentToGM = true;
-            console.log(`[Permission Update] Sent to GM: ${req.session.userId}`);
-          }
-        }
-        
-        console.log(`[Permission Update] Summary - Sent to target: ${sentToTarget}, Sent to GM: ${sentToGM}`);
-      }
+      broadcastToCampaign(campaignId, {
+        type: 'permission_update',
+        campaignId,
+        characterId: req.params.id,
+        characterName: character.name,
+        targetUserId: req.params.userId,
+        accessLevel,
+      });
       
       res.json(result);
     } catch (e) {
       res.status(500).json({ error: "Failed to set permission" });
+    }
+  });
+
+  // Bulk set permissions for all players in a campaign
+  app.put("/api/characters/:id/permissions/all", requireAuth, async (req, res) => {
+    try {
+      const { accessLevel } = req.body;
+      if (!["none", "view", "ally", "control"].includes(accessLevel)) {
+        return res.status(400).json({ error: "Invalid access level" });
+      }
+      
+      const character = await storage.getCharacter(req.params.id);
+      if (!character) {
+        return res.status(404).json({ error: "Character not found" });
+      }
+      
+      const campaign = await storage.getCampaign(character.campaignId);
+      if (!campaign || campaign.gmUserId !== req.session.userId) {
+        return res.status(403).json({ error: "Only GMs can set character permissions" });
+      }
+      
+      // Get all campaign members (excluding the GM)
+      const members = await storage.getCampaignMembers(character.campaignId);
+      const nonGmMembers = members.filter(m => m.userId !== campaign.gmUserId);
+      
+      // Set permission for each player
+      let updated = 0;
+      for (const member of nonGmMembers) {
+        // Skip the character owner (they always have full access)
+        if (member.userId === character.userId) continue;
+        
+        await storage.setCharacterPermission(req.params.id, member.userId, accessLevel);
+        updated++;
+        
+        // Broadcast permission update to each player
+        broadcastToCampaign(character.campaignId, {
+          type: 'permission_update',
+          campaignId: character.campaignId,
+          characterId: req.params.id,
+          characterName: character.name,
+          targetUserId: member.userId,
+          accessLevel,
+        });
+      }
+      
+      console.log(`[Bulk Permission Update] Set ${accessLevel} for ${updated} players on character: ${character.name}`);
+      
+      res.json({ updated });
+    } catch (e) {
+      console.error("Failed to set bulk permissions:", e);
+      res.status(500).json({ error: "Failed to set permissions for all players" });
     }
   });
 

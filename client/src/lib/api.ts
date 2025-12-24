@@ -1360,6 +1360,13 @@ class ApiClient {
     });
   }
 
+  async setCharacterPermissionForAllPlayers(characterId: string, accessLevel: string): Promise<{ updated: number }> {
+    return this.request(`/characters/${characterId}/permissions/all`, {
+      method: 'PUT',
+      body: JSON.stringify({ accessLevel }),
+    });
+  }
+
   // Get current user's permissions for all characters in a campaign
   async getMyPermissions(campaignId: string): Promise<{ permissions: Record<string, string>; isGM: boolean }> {
     return this.request(`/campaigns/${campaignId}/my-permissions`);

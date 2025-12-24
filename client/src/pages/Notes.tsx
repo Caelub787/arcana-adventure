@@ -286,6 +286,12 @@ export default function Notes() {
     enabled: !!user,
   });
 
+  const { data: campaignCharacters = [] } = useQuery({
+    queryKey: ["/api/campaigns", campaignId, "characters"],
+    queryFn: () => api.getCampaignCharacters(campaignId!),
+    enabled: !!user && !!campaignId,
+  });
+
   const { data: currentNote, isLoading: noteLoading } = useQuery<Note>({
     queryKey: ["/api/notes", noteId],
     queryFn: () => api.getNote(noteId!),
@@ -1291,6 +1297,7 @@ export default function Notes() {
             <div className="flex-1 relative">
               <NotesGraph
                 notes={sortedNotes}
+                characters={campaignCharacters}
                 onNoteClick={(noteId) => setLocation(`/notes/${noteId}`)}
               />
             </div>

@@ -1,16 +1,18 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Note, api, SystemSpell, SystemTrait, SystemSkill, SystemSpecies, Item, SearchableEntity } from "@/lib/api";
-import { ZoomIn, ZoomOut, RotateCcw, X, Sparkles, Package, Shield, Zap, Users, FileText, Tag } from "lucide-react";
+import { Note, api, SystemSpell, SystemTrait, SystemSkill, SystemSpecies, Item, SearchableEntity, Character } from "@/lib/api";
+import { ZoomIn, ZoomOut, RotateCcw, X, Sparkles, Package, Shield, Zap, Users, FileText, Tag, UserCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CanvasData } from "./CanvasEditor";
 
 interface NotesGraphProps {
   notes: Note[];
+  characters?: Character[];
   onNoteClick?: (noteId: string) => void;
+  onCharacterClick?: (characterId: string) => void;
 }
 
-type EntityType = 'note' | 'spell' | 'item' | 'trait' | 'skill' | 'species';
+type EntityType = 'note' | 'spell' | 'item' | 'trait' | 'skill' | 'species' | 'character';
 
 interface GraphNode {
   id: string;
@@ -46,6 +48,7 @@ const NODE_COLORS: Record<EntityType, { fill: string; stroke: string; glow: stri
   trait: { fill: '#22c55e', stroke: '#4ade80', glow: 'rgba(34, 197, 94, 0.4)' },
   skill: { fill: '#06b6d4', stroke: '#22d3ee', glow: 'rgba(6, 182, 212, 0.4)' },
   species: { fill: '#ec4899', stroke: '#f472b6', glow: 'rgba(236, 72, 153, 0.4)' },
+  character: { fill: '#f97316', stroke: '#fb923c', glow: 'rgba(249, 115, 22, 0.4)' },
 };
 
 function getEntityIcon(type: EntityType) {
@@ -56,6 +59,7 @@ function getEntityIcon(type: EntityType) {
     case 'trait': return <Shield className="h-3 w-3" />;
     case 'skill': return <Zap className="h-3 w-3" />;
     case 'species': return <Users className="h-3 w-3" />;
+    case 'character': return <UserCircle className="h-3 w-3" />;
     default: return <FileText className="h-3 w-3" />;
   }
 }
@@ -108,24 +112,31 @@ function parseConnections(notes: Note[], entityMap: Map<string, GraphNode>): Gra
   return edges;
 }
 
+interface GraphNodeExtended extends GraphNode {
+  characterId?: string;
+  portrait?: string;
+}
+
 function initializeNodes(
   notes: Note[],
   spells: SystemSpell[],
   traits: SystemTrait[],
   skills: SystemSkill[],
   species: SystemSpecies[],
-  items: Item[]
-): { nodes: GraphNode[]; entityMap: Map<string, GraphNode> } {
-  const nodes: GraphNode[] = [];
-  const entityMap = new Map<string, GraphNode>();
+  items: Item[],
+  characters: Character[]
+): { nodes: GraphNodeExtended[]; entityMap: Map<string, GraphNodeExtended> } {
+  const nodes: GraphNodeExtended[] = [];
+  const entityMap = new Map<string, GraphNodeExtended>();
   
-  const radius = Math.max(200, Math.sqrt(notes.length + spells.length + traits.length + skills.length + species.length + items.length) * 50);
+  const totalCount = notes.length + spells.length + traits.length + skills.length + species.length + items.length + characters.length;
+  const radius = Math.max(200, Math.sqrt(totalCount) * 50);
   let index = 0;
   
-  const addNode = (id: string, type: EntityType, name: string, description?: string, noteId?: string) => {
-    const angle = (index / (notes.length + spells.length + traits.length + skills.length + species.length + items.length)) * Math.PI * 2;
+  const addNode = (id: string, type: EntityType, name: string, description?: string, noteId?: string, characterId?: string, portrait?: string) => {
+    const angle = (index / totalCount) * Math.PI * 2;
     const r = radius * (0.3 + Math.random() * 0.7);
-    const node: GraphNode = {
+    const node: GraphNodeExtended = {
       id,
       type,
       name,
@@ -135,6 +146,8 @@ function initializeNodes(
       vx: 0,
       vy: 0,
       noteId,
+      characterId,
+      portrait,
     };
     nodes.push(node);
     entityMap.set(id, node);
@@ -165,10 +178,14 @@ function initializeNodes(
     addNode(`item-${item.id}`, 'item', item.name, item.description);
   }
 
+  for (const char of characters) {
+    addNode(`character-${char.id}`, 'character', char.name, char.biography, undefined, char.id, char.portrait);
+  }
+
   return { nodes, entityMap };
 }
 
-export function NotesGraph({ notes, onNoteClick }: NotesGraphProps) {
+export function NotesGraph({ notes, characters = [], onNoteClick, onCharacterClick }: NotesGraphProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const animationRef = useRef<number>(0);
@@ -179,11 +196,11 @@ export function NotesGraph({ notes, onNoteClick }: NotesGraphProps) {
   const zoomRef = useRef(DEFAULT_ZOOM);
 
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
-  const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
+  const [selectedNode, setSelectedNode] = useState<GraphNodeExtended | null>(null);
   const [showLabels, setShowLabels] = useState(false);
   const isPanningRef = useRef(false);
   const isDraggingRef = useRef(false);
-  const panStartRef = useRef<{ pointerX: number; pointerY: number; panX: number; panY: number; startedOnNode: GraphNode | null } | null>(null);
+  const panStartRef = useRef<{ pointerX: number; pointerY: number; panX: number; panY: number; startedOnNode: GraphNodeExtended | null } | null>(null);
   const DRAG_THRESHOLD = 5;
 
   const { data: spells = [] } = useQuery({
@@ -217,21 +234,21 @@ export function NotesGraph({ notes, onNoteClick }: NotesGraphProps) {
   });
 
   const { nodes: initialNodes, entityMap } = useMemo(
-    () => initializeNodes(notes, spells, traits, skills, species, systemItems),
-    [notes, spells, traits, skills, species, systemItems]
+    () => initializeNodes(notes, spells, traits, skills, species, systemItems, characters),
+    [notes, spells, traits, skills, species, systemItems, characters]
   );
 
   const edges = useMemo(() => parseConnections(notes, entityMap), [notes, entityMap]);
-  const [nodes, setNodes] = useState<GraphNode[]>(initialNodes);
-  const nodesRef = useRef<GraphNode[]>(initialNodes);
+  const [nodes, setNodes] = useState<GraphNodeExtended[]>(initialNodes);
+  const nodesRef = useRef<GraphNodeExtended[]>(initialNodes);
   const [isSimulating, setIsSimulating] = useState(true);
 
   useEffect(() => {
-    const { nodes: newNodes, entityMap: newEntityMap } = initializeNodes(notes, spells, traits, skills, species, systemItems);
+    const { nodes: newNodes, entityMap: newEntityMap } = initializeNodes(notes, spells, traits, skills, species, systemItems, characters);
     setNodes(newNodes);
     nodesRef.current = newNodes;
     setIsSimulating(true);
-  }, [notes, spells, traits, skills, species, systemItems]);
+  }, [notes, spells, traits, skills, species, systemItems, characters]);
 
   const connectedNodesMap = useMemo(() => {
     const map = new Map<string, Set<string>>();
@@ -478,13 +495,15 @@ export function NotesGraph({ notes, onNoteClick }: NotesGraphProps) {
     setZoom(newZoom);
   };
 
-  const handleNodeClick = useCallback((node: GraphNode) => {
+  const handleNodeClick = useCallback((node: GraphNodeExtended) => {
     if (node.type === 'note' && node.noteId && onNoteClick) {
       onNoteClick(node.noteId);
+    } else if (node.type === 'character' && node.characterId && onCharacterClick) {
+      onCharacterClick(node.characterId);
     } else {
       setSelectedNode(node);
     }
-  }, [onNoteClick]);
+  }, [onNoteClick, onCharacterClick]);
 
   const isConnected = (nodeId: string) => {
     if (!hoveredNodeId) return false;
@@ -506,6 +525,7 @@ export function NotesGraph({ notes, onNoteClick }: NotesGraphProps) {
   }, [nodes]);
 
   const noteCount = notes.length;
+  const characterCount = characters.length;
   const entityCount = spells.length + traits.length + skills.length + species.length + systemItems.length;
 
   return (
@@ -555,9 +575,12 @@ export function NotesGraph({ notes, onNoteClick }: NotesGraphProps) {
               const connected = isConnected(node.id);
               const isHovered = hoveredNodeId === node.id;
               const opacity = hoveredNodeId ? (connected ? 1 : 0.3) : 1;
+              const isCharacter = node.type === 'character';
+              const baseRadius = isCharacter ? NODE_RADIUS * 1.4 : NODE_RADIUS;
               const scale = isHovered ? 1.5 : 1;
-              const radius = NODE_RADIUS * scale;
+              const radius = baseRadius * scale;
               const displayName = node.name.length > 18 ? node.name.substring(0, 18) + '...' : node.name;
+              const hasPortrait = isCharacter && node.portrait;
 
               return (
                 <g
@@ -578,14 +601,41 @@ export function NotesGraph({ notes, onNoteClick }: NotesGraphProps) {
                       className="animate-pulse"
                     />
                   )}
-                  <circle
-                    cx={node.x}
-                    cy={node.y}
-                    r={radius}
-                    fill={colors.fill}
-                    stroke={colors.stroke}
-                    strokeWidth={1.5 / zoom}
-                  />
+                  {hasPortrait ? (
+                    <>
+                      <defs>
+                        <clipPath id={`clip-${node.id}`}>
+                          <circle cx={node.x} cy={node.y} r={radius - 1} />
+                        </clipPath>
+                      </defs>
+                      <circle
+                        cx={node.x}
+                        cy={node.y}
+                        r={radius}
+                        fill={colors.fill}
+                        stroke={colors.stroke}
+                        strokeWidth={2 / zoom}
+                      />
+                      <image
+                        href={node.portrait}
+                        x={node.x - radius + 1}
+                        y={node.y - radius + 1}
+                        width={(radius - 1) * 2}
+                        height={(radius - 1) * 2}
+                        clipPath={`url(#clip-${node.id})`}
+                        preserveAspectRatio="xMidYMid slice"
+                      />
+                    </>
+                  ) : (
+                    <circle
+                      cx={node.x}
+                      cy={node.y}
+                      r={radius}
+                      fill={colors.fill}
+                      stroke={colors.stroke}
+                      strokeWidth={1.5 / zoom}
+                    />
+                  )}
                   {showLabels && !isHovered && (
                     <g className="pointer-events-none">
                       <rect
@@ -648,12 +698,21 @@ export function NotesGraph({ notes, onNoteClick }: NotesGraphProps) {
         >
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
-              <div 
-                className="w-8 h-8 rounded-full flex items-center justify-center"
-                style={{ backgroundColor: NODE_COLORS[selectedNode.type].fill }}
-              >
-                {getEntityIcon(selectedNode.type)}
-              </div>
+              {selectedNode.type === 'character' && selectedNode.portrait ? (
+                <img 
+                  src={selectedNode.portrait}
+                  alt={selectedNode.name}
+                  className="w-10 h-10 rounded-full object-cover border-2"
+                  style={{ borderColor: NODE_COLORS[selectedNode.type].stroke }}
+                />
+              ) : (
+                <div 
+                  className="w-8 h-8 rounded-full flex items-center justify-center"
+                  style={{ backgroundColor: NODE_COLORS[selectedNode.type].fill }}
+                >
+                  {getEntityIcon(selectedNode.type)}
+                </div>
+              )}
               <div>
                 <div className="text-sm font-medium text-stone-100">{selectedNode.name}</div>
                 <div className="text-xs text-stone-400 capitalize">{selectedNode.type}</div>
@@ -722,12 +781,13 @@ export function NotesGraph({ notes, onNoteClick }: NotesGraphProps) {
 
       <div className="absolute bottom-4 left-4 flex flex-col gap-1">
         <div className="text-xs text-stone-500">
-          {noteCount} notes • {entityCount} entities • {edges.length} connections
+          {noteCount} notes • {characterCount} characters • {entityCount} entities • {edges.length} connections
           {isSimulating && " • Arranging..."}
         </div>
         <div className="flex flex-wrap gap-2 mt-1">
           {[
             { type: 'note' as EntityType, label: 'Notes' },
+            { type: 'character' as EntityType, label: 'Characters' },
             { type: 'spell' as EntityType, label: 'Spells' },
             { type: 'item' as EntityType, label: 'Items' },
             { type: 'trait' as EntityType, label: 'Traits' },
