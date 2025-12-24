@@ -144,6 +144,8 @@ export function CharacterCreation({ onComplete, onCancel }: CharacterCreationPro
       ...defaultStats,
       bonusHpFromLevelUps: 0,
       lastLevelUpRolled: 1,
+      bonusEnergyFromLevelUps: 0,
+      lastEnergyLevelUpRolled: 1,
       might: 0,
       finesse: 0,
       wit: 0,
@@ -10140,11 +10142,18 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
   const [showLevelUpHpDialog, setShowLevelUpHpDialog] = useState(false);
   const [levelUpHpResult, setLevelUpHpResult] = useState<{diceRolls: number[], total: number, diceCount: number, dieSize: number} | null>(null);
   
+  // Level-up Energy state
+  const [showLevelUpEnergyDialog, setShowLevelUpEnergyDialog] = useState(false);
+  const [levelUpEnergyResult, setLevelUpEnergyResult] = useState<{diceRolls: number[], total: number, diceCount: number, dieSize: number} | null>(null);
+  
   // Feat tree viewer state
   const [showFeatTreeViewer, setShowFeatTreeViewer] = useState(false);
   
   // Calculate if character can level up HP (level > lastLevelUpRolled)
   const canLevelUpHp = (liveCharacter.level || 1) > (liveCharacter.lastLevelUpRolled || 1);
+  
+  // Calculate if character can level up Energy (level > lastEnergyLevelUpRolled)
+  const canLevelUpEnergy = (liveCharacter.level || 1) > (liveCharacter.lastEnergyLevelUpRolled || 1);
   
   // Get current species for HP per level calculation
   const currentSpecies = systemSpecies.find((s: SystemSpecies) => s.name === liveCharacter.race);
@@ -10205,9 +10214,14 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
     }
   }, [currentSpecies, liveCharacter.id, liveCharacter.maxHp, liveCharacter.maxEnergy, liveCharacter.bonusHpFromLevelUps]);
   
-  // Calculate dice count: 1 base + 1 extra every 3 levels
+  // Calculate dice count for HP: 1 base + 1 extra every 3 levels
   const calculateDiceCount = (level: number) => {
     return 1 + Math.floor((level - 1) / 3);
+  };
+  
+  // Calculate dice count for Energy: 2d6 when level is divisible by 3, otherwise 1d6
+  const calculateEnergyDiceCount = (level: number) => {
+    return level % 3 === 0 ? 2 : 1;
   };
   
   // Handle level-up HP roll
@@ -10243,7 +10257,7 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
       bonusHpFromLevelUps: newBonusHp,
       lastLevelUpRolled: currentLevel,
       maxHp: newMaxHp,
-      hp: Math.min(liveCharacter.hp, newMaxHp) // Keep current HP but cap at new max
+      hp: Math.min(liveCharacter.hp + levelUpHpResult.total, newMaxHp)
     });
     
     // Close dialog and reset state
@@ -10252,6 +10266,51 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
     
     // Send to chat as a dice roll notification
     gameWs.sendDiceRoll(`d${hpPerLevel}`, levelUpHpResult.total, `Level ${currentLevel} HP Roll`, liveCharacter.id);
+  };
+  
+  // Handle level-up Energy roll
+  const handleLevelUpEnergyRoll = () => {
+    const currentLevel = liveCharacter.level || 1;
+    const diceCount = calculateEnergyDiceCount(currentLevel);
+    const dieSize = 6; // Energy always uses d6
+    
+    // Roll the dice
+    const diceRolls: number[] = [];
+    for (let i = 0; i < diceCount; i++) {
+      diceRolls.push(Math.floor(Math.random() * dieSize) + 1);
+    }
+    const total = diceRolls.reduce((sum, roll) => sum + roll, 0);
+    
+    setLevelUpEnergyResult({
+      diceRolls,
+      total,
+      diceCount,
+      dieSize
+    });
+  };
+  
+  // Confirm level-up Energy and save to database
+  const confirmLevelUpEnergy = () => {
+    if (!levelUpEnergyResult) return;
+    
+    const newBonusEnergy = (liveCharacter.bonusEnergyFromLevelUps || 0) + levelUpEnergyResult.total;
+    const newMaxEnergy = (currentSpecies?.startingMaxEnergy || 10) + newBonusEnergy;
+    const currentLevel = liveCharacter.level || 1;
+    
+    // Update character with new Energy values (also add to current energy)
+    updateCharacterMutation.mutate({
+      bonusEnergyFromLevelUps: newBonusEnergy,
+      lastEnergyLevelUpRolled: currentLevel,
+      maxEnergy: newMaxEnergy,
+      energy: Math.min(liveCharacter.energy + levelUpEnergyResult.total, newMaxEnergy)
+    });
+    
+    // Close dialog and reset state
+    setShowLevelUpEnergyDialog(false);
+    setLevelUpEnergyResult(null);
+    
+    // Send to chat as a dice roll notification
+    gameWs.sendDiceRoll(`d6`, levelUpEnergyResult.total, `Level ${currentLevel} Energy Roll`, liveCharacter.id);
   };
   
   const canEdit = isOwner || isGM;
@@ -11605,11 +11664,35 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                   </div>
                   {!editingOverview && <Progress value={Math.min(100, Math.round((liveCharacter.energy / effectiveMaxEnergy) * 100))} className="h-3" data-testid="progress-energy" />}
                   
-                  {/* Energy Breakdown */}
-                  {!editingOverview && featBonuses.energy > 0 && (
-                    <div className="mt-1 text-xs text-stone-500" data-testid="text-energy-breakdown">
-                      Base: {currentSpecies?.startingMaxEnergy || 10}
-                      <span className="text-purple-400"> | Feats: +{featBonuses.energy}</span>
+                  {/* Energy Breakdown and Level-Up Button */}
+                  {!editingOverview && (
+                    <div className="mt-2 space-y-2">
+                      {/* Energy Breakdown */}
+                      <div className="text-xs text-stone-500 flex items-center justify-between" data-testid="text-energy-breakdown">
+                        <span>
+                          Base: {currentSpecies?.startingMaxEnergy || 10} | Bonus: +{liveCharacter.bonusEnergyFromLevelUps || 0}
+                          {featBonuses.energy > 0 && <span className="text-purple-400"> | Feats: +{featBonuses.energy}</span>}
+                        </span>
+                        <span className="text-stone-400">
+                          ({calculateEnergyDiceCount(liveCharacter.level || 1)}d6 at level {liveCharacter.level || 1})
+                        </span>
+                      </div>
+                      
+                      {/* Level Up Energy Button - shows when level > lastEnergyLevelUpRolled */}
+                      {canLevelUpEnergy && canEdit && (
+                        <Button
+                          size="sm"
+                          onClick={() => {
+                            setLevelUpEnergyResult(null);
+                            setShowLevelUpEnergyDialog(true);
+                          }}
+                          className="w-full bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white"
+                          data-testid="button-level-up-energy"
+                        >
+                          <TrendingUp className="h-4 w-4 mr-2" />
+                          Roll Level {liveCharacter.level} Energy ({calculateEnergyDiceCount(liveCharacter.level || 1)}d6)
+                        </Button>
+                      )}
                     </div>
                   )}
                 </div>
@@ -14385,6 +14468,115 @@ export function CharacterSheet({ character, isGM, isOwner, onUpdate, onClose, de
                 onClick={confirmLevelUpHp}
                 className="bg-green-600 hover:bg-green-500"
                 data-testid="button-confirm-level-up"
+              >
+                <Check className="h-4 w-4 mr-2" />
+                Confirm
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Level-Up Energy Dialog */}
+      <Dialog open={showLevelUpEnergyDialog} onOpenChange={(open) => {
+        if (!open) {
+          setShowLevelUpEnergyDialog(false);
+          setLevelUpEnergyResult(null);
+        }
+      }}>
+        <DialogContent className="sm:max-w-[400px] bg-stone-900 border-stone-700">
+          <DialogHeader>
+            <DialogTitle className="text-blue-400 flex items-center gap-2">
+              <TrendingUp className="h-5 w-5" />
+              Level Up Energy - Level {liveCharacter.level || 1}
+            </DialogTitle>
+            <DialogDescription>
+              Roll {calculateEnergyDiceCount(liveCharacter.level || 1)}d6 to increase your maximum Energy.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            {/* Current Energy Info */}
+            <div className="bg-stone-800 rounded-lg p-3 border border-stone-700">
+              <div className="text-sm text-stone-400 space-y-1">
+                <div className="flex justify-between">
+                  <span>Base Energy ({liveCharacter.race}):</span>
+                  <span className="text-stone-200">{currentSpecies?.startingMaxEnergy || 10}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Current Bonus Energy:</span>
+                  <span className="text-blue-400">+{liveCharacter.bonusEnergyFromLevelUps || 0}</span>
+                </div>
+                <div className="flex justify-between border-t border-stone-700 pt-1">
+                  <span>Current Max Energy:</span>
+                  <span className="text-amber-400 font-bold">{liveCharacter.maxEnergy}</span>
+                </div>
+              </div>
+            </div>
+            
+            {/* Roll Button or Result */}
+            {!levelUpEnergyResult ? (
+              <Button
+                onClick={handleLevelUpEnergyRoll}
+                className="w-full bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white h-14 text-lg"
+                data-testid="button-roll-energy"
+              >
+                <Dice5 className="h-6 w-6 mr-2" />
+                Roll {calculateEnergyDiceCount(liveCharacter.level || 1)}d6
+              </Button>
+            ) : (
+              <div className="space-y-3">
+                {/* Dice Roll Results */}
+                <div className="bg-gradient-to-r from-blue-900/50 to-cyan-900/50 rounded-lg p-4 border border-blue-700/50">
+                  <div className="text-center">
+                    <div className="text-sm text-stone-400 mb-2">
+                      Rolled {levelUpEnergyResult.diceCount}d{levelUpEnergyResult.dieSize}
+                    </div>
+                    <div className="flex items-center justify-center gap-2 flex-wrap mb-3">
+                      {levelUpEnergyResult.diceRolls.map((roll, index) => (
+                        <div 
+                          key={index} 
+                          className="w-10 h-10 bg-stone-800 rounded-lg border-2 border-blue-500 flex items-center justify-center text-lg font-bold text-blue-400"
+                        >
+                          {roll}
+                        </div>
+                      ))}
+                    </div>
+                    <div className="text-3xl font-bold text-blue-400">
+                      +{levelUpEnergyResult.total} Energy
+                    </div>
+                  </div>
+                </div>
+                
+                {/* New Max Energy Preview */}
+                <div className="bg-stone-800 rounded-lg p-3 border border-stone-700">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-stone-400">New Max Energy:</span>
+                    <span className="text-amber-400 font-bold">
+                      {(currentSpecies?.startingMaxEnergy || 10) + (liveCharacter.bonusEnergyFromLevelUps || 0) + levelUpEnergyResult.total}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+          
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              onClick={() => {
+                setShowLevelUpEnergyDialog(false);
+                setLevelUpEnergyResult(null);
+              }} 
+              data-testid="button-cancel-energy-level-up"
+            >
+              Cancel
+            </Button>
+            {levelUpEnergyResult && (
+              <Button 
+                onClick={confirmLevelUpEnergy}
+                className="bg-blue-600 hover:bg-blue-500"
+                data-testid="button-confirm-energy-level-up"
               >
                 <Check className="h-4 w-4 mr-2" />
                 Confirm

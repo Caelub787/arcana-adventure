@@ -63,6 +63,10 @@ export interface Character {
   gmNotes?: string;
   folderId?: string | null;
   inventory: string[];
+  bonusHpFromLevelUps?: number;
+  lastLevelUpRolled?: number;
+  bonusEnergyFromLevelUps?: number;
+  lastEnergyLevelUpRolled?: number;
 }
 
 export interface Token {
