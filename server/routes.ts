@@ -1018,31 +1018,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
   /**
    * validateCharacterUpdate - Enforces player restrictions on character edits
    * 
-   * Players can only modify:
-   * - Cosmetic fields: name, portrait, biography
-   * - Current resources: hp, energy (not maximums)
-   * - Inventory array (legacy field)
+   * Users with edit access (owner, GM, or explicit 'edit' permission) can modify:
+   * - Cosmetic fields: name, portrait, biography, nickname
+   * - Current resources: hp, energy
+   * - Max resources: maxHp, maxEnergy
+   * - Attributes: might, finesse, wit, presence, will, craft
+   * - Skills: all skill fields (skillAgility, skillPerception, etc.)
+   * - Level-up tracking fields
    * 
-   * GMs can edit all fields including:
-   * - Attributes (agility, strength, etc.)
-   * - Skills (skillAgility, skillPerception, etc.)
-   * - Max HP/Energy
+   * Only GMs can edit:
    * - Race stats (size, speed, naturalArmor, etc.)
    * - GM Notes (players cannot see this field)
+   * - Species/race assignment
    */
-  function validateCharacterUpdate(updates: Partial<any>, isGM: boolean): void {
+  function validateCharacterUpdate(updates: Partial<any>, isGM: boolean, canEditSheet: boolean): void {
+    // GM-only fields that regular editors cannot change
+    const gmOnlyFields = [
+      'gmNotes', 'speciesId', 'race', 'size', 'speed', 'naturalArmor', 
+      'isTemplate', 'campaignId', 'userId', 'folderId'
+    ];
+    
     if (!isGM) {
-      // Only allow these fields for non-GMs
-      const allowedFields = ['name', 'portrait', 'biography', 'hp', 'energy', 'inventory'];
       const attemptedFields = Object.keys(updates);
-      const restrictedFields = attemptedFields.filter(
-        f => !allowedFields.includes(f)
-      );
+      const restrictedFields = attemptedFields.filter(f => gmOnlyFields.includes(f));
+      
       if (restrictedFields.length > 0) {
         throw new Error(
           `Forbidden: Only GMs can edit ${restrictedFields.join(', ')}`
         );
       }
+    }
+    
+    // If user doesn't have edit access at all, they can't edit anything
+    if (!canEditSheet && !isGM) {
+      throw new Error('You do not have permission to edit this character');
     }
   }
 
@@ -1731,9 +1740,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ error: "You don't have permission to edit this character" });
       }
 
-      // Validate update based on GM status
+      // Validate update based on GM status and edit permissions
+      // canEditSheet is true if user is owner, GM, or has 'edit' permission level
+      const canEditSheet = access.isOwner || access.isGM || access.allowed;
       try {
-        validateCharacterUpdate(req.body, access.isGM);
+        validateCharacterUpdate(req.body, access.isGM, canEditSheet);
       } catch (validationErr: any) {
         return res.status(403).json({ error: validationErr.message });
       }
