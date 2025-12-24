@@ -1423,6 +1423,13 @@ export default function Campaign() {
             }
             return prev;
           });
+          // Update viewingCharacterSheet if it matches (for character sheet dialog)
+          setViewingCharacterSheet((prev: any) => {
+            if (prev && prev.id === updatedChar.id) {
+              return updatedChar;
+            }
+            return prev;
+          });
           // Immediately update the characters query cache for instant UI updates
           queryClientRef.current.setQueryData(
             [`/api/campaigns/${effectiveCampaignId}/characters`],
