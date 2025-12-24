@@ -4512,8 +4512,11 @@ export function InitiativeTracker({ open, onOpenChange, sceneId, campaignId, isG
   const inCombat = initiativeData?.inCombat || false;
   const currentTurnCharacterId = initiativeData?.currentTurnCharacterId;
 
-  // Sort entries by value (highest first)
-  const sortedEntries = [...entries].sort((a, b) => b.value - a.value);
+  // Sort by initiative value descending, then by id for stable ordering when values are equal
+  const sortedEntries = [...entries].sort((a, b) => {
+    if (b.value !== a.value) return b.value - a.value;
+    return a.id.localeCompare(b.id);
+  });
 
   const updateMutation = useMutation({
     mutationFn: ({ id, data }: { id: string; data: { value?: number; isHidden?: boolean } }) => 

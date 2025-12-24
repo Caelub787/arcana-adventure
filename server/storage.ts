@@ -1500,7 +1500,7 @@ export class DatabaseStorage implements IStorage {
     return await db.select()
       .from(initiativeEntries)
       .where(eq(initiativeEntries.sceneId, sceneId))
-      .orderBy(desc(initiativeEntries.value));
+      .orderBy(desc(initiativeEntries.value), initiativeEntries.id);
   }
 
   async createInitiativeEntry(entry: InsertInitiativeEntry): Promise<InitiativeEntry> {
