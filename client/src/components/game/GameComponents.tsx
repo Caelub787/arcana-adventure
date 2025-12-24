@@ -9169,6 +9169,7 @@ interface CharacterSheetProps {
   character: any;
   isGM: boolean;
   isOwner: boolean;
+  isAdmin?: boolean;
   accessLevel?: 'name' | 'view' | 'edit' | 'owner';
   onUpdate?: (updates: any) => void;
   onClose?: () => void;
@@ -9917,7 +9918,7 @@ function TraitEditForm({
   );
 }
 
-export function CharacterSheet({ character, isGM, isOwner, accessLevel = 'view', onUpdate, onClose, defaultTab = "overview", campaignId, sceneId, isTemplate = false }: CharacterSheetProps) {
+export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, accessLevel = 'view', onUpdate, onClose, defaultTab = "overview", campaignId, sceneId, isTemplate = false }: CharacterSheetProps) {
   // Name-only mode: user only has 'name' access (token name only, no stats)
   // They can see name and portrait but not stats, inventory, or abilities
   const isViewOnly = accessLevel === 'name' && !isGM && !isOwner;
@@ -10811,6 +10812,35 @@ export function CharacterSheet({ character, isGM, isOwner, accessLevel = 'view',
       toast({
         title: "Error",
         description: "Failed to use trait",
+        variant: "destructive",
+      });
+    }
+  });
+
+  // Save to admin library mutation (admin only)
+  const [showSaveToLibrary, setShowSaveToLibrary] = useState(false);
+  const saveToLibraryMutation = useMutation({
+    mutationFn: (folderId: string | null) => 
+      fetch(`/api/admin/character-templates/from-character/${character.id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ folderId }),
+      }).then(res => {
+        if (!res.ok) throw new Error('Failed to save to library');
+        return res.json();
+      }),
+    onSuccess: () => {
+      setShowSaveToLibrary(false);
+      toast({
+        title: "Saved to Library",
+        description: "Character has been copied to the admin template library",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to save character to library",
         variant: "destructive",
       });
     }
@@ -14607,8 +14637,55 @@ export function CharacterSheet({ character, isGM, isOwner, accessLevel = 'view',
                     {character.createdAt ? new Date(character.createdAt).toLocaleDateString() : 'Unknown'}
                   </p>
                 </div>
+
+                {/* Save to Admin Library (Admin Only, Campaign Characters Only) */}
+                {isAdmin && !isTemplate && character.campaignId && (
+                  <div className="pt-4 border-t border-stone-700">
+                    <div className="flex justify-between items-center">
+                      <div>
+                        <Label className="text-sm text-amber-400">Admin Tools</Label>
+                        <p className="text-xs text-stone-400">Save a copy of this character to the admin template library</p>
+                      </div>
+                      <Button 
+                        size="sm" 
+                        variant="outline"
+                        className="border-amber-600 text-amber-400 hover:bg-amber-600/20"
+                        onClick={() => setShowSaveToLibrary(true)}
+                        data-testid="button-save-to-library"
+                      >
+                        <FolderOpen className="h-4 w-4 mr-1" />
+                        Save to Library
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
+
+            {/* Save to Admin Library Confirmation Dialog */}
+            <AlertDialog open={showSaveToLibrary} onOpenChange={setShowSaveToLibrary}>
+              <AlertDialogContent className="bg-stone-900 border-stone-700">
+                <AlertDialogHeader>
+                  <AlertDialogTitle className="text-stone-200">Save to Admin Library</AlertDialogTitle>
+                  <AlertDialogDescription className="text-stone-400">
+                    This will create a copy of "{character.name}" in the admin character template library, including all items, spells, hotbars, custom skills, and traits.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel className="bg-stone-800 hover:bg-stone-700 text-stone-200 border-stone-600">
+                    Cancel
+                  </AlertDialogCancel>
+                  <AlertDialogAction 
+                    className="bg-amber-600 hover:bg-amber-700 text-white"
+                    onClick={() => saveToLibraryMutation.mutate(null)}
+                    disabled={saveToLibraryMutation.isPending}
+                    data-testid="button-confirm-save-to-library"
+                  >
+                    {saveToLibraryMutation.isPending ? "Saving..." : "Save to Library"}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           </TabsContent>
         </div>
       </Tabs>

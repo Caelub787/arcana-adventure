@@ -671,7 +671,7 @@ export default function Campaign() {
   const isNew = queryParams.get("new") === "true";
   const campaignId = params?.id;
 
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const hasCreatedRef = useRef(false);
@@ -2961,6 +2961,7 @@ export default function Campaign() {
                 viewingCharacterSheet.userId === user?.id || 
                 myPermissions?.permissions?.[viewingCharacterSheet.id] === 'edit'
               }
+              isAdmin={isAdmin}
               accessLevel={
                 viewingCharacterSheet.userId === user?.id ? 'owner' :
                 (myPermissions?.permissions?.[viewingCharacterSheet.id] as 'name' | 'view' | 'edit' | undefined) || 'view'

@@ -2337,8 +2337,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Character not found" });
       }
       
-      // Adding spells requires owner or GM access (edit access alone is not sufficient)
-      if (!access.isOwner && !access.isGM) {
+      // Check if user is admin (admins can add spells to any character)
+      const user = await storage.getUser(req.session.userId!);
+      const userIsAdmin = user?.isAdmin || ADMIN_EMAILS.includes(user?.email?.toLowerCase() || '');
+      
+      // Adding spells requires owner, GM, or admin access (edit access alone is not sufficient)
+      if (!access.isOwner && !access.isGM && !userIsAdmin) {
         return res.status(403).json({ error: "Only the character owner or GM can add spells" });
       }
 
@@ -4027,6 +4031,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Save a campaign character to the admin template library (admin only)
+  app.post("/api/admin/character-templates/from-character/:characterId", requireAdmin, async (req, res) => {
+    try {
+      const { folderId } = req.body;
+      const template = await storage.copyCharacterToAdminLibrary(req.params.characterId, folderId || null);
+      res.json(template);
+    } catch (err: any) {
+      console.error('[Admin] Failed to copy character to library:', err);
+      res.status(400).json({ error: err.message || "Failed to save character to admin library" });
+    }
+  });
+
   // Character Template Folder routes (admin)
   app.get("/api/admin/character-template-folders", requireAdmin, async (req, res) => {
     try {
@@ -4141,8 +4157,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Character not found" });
       }
       
-      // Adding custom skills requires owner or GM access (edit access alone is not sufficient)
-      if (!access.isOwner && !access.isGM) {
+      // Check if user is admin (admins can add custom skills to any character)
+      const user = await storage.getUser(req.session.userId!);
+      const userIsAdmin = user?.isAdmin || ADMIN_EMAILS.includes(user?.email?.toLowerCase() || '');
+      
+      // Adding custom skills requires owner, GM, or admin access (edit access alone is not sufficient)
+      if (!access.isOwner && !access.isGM && !userIsAdmin) {
         return res.status(403).json({ error: "Only the character owner or GM can add custom skills" });
       }
       
@@ -4291,8 +4311,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Character not found" });
       }
       
-      // Adding traits requires owner or GM access (edit access alone is not sufficient)
-      if (!access.isOwner && !access.isGM) {
+      // Check if user is admin (admins can add traits to any character)
+      const user = await storage.getUser(req.session.userId!);
+      const userIsAdmin = user?.isAdmin || ADMIN_EMAILS.includes(user?.email?.toLowerCase() || '');
+      
+      // Adding traits requires owner, GM, or admin access (edit access alone is not sufficient)
+      if (!access.isOwner && !access.isGM && !userIsAdmin) {
         return res.status(403).json({ error: "Only the character owner or GM can add traits" });
       }
       
@@ -4525,8 +4549,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Character not found" });
       }
       
-      // Adding items requires owner or GM access (edit access alone is not sufficient)
-      if (!access.isOwner && !access.isGM) {
+      // Check if user is admin (admins can add items to any character)
+      const user = await storage.getUser(req.session.userId!);
+      const userIsAdmin = user?.isAdmin || ADMIN_EMAILS.includes(user?.email?.toLowerCase() || '');
+      
+      // Adding items requires owner, GM, or admin access (edit access alone is not sufficient)
+      if (!access.isOwner && !access.isGM && !userIsAdmin) {
         return res.status(403).json({ error: "Only the character owner or GM can add items" });
       }
 
