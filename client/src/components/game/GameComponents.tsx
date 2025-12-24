@@ -256,8 +256,7 @@ function getTokenGridSpan(size: string | undefined): number {
   switch (size) {
     case 'Huge': return 4;
     case 'Gargantuan': return 6;
-    case 'Large': return 2;
-    default: return 1; // Tiny, Small, Medium all use 1x1
+    default: return 1; // Tiny, Small, Medium, Large all use 1x1
   }
 }
 
