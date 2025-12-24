@@ -1641,11 +1641,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.patch("/api/characters/:id", requireAuth, async (req, res) => {
     try {
-      const access = await checkCharacterAccess(req.params.id, req.session.userId!, 'edit');
-      
-      if (!access.character) {
+      // First check if this is a character template - admins can edit those directly
+      const character = await storage.getCharacter(req.params.id);
+      if (!character) {
         return res.status(404).json({ error: "Character not found" });
       }
+      
+      // If it's a template, only admins can edit it
+      if (character.isTemplate) {
+        const user = await storage.getUser(req.session.userId!);
+        if (!user?.isAdmin) {
+          return res.status(403).json({ error: "Only admins can edit character templates" });
+        }
+        // Admin editing a template - proceed directly without campaign checks
+        console.log('[Character Update] Admin editing template', req.params.id, ':', req.body);
+        const updatedCharacter = await storage.updateCharacter(req.params.id, req.body);
+        return res.json(updatedCharacter);
+      }
+      
+      // Regular character - use normal permission checks
+      const access = await checkCharacterAccess(req.params.id, req.session.userId!, 'edit');
       
       if (!access.campaign) {
         return res.status(404).json({ error: "Campaign not found" });
@@ -1663,7 +1678,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Only validate attribute and skill point totals when those fields are being updated
-      const character = access.character;
+      const charData = access.character;
       const updates = req.body;
       
       const attrs = ['might', 'finesse', 'wit', 'presence', 'will', 'craft'];
@@ -1673,17 +1688,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const isUpdatingStats = attrs.some(a => a in updates) || skills.some(s => s in updates) || 'level' in updates;
       
       if (isUpdatingStats) {
-        const level = updates.level ?? character.level ?? 1;
+        const level = updates.level ?? charData.level ?? 1;
         const maxPositiveAttrPoints = 6 + Math.floor(level / 3);
         const maxNegativeAttrPoints = 4;
         const maxPositiveSkillPoints = 12 + ((level - 1) * 2);
         const maxNegativeSkillPoints = 6;
 
-        const attrValues = attrs.map(a => updates[a] ?? character[a] ?? 0);
+        const attrValues = attrs.map(a => updates[a] ?? charData[a] ?? 0);
         const positiveAttr = attrValues.filter((v: number) => v > 0).reduce((s: number, v: number) => s + v, 0);
         const negativeAttr = Math.abs(attrValues.filter((v: number) => v < 0).reduce((s: number, v: number) => s + v, 0));
 
-        const skillValues = skills.map(s => updates[s] ?? character[s] ?? 0);
+        const skillValues = skills.map(s => updates[s] ?? charData[s] ?? 0);
         const positiveSkill = skillValues.filter((v: number) => v > 0).reduce((s: number, v: number) => s + v, 0);
         const negativeSkill = Math.abs(skillValues.filter((v: number) => v < 0).reduce((s: number, v: number) => s + v, 0));
 
