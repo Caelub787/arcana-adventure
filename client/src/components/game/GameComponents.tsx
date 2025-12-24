@@ -2099,14 +2099,20 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
   };
 
   // Get target token and its character data
+  // Returns characterId from token even if full character data isn't available (for enemies)
   const getTargetData = () => {
-    if (!tokens || !targetedTokenId || !allCharacters) return null;
+    if (!tokens || !targetedTokenId) return null;
     const targetToken = tokens.find((t: any) => t.id === targetedTokenId);
     if (!targetToken) return null;
-    const targetCharacter = targetToken.characterId 
+    const targetCharacter = targetToken.characterId && allCharacters
       ? allCharacters.find((c: any) => c.id === targetToken.characterId)
       : null;
-    return { token: targetToken, character: targetCharacter };
+    // Return characterId from token for damage application even without full character data
+    return { 
+      token: targetToken, 
+      character: targetCharacter,
+      characterId: targetToken.characterId || null  // Always include token's characterId
+    };
   };
 
   // Handle attack roll (1d20 + attribute modifier)
@@ -2243,9 +2249,11 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     let hitStatus = '';
     let hitLabel = '';
     
-    if (targetedTokenId && targetData?.character) {
-      const targetDC = targetData.character.naturalArmor || 10; // Default DC is 10 if no naturalArmor
-      const targetName = targetData.character.name || 'Target';
+    // Check for hit/miss when targeting a token with a linked character
+    // Use character data if available, otherwise use defaults for enemy tokens
+    if (targetedTokenId && targetData?.characterId) {
+      const targetDC = targetData.character?.naturalArmor || 10; // Default DC is 10 if no naturalArmor or no character data
+      const targetName = targetData.character?.name || targetData.token?.name || 'Target';
       
       if (isCritSuccess) {
         hitStatus = ' - Crit Success!';
@@ -2290,8 +2298,13 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
   // If damageType is "Health", this heals instead of damaging
   // If damageType is "Energy", this affects energy instead of HP (gainEnergy determines add vs subtract)
   // Uses WebSocket combat damage which bypasses edit permission checks
-  const applyDamageToTarget = async (damageAmount: number, damageType: string | null, targetCharacter: any, gainEnergy?: boolean): Promise<{ finalDamage: number; reduction: number; armorName: string | null; isHealing: boolean; isEnergy?: boolean }> => {
-    if (!targetCharacter?.id) return { finalDamage: damageAmount, reduction: 0, armorName: null, isHealing: false };
+  // targetCharacterId allows damage application even when full character data isn't available (for enemy targets)
+  const applyDamageToTarget = async (damageAmount: number, damageType: string | null, targetCharacter: any, gainEnergy?: boolean, targetCharacterId?: string | null): Promise<{ finalDamage: number; reduction: number; armorName: string | null; isHealing: boolean; isEnergy?: boolean; targetName?: string }> => {
+    // Use targetCharacter.id if available, otherwise fall back to explicit targetCharacterId
+    const charId = targetCharacter?.id || targetCharacterId;
+    const targetName = targetCharacter?.name || 'Target';
+    
+    if (!charId) return { finalDamage: damageAmount, reduction: 0, armorName: null, isHealing: false };
     
     // Check if this is healing (Health damage type)
     const isHealing = damageType === 'Health';
@@ -2301,32 +2314,33 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     
     // For healing, no armor reduction applies
     if (isHealing) {
-      console.log('[Healing] Applying', damageAmount, 'healing to', targetCharacter.name);
+      console.log('[Healing] Applying', damageAmount, 'healing to', targetName);
       // Use WebSocket combat damage which bypasses edit permissions
       gameWs.sendCombatDamage(
-        targetCharacter.id,
+        charId,
         damageAmount,
         damageType || undefined,
         character?.name || 'Unknown',
         true // isHealing
       );
-      return { finalDamage: damageAmount, reduction: 0, armorName: null, isHealing: true };
+      return { finalDamage: damageAmount, reduction: 0, armorName: null, isHealing: true, targetName };
     }
     
     // For energy effects, no armor reduction applies
     if (isEnergy) {
-      console.log('[Energy] Applying', damageAmount, 'energy', gainEnergy ? 'gain' : 'drain', 'to', targetCharacter.name);
+      console.log('[Energy] Applying', damageAmount, 'energy', gainEnergy ? 'gain' : 'drain', 'to', targetName);
       // Use WebSocket combat energy which bypasses edit permissions
       gameWs.sendCombatEnergy(
-        targetCharacter.id,
+        charId,
         damageAmount,
         character?.name || 'Unknown',
         gainEnergy || false // isGain
       );
-      return { finalDamage: damageAmount, reduction: 0, armorName: null, isHealing: false, isEnergy: true };
+      return { finalDamage: damageAmount, reduction: 0, armorName: null, isHealing: false, isEnergy: true, targetName };
     }
     
     // Fetch target's items and traits to check for damage reduction
+    // Note: This may fail for enemy characters the player doesn't have access to - that's OK, we'll apply full damage
     let reduction = 0;
     let armorName: string | null = null;
     let traitReduction = 0;
@@ -2335,9 +2349,9 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     let traitName: string | null = null;
     
     try {
-      const targetItems = await api.getItems(targetCharacter.id);
-      const targetHotbars = await api.getHotbars(targetCharacter.id);
-      const targetTraits = await api.getCharacterTraits(targetCharacter.id);
+      const targetItems = await api.getItems(charId);
+      const targetHotbars = await api.getHotbars(charId);
+      const targetTraits = await api.getCharacterTraits(charId);
       
       // Find equipped armor items (from armor hotbar slots 0-4: helm, chest, arm, legs, boots)
       const equippedArmorIds = targetHotbars
@@ -2399,16 +2413,16 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     
     // Apply damage using WebSocket - bypasses edit permission checks
     // Anyone in the campaign can apply combat damage (send single message only)
-    console.log('[Damage] Applying', finalDamage, 'damage to', targetCharacter.name, traitImmune ? '(IMMUNE)' : '');
+    console.log('[Damage] Applying', finalDamage, 'damage to', targetName, traitImmune ? '(IMMUNE)' : '');
     gameWs.sendCombatDamage(
-      targetCharacter.id,
+      charId,
       finalDamage,
       damageType || undefined,
       character?.name || 'Unknown',
       false // isHealing
     );
     
-    return { finalDamage, reduction: reduction + traitReduction, armorName: armorName || traitName, isHealing: false };
+    return { finalDamage, reduction: reduction + traitReduction, armorName: armorName || traitName, isHealing: false, targetName };
   };
 
   // Handle damage roll (weapon damage dice + mod, or ammunition damage for ranged weapons)
@@ -2466,21 +2480,22 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
         ? `${ammo.damage} = ${result} + ${modParts.join(' + ')}`
         : `${ammo.damage} = ${result}`;
       
-      // Apply damage to target if one is selected
+      // Apply damage to target if one is selected (characterId allows damage to enemies without full character data)
       let damageLabel = `${itemData.name} Damage`;
       let finalTotal = total;
       
-      if (targetedTokenId && targetData?.character) {
-        const { finalDamage, reduction, armorName, isHealing } = await applyDamageToTarget(total, damageType, targetData.character);
+      if (targetedTokenId && targetData?.characterId) {
+        const { finalDamage, reduction, armorName, isHealing, targetName } = await applyDamageToTarget(total, damageType, targetData.character, undefined, targetData.characterId);
         finalTotal = finalDamage;
+        const displayName = targetData.character?.name || targetData.token?.name || targetName || 'Target';
         
         if (isHealing) {
-          damageLabel = `${itemData.name} Healing → ${targetData.character.name} (+${finalDamage} HP)`;
+          damageLabel = `${itemData.name} Healing → ${displayName} (+${finalDamage} HP)`;
         } else if (reduction > 0) {
           calculationBreakdown += ` - ${reduction} (${armorName || 'Armor'})`;
-          damageLabel = `${itemData.name} Damage → ${targetData.character.name} (-${finalDamage} HP)`;
+          damageLabel = `${itemData.name} Damage → ${displayName} (-${finalDamage} HP)`;
         } else {
-          damageLabel = `${itemData.name} Damage → ${targetData.character.name} (-${finalDamage} HP)`;
+          damageLabel = `${itemData.name} Damage → ${displayName} (-${finalDamage} HP)`;
         }
       }
       
@@ -2499,8 +2514,9 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
       // Send roll to chat
       if (character.campaignId) {
         const isHealing = damageType === 'Health';
-        const chatText = targetedTokenId && targetData?.character
-          ? `${itemData.name} ${isHealing ? 'Healing' : 'Damage'} → ${targetData.character.name}: ${calculationBreakdown} = ${finalTotal} HP`
+        const displayName = targetData?.character?.name || targetData?.token?.name || 'Target';
+        const chatText = targetedTokenId && targetData?.characterId
+          ? `${itemData.name} ${isHealing ? 'Healing' : 'Damage'} → ${displayName}: ${calculationBreakdown} = ${finalTotal} HP`
           : `${itemData.name} ${isHealing ? 'Healing' : 'Damage'}: ${calculationBreakdown} = ${total}`;
         gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', chatText, 'roll');
       }
@@ -2523,21 +2539,22 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
       ? `${itemData.damage} = ${result} + ${modParts.join(' + ')}`
       : `${itemData.damage} = ${result}`;
     
-    // Apply damage to target if one is selected
+    // Apply damage to target if one is selected (characterId allows damage to enemies without full character data)
     let damageLabel = `${itemData.name} Damage`;
     let finalTotal = total;
     
-    if (targetedTokenId && targetData?.character) {
-      const { finalDamage, reduction, armorName, isHealing } = await applyDamageToTarget(total, damageType, targetData.character);
+    if (targetedTokenId && targetData?.characterId) {
+      const { finalDamage, reduction, armorName, isHealing, targetName } = await applyDamageToTarget(total, damageType, targetData.character, undefined, targetData.characterId);
       finalTotal = finalDamage;
+      const displayName = targetData.character?.name || targetData.token?.name || targetName || 'Target';
       
       if (isHealing) {
-        damageLabel = `${itemData.name} Healing → ${targetData.character.name} (+${finalDamage} HP)`;
+        damageLabel = `${itemData.name} Healing → ${displayName} (+${finalDamage} HP)`;
       } else if (reduction > 0) {
         calculationBreakdown += ` - ${reduction} (${armorName || 'Armor'})`;
-        damageLabel = `${itemData.name} Damage → ${targetData.character.name} (-${finalDamage} HP)`;
+        damageLabel = `${itemData.name} Damage → ${displayName} (-${finalDamage} HP)`;
       } else {
-        damageLabel = `${itemData.name} Damage → ${targetData.character.name} (-${finalDamage} HP)`;
+        damageLabel = `${itemData.name} Damage → ${displayName} (-${finalDamage} HP)`;
       }
     }
     
@@ -2556,8 +2573,9 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     // Send roll to chat
     if (character.campaignId) {
       const isHealing = damageType === 'Health';
-      const chatText = targetedTokenId && targetData?.character
-        ? `${itemData.name} ${isHealing ? 'Healing' : 'Damage'} → ${targetData.character.name}: ${calculationBreakdown} = ${finalTotal} HP`
+      const displayName = targetData?.character?.name || targetData?.token?.name || 'Target';
+      const chatText = targetedTokenId && targetData?.characterId
+        ? `${itemData.name} ${isHealing ? 'Healing' : 'Damage'} → ${displayName}: ${calculationBreakdown} = ${finalTotal} HP`
         : `${itemData.name} ${isHealing ? 'Healing' : 'Damage'}: ${calculationBreakdown} = ${total}`;
       gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', chatText, 'roll');
     }
@@ -3117,22 +3135,23 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     const damageTypeDisplay = spellData.damageType ? ` (${spellData.damageType})` : '';
     let finalTotal = total;
     
-    // Apply damage/healing/energy to target if one is selected
+    // Apply damage/healing/energy to target if one is selected (characterId allows damage to enemies without full character data)
     const isEnergyEffect = spellData.damageType === 'Energy';
-    if (targetedTokenId && targetData?.character) {
-      const { finalDamage, reduction, armorName, isHealing: wasHealing, isEnergy } = await applyDamageToTarget(total, spellData.damageType || null, targetData.character, isEnergyEffect ? spellData.gainEnergy : undefined);
+    if (targetedTokenId && targetData?.characterId) {
+      const { finalDamage, reduction, armorName, isHealing: wasHealing, isEnergy, targetName } = await applyDamageToTarget(total, spellData.damageType || null, targetData.character, isEnergyEffect ? spellData.gainEnergy : undefined, targetData.characterId);
       finalTotal = finalDamage;
+      const displayName = targetData.character?.name || targetData.token?.name || targetName || 'Target';
       
       if (isEnergy) {
         const energyAction = spellData.gainEnergy ? '+' : '-';
-        label = `${spellData.name} Energy → ${targetData.character.name} (${energyAction}${finalDamage} Energy)`;
+        label = `${spellData.name} Energy → ${displayName} (${energyAction}${finalDamage} Energy)`;
       } else if (wasHealing) {
-        label = `${spellData.name} Healing → ${targetData.character.name} (+${finalDamage} HP)`;
+        label = `${spellData.name} Healing → ${displayName} (+${finalDamage} HP)`;
       } else if (reduction > 0) {
         calculationBreakdown += ` - ${reduction} (${armorName || 'Armor'})`;
-        label = `${spellData.name} ${effectLabel} → ${targetData.character.name} (-${finalDamage} HP)`;
+        label = `${spellData.name} ${effectLabel} → ${displayName} (-${finalDamage} HP)`;
       } else {
-        label = `${spellData.name} ${effectLabel} → ${targetData.character.name} (-${finalDamage} HP)`;
+        label = `${spellData.name} ${effectLabel} → ${displayName} (-${finalDamage} HP)`;
       }
     }
     
@@ -3150,7 +3169,8 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     
     if (character.campaignId) {
       const chatEffectLabel = spellData.isAttack !== false ? 'Damage' : 'Effect';
-      const chatText = targetedTokenId && targetData?.character
+      const displayName = targetData?.character?.name || targetData?.token?.name || 'Target';
+      const chatText = targetedTokenId && targetData?.characterId
         ? `${label}: ${calculationBreakdown} = ${finalTotal}${damageTypeDisplay}`
         : `${isHealing ? `${spellData.name} Healing` : `${spellData.name} ${chatEffectLabel}`}: ${calculationBreakdown} = ${total}${damageTypeDisplay}`;
       gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', chatText, 'roll');
