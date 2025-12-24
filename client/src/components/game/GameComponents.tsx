@@ -1129,8 +1129,9 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
           // Check if user can drag this token:
           // - GMs can drag any token
           // - Players can drag 'player' type tokens
-          // - Users with 'edit' access to the linked character can drag that character's token
-          const hasEditAccess = character && myPermissions?.permissions?.[character.id] === 'edit';
+          // - Users with 'edit' or 'owner' permission to the linked character can drag that character's token
+          const permissionLevel = character ? myPermissions?.permissions?.[character.id] : undefined;
+          const hasEditAccess = permissionLevel === 'edit' || permissionLevel === 'owner';
           const canDrag = role === 'gm' || token.type === 'player' || hasEditAccess;
           
           // Get species size for grid span calculation

@@ -393,17 +393,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
             return;
           }
           
-          // Authorization: GM can move any token, players can only move their own character tokens
+          // Authorization: GM can move any token, players can move tokens they own or have edit access to
           if (userRole !== "gm") {
-            // If token has a characterId, verify it belongs to this user
+            // If token has a characterId, verify user owns it OR has edit permission
             if (token.characterId) {
               const character = await storage.getCharacter(token.characterId);
-              if (!character || character.userId !== authenticatedUserId) {
+              if (!character) {
                 ws.send(JSON.stringify({
                   type: "error",
-                  message: "Not authorized to move this token"
+                  message: "Character not found"
                 }));
                 return;
+              }
+              
+              // Check if user owns the character OR has edit permission
+              const isOwner = character.userId === authenticatedUserId;
+              if (!isOwner) {
+                const permission = await storage.getCharacterPermission(token.characterId, authenticatedUserId);
+                const hasEditAccess = permission?.accessLevel === 'edit';
+                
+                if (!hasEditAccess) {
+                  ws.send(JSON.stringify({
+                    type: "error",
+                    message: "Not authorized to move this token"
+                  }));
+                  return;
+                }
               }
             } else {
               // Non-character tokens (enemies, NPCs) can only be moved by GM
