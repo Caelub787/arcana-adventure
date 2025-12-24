@@ -2275,8 +2275,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Character not found" });
       }
       
-      if (!access.allowed) {
-        return res.status(403).json({ error: "You don't have permission to add spells to this character" });
+      // Adding spells requires owner or GM access (edit access alone is not sufficient)
+      if (!access.isOwner && !access.isGM) {
+        return res.status(403).json({ error: "Only the character owner or GM can add spells" });
       }
 
       const spellData = insertSpellSchema.parse({
@@ -4072,17 +4073,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/characters/:characterId/custom-skills", requireAuth, async (req, res) => {
     try {
-      const character = await storage.getCharacter(req.params.characterId);
-      if (!character) {
+      const access = await checkCharacterAccess(req.params.characterId, req.session.userId!, 'edit');
+      
+      if (!access.character) {
         return res.status(404).json({ error: "Character not found" });
       }
+      
+      // Adding custom skills requires owner or GM access (edit access alone is not sufficient)
+      if (!access.isOwner && !access.isGM) {
+        return res.status(403).json({ error: "Only the character owner or GM can add custom skills" });
+      }
+      
       const skill = await storage.addCharacterCustomSkill({
         ...req.body,
         characterId: req.params.characterId
       });
       
-      if (character?.campaignId) {
-        broadcastToCampaign(character.campaignId, {
+      if (access.character?.campaignId) {
+        broadcastToCampaign(access.character.campaignId, {
           type: "custom_skill_added",
           characterId: req.params.characterId,
           skill
@@ -4215,17 +4223,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/characters/:characterId/traits", requireAuth, async (req, res) => {
     try {
-      const character = await storage.getCharacter(req.params.characterId);
-      if (!character) {
+      const access = await checkCharacterAccess(req.params.characterId, req.session.userId!, 'edit');
+      
+      if (!access.character) {
         return res.status(404).json({ error: "Character not found" });
       }
+      
+      // Adding traits requires owner or GM access (edit access alone is not sufficient)
+      if (!access.isOwner && !access.isGM) {
+        return res.status(403).json({ error: "Only the character owner or GM can add traits" });
+      }
+      
       const trait = await storage.addCharacterTrait({
         ...req.body,
         characterId: req.params.characterId
       });
       
-      if (character?.campaignId) {
-        broadcastToCampaign(character.campaignId, {
+      if (access.character?.campaignId) {
+        broadcastToCampaign(access.character.campaignId, {
           type: "trait_added",
           characterId: req.params.characterId,
           trait
@@ -4448,8 +4463,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Character not found" });
       }
       
-      if (!access.allowed) {
-        return res.status(403).json({ error: "You don't have permission to add items to this character" });
+      // Adding items requires owner or GM access (edit access alone is not sufficient)
+      if (!access.isOwner && !access.isGM) {
+        return res.status(403).json({ error: "Only the character owner or GM can add items" });
       }
 
       const itemData = insertItemSchema.parse({

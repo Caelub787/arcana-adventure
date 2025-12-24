@@ -10536,7 +10536,14 @@ export function CharacterSheet({ character, isGM, isOwner, accessLevel = 'view',
     setRollingEnergyLevel(prev => prev + 1);
   };
   
-  const canEdit = isOwner || isGM;
+  // Permission flags:
+  // - canEditSheet: Can modify existing character data (attributes, skills, biography, etc.)
+  // - canAddContent: Can add new items, spells, custom skills, traits (owner/GM only)
+  const canEditSheet = isOwner || isGM || accessLevel === 'edit';
+  const canAddContent = isOwner || isGM;
+  
+  // Legacy alias for backwards compatibility with hotbar components
+  const canEdit = canEditSheet;
   
   // Skill to Attribute mapping for CharacterSheet
   const SKILL_ATTRIBUTE_MAP: Record<string, keyof typeof liveCharacter> = {
@@ -12457,7 +12464,7 @@ export function CharacterSheet({ character, isGM, isOwner, accessLevel = 'view',
                     <BookOpen className="h-4 w-4" />
                     Custom Skills
                   </CardTitle>
-                  {(isOwner || isGM) && (
+                  {canAddContent && (
                     <Button
                       size="sm"
                       variant="outline"
@@ -12611,7 +12618,7 @@ export function CharacterSheet({ character, isGM, isOwner, accessLevel = 'view',
                     <Star className="h-4 w-4" />
                     Traits
                   </CardTitle>
-                  {(isOwner || isGM) && (
+                  {canAddContent && (
                     <Button
                       size="sm"
                       variant="outline"
@@ -12787,7 +12794,7 @@ export function CharacterSheet({ character, isGM, isOwner, accessLevel = 'view',
                       <Layers className="h-4 w-4 mr-1" /> Templates
                     </Button>
                   )}
-                  {(isOwner || isGM) && (
+                  {canAddContent && (
                     <Button size="sm" onClick={() => setShowAddItem(true)} data-testid="button-add-item">
                       <Plus className="h-4 w-4 mr-1" /> Add Item
                     </Button>
@@ -12963,7 +12970,7 @@ export function CharacterSheet({ character, isGM, isOwner, accessLevel = 'view',
           <TabsContent value="magic" className="space-y-4 mt-0" data-testid="content-magic">
             <Card className="bg-stone-800 border-stone-700">
               <CardContent className="space-y-4 pt-4">
-                {canEdit && (
+                {canAddContent && (
                   <div className="flex justify-end gap-2">
                     <Button 
                       size="sm"

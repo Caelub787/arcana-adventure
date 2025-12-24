@@ -76,7 +76,7 @@ Preferred communication style: Simple, everyday language.
     - **None**: No access to the character
     - **Name**: Token name only access (minimal visibility - just sees name on battle map tokens)
     - **View**: Full stats and inventory visible (can see but not edit)
-    - **Edit**: Can edit the character (full control)
+    - **Edit**: Can edit existing character data (attributes, skills, biography, etc.) but cannot add new items, spells, custom skills, or traits. Only owners and GMs can add new content.
   GMs can grant access via character settings, including "All Players" quick action for bulk permission setting.
 - **Security**: Hashed passwords, session cookies, CSRF protection, and PII sanitization.
 
