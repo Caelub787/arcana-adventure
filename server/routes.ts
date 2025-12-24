@@ -1774,22 +1774,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.json(updatedCharacter);
       }
       
-      // Regular character - use normal permission checks
+      // Check if user is an admin (admins can edit any campaign character as if they were a GM)
+      const user = await storage.getUser(req.session.userId!);
+      const isAdmin = user?.isAdmin || ADMIN_EMAILS.includes(user?.email?.toLowerCase() || '');
+      
+      // Regular character - use normal permission checks (admins bypass access check but still validate)
       const access = await checkCharacterAccess(req.params.id, req.session.userId!, 'edit');
       
       if (!access.campaign) {
         return res.status(404).json({ error: "Campaign not found" });
       }
       
-      if (!access.allowed) {
+      // Admin override: if user is admin, they have access even if checkCharacterAccess said no
+      if (!access.allowed && !isAdmin) {
         return res.status(403).json({ error: "You don't have permission to edit this character" });
       }
 
-      // Validate update based on GM status and edit permissions
-      // canEditSheet is true if user is owner, GM, or has 'edit' permission level
-      const canEditSheet = access.isOwner || access.isGM || access.allowed;
+      // Validate update based on GM status (admins count as GMs for validation purposes)
+      // canEditSheet is true if user is owner, GM, admin, or has 'edit' permission level
+      const effectiveIsGM = access.isGM || isAdmin;
+      const canEditSheet = access.isOwner || effectiveIsGM || access.allowed;
       try {
-        validateCharacterUpdate(req.body, access.isGM, canEditSheet);
+        validateCharacterUpdate(req.body, effectiveIsGM, canEditSheet);
       } catch (validationErr: any) {
         return res.status(403).json({ error: validationErr.message });
       }

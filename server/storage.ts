@@ -883,33 +883,46 @@ export class DatabaseStorage implements IStorage {
       })
       .returning();
     
-    // Copy items from template to new character
+    // Track old ID -> new ID mappings for items and spells
+    const itemIdMap = new Map<string, string>();
+    const spellIdMap = new Map<string, string>();
+    
+    // Copy items from template to new character, tracking ID mappings
     const templateItems = await this.getItemsByCharacter(templateId);
     for (const item of templateItems) {
-      const { id: itemId, createdAt: itemCreatedAt, characterId, ...itemData } = item;
-      await db.insert(items).values({
+      const { id: oldItemId, createdAt: itemCreatedAt, characterId, ...itemData } = item;
+      const [newItem] = await db.insert(items).values({
         ...itemData,
         characterId: newChar.id,
-      });
+      }).returning();
+      itemIdMap.set(oldItemId, newItem.id);
     }
     
-    // Copy hotbars from template
+    // Copy spells from template to new character, tracking ID mappings
+    const templateSpells = await this.getSpellsByCharacter(templateId);
+    for (const spell of templateSpells) {
+      const { id: oldSpellId, characterId, ...spellData } = spell;
+      const [newSpell] = await db.insert(spells).values({
+        ...spellData,
+        characterId: newChar.id,
+      }).returning();
+      spellIdMap.set(oldSpellId, newSpell.id);
+    }
+    
+    // Copy hotbars from template, remapping item/spell IDs to new ones
     const templateHotbars = await this.getHotbarsByCharacter(templateId);
     for (const hotbar of templateHotbars) {
-      const { id: hotbarId, characterId, ...hotbarData } = hotbar;
+      const { id: hotbarId, characterId, itemId: oldItemId, spellId: oldSpellId, ...hotbarData } = hotbar;
+      
+      // Remap item and spell IDs to the newly copied ones
+      const newItemId = oldItemId ? itemIdMap.get(oldItemId) || null : null;
+      const newSpellId = oldSpellId ? spellIdMap.get(oldSpellId) || null : null;
+      
       await db.insert(hotbars).values({
         ...hotbarData,
         characterId: newChar.id,
-      });
-    }
-    
-    // Copy spells from template
-    const templateSpells = await this.getSpellsByCharacter(templateId);
-    for (const spell of templateSpells) {
-      const { id: spellId, characterId, ...spellData } = spell;
-      await db.insert(spells).values({
-        ...spellData,
-        characterId: newChar.id,
+        itemId: newItemId,
+        spellId: newSpellId,
       });
     }
     
