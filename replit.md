@@ -18,7 +18,9 @@ Preferred communication style: Simple, everyday language.
     - **Scene Management**: Folder-based organization for scenes with drag-drop support. **View/Activate buttons** separate GM editing from player visibility - GMs can "View" a scene privately for editing while a different scene remains "Active" for players. WebSocket-synced active scene changes.
     - **Character Sheet**: Mobile-optimized design, responsive layout, single-scroll interface, and real-time updates.
     - **Species/Race System**: Database-driven management of custom species with auto-filled attributes. Supports both **System Species** (admin-created, global) and **Campaign Species** (GM-created, campaign-local with "(Campaign)" badge).
-    - **Level-Up HP System**: Dynamic HP gain based on species `hpPerLevel` and level-dependent dice rolls.
+    - **Level-Up HP System**: Dynamic HP gain based on species `hpPerLevel` and level-dependent dice rolls. HP gains add to both current HP and max HP. Dice count: 1 base + 1 extra every 3 levels (1d at L1, 1d at L2, 2d at L3, etc.).
+    - **Level-Up Energy System**: Dynamic energy gain with 1d6 per level, 2d6 when level is divisible by 3. Energy gains add to both current energy and max energy. Separate tracking from HP level-ups.
+    - **Character Templates**: Admin-created pre-configured character sheets with folder organization. Templates can be copied to campaigns by GMs. Admin template folders for organizing templates by type/category.
     - **Attributes & Skills**: Six core attributes and seventeen skills with modifiers. Features single-click rolls, Roll Modifier Panel, and d30 usage for high attribute values. Includes a flexible **Custom Skills System** for admin-defined and character-specific skills.
     - **Traits System**: Admin-defined and character-specific traits with uses-per-long-rest tracking. Traits reset on long rest. Full admin management in Admin Settings and character sheet integration with use tracking, rolling, and visual uses display.
     - **Rest Mechanics**: Short and Long Rest options that restore HP and manage exhaustion, consuming rations automatically.
