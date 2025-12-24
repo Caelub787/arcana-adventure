@@ -10073,6 +10073,9 @@ export function CharacterSheet({ character, isGM, isOwner, accessLevel = 'view',
   const [showAddCustomSkill, setShowAddCustomSkill] = useState(false);
   const [editingCustomSkill, setEditingCustomSkill] = useState<CharacterCustomSkill | null>(null);
   
+  // State for editing custom skill values inline (during Edit Skills mode)
+  const [customSkillsEditData, setCustomSkillsEditData] = useState<Record<string, number | string>>({});
+  
   // State for trait management
   const [showAddTrait, setShowAddTrait] = useState(false);
   const [editingTrait, setEditingTrait] = useState<CharacterTrait | null>(null);
@@ -12220,7 +12223,7 @@ export function CharacterSheet({ character, isGM, isOwner, accessLevel = 'view',
           <TabsContent value="skills" className="space-y-4 mt-0" data-testid="content-skills">
             <Card className="bg-stone-800 border-stone-700">
               <CardContent className="pt-4">
-                {(isOwner || isGM) && !editingSkills && (
+                {canEditSheet && !editingSkills && (
                   <div className="flex justify-end mb-2">
                     <Button
                       size="sm"
@@ -12243,6 +12246,12 @@ export function CharacterSheet({ character, isGM, isOwner, accessLevel = 'view',
                           skillStrength: liveCharacter.skillStrength || 0,
                           skillWisdom: liveCharacter.skillWisdom || 0
                         });
+                        // Initialize custom skills edit data
+                        const customSkillsInit: Record<string, number | string> = {};
+                        characterCustomSkills.forEach((cs: CharacterCustomSkill) => {
+                          customSkillsInit[cs.id] = cs.value || 0;
+                        });
+                        setCustomSkillsEditData(customSkillsInit);
                         setEditingSkills(true);
                       }}
                       data-testid="button-edit-skills"
@@ -12257,7 +12266,8 @@ export function CharacterSheet({ character, isGM, isOwner, accessLevel = 'view',
                   const maxPositiveSkillPoints = 12 + ((level - 1) * 2);
                   const maxNegativeSkillPoints = 6;
                   
-                  const skillValues = editingSkills 
+                  // Standard skill values
+                  const standardSkillValues = editingSkills 
                     ? [
                         skillsData.skillAgility === '' ? 0 : Number(skillsData.skillAgility),
                         skillsData.skillArcana === '' ? 0 : Number(skillsData.skillArcana),
@@ -12292,6 +12302,17 @@ export function CharacterSheet({ character, isGM, isOwner, accessLevel = 'view',
                         liveCharacter.skillStrength || 0,
                         liveCharacter.skillWisdom || 0
                       ];
+                  
+                  // Custom skill values (add to totals)
+                  const customSkillValues = editingSkills
+                    ? characterCustomSkills.map((cs: CharacterCustomSkill) => {
+                        const val = customSkillsEditData[cs.id];
+                        return val === '' ? 0 : Number(val ?? cs.value ?? 0);
+                      })
+                    : characterCustomSkills.map((cs: CharacterCustomSkill) => cs.value || 0);
+                  
+                  // Combine all skill values for point calculation
+                  const skillValues = [...standardSkillValues, ...customSkillValues];
                   
                   const positiveSkillUsed = skillValues.filter(v => v > 0).reduce((sum, v) => sum + v, 0);
                   const negativeSkillUsed = Math.abs(skillValues.filter(v => v < 0).reduce((sum, v) => sum + v, 0));
@@ -12432,11 +12453,24 @@ export function CharacterSheet({ character, isGM, isOwner, accessLevel = 'view',
                   <div className="flex gap-2 pt-4 mt-4 border-t border-stone-700">
                     <Button
                       size="sm"
-                      onClick={() => {
+                      onClick={async () => {
+                        // Save standard skills
                         const dataToSave = Object.fromEntries(
                           Object.entries(skillsData).map(([key, val]) => [key, val === '' ? 0 : Number(val)])
                         );
                         updateCharacterMutation.mutate(dataToSave);
+                        
+                        // Save custom skill changes
+                        for (const [skillId, value] of Object.entries(customSkillsEditData)) {
+                          const numValue = value === '' ? 0 : Number(value);
+                          const originalSkill = characterCustomSkills.find((cs: CharacterCustomSkill) => cs.id === skillId);
+                          if (originalSkill && originalSkill.value !== numValue) {
+                            await api.updateCharacterCustomSkill(character.id, skillId, { value: numValue });
+                          }
+                        }
+                        
+                        // Refetch custom skills to get updated values
+                        refetchCustomSkills();
                         setEditingSkills(false);
                       }}
                       data-testid="button-save-skills"
@@ -12490,8 +12524,43 @@ export function CharacterSheet({ character, isGM, isOwner, accessLevel = 'view',
                       const attrValue = typeof liveCharacter[parentAttr as keyof typeof liveCharacter] === 'number' 
                         ? (liveCharacter[parentAttr as keyof typeof liveCharacter] as number) 
                         : 0;
-                      const skillValue = customSkill.value || 0;
+                      const editValue = customSkillsEditData[customSkill.id];
+                      const skillValue = editingSkills 
+                        ? (editValue === '' ? 0 : Number(editValue ?? customSkill.value ?? 0))
+                        : (customSkill.value || 0);
                       const totalMod = skillValue + attrValue;
+                      
+                      // In edit mode, show editable input
+                      if (editingSkills) {
+                        return (
+                          <div key={customSkill.id} className="flex flex-col gap-1 p-3 bg-stone-900 border border-cyan-700 rounded-md">
+                            <Label className="text-xs text-cyan-300">{customSkill.name} <span className="text-stone-500 capitalize">({parentAttr})</span></Label>
+                            <Input
+                              type="number"
+                              min="-2"
+                              max="5"
+                              value={customSkillsEditData[customSkill.id] ?? customSkill.value ?? 0}
+                              onChange={(e) => {
+                                if (e.target.value === '') {
+                                  setCustomSkillsEditData({
+                                    ...customSkillsEditData,
+                                    [customSkill.id]: ''
+                                  });
+                                } else {
+                                  const parsed = parseInt(e.target.value);
+                                  const newVal = Math.max(-2, Math.min(5, parsed));
+                                  setCustomSkillsEditData({
+                                    ...customSkillsEditData,
+                                    [customSkill.id]: newVal
+                                  });
+                                }
+                              }}
+                              className="bg-stone-800 border-cyan-700 text-center font-bold"
+                              data-testid={`input-custom-skill-${customSkill.id}`}
+                            />
+                          </div>
+                        );
+                      }
                       
                       return (
                         <Badge 
