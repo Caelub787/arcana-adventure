@@ -5,6 +5,7 @@ export interface User {
   email: string;
   username: string;
   name: string;
+  isAdmin?: boolean;
 }
 
 export interface Campaign {

@@ -1,9 +1,6 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { api, type User } from './api';
 
-// Admin emails with system-wide access
-const ADMIN_EMAILS = ['notclaudenot@gmail.com', 'reedmcaleb@gmail.com'];
-
 interface AuthContextType {
   user: User | null;
   loading: boolean;
@@ -49,7 +46,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   };
 
-  const isAdmin = user ? ADMIN_EMAILS.includes(user.email.toLowerCase()) : false;
+  // isAdmin comes from server response
+  const isAdmin = user?.isAdmin ?? false;
 
   return (
     <AuthContext.Provider value={{ user, loading, isAdmin, login, register, logout }}>

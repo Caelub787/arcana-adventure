@@ -1226,7 +1226,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           id: user.id, 
           email: user.email, 
           username: user.username, 
-          name: user.name 
+          name: user.name,
+          isAdmin: ADMIN_EMAILS.includes(user.email.toLowerCase())
         } 
       });
     } catch (err) {
@@ -1260,7 +1261,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           id: user.id, 
           email: user.email, 
           username: user.username, 
-          name: user.name 
+          name: user.name,
+          isAdmin: ADMIN_EMAILS.includes(user.email.toLowerCase())
         } 
       });
     } catch (err) {
@@ -1285,7 +1287,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         id: user.id, 
         email: user.email, 
         username: user.username, 
-        name: user.name 
+        name: user.name,
+        isAdmin: ADMIN_EMAILS.includes(user.email.toLowerCase())
       } 
     });
   });
