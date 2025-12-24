@@ -1125,7 +1125,13 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
           const tokenImage = character?.portrait || token.image;
           const hpPercent = character ? (character.hp / character.maxHp) * 100 : null;
           const effectiveGridSize = scene?.gridSize || gridSize;
-          const canDrag = role === 'gm' || token.type === 'player';
+          
+          // Check if user can drag this token:
+          // - GMs can drag any token
+          // - Players can drag 'player' type tokens
+          // - Users with 'edit' access to the linked character can drag that character's token
+          const hasEditAccess = character && myPermissions?.permissions?.[character.id] === 'edit';
+          const canDrag = role === 'gm' || token.type === 'player' || hasEditAccess;
           
           // Get species size for grid span calculation
           const speciesData = character?.race ? allSpecies.find(s => s.name === character.race) : null;
