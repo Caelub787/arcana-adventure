@@ -551,7 +551,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getUserCampaigns(userId: string): Promise<{ created: any[], joined: any[] }> {
-    // Get campaigns where user is GM (with favorite status)
+    // Get campaigns where user is GM (owner) with favorite status
     const createdCampaignsData = await db.select()
       .from(campaigns)
       .leftJoin(campaignMembers, and(
@@ -563,10 +563,27 @@ export class DatabaseStorage implements IStorage {
 
     const createdCampaigns = createdCampaignsData.map((row: any) => ({
       ...row.campaigns,
-      favorite: row.campaign_members?.favorite ?? false
+      favorite: row.campaign_members?.favorite ?? false,
+      userRole: 'gm' // Owner always has gm role
     }));
 
-    // Get campaigns where user is a member (but not GM)
+    // Get campaigns where user is assistant_gm (not owner but has GM privileges)
+    const assistantGmCampaignsData = await db.select()
+      .from(campaignMembers)
+      .innerJoin(campaigns, eq(campaignMembers.campaignId, campaigns.id))
+      .where(and(
+        eq(campaignMembers.userId, userId),
+        eq(campaignMembers.role, "assistant_gm")
+      ))
+      .orderBy(desc(campaigns.lastPlayed));
+
+    const assistantGmCampaigns = assistantGmCampaignsData.map((row: any) => ({
+      ...row.campaigns,
+      favorite: row.campaign_members?.favorite ?? false,
+      userRole: 'gm' // Assistant GM also gets gm role for UI purposes
+    }));
+
+    // Get campaigns where user is a regular player member (but not GM/assistant_gm)
     const joinedCampaignsData = await db.select()
       .from(campaignMembers)
       .innerJoin(campaigns, eq(campaignMembers.campaignId, campaigns.id))
@@ -578,11 +595,13 @@ export class DatabaseStorage implements IStorage {
 
     const joinedCampaigns = joinedCampaignsData.map((row: any) => ({
       ...row.campaigns,
-      favorite: row.campaign_members?.favorite ?? false
+      favorite: row.campaign_members?.favorite ?? false,
+      userRole: 'player'
     }));
 
     return {
-      created: createdCampaigns,
+      // Include both owners and assistant GMs in 'created' since they have GM privileges
+      created: [...createdCampaigns, ...assistantGmCampaigns],
       joined: joinedCampaigns
     };
   }

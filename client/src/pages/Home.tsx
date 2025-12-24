@@ -92,9 +92,8 @@ export default function Home() {
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {favorites.map((campaign: any) => {
                     const isCreated = (userCampaigns.created ?? []).some((c: any) => c.id === campaign.id);
-                    const role = isCreated ? 'gm' : 'player';
                     return (
-                      <Link key={campaign.id} href={`/campaign/${campaign.id}?role=${role}`} data-testid={`link-campaign-${campaign.id}`}>
+                      <Link key={campaign.id} href={`/campaign/${campaign.id}`} data-testid={`link-campaign-${campaign.id}`}>
                         <Card className="group cursor-pointer border-stone-800 bg-stone-950/40 backdrop-blur-sm transition-all hover:-translate-y-1 hover:border-red-900/50 hover:bg-stone-900/60">
                           <CardContent className="p-4 flex items-center justify-between">
                             <div>

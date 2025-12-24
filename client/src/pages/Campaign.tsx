@@ -668,7 +668,6 @@ export default function Campaign() {
   const search = useSearch();
   const [match, params] = useRoute("/campaign/:id");
   const queryParams = new URLSearchParams(search);
-  const role = (queryParams.get("role") as "gm" | "player") || "player";
   const isNew = queryParams.get("new") === "true";
   const campaignId = params?.id;
 
@@ -864,6 +863,15 @@ export default function Campaign() {
     enabled: !!effectiveCampaignId && !isNew,
   });
 
+  // Derive user's role from the campaign data returned by the server
+  // This is more secure than relying on URL query params
+  // For new campaigns being created, the creator is always GM
+  const role: 'gm' | 'player' = isNew 
+    ? 'gm' 
+    : (campaign && typeof campaign === 'object' && 'userRole' in campaign 
+        ? ((campaign as any).userRole as 'gm' | 'player') 
+        : 'player');
+
   // Get campaign's active scene ID (what players see)
   const campaignActiveSceneId = campaign && typeof campaign === 'object' && 'activeSceneId' in campaign ? (campaign as any).activeSceneId as string | null : null;
 
@@ -1031,7 +1039,7 @@ export default function Campaign() {
     onSuccess: (newCampaign) => {
       setCreatedCampaignId(newCampaign.id);
       queryClient.invalidateQueries({ queryKey: ['/api/campaigns'] });
-      setLocation(`/campaign/${newCampaign.id}?role=gm`);
+      setLocation(`/campaign/${newCampaign.id}`);
     },
     onError: (error: any) => {
       toast({ title: "Error", description: error.message || "Failed to create campaign", variant: "destructive" });
@@ -1597,12 +1605,31 @@ export default function Campaign() {
           );
         }
         if (data.type === 'active_scene_changed') {
-          // Force immediate refetch of campaign and scenes for active scene change
-          queryClientRef.current.refetchQueries({ queryKey: [`/api/campaigns/${effectiveCampaignId}`] });
-          queryClientRef.current.refetchQueries({ queryKey: [`/api/campaigns/${effectiveCampaignId}/scenes`] });
+          // Immediately update campaign cache with new active scene ID
+          queryClientRef.current.setQueryData(
+            [`/api/campaigns/${effectiveCampaignId}`],
+            (oldData: any) => {
+              if (!oldData) return oldData;
+              return { ...oldData, activeSceneId: data.sceneId };
+            }
+          );
+          
+          // Update scene data if included
+          if (data.scene) {
+            queryClientRef.current.setQueryData(
+              [`/api/scenes/${data.sceneId}`],
+              data.scene
+            );
+          }
+          
+          // Refetch tokens for the new active scene
           if (data.sceneId) {
+            queryClientRef.current.invalidateQueries({ queryKey: [`/api/campaigns/${effectiveCampaignId}/tokens`] });
             queryClientRef.current.refetchQueries({ queryKey: [`/api/scenes/${data.sceneId}`] });
           }
+          
+          // Refetch scenes list to update UI
+          queryClientRef.current.refetchQueries({ queryKey: [`/api/campaigns/${effectiveCampaignId}/scenes`] });
         }
         
         // Handle chat messages - real-time chat

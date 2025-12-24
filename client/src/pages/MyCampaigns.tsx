@@ -124,12 +124,11 @@ export default function MyCampaigns() {
   const renderCampaignCard = (campaign: any, type: 'created' | 'joined') => {
     const isCreated = type === 'created';
     const borderColor = isCreated ? 'hover:border-amber-900/50' : 'hover:border-blue-900/50';
-    const role = isCreated ? 'gm' : 'player';
     const launchButton = isCreated 
       ? (
         <Button 
           className="w-full bg-amber-900/50 hover:bg-amber-800 text-amber-100 border border-amber-900" 
-          onClick={() => setLocation(`/campaign/${campaign.id}?role=gm`)}
+          onClick={() => setLocation(`/campaign/${campaign.id}`)}
           data-testid={`button-launch-${campaign.id}`}
         >
           <Play className="h-4 w-4 mr-2" /> Launch
@@ -138,7 +137,7 @@ export default function MyCampaigns() {
       : (
         <Button 
           className="w-full bg-blue-900/30 hover:bg-blue-800/50 text-blue-100 border border-blue-900" 
-          onClick={() => setLocation(`/campaign/${campaign.id}?role=player`)}
+          onClick={() => setLocation(`/campaign/${campaign.id}`)}
           data-testid={`button-resume-${campaign.id}`}
         >
           <Play className="h-4 w-4 mr-2" /> Resume
@@ -224,7 +223,7 @@ export default function MyCampaigns() {
           {/* New Campaign Button - Prominent */}
           <Button 
             className="bg-amber-700 hover:bg-amber-600 text-white font-bold shadow-lg shadow-amber-900/20"
-            onClick={() => setLocation("/campaign?role=gm&new=true")}
+            onClick={() => setLocation("/campaign?new=true")}
           >
             <Plus className="h-4 w-4 mr-2" /> New Campaign
           </Button>

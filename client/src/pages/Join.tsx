@@ -25,7 +25,7 @@ export default function Join() {
           title: "Joined Campaign",
           description: `You have joined "${campaign.name}"!`,
         });
-        setLocation(`/campaign/${campaign.id}?role=player`);
+        setLocation(`/campaign/${campaign.id}`);
       } catch (err: any) {
         setError(err.message || "Failed to join campaign");
         setJoining(false);

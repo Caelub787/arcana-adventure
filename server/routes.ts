@@ -345,7 +345,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
           
           // Store campaign with role in Map
-          const role = isGM ? "gm" : membership?.role || "player";
+          // Both owner (gmUserId) and assistant_gm get "gm" role for privileges
+          const role = isGM ? "gm" : (membership?.role === 'assistant_gm' ? 'gm' : membership?.role || "player");
           (ws as any).campaigns.set(campaignId, { role });
           
           // Join room
@@ -1402,7 +1403,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (!campaign) {
       return res.status(404).json({ error: "Campaign not found" });
     }
-    res.json(campaign);
+    
+    // Determine user's role in this campaign
+    const userId = req.session.userId!;
+    const isOwner = campaign.gmUserId === userId;
+    
+    let userRole: 'gm' | 'player' = 'player';
+    if (isOwner) {
+      userRole = 'gm';
+    } else {
+      // Check membership for assistant_gm role
+      const membership = await storage.getCampaignMembership(userId, req.params.id);
+      if (membership?.role === 'assistant_gm') {
+        userRole = 'gm';
+      }
+    }
+    
+    res.json({ ...campaign, userRole });
   });
   
   // Get chat messages for a campaign
@@ -1427,7 +1444,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const members = await storage.getCampaignMembers(campaignId);
       const member = members.find(m => m.userId === userId);
       
-      if (!member || member.role !== 'gm') {
+      if (!member || (member.role !== 'gm' && member.role !== 'assistant_gm')) {
         return res.status(403).json({ error: "Only the GM can clear chat" });
       }
       
