@@ -1499,8 +1499,12 @@ export default function Campaign() {
           }
         }
         if (data.type === 'dice_roll' && data.roll) {
-          // Trigger battlemap dice notification
-          triggerBattlemapDiceRoll(data.roll);
+          // Trigger battlemap dice notification - use nickname if available
+          const rollWithNickname = {
+            ...data.roll,
+            username: data.roll.userId ? getDisplayName(data.roll.userId, data.roll.username) : data.roll.username
+          };
+          triggerBattlemapDiceRoll(rollWithNickname);
         }
         if (data.type === 'initiative_roll') {
           // Trigger initiative roll notification - use nickname if available

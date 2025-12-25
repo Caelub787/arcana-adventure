@@ -6499,7 +6499,13 @@ export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onIn
                 return (
                   <div key={member.id} className="flex items-center justify-between p-2 bg-stone-800 rounded" data-testid={`access-row-${member.userId}`}>
                     <div className="flex items-center gap-2">
-                      <span className="text-stone-200">{member.username}</span>
+                      <span className="text-stone-200">
+                        {member.nickname ? (
+                          <>{member.nickname} <span className="text-stone-500 text-xs">(@{member.username})</span></>
+                        ) : (
+                          <>@{member.username}</>
+                        )}
+                      </span>
                       {isOwner && <Badge className="bg-amber-600 text-xs">Owner</Badge>}
                     </div>
                     <Select
@@ -10064,10 +10070,10 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
   }, [character]);
   
   // Edit data states - includes race stats
-  // HP/Energy fields allow string | number to support empty input during editing
+  // HP/Energy/Level fields allow string | number to support empty input during editing
   const [overviewData, setOverviewData] = useState<{
     name: string;
-    level: number;
+    level: number | string;
     hp: number | string;
     maxHp: number | string;
     energy: number | string;
@@ -11785,7 +11791,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                             min="1"
                             max="20"
                             value={overviewData.level}
-                            onChange={(e) => setOverviewData({ ...overviewData, level: parseInt(e.target.value) || 1 })}
+                            onChange={(e) => setOverviewData({ ...overviewData, level: e.target.value === '' ? '' : parseInt(e.target.value) })}
                             className="bg-stone-900 border-stone-700 text-stone-200"
                             data-testid="input-edit-level"
                           />
@@ -12148,6 +12154,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                       onClick={() => {
                         const dataToSave = {
                           ...overviewData,
+                          level: overviewData.level === '' ? 1 : Number(overviewData.level),
                           hp: overviewData.hp === '' ? 0 : Number(overviewData.hp),
                           maxHp: overviewData.maxHp === '' ? 1 : Number(overviewData.maxHp),
                           energy: overviewData.energy === '' ? 0 : Number(overviewData.energy),

@@ -1765,7 +1765,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // If it's a template, only admins can edit it
       if (character.isTemplate) {
         const user = await storage.getUser(req.session.userId!);
-        if (!user?.isAdmin) {
+        const userIsAdmin = ADMIN_EMAILS.includes(user?.email?.toLowerCase() || '');
+        if (!userIsAdmin) {
           return res.status(403).json({ error: "Only admins can edit character templates" });
         }
         // Admin editing a template - proceed directly without campaign checks
