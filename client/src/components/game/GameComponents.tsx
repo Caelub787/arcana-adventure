@@ -10527,13 +10527,15 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
   
   // Auto-correct character stats when species data loads and there's a mismatch
   // This fixes characters created before species data was properly configured
+  // IMPORTANT: Must account for both HP and Energy level-up bonuses
   const hasAutoCorrectRef = useRef(false);
   useEffect(() => {
     if (hasAutoCorrectRef.current || !currentSpecies || !liveCharacter.id) return;
     
     const bonusHp = liveCharacter.bonusHpFromLevelUps || 0;
+    const bonusEnergy = liveCharacter.bonusEnergyFromLevelUps || 0;
     const expectedMaxHp = currentSpecies.startingMaxHp + bonusHp;
-    const expectedMaxEnergy = currentSpecies.startingMaxEnergy;
+    const expectedMaxEnergy = currentSpecies.startingMaxEnergy + bonusEnergy;
     
     // Check if there's a mismatch that needs correction
     const hpMismatch = liveCharacter.maxHp !== expectedMaxHp;
@@ -10578,7 +10580,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
         }
       });
     }
-  }, [currentSpecies, liveCharacter.id, liveCharacter.maxHp, liveCharacter.maxEnergy, liveCharacter.bonusHpFromLevelUps]);
+  }, [currentSpecies, liveCharacter.id, liveCharacter.maxHp, liveCharacter.maxEnergy, liveCharacter.bonusHpFromLevelUps, liveCharacter.bonusEnergyFromLevelUps]);
   
   // Calculate dice count for HP: 1 base + 1 extra every 3 levels
   const calculateDiceCount = (level: number) => {
