@@ -5184,6 +5184,7 @@ function SpeciesFormDialog({ open, onOpenChange, onSave, initialData, isLoading,
     hpPerLevel: number | string;
     startingEnergy: number | string;
     startingMaxEnergy: number | string;
+    energyPerLevel: number | string;
     carryWeight: number | string;
     featTree: string;
   }>({
@@ -5201,6 +5202,7 @@ function SpeciesFormDialog({ open, onOpenChange, onSave, initialData, isLoading,
     hpPerLevel: initialData?.hpPerLevel ?? '',
     startingEnergy: initialData?.startingEnergy ?? '',
     startingMaxEnergy: initialData?.startingMaxEnergy ?? '',
+    energyPerLevel: (initialData as any)?.energyPerLevel ?? '',
     carryWeight: initialData?.carryWeight ?? '',
     featTree: initialData?.featTree || '',
   });
@@ -5251,6 +5253,7 @@ function SpeciesFormDialog({ open, onOpenChange, onSave, initialData, isLoading,
       hpPerLevel: Number(formData.hpPerLevel) || 5,
       startingEnergy: Number(formData.startingEnergy) || 10,
       startingMaxEnergy: Number(formData.startingMaxEnergy) || 10,
+      energyPerLevel: Number(formData.energyPerLevel) || 6,
       carryWeight: Number(formData.carryWeight) || 50,
     });
   };
@@ -5472,6 +5475,17 @@ function SpeciesFormDialog({ open, onOpenChange, onSave, initialData, isLoading,
                   onChange={(e) => handleNumericChange('startingMaxEnergy', e.target.value)}
                   className="bg-stone-800 border-stone-700"
                   data-testid="input-species-startingmaxenergy"
+                />
+              </div>
+
+              <div>
+                <Label>Energy Per Level</Label>
+                <Input
+                  type="number"
+                  value={formData.energyPerLevel}
+                  onChange={(e) => handleNumericChange('energyPerLevel', e.target.value)}
+                  className="bg-stone-800 border-stone-700"
+                  data-testid="input-species-energyperlevel"
                 />
               </div>
 

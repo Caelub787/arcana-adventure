@@ -19,7 +19,9 @@ Preferred communication style: Simple, everyday language.
     - **Character Sheet**: Mobile-optimized design, responsive layout, single-scroll interface, and real-time updates.
     - **Species/Race System**: Database-driven management of custom species with auto-filled attributes. Supports both **System Species** (admin-created, global) and **Campaign Species** (GM-created, campaign-local with "(Campaign)" badge).
     - **Level-Up HP System**: Dynamic HP gain based on species `hpPerLevel` and level-dependent dice rolls. HP gains add to both current HP and max HP. Dice count: 1 base + 1 extra every 3 levels (1d at L1, 1d at L2, 2d at L3, etc.).
-    - **Level-Up Energy System**: Dynamic energy gain with 1d6 per level, 2d6 when level is divisible by 3. Energy gains add to both current energy and max energy. Separate tracking from HP level-ups.
+    - **Level-Up Energy System**: Dynamic energy gain based on species `energyPerLevel` (configurable die size per species, default d6). Dice count: 2d when level is divisible by 3, otherwise 1d. Energy gains add to both current energy and max energy. Separate tracking from HP level-ups.
+    - **Campaign Chat**: Real-time chat with dice roll integration, automatic scroll to latest messages when opened.
+    - **Player Nicknames**: GMs can set campaign-specific nicknames for players that display in roll notifications instead of usernames.
     - **Character Templates**: Admin-created pre-configured character sheets with folder organization. Templates can be copied to campaigns by GMs. Admin template folders for organizing templates by type/category.
     - **Attributes & Skills**: Six core attributes and seventeen skills with modifiers. Features single-click rolls, Roll Modifier Panel, and d30 usage for high attribute values. Includes a flexible **Custom Skills System** for admin-defined and character-specific skills.
     - **Traits System**: Admin-defined and character-specific traits with uses-per-long-rest tracking. Traits reset on long rest. Full admin management in Admin Settings and character sheet integration with use tracking, rolling, and visual uses display.

@@ -10520,9 +10520,10 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
   const canLevelUpEnergy = (liveCharacter.level || 1) > (liveCharacter.lastEnergyLevelUpRolled || 1);
   const missedEnergyLevels = Math.max(0, (liveCharacter.level || 1) - (liveCharacter.lastEnergyLevelUpRolled || 1));
   
-  // Get current species for HP per level calculation
+  // Get current species for HP and Energy per level calculation
   const currentSpecies = systemSpecies.find((s: SystemSpecies) => s.name === liveCharacter.race);
   const hpPerLevel = currentSpecies?.hpPerLevel || 5; // Default to d5 if no species found
+  const energyPerLevel = (currentSpecies as any)?.energyPerLevel || 6; // Default to d6 if no species found
   
   // Auto-correct character stats when species data loads and there's a mismatch
   // This fixes characters created before species data was properly configured
@@ -10633,12 +10634,11 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
   const handleLevelUpEnergyRoll = () => {
     // Roll for the current rolling level (not character's current level)
     const diceCount = calculateEnergyDiceCount(rollingEnergyLevel);
-    const dieSize = 6; // Energy always uses d6
     
-    // Roll the dice
+    // Roll the dice using species-specific energy die size
     const diceRolls: number[] = [];
     for (let i = 0; i < diceCount; i++) {
-      diceRolls.push(Math.floor(Math.random() * dieSize) + 1);
+      diceRolls.push(Math.floor(Math.random() * energyPerLevel) + 1);
     }
     const total = diceRolls.reduce((sum, roll) => sum + roll, 0);
     
@@ -10647,7 +10647,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
       diceRolls,
       total,
       diceCount,
-      dieSize,
+      dieSize: energyPerLevel,
       forLevel: rollingEnergyLevel
     };
     setLevelUpEnergyResult(result);
@@ -10664,7 +10664,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
     });
     
     // Send to chat as a dice roll notification
-    gameWs.sendDiceRoll(`d6`, total, `Level ${rollingEnergyLevel} Energy Roll`, liveCharacter.id);
+    gameWs.sendDiceRoll(`d${energyPerLevel}`, total, `Level ${rollingEnergyLevel} Energy Roll`, liveCharacter.id);
     
     // Advance to next level for next roll
     setRollingEnergyLevel(prev => prev + 1);

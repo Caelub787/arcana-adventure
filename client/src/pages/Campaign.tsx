@@ -300,6 +300,7 @@ function CampaignSpeciesFormDialog({ open, onOpenChange, onSave, initialData, is
     hpPerLevel: number | string;
     startingEnergy: number | string;
     startingMaxEnergy: number | string;
+    energyPerLevel: number | string;
     carryWeight: number | string;
     featTree: string;
   }>({
@@ -317,6 +318,7 @@ function CampaignSpeciesFormDialog({ open, onOpenChange, onSave, initialData, is
     hpPerLevel: '',
     startingEnergy: '',
     startingMaxEnergy: '',
+    energyPerLevel: '',
     carryWeight: '',
     featTree: '',
   });
@@ -342,6 +344,7 @@ function CampaignSpeciesFormDialog({ open, onOpenChange, onSave, initialData, is
         hpPerLevel: initialData?.hpPerLevel ?? '',
         startingEnergy: initialData?.startingEnergy ?? '',
         startingMaxEnergy: initialData?.startingMaxEnergy ?? '',
+        energyPerLevel: (initialData as any)?.energyPerLevel ?? '',
         carryWeight: initialData?.carryWeight ?? '',
         featTree: initialData?.featTree || '',
       });
@@ -388,8 +391,9 @@ function CampaignSpeciesFormDialog({ open, onOpenChange, onSave, initialData, is
       hpPerLevel: Number(formData.hpPerLevel) || 5,
       startingEnergy: Number(formData.startingEnergy) || 10,
       startingMaxEnergy: Number(formData.startingMaxEnergy) || 10,
+      energyPerLevel: Number(formData.energyPerLevel) || 6,
       carryWeight: Number(formData.carryWeight) || 50,
-    });
+    } as any);
   };
 
   return (
@@ -595,6 +599,17 @@ function CampaignSpeciesFormDialog({ open, onOpenChange, onSave, initialData, is
                   onChange={(e) => handleNumericChange('startingMaxEnergy', e.target.value)}
                   className="bg-stone-800 border-stone-700"
                   placeholder="10"
+                />
+              </div>
+
+              <div>
+                <Label>Energy Per Level</Label>
+                <Input
+                  type="number"
+                  value={formData.energyPerLevel}
+                  onChange={(e) => handleNumericChange('energyPerLevel', e.target.value)}
+                  className="bg-stone-800 border-stone-700"
+                  placeholder="6"
                 />
               </div>
 

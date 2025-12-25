@@ -437,6 +437,7 @@ export const systemSpecies = pgTable("system_species", {
   hpPerLevel: integer("hp_per_level").default(5).notNull(),
   startingEnergy: integer("starting_energy").default(10).notNull(),
   startingMaxEnergy: integer("starting_max_energy").default(10).notNull(),
+  energyPerLevel: integer("energy_per_level").default(6).notNull(), // Dice size for energy level-ups (d6 by default)
   carryWeight: integer("carry_weight").default(50).notNull(), // Base carry weight capacity
   featTree: text("feat_tree").default(""), // Reference to the feat tree for this species
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -468,6 +469,7 @@ export const campaignSpecies = pgTable("campaign_species", {
   hpPerLevel: integer("hp_per_level").default(5).notNull(),
   startingEnergy: integer("starting_energy").default(10).notNull(),
   startingMaxEnergy: integer("starting_max_energy").default(10).notNull(),
+  energyPerLevel: integer("energy_per_level").default(6).notNull(), // Dice size for energy level-ups (d6 by default)
   carryWeight: integer("carry_weight").default(50).notNull(),
   featTree: text("feat_tree").default(""),
   createdAt: timestamp("created_at").defaultNow().notNull(),
