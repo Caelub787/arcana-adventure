@@ -1365,12 +1365,26 @@ export default function Campaign() {
   const toastRef = useRef(toast);
   const sceneIdForTokensRef = useRef(sceneIdForTokens);
   const effectiveCampaignIdRef = useRef(effectiveCampaignId);
+  const membersRef = useRef(members);
   useEffect(() => {
     queryClientRef.current = queryClient;
     toastRef.current = toast;
     sceneIdForTokensRef.current = sceneIdForTokens;
     effectiveCampaignIdRef.current = effectiveCampaignId;
-  }, [queryClient, toast, sceneIdForTokens, effectiveCampaignId]);
+    membersRef.current = members;
+  }, [queryClient, toast, sceneIdForTokens, effectiveCampaignId, members]);
+
+  // Helper function to get display name (nickname if set, otherwise username)
+  const getDisplayName = (userId: string, fallbackUsername: string): string => {
+    const currentMembers = membersRef.current as any[] | undefined;
+    if (currentMembers) {
+      const member = currentMembers.find((m: any) => m.userId === userId);
+      if (member?.nickname) {
+        return member.nickname;
+      }
+    }
+    return fallbackUsername;
+  };
 
   // WebSocket connection
   useEffect(() => {
@@ -1474,12 +1488,13 @@ export default function Campaign() {
           triggerBattlemapDiceRoll(data.roll);
         }
         if (data.type === 'initiative_roll') {
-          // Trigger initiative roll notification
+          // Trigger initiative roll notification - use nickname if available
+          const displayName = data.userId ? getDisplayName(data.userId, data.username) : data.username;
           triggerInitiativeNotification(
             data.result,
             data.modifier,
             data.total,
-            data.username,
+            displayName,
             data.characterName
           );
         }

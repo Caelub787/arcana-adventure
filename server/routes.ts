@@ -2588,6 +2588,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Set member nickname (GMs only)
+  app.patch("/api/campaigns/:campaignId/members/:memberId/nickname", requireAuth, async (req, res) => {
+    try {
+      const { campaignId, memberId } = req.params;
+      const { nickname } = req.body;
+      
+      // Only GMs can set nicknames
+      const canEdit = await storage.isGM(req.session.userId!, campaignId);
+      if (!canEdit) {
+        return res.status(403).json({ error: "Only GMs can set player nicknames" });
+      }
+      
+      const updatedMember = await storage.setMemberNickname(campaignId, memberId, nickname || null);
+      
+      // Broadcast member list update to all campaign members
+      const updatedMembers = await storage.getCampaignMembers(campaignId);
+      broadcastToCampaign(campaignId, {
+        type: "members_updated",
+        members: updatedMembers
+      });
+      
+      res.json(updatedMember);
+    } catch (err) {
+      console.error('Error setting member nickname:', err);
+      res.status(500).json({ error: "Failed to update member nickname" });
+    }
+  });
+
   // Kick a player (GM/Assistant GM - but cannot kick owner)
   app.post("/api/campaigns/:campaignId/kick/:userId", requireAuth, async (req, res) => {
     try {

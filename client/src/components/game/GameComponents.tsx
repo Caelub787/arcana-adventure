@@ -5120,10 +5120,15 @@ export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onIn
     return () => { unsubscribe(); };
   }, [campaignId, queryClient]);
   
-  // Auto-scroll to bottom when new messages arrive
+  // Auto-scroll to bottom when new messages arrive or when chat opens
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+    if (chatOpen) {
+      // Use setTimeout to ensure DOM is rendered before scrolling
+      setTimeout(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
+      }, 100);
+    }
+  }, [chatOpen, messages]);
 
   // Fetch banned players (only for GMs)
   const { data: bannedPlayers = [] } = useQuery({
@@ -5233,6 +5238,42 @@ export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onIn
 
   const handleRoleChange = (member: any, newRole: 'player' | 'assistant_gm') => {
     setMemberRoleMutation.mutate({ memberId: member.id, newRole });
+  };
+
+  // Nickname mutation (GMs only)
+  const [editingNickname, setEditingNickname] = useState<string | null>(null);
+  const [nicknameValue, setNicknameValue] = useState("");
+  
+  const setMemberNicknameMutation = useMutation({
+    mutationFn: ({ memberId, nickname }: { memberId: string; nickname: string | null }) => 
+      api.setMemberNickname(campaignId!, memberId, nickname),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${campaignId}/members`] });
+      setEditingNickname(null);
+      toast({
+        title: "Nickname Updated",
+        description: "Player nickname has been updated",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update nickname",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleStartEditNickname = (member: any) => {
+    setEditingNickname(member.id);
+    setNicknameValue(member.nickname || "");
+  };
+
+  const handleSaveNickname = (memberId: string) => {
+    setMemberNicknameMutation.mutate({ 
+      memberId, 
+      nickname: nicknameValue.trim() || null 
+    });
   };
 
   // Delete character mutation
@@ -5549,7 +5590,50 @@ export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onIn
                             </AvatarFallback>
                           </Avatar>
                           <div>
-                            <div className="text-amber-500 font-medium" data-testid={`text-username-${member.id}`}>@{member.username || 'Unknown'}</div>
+                            {/* Nickname editing (GMs) or display */}
+                            {editingNickname === member.id ? (
+                              <div className="flex items-center gap-1">
+                                <Input
+                                  type="text"
+                                  value={nicknameValue}
+                                  onChange={(e) => setNicknameValue(e.target.value)}
+                                  placeholder="Enter nickname..."
+                                  className="h-6 w-32 text-xs bg-stone-700 border-stone-600"
+                                  autoFocus
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') handleSaveNickname(member.id);
+                                    if (e.key === 'Escape') setEditingNickname(null);
+                                  }}
+                                />
+                                <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => handleSaveNickname(member.id)}>
+                                  <Check className="w-3 h-3" />
+                                </Button>
+                                <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => setEditingNickname(null)}>
+                                  <X className="w-3 h-3" />
+                                </Button>
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-1">
+                                <div data-testid={`text-username-${member.id}`}>
+                                  {member.nickname ? (
+                                    <span className="text-amber-500 font-medium">{member.nickname} <span className="text-stone-500 text-xs">(@{member.username})</span></span>
+                                  ) : (
+                                    <span className="text-amber-500 font-medium">@{member.username || 'Unknown'}</span>
+                                  )}
+                                </div>
+                                {role === 'gm' && (
+                                  <Button 
+                                    size="sm" 
+                                    variant="ghost" 
+                                    className="h-5 w-5 p-0 opacity-50 hover:opacity-100" 
+                                    onClick={() => handleStartEditNickname(member)}
+                                    title="Set nickname"
+                                  >
+                                    <Pencil className="w-3 h-3" />
+                                  </Button>
+                                )}
+                              </div>
+                            )}
                             {/* Role display - Owner can change non-owner roles */}
                             {isOwner && member.userId !== gmUserId ? (
                               <Select
