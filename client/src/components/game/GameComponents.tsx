@@ -339,7 +339,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
   const [animationTick, setAnimationTick] = useState(0);
   
   // Animation speed - milliseconds per grid cell
-  const ANIMATION_SPEED_MS_PER_CELL = 80;
+  const ANIMATION_SPEED_MS_PER_CELL = 120;
   
   // Track pending drag - only becomes actual drag when pointer moves beyond threshold
   const pendingDragRef = useRef<{
