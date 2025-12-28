@@ -22,7 +22,7 @@ import {
   Users, User, Plus, Minus, LogOut, Menu, ChevronRight, ChevronLeft, ChevronDown, ChevronUp,
   Heart, Zap, Backpack, Sparkles, Dice5, MessageSquare, RefreshCw, X, Trash2, Package, FolderOpen, Folder, FolderPlus, GripVertical, Lock, Unlock, Camera,
   BarChart3, Grid3X3, ScrollText, Upload, Image as ImageIcon, Layers, Search, TrendingUp, UserMinus, Ban,
-  MousePointer, Target, UserCheck, Swords, ArrowRight, ArrowLeft, Eye, EyeOff, Check, Moon, Coffee, AlertTriangle, GitBranch, Star, BookOpen, Pencil, Dna, Type, Library, Filter, MoreVertical, Flame
+  MousePointer, Target, UserCheck, Swords, ArrowRight, ArrowLeft, Eye, EyeOff, Check, Moon, Coffee, AlertTriangle, GitBranch, Star, BookOpen, Pencil, Dna, Type, Library, Filter, MoreVertical, Flame, Highlighter
 } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useForm } from "react-hook-form";
@@ -237,7 +237,7 @@ export function CharacterCreation({ onComplete, onCancel }: CharacterCreationPro
 }
 
 // Selection mode types
-export type SelectionMode = 'select' | 'target';
+export type SelectionMode = 'select' | 'target' | 'highlight';
 
 // Other players' AoE targeting state (for displaying their AoE markers)
 export interface OtherPlayerAoe {
@@ -295,9 +295,11 @@ interface BattleMapProps {
     characterId?: string;
     characterName?: string;
   }>;
+  highlightedCells?: Set<string>;
+  onHighlightCell?: (cellKey: string) => void;
 }
 
-export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClick, onDeleteToken, role, gridSize, backgroundImage, scene, onViewChange, characters = [], allSpecies = [], selectionMode = 'select', targetedTokenId, selectedTokenId, aoeTargetState, onAoeMouseMove, onAoeClick, otherPlayersAoe, myPermissions, tokenActiveEffects, allTokenEffects, onApplyEffect, onRemoveEffect, onToggleInvisibility, otherPlayersTargeting }: BattleMapProps) {
+export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClick, onDeleteToken, role, gridSize, backgroundImage, scene, onViewChange, characters = [], allSpecies = [], selectionMode = 'select', targetedTokenId, selectedTokenId, aoeTargetState, onAoeMouseMove, onAoeClick, otherPlayersAoe, myPermissions, tokenActiveEffects, allTokenEffects, onApplyEffect, onRemoveEffect, onToggleInvisibility, otherPlayersTargeting, highlightedCells, onHighlightCell }: BattleMapProps) {
   // Use refs for pan/zoom to avoid re-renders during interaction
   const panRef = useRef({ x: 0, y: 0 });
   const zoomRef = useRef(1);
@@ -895,6 +897,24 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
       }
     }
     
+    // If we're in highlight mode and didn't drag, toggle the grid cell highlight
+    if (selectionMode === 'highlight' && !didDragRef.current && onHighlightCell) {
+      const container = containerRef.current;
+      if (container) {
+        const rect = container.getBoundingClientRect();
+        const screenX = e.clientX - rect.left;
+        const screenY = e.clientY - rect.top;
+        const worldX = ((screenX + 9000 - panRef.current.x) / zoomRef.current) - 9000;
+        const worldY = ((screenY + 9000 - panRef.current.y) / zoomRef.current) - 9000;
+        // Snap to grid cell
+        const effectiveGridSize = scene?.gridSize || gridSize;
+        const cellX = Math.floor(worldX / effectiveGridSize);
+        const cellY = Math.floor(worldY / effectiveGridSize);
+        const cellKey = `${cellX},${cellY}`;
+        onHighlightCell(cellKey);
+      }
+    }
+    
     gestureModeRef.current = 'idle';
     panPointerIdRef.current = null;
     panStartRef.current = null;
@@ -1286,6 +1306,32 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
             })()}
           </>
         )}
+        
+        {/* Highlighted Cells Overlay - Render highlighted grid cells */}
+        {highlightedCells && highlightedCells.size > 0 && (
+          <div className="absolute inset-0 pointer-events-none">
+            {Array.from(highlightedCells).map((cellKey) => {
+              const [cellX, cellY] = cellKey.split(',').map(Number);
+              const effectiveGridSize = scene?.gridSize || gridSize;
+              const MAP_OFFSET = 9000;
+              const x = cellX * effectiveGridSize + MAP_OFFSET;
+              const y = cellY * effectiveGridSize + MAP_OFFSET;
+              return (
+                <div
+                  key={cellKey}
+                  className="absolute bg-amber-400/40 border-2 border-amber-500"
+                  style={{
+                    left: x,
+                    top: y,
+                    width: effectiveGridSize,
+                    height: effectiveGridSize,
+                  }}
+                  data-testid={`highlight-cell-${cellKey}`}
+                />
+              );
+            })}
+          </div>
+        )}
 
         {/* Map Background - Positioned in the space, displays full image at natural aspect ratio */}
         {/* GPU-accelerated with will-change and translateZ for smooth pan/zoom performance */}
@@ -1554,7 +1600,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                     lineHeight: 1.1
                   }}
                 >
-                  {character?.nickname || character?.name || (token.type === 'player' ? 'Player' : 'Enemy')}
+                  {character?.name || (token.type === 'player' ? 'Player' : 'Enemy')}
                 </div>
               )}
               
@@ -4307,6 +4353,31 @@ export function SelectionModeButtons({
             </Tooltip>
           </TooltipProvider>
           
+          {/* Grid Highlight Button */}
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={() => onModeChange('highlight')}
+                  className={`
+                    w-9 h-9 md:w-10 md:h-10 rounded-lg border-2 flex items-center justify-center
+                    transition-all duration-200 shadow-lg backdrop-blur-sm
+                    ${getColorClasses('amber', selectionMode === 'highlight')}
+                    ${selectionMode === 'highlight' ? 'scale-110 ring-2 ring-white/20' : 'hover:scale-105'}
+                  `}
+                  aria-label="Highlight mode"
+                  data-testid="selection-mode-highlight"
+                >
+                  <Highlighter className="h-4 w-4 md:h-5 md:w-5" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="right">
+                <p className="font-bold">Highlight</p>
+                <p className="text-xs text-stone-400">Click grid to highlight/unhighlight cells</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+          
           {/* Spell Target Button */}
           {character && (
             <TooltipProvider>
@@ -5470,16 +5541,6 @@ export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onIn
     enabled: !!campaignId,
   });
   
-  // Helper function to get display name (nickname if set, otherwise username)
-  const getDisplayName = (userId: string | null, fallbackSender: string): string => {
-    if (!userId || !members) return fallbackSender;
-    const member = members.find((m: any) => m.userId === userId);
-    if (member?.nickname) {
-      return member.nickname;
-    }
-    return fallbackSender;
-  };
-  
   // Update messages when chat data is loaded
   useEffect(() => {
     if (chatMessagesData && Array.isArray(chatMessagesData)) {
@@ -5714,42 +5775,6 @@ export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onIn
 
   const handleRoleChange = (member: any, newRole: 'player' | 'assistant_gm') => {
     setMemberRoleMutation.mutate({ memberId: member.id, newRole });
-  };
-
-  // Nickname mutation (GMs only)
-  const [editingNickname, setEditingNickname] = useState<string | null>(null);
-  const [nicknameValue, setNicknameValue] = useState("");
-  
-  const setMemberNicknameMutation = useMutation({
-    mutationFn: ({ memberId, nickname }: { memberId: string; nickname: string | null }) => 
-      api.setMemberNickname(campaignId!, memberId, nickname),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${campaignId}/members`] });
-      setEditingNickname(null);
-      toast({
-        title: "Nickname Updated",
-        description: "Player nickname has been updated",
-      });
-    },
-    onError: (error: Error) => {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to update nickname",
-        variant: "destructive",
-      });
-    },
-  });
-
-  const handleStartEditNickname = (member: any) => {
-    setEditingNickname(member.id);
-    setNicknameValue(member.nickname || "");
-  };
-
-  const handleSaveNickname = (memberId: string) => {
-    setMemberNicknameMutation.mutate({ 
-      memberId, 
-      nickname: nicknameValue.trim() || null 
-    });
   };
 
   // Delete character mutation
@@ -6108,50 +6133,9 @@ export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onIn
                             </AvatarFallback>
                           </Avatar>
                           <div>
-                            {/* Nickname editing (GMs) or display */}
-                            {editingNickname === member.id ? (
-                              <div className="flex items-center gap-1">
-                                <Input
-                                  type="text"
-                                  value={nicknameValue}
-                                  onChange={(e) => setNicknameValue(e.target.value)}
-                                  placeholder="Enter nickname..."
-                                  className="h-6 w-32 text-xs bg-stone-700 border-stone-600"
-                                  autoFocus
-                                  onKeyDown={(e) => {
-                                    if (e.key === 'Enter') handleSaveNickname(member.id);
-                                    if (e.key === 'Escape') setEditingNickname(null);
-                                  }}
-                                />
-                                <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => handleSaveNickname(member.id)}>
-                                  <Check className="w-3 h-3" />
-                                </Button>
-                                <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => setEditingNickname(null)}>
-                                  <X className="w-3 h-3" />
-                                </Button>
-                              </div>
-                            ) : (
-                              <div className="flex items-center gap-1">
-                                <div data-testid={`text-username-${member.id}`}>
-                                  {member.nickname ? (
-                                    <span className="text-amber-500 font-medium">{member.nickname} <span className="text-stone-500 text-xs">(@{member.username})</span></span>
-                                  ) : (
-                                    <span className="text-amber-500 font-medium">@{member.username || 'Unknown'}</span>
-                                  )}
-                                </div>
-                                {role === 'gm' && (
-                                  <Button 
-                                    size="sm" 
-                                    variant="ghost" 
-                                    className="h-5 w-5 p-0 opacity-50 hover:opacity-100" 
-                                    onClick={() => handleStartEditNickname(member)}
-                                    title="Set nickname"
-                                  >
-                                    <Pencil className="w-3 h-3" />
-                                  </Button>
-                                )}
-                              </div>
-                            )}
+                            <div data-testid={`text-username-${member.id}`}>
+                              <span className="text-amber-500 font-medium">@{member.username || 'Unknown'}</span>
+                            </div>
                             {/* Role display - Owner can change non-owner roles */}
                             {isOwner && member.userId !== gmUserId ? (
                               <Select
@@ -7017,13 +7001,7 @@ export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onIn
                 return (
                   <div key={member.id} className="flex items-center justify-between p-2 bg-stone-800 rounded" data-testid={`access-row-${member.userId}`}>
                     <div className="flex items-center gap-2">
-                      <span className="text-stone-200">
-                        {member.nickname ? (
-                          <>{member.nickname} <span className="text-stone-500 text-xs">(@{member.username})</span></>
-                        ) : (
-                          <>@{member.username}</>
-                        )}
-                      </span>
+                      <span className="text-stone-200">@{member.username}</span>
                       {isOwner && <Badge className="bg-amber-600 text-xs">Owner</Badge>}
                     </div>
                     <Select
@@ -10553,8 +10531,6 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
   const [gmNotes, setGmNotes] = useState(character?.gmNotes || "");
   const [isEditingBio, setIsEditingBio] = useState(false);
   const [isEditingGmNotes, setIsEditingGmNotes] = useState(false);
-  const [nicknameValue, setNicknameValue] = useState(character?.nickname || "");
-  const [isEditingNickname, setIsEditingNickname] = useState(false);
   
   // Portrait cropping state
   const [showPortraitCrop, setShowPortraitCrop] = useState(false);
@@ -14984,70 +14960,6 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                   }}
                   title="Select Character Portrait"
                 />
-
-                {/* Nickname Section */}
-                <div>
-                  <div className="flex justify-between items-center mb-2">
-                    <Label className="text-sm text-stone-300">Nickname (displayed on battlemap)</Label>
-                    {canEdit && !isEditingNickname && (
-                      <Button 
-                        size="sm" 
-                        variant="outline" 
-                        onClick={() => {
-                          setNicknameValue(character.nickname || "");
-                          setIsEditingNickname(true);
-                        }}
-                        data-testid="button-edit-nickname"
-                      >
-                        Edit
-                      </Button>
-                    )}
-                  </div>
-                  {isEditingNickname ? (
-                    <div className="space-y-2">
-                      <Input
-                        value={nicknameValue}
-                        onChange={(e) => setNicknameValue(e.target.value)}
-                        placeholder="Leave empty to use character name"
-                        className="bg-stone-900 border-stone-700"
-                        data-testid="input-nickname"
-                      />
-                      <div className="flex gap-2">
-                        <Button 
-                          size="sm" 
-                          onClick={() => {
-                            if (onUpdate) {
-                              onUpdate({ nickname: nicknameValue || null });
-                            }
-                            setIsEditingNickname(false);
-                          }}
-                          data-testid="button-save-nickname"
-                        >
-                          Save
-                        </Button>
-                        <Button 
-                          size="sm" 
-                          variant="outline" 
-                          onClick={() => {
-                            setNicknameValue(character.nickname || "");
-                            setIsEditingNickname(false);
-                          }}
-                          data-testid="button-cancel-nickname"
-                        >
-                          Cancel
-                        </Button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div 
-                      className="p-3 bg-stone-900 rounded border border-stone-700 text-stone-300"
-                      data-testid="text-nickname"
-                    >
-                      {character.nickname || <span className="text-stone-500 italic">No nickname set (using character name)</span>}
-                    </div>
-                  )}
-                  <p className="text-xs text-stone-500 mt-1">This short name appears on tokens instead of the full character name</p>
-                </div>
 
                 {/* Portrait Cropping Dialog */}
                 <Dialog open={showPortraitCrop} onOpenChange={setShowPortraitCrop}>

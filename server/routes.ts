@@ -1023,6 +1023,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
         }
         
+        // Handle grid highlight - broadcast to all campaign members
+        if (message.type === "grid_highlight") {
+          const { campaignId, cellKey, highlighted } = message;
+          
+          // Verify user has joined this campaign
+          const userCampaign = (ws as any).campaigns.get(campaignId);
+          if (!userCampaign) {
+            console.log('[Highlight Server] User not in campaign:', campaignId);
+            return;
+          }
+          
+          // Broadcast grid highlight to all OTHER campaign members (not the sender)
+          const room = campaignRooms.get(campaignId);
+          if (room) {
+            const highlightMessage = JSON.stringify({
+              type: "grid_highlight",
+              userId: authenticatedUserId,
+              username,
+              cellKey,
+              highlighted
+            });
+            
+            let sentCount = 0;
+            room.forEach((client) => {
+              // Send to all clients except the sender
+              if (client !== ws && client.readyState === 1) {
+                client.send(highlightMessage);
+                sentCount++;
+              }
+            });
+            console.log(`[Highlight Server] Broadcast from ${username}: cell=${cellKey}, highlighted=${highlighted}, sent to ${sentCount} other clients`);
+          }
+        }
+        
         // Handle roll notification - broadcast to all campaign members except sender
         // so everyone can see each other's attack/damage/spell rolls
         if (message.type === "roll_notification") {
@@ -2622,34 +2656,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (err) {
       console.error('Error setting member role:', err);
       res.status(500).json({ error: "Failed to update member role" });
-    }
-  });
-
-  // Set member nickname (GMs only)
-  app.patch("/api/campaigns/:campaignId/members/:memberId/nickname", requireAuth, async (req, res) => {
-    try {
-      const { campaignId, memberId } = req.params;
-      const { nickname } = req.body;
-      
-      // Only GMs can set nicknames
-      const canEdit = await storage.isGM(req.session.userId!, campaignId);
-      if (!canEdit) {
-        return res.status(403).json({ error: "Only GMs can set player nicknames" });
-      }
-      
-      const updatedMember = await storage.setMemberNickname(campaignId, memberId, nickname || null);
-      
-      // Broadcast member list update to all campaign members
-      const updatedMembers = await storage.getCampaignMembers(campaignId);
-      broadcastToCampaign(campaignId, {
-        type: "members_updated",
-        members: updatedMembers
-      });
-      
-      res.json(updatedMember);
-    } catch (err) {
-      console.error('Error setting member nickname:', err);
-      res.status(500).json({ error: "Failed to update member nickname" });
     }
   });
 

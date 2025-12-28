@@ -765,13 +765,6 @@ class ApiClient {
       body: JSON.stringify({ role }),
     });
   }
-
-  async setMemberNickname(campaignId: string, memberId: string, nickname: string | null): Promise<CampaignMember> {
-    return this.request(`/campaigns/${campaignId}/members/${memberId}/nickname`, {
-      method: 'PATCH',
-      body: JSON.stringify({ nickname }),
-    });
-  }
   
   // Chat
   async getChatMessages(campaignId: string): Promise<ChatMessage[]> {

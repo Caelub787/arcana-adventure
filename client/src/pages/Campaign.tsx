@@ -718,6 +718,9 @@ export default function Campaign() {
   const [targetedTokenId, setTargetedTokenId] = useState<string | null>(null);
   const [selectedTokenId, setSelectedTokenId] = useState<string | null>(null);
   
+  // Grid highlight state for marking grid cells
+  const [highlightedCells, setHighlightedCells] = useState<Set<string>>(new Set());
+  
   // Initiative tracker state
   const [initiativeTrackerOpen, setInitiativeTrackerOpen] = useState(false);
   
@@ -1398,15 +1401,8 @@ export default function Campaign() {
     membersRef.current = members;
   }, [queryClient, toast, sceneIdForTokens, effectiveCampaignId, members]);
 
-  // Helper function to get display name (nickname if set, otherwise username)
+  // Helper function to get display name (username)
   const getDisplayName = (userId: string, fallbackUsername: string): string => {
-    const currentMembers = membersRef.current as any[] | undefined;
-    if (currentMembers) {
-      const member = currentMembers.find((m: any) => m.userId === userId);
-      if (member?.nickname) {
-        return member.nickname;
-      }
-    }
     return fallbackUsername;
   };
 
@@ -1788,6 +1784,23 @@ export default function Campaign() {
             data.members
           );
         }
+        
+        // Handle grid highlight updates from other players
+        if (data.type === 'grid_highlight') {
+          const { cellKey, highlighted, userId } = data;
+          // Skip our own broadcasts
+          if (userId === user?.id) return;
+          
+          setHighlightedCells(prev => {
+            const next = new Set(prev);
+            if (highlighted) {
+              next.add(cellKey);
+            } else {
+              next.delete(cellKey);
+            }
+            return next;
+          });
+        }
       });
 
       return () => {
@@ -1925,6 +1938,28 @@ export default function Campaign() {
     // Clear selected token when switching modes for a clean slate
     setSelectedTokenId(null);
     setSelectionMode(mode);
+  };
+  
+  // Handler for grid cell highlight toggle
+  const handleHighlightCell = (cellKey: string) => {
+    setHighlightedCells(prev => {
+      const next = new Set(prev);
+      if (next.has(cellKey)) {
+        next.delete(cellKey);
+      } else {
+        next.add(cellKey);
+      }
+      // Broadcast highlight change to other players
+      if (effectiveCampaignId) {
+        gameWs.send({
+          type: 'grid_highlight',
+          campaignId: effectiveCampaignId,
+          cellKey,
+          highlighted: !prev.has(cellKey)
+        });
+      }
+      return next;
+    });
   };
 
   // GM Actions
@@ -2970,6 +3005,8 @@ export default function Campaign() {
              onRemoveEffect={handleRemoveEffect}
              onToggleInvisibility={handleToggleInvisibility}
              otherPlayersTargeting={otherPlayersTargeting}
+             highlightedCells={highlightedCells}
+             onHighlightCell={handleHighlightCell}
            />
            
            {/* Battlemap Dice Overlay for 3D dice rolling */}

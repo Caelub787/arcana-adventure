@@ -80,7 +80,6 @@ export interface IStorage {
   isGM(userId: string, campaignId: string): Promise<boolean>;
   isOwner(userId: string, campaignId: string): Promise<boolean>;
   setMemberRole(campaignId: string, memberId: string, role: 'player' | 'assistant_gm'): Promise<CampaignMember | undefined>;
-  setMemberNickname(campaignId: string, memberId: string, nickname: string | null): Promise<CampaignMember | undefined>;
 
   // Character operations
   createCharacter(character: InsertCharacter): Promise<Character>;
@@ -768,17 +767,6 @@ export class DatabaseStorage implements IStorage {
   async setMemberRole(campaignId: string, memberId: string, role: 'player' | 'assistant_gm'): Promise<CampaignMember | undefined> {
     const [member] = await db.update(campaignMembers)
       .set({ role })
-      .where(and(
-        eq(campaignMembers.id, memberId),
-        eq(campaignMembers.campaignId, campaignId)
-      ))
-      .returning();
-    return member;
-  }
-
-  async setMemberNickname(campaignId: string, memberId: string, nickname: string | null): Promise<CampaignMember | undefined> {
-    const [member] = await db.update(campaignMembers)
-      .set({ nickname })
       .where(and(
         eq(campaignMembers.id, memberId),
         eq(campaignMembers.campaignId, campaignId)

@@ -146,7 +146,6 @@ export const campaignMembers = pgTable("campaign_members", {
   role: text("role").notNull().default("player"), // "gm", "assistant_gm", or "player"
   favorite: boolean("favorite").default(false).notNull(),
   assignedCharacterId: varchar("assigned_character_id"), // Character auto-assigned to player on load
-  nickname: text("nickname"), // Campaign-specific display name for the player
   joinedAt: timestamp("joined_at").defaultNow().notNull(),
 });
 
@@ -242,7 +241,6 @@ export const characters = pgTable("characters", {
   // Background/notes
   biography: text("biography"),
   gmNotes: text("gm_notes"),
-  nickname: text("nickname"), // Short name displayed on battlemap tokens instead of full name
   // Folder organization
   folderId: varchar("folder_id"), // References characterFolders.id but nullable for unfiled characters
   // Legacy inventory (kept for backward compatibility, use items table for new features)
