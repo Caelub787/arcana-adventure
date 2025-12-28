@@ -78,9 +78,25 @@
   * {
     @apply border-border;
   }
+  
+  /* PWA Safe Area Support for iOS notch and Android gesture navigation */
+  html {
+    height: 100%;
+    /* Ensure content respects safe areas */
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
+  
   body {
     @apply font-sans antialiased bg-background text-foreground selection:bg-primary/30;
     background-image: radial-gradient(circle at center, hsl(240 10% 12%), hsl(240 10% 8%));
+    min-height: 100%;
+    /* Prevent overscroll bounce on iOS */
+    overscroll-behavior: none;
+    /* Prevent pull-to-refresh */
+    touch-action: pan-x pan-y;
   }
   
   h1, h2, h3, h4, h5, h6 {
