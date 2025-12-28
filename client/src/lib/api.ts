@@ -1432,6 +1432,13 @@ class ApiClient {
     });
   }
 
+  async updateUsername(username: string): Promise<UserProfile> {
+    return this.request('/profile/username', {
+      method: 'PUT',
+      body: JSON.stringify({ username }),
+    });
+  }
+
   // Friend request endpoints
   async sendFriendRequest(recipientUsername: string, message?: string): Promise<FriendRequest> {
     return this.request('/friends/requests', {
@@ -2036,6 +2043,45 @@ export class GameWebSocket {
     }
     
     this.send(message);
+  }
+  
+  // Send token targeting state - broadcasts to all campaign members
+  // so GMs can see who is targeting which token
+  sendTokenTargeting(targetState: {
+    targetTokenId: string | null;
+    characterId?: string;
+    characterName?: string;
+  }) {
+    if (!this.campaignId) {
+      console.error('Cannot send token targeting: not connected to a campaign');
+      return;
+    }
+    
+    const message = { 
+      type: 'token_targeting',
+      campaignId: this.campaignId,
+      ...targetState
+    };
+    
+    // If not yet joined, queue the message
+    if (!this.joinedCampaign) {
+      console.log('WebSocket: Queueing token targeting until campaign join is confirmed');
+      this.pendingMessages.push(message);
+      return;
+    }
+    
+    this.send(message);
+  }
+  
+  // Clear token targeting when exiting target mode
+  clearTokenTargeting() {
+    if (!this.campaignId) return;
+    
+    this.send({
+      type: 'token_targeting',
+      campaignId: this.campaignId,
+      targetTokenId: null
+    });
   }
 }
 

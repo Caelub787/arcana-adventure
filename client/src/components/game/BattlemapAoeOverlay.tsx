@@ -20,7 +20,7 @@ export function BattlemapAoeOverlay({
 }: BattlemapAoeOverlayProps) {
   if (!aoeTargetState.active || !aoeTargetState.spell) return null;
 
-  const { spell, center, locked } = aoeTargetState;
+  const { spell, center, locked, width: aoeWidth } = aoeTargetState;
   
   // Parse the aoe field which is in format "shape:radius" like "circle:15"
   // Fall back to separate aoeShape/aoeRange fields for backwards compatibility
@@ -116,7 +116,8 @@ export function BattlemapAoeOverlay({
 
       case 'line':
         if (!casterToken) return null;
-        const lineWidth = gridSize;
+        // Use aoeWidth in feet (default 5ft = 1 grid cell)
+        const lineWidth = aoeWidth ? (aoeWidth / 5) * gridSize : gridSize;
         const dirX = center.x - casterX;
         const dirY = center.y - casterY;
         const dirLen = Math.sqrt(dirX * dirX + dirY * dirY);
@@ -227,7 +228,8 @@ export function BattlemapAoeOverlay({
       case 'line':
         if (!casterToken) return null;
         {
-          const screenLineWidth = gridSize * zoom;
+          // Use aoeWidth in feet (default 5ft = 1 grid cell)
+          const screenLineWidth = aoeWidth ? ((aoeWidth / 5) * gridSize) * zoom : gridSize * zoom;
           const dirX = screenCenterX - screenCasterX;
           const dirY = screenCenterY - screenCasterY;
           const dirLen = Math.sqrt(dirX * dirX + dirY * dirY);

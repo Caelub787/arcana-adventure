@@ -4,6 +4,7 @@ export interface AoeTargetState {
   casterTokenId: string;
   center: { x: number; y: number };
   locked: boolean;
+  width?: number; // Width in feet for line/cone AOE (default 5ft = 1 grid cell)
 }
 
 export const createInitialAoeState = (): AoeTargetState => ({
@@ -111,11 +112,12 @@ export function getTokensInAoe(
   tokens: any[],
   aoeState: AoeTargetState,
   gridSize: number,
-  casterToken?: { x: number; y: number }
+  casterToken?: { x: number; y: number; id?: string },
+  aoeWidth?: number
 ): any[] {
   if (!aoeState.active || !aoeState.spell) return [];
 
-  const { spell, center } = aoeState;
+  const { spell, center, casterTokenId } = aoeState;
   
   // Parse the aoe field which is in format "shape:radius" like "circle:15"
   // Fall back to separate aoeShape/aoeRange fields for backwards compatibility
@@ -133,11 +135,20 @@ export function getTokensInAoe(
   
   // aoeRangeFeet is the total diameter, so divide by 2 to get radius
   const radiusPixels = (aoeRangeFeet / 5) * gridSize / 2;
+  
+  // Width for line/cone (in grid cells, default to 1 cell = 5 feet)
+  const widthPixels = aoeWidth ? (aoeWidth / 5) * gridSize : gridSize;
 
   const casterX = casterToken?.x ?? 0;
   const casterY = casterToken?.y ?? 0;
 
   return tokens.filter((token) => {
+    // Exclude caster from cone and line AOE (they don't damage themselves)
+    if ((aoeShape === 'cone' || aoeShape === 'line') && 
+        (token.id === casterTokenId || token.id === casterToken?.id)) {
+      return false;
+    }
+    
     const tokenCenterX = token.x + gridSize / 2;
     const tokenCenterY = token.y + gridSize / 2;
 
@@ -177,7 +188,7 @@ export function getTokensInAoe(
           casterY + gridSize / 2,
           center.x,
           center.y,
-          gridSize,
+          widthPixels,
           radiusPixels
         );
       default:

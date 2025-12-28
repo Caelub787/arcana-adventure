@@ -987,6 +987,42 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
         }
         
+        // Handle token targeting - broadcast to all campaign members
+        // so GMs can see who is targeting which token
+        if (message.type === "token_targeting") {
+          const { campaignId, targetTokenId, characterId, characterName } = message;
+          
+          // Verify user has joined this campaign
+          const userCampaign = (ws as any).campaigns.get(campaignId);
+          if (!userCampaign) {
+            console.log('[Target Server] User not in campaign:', campaignId);
+            return;
+          }
+          
+          // Broadcast token targeting to all OTHER campaign members (not the sender)
+          const room = campaignRooms.get(campaignId);
+          if (room) {
+            const targetMessage = JSON.stringify({
+              type: "token_targeting",
+              userId: authenticatedUserId,
+              username,
+              targetTokenId,
+              characterId,
+              characterName
+            });
+            
+            let sentCount = 0;
+            room.forEach((client) => {
+              // Send to all clients except the sender
+              if (client !== ws && client.readyState === 1) {
+                client.send(targetMessage);
+                sentCount++;
+              }
+            });
+            console.log(`[Target Server] Broadcast from ${username}: target=${targetTokenId}, sent to ${sentCount} other clients`);
+          }
+        }
+        
         // Handle roll notification - broadcast to all campaign members except sender
         // so everyone can see each other's attack/damage/spell rolls
         if (message.type === "roll_notification") {
@@ -5480,6 +5516,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (e) {
       console.error("Failed to update avatar:", e);
       res.status(500).json({ error: "Failed to update avatar" });
+    }
+  });
+
+  // Update username with uniqueness check
+  app.put("/api/profile/username", requireAuth, async (req, res) => {
+    try {
+      const { username } = req.body;
+      if (!username || typeof username !== 'string') {
+        return res.status(400).json({ error: "Username is required" });
+      }
+      
+      // Validate username format (alphanumeric, underscores, 3-30 chars)
+      const usernameRegex = /^[a-zA-Z0-9_]{3,30}$/;
+      if (!usernameRegex.test(username)) {
+        return res.status(400).json({ 
+          error: "Username must be 3-30 characters and contain only letters, numbers, and underscores" 
+        });
+      }
+      
+      // Check if username is already taken by another user
+      const existingUser = await storage.getUserByUsername(username);
+      if (existingUser && existingUser.id !== req.session.userId) {
+        return res.status(409).json({ error: "Username is already taken" });
+      }
+      
+      // Update the username
+      const updated = await storage.updateUserProfile(req.session.userId!, { username });
+      if (!updated) {
+        return res.status(404).json({ error: "User not found" });
+      }
+      res.json(sanitizeUser(updated));
+    } catch (e) {
+      console.error("Failed to update username:", e);
+      res.status(500).json({ error: "Failed to update username" });
     }
   });
 

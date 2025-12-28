@@ -8,6 +8,7 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string, username: string, name: string) => Promise<void>;
   logout: () => Promise<void>;
+  refetchUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -49,8 +50,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // isAdmin comes from server response
   const isAdmin = user?.isAdmin ?? false;
 
+  const refetchUser = async () => {
+    await checkAuth();
+  };
+
   return (
-    <AuthContext.Provider value={{ user, loading, isAdmin, login, register, logout }}>
+    <AuthContext.Provider value={{ user, loading, isAdmin, login, register, logout, refetchUser }}>
       {children}
     </AuthContext.Provider>
   );

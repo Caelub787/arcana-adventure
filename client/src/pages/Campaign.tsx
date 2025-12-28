@@ -754,6 +754,15 @@ export default function Campaign() {
     locked: boolean;
   }>>(new Map());
   
+  // Other players' token targeting states (keyed by userId) - for GM visibility
+  const [otherPlayersTargeting, setOtherPlayersTargeting] = useState<Map<string, {
+    userId: string;
+    username: string;
+    targetTokenId: string | null;
+    characterId?: string;
+    characterName?: string;
+  }>>(new Map());
+  
   // Helper function to enter AoE targeting mode
   const enterAoeMode = (spell: any, casterTokenId: string) => {
     const casterToken = tokens.find((t: any) => t.id === casterTokenId);
@@ -1531,6 +1540,25 @@ export default function Campaign() {
           );
         }
         
+        // Handle effect expiration - remove expired effects from tokens
+        if (data.type === 'effect_expired') {
+          const { tokenId, effectId, effectName, characterName } = data;
+          // Invalidate token active effects to refresh the UI
+          queryClientRef.current.invalidateQueries({ queryKey: [`/api/tokens/${tokenId}/active-effects`] });
+          // Show toast notification for effect expiration
+          toast({
+            title: "Effect Expired",
+            description: `${effectName} on ${characterName} has worn off.`,
+          });
+        }
+        
+        // Handle effect duration updates - update remaining duration on effects
+        if (data.type === 'effect_duration_update') {
+          const { tokenId, activeEffectId, remainingDuration } = data;
+          // Invalidate token active effects to refresh the UI with new duration
+          queryClientRef.current.invalidateQueries({ queryKey: [`/api/tokens/${tokenId}/active-effects`] });
+        }
+        
         // Handle combat HP updates - real-time damage/healing
         if (data.type === 'character_hp_update') {
           const { characterId, hp, previousHp, damage, isHealing, attackerName } = data;
@@ -1727,6 +1755,31 @@ export default function Campaign() {
           });
         }
         
+        // Handle other players' token targeting updates (for GM visibility)
+        if (data.type === 'token_targeting') {
+          const { userId, username, targetTokenId, characterId, characterName } = data;
+          
+          // Skip our own broadcasts
+          if (userId === user?.id) return;
+          
+          setOtherPlayersTargeting(prev => {
+            const updated = new Map(prev);
+            if (targetTokenId) {
+              updated.set(userId, {
+                userId,
+                username,
+                targetTokenId,
+                characterId,
+                characterName,
+              });
+            } else {
+              // Player stopped targeting
+              updated.delete(userId);
+            }
+            return updated;
+          });
+        }
+        
         // Handle member list updates (join/leave/kick/role changes)
         if (data.type === 'members_updated' && data.members) {
           // Update the members cache with the new list
@@ -1804,6 +1857,15 @@ export default function Campaign() {
         // Target mode: add red outline to selected token (only one at a time)
         setTargetedTokenId(token.id);
         setSelectedTokenId(token.id);
+        // Broadcast targeting to other players so GM can see who is targeting what
+        if (effectiveCampaignId) {
+          const myCharacter = character;
+          gameWs.sendTokenTargeting({
+            targetTokenId: token.id,
+            characterId: myCharacter?.id,
+            characterName: myCharacter?.name || user?.username || 'Unknown'
+          });
+        }
         break;
     }
   };
@@ -1855,6 +1917,10 @@ export default function Campaign() {
     // Clear targeted token when switching away from Target mode
     if (selectionMode === 'target' && mode !== 'target') {
       setTargetedTokenId(null);
+      // Broadcast that we're no longer targeting
+      if (effectiveCampaignId) {
+        gameWs.clearTokenTargeting();
+      }
     }
     // Clear selected token when switching modes for a clean slate
     setSelectedTokenId(null);
@@ -2903,6 +2969,7 @@ export default function Campaign() {
              onApplyEffect={handleApplyEffect}
              onRemoveEffect={handleRemoveEffect}
              onToggleInvisibility={handleToggleInvisibility}
+             otherPlayersTargeting={otherPlayersTargeting}
            />
            
            {/* Battlemap Dice Overlay for 3D dice rolling */}
@@ -2920,6 +2987,61 @@ export default function Campaign() {
              onClearSpellTargeting={exitAoeMode}
              isSpellTargetingActive={aoeTargetState.active}
            />
+           
+           {/* AOE Width Control Panel - Shows when line or cone AOE is active */}
+           {aoeTargetState.active && aoeTargetState.spell && (() => {
+             const aoeField = aoeTargetState.spell.aoe || '';
+             let aoeShape = 'circle';
+             if (aoeField && typeof aoeField === 'string' && aoeField.includes(':')) {
+               const [parsedShape] = aoeField.split(':');
+               aoeShape = (parsedShape || 'circle').toLowerCase();
+             } else if (aoeTargetState.spell.aoeShape) {
+               aoeShape = (aoeTargetState.spell.aoeShape || 'circle').toLowerCase();
+             }
+             
+             if (aoeShape === 'line' || aoeShape === 'cone') {
+               return (
+                 <div className="absolute left-2 md:left-4 top-72 z-30 pointer-events-auto bg-stone-900/95 border border-stone-700 rounded-lg p-3 shadow-xl w-48">
+                   <div className="flex items-center justify-between mb-2">
+                     <span className="text-xs text-amber-400 font-medium">{aoeTargetState.spell.name}</span>
+                     <Button
+                       variant="ghost"
+                       size="sm"
+                       onClick={exitAoeMode}
+                       className="h-6 w-6 p-0 text-stone-400 hover:text-white hover:bg-stone-700"
+                       data-testid="button-cancel-aoe"
+                     >
+                       ×
+                     </Button>
+                   </div>
+                   <Label className="text-xs text-stone-400 mb-1 block">Width (ft)</Label>
+                   <div className="flex items-center gap-2">
+                     <Input
+                       type="number"
+                       min={5}
+                       max={30}
+                       step={5}
+                       value={aoeTargetState.width || 5}
+                       onChange={(e) => {
+                         const newWidth = Math.max(5, Math.min(30, parseInt(e.target.value) || 5));
+                         setAoeTargetState(prev => ({ ...prev, width: newWidth }));
+                       }}
+                       className="h-8 text-sm bg-stone-800 border-stone-600"
+                       data-testid="input-aoe-width"
+                     />
+                     <span className="text-xs text-stone-500">ft</span>
+                   </div>
+                   <p className="text-xs text-stone-500 mt-1">
+                     {aoeShape === 'line' ? 'Line width' : 'Cone base width'}
+                   </p>
+                   {aoeTargetState.locked && (
+                     <p className="text-xs text-green-400 mt-2">✓ Position locked - cast spell to damage</p>
+                   )}
+                 </div>
+               );
+             }
+             return null;
+           })()}
            
            {/* Hotbars Display - only show when there's a character to display */}
            {/* For players: show ONLY their assigned character (not changed by token clicks) */}

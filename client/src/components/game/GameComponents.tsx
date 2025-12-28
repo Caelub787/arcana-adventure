@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { useLocation } from "wouter";
 import { motion, AnimatePresence, useMotionValue } from "framer-motion";
+import { useAuth } from "@/lib/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -287,9 +288,16 @@ interface BattleMapProps {
   onApplyEffect?: (tokenId: string, effectId: string) => void;
   onRemoveEffect?: (activeEffectId: string) => void;
   onToggleInvisibility?: (tokenId: string, isInvisible: boolean) => void;
+  otherPlayersTargeting?: Map<string, {
+    userId: string;
+    username: string;
+    targetTokenId: string | null;
+    characterId?: string;
+    characterName?: string;
+  }>;
 }
 
-export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClick, onDeleteToken, role, gridSize, backgroundImage, scene, onViewChange, characters = [], allSpecies = [], selectionMode = 'select', targetedTokenId, selectedTokenId, aoeTargetState, onAoeMouseMove, onAoeClick, otherPlayersAoe, myPermissions, tokenActiveEffects, allTokenEffects, onApplyEffect, onRemoveEffect, onToggleInvisibility }: BattleMapProps) {
+export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClick, onDeleteToken, role, gridSize, backgroundImage, scene, onViewChange, characters = [], allSpecies = [], selectionMode = 'select', targetedTokenId, selectedTokenId, aoeTargetState, onAoeMouseMove, onAoeClick, otherPlayersAoe, myPermissions, tokenActiveEffects, allTokenEffects, onApplyEffect, onRemoveEffect, onToggleInvisibility, otherPlayersTargeting }: BattleMapProps) {
   // Use refs for pan/zoom to avoid re-renders during interaction
   const panRef = useRef({ x: 0, y: 0 });
   const zoomRef = useRef(1);
@@ -1128,11 +1136,11 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
           
           // Check if user can drag this token:
           // - GMs can drag any token
-          // - Players can drag 'player' type tokens
           // - Users with 'edit' or 'owner' permission to the linked character can drag that character's token
+          // Note: token.type === 'player' alone is NOT sufficient - must have actual edit permission
           const permissionLevel = character ? myPermissions?.permissions?.[character.id] : undefined;
           const hasEditAccess = permissionLevel === 'edit' || permissionLevel === 'owner';
-          const canDrag = role === 'gm' || token.type === 'player' || hasEditAccess;
+          const canDrag = role === 'gm' || hasEditAccess;
           
           // Get species size for grid span calculation
           const speciesData = character?.race ? allSpecies.find(s => s.name === character.race) : null;
@@ -1263,7 +1271,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                   onTokenDoubleClick && onTokenDoubleClick(token);
                 }
               }}
-              className={`absolute top-0 left-0 rounded-full shadow-xl ring-2 ring-white/20 overflow-visible bg-black token-shadow cursor-pointer touch-none select-none ${isDragging ? 'z-20 scale-110' : 'hover:scale-105'} transition-transform`}
+              className={`absolute top-0 left-0 rounded-full shadow-xl ring-2 ring-white/20 overflow-visible bg-black token-shadow touch-none select-none ${canDrag ? 'cursor-grab' : 'cursor-default'} ${isDragging ? 'z-20 scale-110 cursor-grabbing' : 'hover:scale-105'} transition-transform`}
               style={{ 
                 width: tokenSize, 
                 height: tokenSize,
@@ -1721,6 +1729,138 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
             </svg>
           );
         })}
+        
+        {/* Other Players' Token Targeting Lines - GM visibility only */}
+        {role === 'gm' && otherPlayersTargeting && otherPlayersTargeting.size > 0 && (() => {
+          const targetingLines: JSX.Element[] = [];
+          
+          otherPlayersTargeting.forEach((targeting, userId) => {
+            if (!targeting.targetTokenId) return;
+            
+            // Find the source token (the player's character) and target token
+            const targetToken = tokens.find(t => t.id === targeting.targetTokenId);
+            // Find the source token by characterId if available
+            const sourceToken = targeting.characterId 
+              ? tokens.find(t => t.characterId === targeting.characterId)
+              : null;
+            
+            if (!targetToken) return;
+            
+            // Get target token center in world coordinates
+            const targetCenterX = targetToken.x + (scene?.gridSize || gridSize) / 2 + 9000;
+            const targetCenterY = targetToken.y + (scene?.gridSize || gridSize) / 2 + 9000;
+            
+            // If we have a source token, draw a line from source to target
+            // Otherwise, just show a targeting indicator on the target
+            if (sourceToken) {
+              const sourceCenterX = sourceToken.x + (scene?.gridSize || gridSize) / 2 + 9000;
+              const sourceCenterY = sourceToken.y + (scene?.gridSize || gridSize) / 2 + 9000;
+              
+              targetingLines.push(
+                <g key={`targeting-${userId}`}>
+                  {/* Targeting line with gradient */}
+                  <line
+                    x1={sourceCenterX}
+                    y1={sourceCenterY}
+                    x2={targetCenterX}
+                    y2={targetCenterY}
+                    stroke="rgba(239, 68, 68, 0.8)"
+                    strokeWidth={3}
+                    strokeDasharray="12 6"
+                    markerEnd="url(#targeting-arrow)"
+                  />
+                  {/* Source indicator */}
+                  <circle
+                    cx={sourceCenterX}
+                    cy={sourceCenterY}
+                    r={8}
+                    fill="rgba(34, 197, 94, 0.6)"
+                    stroke="rgba(34, 197, 94, 1)"
+                    strokeWidth={2}
+                  />
+                  {/* Target indicator */}
+                  <circle
+                    cx={targetCenterX}
+                    cy={targetCenterY}
+                    r={12}
+                    fill="none"
+                    stroke="rgba(239, 68, 68, 1)"
+                    strokeWidth={3}
+                  />
+                  {/* Targeting label */}
+                  <text
+                    x={(sourceCenterX + targetCenterX) / 2}
+                    y={(sourceCenterY + targetCenterY) / 2 - 10}
+                    textAnchor="middle"
+                    fill="white"
+                    fontSize="11"
+                    fontWeight="bold"
+                    style={{ textShadow: '0 0 4px rgba(0,0,0,0.9)' }}
+                  >
+                    {targeting.characterName || targeting.username}
+                  </text>
+                </g>
+              );
+            } else {
+              // No source token - just show targeting indicator on target
+              targetingLines.push(
+                <g key={`targeting-${userId}`}>
+                  <circle
+                    cx={targetCenterX}
+                    cy={targetCenterY}
+                    r={15}
+                    fill="none"
+                    stroke="rgba(239, 68, 68, 1)"
+                    strokeWidth={3}
+                    strokeDasharray="8 4"
+                  />
+                  <text
+                    x={targetCenterX}
+                    y={targetCenterY - 20}
+                    textAnchor="middle"
+                    fill="white"
+                    fontSize="11"
+                    fontWeight="bold"
+                    style={{ textShadow: '0 0 4px rgba(0,0,0,0.9)' }}
+                  >
+                    {targeting.characterName || targeting.username} →
+                  </text>
+                </g>
+              );
+            }
+          });
+          
+          if (targetingLines.length === 0) return null;
+          
+          return (
+            <svg
+              className="absolute pointer-events-none"
+              style={{
+                left: 0,
+                top: 0,
+                width: '20000px',
+                height: '20000px',
+                overflow: 'visible',
+                zIndex: 23, // Below AoE overlays
+              }}
+            >
+              <defs>
+                <marker
+                  id="targeting-arrow"
+                  markerWidth="10"
+                  markerHeight="10"
+                  refX="9"
+                  refY="3"
+                  orient="auto"
+                  markerUnits="strokeWidth"
+                >
+                  <path d="M0,0 L0,6 L9,3 z" fill="rgba(239, 68, 68, 0.9)" />
+                </marker>
+              </defs>
+              {targetingLines}
+            </svg>
+          );
+        })()}
       </motion.div>
 
       {/* Token Delete Confirmation Dialog */}
@@ -3061,7 +3201,7 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     });
     if (hasAoe && aoeTargetState?.active && aoeTargetState?.locked && tokens) {
       const casterToken = tokens.find((t: any) => t.id === aoeTargetState.casterTokenId);
-      const tokensInAoe = getTokensInAoe(tokens, aoeTargetState, gridSize, casterToken);
+      const tokensInAoe = getTokensInAoe(tokens, aoeTargetState, gridSize, casterToken, aoeTargetState.width);
       console.log('[SpellDamage] Tokens in AoE:', tokensInAoe.length, 'Center:', aoeTargetState.center);
       
       if (tokensInAoe.length === 0) {
@@ -4899,14 +5039,15 @@ interface CampaignMenuProps {
 }
 
 export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onInspectChar, onAddCharacterToken, onChangeMap, characters, members, onAddCharacter, onViewCharacter, onLevelUpAll, chatOpen = false, onChatOpenChange, onAssignCharacter, myPermissions, onOpenCampaignSpecies, isOwner = false, gmUserId }: CampaignMenuProps) {
+  const { user } = useAuth();
   const setChatOpen = onChatOpenChange || (() => {});
   const [addCharacterOpen, setAddCharacterOpen] = useState(false);
   const [showLevelUpDialog, setShowLevelUpDialog] = useState(false);
   const [levelUpMode, setLevelUpMode] = useState<'set' | 'add'>('add');
   const [targetLevel, setTargetLevel] = useState(1);
   const [addTokenDialogOpen, setAddTokenDialogOpen] = useState(false);
-  const [messages, setMessages] = useState<{ sender: string; text: string; type: string }[]>([
-    { sender: "System", text: "Welcome to Arcana Adventure!", type: "system" },
+  const [messages, setMessages] = useState<{ sender: string; userId: string | null; text: string; type: string }[]>([
+    { sender: "System", userId: null, text: "Welcome to Arcana Adventure!", type: "system" },
   ]);
   const [chatInput, setChatInput] = useState("");
   const [showAccessDialog, setShowAccessDialog] = useState(false);
@@ -5006,16 +5147,27 @@ export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onIn
     enabled: !!campaignId,
   });
   
+  // Helper function to get display name (nickname if set, otherwise username)
+  const getDisplayName = (userId: string | null, fallbackSender: string): string => {
+    if (!userId || !members) return fallbackSender;
+    const member = members.find((m: any) => m.userId === userId);
+    if (member?.nickname) {
+      return member.nickname;
+    }
+    return fallbackSender;
+  };
+  
   // Update messages when chat data is loaded
   useEffect(() => {
     if (chatMessagesData && Array.isArray(chatMessagesData)) {
       const loadedMessages = chatMessagesData.map((msg: any) => ({
         sender: msg.sender,
+        userId: msg.userId,
         text: msg.text,
         type: msg.type || 'chat',
       }));
       setMessages([
-        { sender: "System", text: "Welcome to Arcana Adventure!", type: "system" },
+        { sender: "System", userId: null, text: "Welcome to Arcana Adventure!", type: "system" },
         ...loadedMessages,
       ]);
     }
@@ -5029,6 +5181,7 @@ export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onIn
       if (data.type === 'chat_message' && data.message) {
         setMessages(prev => [...prev, {
           sender: data.message.sender,
+          userId: data.message.userId,
           text: data.message.text,
           type: data.message.type || 'chat',
         }]);
@@ -5357,7 +5510,49 @@ export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onIn
   const handleSend = (e: React.FormEvent) => {
     e.preventDefault();
     if(!chatInput.trim()) return;
-    setMessages([...messages, { sender: "You", text: chatInput, type: "chat" }]);
+    
+    // Check for /roll command
+    const rollMatch = chatInput.trim().match(/^\/roll\s+(\d+)d(\d+)(?:\s*([+-])\s*(\d+))?/i);
+    if (rollMatch && campaignId) {
+      const count = parseInt(rollMatch[1], 10);
+      const sides = parseInt(rollMatch[2], 10);
+      const modSign = rollMatch[3] || '+';
+      const modValue = rollMatch[4] ? parseInt(rollMatch[4], 10) : 0;
+      const modifier = modSign === '-' ? -modValue : modValue;
+      
+      // Validate dice parameters
+      if (count < 1 || count > 100 || sides < 2 || sides > 100) {
+        setMessages([...messages, { 
+          sender: "System", 
+          userId: null, 
+          text: "Invalid dice format. Use /roll XdY or /roll XdY+Z (e.g., /roll 3d6 or /roll 2d10+5)", 
+          type: "system" 
+        }]);
+        setChatInput("");
+        return;
+      }
+      
+      // Roll the dice
+      const rolls: number[] = [];
+      for (let i = 0; i < count; i++) {
+        rolls.push(Math.floor(Math.random() * sides) + 1);
+      }
+      const total = rolls.reduce((a, b) => a + b, 0) + modifier;
+      const diceNotation = `${count}d${sides}`;
+      const modifierStr = modifier !== 0 ? (modifier > 0 ? ` + ${modifier}` : ` - ${Math.abs(modifier)}`) : '';
+      const rollDisplay = `${diceNotation}${modifierStr}: [${rolls.join(', ')}]${modifierStr} = ${total}`;
+      
+      // Send roll to chat via WebSocket
+      gameWs.sendChatMessage(user?.id || '', user?.username || 'Player', `/roll ${rollDisplay}`, 'roll');
+      setChatInput("");
+      return;
+    }
+    
+    // Regular chat message
+    if (campaignId) {
+      gameWs.sendChatMessage(user?.id || '', user?.username || 'Player', chatInput, 'chat');
+    }
+    setMessages([...messages, { sender: user?.username || "You", userId: user?.id || null, text: chatInput, type: "chat" }]);
     setChatInput("");
   };
 
@@ -5372,7 +5567,7 @@ export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onIn
     setClearingChat(true);
     try {
       await api.clearChatMessages(campaignId);
-      setMessages([{ sender: "System", text: "Chat cleared.", type: "system" }]);
+      setMessages([{ sender: "System", userId: null, text: "Chat cleared.", type: "system" }]);
       queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${campaignId}/chat`] });
       toast({ title: "Chat Cleared", description: "All chat messages have been deleted" });
     } catch (err: any) {
@@ -5475,7 +5670,7 @@ export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onIn
                           </div>
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 text-white/80 text-xs">
-                              <span className="font-medium truncate">{msg.sender}</span>
+                              <span className="font-medium truncate">{getDisplayName(msg.userId, msg.sender)}</span>
                               <span className="text-white/50">•</span>
                               <span className="text-white/70">{parseRollLabel(msg.text)}</span>
                             </div>
@@ -5492,7 +5687,7 @@ export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onIn
                       </div>
                     ) : (
                       <>
-                        <span className="font-bold text-stone-500 mr-2">{msg.sender}:</span>
+                        <span className="font-bold text-stone-500 mr-2">{getDisplayName(msg.userId, msg.sender)}:</span>
                         {msg.text}
                       </>
                     )}

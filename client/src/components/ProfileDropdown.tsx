@@ -6,7 +6,9 @@ import { useAuth } from "@/lib/AuthContext";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useToast } from "@/hooks/use-toast";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -29,11 +31,14 @@ interface ProfileDropdownProps {
 }
 
 export default function ProfileDropdown({ onLogout }: ProfileDropdownProps) {
-  const { user } = useAuth();
+  const { user, refetchUser } = useAuth();
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [friendsPanelOpen, setFriendsPanelOpen] = useState(false);
   const [bio, setBio] = useState("");
+  const [username, setUsername] = useState("");
+  const [usernameError, setUsernameError] = useState<string | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [newAvatarBase64, setNewAvatarBase64] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -59,9 +64,19 @@ export default function ProfileDropdown({ onLogout }: ProfileDropdownProps) {
     },
   });
 
+  const updateUsernameMutation = useMutation({
+    mutationFn: async (newUsername: string) => api.updateUsername(newUsername),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/profile"] });
+      refetchUser();
+    },
+  });
+
   const handleEditOpen = () => {
     if (profile) {
       setBio(profile.bio || "");
+      setUsername(profile.username || "");
+      setUsernameError(null);
       setAvatarPreview(profile.avatarUrl || null);
       setNewAvatarBase64(null);
     }
@@ -83,11 +98,31 @@ export default function ProfileDropdown({ onLogout }: ProfileDropdownProps) {
 
   const handleSave = async () => {
     try {
+      setUsernameError(null);
+      
       if (bio !== profile?.bio) {
         await updateProfileMutation.mutateAsync({ bio });
       }
       if (newAvatarBase64) {
         await updateAvatarMutation.mutateAsync(newAvatarBase64);
+      }
+      if (username !== profile?.username) {
+        try {
+          await updateUsernameMutation.mutateAsync(username);
+          toast({
+            title: "Username Updated",
+            description: `Your username is now "${username}"`,
+          });
+        } catch (err: any) {
+          const errorMessage = err?.message || "Failed to update username";
+          setUsernameError(errorMessage);
+          toast({
+            title: "Username Update Failed",
+            description: errorMessage,
+            variant: "destructive",
+          });
+          return;
+        }
       }
       setEditDialogOpen(false);
     } catch (error) {
@@ -96,7 +131,7 @@ export default function ProfileDropdown({ onLogout }: ProfileDropdownProps) {
   };
 
   const isSaving =
-    updateProfileMutation.isPending || updateAvatarMutation.isPending;
+    updateProfileMutation.isPending || updateAvatarMutation.isPending || updateUsernameMutation.isPending;
 
   const displayName = user?.username || "User";
   const avatarUrl = profile?.avatarUrl;
@@ -198,6 +233,28 @@ export default function ProfileDropdown({ onLogout }: ProfileDropdownProps) {
               >
                 Upload Avatar
               </Button>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="username" className="text-stone-400">
+                Username
+              </Label>
+              <Input
+                id="username"
+                value={username}
+                onChange={(e) => {
+                  setUsername(e.target.value);
+                  setUsernameError(null);
+                }}
+                className={`border-stone-700 bg-stone-900 text-stone-200 focus:ring-amber-500 ${usernameError ? 'border-red-500' : ''}`}
+                placeholder="Enter a unique username (3-30 characters)"
+                data-testid="input-profile-username"
+              />
+              {usernameError && (
+                <p className="text-sm text-red-400">{usernameError}</p>
+              )}
+              <p className="text-xs text-stone-500">
+                Letters, numbers, and underscores only. 3-30 characters.
+              </p>
             </div>
             <div className="space-y-2">
               <Label htmlFor="bio" className="text-stone-400">
