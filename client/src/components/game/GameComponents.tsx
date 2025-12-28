@@ -5462,6 +5462,11 @@ export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onIn
   
   const queryClient = useQueryClient();
   
+  // Helper function to get display name (just returns username since nicknames were removed)
+  const getDisplayName = (userId: string | null, fallbackUsername: string): string => {
+    return fallbackUsername;
+  };
+  
   // Folder query
   const { data: folders = [] } = useQuery({
     queryKey: ['campaign-folders', campaignId],
