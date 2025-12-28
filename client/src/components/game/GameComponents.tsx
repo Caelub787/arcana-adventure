@@ -320,6 +320,27 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
     startPointerY: number;
   } | null>(null);
   
+  // Track animating tokens - tokens that are moving smoothly from one position to another
+  // Used for remote player token movements received via WebSocket
+  // Using refs to avoid stale closure issues and re-render on every frame
+  type AnimatingToken = {
+    id: string;
+    fromX: number;
+    fromY: number;
+    toX: number;
+    toY: number;
+    waypoints: { x: number; y: number }[];
+    startTime: number;
+  };
+  const animatingTokensRef = useRef<Map<string, AnimatingToken>>(new Map());
+  const prevTokenPositionsRef = useRef<Map<string, { x: number; y: number }>>(new Map());
+  const animationFrameRef = useRef<number | null>(null);
+  // Simple counter to trigger re-renders during animation without storing full state
+  const [animationTick, setAnimationTick] = useState(0);
+  
+  // Animation speed - milliseconds per grid cell
+  const ANIMATION_SPEED_MS_PER_CELL = 80;
+  
   // Track pending drag - only becomes actual drag when pointer moves beyond threshold
   const pendingDragRef = useRef<{
     token: Token;
@@ -379,6 +400,171 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
   
   // Track stored world coordinates for recalculation on viewport changes
   const storedWorldCoordsRef = useRef<{ x: number; y: number } | null>(null);
+  
+  // Helper function to calculate grid-aligned waypoints for animation
+  const calculateWaypoints = (fromX: number, fromY: number, toX: number, toY: number, gridSz: number): { x: number; y: number }[] => {
+    const startGridX = Math.round(fromX / gridSz);
+    const startGridY = Math.round(fromY / gridSz);
+    const endGridX = Math.round(toX / gridSz);
+    const endGridY = Math.round(toY / gridSz);
+    
+    const waypoints: { x: number; y: number }[] = [];
+    let currentX = startGridX;
+    let currentY = startGridY;
+    waypoints.push({ x: currentX * gridSz, y: currentY * gridSz });
+    
+    // Move towards target using diagonal + straight moves
+    while (currentX !== endGridX || currentY !== endGridY) {
+      const dx = endGridX - currentX;
+      const dy = endGridY - currentY;
+      
+      if (dx !== 0 && dy !== 0) {
+        currentX += dx > 0 ? 1 : -1;
+        currentY += dy > 0 ? 1 : -1;
+      } else if (dx !== 0) {
+        currentX += dx > 0 ? 1 : -1;
+      } else if (dy !== 0) {
+        currentY += dy > 0 ? 1 : -1;
+      }
+      waypoints.push({ x: currentX * gridSz, y: currentY * gridSz });
+    }
+    
+    return waypoints;
+  };
+  
+  // Detect token position changes and start animations for remote moves
+  useEffect(() => {
+    const effectiveGridSize = scene?.gridSize || gridSize;
+    let startedNewAnimation = false;
+    
+    tokens.forEach(token => {
+      const prevPos = prevTokenPositionsRef.current.get(token.id);
+      const currPos = { x: token.x, y: token.y };
+      
+      // Skip if this token is being dragged locally
+      if (draggingToken?.id === token.id) {
+        prevTokenPositionsRef.current.set(token.id, currPos);
+        return;
+      }
+      
+      // Skip if already animating to this position
+      const existingAnim = animatingTokensRef.current.get(token.id);
+      if (existingAnim && existingAnim.toX === token.x && existingAnim.toY === token.y) {
+        return;
+      }
+      
+      // Check if position changed significantly (more than 1 pixel)
+      if (prevPos && (Math.abs(prevPos.x - currPos.x) > 1 || Math.abs(prevPos.y - currPos.y) > 1)) {
+        // Position changed - start animation
+        const waypoints = calculateWaypoints(prevPos.x, prevPos.y, currPos.x, currPos.y, effectiveGridSize);
+        
+        if (waypoints.length > 1) {
+          animatingTokensRef.current.set(token.id, {
+            id: token.id,
+            fromX: prevPos.x,
+            fromY: prevPos.y,
+            toX: currPos.x,
+            toY: currPos.y,
+            waypoints,
+            startTime: performance.now()
+          });
+          startedNewAnimation = true;
+        }
+      }
+      
+      prevTokenPositionsRef.current.set(token.id, currPos);
+    });
+    
+    // Clean up animations for tokens that no longer exist
+    animatingTokensRef.current.forEach((_, tokenId) => {
+      if (!tokens.find(t => t.id === tokenId)) {
+        animatingTokensRef.current.delete(tokenId);
+      }
+    });
+    
+    // Start animation loop if we have new animations and it's not already running
+    if (startedNewAnimation && !animationFrameRef.current) {
+      startAnimationLoop();
+    }
+  }, [tokens, draggingToken?.id, scene?.gridSize, gridSize]);
+  
+  // Animation loop function - uses refs to avoid stale closure
+  const startAnimationLoop = () => {
+    const animate = () => {
+      const now = performance.now();
+      let anyStillAnimating = false;
+      
+      animatingTokensRef.current.forEach((anim, tokenId) => {
+        const elapsed = now - anim.startTime;
+        const totalWaypoints = anim.waypoints.length;
+        const totalDuration = (totalWaypoints - 1) * ANIMATION_SPEED_MS_PER_CELL;
+        
+        if (elapsed >= totalDuration) {
+          // Animation complete - remove
+          animatingTokensRef.current.delete(tokenId);
+        } else {
+          anyStillAnimating = true;
+        }
+      });
+      
+      // Trigger re-render to update token positions
+      setAnimationTick(t => t + 1);
+      
+      if (anyStillAnimating) {
+        animationFrameRef.current = requestAnimationFrame(animate);
+      } else {
+        animationFrameRef.current = null;
+      }
+    };
+    
+    animationFrameRef.current = requestAnimationFrame(animate);
+  };
+  
+  // Clean up animation frame on unmount
+  useEffect(() => {
+    return () => {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = null;
+      }
+    };
+  }, []);
+  
+  // Helper to get current display position for a token (handles animation)
+  const getTokenDisplayPosition = (token: Token): { x: number; y: number } => {
+    // Check if being dragged
+    if (draggingToken?.id === token.id) {
+      return { x: draggingToken.visualX, y: draggingToken.visualY };
+    }
+    
+    // Check if animating
+    const anim = animatingTokensRef.current.get(token.id);
+    if (anim) {
+      const now = performance.now();
+      const elapsed = now - anim.startTime;
+      const totalWaypoints = anim.waypoints.length;
+      const totalDuration = (totalWaypoints - 1) * ANIMATION_SPEED_MS_PER_CELL;
+      
+      if (elapsed < totalDuration) {
+        // Calculate current position along waypoints
+        const progressTotal = elapsed / ANIMATION_SPEED_MS_PER_CELL;
+        const waypointIndex = Math.min(Math.floor(progressTotal), totalWaypoints - 2);
+        const waypointProgress = progressTotal - waypointIndex;
+        
+        const fromWaypoint = anim.waypoints[waypointIndex];
+        const toWaypoint = anim.waypoints[waypointIndex + 1];
+        
+        // Interpolate between waypoints
+        return {
+          x: fromWaypoint.x + (toWaypoint.x - fromWaypoint.x) * Math.min(waypointProgress, 1),
+          y: fromWaypoint.y + (toWaypoint.y - fromWaypoint.y) * Math.min(waypointProgress, 1)
+        };
+      }
+    }
+    
+    // Default to actual token position
+    return { x: token.x, y: token.y };
+  };
   
   // Update viewport size on mount and resize using ResizeObserver for accurate dimensions
   useEffect(() => {
@@ -1147,8 +1333,10 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
           const gridSpan = getTokenGridSpan(speciesData?.size);
           
           const isDragging = draggingToken?.id === token.id;
-          const displayX = isDragging ? draggingToken.visualX : token.x;
-          const displayY = isDragging ? draggingToken.visualY : token.y;
+          const isAnimating = animatingTokensRef.current.has(token.id);
+          const displayPos = getTokenDisplayPosition(token);
+          const displayX = displayPos.x;
+          const displayY = displayPos.y;
           
           // Token size is 90% of grid span to fit within cells with some padding
           // For Huge (4x4) and Gargantuan (6x6) tokens, they take up multiple grid cells
@@ -1463,6 +1651,141 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
             </div>
           );
         })}
+
+        {/* Token Movement Path Visualization - Shows path and distance while dragging */}
+        {draggingToken && (() => {
+          const effectiveGridSize = scene?.gridSize || gridSize;
+          
+          // Calculate start and end grid positions
+          const startGridX = Math.round(draggingToken.startX / effectiveGridSize);
+          const startGridY = Math.round(draggingToken.startY / effectiveGridSize);
+          const endGridX = Math.round(draggingToken.visualX / effectiveGridSize);
+          const endGridY = Math.round(draggingToken.visualY / effectiveGridSize);
+          
+          // Build grid-aligned path (Manhattan distance with diagonal support)
+          const pathPoints: { x: number; y: number }[] = [];
+          let currentX = startGridX;
+          let currentY = startGridY;
+          pathPoints.push({ x: currentX, y: currentY });
+          
+          // Move towards target using diagonal + straight moves
+          while (currentX !== endGridX || currentY !== endGridY) {
+            const dx = endGridX - currentX;
+            const dy = endGridY - currentY;
+            
+            // Prefer diagonal movement when both axes need movement
+            if (dx !== 0 && dy !== 0) {
+              currentX += dx > 0 ? 1 : -1;
+              currentY += dy > 0 ? 1 : -1;
+            } else if (dx !== 0) {
+              currentX += dx > 0 ? 1 : -1;
+            } else if (dy !== 0) {
+              currentY += dy > 0 ? 1 : -1;
+            }
+            pathPoints.push({ x: currentX, y: currentY });
+          }
+          
+          // Calculate total distance (diagonal = 1.5 grid cells in D&D, but we'll use 5ft per cell for simplicity)
+          // Actually for grid games, each step is 5ft including diagonals for simplicity
+          let totalDistance = 0;
+          for (let i = 1; i < pathPoints.length; i++) {
+            const prevPoint = pathPoints[i - 1];
+            const currPoint = pathPoints[i];
+            const isDiagonal = prevPoint.x !== currPoint.x && prevPoint.y !== currPoint.y;
+            // Standard: 5ft per square, diagonal can be 5ft (simplified) or 7.5ft (alternate)
+            // Using 5ft for simplicity as most VTTs do
+            totalDistance += isDiagonal ? 5 : 5;
+          }
+          
+          // Convert grid positions to world coordinates (center of each cell)
+          const worldPoints = pathPoints.map(p => ({
+            x: p.x * effectiveGridSize + effectiveGridSize / 2 + 9000,
+            y: p.y * effectiveGridSize + effectiveGridSize / 2 + 9000
+          }));
+          
+          // Only show if actually moved
+          if (pathPoints.length <= 1) return null;
+          
+          // Build SVG path string
+          const pathD = worldPoints.map((p, i) => 
+            i === 0 ? `M ${p.x} ${p.y}` : `L ${p.x} ${p.y}`
+          ).join(' ');
+          
+          // Calculate label position (midpoint of path)
+          const midIndex = Math.floor(worldPoints.length / 2);
+          const labelX = worldPoints[midIndex].x;
+          const labelY = worldPoints[midIndex].y - 15;
+          
+          return (
+            <svg
+              className="absolute pointer-events-none"
+              style={{
+                left: 0,
+                top: 0,
+                width: '20000px',
+                height: '20000px',
+                overflow: 'visible',
+                zIndex: 30, // Above tokens
+              }}
+            >
+              {/* Path trail - dashed line showing movement */}
+              <path
+                d={pathD}
+                fill="none"
+                stroke="rgba(59, 130, 246, 0.8)"
+                strokeWidth={4}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeDasharray="10 6"
+              />
+              
+              {/* Waypoint dots at each grid cell along path */}
+              {worldPoints.slice(0, -1).map((point, i) => (
+                <circle
+                  key={i}
+                  cx={point.x}
+                  cy={point.y}
+                  r={i === 0 ? 8 : 5}
+                  fill={i === 0 ? "rgba(34, 197, 94, 0.9)" : "rgba(59, 130, 246, 0.7)"}
+                  stroke="white"
+                  strokeWidth={2}
+                />
+              ))}
+              
+              {/* End point indicator */}
+              <circle
+                cx={worldPoints[worldPoints.length - 1].x}
+                cy={worldPoints[worldPoints.length - 1].y}
+                r={10}
+                fill="none"
+                stroke="rgba(59, 130, 246, 1)"
+                strokeWidth={3}
+              />
+              
+              {/* Distance label with background */}
+              <rect
+                x={labelX - 30}
+                y={labelY - 12}
+                width={60}
+                height={24}
+                rx={4}
+                fill="rgba(0, 0, 0, 0.85)"
+                stroke="rgba(59, 130, 246, 0.8)"
+                strokeWidth={1}
+              />
+              <text
+                x={labelX}
+                y={labelY + 5}
+                textAnchor="middle"
+                fill="white"
+                fontSize="14"
+                fontWeight="bold"
+              >
+                {totalDistance} ft
+              </text>
+            </svg>
+          );
+        })()}
 
         {/* AoE Targeting Overlay - Inside motion.div so it transforms with the map */}
         {aoeTargetState?.active && aoeTargetState.spell && (() => {
