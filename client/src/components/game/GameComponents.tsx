@@ -1364,6 +1364,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
           const character = getCharacterForToken(token);
           const tokenImage = character?.portrait || token.image;
           const hpPercent = character ? (character.hp / character.maxHp) * 100 : null;
+          const energyPercent = character ? (character.energy / character.maxEnergy) * 100 : null;
           const effectiveGridSize = scene?.gridSize || gridSize;
           
           // Check if user can drag this token:
@@ -1582,7 +1583,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                 </button>
               )}
               
-              {/* Nametag - displays character/token name at bottom of token, above HP bar */}
+              {/* Nametag - displays character/token name at bottom of token, above HP/Energy bars */}
               {/* Only show if: nametags enabled AND (GM or player has view/edit permission for the character) */}
               {/* Players without permission don't see any name at all */}
               {/* Uses nickname if set, otherwise full name. Long names wrap to multiple lines */}
@@ -1590,7 +1591,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                 <div 
                   className="absolute left-1/2 -translate-x-1/2 font-display text-white pointer-events-none text-center leading-tight"
                   style={{ 
-                    bottom: character && hpPercent !== null ? 10 : 2,
+                    bottom: character && hpPercent !== null ? 18 : 2,
                     fontSize: Math.max(8, Math.min(11, tokenSize / 5.5)),
                     textShadow: '1px 1px 0 #000, -1px 1px 0 #000, 1px -1px 0 #000, -1px -1px 0 #000, 0 1px 0 #000, 0 -1px 0 #000, 1px 0 0 #000, -1px 0 0 #000',
                     maxWidth: tokenSize * 1.2,
@@ -1604,8 +1605,18 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                 </div>
               )}
               
-              {/* HP Bar - Only show if token is linked to a character */}
-              {character && hpPercent !== null && (
+              {/* Energy Bar - Only show if token is linked to a character and user has permission */}
+              {character && energyPercent !== null && (role === 'gm' || myPermissions?.permissions?.[character.id]) && (
+                <div className="absolute bottom-[9px] left-0.5 right-0.5 h-1.5 bg-black/50 rounded-full overflow-hidden">
+                  <div 
+                    className="h-full transition-all duration-300 bg-cyan-500"
+                    style={{ width: `${Math.max(0, Math.min(100, energyPercent))}%` }}
+                  />
+                </div>
+              )}
+              
+              {/* HP Bar - Only show if token is linked to a character and user has permission */}
+              {character && hpPercent !== null && (role === 'gm' || myPermissions?.permissions?.[character.id]) && (
                 <div className="absolute bottom-0.5 left-0.5 right-0.5 h-1.5 bg-black/50 rounded-full overflow-hidden">
                   <div 
                     className={`h-full transition-all duration-300 ${
