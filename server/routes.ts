@@ -3863,7 +3863,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   damageDice: systemSpell.damageDice || undefined,
                   healingDice: systemSpell.healingDice || undefined,
                   damageType: systemSpell.damageType || undefined,
-                  range: systemSpell.range || undefined,
                   rangeNum: systemSpell.rangeNum || 30,
                   aoe: systemSpell.aoe || undefined,
                   castingTime: systemSpell.castingTime || undefined,
