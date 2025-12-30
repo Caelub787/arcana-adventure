@@ -5909,12 +5909,6 @@ export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onIn
     setChatInput("");
   };
 
-  const handleRoll = () => {
-    if (campaignId) {
-      gameWs.sendDiceRoll('d20', 0, undefined, undefined);
-    }
-  };
-
   const handleClearChat = async () => {
     if (!campaignId) return;
     setClearingChat(true);
@@ -5955,9 +5949,6 @@ export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onIn
                   <Trash2 className="h-4 w-4" />
                 </Button>
               )}
-              <Button size="sm" variant="outline" onClick={handleRoll} className="border-stone-700 hover:bg-stone-800">
-                <Dice5 className="mr-2 h-4 w-4" /> Roll d20
-              </Button>
             </div>
           </div>
 
