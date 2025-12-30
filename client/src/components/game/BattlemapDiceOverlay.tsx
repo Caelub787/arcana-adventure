@@ -11,13 +11,15 @@ export function BattlemapDiceOverlay({ onRollComplete }: BattlemapDiceOverlayPro
     const handleDiceRoll = (event: CustomEvent<DiceRollResult>) => {
       const result = event.detail;
       
+      // Don't broadcast - server already broadcast this roll to all clients
       triggerDiceRollNotification(
         result.dieType,
         result.result,
         result.modifier,
         result.total,
         result.username || 'Unknown',
-        undefined
+        undefined,
+        false // broadcast = false, server already sent to all clients
       );
       
       if (onRollComplete) {

@@ -280,7 +280,8 @@ export function triggerDiceRollNotification(
   modifier: number,
   total: number,
   username: string,
-  characterName?: string
+  characterName?: string,
+  broadcast: boolean = true
 ) {
   triggerRollNotification({
     type: 'dice',
@@ -291,7 +292,7 @@ export function triggerDiceRollNotification(
     total,
     username,
     characterName,
-  });
+  }, broadcast);
 }
 
 export function triggerInitiativeNotification(
@@ -299,7 +300,8 @@ export function triggerInitiativeNotification(
   modifier: number,
   total: number,
   username: string,
-  characterName: string
+  characterName: string,
+  broadcast: boolean = true
 ) {
   triggerRollNotification({
     type: 'initiative',
@@ -310,7 +312,7 @@ export function triggerInitiativeNotification(
     total,
     username,
     characterName,
-  });
+  }, broadcast);
 }
 
 export function triggerSkillRollNotification(
@@ -320,7 +322,8 @@ export function triggerSkillRollNotification(
   modifier: number,
   total: number,
   username: string,
-  characterName?: string
+  characterName?: string,
+  broadcast: boolean = true
 ) {
   triggerRollNotification({
     type: 'skill',
@@ -331,7 +334,7 @@ export function triggerSkillRollNotification(
     total,
     username,
     characterName,
-  });
+  }, broadcast);
 }
 
 export function triggerEffectRollNotification(
@@ -341,7 +344,8 @@ export function triggerEffectRollNotification(
   total: number,
   damageType: string,
   isHealing: boolean,
-  characterName: string
+  characterName: string,
+  broadcast: boolean = true
 ) {
   const rollsText = rolls.join(' + ') + (bonus > 0 ? ` + ${bonus}` : '');
   const actionText = isHealing ? 'heals' : 'takes';
@@ -356,5 +360,5 @@ export function triggerEffectRollNotification(
     characterName,
     calculationBreakdown: `${characterName} ${actionText} ${total} ${damageType || ''} (${rollsText})`,
     isHealing,
-  });
+  }, broadcast);
 }

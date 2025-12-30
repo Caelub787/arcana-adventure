@@ -1513,17 +1513,20 @@ export default function Campaign() {
         }
         if (data.type === 'initiative_roll') {
           // Trigger initiative roll notification - use nickname if available
+          // Don't broadcast - server already sent to all clients
           const displayName = data.userId ? getDisplayName(data.userId, data.username) : data.username;
           triggerInitiativeNotification(
             data.result,
             data.modifier,
             data.total,
             displayName,
-            data.characterName
+            data.characterName,
+            false // broadcast = false, server already sent to all clients
           );
         }
         
         // Handle effect roll notifications - token effects triggering damage/healing
+        // Don't broadcast - server already sent to all clients
         if (data.type === 'effect_roll') {
           triggerEffectRollNotification(
             data.effectName,
@@ -1532,7 +1535,8 @@ export default function Campaign() {
             data.total,
             data.damageType,
             data.isHealing,
-            data.characterName
+            data.characterName,
+            false // broadcast = false, server already sent to all clients
           );
         }
         
