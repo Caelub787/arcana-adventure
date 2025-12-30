@@ -15624,7 +15624,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                 treeData={featTreeData}
                 characterFeats={characterFeats}
                 characterId={liveCharacter.id}
-                canEdit={isOwner || isGM}
+                canEdit={canEditSheet}
                 characterLevel={liveCharacter.level}
               />
             )}
