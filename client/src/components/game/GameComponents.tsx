@@ -13530,7 +13530,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                       <Layers className="h-4 w-4 mr-1" /> Templates
                     </Button>
                   )}
-                  {canAddContent && (
+                  {isGM && (
                     <Button size="sm" onClick={() => setShowAddItem(true)} data-testid="button-add-item">
                       <Plus className="h-4 w-4 mr-1" /> Add Item
                     </Button>
@@ -13706,7 +13706,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
           <TabsContent value="magic" className="space-y-4 mt-0" data-testid="content-magic">
             <Card className="bg-stone-800 border-stone-700">
               <CardContent className="space-y-4 pt-4">
-                {canAddContent && (
+                {isGM && (
                   <div className="flex justify-end gap-2">
                     <Button 
                       size="sm"
