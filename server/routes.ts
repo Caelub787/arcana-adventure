@@ -3765,7 +3765,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const campaign = await storage.getCampaign(character.campaignId);
       const isGM = campaign?.gmUserId === req.session.userId;
       
-      if (!isOwner && !isGM) {
+      // Check for assistant_gm role
+      const membership = await storage.getCampaignMembership(req.session.userId!, character.campaignId);
+      const isAssistantGM = membership?.role === 'assistant_gm';
+      
+      // Check for edit permission on this character
+      const permission = await storage.getCharacterPermission(req.params.id, req.session.userId!);
+      const hasEditAccess = permission?.accessLevel === 'edit';
+      
+      if (!isOwner && !isGM && !isAssistantGM && !hasEditAccess) {
         return res.status(403).json({ error: "Not authorized to modify this character" });
       }
       
