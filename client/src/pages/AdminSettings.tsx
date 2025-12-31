@@ -1064,34 +1064,34 @@ function ItemsView({ items, isLoading, searchQuery, setSearchQuery, typeFilter, 
                 return (
                   <div
                     key={item.id}
-                    className="flex items-center gap-4 p-3 rounded-lg bg-stone-800 border border-stone-700 hover:border-stone-600"
+                    className="flex flex-wrap items-center gap-2 sm:gap-4 p-3 rounded-lg bg-stone-800 border border-stone-700 hover:border-stone-600"
                     data-testid={`item-row-${item.id}`}
                   >
                     {item.image ? (
-                      <img src={item.image} alt={item.name} className="h-12 w-12 rounded object-cover" />
+                      <img src={item.image} alt={item.name} className="h-10 w-10 sm:h-12 sm:w-12 rounded object-cover shrink-0" />
                     ) : (
-                      <div className="h-12 w-12 rounded bg-stone-700 flex items-center justify-center">
-                        <Icon className="h-6 w-6 text-stone-400" />
+                      <div className="h-10 w-10 sm:h-12 sm:w-12 rounded bg-stone-700 flex items-center justify-center shrink-0">
+                        <Icon className="h-5 w-5 sm:h-6 sm:w-6 text-stone-400" />
                       </div>
                     )}
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium truncate">{item.name}</span>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-medium truncate text-sm sm:text-base">{item.name}</span>
                         <Badge className={`${rarityColors[item.rarity]} text-xs`}>
                           {item.rarity}
                         </Badge>
                       </div>
-                      <div className="text-sm text-stone-400 flex items-center gap-2">
+                      <div className="text-xs sm:text-sm text-stone-400 flex items-center gap-2">
                         <span className="capitalize">{item.itemType}</span>
                         {item.damage && <span>| {item.damage} {item.damageType}</span>}
                       </div>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex gap-1 sm:gap-2 shrink-0">
                       <Button
                         variant="ghost"
                         size="icon"
                         onClick={() => onEditItem(item)}
-                        className="text-stone-400 hover:text-amber-500"
+                        className="text-stone-400 hover:text-amber-500 h-8 w-8 sm:h-10 sm:w-10"
                         data-testid={`button-edit-${item.id}`}
                       >
                         <Pencil className="h-4 w-4" />
@@ -1100,7 +1100,7 @@ function ItemsView({ items, isLoading, searchQuery, setSearchQuery, typeFilter, 
                         variant="ghost"
                         size="icon"
                         onClick={() => onDeleteItem(item.id)}
-                        className="text-stone-400 hover:text-red-500"
+                        className="text-stone-400 hover:text-red-500 h-8 w-8 sm:h-10 sm:w-10"
                         data-testid={`button-delete-${item.id}`}
                       >
                         <Trash2 className="h-4 w-4" />
@@ -1169,30 +1169,30 @@ function SpeciesView({ species, isLoading, searchQuery, setSearchQuery, onAddSpe
               {species.map((s: SystemSpecies) => (
                 <div
                   key={s.id}
-                  className="flex items-center gap-4 p-3 rounded-lg bg-stone-800 border border-stone-700 hover:border-stone-600"
+                  className="flex flex-wrap items-center gap-2 sm:gap-4 p-3 rounded-lg bg-stone-800 border border-stone-700 hover:border-stone-600"
                   data-testid={`species-row-${s.id}`}
                 >
-                  <div className="h-12 w-12 rounded bg-stone-700 flex items-center justify-center">
-                    <Users className="h-6 w-6 text-emerald-400" />
+                  <div className="h-10 w-10 sm:h-12 sm:w-12 rounded bg-stone-700 flex items-center justify-center shrink-0">
+                    <Users className="h-5 w-5 sm:h-6 sm:w-6 text-emerald-400" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium truncate">{s.name}</span>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-medium truncate text-sm sm:text-base">{s.name}</span>
                       <Badge className="bg-stone-600 text-xs">{s.size}</Badge>
                     </div>
-                    <div className="text-sm text-stone-400 flex flex-wrap gap-2">
+                    <div className="text-xs sm:text-sm text-stone-400 flex flex-wrap gap-1 sm:gap-2">
                       <span>HP: {s.startingHp}</span>
                       <span>| Speed: {s.speed}ft</span>
                       {s.flySpeed > 0 && <span>| Fly: {s.flySpeed}ft</span>}
                       <span>| Armor: {s.naturalArmor}</span>
                     </div>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex gap-1 sm:gap-2 shrink-0">
                     <Button
                       variant="ghost"
                       size="icon"
                       onClick={() => onEditSpecies(s)}
-                      className="text-stone-400 hover:text-emerald-500"
+                      className="text-stone-400 hover:text-emerald-500 h-8 w-8 sm:h-10 sm:w-10"
                       data-testid={`button-edit-species-${s.id}`}
                     >
                       <Pencil className="h-4 w-4" />
@@ -1201,7 +1201,7 @@ function SpeciesView({ species, isLoading, searchQuery, setSearchQuery, onAddSpe
                       variant="ghost"
                       size="icon"
                       onClick={() => onDeleteSpecies(s.id)}
-                      className="text-stone-400 hover:text-red-500"
+                      className="text-stone-400 hover:text-red-500 h-8 w-8 sm:h-10 sm:w-10"
                       data-testid={`button-delete-species-${s.id}`}
                     >
                       <Trash2 className="h-4 w-4" />
@@ -1270,24 +1270,24 @@ function SpellsView({ spells, isLoading, searchQuery, setSearchQuery, onAddSpell
               {spells.map((spell: SystemSpell) => (
                 <div
                   key={spell.id}
-                  className="flex items-center gap-4 p-3 rounded-lg bg-stone-800 border border-stone-700 hover:border-stone-600"
+                  className="flex flex-wrap items-center gap-2 sm:gap-4 p-3 rounded-lg bg-stone-800 border border-stone-700 hover:border-stone-600"
                   data-testid={`spell-row-${spell.id}`}
                 >
-                  <div className="h-12 w-12 rounded bg-stone-700 flex items-center justify-center overflow-hidden">
+                  <div className="h-10 w-10 sm:h-12 sm:w-12 rounded bg-stone-700 flex items-center justify-center overflow-hidden shrink-0">
                     {spell.icon ? (
                       <img src={spell.icon} alt={spell.name} className="h-full w-full object-cover" />
                     ) : (
-                      <Sparkles className="h-6 w-6 text-blue-400" />
+                      <Sparkles className="h-5 w-5 sm:h-6 sm:w-6 text-blue-400" />
                     )}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium truncate">{spell.name}</span>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-medium truncate text-sm sm:text-base">{spell.name}</span>
                       <Badge className={spell.castingTime?.toLowerCase().includes('bonus') ? 'bg-blue-600 text-xs' : 'bg-red-600 text-xs'}>
                         {spell.castingTime?.toLowerCase().includes('bonus') ? 'Bonus Action' : 'Action'}
                       </Badge>
                     </div>
-                    <div className="text-sm text-stone-400 flex flex-wrap gap-2">
+                    <div className="text-xs sm:text-sm text-stone-400 flex flex-wrap gap-1 sm:gap-2">
                       <span>Range: {spell.range}</span>
                       <span>| {spell.duration}</span>
                       {spell.damageDice && <span>| Damage: {spell.damageDice} {spell.damageType}</span>}
@@ -1295,12 +1295,12 @@ function SpellsView({ spells, isLoading, searchQuery, setSearchQuery, onAddSpell
                       {spell.isAoe && <span>| AoE{spell.aoeShape ? `: ${spell.aoeShape.charAt(0).toUpperCase() + spell.aoeShape.slice(1)}` : ''}{spell.aoeRange ? ` ${spell.aoeRange}ft` : ''}</span>}
                     </div>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex gap-1 sm:gap-2 shrink-0">
                     <Button
                       variant="ghost"
                       size="icon"
                       onClick={() => onEditSpell(spell)}
-                      className="text-stone-400 hover:text-blue-500"
+                      className="text-stone-400 hover:text-blue-500 h-8 w-8 sm:h-10 sm:w-10"
                       data-testid={`button-edit-spell-${spell.id}`}
                     >
                       <Pencil className="h-4 w-4" />
@@ -1309,7 +1309,7 @@ function SpellsView({ spells, isLoading, searchQuery, setSearchQuery, onAddSpell
                       variant="ghost"
                       size="icon"
                       onClick={() => onDeleteSpell(spell.id)}
-                      className="text-stone-400 hover:text-red-500"
+                      className="text-stone-400 hover:text-red-500 h-8 w-8 sm:h-10 sm:w-10"
                       data-testid={`button-delete-spell-${spell.id}`}
                     >
                       <Trash2 className="h-4 w-4" />
@@ -1386,31 +1386,31 @@ function SkillsView({ skills, isLoading, searchQuery, setSearchQuery, onAddSkill
               {skills.map((skill: SystemSkill) => (
                 <div
                   key={skill.id}
-                  className="flex items-center gap-4 p-3 rounded-lg bg-stone-800 border border-stone-700 hover:border-stone-600"
+                  className="flex flex-wrap items-center gap-2 sm:gap-4 p-3 rounded-lg bg-stone-800 border border-stone-700 hover:border-stone-600"
                   data-testid={`skill-row-${skill.id}`}
                 >
-                  <div className="h-12 w-12 rounded bg-stone-700 flex items-center justify-center overflow-hidden">
-                    <BookOpen className="h-6 w-6 text-cyan-400" />
+                  <div className="h-10 w-10 sm:h-12 sm:w-12 rounded bg-stone-700 flex items-center justify-center overflow-hidden shrink-0">
+                    <BookOpen className="h-5 w-5 sm:h-6 sm:w-6 text-cyan-400" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium truncate">{skill.name}</span>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-medium truncate text-sm sm:text-base">{skill.name}</span>
                       <Badge className={`bg-stone-700 ${parentAttributeColors[skill.parentAttribute] || 'text-stone-300'} text-xs`}>
                         {skill.parentAttribute.charAt(0).toUpperCase() + skill.parentAttribute.slice(1)}
                       </Badge>
                     </div>
                     {skill.description && (
-                      <div className="text-sm text-stone-400 truncate">
+                      <div className="text-xs sm:text-sm text-stone-400 truncate">
                         {skill.description}
                       </div>
                     )}
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex gap-1 sm:gap-2 shrink-0">
                     <Button
                       variant="ghost"
                       size="icon"
                       onClick={() => onEditSkill(skill)}
-                      className="text-stone-400 hover:text-cyan-500"
+                      className="text-stone-400 hover:text-cyan-500 h-8 w-8 sm:h-10 sm:w-10"
                       data-testid={`button-edit-skill-${skill.id}`}
                     >
                       <Pencil className="h-4 w-4" />
@@ -1419,7 +1419,7 @@ function SkillsView({ skills, isLoading, searchQuery, setSearchQuery, onAddSkill
                       variant="ghost"
                       size="icon"
                       onClick={() => onDeleteSkill(skill.id)}
-                      className="text-stone-400 hover:text-red-500"
+                      className="text-stone-400 hover:text-red-500 h-8 w-8 sm:h-10 sm:w-10"
                       data-testid={`button-delete-skill-${skill.id}`}
                     >
                       <Trash2 className="h-4 w-4" />
@@ -1618,10 +1618,10 @@ function TraitsView({ traits, isLoading, searchQuery, setSearchQuery, onAddTrait
                   className="p-3 rounded-lg bg-stone-800 border border-stone-700 hover:border-stone-600"
                   data-testid={`trait-row-${trait.id}`}
                 >
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2 min-w-0 flex-1">
-                      <Star className="h-5 w-5 text-rose-400 shrink-0" />
-                      <span className="font-medium truncate">{trait.name}</span>
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <div className="flex items-center gap-2 min-w-0 flex-1 flex-wrap">
+                      <Star className="h-4 w-4 sm:h-5 sm:w-5 text-rose-400 shrink-0" />
+                      <span className="font-medium truncate text-sm sm:text-base">{trait.name}</span>
                       <Badge className={`bg-stone-700 ${parentAttributeColors[trait.parentAttribute] || 'text-stone-300'} text-xs shrink-0`}>
                         {trait.parentAttribute.charAt(0).toUpperCase() + trait.parentAttribute.slice(1)}
                       </Badge>
@@ -1634,7 +1634,7 @@ function TraitsView({ traits, isLoading, searchQuery, setSearchQuery, onAddTrait
                         variant="ghost"
                         size="icon"
                         onClick={() => onEditTrait(trait)}
-                        className="h-8 w-8 text-stone-400 hover:text-rose-500"
+                        className="h-8 w-8 sm:h-10 sm:w-10 text-stone-400 hover:text-rose-500"
                         data-testid={`button-edit-trait-${trait.id}`}
                       >
                         <Pencil className="h-4 w-4" />
@@ -1643,7 +1643,7 @@ function TraitsView({ traits, isLoading, searchQuery, setSearchQuery, onAddTrait
                         variant="ghost"
                         size="icon"
                         onClick={() => onDeleteTrait(trait.id)}
-                        className="h-8 w-8 text-stone-400 hover:text-red-500"
+                        className="h-8 w-8 sm:h-10 sm:w-10 text-stone-400 hover:text-red-500"
                         data-testid={`button-delete-trait-${trait.id}`}
                       >
                         <Trash2 className="h-4 w-4" />
@@ -1651,7 +1651,7 @@ function TraitsView({ traits, isLoading, searchQuery, setSearchQuery, onAddTrait
                     </div>
                   </div>
                   {trait.description && (
-                    <div className="text-sm text-stone-400 mt-1 line-clamp-2">
+                    <div className="text-xs sm:text-sm text-stone-400 mt-1 line-clamp-2">
                       {trait.description}
                     </div>
                   )}
@@ -1962,24 +1962,24 @@ function TokenEffectsView({ effects, isLoading, searchQuery, setSearchQuery, onA
               {effects.map((effect: TokenEffect) => (
                 <div
                   key={effect.id}
-                  className="flex items-center gap-4 p-3 rounded-lg bg-stone-800 border border-stone-700 hover:border-stone-600"
+                  className="flex flex-wrap items-center gap-2 sm:gap-4 p-3 rounded-lg bg-stone-800 border border-stone-700 hover:border-stone-600"
                   data-testid={`effect-row-${effect.id}`}
                 >
-                  <div className="h-12 w-12 rounded bg-stone-700 flex items-center justify-center overflow-hidden">
+                  <div className="h-10 w-10 sm:h-12 sm:w-12 rounded bg-stone-700 flex items-center justify-center overflow-hidden shrink-0">
                     {effect.imageUrl ? (
                       <img src={effect.imageUrl} alt={effect.name} className="h-full w-full object-cover" />
                     ) : (
-                      <Flame className="h-6 w-6 text-violet-400" />
+                      <Flame className="h-5 w-5 sm:h-6 sm:w-6 text-violet-400" />
                     )}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium truncate">{effect.name}</span>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-medium truncate text-sm sm:text-base">{effect.name}</span>
                       <Badge className={effect.timing === 'start_of_round' ? 'bg-blue-600 text-xs' : 'bg-orange-600 text-xs'}>
                         {effect.timing === 'start_of_round' ? 'Start of Round' : 'Start of Turn'}
                       </Badge>
                     </div>
-                    <div className="text-sm text-stone-400 flex flex-wrap gap-2">
+                    <div className="text-xs sm:text-sm text-stone-400 flex flex-wrap gap-1 sm:gap-2">
                       {effect.causesDamage && effect.diceAmount && (
                         <span>Damage: {effect.diceAmount} {effect.damageType}</span>
                       )}
@@ -1988,12 +1988,12 @@ function TokenEffectsView({ effects, isLoading, searchQuery, setSearchQuery, onA
                       )}
                     </div>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex gap-1 sm:gap-2 shrink-0">
                     <Button
                       variant="ghost"
                       size="icon"
                       onClick={() => onEditEffect(effect)}
-                      className="text-stone-400 hover:text-violet-500"
+                      className="text-stone-400 hover:text-violet-500 h-8 w-8 sm:h-10 sm:w-10"
                       data-testid={`button-edit-effect-${effect.id}`}
                     >
                       <Pencil className="h-4 w-4" />
@@ -2002,7 +2002,7 @@ function TokenEffectsView({ effects, isLoading, searchQuery, setSearchQuery, onA
                       variant="ghost"
                       size="icon"
                       onClick={() => onDeleteEffect(effect.id)}
-                      className="text-stone-400 hover:text-red-500"
+                      className="text-stone-400 hover:text-red-500 h-8 w-8 sm:h-10 sm:w-10"
                       data-testid={`button-delete-effect-${effect.id}`}
                     >
                       <Trash2 className="h-4 w-4" />
