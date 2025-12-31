@@ -3167,6 +3167,20 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     return matchingAmmo.reduce((total: number, item: any) => total + (item.quantity || 1), 0);
   };
 
+  // Get total quantity of all matching stackable items (by name and key properties)
+  const getTotalStackedQuantity = (item: any): number => {
+    if (!allItems || !item) return item?.quantity || 1;
+    // Match items by name and type (same logic as inventory stacking)
+    const matchingItems = allItems.filter((i: any) => 
+      i.name === item.name &&
+      i.itemType === item.itemType &&
+      i.damage === item.damage &&
+      i.damageType === item.damageType &&
+      i.rarity === item.rarity
+    );
+    return matchingItems.reduce((total: number, i: any) => total + (i.quantity || 1), 0);
+  };
+
   // Check if weapon requires ammunition to attack
   const requiresAmmunitionForRoll = (weaponCategory: string): boolean => {
     return ['bow', 'crossbow', 'sling', 'firearm'].includes(weaponCategory?.toLowerCase() || '');
@@ -4780,11 +4794,11 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
       </>
     );
   } else if (hotbar?.itemId && itemData) {
-    // For ammunition, show grouped total quantity; for throwables, show quantity
+    // For ammunition, consumables, and throwables, show grouped total quantity
     const displayQuantity = itemData.itemType === 'ammunition' 
       ? getTotalAmmunitionQuantity(itemData) 
-      : itemData.isThrowable 
-        ? itemData.quantity 
+      : (itemData.isThrowable || itemData.itemType === 'consumable')
+        ? getTotalStackedQuantity(itemData) 
         : null;
       
     content = itemData.image ? (
@@ -9424,6 +9438,20 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
     return matchingAmmo.reduce((total: number, item: any) => total + (item.quantity || 1), 0);
   };
 
+  // Get total quantity of all matching stackable items (by name and key properties)
+  const getTotalStackedQuantity = (item: any): number => {
+    if (!allItems || !item) return item?.quantity || 1;
+    // Match items by name and type (same logic as inventory stacking)
+    const matchingItems = allItems.filter((i: any) => 
+      i.name === item.name &&
+      i.itemType === item.itemType &&
+      i.damage === item.damage &&
+      i.damageType === item.damageType &&
+      i.rarity === item.rarity
+    );
+    return matchingItems.reduce((total: number, i: any) => total + (i.quantity || 1), 0);
+  };
+
   // Check ammunition break chance and handle quantity reduction
   const checkAmmunitionBreak = async (ammo: any) => {
     const breakChance = (ammo.breakChance ?? 10) / 100;
@@ -9945,6 +9973,12 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
                         x{getTotalAmmunitionQuantity(itemData)}
                       </div>
                     )}
+                    {/* Quantity badge for consumables and throwables - shows total of all matching items */}
+                    {(itemData.itemType === 'consumable' || itemData.isThrowable) && itemData.itemType !== 'ammunition' && (
+                      <div className="absolute top-0 right-0 bg-stone-900/90 text-green-400 text-[8px] px-1 rounded-bl font-bold">
+                        x{getTotalStackedQuantity(itemData)}
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <div className="relative w-full h-full flex items-center justify-center">
@@ -9977,6 +10011,12 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
                     {itemData.itemType === 'ammunition' && (
                       <div className="absolute top-0 right-0 bg-stone-900/90 text-amber-400 text-[8px] px-1 rounded-bl font-bold">
                         x{getTotalAmmunitionQuantity(itemData)}
+                      </div>
+                    )}
+                    {/* Quantity badge for consumables and throwables - shows total of all matching items */}
+                    {(itemData.itemType === 'consumable' || itemData.isThrowable) && itemData.itemType !== 'ammunition' && (
+                      <div className="absolute top-0 right-0 bg-stone-900/90 text-green-400 text-[8px] px-1 rounded-bl font-bold">
+                        x{getTotalStackedQuantity(itemData)}
                       </div>
                     )}
                     {/* Damage badge for weapons */}
