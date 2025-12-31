@@ -6199,6 +6199,8 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
     throwableAoe: boolean;
     throwableAoeShape: string;
     throwableAoeRange: number | string;
+    throwableAoeDamage: string;
+    throwableAoeDamageType: string;
     throwablePickup: boolean;
   }>({
     name: initialData?.name || '',
@@ -6236,6 +6238,8 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
     throwableAoe: (initialData as any)?.throwableAoe || false,
     throwableAoeShape: (initialData as any)?.throwableAoeShape || 'circle',
     throwableAoeRange: (initialData as any)?.throwableAoeRange ?? 10,
+    throwableAoeDamage: (initialData as any)?.throwableAoeDamage || '',
+    throwableAoeDamageType: (initialData as any)?.throwableAoeDamageType || '',
     throwablePickup: (initialData as any)?.throwablePickup || false,
   });
   
@@ -6293,6 +6297,8 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
       throwableAoe: formData.itemType === 'weapon' && formData.isThrowable ? formData.throwableAoe : false,
       throwableAoeShape: formData.itemType === 'weapon' && formData.isThrowable && formData.throwableAoe ? formData.throwableAoeShape : undefined,
       throwableAoeRange: formData.itemType === 'weapon' && formData.isThrowable && formData.throwableAoe ? optionalNum(formData.throwableAoeRange) : undefined,
+      throwableAoeDamage: formData.itemType === 'weapon' && formData.isThrowable && formData.throwableAoe ? formData.throwableAoeDamage : undefined,
+      throwableAoeDamageType: formData.itemType === 'weapon' && formData.isThrowable && formData.throwableAoe ? formData.throwableAoeDamageType : undefined,
       throwablePickup: formData.itemType === 'weapon' && formData.isThrowable ? formData.throwablePickup : false,
     };
     onSave(cleanedData);
@@ -6646,6 +6652,38 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
                                 className="bg-stone-800 border-stone-700"
                                 data-testid="input-throwable-aoe-range"
                               />
+                            </div>
+                            <div>
+                              <Label>Detonation Damage</Label>
+                              <Input
+                                value={formData.throwableAoeDamage}
+                                onChange={(e) => setFormData({ ...formData, throwableAoeDamage: e.target.value })}
+                                placeholder="e.g. 2d6"
+                                className="bg-stone-800 border-stone-700"
+                                data-testid="input-throwable-aoe-damage"
+                              />
+                            </div>
+                            <div>
+                              <Label>Detonation Damage Type</Label>
+                              <Select value={formData.throwableAoeDamageType} onValueChange={(v) => setFormData({ ...formData, throwableAoeDamageType: v })}>
+                                <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-throwable-aoe-damage-type">
+                                  <SelectValue placeholder="Select type" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="Sharp">Sharp</SelectItem>
+                                  <SelectItem value="Blunt">Blunt</SelectItem>
+                                  <SelectItem value="Piercing">Piercing</SelectItem>
+                                  <SelectItem value="Flame">Flame</SelectItem>
+                                  <SelectItem value="Frost">Frost</SelectItem>
+                                  <SelectItem value="Storm">Storm</SelectItem>
+                                  <SelectItem value="Tide">Tide</SelectItem>
+                                  <SelectItem value="Stone">Stone</SelectItem>
+                                  <SelectItem value="Flux">Flux</SelectItem>
+                                  <SelectItem value="Light">Light</SelectItem>
+                                  <SelectItem value="Dark">Dark</SelectItem>
+                                  <SelectItem value="Sound">Sound</SelectItem>
+                                </SelectContent>
+                              </Select>
                             </div>
                           </div>
                         )}

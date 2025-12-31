@@ -5519,6 +5519,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Delete all thrown items for a scene (GM only)
+  app.delete("/api/scenes/:sceneId/thrown-items", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId;
+      if (!userId) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+
+      const scene = await storage.getScene(req.params.sceneId);
+      if (!scene) {
+        return res.status(404).json({ error: "Scene not found" });
+      }
+
+      // Check GM permission
+      const isGM = await storage.isGM(userId, scene.campaignId);
+      if (!isGM) {
+        return res.status(403).json({ error: "Only GMs can clear all thrown items" });
+      }
+
+      await storage.deleteThrownItemsByScene(req.params.sceneId);
+
+      // Broadcast to campaign
+      broadcastToCampaign(scene.campaignId, {
+        type: "thrown_items_cleared",
+        sceneId: scene.id
+      });
+
+      res.json({ success: true });
+    } catch (e) {
+      console.error("Failed to clear thrown items:", e);
+      res.status(500).json({ error: "Failed to clear thrown items" });
+    }
+  });
+
   // Create a thrown item
   app.post("/api/scenes/:sceneId/thrown-items", requireAuth, async (req, res) => {
     try {

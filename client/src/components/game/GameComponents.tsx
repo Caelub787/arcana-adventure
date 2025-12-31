@@ -308,9 +308,10 @@ interface BattleMapProps {
     zoom: number;
   }>;
   thrownItems?: ThrownItem[];
+  onRefetchThrownItems?: () => void;
 }
 
-export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClick, onDeleteToken, role, gridSize, backgroundImage, scene, onViewChange, characters = [], allSpecies = [], selectionMode = 'select', targetedTokenId, selectedTokenId, aoeTargetState, onAoeMouseMove, onAoeClick, otherPlayersAoe, myPermissions, tokenActiveEffects, allTokenEffects, onApplyEffect, onRemoveEffect, onToggleInvisibility, currentTurnCharacterId, otherPlayersTargeting, activeBeacons, onBeacon, otherPlayersViewports, thrownItems = [] }: BattleMapProps) {
+export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClick, onDeleteToken, role, gridSize, backgroundImage, scene, onViewChange, characters = [], allSpecies = [], selectionMode = 'select', targetedTokenId, selectedTokenId, aoeTargetState, onAoeMouseMove, onAoeClick, otherPlayersAoe, myPermissions, tokenActiveEffects, allTokenEffects, onApplyEffect, onRemoveEffect, onToggleInvisibility, currentTurnCharacterId, otherPlayersTargeting, activeBeacons, onBeacon, otherPlayersViewports, thrownItems = [], onRefetchThrownItems }: BattleMapProps) {
   // Use refs for pan/zoom to avoid re-renders during interaction
   const panRef = useRef({ x: 0, y: 0 });
   const zoomRef = useRef(1);
@@ -1260,6 +1261,45 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
              title={showPlayerViewports ? "Hide player viewports" : "Show player viewports"}
           >
             <Users className="h-3 w-3" />
+          </Button>
+        )}
+        {role === 'gm' && thrownItems.length > 0 && scene?.id && (
+          <Button 
+             size="sm" 
+             variant="secondary" 
+             className="bg-black/50 hover:bg-black/80 text-xs border border-white/10 backdrop-blur-sm hover:border-red-500 hover:text-red-400"
+             onClick={async () => {
+               try {
+                 const response = await fetch(`/api/scenes/${scene.id}/thrown-items`, {
+                   method: 'DELETE',
+                   credentials: 'include',
+                 });
+                 if (response.ok) {
+                   toast({
+                     title: "Throwables cleared",
+                     description: "All thrown items have been removed from the battlefield.",
+                   });
+                   onRefetchThrownItems?.();
+                 } else {
+                   const data = await response.json();
+                   toast({
+                     title: "Error",
+                     description: data.error || "Failed to clear throwables",
+                     variant: "destructive",
+                   });
+                 }
+               } catch (error) {
+                 toast({
+                   title: "Error",
+                   description: "Failed to clear throwables",
+                   variant: "destructive",
+                 });
+               }
+             }}
+             data-testid="button-clear-throwables"
+             title="Clear all thrown items from the battlefield"
+          >
+            <Trash2 className="h-3 w-3" />
           </Button>
         )}
       </div>
@@ -3839,27 +3879,7 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
       return;
     }
     
-    // If throwable has AOE, enter AOE targeting mode
-    if (itemData.throwableAoe && onEnterThrowableAoeMode) {
-      const casterToken = tokens?.find((t: any) => t.characterId === character.id);
-      if (casterToken) {
-        onEnterThrowableAoeMode(itemData, casterToken.id);
-        return;
-      } else {
-        triggerRollNotification({
-          type: 'system',
-          label: `${itemData.name} - No Token!`,
-          result: 0,
-          total: 0,
-          username: character.name || 'Unknown',
-          characterName: character.name,
-          calculationBreakdown: 'You need a token on the map to throw items with AOE',
-        });
-        return;
-      }
-    }
-    
-    // Non-AOE throwable - throw at targeted token or notify
+    // Throwables need a targeted token to throw at
     if (!targetedTokenId) {
       triggerRollNotification({
         type: 'system',
@@ -3894,17 +3914,17 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
       return;
     }
     
-    // Get damage dice from item
-    const diceNotation = itemData.damage;
+    // Get AOE damage dice from item (detonation uses throwableAoeDamage)
+    const diceNotation = itemData.throwableAoeDamage;
     if (!diceNotation) {
       triggerRollNotification({
         type: 'system',
-        label: `${itemData.name} - No Damage Dice!`,
+        label: `${itemData.name} - No Detonation Damage!`,
         result: 0,
         total: 0,
         username: character.name || 'Unknown',
         characterName: character.name,
-        calculationBreakdown: 'This item has no damage dice to roll for detonation.',
+        calculationBreakdown: 'No detonation damage configured',
       });
       return;
     }
@@ -3953,8 +3973,8 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
                 await api.updateCharacter(targetChar.id, { currentHp: newHp });
                 queryClient.invalidateQueries({ queryKey: ['character', targetChar.id] });
                 
-                // Send combat damage via WebSocket
-                gameWs.sendCombatDamage(targetChar.id, totalDamage, itemData.damageType || 'Fire', character.name);
+                // Send combat damage via WebSocket (use AOE damage type for detonation)
+                gameWs.sendCombatDamage(targetChar.id, totalDamage, itemData.throwableAoeDamageType || 'Fire', character.name);
               } catch (err) {
                 console.error('Failed to apply detonation damage:', err);
               }
@@ -3979,7 +3999,7 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
       ? `${diceNotation} = ${damageResult} + Mod (${mod >= 0 ? '+' : ''}${mod})`
       : `${diceNotation} = ${damageResult}`;
     
-    const damageTypeDisplay = itemData.damageType ? ` (${itemData.damageType})` : '';
+    const damageTypeDisplay = itemData.throwableAoeDamageType ? ` (${itemData.throwableAoeDamageType})` : '';
     
     // Notify with detonation results
     const label = affectedNames.length > 0 
@@ -4006,11 +4026,11 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
       gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', chatText, 'roll');
     }
     
-    // Broadcast detonation via WebSocket
+    // Broadcast detonation via WebSocket (use AOE damage type)
     gameWs.sendThrownItemsDetonated(itemData.id, sceneId, {
       itemName: itemData.name,
       damageRoll: totalDamage,
-      damageType: itemData.damageType || 'Fire',
+      damageType: itemData.throwableAoeDamageType || 'Fire',
       affectedTokenIds,
       affectedNames,
       characterName: character.name || 'Unknown',
@@ -4342,7 +4362,7 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
       return;
     }
     
-    // Handle throwable items (single = enter AOE mode / throw, double = confirm throw, triple = detonate)
+    // Handle throwable items (single = throw, double = normal damage, triple = detonate with AOE damage)
     if (isThrowableClickable) {
       clickCountRef.current += 1;
       
@@ -4353,13 +4373,13 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
       // Use longer timeout (500ms) for triple-click detection
       clickTimerRef.current = setTimeout(() => {
         if (clickCountRef.current === 1) {
-          // Single-click: Enter AOE targeting mode or show throw target info
+          // Single-click: Throw item to targeted token or grid space
           handleThrowItem();
         } else if (clickCountRef.current === 2) {
-          // Double-click: Confirm throw at current AOE location
-          handleThrowItem();
+          // Double-click: Roll normal damage (like regular weapons)
+          handleDamageRoll();
         } else if (clickCountRef.current >= 3) {
-          // Triple-click: Detonate all thrown items
+          // Triple-click: Detonate all thrown items with AOE damage
           handleDetonateThrowables();
         }
         clickCountRef.current = 0;
@@ -4475,7 +4495,7 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
           <p className="text-sm text-orange-400">AOE Range: {itemData.throwableAoeRange}ft ({itemData.throwableAoeShape || 'circle'})</p>
         )}
         {isThrowableClickable ? (
-          <p className="text-xs text-stone-400 mt-1">Click: Throw | Triple-click: Detonate All</p>
+          <p className="text-xs text-stone-400 mt-1">Click: Throw | 2x: Damage | 3x: Detonate AOE</p>
         ) : isClickable && (
           <p className="text-xs text-stone-400 mt-1">Click: Attack | Double-click: Damage</p>
         )}

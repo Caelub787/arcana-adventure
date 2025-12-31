@@ -1906,6 +1906,14 @@ export default function Campaign() {
             queryClientRef.current.invalidateQueries({ queryKey: [`/api/campaigns/${effectiveCampaignIdRef.current}/characters`] });
           }
         }
+        
+        // Handle thrown items cleared by GM - refetch thrown items for all players
+        if (data.type === 'thrown_items_cleared') {
+          const currentSceneId = sceneIdForTokensRef.current;
+          if (data.sceneId === currentSceneId) {
+            queryClientRef.current.invalidateQueries({ queryKey: ['thrown-items', currentSceneId] });
+          }
+        }
       });
 
       return () => {
@@ -3100,6 +3108,7 @@ export default function Campaign() {
              onBeacon={handleBeacon}
              otherPlayersViewports={otherPlayersViewports}
              thrownItems={thrownItems}
+             onRefetchThrownItems={() => queryClient.invalidateQueries({ queryKey: ['thrown-items', activeScene?.id] })}
            />
            
            {/* Battlemap Dice Overlay for 3D dice rolling */}

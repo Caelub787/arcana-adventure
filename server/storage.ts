@@ -362,6 +362,7 @@ export interface IStorage {
   createThrownItem(data: InsertThrownItem): Promise<ThrownItem>;
   deleteThrownItem(id: string): Promise<void>;
   deleteThrownItemsByItemId(itemId: string): Promise<void>;
+  deleteThrownItemsByScene(sceneId: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2516,6 +2517,10 @@ export class DatabaseStorage implements IStorage {
 
   async deleteThrownItemsByItemId(itemId: string): Promise<void> {
     await db.delete(thrownItems).where(eq(thrownItems.itemId, itemId));
+  }
+
+  async deleteThrownItemsByScene(sceneId: string): Promise<void> {
+    await db.delete(thrownItems).where(eq(thrownItems.sceneId, sceneId));
   }
 }
 
