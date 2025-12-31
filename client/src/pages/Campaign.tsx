@@ -3112,6 +3112,14 @@ export default function Campaign() {
              otherPlayersViewports={otherPlayersViewports}
              thrownItems={thrownItems}
              onRefetchThrownItems={() => queryClient.invalidateQueries({ queryKey: ['thrown-items', activeScene?.id] })}
+             onDeleteThrownItem={async (thrownItemId) => {
+               try {
+                 await api.deleteThrownItem(thrownItemId);
+                 queryClient.invalidateQueries({ queryKey: ['thrown-items', activeScene?.id] });
+               } catch (err) {
+                 console.error('Failed to delete thrown item:', err);
+               }
+             }}
            />
            
            {/* Battlemap Dice Overlay for 3D dice rolling */}

@@ -309,9 +309,10 @@ interface BattleMapProps {
   }>;
   thrownItems?: ThrownItem[];
   onRefetchThrownItems?: () => void;
+  onDeleteThrownItem?: (thrownItemId: string) => void;
 }
 
-export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClick, onDeleteToken, role, gridSize, backgroundImage, scene, onViewChange, characters = [], allSpecies = [], selectionMode = 'select', targetedTokenId, selectedTokenId, aoeTargetState, onAoeMouseMove, onAoeClick, otherPlayersAoe, myPermissions, tokenActiveEffects, allTokenEffects, onApplyEffect, onRemoveEffect, onToggleInvisibility, currentTurnCharacterId, otherPlayersTargeting, activeBeacons, onBeacon, otherPlayersViewports, thrownItems = [], onRefetchThrownItems }: BattleMapProps) {
+export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClick, onDeleteToken, role, gridSize, backgroundImage, scene, onViewChange, characters = [], allSpecies = [], selectionMode = 'select', targetedTokenId, selectedTokenId, aoeTargetState, onAoeMouseMove, onAoeClick, otherPlayersAoe, myPermissions, tokenActiveEffects, allTokenEffects, onApplyEffect, onRemoveEffect, onToggleInvisibility, currentTurnCharacterId, otherPlayersTargeting, activeBeacons, onBeacon, otherPlayersViewports, thrownItems = [], onRefetchThrownItems, onDeleteThrownItem }: BattleMapProps) {
   // Use refs for pan/zoom to avoid re-renders during interaction
   const panRef = useRef({ x: 0, y: 0 });
   const zoomRef = useRef(1);
@@ -1944,9 +1945,9 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                 />
               )}
               
-              {/* Thrown Item Token */}
+              {/* Thrown Item Token - Interactive for GMs */}
               <div
-                className="absolute pointer-events-none"
+                className={`absolute group ${isGM ? 'cursor-pointer' : 'pointer-events-none'}`}
                 style={{
                   left: 9000 + thrownItem.x * effectiveGridSize + tokenOffset,
                   top: 9000 + thrownItem.y * effectiveGridSize + tokenOffset,
@@ -1955,6 +1956,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                   zIndex: 16,
                   opacity: 0.85,
                 }}
+                data-testid={`thrown-item-token-${thrownItem.id}`}
               >
                 <div
                   className="relative w-full h-full rounded-lg border-2 border-orange-400/70 shadow-lg overflow-hidden bg-stone-900/80"
@@ -1971,6 +1973,25 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                       <Package className="w-1/2 h-1/2" />
                     </div>
                   )}
+                  
+                  {/* GM Remove Button - shows on hover */}
+                  {isGM && onDeleteThrownItem && (
+                    <button
+                      className="absolute -top-1 -right-1 w-5 h-5 bg-red-600 hover:bg-red-500 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-lg"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onDeleteThrownItem(thrownItem.id);
+                      }}
+                      data-testid={`delete-thrown-item-${thrownItem.id}`}
+                    >
+                      <X className="w-3 h-3 text-white" />
+                    </button>
+                  )}
+                </div>
+                
+                {/* Item name tooltip on hover */}
+                <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity bg-stone-900/90 text-white text-xs px-2 py-1 rounded whitespace-nowrap pointer-events-none">
+                  {item.name}
                 </div>
               </div>
             </div>
@@ -3940,12 +3961,17 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
       }
       
       // Create thrown item at AOE target location
+      // Convert from world pixel coordinates to grid cell coordinates
+      const effectiveGridSize = gridSize || 50;
+      const gridX = Math.floor(aoeTargetState.center.x / effectiveGridSize);
+      const gridY = Math.floor(aoeTargetState.center.y / effectiveGridSize);
+      
       try {
         const thrownItem = await api.createThrownItem(sceneId, {
           itemId: itemData.id,
           characterId: character.id,
-          x: aoeTargetState.center.x,
-          y: aoeTargetState.center.y,
+          x: gridX,
+          y: gridY,
         });
         
         // Decrement item quantity
@@ -3967,12 +3993,12 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
           total: 0,
           username: character.name || 'Unknown',
           characterName: character.name,
-          calculationBreakdown: `Placed at grid position (${Math.floor(aoeTargetState.center.x)}, ${Math.floor(aoeTargetState.center.y)})`,
+          calculationBreakdown: `Placed at grid position (${gridX}, ${gridY})`,
         });
         
         if (character.campaignId) {
           gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', 
-            `Threw ${itemData.name} at (${Math.floor(aoeTargetState.center.x)}, ${Math.floor(aoeTargetState.center.y)})`, 'action');
+            `Threw ${itemData.name} at grid (${gridX}, ${gridY})`, 'action');
         }
       } catch (err) {
         console.error('Failed to throw item:', err);
@@ -4021,8 +4047,12 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
       return;
     }
     
+    // Get the full item data from the first thrown item (includes DB fields like throwableAoeDamage)
+    // Fall back to itemData from hotbar if thrown item doesn't have full item data
+    const sourceItem = itemThrownItems[0]?.item || itemData;
+    
     // Get AOE damage dice from item (detonation uses throwableAoeDamage)
-    const diceNotation = itemData.throwableAoeDamage;
+    const diceNotation = sourceItem.throwableAoeDamage || itemData.throwableAoeDamage;
     if (!diceNotation) {
       triggerRollNotification({
         type: 'system',
@@ -4031,19 +4061,19 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
         total: 0,
         username: character.name || 'Unknown',
         characterName: character.name,
-        calculationBreakdown: 'No detonation damage configured',
+        calculationBreakdown: `No detonation damage configured for ${itemData.name}. Set "Throwable AOE Damage" in item settings.`,
       });
       return;
     }
     
     // Roll damage once for all detonations
     const { result: damageResult, dieType } = rollDice(diceNotation);
-    const mod = itemData.mod || 0;
+    const mod = sourceItem.mod || itemData.mod || 0;
     const totalDamage = (damageResult || 0) + mod;
     
     // Get AOE range for each thrown item
-    const aoeRange = itemData.throwableAoeRange || 15;
-    const aoeShape = (itemData.throwableAoeShape || 'circle').toLowerCase();
+    const aoeRange = sourceItem.throwableAoeRange || itemData.throwableAoeRange || 15;
+    const aoeShape = (sourceItem.throwableAoeShape || itemData.throwableAoeShape || 'circle').toLowerCase();
     
     // Collect all affected tokens and apply damage
     const affectedTokenIds: string[] = [];
@@ -4081,7 +4111,8 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
                 queryClient.invalidateQueries({ queryKey: ['character', targetChar.id] });
                 
                 // Send combat damage via WebSocket (use AOE damage type for detonation)
-                gameWs.sendCombatDamage(targetChar.id, totalDamage, itemData.throwableAoeDamageType || 'Fire', character.name);
+                const aoeDamageType = sourceItem.throwableAoeDamageType || itemData.throwableAoeDamageType || 'Fire';
+                gameWs.sendCombatDamage(targetChar.id, totalDamage, aoeDamageType, character.name);
               } catch (err) {
                 console.error('Failed to apply detonation damage:', err);
               }
@@ -4106,7 +4137,8 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
       ? `${diceNotation} = ${damageResult} + Mod (${mod >= 0 ? '+' : ''}${mod})`
       : `${diceNotation} = ${damageResult}`;
     
-    const damageTypeDisplay = itemData.throwableAoeDamageType ? ` (${itemData.throwableAoeDamageType})` : '';
+    const aoeDamageType = sourceItem.throwableAoeDamageType || itemData.throwableAoeDamageType || '';
+    const damageTypeDisplay = aoeDamageType ? ` (${aoeDamageType})` : '';
     
     // Notify with detonation results
     const label = affectedNames.length > 0 
@@ -4134,10 +4166,11 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     }
     
     // Broadcast detonation via WebSocket (use AOE damage type)
+    const broadcastDamageType = sourceItem.throwableAoeDamageType || itemData.throwableAoeDamageType || 'Fire';
     gameWs.sendThrownItemsDetonated(itemData.id, sceneId, {
       itemName: itemData.name,
       damageRoll: totalDamage,
-      damageType: itemData.throwableAoeDamageType || 'Fire',
+      damageType: broadcastDamageType,
       affectedTokenIds,
       affectedNames,
       characterName: character.name || 'Unknown',
