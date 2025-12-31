@@ -3879,19 +3879,24 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
       return;
     }
     
-    // Throwables need a targeted token to throw at
-    if (!targetedTokenId) {
-      triggerRollNotification({
-        type: 'system',
-        label: `${itemData.name} - No Target!`,
-        result: 0,
-        total: 0,
-        username: character.name || 'Unknown',
-        characterName: character.name,
-        calculationBreakdown: 'Select a target token to throw at',
-      });
+    // Priority 3: No target - enter throwable AOE mode to select grid location
+    // Find character's token for caster position
+    const characterToken = tokens?.find((t: any) => t.characterId === character.id);
+    if (characterToken && onEnterThrowableAoeMode) {
+      onEnterThrowableAoeMode(itemData, characterToken.id);
       return;
     }
+    
+    // Fallback: no token found for this character
+    triggerRollNotification({
+      type: 'system',
+      label: `${itemData.name} - No Target!`,
+      result: 0,
+      total: 0,
+      username: character.name || 'Unknown',
+      characterName: character.name,
+      calculationBreakdown: 'Select a target token or place your character token on the map first',
+    });
   };
   
   // Handle detonating all thrown items from this item type
