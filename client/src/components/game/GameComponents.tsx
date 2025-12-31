@@ -4182,16 +4182,7 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
       return;
     }
     
-    // Priority 4: No target - enter throwable AOE mode to select grid location
-    // Find character's token for caster position
-    const characterToken = tokens?.find((t: any) => t.characterId === character.id);
-    if (characterToken && onEnterThrowableAoeMode) {
-      // Pass full token object so handler can get x/y position
-      onEnterThrowableAoeMode(itemData, characterToken);
-      return;
-    }
-    
-    // Fallback: no token found for this character
+    // No target selected - notify user to select a target first using the Target button
     triggerRollNotification({
       type: 'system',
       label: `${itemData.name} - No Target!`,
@@ -4199,7 +4190,7 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
       total: 0,
       username: character.name || 'Unknown',
       characterName: character.name,
-      calculationBreakdown: 'Select a target token or place your character token on the map first',
+      calculationBreakdown: 'Use the Target button to select a grid location, or target a token first.',
     });
   };
   
