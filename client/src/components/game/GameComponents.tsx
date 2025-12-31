@@ -3439,6 +3439,44 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     if (ammo) {
       await checkAmmunitionBreak(ammo);
     }
+    
+    // On critical failure, weapon loses 1 durability
+    if (isCritFailure && itemData.durability !== undefined) {
+      const newDurability = Math.max(0, (itemData.durability || 0) - 1);
+      try {
+        await api.updateItem(itemData.id, { durability: newDurability });
+        queryClient.invalidateQueries({ queryKey: ['item', hotbar?.itemId] });
+        queryClient.invalidateQueries({ queryKey: ['character-items', character.id] });
+        
+        if (newDurability === 0) {
+          triggerRollNotification({
+            type: 'system',
+            label: `${itemData.name} Broke!`,
+            result: 0,
+            total: 0,
+            username: character.name || 'Unknown',
+            characterName: character.name,
+            calculationBreakdown: `Critical failure! ${itemData.name} has lost all durability and is now broken.`,
+          });
+          if (character.campaignId) {
+            gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', 
+              `${itemData.name} broke from a critical failure!`, 'system');
+          }
+        } else {
+          triggerRollNotification({
+            type: 'system',
+            label: `${itemData.name} Damaged!`,
+            result: 0,
+            total: 0,
+            username: character.name || 'Unknown',
+            characterName: character.name,
+            calculationBreakdown: `Critical failure! ${itemData.name} durability: ${newDurability}/${10}`,
+          });
+        }
+      } catch (err) {
+        console.error('Failed to update weapon durability:', err);
+      }
+    }
   };
 
   // Apply damage to target character with armor damage reduction
