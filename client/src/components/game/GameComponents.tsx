@@ -2119,8 +2119,8 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
           const [parsedShape, parsedRadius] = aoeField.split(':');
           const aoeShape = (parsedShape || 'circle').toLowerCase();
           const aoeRangeFeet = parseInt(parsedRadius, 10) || 15;
-          // aoeRangeFeet is the total diameter, so divide by 2 to get radius
-          const radiusPixels = (aoeRangeFeet / 5) * (scene?.gridSize || gridSize) / 2;
+          // aoeRangeFeet is the radius in feet (5ft = 1 grid cell)
+          const radiusPixels = (aoeRangeFeet / 5) * (scene?.gridSize || gridSize);
           const { center, locked } = aoeTargetState;
           
           const casterToken = tokens.find(t => t.id === aoeTargetState.casterTokenId);
@@ -2252,7 +2252,8 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
           const [parsedShape, parsedRadius] = aoeField.split(':');
           const aoeShape = (parsedShape || 'circle').toLowerCase();
           const aoeRangeFeet = parseInt(parsedRadius, 10) || 15;
-          const radiusPixels = (aoeRangeFeet / 5) * (scene?.gridSize || gridSize) / 2;
+          // aoeRangeFeet is the radius in feet (5ft = 1 grid cell)
+          const radiusPixels = (aoeRangeFeet / 5) * (scene?.gridSize || gridSize);
           const { center, locked: playerLocked } = playerAoe;
           
           // Different colors for other players - use orange/amber theme
@@ -2725,7 +2726,7 @@ interface BattleMapHotbarsProps {
   sceneId?: string;
   thrownItems?: ThrownItem[];
   onRefetchThrownItems?: () => void;
-  onEnterThrowableAoeMode?: (item: any, casterTokenId: string) => void;
+  onEnterThrowableAoeMode?: (item: any, casterToken: any) => void;
 }
 
 // Sub-component for individual hotbar slot
@@ -2747,7 +2748,7 @@ interface BattleMapHotbarSlotProps {
   sceneId?: string;
   thrownItems?: ThrownItem[];
   onRefetchThrownItems?: () => void;
-  onEnterThrowableAoeMode?: (item: any, casterTokenId: string) => void;
+  onEnterThrowableAoeMode?: (item: any, casterToken: any) => void;
 }
 
 // Ranged weapon categories that use ammunition
@@ -3883,7 +3884,8 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     // Find character's token for caster position
     const characterToken = tokens?.find((t: any) => t.characterId === character.id);
     if (characterToken && onEnterThrowableAoeMode) {
-      onEnterThrowableAoeMode(itemData, characterToken.id);
+      // Pass full token object so handler can get x/y position
+      onEnterThrowableAoeMode(itemData, characterToken);
       return;
     }
     

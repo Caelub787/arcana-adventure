@@ -3197,15 +3197,15 @@ export default function Campaign() {
                sceneId={activeScene?.id}
                thrownItems={thrownItems}
                onRefetchThrownItems={() => queryClient.invalidateQueries({ queryKey: ['thrown-items', activeScene?.id] })}
-               onEnterThrowableAoeMode={(item, casterTokenId) => {
+               onEnterThrowableAoeMode={(item, casterToken) => {
                  const aoeRange = item.throwableAoeRange || 15;
                  const aoeShape = (item.throwableAoeShape || 'circle').toLowerCase();
                  setAoeTargetState({
                    active: true,
                    spell: null,
                    throwableItem: item,
-                   casterTokenId,
-                   center: { x: 0, y: 0 },
+                   casterTokenId: casterToken?.id || casterToken,
+                   center: { x: casterToken?.x || 0, y: casterToken?.y || 0 },
                    locked: false,
                  });
                }}
