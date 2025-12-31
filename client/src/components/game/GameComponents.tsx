@@ -26,7 +26,7 @@ import {
 } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useForm } from "react-hook-form";
-import { type Scene, type Hotbar, type SystemSpecies, type FeatTreeWithData, type Feat, type FeatConnection, type CharacterFeat, type SystemSkill, type CharacterCustomSkill, type TokenEffect, type TokenActiveEffect, api, gameWs } from "@/lib/api";
+import { type Scene, type Hotbar, type SystemSpecies, type FeatTreeWithData, type Feat, type FeatConnection, type CharacterFeat, type SystemSkill, type CharacterCustomSkill, type TokenEffect, type TokenActiveEffect, type ThrownItem, api, gameWs } from "@/lib/api";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -288,6 +288,7 @@ interface BattleMapProps {
   onApplyEffect?: (tokenId: string, effectId: string) => void;
   onRemoveEffect?: (activeEffectId: string) => void;
   onToggleInvisibility?: (tokenId: string, isInvisible: boolean) => void;
+  currentTurnCharacterId?: string;
   otherPlayersTargeting?: Map<string, {
     userId: string;
     username: string;
@@ -295,11 +296,21 @@ interface BattleMapProps {
     characterId?: string;
     characterName?: string;
   }>;
-  highlightedCells?: Set<string>;
-  onHighlightCell?: (cellKey: string) => void;
+  activeBeacons?: Array<{ id: string; gridX: number; gridY: number; username: string }>;
+  onBeacon?: (cellKey: string) => void;
+  otherPlayersViewports?: Map<string, {
+    userId: string;
+    username: string;
+    viewportX: number;
+    viewportY: number;
+    viewportWidth: number;
+    viewportHeight: number;
+    zoom: number;
+  }>;
+  thrownItems?: ThrownItem[];
 }
 
-export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClick, onDeleteToken, role, gridSize, backgroundImage, scene, onViewChange, characters = [], allSpecies = [], selectionMode = 'select', targetedTokenId, selectedTokenId, aoeTargetState, onAoeMouseMove, onAoeClick, otherPlayersAoe, myPermissions, tokenActiveEffects, allTokenEffects, onApplyEffect, onRemoveEffect, onToggleInvisibility, otherPlayersTargeting, highlightedCells, onHighlightCell }: BattleMapProps) {
+export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClick, onDeleteToken, role, gridSize, backgroundImage, scene, onViewChange, characters = [], allSpecies = [], selectionMode = 'select', targetedTokenId, selectedTokenId, aoeTargetState, onAoeMouseMove, onAoeClick, otherPlayersAoe, myPermissions, tokenActiveEffects, allTokenEffects, onApplyEffect, onRemoveEffect, onToggleInvisibility, currentTurnCharacterId, otherPlayersTargeting, activeBeacons, onBeacon, otherPlayersViewports, thrownItems = [] }: BattleMapProps) {
   // Use refs for pan/zoom to avoid re-renders during interaction
   const panRef = useRef({ x: 0, y: 0 });
   const zoomRef = useRef(1);
@@ -357,6 +368,9 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
   
   // Nametag visibility toggle
   const [showNametags, setShowNametags] = useState(true);
+  
+  // Player viewport visibility toggle (GM only)
+  const [showPlayerViewports, setShowPlayerViewports] = useState(false);
   
   // Gesture state machine to prevent conflicts between pan/zoom/token drag
   type GestureMode = 'idle' | 'panning' | 'pinching' | 'draggingToken';
@@ -897,8 +911,8 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
       }
     }
     
-    // If we're in highlight mode and didn't drag, toggle the grid cell highlight
-    if (selectionMode === 'highlight' && !didDragRef.current && onHighlightCell) {
+    // If we're in highlight mode and didn't drag, create a beacon at the grid cell
+    if (selectionMode === 'highlight' && !didDragRef.current && onBeacon) {
       const container = containerRef.current;
       if (container) {
         const rect = container.getBoundingClientRect();
@@ -911,7 +925,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
         const cellX = Math.floor(worldX / effectiveGridSize);
         const cellY = Math.floor(worldY / effectiveGridSize);
         const cellKey = `${cellX},${cellY}`;
-        onHighlightCell(cellKey);
+        onBeacon(cellKey);
       }
     }
     
@@ -1235,6 +1249,18 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
         >
           {showNametags ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
         </Button>
+        {role === 'gm' && (
+          <Button 
+             size="sm" 
+             variant="secondary" 
+             className={`bg-black/50 hover:bg-black/80 text-xs border backdrop-blur-sm ${showPlayerViewports ? 'border-cyan-500 text-cyan-400' : 'border-white/10'}`}
+             onClick={() => setShowPlayerViewports(!showPlayerViewports)}
+             data-testid="button-toggle-viewports"
+             title={showPlayerViewports ? "Hide player viewports" : "Show player viewports"}
+          >
+            <Users className="h-3 w-3" />
+          </Button>
+        )}
       </div>
 
       {/* Draggable World Container - Large scrollable space beyond image bounds */}
@@ -1307,27 +1333,51 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
           </>
         )}
         
-        {/* Highlighted Cells Overlay - Render highlighted grid cells */}
-        {highlightedCells && highlightedCells.size > 0 && (
+        {/* Active Beacons Overlay - Render pulsating ring animations */}
+        {activeBeacons && activeBeacons.length > 0 && (
           <div className="absolute inset-0 pointer-events-none">
-            {Array.from(highlightedCells).map((cellKey) => {
-              const [cellX, cellY] = cellKey.split(',').map(Number);
+            {activeBeacons.map((beacon) => {
               const effectiveGridSize = scene?.gridSize || gridSize;
               const MAP_OFFSET = 9000;
-              const x = cellX * effectiveGridSize + MAP_OFFSET;
-              const y = cellY * effectiveGridSize + MAP_OFFSET;
+              const x = beacon.gridX * effectiveGridSize + MAP_OFFSET;
+              const y = beacon.gridY * effectiveGridSize + MAP_OFFSET;
+              const centerX = x + effectiveGridSize / 2;
+              const centerY = y + effectiveGridSize / 2;
               return (
                 <div
-                  key={cellKey}
-                  className="absolute bg-amber-400/40 border-2 border-amber-500"
+                  key={beacon.id}
+                  className="absolute"
                   style={{
-                    left: x,
-                    top: y,
-                    width: effectiveGridSize,
-                    height: effectiveGridSize,
+                    left: centerX,
+                    top: centerY,
+                    transform: 'translate(-50%, -50%)',
                   }}
-                  data-testid={`highlight-cell-${cellKey}`}
-                />
+                  data-testid={`beacon-${beacon.id}`}
+                >
+                  <div 
+                    className="rounded-full border-4 border-amber-400"
+                    style={{
+                      width: effectiveGridSize * 0.8,
+                      height: effectiveGridSize * 0.8,
+                      animation: 'beacon-pulse 1.5s ease-out forwards',
+                      boxShadow: '0 0 20px 4px rgba(251, 191, 36, 0.6), inset 0 0 10px rgba(251, 191, 36, 0.3)',
+                    }}
+                  />
+                  <style>{`
+                    @keyframes beacon-pulse {
+                      0% {
+                        transform: scale(0.5);
+                        opacity: 1;
+                        border-width: 6px;
+                      }
+                      100% {
+                        transform: scale(2.5);
+                        opacity: 0;
+                        border-width: 2px;
+                      }
+                    }
+                  `}</style>
+                </div>
               );
             })}
           </div>
@@ -1520,6 +1570,17 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
             >
               <img src={tokenImage} alt="token" className="w-full h-full object-cover pointer-events-none rounded-full" />
               
+              {/* Initiative Turn Glow - pulsing golden glow for current turn character */}
+              {character && currentTurnCharacterId === character.id && (
+                <div 
+                  className="absolute -inset-1 rounded-full pointer-events-none animate-pulse"
+                  style={{
+                    boxShadow: '0 0 15px 5px rgba(251, 191, 36, 0.7), 0 0 30px 10px rgba(251, 191, 36, 0.4), 0 0 45px 15px rgba(251, 191, 36, 0.2)',
+                    border: '3px solid rgba(251, 191, 36, 0.9)'
+                  }}
+                />
+              )}
+              
               {/* Token border - shows targeting (red), selection (white), or default (blue/red based on type) */}
               <div className={`absolute inset-0 rounded-full ${
                 targetedTokenId === token.id 
@@ -1705,6 +1766,70 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                 </div>
               )}
               
+            </div>
+          );
+        })}
+
+        {/* Thrown Items - Items placed on the map with AOE circles */}
+        {thrownItems.map((thrownItem) => {
+          const effectiveGridSize = scene?.gridSize || gridSize;
+          const item = thrownItem.item;
+          if (!item) return null;
+          
+          const itemSize = effectiveGridSize * 0.6;
+          const gridThickness = scene?.gridThickness ?? 1;
+          const tokenOffset = gridThickness + (effectiveGridSize - itemSize) / 2;
+          
+          const aoeRangeInFeet = item.throwableAoeRange || 0;
+          const feetPerCell = 5;
+          const aoeRadiusCells = aoeRangeInFeet / feetPerCell;
+          const aoeRadiusPixels = aoeRadiusCells * effectiveGridSize;
+          
+          return (
+            <div key={thrownItem.id} data-testid={`thrown-item-${thrownItem.id}`}>
+              {/* AOE Range Circle */}
+              {item.throwableAoe && aoeRadiusPixels > 0 && (
+                <div
+                  className="absolute rounded-full border-2 border-orange-500/60 bg-orange-500/15 pointer-events-none"
+                  style={{
+                    left: 9000 + thrownItem.x * effectiveGridSize + effectiveGridSize / 2 - aoeRadiusPixels,
+                    top: 9000 + thrownItem.y * effectiveGridSize + effectiveGridSize / 2 - aoeRadiusPixels,
+                    width: aoeRadiusPixels * 2,
+                    height: aoeRadiusPixels * 2,
+                    zIndex: 15,
+                  }}
+                />
+              )}
+              
+              {/* Thrown Item Token */}
+              <div
+                className="absolute pointer-events-none"
+                style={{
+                  left: 9000 + thrownItem.x * effectiveGridSize + tokenOffset,
+                  top: 9000 + thrownItem.y * effectiveGridSize + tokenOffset,
+                  width: itemSize,
+                  height: itemSize,
+                  zIndex: 16,
+                  opacity: 0.85,
+                }}
+              >
+                <div
+                  className="relative w-full h-full rounded-lg border-2 border-orange-400/70 shadow-lg overflow-hidden bg-stone-900/80"
+                >
+                  {item.image ? (
+                    <img
+                      src={item.image}
+                      alt={item.name}
+                      className="w-full h-full object-cover"
+                      draggable={false}
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-orange-400">
+                      <Package className="w-1/2 h-1/2" />
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           );
         })}
@@ -2241,6 +2366,64 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
             </svg>
           );
         })()}
+        
+        {/* Other Players' Viewport Rectangles - GM visibility only */}
+        {role === 'gm' && showPlayerViewports && otherPlayersViewports && otherPlayersViewports.size > 0 && (
+          <svg
+            className="absolute pointer-events-none"
+            style={{
+              left: 0,
+              top: 0,
+              width: '20000px',
+              height: '20000px',
+              overflow: 'visible',
+              zIndex: 22,
+            }}
+          >
+            {Array.from(otherPlayersViewports.values()).map((viewport, index) => {
+              const MAP_OFFSET = 9000;
+              const worldX = viewport.viewportX + MAP_OFFSET;
+              const worldY = viewport.viewportY + MAP_OFFSET;
+              const halfWidth = viewport.viewportWidth / 2;
+              const halfHeight = viewport.viewportHeight / 2;
+              
+              const colors = [
+                { stroke: 'rgba(34, 211, 238, 0.9)', fill: 'rgba(34, 211, 238, 0.1)' },
+                { stroke: 'rgba(251, 146, 60, 0.9)', fill: 'rgba(251, 146, 60, 0.1)' },
+                { stroke: 'rgba(168, 85, 247, 0.9)', fill: 'rgba(168, 85, 247, 0.1)' },
+                { stroke: 'rgba(74, 222, 128, 0.9)', fill: 'rgba(74, 222, 128, 0.1)' },
+                { stroke: 'rgba(251, 191, 36, 0.9)', fill: 'rgba(251, 191, 36, 0.1)' },
+                { stroke: 'rgba(248, 113, 113, 0.9)', fill: 'rgba(248, 113, 113, 0.1)' },
+              ];
+              const color = colors[index % colors.length];
+              
+              return (
+                <g key={viewport.userId}>
+                  <rect
+                    x={worldX - halfWidth}
+                    y={worldY - halfHeight}
+                    width={viewport.viewportWidth}
+                    height={viewport.viewportHeight}
+                    fill={color.fill}
+                    stroke={color.stroke}
+                    strokeWidth={3}
+                    strokeDasharray="12 6"
+                  />
+                  <text
+                    x={worldX - halfWidth + 8}
+                    y={worldY - halfHeight + 18}
+                    fill={color.stroke}
+                    fontSize="14"
+                    fontWeight="bold"
+                    style={{ textShadow: '0 0 4px rgba(0,0,0,0.9)' }}
+                  >
+                    {viewport.username}
+                  </text>
+                </g>
+              );
+            })}
+          </svg>
+        )}
       </motion.div>
 
       {/* Token Delete Confirmation Dialog */}
@@ -2396,6 +2579,10 @@ interface BattleMapHotbarsProps {
   onEnterAoeMode?: (spell: any, casterTokenId: string) => void;
   aoeTargetState?: AoeTargetState;
   onAoeDamageRoll?: (tokensInAoe: any[], spell: any) => void;
+  sceneId?: string;
+  thrownItems?: ThrownItem[];
+  onRefetchThrownItems?: () => void;
+  onEnterThrowableAoeMode?: (item: any, casterTokenId: string) => void;
 }
 
 // Sub-component for individual hotbar slot
@@ -2414,12 +2601,16 @@ interface BattleMapHotbarSlotProps {
   onEnterAoeMode?: (spell: any, casterTokenId: string) => void;
   aoeTargetState?: AoeTargetState;
   onAoeDamageRoll?: (tokensInAoe: any[], spell: any) => void;
+  sceneId?: string;
+  thrownItems?: ThrownItem[];
+  onRefetchThrownItems?: () => void;
+  onEnterThrowableAoeMode?: (item: any, casterTokenId: string) => void;
 }
 
 // Ranged weapon categories that use ammunition
 const RANGED_WEAPON_CATEGORIES = ['bow', 'crossbow', 'sling', 'firearm'];
 
-function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHotbars, allItems, tokens, targetedTokenId, allCharacters, gridSize = 50, onEnterAoeMode, aoeTargetState, onAoeDamageRoll }: BattleMapHotbarSlotProps) {
+function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHotbars, allItems, tokens, targetedTokenId, allCharacters, gridSize = 50, onEnterAoeMode, aoeTargetState, onAoeDamageRoll, sceneId, thrownItems, onRefetchThrownItems, onEnterThrowableAoeMode }: BattleMapHotbarSlotProps) {
   const clickTimerRef = useRef<NodeJS.Timeout | null>(null);
   const clickCountRef = useRef(0);
   const queryClient = useQueryClient();
@@ -3400,10 +3591,264 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
   
   const isWeaponClickable = itemData && itemData.itemType === 'weapon';
   const isDamagingConsumableClickable = itemData && itemData.itemType === 'consumable' && itemData.isDamaging;
+  const isThrowableClickable = itemData && itemData.isThrowable;
   const isSkillClickable = !!hotbar?.skillName;
   const isSpellClickable = !!spellData;
   const isTraitClickable = !!traitData;
-  const isClickable = isWeaponClickable || isDamagingConsumableClickable || isSkillClickable || isSpellClickable || isTraitClickable;
+  const isClickable = isWeaponClickable || isDamagingConsumableClickable || isThrowableClickable || isSkillClickable || isSpellClickable || isTraitClickable;
+
+  // Handle throwing an item (place at AOE target location or throw to targeted token)
+  const handleThrowItem = async () => {
+    if (!itemData || !itemData.isThrowable || !sceneId) return;
+    
+    // Check if there's an AOE marker locked for this throwable
+    if (aoeTargetState?.active && aoeTargetState?.locked && aoeTargetState?.throwableItem) {
+      // Verify it's the same throwable item
+      if (aoeTargetState.throwableItem.id !== itemData.id) {
+        triggerRollNotification({
+          type: 'system',
+          label: `Item Mismatch!`,
+          result: 0,
+          total: 0,
+          username: character.name || 'Unknown',
+          characterName: character.name,
+          calculationBreakdown: `Cannot throw "${itemData.name}" - AOE marker is set for "${aoeTargetState.throwableItem?.name}". Cancel the AOE or use the correct item.`,
+        });
+        return;
+      }
+      
+      // Check quantity
+      if ((itemData.quantity || 0) < 1) {
+        triggerRollNotification({
+          type: 'system',
+          label: `No ${itemData.name} left!`,
+          result: 0,
+          total: 0,
+          username: character.name || 'Unknown',
+          characterName: character.name,
+          calculationBreakdown: `You have no ${itemData.name} remaining to throw.`,
+        });
+        return;
+      }
+      
+      // Create thrown item at AOE target location
+      try {
+        const thrownItem = await api.createThrownItem(sceneId, {
+          itemId: itemData.id,
+          characterId: character.id,
+          x: aoeTargetState.center.x,
+          y: aoeTargetState.center.y,
+        });
+        
+        // Decrement item quantity
+        await api.updateItem(itemData.id, { quantity: (itemData.quantity || 1) - 1 });
+        queryClient.invalidateQueries({ queryKey: ['item', hotbar?.itemId] });
+        queryClient.invalidateQueries({ queryKey: ['character-items', character.id] });
+        
+        // Broadcast via WebSocket
+        gameWs.sendThrownItemPlaced(thrownItem, sceneId);
+        
+        // Refetch thrown items
+        onRefetchThrownItems?.();
+        
+        // Notify
+        triggerRollNotification({
+          type: 'system',
+          label: `${itemData.name} Thrown!`,
+          result: 0,
+          total: 0,
+          username: character.name || 'Unknown',
+          characterName: character.name,
+          calculationBreakdown: `Placed at grid position (${Math.floor(aoeTargetState.center.x)}, ${Math.floor(aoeTargetState.center.y)})`,
+        });
+        
+        if (character.campaignId) {
+          gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', 
+            `Threw ${itemData.name} at (${Math.floor(aoeTargetState.center.x)}, ${Math.floor(aoeTargetState.center.y)})`, 'action');
+        }
+      } catch (err) {
+        console.error('Failed to throw item:', err);
+      }
+      return;
+    }
+    
+    // If throwable has AOE, enter AOE targeting mode
+    if (itemData.throwableAoe && onEnterThrowableAoeMode) {
+      const casterToken = tokens?.find((t: any) => t.characterId === character.id);
+      if (casterToken) {
+        onEnterThrowableAoeMode(itemData, casterToken.id);
+        return;
+      } else {
+        triggerRollNotification({
+          type: 'system',
+          label: `${itemData.name} - No Token!`,
+          result: 0,
+          total: 0,
+          username: character.name || 'Unknown',
+          characterName: character.name,
+          calculationBreakdown: 'You need a token on the map to throw items with AOE',
+        });
+        return;
+      }
+    }
+    
+    // Non-AOE throwable - throw at targeted token or notify
+    if (!targetedTokenId) {
+      triggerRollNotification({
+        type: 'system',
+        label: `${itemData.name} - No Target!`,
+        result: 0,
+        total: 0,
+        username: character.name || 'Unknown',
+        characterName: character.name,
+        calculationBreakdown: 'Select a target token to throw at',
+      });
+      return;
+    }
+  };
+  
+  // Handle detonating all thrown items from this item type
+  const handleDetonateThrowables = async () => {
+    if (!itemData || !itemData.isThrowable || !sceneId || !thrownItems) return;
+    
+    // Find all thrown items from this item
+    const itemThrownItems = thrownItems.filter(ti => ti.itemId === itemData.id);
+    
+    if (itemThrownItems.length === 0) {
+      triggerRollNotification({
+        type: 'system',
+        label: `No ${itemData.name} to Detonate!`,
+        result: 0,
+        total: 0,
+        username: character.name || 'Unknown',
+        characterName: character.name,
+        calculationBreakdown: `There are no thrown ${itemData.name} on the battlefield.`,
+      });
+      return;
+    }
+    
+    // Get damage dice from item
+    const diceNotation = itemData.damage;
+    if (!diceNotation) {
+      triggerRollNotification({
+        type: 'system',
+        label: `${itemData.name} - No Damage Dice!`,
+        result: 0,
+        total: 0,
+        username: character.name || 'Unknown',
+        characterName: character.name,
+        calculationBreakdown: 'This item has no damage dice to roll for detonation.',
+      });
+      return;
+    }
+    
+    // Roll damage once for all detonations
+    const { result: damageResult, dieType } = rollDice(diceNotation);
+    const mod = itemData.mod || 0;
+    const totalDamage = (damageResult || 0) + mod;
+    
+    // Get AOE range for each thrown item
+    const aoeRange = itemData.throwableAoeRange || 15;
+    const aoeShape = (itemData.throwableAoeShape || 'circle').toLowerCase();
+    
+    // Collect all affected tokens and apply damage
+    const affectedTokenIds: string[] = [];
+    const affectedNames: string[] = [];
+    
+    for (const thrownItem of itemThrownItems) {
+      // Get tokens within AOE range of this thrown item
+      if (tokens) {
+        for (const token of tokens) {
+          // Calculate distance from thrown item to token center
+          const tokenCenterX = token.x + 0.5;
+          const tokenCenterY = token.y + 0.5;
+          const thrownCenterX = thrownItem.x;
+          const thrownCenterY = thrownItem.y;
+          
+          const dx = (tokenCenterX - thrownCenterX) * (gridSize || 50);
+          const dy = (tokenCenterY - thrownCenterY) * (gridSize || 50);
+          
+          // Each grid square = 5ft, so convert pixel distance to feet
+          const distanceFt = Math.sqrt(dx * dx + dy * dy) / (gridSize || 50) * 5;
+          
+          if (distanceFt <= aoeRange && !affectedTokenIds.includes(token.id)) {
+            affectedTokenIds.push(token.id);
+            
+            // Find character for this token and apply damage
+            const targetChar = allCharacters?.find((c: any) => c.id === token.characterId);
+            if (targetChar) {
+              affectedNames.push(targetChar.name);
+              
+              // Apply damage using the applyDamageToTarget pattern
+              try {
+                const currentHp = targetChar.currentHp || 0;
+                const newHp = Math.max(0, currentHp - totalDamage);
+                await api.updateCharacter(targetChar.id, { currentHp: newHp });
+                queryClient.invalidateQueries({ queryKey: ['character', targetChar.id] });
+                
+                // Send combat damage via WebSocket
+                gameWs.sendCombatDamage(targetChar.id, totalDamage, itemData.damageType || 'Fire', character.name);
+              } catch (err) {
+                console.error('Failed to apply detonation damage:', err);
+              }
+            } else if (token.name) {
+              affectedNames.push(token.name);
+            }
+          }
+        }
+      }
+    }
+    
+    // Delete all thrown items (detonate them)
+    try {
+      await api.detonateThrownItems(itemData.id);
+      onRefetchThrownItems?.();
+    } catch (err) {
+      console.error('Failed to detonate thrown items:', err);
+    }
+    
+    // Calculate breakdown
+    let calculationBreakdown = mod !== 0 
+      ? `${diceNotation} = ${damageResult} + Mod (${mod >= 0 ? '+' : ''}${mod})`
+      : `${diceNotation} = ${damageResult}`;
+    
+    const damageTypeDisplay = itemData.damageType ? ` (${itemData.damageType})` : '';
+    
+    // Notify with detonation results
+    const label = affectedNames.length > 0 
+      ? `${itemData.name} Detonation → ${affectedNames.join(', ')}`
+      : `${itemData.name} Detonation - No targets hit!`;
+    
+    triggerRollNotification({
+      type: 'attack',
+      dieType: dieType as any,
+      label,
+      result: damageResult || 0,
+      modifier: mod,
+      total: totalDamage,
+      username: character.name || 'Unknown',
+      characterName: character.name,
+      calculationBreakdown,
+    });
+    
+    // Send chat message
+    if (character.campaignId) {
+      const chatText = affectedNames.length > 0
+        ? `${itemData.name} Detonation: ${calculationBreakdown} = ${totalDamage}${damageTypeDisplay} → ${affectedNames.join(', ')}`
+        : `${itemData.name} Detonation: ${calculationBreakdown} = ${totalDamage}${damageTypeDisplay} (no targets hit)`;
+      gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', chatText, 'roll');
+    }
+    
+    // Broadcast detonation via WebSocket
+    gameWs.sendThrownItemsDetonated(itemData.id, sceneId, {
+      itemName: itemData.name,
+      damageRoll: totalDamage,
+      damageType: itemData.damageType || 'Fire',
+      affectedTokenIds,
+      affectedNames,
+      characterName: character.name || 'Unknown',
+    });
+  };
 
   // Handle spell attack roll (1d20 + attribute modifier)
   const handleSpellAttackRoll = async () => {
@@ -3697,7 +4142,7 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     }
   };
 
-  // Handle click with single/double click detection
+  // Handle click with single/double/triple click detection
   const handleClick = () => {
     // Handle trait clicks
     if (isTraitClickable) {
@@ -3727,6 +4172,31 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
         }
         clickCountRef.current = 0;
       }, 250);
+      return;
+    }
+    
+    // Handle throwable items (single = enter AOE mode / throw, double = confirm throw, triple = detonate)
+    if (isThrowableClickable) {
+      clickCountRef.current += 1;
+      
+      if (clickTimerRef.current) {
+        clearTimeout(clickTimerRef.current);
+      }
+      
+      // Use longer timeout (500ms) for triple-click detection
+      clickTimerRef.current = setTimeout(() => {
+        if (clickCountRef.current === 1) {
+          // Single-click: Enter AOE targeting mode or show throw target info
+          handleThrowItem();
+        } else if (clickCountRef.current === 2) {
+          // Double-click: Confirm throw at current AOE location
+          handleThrowItem();
+        } else if (clickCountRef.current >= 3) {
+          // Triple-click: Detonate all thrown items
+          handleDetonateThrowables();
+        }
+        clickCountRef.current = 0;
+      }, 500);
       return;
     }
     
@@ -3832,7 +4302,14 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
         {itemData.attribute && <p className="text-sm">Attack: {itemData.attribute}</p>}
         {displayQuantity !== null && <p className="text-sm text-amber-400">Total Quantity: x{displayQuantity}</p>}
         {itemData.durability !== undefined && <p className="text-sm">Durability: {itemData.durability}/10</p>}
-        {isClickable && <p className="text-xs text-stone-400 mt-1">Click: Attack | Double-click: Damage</p>}
+        {itemData.isThrowable && itemData.throwableAoeRange && (
+          <p className="text-sm text-orange-400">AOE Range: {itemData.throwableAoeRange}ft ({itemData.throwableAoeShape || 'circle'})</p>
+        )}
+        {isThrowableClickable ? (
+          <p className="text-xs text-stone-400 mt-1">Click: Throw | Triple-click: Detonate All</p>
+        ) : isClickable && (
+          <p className="text-xs text-stone-400 mt-1">Click: Attack | Double-click: Damage</p>
+        )}
       </>
     );
   } else if (hotbar?.skillName) {
@@ -4046,7 +4523,7 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
   );
 }
 
-export function BattleMapHotbars({ character, tokens, targetedTokenId, characters, gridSize, onEnterAoeMode, aoeTargetState, onAoeDamageRoll }: BattleMapHotbarsProps) {
+export function BattleMapHotbars({ character, tokens, targetedTokenId, characters, gridSize, onEnterAoeMode, aoeTargetState, onAoeDamageRoll, sceneId, thrownItems, onRefetchThrownItems, onEnterThrowableAoeMode }: BattleMapHotbarsProps) {
   const [activeHotbar, setActiveHotbar] = useState<string>('weapons');
   
   const { data: hotbars = [], isLoading: hotbarsLoading } = useQuery({
@@ -4244,6 +4721,10 @@ export function BattleMapHotbars({ character, tokens, targetedTokenId, character
                       onEnterAoeMode={onEnterAoeMode}
                       aoeTargetState={aoeTargetState}
                       onAoeDamageRoll={onAoeDamageRoll}
+                      sceneId={sceneId}
+                      thrownItems={thrownItems}
+                      onRefetchThrownItems={onRefetchThrownItems}
+                      onEnterThrowableAoeMode={onEnterThrowableAoeMode}
                     />
                   );
                 })}
@@ -4383,8 +4864,8 @@ export function SelectionModeButtons({
                 </button>
               </TooltipTrigger>
               <TooltipContent side="right">
-                <p className="font-bold">Highlight</p>
-                <p className="text-xs text-stone-400">Click grid to highlight/unhighlight cells</p>
+                <p className="font-bold">Beacon</p>
+                <p className="text-xs text-stone-400">Click grid to ping a location</p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
@@ -16272,6 +16753,11 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
     rationServings: number | string;
     breakChance: number | string;
     isDamaging: boolean;
+    isThrowable: boolean;
+    throwableAoe: boolean;
+    throwableAoeShape: string;
+    throwableAoeRange: number | string;
+    throwablePickup: boolean;
   }>({
     name: '',
     image: '',
@@ -16305,6 +16791,11 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
     rationServings: '',
     breakChance: 10,
     isDamaging: false,
+    isThrowable: false,
+    throwableAoe: false,
+    throwableAoeShape: '',
+    throwableAoeRange: 10,
+    throwablePickup: false,
   });
 
   const [showImageCrop, setShowImageCrop] = useState(false);
@@ -16351,6 +16842,11 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
       breakChance: template.breakChance ?? 10,
       rationServings: template.rationServings || 0,
       isDamaging: template.isDamaging || false,
+      isThrowable: template.isThrowable || false,
+      throwableAoe: template.throwableAoe || false,
+      throwableAoeShape: template.throwableAoeShape || '',
+      throwableAoeRange: template.throwableAoeRange || 10,
+      throwablePickup: template.throwablePickup || false,
     };
     onSave(itemData);
   };
@@ -16474,6 +16970,11 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
       rationServings: optionalNum(formData.rationServings),
       breakChance: Number(formData.breakChance) || 10,
       isDamaging: formData.isDamaging,
+      isThrowable: formData.isThrowable,
+      throwableAoe: formData.throwableAoe,
+      throwableAoeShape: formData.throwableAoeShape || undefined,
+      throwableAoeRange: optionalNum(formData.throwableAoeRange),
+      throwablePickup: formData.throwablePickup,
     };
     onSave(cleanedData);
     setFormData({
@@ -16509,6 +17010,11 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
       rationServings: '',
       breakChance: 10,
       isDamaging: false,
+      isThrowable: false,
+      throwableAoe: false,
+      throwableAoeShape: '',
+      throwableAoeRange: 10,
+      throwablePickup: false,
     });
   };
 
@@ -17019,6 +17525,79 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
                       data-testid="checkbox-is-heavy"
                     />
                     <Label htmlFor="isHeavy" className="cursor-pointer">Two-Handed / Heavy Weapon (requires both hands)</Label>
+                  </div>
+                  <div className="col-span-2 border-t border-stone-600 pt-3 mt-2 space-y-3">
+                    <div className="flex items-center gap-2">
+                      <Checkbox 
+                        id="isThrowable" 
+                        checked={formData.isThrowable || false} 
+                        onCheckedChange={(checked) => setFormData({...formData, isThrowable: !!checked, throwableAoe: checked ? formData.throwableAoe : false})}
+                        data-testid="checkbox-is-throwable"
+                      />
+                      <Label htmlFor="isThrowable" className="cursor-pointer">Is Throwable</Label>
+                    </div>
+                    {formData.isThrowable && (
+                      <div className="pl-6 space-y-3">
+                        <div className="flex items-center gap-2">
+                          <Checkbox 
+                            id="throwableAoe" 
+                            checked={formData.throwableAoe || false} 
+                            onCheckedChange={(checked) => setFormData({...formData, throwableAoe: !!checked})}
+                            data-testid="checkbox-throwable-aoe"
+                          />
+                          <Label htmlFor="throwableAoe" className="cursor-pointer">Enable AOE</Label>
+                        </div>
+                        {formData.throwableAoe && (
+                          <div className="pl-6 space-y-3">
+                            <div>
+                              <Label>AOE Shape</Label>
+                              <Select value={formData.throwableAoeShape || ''} onValueChange={(v) => setFormData({...formData, throwableAoeShape: v})}>
+                                <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-throwable-aoe-shape">
+                                  <SelectValue placeholder="Select shape..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="circle">Circle</SelectItem>
+                                  <SelectItem value="cone">Cone</SelectItem>
+                                  <SelectItem value="line">Line</SelectItem>
+                                  <SelectItem value="cube">Cube</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div>
+                              <Label>AOE Range (feet)</Label>
+                              <Input 
+                                type="number" 
+                                min="5" 
+                                step="5"
+                                value={formData.throwableAoeRange} 
+                                onChange={(e) => setFormData({...formData, throwableAoeRange: e.target.value === '' ? '' : parseInt(e.target.value)})} 
+                                className="bg-stone-800 border-stone-700"
+                                placeholder="10"
+                                data-testid="input-throwable-aoe-range"
+                              />
+                            </div>
+                          </div>
+                        )}
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <div className="flex items-center gap-2">
+                                <Checkbox 
+                                  id="throwablePickup" 
+                                  checked={formData.throwablePickup || false} 
+                                  onCheckedChange={(checked) => setFormData({...formData, throwablePickup: !!checked})}
+                                  data-testid="checkbox-throwable-pickup"
+                                />
+                                <Label htmlFor="throwablePickup" className="cursor-pointer">Pickup Mode</Label>
+                              </div>
+                            </TooltipTrigger>
+                            <TooltipContent side="right" className="max-w-xs">
+                              <p>When enabled, thrown items attach to tokens or grid spaces and can be picked up by other characters.</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>

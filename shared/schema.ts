@@ -278,6 +278,26 @@ export const insertTokenSchema = createInsertSchema(tokens).omit({
 export type InsertToken = z.infer<typeof insertTokenSchema>;
 export type Token = typeof tokens.$inferSelect;
 
+// Thrown Items table (for throwable items placed on the battle map)
+export const thrownItems = pgTable("thrown_items", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  sceneId: varchar("scene_id").notNull().references(() => scenes.id, { onDelete: "cascade" }),
+  itemId: varchar("item_id").notNull().references(() => items.id, { onDelete: "cascade" }),
+  characterId: varchar("character_id").notNull().references(() => characters.id, { onDelete: "cascade" }), // Who threw it
+  x: real("x").notNull(), // Grid x position
+  y: real("y").notNull(), // Grid y position
+  attachedToTokenId: varchar("attached_to_token_id").references(() => tokens.id, { onDelete: "cascade" }), // If attached to a token
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertThrownItemSchema = createInsertSchema(thrownItems).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertThrownItem = z.infer<typeof insertThrownItemSchema>;
+export type ThrownItem = typeof thrownItems.$inferSelect;
+
 // Character Folders (for organizing characters in campaigns)
 export const characterFolders = pgTable("character_folders", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -396,6 +416,12 @@ export const items = pgTable("items", {
   rationServings: integer("ration_servings").default(0),
   // Damaging consumable - when true, consumable can be rolled like a weapon (attack/damage rolls)
   isDamaging: boolean("is_damaging").default(false).notNull(),
+  // Throwable item fields - items that can be thrown and placed on the battle map
+  isThrowable: boolean("is_throwable").default(false).notNull(),
+  throwableAoe: boolean("throwable_aoe").default(false).notNull(), // Enable AOE for throwable
+  throwableAoeShape: text("throwable_aoe_shape"), // circle, cone, line, cube
+  throwableAoeRange: integer("throwable_aoe_range").default(10), // AOE radius in feet
+  throwablePickup: boolean("throwable_pickup").default(false).notNull(), // If true, attaches to tokens/grid spaces when thrown
 });
 
 export const insertItemSchema = createInsertSchema(items).omit({

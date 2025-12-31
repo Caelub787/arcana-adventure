@@ -1023,6 +1023,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
         }
         
+        // Handle viewport update - broadcast to all campaign members
+        // so GMs can see where each player is looking on the battle map
+        if (message.type === "viewport_update") {
+          const { campaignId, viewportX, viewportY, viewportWidth, viewportHeight, zoom } = message;
+          
+          // Verify user has joined this campaign
+          const userCampaign = (ws as any).campaigns.get(campaignId);
+          if (!userCampaign) {
+            return;
+          }
+          
+          // Broadcast viewport update to all OTHER campaign members (not the sender)
+          const room = campaignRooms.get(campaignId);
+          if (room) {
+            const viewportMessage = JSON.stringify({
+              type: "viewport_update",
+              userId: authenticatedUserId,
+              username,
+              viewportX,
+              viewportY,
+              viewportWidth,
+              viewportHeight,
+              zoom
+            });
+            
+            room.forEach((client) => {
+              // Send to all clients except the sender
+              if (client !== ws && client.readyState === 1) {
+                client.send(viewportMessage);
+              }
+            });
+          }
+        }
+        
         // Handle grid highlight - broadcast to all campaign members
         if (message.type === "grid_highlight") {
           const { campaignId, cellKey, highlighted } = message;
@@ -1082,6 +1116,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
               // Send to all clients except the sender (sender already sees it locally)
               if (client !== ws && client.readyState === 1) {
                 client.send(rollMessage);
+              }
+            });
+          }
+        }
+        
+        // Handle beacon - broadcast temporary attention marker to all campaign members
+        // Creates a pulsating ring animation at the specified grid location
+        if (message.type === "beacon") {
+          const { campaignId, gridX, gridY } = message;
+          
+          // Verify user has joined this campaign
+          const userCampaign = (ws as any).campaigns.get(campaignId);
+          if (!userCampaign) return;
+          
+          // Broadcast beacon to ALL campaign members (including sender for consistency)
+          const room = campaignRooms.get(campaignId);
+          if (room) {
+            const beaconMessage = JSON.stringify({
+              type: "beacon",
+              id: `${authenticatedUserId}-${Date.now()}`,
+              userId: authenticatedUserId,
+              username,
+              gridX,
+              gridY
+            });
+            
+            room.forEach((client) => {
+              if (client.readyState === 1) {
+                client.send(beaconMessage);
               }
             });
           }
@@ -5416,6 +5479,123 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (e) {
       console.error("Failed to clear initiative:", e);
       res.status(500).json({ error: "Failed to clear initiative" });
+    }
+  });
+
+  // ======== THROWN ITEMS ROUTES ========
+
+  // Get all thrown items for a scene (with item data)
+  app.get("/api/scenes/:sceneId/thrown-items", requireAuth, async (req, res) => {
+    try {
+      const scene = await storage.getScene(req.params.sceneId);
+      if (!scene) {
+        return res.status(404).json({ error: "Scene not found" });
+      }
+      
+      const thrownItems = await storage.getThrownItems(req.params.sceneId);
+      
+      // Enrich with item data for rendering
+      const enrichedItems = await Promise.all(
+        thrownItems.map(async (ti) => {
+          const item = await storage.getItem(ti.itemId);
+          return {
+            ...ti,
+            item: item ? {
+              id: item.id,
+              name: item.name,
+              image: item.image,
+              throwableAoeRange: item.throwableAoeRange,
+              throwableAoeShape: item.throwableAoeShape,
+              throwableAoe: item.throwableAoe,
+            } : null,
+          };
+        })
+      );
+      
+      res.json(enrichedItems);
+    } catch (e) {
+      console.error("Failed to get thrown items:", e);
+      res.status(500).json({ error: "Failed to get thrown items" });
+    }
+  });
+
+  // Create a thrown item
+  app.post("/api/scenes/:sceneId/thrown-items", requireAuth, async (req, res) => {
+    try {
+      const scene = await storage.getScene(req.params.sceneId);
+      if (!scene) {
+        return res.status(404).json({ error: "Scene not found" });
+      }
+      
+      const { itemId, characterId, x, y, attachedToTokenId } = req.body;
+      
+      if (!itemId || !characterId || x === undefined || y === undefined) {
+        return res.status(400).json({ error: "Missing required fields: itemId, characterId, x, y" });
+      }
+      
+      const thrownItem = await storage.createThrownItem({
+        sceneId: req.params.sceneId,
+        itemId,
+        characterId,
+        x,
+        y,
+        attachedToTokenId: attachedToTokenId || null,
+      });
+      
+      // Broadcast to campaign
+      broadcastToCampaign(scene.campaignId, {
+        type: "thrown_item_created",
+        thrownItem,
+        sceneId: scene.id
+      });
+      
+      res.json(thrownItem);
+    } catch (e) {
+      console.error("Failed to create thrown item:", e);
+      res.status(500).json({ error: "Failed to create thrown item" });
+    }
+  });
+
+  // Delete a single thrown item
+  app.delete("/api/thrown-items/:id", requireAuth, async (req, res) => {
+    try {
+      await storage.deleteThrownItem(req.params.id);
+      res.json({ success: true });
+    } catch (e) {
+      console.error("Failed to delete thrown item:", e);
+      res.status(500).json({ error: "Failed to delete thrown item" });
+    }
+  });
+
+  // Detonate - delete all thrown items from a specific source item
+  app.delete("/api/thrown-items/item/:itemId/detonate", requireAuth, async (req, res) => {
+    try {
+      // Get thrown items first to know which scenes to broadcast to
+      const thrownItems = await storage.getThrownItemsByItemId(req.params.itemId);
+      
+      // Delete all thrown items
+      await storage.deleteThrownItemsByItemId(req.params.itemId);
+      
+      // Broadcast detonation to each unique scene's campaign
+      const processedScenes = new Set<string>();
+      for (const ti of thrownItems) {
+        if (!processedScenes.has(ti.sceneId)) {
+          processedScenes.add(ti.sceneId);
+          const scene = await storage.getScene(ti.sceneId);
+          if (scene) {
+            broadcastToCampaign(scene.campaignId, {
+              type: "thrown_items_detonated",
+              itemId: req.params.itemId,
+              sceneId: ti.sceneId
+            });
+          }
+        }
+      }
+      
+      res.json({ success: true });
+    } catch (e) {
+      console.error("Failed to detonate thrown items:", e);
+      res.status(500).json({ error: "Failed to detonate thrown items" });
     }
   });
 

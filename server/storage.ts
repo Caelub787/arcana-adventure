@@ -38,7 +38,8 @@ import {
   type SpellEffect, type InsertSpellEffect,
   type ItemEffect, type InsertItemEffect,
   type TokenActiveEffect, type InsertTokenActiveEffect,
-  users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, items, spells, characterPermissions, initiativeEntries, systemSpecies, campaignSpecies, featTemplates, featTrees, feats, featConnections, characterFeats, systemSpells, systemSkills, characterCustomSkills, systemTraits, characterTraits, characterFolders, characterTemplateFolders, sceneFolders, friendRequests, friendships, noteFolders, notes, noteReferences, noteShares, tokenEffects, spellEffects, itemEffects, tokenActiveEffects
+  type ThrownItem, type InsertThrownItem,
+  users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, items, spells, characterPermissions, initiativeEntries, systemSpecies, campaignSpecies, featTemplates, featTrees, feats, featConnections, characterFeats, systemSpells, systemSkills, characterCustomSkills, systemTraits, characterTraits, characterFolders, characterTemplateFolders, sceneFolders, friendRequests, friendships, noteFolders, notes, noteReferences, noteShares, tokenEffects, spellEffects, itemEffects, tokenActiveEffects, thrownItems
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql, inArray, or } from "drizzle-orm";
@@ -354,6 +355,13 @@ export interface IStorage {
   addTokenActiveEffect(activeEffect: InsertTokenActiveEffect): Promise<TokenActiveEffect>;
   removeTokenActiveEffect(id: string): Promise<void>;
   clearTokenActiveEffects(tokenId: string): Promise<void>;
+
+  // Thrown Items operations
+  getThrownItems(sceneId: string): Promise<ThrownItem[]>;
+  getThrownItemsByItemId(itemId: string): Promise<ThrownItem[]>;
+  createThrownItem(data: InsertThrownItem): Promise<ThrownItem>;
+  deleteThrownItem(id: string): Promise<void>;
+  deleteThrownItemsByItemId(itemId: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2482,6 +2490,32 @@ export class DatabaseStorage implements IStorage {
       .where(eq(tokenActiveEffects.id, id))
       .returning();
     return updated;
+  }
+
+  // Thrown Items operations
+  async getThrownItems(sceneId: string): Promise<ThrownItem[]> {
+    return await db.select()
+      .from(thrownItems)
+      .where(eq(thrownItems.sceneId, sceneId));
+  }
+
+  async getThrownItemsByItemId(itemId: string): Promise<ThrownItem[]> {
+    return await db.select()
+      .from(thrownItems)
+      .where(eq(thrownItems.itemId, itemId));
+  }
+
+  async createThrownItem(data: InsertThrownItem): Promise<ThrownItem> {
+    const [newThrownItem] = await db.insert(thrownItems).values(data).returning();
+    return newThrownItem;
+  }
+
+  async deleteThrownItem(id: string): Promise<void> {
+    await db.delete(thrownItems).where(eq(thrownItems.id, id));
+  }
+
+  async deleteThrownItemsByItemId(itemId: string): Promise<void> {
+    await db.delete(thrownItems).where(eq(thrownItems.itemId, itemId));
   }
 }
 

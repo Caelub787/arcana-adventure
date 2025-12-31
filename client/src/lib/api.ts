@@ -205,6 +205,12 @@ export interface Item {
   armorSlot?: string;
   damageReduction?: number;
   damageReductionType?: string;
+  isThrowable?: boolean;
+  throwableAoe?: boolean;
+  throwableAoeShape?: string;
+  throwableAoeRange?: number;
+  throwablePickup?: boolean;
+  isDamaging?: boolean;
 }
 
 export interface Spell {
@@ -548,6 +554,25 @@ export interface TokenActiveEffect {
   effect: TokenEffect;
 }
 
+export interface ThrownItem {
+  id: string;
+  sceneId: string;
+  itemId: string;
+  characterId: string;
+  x: number;
+  y: number;
+  attachedToTokenId?: string | null;
+  createdAt: string;
+  item?: {
+    id: string;
+    name: string;
+    image?: string | null;
+    throwableAoeRange?: number | null;
+    throwableAoeShape?: string | null;
+    throwableAoe?: boolean;
+  } | null;
+}
+
 class ApiClient {
   private baseUrl = '/api';
 
@@ -800,6 +825,26 @@ class ApiClient {
 
   async deleteScene(sceneId: string): Promise<void> {
     return this.request(`/scenes/${sceneId}`, { method: 'DELETE' });
+  }
+
+  // Thrown Items
+  async getThrownItems(sceneId: string): Promise<ThrownItem[]> {
+    return this.request(`/scenes/${sceneId}/thrown-items`);
+  }
+
+  async createThrownItem(sceneId: string, data: { itemId: string; characterId: string; x: number; y: number; attachedToTokenId?: string | null }): Promise<ThrownItem> {
+    return this.request(`/scenes/${sceneId}/thrown-items`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteThrownItem(id: string): Promise<void> {
+    return this.request(`/thrown-items/${id}`, { method: 'DELETE' });
+  }
+
+  async detonateThrownItems(itemId: string): Promise<void> {
+    return this.request(`/thrown-items/item/${itemId}/detonate`, { method: 'DELETE' });
   }
 
   // Hotbars
@@ -2075,6 +2120,113 @@ export class GameWebSocket {
       campaignId: this.campaignId,
       targetTokenId: null
     });
+  }
+  
+  // Send viewport update - broadcasts to all campaign members
+  // so GMs can see where each player is looking on the battle map
+  sendViewport(viewportState: {
+    viewportX: number;
+    viewportY: number;
+    viewportWidth: number;
+    viewportHeight: number;
+    zoom: number;
+  }) {
+    if (!this.campaignId) {
+      return;
+    }
+    
+    const message = { 
+      type: 'viewport_update',
+      campaignId: this.campaignId,
+      ...viewportState
+    };
+    
+    // If not yet joined, queue the message
+    if (!this.joinedCampaign) {
+      this.pendingMessages.push(message);
+      return;
+    }
+    
+    this.send(message);
+  }
+  
+  // Send beacon - broadcasts a temporary pulsating ring to all campaign members
+  // Used to draw attention to a specific grid location
+  sendBeacon(beaconState: {
+    gridX: number;
+    gridY: number;
+  }) {
+    if (!this.campaignId) {
+      return;
+    }
+    
+    const message = { 
+      type: 'beacon',
+      campaignId: this.campaignId,
+      ...beaconState
+    };
+    
+    // If not yet joined, queue the message
+    if (!this.joinedCampaign) {
+      this.pendingMessages.push(message);
+      return;
+    }
+    
+    this.send(message);
+  }
+  
+  // Send thrown item placed - broadcasts to all campaign members
+  // so everyone can see throwable items placed on the map
+  sendThrownItemPlaced(thrownItem: ThrownItem, sceneId: string) {
+    if (!this.campaignId) {
+      return;
+    }
+    
+    const message = { 
+      type: 'thrown_item_placed',
+      campaignId: this.campaignId,
+      thrownItem,
+      sceneId
+    };
+    
+    // If not yet joined, queue the message
+    if (!this.joinedCampaign) {
+      this.pendingMessages.push(message);
+      return;
+    }
+    
+    this.send(message);
+  }
+  
+  // Send thrown items detonated - broadcasts to all campaign members
+  // so everyone can see detonation effects and damage
+  sendThrownItemsDetonated(itemId: string, sceneId: string, detonationData: {
+    itemName: string;
+    damageRoll: number;
+    damageType: string;
+    affectedTokenIds: string[];
+    affectedNames: string[];
+    characterName: string;
+  }) {
+    if (!this.campaignId) {
+      return;
+    }
+    
+    const message = { 
+      type: 'thrown_items_detonated',
+      campaignId: this.campaignId,
+      itemId,
+      sceneId,
+      ...detonationData
+    };
+    
+    // If not yet joined, queue the message
+    if (!this.joinedCampaign) {
+      this.pendingMessages.push(message);
+      return;
+    }
+    
+    this.send(message);
   }
 }
 

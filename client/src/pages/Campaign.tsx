@@ -19,7 +19,7 @@ import battleMapImage2 from "@assets/generated_images/dark_fantasy_landscape_wit
 import warriorToken from "@assets/generated_images/top_down_warrior_token.png";
 import goblinToken from "@assets/generated_images/top_down_goblin_token.png";
 import { useAuth } from "@/lib/AuthContext";
-import { api, gameWs, type Scene, type CampaignSpecies, type FeatTree, type CharacterFolder, type SceneFolder, type TokenEffect, type TokenActiveEffect } from "@/lib/api";
+import { api, gameWs, type Scene, type CampaignSpecies, type FeatTree, type CharacterFolder, type SceneFolder, type TokenEffect, type TokenActiveEffect, type ThrownItem } from "@/lib/api";
 import { Textarea } from "@/components/ui/textarea";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -718,8 +718,13 @@ export default function Campaign() {
   const [targetedTokenId, setTargetedTokenId] = useState<string | null>(null);
   const [selectedTokenId, setSelectedTokenId] = useState<string | null>(null);
   
-  // Grid highlight state for marking grid cells
-  const [highlightedCells, setHighlightedCells] = useState<Set<string>>(new Set());
+  // Active beacons state - temporary pulsating rings on grid cells
+  const [activeBeacons, setActiveBeacons] = useState<Array<{
+    id: string;
+    gridX: number;
+    gridY: number;
+    username: string;
+  }>>([]);
   
   // Initiative tracker state
   const [initiativeTrackerOpen, setInitiativeTrackerOpen] = useState(false);
@@ -764,6 +769,17 @@ export default function Campaign() {
     targetTokenId: string | null;
     characterId?: string;
     characterName?: string;
+  }>>(new Map());
+  
+  // Other players' viewport states (keyed by userId) - for GM visibility
+  const [otherPlayersViewports, setOtherPlayersViewports] = useState<Map<string, {
+    userId: string;
+    username: string;
+    viewportX: number;
+    viewportY: number;
+    viewportWidth: number;
+    viewportHeight: number;
+    zoom: number;
   }>>(new Map());
   
   // Helper function to enter AoE targeting mode
@@ -880,6 +896,38 @@ export default function Campaign() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [aoeTargetState.active]);
+  
+  // Debounced viewport broadcasting - send viewport updates to other players every 200ms
+  const lastViewportBroadcastRef = useRef<number>(0);
+  const viewportSizeRef = useRef({ width: 0, height: 0 });
+  
+  useEffect(() => {
+    // Update viewport size from battlemapContainerRef
+    if (battlemapContainerRef.current) {
+      viewportSizeRef.current = {
+        width: battlemapContainerRef.current.clientWidth,
+        height: battlemapContainerRef.current.clientHeight,
+      };
+    }
+    
+    // Debounce viewport broadcasts to every 200ms
+    const now = Date.now();
+    if (now - lastViewportBroadcastRef.current >= 200) {
+      lastViewportBroadcastRef.current = now;
+      
+      // Calculate viewport size in world units (accounting for zoom)
+      const vpWidth = viewportSizeRef.current.width / currentView.zoom;
+      const vpHeight = viewportSizeRef.current.height / currentView.zoom;
+      
+      gameWs.sendViewport({
+        viewportX: currentView.x,
+        viewportY: currentView.y,
+        viewportWidth: vpWidth,
+        viewportHeight: vpHeight,
+        zoom: currentView.zoom,
+      });
+    }
+  }, [currentView]);
 
   // Determine effective campaign ID (from URL or newly created)
   const effectiveCampaignId = campaignId || createdCampaignId;
@@ -1018,6 +1066,21 @@ export default function Campaign() {
       return results;
     },
     enabled: tokens.length > 0,
+  });
+
+  // Initiative data query for current turn tracking
+  const { data: initiativeData } = useQuery({
+    queryKey: [`/api/scenes/${activeScene?.id}/initiative`],
+    queryFn: () => api.getSceneInitiative(activeScene!.id),
+    enabled: !!activeScene?.id,
+  });
+  const currentTurnCharacterId = initiativeData?.inCombat ? initiativeData?.currentTurnCharacterId : undefined;
+
+  // Thrown items query for the active scene
+  const { data: thrownItems = [] } = useQuery<ThrownItem[]>({
+    queryKey: ['thrown-items', activeScene?.id],
+    queryFn: () => api.getThrownItems(activeScene!.id),
+    enabled: !!activeScene?.id,
   });
 
   // Campaign species mutations
@@ -1780,6 +1843,28 @@ export default function Campaign() {
           });
         }
         
+        // Handle other players' viewport updates (for GM visibility)
+        if (data.type === 'viewport_update') {
+          const { userId, username, viewportX, viewportY, viewportWidth, viewportHeight, zoom } = data;
+          
+          // Skip our own broadcasts
+          if (userId === user?.id) return;
+          
+          setOtherPlayersViewports(prev => {
+            const updated = new Map(prev);
+            updated.set(userId, {
+              userId,
+              username,
+              viewportX,
+              viewportY,
+              viewportWidth,
+              viewportHeight,
+              zoom,
+            });
+            return updated;
+          });
+        }
+        
         // Handle member list updates (join/leave/kick/role changes)
         if (data.type === 'members_updated' && data.members) {
           // Update the members cache with the new list
@@ -1789,21 +1874,37 @@ export default function Campaign() {
           );
         }
         
-        // Handle grid highlight updates from other players
-        if (data.type === 'grid_highlight') {
-          const { cellKey, highlighted, userId } = data;
-          // Skip our own broadcasts
-          if (userId === user?.id) return;
+        // Handle beacon messages from all players (including self for consistency)
+        if (data.type === 'beacon') {
+          const { id, gridX, gridY, username } = data;
           
-          setHighlightedCells(prev => {
-            const next = new Set(prev);
-            if (highlighted) {
-              next.add(cellKey);
-            } else {
-              next.delete(cellKey);
-            }
-            return next;
-          });
+          // Add the new beacon
+          setActiveBeacons(prev => [...prev, { id, gridX, gridY, username }]);
+          
+          // Remove beacon after animation completes (~1.5 seconds)
+          setTimeout(() => {
+            setActiveBeacons(prev => prev.filter(b => b.id !== id));
+          }, 1500);
+        }
+        
+        // Handle thrown item created - refetch thrown items for the active scene
+        if (data.type === 'thrown_item_created' || data.type === 'thrown_item_placed') {
+          const currentSceneId = sceneIdForTokensRef.current;
+          if (data.sceneId === currentSceneId) {
+            queryClientRef.current.invalidateQueries({ queryKey: ['thrown-items', currentSceneId] });
+          }
+        }
+        
+        // Handle thrown items detonated - refetch thrown items and invalidate affected characters
+        if (data.type === 'thrown_items_detonated') {
+          const currentSceneId = sceneIdForTokensRef.current;
+          if (data.sceneId === currentSceneId) {
+            queryClientRef.current.invalidateQueries({ queryKey: ['thrown-items', currentSceneId] });
+          }
+          // Also refresh characters since they may have taken damage
+          if (data.affectedTokenIds && data.affectedTokenIds.length > 0) {
+            queryClientRef.current.invalidateQueries({ queryKey: [`/api/campaigns/${effectiveCampaignIdRef.current}/characters`] });
+          }
         }
       });
 
@@ -1944,26 +2045,11 @@ export default function Campaign() {
     setSelectionMode(mode);
   };
   
-  // Handler for grid cell highlight toggle
-  const handleHighlightCell = (cellKey: string) => {
-    setHighlightedCells(prev => {
-      const next = new Set(prev);
-      if (next.has(cellKey)) {
-        next.delete(cellKey);
-      } else {
-        next.add(cellKey);
-      }
-      // Broadcast highlight change to other players
-      if (effectiveCampaignId) {
-        gameWs.send({
-          type: 'grid_highlight',
-          campaignId: effectiveCampaignId,
-          cellKey,
-          highlighted: !prev.has(cellKey)
-        });
-      }
-      return next;
-    });
+  // Handler for creating a beacon at a grid cell
+  const handleBeacon = (cellKey: string) => {
+    const [gridX, gridY] = cellKey.split(',').map(Number);
+    // Send beacon via WebSocket - the server will broadcast to all players including self
+    gameWs.sendBeacon({ gridX, gridY });
   };
 
   // GM Actions
@@ -3008,9 +3094,12 @@ export default function Campaign() {
              onApplyEffect={handleApplyEffect}
              onRemoveEffect={handleRemoveEffect}
              onToggleInvisibility={handleToggleInvisibility}
+             currentTurnCharacterId={currentTurnCharacterId}
              otherPlayersTargeting={otherPlayersTargeting}
-             highlightedCells={highlightedCells}
-             onHighlightCell={handleHighlightCell}
+             activeBeacons={activeBeacons}
+             onBeacon={handleBeacon}
+             otherPlayersViewports={otherPlayersViewports}
+             thrownItems={thrownItems}
            />
            
            {/* Battlemap Dice Overlay for 3D dice rolling */}
@@ -3096,6 +3185,21 @@ export default function Campaign() {
                gridSize={activeScene?.gridSize || 50}
                onEnterAoeMode={enterAoeMode}
                aoeTargetState={aoeTargetState}
+               sceneId={activeScene?.id}
+               thrownItems={thrownItems}
+               onRefetchThrownItems={() => queryClient.invalidateQueries({ queryKey: ['thrown-items', activeScene?.id] })}
+               onEnterThrowableAoeMode={(item, casterTokenId) => {
+                 const aoeRange = item.throwableAoeRange || 15;
+                 const aoeShape = (item.throwableAoeShape || 'circle').toLowerCase();
+                 setAoeTargetState({
+                   active: true,
+                   spell: null,
+                   throwableItem: item,
+                   casterTokenId,
+                   center: { x: 0, y: 0 },
+                   locked: false,
+                 });
+               }}
              />
            )}
           
