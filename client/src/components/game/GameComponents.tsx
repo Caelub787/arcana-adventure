@@ -3997,8 +3997,32 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
   const handleThrowItem = async () => {
     if (!itemData || !itemData.isThrowable || !sceneId) return;
     
+    // Get weapon range - use range field or default to 30ft for throwables
+    const weaponRange = itemData.range || itemData.rangeNum || 30;
+    
+    // Get attacker token for range calculation
+    const attackerToken = getAttackerToken();
+    
     // Priority 1: If a token is targeted, throw item attached to that token
     if (targetedTokenId) {
+      // Range check - validate target is within weapon range
+      const targetToken = tokens?.find((t: any) => t.id === targetedTokenId);
+      if (attackerToken && targetToken) {
+        const distanceFt = calculateDistanceInFeet(attackerToken.x, attackerToken.y, targetToken.x, targetToken.y);
+        if (distanceFt > weaponRange) {
+          triggerRollNotification({
+            type: 'system',
+            label: `${itemData.name} - Out of Range!`,
+            result: 0,
+            total: 0,
+            username: character.name || 'Unknown',
+            characterName: character.name,
+            calculationBreakdown: `Target is ${distanceFt}ft away. ${itemData.name} has a range of ${weaponRange}ft.`,
+          });
+          return;
+        }
+      }
+      
       // Check quantity
       if ((itemData.quantity || 0) < 1) {
         triggerRollNotification({
@@ -4013,10 +4037,10 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
         return;
       }
       
-      // Get target token for position and name
-      const targetToken = tokens?.find((t: any) => t.id === targetedTokenId);
-      const targetCharacter = targetToken?.characterId 
-        ? allCharacters?.find((c: any) => c.id === targetToken.characterId)
+      // Get target token for position and name (reuse from range check if available)
+      const throwTargetToken = tokens?.find((t: any) => t.id === targetedTokenId);
+      const targetCharacter = throwTargetToken?.characterId 
+        ? allCharacters?.find((c: any) => c.id === throwTargetToken.characterId)
         : null;
       const targetName = targetCharacter?.name || 'target';
       
@@ -4024,8 +4048,8 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
         const thrownItem = await api.createThrownItem(sceneId, {
           itemId: itemData.id,
           characterId: character.id,
-          x: targetToken?.x ?? 0,
-          y: targetToken?.y ?? 0,
+          x: throwTargetToken?.x ?? 0,
+          y: throwTargetToken?.y ?? 0,
           attachedToTokenId: targetedTokenId,
         });
         
@@ -4063,6 +4087,29 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     
     // Priority 2: Grid target selected in Target mode - throw to that location
     if (throwableGridTarget) {
+      // Range check - validate grid target is within weapon range
+      if (attackerToken) {
+        const effectiveGridSize = gridSize || 50;
+        // Convert grid coordinates to pixel coordinates for distance calculation
+        const gridCenterX = (throwableGridTarget.x + 0.5) * effectiveGridSize;
+        const gridCenterY = (throwableGridTarget.y + 0.5) * effectiveGridSize;
+        const attackerCenterX = attackerToken.x + effectiveGridSize / 2;
+        const attackerCenterY = attackerToken.y + effectiveGridSize / 2;
+        const distanceFt = calculateDistanceInFeet(attackerCenterX, attackerCenterY, gridCenterX, gridCenterY);
+        if (distanceFt > weaponRange) {
+          triggerRollNotification({
+            type: 'system',
+            label: `${itemData.name} - Out of Range!`,
+            result: 0,
+            total: 0,
+            username: character.name || 'Unknown',
+            characterName: character.name,
+            calculationBreakdown: `Target is ${distanceFt}ft away. ${itemData.name} has a range of ${weaponRange}ft.`,
+          });
+          return;
+        }
+      }
+      
       // Check quantity
       if ((itemData.quantity || 0) < 1) {
         triggerRollNotification({
@@ -4134,6 +4181,26 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
           calculationBreakdown: `Cannot throw "${itemData.name}" - AOE marker is set for "${aoeTargetState.throwableItem?.name}". Cancel the AOE or use the correct item.`,
         });
         return;
+      }
+      
+      // Range check - validate AOE target is within weapon range
+      if (attackerToken && aoeTargetState.center) {
+        const effectiveGridSize = gridSize || 50;
+        const attackerCenterX = attackerToken.x + effectiveGridSize / 2;
+        const attackerCenterY = attackerToken.y + effectiveGridSize / 2;
+        const distanceFt = calculateDistanceInFeet(attackerCenterX, attackerCenterY, aoeTargetState.center.x, aoeTargetState.center.y);
+        if (distanceFt > weaponRange) {
+          triggerRollNotification({
+            type: 'system',
+            label: `${itemData.name} - Out of Range!`,
+            result: 0,
+            total: 0,
+            username: character.name || 'Unknown',
+            characterName: character.name,
+            calculationBreakdown: `Target is ${distanceFt}ft away. ${itemData.name} has a range of ${weaponRange}ft.`,
+          });
+          return;
+        }
       }
       
       // Check quantity
