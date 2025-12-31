@@ -6195,6 +6195,11 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
     damageReductionType: string;
     rationServings: number | string;
     isDamaging: boolean;
+    isThrowable: boolean;
+    throwableAoe: boolean;
+    throwableAoeShape: string;
+    throwableAoeRange: number | string;
+    throwablePickup: boolean;
   }>({
     name: initialData?.name || '',
     image: initialData?.image || '',
@@ -6227,6 +6232,11 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
     damageReductionType: (initialData as any)?.damageReductionType || '',
     rationServings: (initialData as any)?.rationServings ?? '',
     isDamaging: (initialData as any)?.isDamaging || false,
+    isThrowable: (initialData as any)?.isThrowable || false,
+    throwableAoe: (initialData as any)?.throwableAoe || false,
+    throwableAoeShape: (initialData as any)?.throwableAoeShape || 'circle',
+    throwableAoeRange: (initialData as any)?.throwableAoeRange ?? 10,
+    throwablePickup: (initialData as any)?.throwablePickup || false,
   });
   
   const [showImageBrowser, setShowImageBrowser] = useState(false);
@@ -6279,6 +6289,11 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
       damageReductionType: formData.itemType === 'armor' ? formData.damageReductionType : undefined,
       rationServings: formData.itemType === 'consumable' ? optionalNum(formData.rationServings) : undefined,
       isDamaging: formData.itemType === 'consumable' ? formData.isDamaging : false,
+      isThrowable: formData.itemType === 'weapon' ? formData.isThrowable : false,
+      throwableAoe: formData.itemType === 'weapon' && formData.isThrowable ? formData.throwableAoe : false,
+      throwableAoeShape: formData.itemType === 'weapon' && formData.isThrowable && formData.throwableAoe ? formData.throwableAoeShape : undefined,
+      throwableAoeRange: formData.itemType === 'weapon' && formData.isThrowable && formData.throwableAoe ? optionalNum(formData.throwableAoeRange) : undefined,
+      throwablePickup: formData.itemType === 'weapon' && formData.isThrowable ? formData.throwablePickup : false,
     };
     onSave(cleanedData);
   };
@@ -6583,6 +6598,68 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
                       <Label>Two-Handed / Heavy Weapon</Label>
                     </div>
                     <p className="text-xs text-stone-500 mt-1">Two-handed weapons require both hands and occupy both weapon slots</p>
+                  </div>
+                  <div className="col-span-2 border-t border-stone-700 pt-4 mt-2">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Checkbox
+                        checked={formData.isThrowable}
+                        onCheckedChange={(checked) => setFormData({ ...formData, isThrowable: !!checked })}
+                        data-testid="checkbox-throwable"
+                      />
+                      <Label>Is Throwable</Label>
+                    </div>
+                    <p className="text-xs text-stone-500 mb-3">Throwable weapons can be thrown onto the battle map and detonated</p>
+                    {formData.isThrowable && (
+                      <div className="space-y-3 pl-6 border-l-2 border-stone-700">
+                        <div className="flex items-center gap-2">
+                          <Checkbox
+                            checked={formData.throwableAoe}
+                            onCheckedChange={(checked) => setFormData({ ...formData, throwableAoe: !!checked })}
+                            data-testid="checkbox-throwable-aoe"
+                          />
+                          <Label>Enable AOE</Label>
+                        </div>
+                        {formData.throwableAoe && (
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <Label>AOE Shape</Label>
+                              <Select value={formData.throwableAoeShape} onValueChange={(v) => setFormData({ ...formData, throwableAoeShape: v })}>
+                                <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-throwable-aoe-shape">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="circle">Circle</SelectItem>
+                                  <SelectItem value="cone">Cone</SelectItem>
+                                  <SelectItem value="line">Line</SelectItem>
+                                  <SelectItem value="cube">Cube</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div>
+                              <Label>AOE Range (ft)</Label>
+                              <Input
+                                type="number"
+                                min={5}
+                                step={5}
+                                value={formData.throwableAoeRange}
+                                onChange={(e) => setFormData({ ...formData, throwableAoeRange: e.target.value === '' ? '' : parseInt(e.target.value) })}
+                                className="bg-stone-800 border-stone-700"
+                                data-testid="input-throwable-aoe-range"
+                              />
+                            </div>
+                          </div>
+                        )}
+                        <div className="flex items-center gap-2">
+                          <Checkbox
+                            checked={formData.throwablePickup}
+                            onCheckedChange={(checked) => setFormData({ ...formData, throwablePickup: !!checked })}
+                            data-testid="checkbox-throwable-pickup"
+                          />
+                          <Label>Pickup Mode</Label>
+                        </div>
+                        <p className="text-xs text-stone-500">When enabled, thrown items attach to tokens or grid spaces and can be picked up</p>
+                      </div>
+                    )}
                   </div>
                 </>
               )}
