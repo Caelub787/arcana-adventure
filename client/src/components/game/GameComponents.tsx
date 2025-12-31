@@ -329,6 +329,19 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
   const [effectsDialogToken, setEffectsDialogToken] = useState<string | null>(null);
   const holdTimerRef = useRef<NodeJS.Timeout | null>(null);
   
+  // Long-press delete mode for thrown items (mobile-friendly)
+  const [thrownItemDeleteMode, setThrownItemDeleteMode] = useState<string | null>(null);
+  const thrownItemHoldTimerRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // Cleanup thrown item hold timer on unmount
+  useEffect(() => {
+    return () => {
+      if (thrownItemHoldTimerRef.current) {
+        clearTimeout(thrownItemHoldTimerRef.current);
+      }
+    };
+  }, []);
+  
   // Track token being dragged with its current visual position
   const [draggingToken, setDraggingToken] = useState<{ 
     id: string; 
@@ -841,6 +854,11 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
     
     // Only pan with primary button (left click / single touch)
     if (e.button !== 0) return;
+    
+    // Clear thrown item delete mode when starting a new map interaction
+    if (thrownItemDeleteMode) {
+      setThrownItemDeleteMode(null);
+    }
     
     // Reset drag tracking
     didDragRef.current = false;
@@ -1877,6 +1895,18 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                               <p className="text-xs text-orange-400">AOE: {item.throwableAoeRange}ft radius</p>
                             )}
                             <p className="text-xs text-stone-500 mt-1">Attached to token</p>
+                            {isGM && onDeleteThrownItem && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onDeleteThrownItem(thrownItem.id);
+                                }}
+                                className="mt-2 w-full text-xs text-red-400 hover:text-red-300 border border-stone-700 rounded px-2 py-1 flex items-center justify-center gap-1"
+                                data-testid={`delete-attached-item-${thrownItem.id}`}
+                              >
+                                <X className="w-3 h-3" /> Remove
+                              </button>
+                            )}
                           </PopoverContent>
                         </Popover>
                       );
@@ -1962,7 +1992,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                 />
               )}
               
-              {/* Thrown Item Token - Interactive for GMs */}
+              {/* Thrown Item Token - Interactive for GMs with long-press delete */}
               <div
                 className={`absolute group ${isGM ? 'cursor-pointer' : 'pointer-events-none'}`}
                 style={{
@@ -1972,6 +2002,43 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                   height: itemSize,
                   zIndex: 16,
                   opacity: 0.85,
+                }}
+                onPointerDown={(e) => {
+                  if (!isGM || !onDeleteThrownItem) return;
+                  // Only handle primary pointer (left click or first touch)
+                  if (e.pointerType === 'mouse' && e.button !== 0) return;
+                  e.stopPropagation();
+                  // Start long-press timer
+                  if (thrownItemHoldTimerRef.current) {
+                    clearTimeout(thrownItemHoldTimerRef.current);
+                  }
+                  thrownItemHoldTimerRef.current = setTimeout(() => {
+                    setThrownItemDeleteMode(thrownItem.id);
+                  }, 500);
+                }}
+                onPointerUp={(e) => {
+                  if (!isGM) return;
+                  // Clear the timer if pointer is released before long-press
+                  if (thrownItemHoldTimerRef.current) {
+                    clearTimeout(thrownItemHoldTimerRef.current);
+                    thrownItemHoldTimerRef.current = null;
+                  }
+                }}
+                onPointerLeave={(e) => {
+                  if (!isGM) return;
+                  // Clear the timer if pointer leaves the element
+                  if (thrownItemHoldTimerRef.current) {
+                    clearTimeout(thrownItemHoldTimerRef.current);
+                    thrownItemHoldTimerRef.current = null;
+                  }
+                }}
+                onPointerCancel={(e) => {
+                  if (!isGM) return;
+                  // Clear the timer if pointer is cancelled
+                  if (thrownItemHoldTimerRef.current) {
+                    clearTimeout(thrownItemHoldTimerRef.current);
+                    thrownItemHoldTimerRef.current = null;
+                  }
                 }}
                 data-testid={`thrown-item-token-${thrownItem.id}`}
               >
@@ -1991,17 +2058,18 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                     </div>
                   )}
                   
-                  {/* GM Remove Button - shows on hover */}
-                  {isGM && onDeleteThrownItem && (
+                  {/* GM Remove Button - shows on long-press (mobile-friendly) */}
+                  {isGM && onDeleteThrownItem && thrownItemDeleteMode === thrownItem.id && (
                     <button
-                      className="absolute -top-1 -right-1 w-5 h-5 bg-red-600 hover:bg-red-500 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-lg"
+                      className="absolute -top-2 -right-2 w-7 h-7 bg-red-600 hover:bg-red-500 rounded-full flex items-center justify-center shadow-lg animate-pulse z-30"
                       onClick={(e) => {
                         e.stopPropagation();
                         onDeleteThrownItem(thrownItem.id);
+                        setThrownItemDeleteMode(null);
                       }}
                       data-testid={`delete-thrown-item-${thrownItem.id}`}
                     >
-                      <X className="w-3 h-3 text-white" />
+                      <X className="w-4 h-4 text-white" />
                     </button>
                   )}
                 </div>
@@ -17196,6 +17264,8 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
     throwableAoe: boolean;
     throwableAoeShape: string;
     throwableAoeRange: number | string;
+    throwableAoeDamage: string;
+    throwableAoeDamageType: string;
     throwablePickup: boolean;
   }>({
     name: '',
@@ -17234,6 +17304,8 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
     throwableAoe: false,
     throwableAoeShape: '',
     throwableAoeRange: 10,
+    throwableAoeDamage: '',
+    throwableAoeDamageType: '',
     throwablePickup: false,
   });
 
@@ -17415,6 +17487,8 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
       throwableAoe: formData.throwableAoe,
       throwableAoeShape: formData.throwableAoeShape || undefined,
       throwableAoeRange: optionalNum(formData.throwableAoeRange),
+      throwableAoeDamage: formData.throwableAoeDamage || undefined,
+      throwableAoeDamageType: formData.throwableAoeDamageType || undefined,
       throwablePickup: formData.throwablePickup,
     };
     onSave(cleanedData);
@@ -17455,6 +17529,8 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
       throwableAoe: false,
       throwableAoeShape: '',
       throwableAoeRange: 10,
+      throwableAoeDamage: '',
+      throwableAoeDamageType: '',
       throwablePickup: false,
     });
   };
@@ -18016,6 +18092,39 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
                                 placeholder="10"
                                 data-testid="input-throwable-aoe-range"
                               />
+                            </div>
+                            <div>
+                              <Label>Detonation Damage (e.g. 2d6)</Label>
+                              <Input 
+                                value={formData.throwableAoeDamage} 
+                                onChange={(e) => setFormData({...formData, throwableAoeDamage: e.target.value})} 
+                                className="bg-stone-800 border-stone-700"
+                                placeholder="2d6"
+                                data-testid="input-throwable-aoe-damage"
+                              />
+                            </div>
+                            <div>
+                              <Label>Detonation Damage Type</Label>
+                              <Select value={formData.throwableAoeDamageType || ''} onValueChange={(v) => setFormData({...formData, throwableAoeDamageType: v})}>
+                                <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-throwable-aoe-damage-type">
+                                  <SelectValue placeholder="Select damage type..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="Sharp">Sharp</SelectItem>
+                                  <SelectItem value="Blunt">Blunt</SelectItem>
+                                  <SelectItem value="Piercing">Piercing</SelectItem>
+                                  <SelectItem value="Flame">Flame</SelectItem>
+                                  <SelectItem value="Frost">Frost</SelectItem>
+                                  <SelectItem value="Storm">Storm</SelectItem>
+                                  <SelectItem value="Tide">Tide</SelectItem>
+                                  <SelectItem value="Stone">Stone</SelectItem>
+                                  <SelectItem value="Flux">Flux</SelectItem>
+                                  <SelectItem value="Light">Light</SelectItem>
+                                  <SelectItem value="Dark">Dark</SelectItem>
+                                  <SelectItem value="Sound">Sound</SelectItem>
+                                  <SelectItem value="Health">Health</SelectItem>
+                                </SelectContent>
+                              </Select>
                             </div>
                           </div>
                         )}
