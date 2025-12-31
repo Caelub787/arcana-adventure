@@ -717,6 +717,7 @@ export default function Campaign() {
   const [selectionMode, setSelectionMode] = useState<SelectionMode>('select');
   const [targetedTokenId, setTargetedTokenId] = useState<string | null>(null);
   const [selectedTokenId, setSelectedTokenId] = useState<string | null>(null);
+  const [throwableGridTarget, setThrowableGridTarget] = useState<{ x: number; y: number } | null>(null);
   
   // Active beacons state - temporary pulsating rings on grid cells
   const [activeBeacons, setActiveBeacons] = useState<Array<{
@@ -2046,6 +2047,7 @@ export default function Campaign() {
     // Clear targeted token when switching away from Target mode
     if (selectionMode === 'target' && mode !== 'target') {
       setTargetedTokenId(null);
+      setThrowableGridTarget(null);
       // Broadcast that we're no longer targeting
       if (effectiveCampaignId) {
         gameWs.clearTokenTargeting();
@@ -2054,6 +2056,11 @@ export default function Campaign() {
     // Clear selected token when switching modes for a clean slate
     setSelectedTokenId(null);
     setSelectionMode(mode);
+  };
+  
+  // Handler for grid target click in target mode (for throwable items)
+  const handleGridTargetClick = (gridX: number, gridY: number) => {
+    setThrowableGridTarget({ x: gridX, y: gridY });
   };
   
   // Handler for creating a beacon at a grid cell
@@ -3120,6 +3127,8 @@ export default function Campaign() {
                  console.error('Failed to delete thrown item:', err);
                }
              }}
+             throwableGridTarget={throwableGridTarget}
+             onGridTargetClick={handleGridTargetClick}
            />
            
            {/* Battlemap Dice Overlay for 3D dice rolling */}
@@ -3220,6 +3229,8 @@ export default function Campaign() {
                    locked: false,
                  });
                }}
+               throwableGridTarget={throwableGridTarget}
+               onClearThrowableGridTarget={() => setThrowableGridTarget(null)}
              />
            )}
           

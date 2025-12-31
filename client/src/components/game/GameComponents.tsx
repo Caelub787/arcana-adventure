@@ -310,9 +310,11 @@ interface BattleMapProps {
   thrownItems?: ThrownItem[];
   onRefetchThrownItems?: () => void;
   onDeleteThrownItem?: (thrownItemId: string) => void;
+  throwableGridTarget?: { x: number; y: number } | null;
+  onGridTargetClick?: (gridX: number, gridY: number) => void;
 }
 
-export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClick, onDeleteToken, role, gridSize, backgroundImage, scene, onViewChange, characters = [], allSpecies = [], selectionMode = 'select', targetedTokenId, selectedTokenId, aoeTargetState, onAoeMouseMove, onAoeClick, otherPlayersAoe, myPermissions, tokenActiveEffects, allTokenEffects, onApplyEffect, onRemoveEffect, onToggleInvisibility, currentTurnCharacterId, otherPlayersTargeting, activeBeacons, onBeacon, otherPlayersViewports, thrownItems = [], onRefetchThrownItems, onDeleteThrownItem }: BattleMapProps) {
+export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClick, onDeleteToken, role, gridSize, backgroundImage, scene, onViewChange, characters = [], allSpecies = [], selectionMode = 'select', targetedTokenId, selectedTokenId, aoeTargetState, onAoeMouseMove, onAoeClick, otherPlayersAoe, myPermissions, tokenActiveEffects, allTokenEffects, onApplyEffect, onRemoveEffect, onToggleInvisibility, currentTurnCharacterId, otherPlayersTargeting, activeBeacons, onBeacon, otherPlayersViewports, thrownItems = [], onRefetchThrownItems, onDeleteThrownItem, throwableGridTarget, onGridTargetClick }: BattleMapProps) {
   // Derive isGM from role prop
   const isGM = role === 'gm';
   
@@ -931,6 +933,23 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
         const cellY = Math.floor(worldY / effectiveGridSize);
         const cellKey = `${cellX},${cellY}`;
         onBeacon(cellKey);
+      }
+    }
+    
+    // If we're in target mode and didn't drag, set the grid target for throwables
+    if (selectionMode === 'target' && !didDragRef.current && onGridTargetClick) {
+      const container = containerRef.current;
+      if (container) {
+        const rect = container.getBoundingClientRect();
+        const screenX = e.clientX - rect.left;
+        const screenY = e.clientY - rect.top;
+        const worldX = ((screenX + 9000 - panRef.current.x) / zoomRef.current) - 9000;
+        const worldY = ((screenY + 9000 - panRef.current.y) / zoomRef.current) - 9000;
+        // Snap to grid cell
+        const effectiveGridSize = scene?.gridSize || gridSize;
+        const cellX = Math.floor(worldX / effectiveGridSize);
+        const cellY = Math.floor(worldY / effectiveGridSize);
+        onGridTargetClick(cellX, cellY);
       }
     }
     
@@ -1996,6 +2015,34 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
           );
         })}
 
+        {/* Throwable Grid Target Marker - Shows where throwable will be placed */}
+        {throwableGridTarget && selectionMode === 'target' && (() => {
+          const effectiveGridSize = scene?.gridSize || gridSize;
+          const markerSize = effectiveGridSize * 0.8;
+          const markerOffset = (effectiveGridSize - markerSize) / 2;
+          
+          return (
+            <div
+              className="absolute animate-pulse pointer-events-none"
+              style={{
+                left: 9000 + throwableGridTarget.x * effectiveGridSize + markerOffset,
+                top: 9000 + throwableGridTarget.y * effectiveGridSize + markerOffset,
+                width: markerSize,
+                height: markerSize,
+                zIndex: 18,
+              }}
+              data-testid="throwable-grid-target"
+            >
+              <div className="w-full h-full rounded-lg border-4 border-dashed border-orange-500 bg-orange-500/20 flex items-center justify-center">
+                <Target className="w-1/2 h-1/2 text-orange-400" />
+              </div>
+              <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 bg-orange-600/90 text-white text-xs px-2 py-1 rounded whitespace-nowrap">
+                Target Location
+              </div>
+            </div>
+          );
+        })()}
+
         {/* Token Movement Path Visualization - Shows path and distance while dragging */}
         {draggingToken && (() => {
           const effectiveGridSize = scene?.gridSize || gridSize;
@@ -2846,6 +2893,8 @@ interface BattleMapHotbarsProps {
   thrownItems?: ThrownItem[];
   onRefetchThrownItems?: () => void;
   onEnterThrowableAoeMode?: (item: any, casterToken: any) => void;
+  throwableGridTarget?: { x: number; y: number } | null;
+  onClearThrowableGridTarget?: () => void;
 }
 
 // Sub-component for individual hotbar slot
@@ -2868,12 +2917,14 @@ interface BattleMapHotbarSlotProps {
   thrownItems?: ThrownItem[];
   onRefetchThrownItems?: () => void;
   onEnterThrowableAoeMode?: (item: any, casterToken: any) => void;
+  throwableGridTarget?: { x: number; y: number } | null;
+  onClearThrowableGridTarget?: () => void;
 }
 
 // Ranged weapon categories that use ammunition
 const RANGED_WEAPON_CATEGORIES = ['bow', 'crossbow', 'sling', 'firearm'];
 
-function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHotbars, allItems, tokens, targetedTokenId, allCharacters, gridSize = 50, onEnterAoeMode, aoeTargetState, onAoeDamageRoll, sceneId, thrownItems, onRefetchThrownItems, onEnterThrowableAoeMode }: BattleMapHotbarSlotProps) {
+function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHotbars, allItems, tokens, targetedTokenId, allCharacters, gridSize = 50, onEnterAoeMode, aoeTargetState, onAoeDamageRoll, sceneId, thrownItems, onRefetchThrownItems, onEnterThrowableAoeMode, throwableGridTarget, onClearThrowableGridTarget }: BattleMapHotbarSlotProps) {
   const clickTimerRef = useRef<NodeJS.Timeout | null>(null);
   const clickCountRef = useRef(0);
   const queryClient = useQueryClient();
@@ -3928,7 +3979,66 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
       return;
     }
     
-    // Priority 2: Check if there's an AOE marker locked for this throwable
+    // Priority 2: Grid target selected in Target mode - throw to that location
+    if (throwableGridTarget) {
+      // Check quantity
+      if ((itemData.quantity || 0) < 1) {
+        triggerRollNotification({
+          type: 'system',
+          label: `No ${itemData.name} left!`,
+          result: 0,
+          total: 0,
+          username: character.name || 'Unknown',
+          characterName: character.name,
+          calculationBreakdown: `You have no ${itemData.name} remaining to throw.`,
+        });
+        return;
+      }
+      
+      try {
+        const thrownItem = await api.createThrownItem(sceneId, {
+          itemId: itemData.id,
+          characterId: character.id,
+          x: throwableGridTarget.x,
+          y: throwableGridTarget.y,
+        });
+        
+        // Decrement item quantity
+        await api.updateItem(itemData.id, { quantity: (itemData.quantity || 1) - 1 });
+        queryClient.invalidateQueries({ queryKey: ['item', hotbar?.itemId] });
+        queryClient.invalidateQueries({ queryKey: ['character-items', character.id] });
+        
+        // Broadcast via WebSocket
+        gameWs.sendThrownItemPlaced(thrownItem, sceneId);
+        
+        // Refetch thrown items
+        onRefetchThrownItems?.();
+        
+        // Clear the grid target after throwing
+        onClearThrowableGridTarget?.();
+        
+        // Notify
+        triggerRollNotification({
+          type: 'system',
+          label: `${itemData.name} Thrown!`,
+          result: 0,
+          total: 0,
+          username: character.name || 'Unknown',
+          characterName: character.name,
+          calculationBreakdown: `Placed at grid position (${throwableGridTarget.x}, ${throwableGridTarget.y})`,
+        });
+        
+        if (character.campaignId) {
+          gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', 
+            `Threw ${itemData.name} at grid (${throwableGridTarget.x}, ${throwableGridTarget.y})`, 'action');
+        }
+      } catch (err) {
+        console.error('Failed to throw item at grid target:', err);
+      }
+      return;
+    }
+    
+    // Priority 3: Check if there's an AOE marker locked for this throwable
     if (aoeTargetState?.active && aoeTargetState?.locked && aoeTargetState?.throwableItem) {
       // Verify it's the same throwable item
       if (aoeTargetState.throwableItem.id !== itemData.id) {
@@ -4004,7 +4114,7 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
       return;
     }
     
-    // Priority 3: No target - enter throwable AOE mode to select grid location
+    // Priority 4: No target - enter throwable AOE mode to select grid location
     // Find character's token for caster position
     const characterToken = tokens?.find((t: any) => t.characterId === character.id);
     if (characterToken && onEnterThrowableAoeMode) {
@@ -4850,7 +4960,7 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
   );
 }
 
-export function BattleMapHotbars({ character, tokens, targetedTokenId, characters, gridSize, onEnterAoeMode, aoeTargetState, onAoeDamageRoll, sceneId, thrownItems, onRefetchThrownItems, onEnterThrowableAoeMode }: BattleMapHotbarsProps) {
+export function BattleMapHotbars({ character, tokens, targetedTokenId, characters, gridSize, onEnterAoeMode, aoeTargetState, onAoeDamageRoll, sceneId, thrownItems, onRefetchThrownItems, onEnterThrowableAoeMode, throwableGridTarget, onClearThrowableGridTarget }: BattleMapHotbarsProps) {
   const [activeHotbar, setActiveHotbar] = useState<string>('weapons');
   
   const { data: hotbars = [], isLoading: hotbarsLoading } = useQuery({
@@ -5052,6 +5162,8 @@ export function BattleMapHotbars({ character, tokens, targetedTokenId, character
                       thrownItems={thrownItems}
                       onRefetchThrownItems={onRefetchThrownItems}
                       onEnterThrowableAoeMode={onEnterThrowableAoeMode}
+                      throwableGridTarget={throwableGridTarget}
+                      onClearThrowableGridTarget={onClearThrowableGridTarget}
                     />
                   );
                 })}
