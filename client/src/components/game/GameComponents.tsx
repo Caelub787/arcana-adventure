@@ -2244,6 +2244,106 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
           );
         })()}
         
+        {/* Throwable Item AoE Targeting Overlay */}
+        {aoeTargetState?.active && aoeTargetState.throwableItem && !aoeTargetState.spell && (() => {
+          const item = aoeTargetState.throwableItem;
+          const aoeShape = (item.throwableAoeShape || 'circle').toLowerCase();
+          const aoeRangeFeet = item.throwableAoeRange || 10;
+          // aoeRangeFeet is the radius in feet (5ft = 1 grid cell)
+          const radiusPixels = (aoeRangeFeet / 5) * (scene?.gridSize || gridSize);
+          const { center, locked } = aoeTargetState;
+          
+          const casterToken = tokens.find(t => t.id === aoeTargetState.casterTokenId);
+          const throwRangeFeet = item.range || 30;
+          const throwRangePixels = (throwRangeFeet / 5) * (scene?.gridSize || gridSize);
+          
+          // Check if in range
+          let isInRange = true;
+          if (casterToken) {
+            const casterCenterX = casterToken.x + (scene?.gridSize || gridSize) / 2;
+            const casterCenterY = casterToken.y + (scene?.gridSize || gridSize) / 2;
+            const distance = Math.sqrt(
+              Math.pow(center.x - casterCenterX, 2) + Math.pow(center.y - casterCenterY, 2)
+            );
+            isInRange = distance <= throwRangePixels;
+          }
+          
+          // Orange colors for throwables
+          const fillColor = isInRange 
+            ? (locked ? 'rgba(251, 146, 60, 0.5)' : 'rgba(251, 146, 60, 0.3)')
+            : 'rgba(239, 68, 68, 0.3)';
+          const strokeColor = isInRange 
+            ? (locked ? 'rgba(251, 146, 60, 1)' : 'rgba(251, 146, 60, 0.8)')
+            : 'rgba(239, 68, 68, 0.8)';
+          
+          // Position relative to the 9000,9000 offset (same as tokens)
+          const worldX = center.x + 9000;
+          const worldY = center.y + 9000;
+          
+          return (
+            <svg
+              className="absolute pointer-events-none"
+              style={{
+                left: 0,
+                top: 0,
+                width: '20000px',
+                height: '20000px',
+                overflow: 'visible',
+                zIndex: 25,
+              }}
+            >
+              {aoeShape === 'circle' && (
+                <circle
+                  cx={worldX}
+                  cy={worldY}
+                  r={radiusPixels}
+                  fill={fillColor}
+                  stroke={strokeColor}
+                  strokeWidth={2}
+                  strokeDasharray={locked ? 'none' : '8 4'}
+                />
+              )}
+              {aoeShape === 'square' && (
+                <rect
+                  x={worldX - radiusPixels}
+                  y={worldY - radiusPixels}
+                  width={radiusPixels * 2}
+                  height={radiusPixels * 2}
+                  fill={fillColor}
+                  stroke={strokeColor}
+                  strokeWidth={2}
+                  strokeDasharray={locked ? 'none' : '8 4'}
+                />
+              )}
+              {/* Center dot when not locked */}
+              {!locked && (
+                <circle
+                  cx={worldX}
+                  cy={worldY}
+                  r={6}
+                  fill="rgba(255, 255, 255, 0.8)"
+                  stroke={strokeColor}
+                  strokeWidth={2}
+                />
+              )}
+              {/* Placement indicator when locked */}
+              {locked && (
+                <text
+                  x={worldX}
+                  y={worldY - radiusPixels - 10}
+                  textAnchor="middle"
+                  fill="white"
+                  fontSize="12"
+                  fontWeight="bold"
+                  style={{ textShadow: '0 0 4px black' }}
+                >
+                  Click hotbar to throw here
+                </text>
+              )}
+            </svg>
+          );
+        })()}
+        
         {/* Other Players' AoE Overlays - Show all other players' targeting */}
         {otherPlayersAoe && Array.from(otherPlayersAoe.values()).map((playerAoe) => {
           if (!playerAoe.active || !playerAoe.spellAoe) return null;
@@ -17042,6 +17142,8 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
       throwableAoe: template.throwableAoe || false,
       throwableAoeShape: template.throwableAoeShape || '',
       throwableAoeRange: template.throwableAoeRange || 10,
+      throwableAoeDamage: template.throwableAoeDamage || '',
+      throwableAoeDamageType: template.throwableAoeDamageType || '',
       throwablePickup: template.throwablePickup || false,
     };
     onSave(itemData);

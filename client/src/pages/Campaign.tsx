@@ -822,7 +822,8 @@ export default function Campaign() {
     if (casterToken) {
       const casterCenterX = casterToken.x + (activeScene?.gridSize || 50) / 2;
       const casterCenterY = casterToken.y + (activeScene?.gridSize || 50) / 2;
-      const spellRange = aoeTargetState.spell?.rangeNum || 30;
+      // Use spell range for spells, or item range for throwables (default 30ft for throwables)
+      const rangeVal = aoeTargetState.spell?.rangeNum || aoeTargetState.throwableItem?.range || 30;
       const gridSizeVal = activeScene?.gridSize || 50;
       
       const dx = x - casterCenterX;
@@ -831,7 +832,7 @@ export default function Campaign() {
       const distanceFeet = (distancePixels / gridSizeVal) * 5;
       
       // If out of range, unlock so user can reposition
-      if (distanceFeet > spellRange) {
+      if (distanceFeet > rangeVal) {
         isLocked = false;
       }
     }
@@ -843,17 +844,19 @@ export default function Campaign() {
       locked: isLocked,
     }));
     
-    // Broadcast the locked position to other players
-    const casterChar = characters && casterToken ? (characters as any[]).find((c: any) => c.id === casterToken.characterId) : null;
-    gameWs.sendAoeTargeting({
-      active: true,
-      spellName: aoeTargetState.spell?.name,
-      spellAoe: aoeTargetState.spell?.aoe,
-      casterTokenId: aoeTargetState.casterTokenId,
-      casterName: casterChar?.name || 'Unknown',
-      center: { x, y },
-      locked: isLocked,
-    });
+    // Broadcast the locked position to other players (only for spells, not throwables)
+    if (aoeTargetState.spell) {
+      const casterChar = characters && casterToken ? (characters as any[]).find((c: any) => c.id === casterToken.characterId) : null;
+      gameWs.sendAoeTargeting({
+        active: true,
+        spellName: aoeTargetState.spell?.name,
+        spellAoe: aoeTargetState.spell?.aoe,
+        casterTokenId: aoeTargetState.casterTokenId,
+        casterName: casterChar?.name || 'Unknown',
+        center: { x, y },
+        locked: isLocked,
+      });
+    }
   };
   
   // Throttle ref for AoE updates to avoid rate limiting
