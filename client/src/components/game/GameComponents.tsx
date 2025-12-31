@@ -4308,19 +4308,11 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
             if (targetChar) {
               affectedNames.push(targetChar.name);
               
-              // Apply damage using the applyDamageToTarget pattern
-              try {
-                const currentHp = targetChar.hp || 0;
-                const newHp = Math.max(0, currentHp - totalDamage);
-                await api.updateCharacter(targetChar.id, { hp: newHp });
-                queryClient.invalidateQueries({ queryKey: ['character', targetChar.id] });
-                
-                // Send combat damage via WebSocket (use AOE damage type for detonation)
-                const aoeDamageType = sourceItem.throwableAoeDamageType || itemData.throwableAoeDamageType || 'Fire';
-                gameWs.sendCombatDamage(targetChar.id, totalDamage, aoeDamageType, character.name);
-              } catch (err) {
-                console.error('Failed to apply detonation damage:', err);
-              }
+              // Send combat damage via WebSocket - this handles BOTH the DB update AND broadcasting
+              // Do NOT call api.updateCharacter separately as that would cause double damage
+              const aoeDamageType = sourceItem.throwableAoeDamageType || itemData.throwableAoeDamageType || 'Fire';
+              gameWs.sendCombatDamage(targetChar.id, totalDamage, aoeDamageType, character.name);
+              queryClient.invalidateQueries({ queryKey: ['character', targetChar.id] });
             } else if (token.name) {
               affectedNames.push(token.name);
             }
