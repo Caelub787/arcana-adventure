@@ -3112,6 +3112,46 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     }
   };
 
+  // Function to check if a thrown item breaks (for throwables without pickup mode)
+  // Returns true if item broke and was deleted, false if it survived
+  const checkThrowableBreak = async (thrownItemId: string, item: any): Promise<boolean> => {
+    // Only check break chance if pickup mode is disabled
+    if (item.throwablePickup) return false;
+    
+    const breakChance = (item.breakChance ?? 10) / 100; // Convert percentage to probability
+    const breakRoll = Math.random();
+    
+    if (breakRoll < breakChance) {
+      // Item broke - delete the thrown item from the map
+      try {
+        await api.deleteThrownItem(thrownItemId);
+        onRefetchThrownItems?.();
+        
+        triggerRollNotification({
+          type: 'system',
+          label: `${item.name} Broke!`,
+          result: 0,
+          total: 0,
+          username: character.name || 'Unknown',
+          characterName: character.name,
+          calculationBreakdown: `The ${item.name} shattered on impact and cannot be recovered.`,
+        });
+        
+        if (character.campaignId) {
+          gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', 
+            `${item.name} broke on impact!`, 'system');
+        }
+        
+        return true;
+      } catch (err) {
+        console.error('Failed to delete broken thrown item:', err);
+        return false;
+      }
+    }
+    
+    return false;
+  };
+
   const getSpellLevelColor = (level: number) => {
     if (level === 0) return 'text-gray-400';
     if (level <= 3) return 'text-blue-400';
@@ -4079,6 +4119,9 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
           gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', 
             `Threw ${itemData.name} at ${targetName}`, 'action');
         }
+        
+        // Check if throwable breaks on impact (for items without pickup mode)
+        await checkThrowableBreak(thrownItem.id, itemData);
       } catch (err) {
         console.error('Failed to throw item at target:', err);
       }
@@ -4161,6 +4204,9 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
           gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', 
             `Threw ${itemData.name} at grid (${throwableGridTarget.x}, ${throwableGridTarget.y})`, 'action');
         }
+        
+        // Check if throwable breaks on impact (for items without pickup mode)
+        await checkThrowableBreak(thrownItem.id, itemData);
       } catch (err) {
         console.error('Failed to throw item at grid target:', err);
       }
@@ -4257,6 +4303,9 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
           gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', 
             `Threw ${itemData.name} at grid (${gridX}, ${gridY})`, 'action');
         }
+        
+        // Check if throwable breaks on impact (for items without pickup mode)
+        await checkThrowableBreak(thrownItem.id, itemData);
       } catch (err) {
         console.error('Failed to throw item:', err);
       }
