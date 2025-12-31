@@ -422,6 +422,8 @@ export const items = pgTable("items", {
   throwableAoeShape: text("throwable_aoe_shape"), // circle, cone, line, cube
   throwableAoeRange: integer("throwable_aoe_range").default(10), // AOE radius in feet
   throwablePickup: boolean("throwable_pickup").default(false).notNull(), // If true, attaches to tokens/grid spaces when thrown
+  throwableAoeDamage: text("throwable_aoe_damage"), // Dice notation for AOE detonation damage (e.g. "2d6")
+  throwableAoeDamageType: text("throwable_aoe_damage_type"), // Damage type for AOE detonation: Sharp, Blunt, Piercing, Flame, etc.
 });
 
 export const insertItemSchema = createInsertSchema(items).omit({
