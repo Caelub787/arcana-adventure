@@ -4246,21 +4246,28 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     const affectedTokenIds: string[] = [];
     const affectedNames: string[] = [];
     
+    const effectiveGridSize = gridSize || 50;
+    
     for (const thrownItem of itemThrownItems) {
       // Get tokens within AOE range of this thrown item
       if (tokens) {
         for (const token of tokens) {
-          // Calculate distance from thrown item to token center
-          const tokenCenterX = token.x + 0.5;
-          const tokenCenterY = token.y + 0.5;
-          const thrownCenterX = thrownItem.x;
-          const thrownCenterY = thrownItem.y;
+          // Tokens use pixel coordinates, thrown items use grid cell indices
+          // Convert thrown item grid position to pixel center
+          const thrownCenterX = (thrownItem.x + 0.5) * effectiveGridSize;
+          const thrownCenterY = (thrownItem.y + 0.5) * effectiveGridSize;
           
-          const dx = (tokenCenterX - thrownCenterX) * (gridSize || 50);
-          const dy = (tokenCenterY - thrownCenterY) * (gridSize || 50);
+          // Token center in pixels
+          const tokenCenterX = token.x + effectiveGridSize / 2;
+          const tokenCenterY = token.y + effectiveGridSize / 2;
+          
+          // Calculate pixel distance
+          const dx = tokenCenterX - thrownCenterX;
+          const dy = tokenCenterY - thrownCenterY;
+          const pixelDistance = Math.sqrt(dx * dx + dy * dy);
           
           // Each grid square = 5ft, so convert pixel distance to feet
-          const distanceFt = Math.sqrt(dx * dx + dy * dy) / (gridSize || 50) * 5;
+          const distanceFt = (pixelDistance / effectiveGridSize) * 5;
           
           if (distanceFt <= aoeRange && !affectedTokenIds.includes(token.id)) {
             affectedTokenIds.push(token.id);
@@ -4272,9 +4279,9 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
               
               // Apply damage using the applyDamageToTarget pattern
               try {
-                const currentHp = targetChar.currentHp || 0;
+                const currentHp = targetChar.hp || 0;
                 const newHp = Math.max(0, currentHp - totalDamage);
-                await api.updateCharacter(targetChar.id, { currentHp: newHp });
+                await api.updateCharacter(targetChar.id, { hp: newHp });
                 queryClient.invalidateQueries({ queryKey: ['character', targetChar.id] });
                 
                 // Send combat damage via WebSocket (use AOE damage type for detonation)
