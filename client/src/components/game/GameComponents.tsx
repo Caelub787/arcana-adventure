@@ -325,7 +325,6 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
   const [showDeleteButton, setShowDeleteButton] = useState<string | null>(null);
   const [tokenToDelete, setTokenToDelete] = useState<string | null>(null);
   const [effectsDialogToken, setEffectsDialogToken] = useState<string | null>(null);
-  const [hoveredAttachedItemId, setHoveredAttachedItemId] = useState<string | null>(null);
   const holdTimerRef = useRef<NodeJS.Timeout | null>(null);
   
   // Track token being dragged with its current visual position
@@ -1835,8 +1834,6 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                             <button
                               onPointerDown={(e) => e.stopPropagation()}
                               onClick={(e) => e.stopPropagation()}
-                              onMouseEnter={() => hasAoe && setHoveredAttachedItemId(thrownItem.id)}
-                              onMouseLeave={() => setHoveredAttachedItemId(null)}
                               className="rounded-sm bg-black/60 border-2 border-orange-500 shadow-sm flex items-center justify-center overflow-hidden relative"
                               style={{ width: Math.max(10, tokenSize * 0.22), height: Math.max(10, tokenSize * 0.22) }}
                               title={item.name}
@@ -1881,22 +1878,19 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
           );
         })}
 
-        {/* Hovered Attached Item AOE Circle - Shows when hovering over attached item icon on token */}
-        {hoveredAttachedItemId && (() => {
-          const hoveredThrownItem = thrownItems.find(ti => ti.id === hoveredAttachedItemId);
-          if (!hoveredThrownItem || !hoveredThrownItem.attachedToTokenId || !hoveredThrownItem.item) return null;
-          
-          const attachedToken = tokens.find(t => t.id === hoveredThrownItem.attachedToTokenId);
+        {/* Attached Item AOE Circles - Always visible for items attached to tokens */}
+        {thrownItems.filter(ti => ti.attachedToTokenId && ti.item).map((thrownItem) => {
+          const attachedToken = tokens.find(t => t.id === thrownItem.attachedToTokenId);
           if (!attachedToken) return null;
           
           const effectiveGridSize = scene?.gridSize || gridSize;
-          const item = hoveredThrownItem.item;
+          const item = thrownItem.item!;
           const aoeRangeInFeet = item.throwableAoeRange || 0;
           const feetPerCell = 5;
           const aoeRadiusCells = aoeRangeInFeet / feetPerCell;
           const aoeRadiusPixels = aoeRadiusCells * effectiveGridSize;
           
-          if (aoeRadiusPixels <= 0) return null;
+          if (aoeRadiusPixels <= 0 || !item.throwableAoe) return null;
           
           const tokenDisplayPos = getTokenDisplayPosition(attachedToken);
           const tokenCenterX = 9000 + tokenDisplayPos.x + effectiveGridSize / 2;
@@ -1904,7 +1898,8 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
           
           return (
             <div
-              className="absolute rounded-full border-2 border-orange-500/80 bg-orange-500/20 pointer-events-none animate-pulse"
+              key={`attached-aoe-${thrownItem.id}`}
+              className="absolute rounded-full border-2 border-orange-500/60 bg-orange-500/15 pointer-events-none"
               style={{
                 left: tokenCenterX - aoeRadiusPixels,
                 top: tokenCenterY - aoeRadiusPixels,
@@ -1912,10 +1907,10 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                 height: aoeRadiusPixels * 2,
                 zIndex: 14,
               }}
-              data-testid={`attached-item-aoe-${hoveredAttachedItemId}`}
+              data-testid={`attached-item-aoe-${thrownItem.id}`}
             />
           );
-        })()}
+        })}
 
         {/* Thrown Items - Items placed on the map with AOE circles */}
         {thrownItems.map((thrownItem) => {
