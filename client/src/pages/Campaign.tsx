@@ -1985,6 +1985,8 @@ export default function Campaign() {
         
       case 'target':
         // Target mode: add red outline to selected token (only one at a time)
+        // Clear grid target when clicking a token (mutually exclusive)
+        setThrowableGridTarget(null);
         setTargetedTokenId(token.id);
         setSelectedTokenId(token.id);
         // Broadcast targeting to other players so GM can see who is targeting what
@@ -2060,7 +2062,13 @@ export default function Campaign() {
   
   // Handler for grid target click in target mode (for throwable items)
   const handleGridTargetClick = (gridX: number, gridY: number) => {
+    // Clear token target when clicking grid (mutually exclusive - only one target at a time)
+    setTargetedTokenId(null);
     setThrowableGridTarget({ x: gridX, y: gridY });
+    // Clear WebSocket targeting since we're targeting a grid space, not a token
+    if (effectiveCampaignId) {
+      gameWs.clearTokenTargeting();
+    }
   };
   
   // Handler for creating a beacon at a grid cell
