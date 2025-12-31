@@ -320,6 +320,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
   const [showDeleteButton, setShowDeleteButton] = useState<string | null>(null);
   const [tokenToDelete, setTokenToDelete] = useState<string | null>(null);
   const [effectsDialogToken, setEffectsDialogToken] = useState<string | null>(null);
+  const [hoveredAttachedItemId, setHoveredAttachedItemId] = useState<string | null>(null);
   const holdTimerRef = useRef<NodeJS.Timeout | null>(null);
   
   // Track token being dragged with its current visual position
@@ -1766,9 +1767,111 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                 </div>
               )}
               
+              {/* Attached Thrown Items Display - Show on left side of token (like effects but orange) */}
+              {(() => {
+                const attachedItems = thrownItems.filter(ti => ti.attachedToTokenId === token.id && ti.item);
+                if (attachedItems.length === 0) return null;
+                
+                return (
+                  <div 
+                    className="absolute flex flex-col gap-px z-20"
+                    style={{
+                      left: 2,
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                    }}
+                  >
+                    {attachedItems.slice(0, 3).map((thrownItem) => {
+                      const item = thrownItem.item!;
+                      const hasAoe = item.throwableAoe && (item.throwableAoeRange || 0) > 0;
+                      
+                      return (
+                        <Popover key={thrownItem.id}>
+                          <PopoverTrigger asChild>
+                            <button
+                              onPointerDown={(e) => e.stopPropagation()}
+                              onClick={(e) => e.stopPropagation()}
+                              onMouseEnter={() => hasAoe && setHoveredAttachedItemId(thrownItem.id)}
+                              onMouseLeave={() => setHoveredAttachedItemId(null)}
+                              className="rounded-sm bg-black/60 border-2 border-orange-500 shadow-sm flex items-center justify-center overflow-hidden relative"
+                              style={{ width: Math.max(10, tokenSize * 0.22), height: Math.max(10, tokenSize * 0.22) }}
+                              title={item.name}
+                              data-testid={`attached-item-${thrownItem.id}`}
+                            >
+                              {item.image ? (
+                                <img src={item.image} className="w-full h-full object-cover" />
+                              ) : (
+                                <Package className="w-2 h-2 text-orange-400" />
+                              )}
+                            </button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-48 bg-stone-900 border-stone-700 p-2">
+                            <div className="flex items-center gap-2 mb-1">
+                              {item.image && <img src={item.image} className="w-6 h-6 rounded" />}
+                              <span className="font-medium text-sm text-stone-200">{item.name}</span>
+                            </div>
+                            {item.description && (
+                              <p className="text-xs text-stone-400 mb-2">{item.description}</p>
+                            )}
+                            {hasAoe && (
+                              <p className="text-xs text-orange-400">AOE: {item.throwableAoeRange}ft radius</p>
+                            )}
+                            <p className="text-xs text-stone-500 mt-1">Attached to token</p>
+                          </PopoverContent>
+                        </Popover>
+                      );
+                    })}
+                    {attachedItems.length > 3 && (
+                      <div 
+                        className="rounded-sm bg-stone-700/80 border border-orange-500/50 text-orange-300 flex items-center justify-center"
+                        style={{ width: Math.max(10, tokenSize * 0.22), height: Math.max(10, tokenSize * 0.22), fontSize: Math.max(6, tokenSize * 0.12) }}
+                      >
+                        +{attachedItems.length - 3}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+              
             </div>
           );
         })}
+
+        {/* Hovered Attached Item AOE Circle - Shows when hovering over attached item icon on token */}
+        {hoveredAttachedItemId && (() => {
+          const hoveredThrownItem = thrownItems.find(ti => ti.id === hoveredAttachedItemId);
+          if (!hoveredThrownItem || !hoveredThrownItem.attachedToTokenId || !hoveredThrownItem.item) return null;
+          
+          const attachedToken = tokens.find(t => t.id === hoveredThrownItem.attachedToTokenId);
+          if (!attachedToken) return null;
+          
+          const effectiveGridSize = scene?.gridSize || gridSize;
+          const item = hoveredThrownItem.item;
+          const aoeRangeInFeet = item.throwableAoeRange || 0;
+          const feetPerCell = 5;
+          const aoeRadiusCells = aoeRangeInFeet / feetPerCell;
+          const aoeRadiusPixels = aoeRadiusCells * effectiveGridSize;
+          
+          if (aoeRadiusPixels <= 0) return null;
+          
+          const tokenDisplayPos = getTokenDisplayPosition(attachedToken);
+          const tokenCenterX = 9000 + tokenDisplayPos.x + effectiveGridSize / 2;
+          const tokenCenterY = 9000 + tokenDisplayPos.y + effectiveGridSize / 2;
+          
+          return (
+            <div
+              className="absolute rounded-full border-2 border-orange-500/80 bg-orange-500/20 pointer-events-none animate-pulse"
+              style={{
+                left: tokenCenterX - aoeRadiusPixels,
+                top: tokenCenterY - aoeRadiusPixels,
+                width: aoeRadiusPixels * 2,
+                height: aoeRadiusPixels * 2,
+                zIndex: 14,
+              }}
+              data-testid={`attached-item-aoe-${hoveredAttachedItemId}`}
+            />
+          );
+        })()}
 
         {/* Thrown Items - Items placed on the map with AOE circles */}
         {thrownItems.map((thrownItem) => {
@@ -3601,7 +3704,71 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
   const handleThrowItem = async () => {
     if (!itemData || !itemData.isThrowable || !sceneId) return;
     
-    // Check if there's an AOE marker locked for this throwable
+    // Priority 1: If a token is targeted, throw item attached to that token
+    if (targetedTokenId) {
+      // Check quantity
+      if ((itemData.quantity || 0) < 1) {
+        triggerRollNotification({
+          type: 'system',
+          label: `No ${itemData.name} left!`,
+          result: 0,
+          total: 0,
+          username: character.name || 'Unknown',
+          characterName: character.name,
+          calculationBreakdown: `You have no ${itemData.name} remaining to throw.`,
+        });
+        return;
+      }
+      
+      // Get target token for position and name
+      const targetToken = tokens?.find((t: any) => t.id === targetedTokenId);
+      const targetCharacter = targetToken?.characterId 
+        ? allCharacters?.find((c: any) => c.id === targetToken.characterId)
+        : null;
+      const targetName = targetCharacter?.name || 'target';
+      
+      try {
+        const thrownItem = await api.createThrownItem(sceneId, {
+          itemId: itemData.id,
+          characterId: character.id,
+          x: targetToken?.x ?? 0,
+          y: targetToken?.y ?? 0,
+          attachedToTokenId: targetedTokenId,
+        });
+        
+        // Decrement item quantity
+        await api.updateItem(itemData.id, { quantity: (itemData.quantity || 1) - 1 });
+        queryClient.invalidateQueries({ queryKey: ['item', hotbar?.itemId] });
+        queryClient.invalidateQueries({ queryKey: ['character-items', character.id] });
+        
+        // Broadcast via WebSocket
+        gameWs.sendThrownItemPlaced(thrownItem, sceneId);
+        
+        // Refetch thrown items
+        onRefetchThrownItems?.();
+        
+        // Notify
+        triggerRollNotification({
+          type: 'system',
+          label: `${itemData.name} Thrown!`,
+          result: 0,
+          total: 0,
+          username: character.name || 'Unknown',
+          characterName: character.name,
+          calculationBreakdown: `Attached to ${targetName}`,
+        });
+        
+        if (character.campaignId) {
+          gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', 
+            `Threw ${itemData.name} at ${targetName}`, 'action');
+        }
+      } catch (err) {
+        console.error('Failed to throw item at target:', err);
+      }
+      return;
+    }
+    
+    // Priority 2: Check if there's an AOE marker locked for this throwable
     if (aoeTargetState?.active && aoeTargetState?.locked && aoeTargetState?.throwableItem) {
       // Verify it's the same throwable item
       if (aoeTargetState.throwableItem.id !== itemData.id) {
@@ -4262,10 +4429,12 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
       </>
     );
   } else if (hotbar?.itemId && itemData) {
-    // For ammunition, show grouped total quantity
+    // For ammunition, show grouped total quantity; for throwables, show quantity
     const displayQuantity = itemData.itemType === 'ammunition' 
       ? getTotalAmmunitionQuantity(itemData) 
-      : null;
+      : itemData.isThrowable 
+        ? itemData.quantity 
+        : null;
       
     content = itemData.image ? (
       <div className="relative w-full h-full flex items-center justify-center">
