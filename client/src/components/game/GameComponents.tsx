@@ -4251,12 +4251,29 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     for (const thrownItem of itemThrownItems) {
       // Get tokens within AOE range of this thrown item
       if (tokens) {
+        // Determine the center position of the thrown item in pixels
+        let thrownCenterX: number;
+        let thrownCenterY: number;
+        
+        if (thrownItem.attachedToTokenId) {
+          // Attached items: x/y are stored as the token's pixel coordinates
+          // Find the attached token to get its current position (in case it moved)
+          const attachedToken = tokens.find((t: any) => t.id === thrownItem.attachedToTokenId);
+          if (attachedToken) {
+            thrownCenterX = attachedToken.x + effectiveGridSize / 2;
+            thrownCenterY = attachedToken.y + effectiveGridSize / 2;
+          } else {
+            // Fallback to stored coordinates if token not found
+            thrownCenterX = thrownItem.x + effectiveGridSize / 2;
+            thrownCenterY = thrownItem.y + effectiveGridSize / 2;
+          }
+        } else {
+          // Grid-placed items: x/y are grid cell indices, convert to pixel center
+          thrownCenterX = (thrownItem.x + 0.5) * effectiveGridSize;
+          thrownCenterY = (thrownItem.y + 0.5) * effectiveGridSize;
+        }
+        
         for (const token of tokens) {
-          // Tokens use pixel coordinates, thrown items use grid cell indices
-          // Convert thrown item grid position to pixel center
-          const thrownCenterX = (thrownItem.x + 0.5) * effectiveGridSize;
-          const thrownCenterY = (thrownItem.y + 0.5) * effectiveGridSize;
-          
           // Token center in pixels
           const tokenCenterX = token.x + effectiveGridSize / 2;
           const tokenCenterY = token.y + effectiveGridSize / 2;
