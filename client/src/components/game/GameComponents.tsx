@@ -7289,6 +7289,32 @@ export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onIn
             </Button>
           </a>
 
+          {/* Display Settings */}
+          <div className="mb-6 p-4 bg-stone-900/50 border border-stone-800 rounded-lg">
+            <h3 className="text-xs font-bold text-stone-400 uppercase mb-3 flex items-center gap-2">
+              <Bell className="h-3 w-3 text-blue-400" /> Display Settings
+            </h3>
+            <div className="flex items-center justify-between">
+              <Label htmlFor="notification-style-menu" className="text-stone-300">Compact Notifications</Label>
+              <input
+                type="checkbox"
+                id="notification-style-menu"
+                checked={getNotificationStyle() === 'compact'}
+                onChange={(e) => {
+                  const newStyle = e.target.checked ? 'compact' : 'full';
+                  setNotificationStyle(newStyle);
+                  toast({
+                    title: newStyle === 'compact' ? "Compact notifications" : "Full notifications",
+                    description: newStyle === 'compact' ? "Roll notifications will appear small on the left" : "Roll notifications will appear large at the top",
+                    duration: 2000,
+                  });
+                }}
+                className="h-5 w-5"
+                data-testid="toggle-notification-style"
+              />
+            </div>
+          </div>
+
           <Tabs defaultValue="players" className="w-full">
             <TabsList className="w-full grid grid-cols-2 bg-stone-900">
               <TabsTrigger value="players">Players</TabsTrigger>

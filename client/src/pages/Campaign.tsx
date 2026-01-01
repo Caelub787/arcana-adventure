@@ -2837,35 +2837,6 @@ export default function Campaign() {
                   </div>
                 </div>
 
-                {/* Display Settings Section */}
-                <div className="space-y-4 pt-4 border-t border-stone-700">
-                  <Label className="text-stone-300 font-bold text-lg">Display Settings</Label>
-                  
-                  {/* Notification Style Toggle */}
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Bell className="h-4 w-4 text-blue-400" />
-                      <Label htmlFor="notification-style" className="text-stone-300">Compact Notifications</Label>
-                    </div>
-                    <input
-                      type="checkbox"
-                      id="notification-style"
-                      checked={getNotificationStyle() === 'compact'}
-                      onChange={(e) => {
-                        const newStyle = e.target.checked ? 'compact' : 'full';
-                        setNotificationStyle(newStyle);
-                        toast({
-                          title: newStyle === 'compact' ? "Compact notifications" : "Full notifications",
-                          description: newStyle === 'compact' ? "Roll notifications will appear small on the left" : "Roll notifications will appear large at the top",
-                          duration: 2000,
-                        });
-                      }}
-                      className="h-5 w-5 sm:h-4 sm:w-4"
-                      data-testid="toggle-notification-style"
-                    />
-                  </div>
-                </div>
-
                 {/* Scene Settings Section */}
                 <div className="space-y-4 pt-4 border-t border-stone-700">
                   <div className="flex items-center justify-between mb-4">
