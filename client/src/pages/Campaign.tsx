@@ -4,9 +4,9 @@ import { motion } from "framer-motion";
 import { CharacterCreation, BattleMap, CampaignMenu, CharacterSheet, BattleMapHotbars, SelectionModeButtons, InitiativeTracker, type SelectionMode } from "@/components/game/GameComponents";
 import { BattlemapDiceOverlay, triggerBattlemapDiceRoll } from "@/components/game/BattlemapDiceOverlay";
 import { type AoeTargetState, createInitialAoeState } from "@/lib/aoeHelpers";
-import { RollNotificationContainer, triggerInitiativeNotification, triggerEffectRollNotification } from "@/components/game/RollNotification";
+import { RollNotificationContainer, triggerInitiativeNotification, triggerEffectRollNotification, getNotificationStyle, setNotificationStyle, type NotificationStyle } from "@/components/game/RollNotification";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Loader2, Settings, Map as MapIcon, Layers, Trash2, MessageSquare, User, BarChart3, Zap, Backpack, Sparkles, Grid3X3, ScrollText, Swords, Dices, Users, Dna, Edit2 } from "lucide-react";
+import { ArrowLeft, Loader2, Settings, Map as MapIcon, Layers, Trash2, MessageSquare, User, BarChart3, Zap, Backpack, Sparkles, Grid3X3, ScrollText, Swords, Dices, Users, Dna, Edit2, Bell } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -2834,6 +2834,35 @@ export default function Campaign() {
                         </div>
                       )}
                     </div>
+                  </div>
+                </div>
+
+                {/* Display Settings Section */}
+                <div className="space-y-4 pt-4 border-t border-stone-700">
+                  <Label className="text-stone-300 font-bold text-lg">Display Settings</Label>
+                  
+                  {/* Notification Style Toggle */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Bell className="h-4 w-4 text-blue-400" />
+                      <Label htmlFor="notification-style" className="text-stone-300">Compact Notifications</Label>
+                    </div>
+                    <input
+                      type="checkbox"
+                      id="notification-style"
+                      checked={getNotificationStyle() === 'compact'}
+                      onChange={(e) => {
+                        const newStyle = e.target.checked ? 'compact' : 'full';
+                        setNotificationStyle(newStyle);
+                        toast({
+                          title: newStyle === 'compact' ? "Compact notifications" : "Full notifications",
+                          description: newStyle === 'compact' ? "Roll notifications will appear small on the left" : "Roll notifications will appear large at the top",
+                          duration: 2000,
+                        });
+                      }}
+                      className="h-5 w-5 sm:h-4 sm:w-4"
+                      data-testid="toggle-notification-style"
+                    />
                   </div>
                 </div>
 
