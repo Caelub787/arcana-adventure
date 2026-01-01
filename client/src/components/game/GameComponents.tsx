@@ -1313,25 +1313,6 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
             )}
           </div>
         )}
-        <Button 
-           size="sm" 
-           variant="secondary" 
-           className={`bg-black/50 hover:bg-black/80 text-xs border backdrop-blur-sm ${notificationStyle === 'compact' ? 'border-amber-500 text-amber-400' : 'border-white/10'}`}
-           onClick={() => {
-             const newStyle = notificationStyle === 'full' ? 'compact' : 'full';
-             setNotificationStyleState(newStyle);
-             setNotificationStyle(newStyle);
-             toast({
-               title: newStyle === 'compact' ? "Compact notifications" : "Full notifications",
-               description: newStyle === 'compact' ? "Roll notifications will appear small in the bottom right" : "Roll notifications will appear large at the top",
-               duration: 2000,
-             });
-           }}
-           data-testid="button-toggle-notification-style"
-           title={notificationStyle === 'compact' ? "Switch to full notifications (top center)" : "Switch to compact notifications (bottom right)"}
-        >
-          {notificationStyle === 'compact' ? <BellOff className="h-3 w-3" /> : <Bell className="h-3 w-3" />}
-        </Button>
         {role === 'gm' && thrownItems.length > 0 && scene?.id && (
           <Button 
              size="sm" 
@@ -6195,6 +6176,32 @@ function SceneSettingsDialog({ open, onOpenChange, scene, onUpdateScene }: Scene
             }}
             title="Select Background Image"
           />
+
+          {/* Notification Style Toggle */}
+          <div className="flex items-center justify-between pt-2 border-t border-stone-700">
+            <div className="flex items-center gap-2">
+              <Bell className="h-4 w-4 text-blue-400" />
+              <Label htmlFor="notification-style" className="text-stone-300">Compact Notifications</Label>
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="notification-style"
+                checked={getNotificationStyle() === 'compact'}
+                onChange={(e) => {
+                  const newStyle = e.target.checked ? 'compact' : 'full';
+                  setNotificationStyle(newStyle);
+                  toast({
+                    title: newStyle === 'compact' ? "Compact notifications" : "Full notifications",
+                    description: newStyle === 'compact' ? "Roll notifications will appear small on the left" : "Roll notifications will appear large at the top",
+                    duration: 2000,
+                  });
+                }}
+                className="h-4 w-4"
+                data-testid="toggle-notification-style"
+              />
+            </div>
+          </div>
 
           {/* Action Buttons */}
           <div className="flex gap-2 pt-4">

@@ -82,7 +82,7 @@ function CompactRollCard({ notification, onComplete }: { notification: RollNotif
     ? 'bg-yellow-600/90' 
     : isNat1 
       ? 'bg-red-800/90' 
-      : 'bg-stone-800/90';
+      : 'bg-blue-900/90';
   
   const textColor = isNat20 
     ? 'text-yellow-100' 
@@ -92,14 +92,14 @@ function CompactRollCard({ notification, onComplete }: { notification: RollNotif
   
   return (
     <motion.div
-      initial={{ opacity: 0, x: 50, scale: 0.9 }}
+      initial={{ opacity: 0, x: -50, scale: 0.9 }}
       animate={{ opacity: 1, x: 0, scale: 1 }}
-      exit={{ opacity: 0, x: 50, scale: 0.9 }}
+      exit={{ opacity: 0, x: -50, scale: 0.9 }}
       transition={{ type: 'spring', damping: 25, stiffness: 400 }}
       className="pointer-events-auto"
     >
       <div className={`
-        ${bgColor} backdrop-blur-sm rounded-lg px-3 py-1.5 shadow-lg border border-stone-600/50
+        ${bgColor} backdrop-blur-sm rounded-lg px-3 py-1.5 shadow-lg border border-blue-500/50
         flex items-center gap-2 text-sm
         ${isNat20 ? 'ring-2 ring-yellow-400' : ''}
         ${isNat1 ? 'ring-2 ring-red-500' : ''}
@@ -312,7 +312,7 @@ export function RollNotificationContainer() {
     return (
       <div
         ref={containerRef}
-        className="fixed bottom-24 right-2 md:right-4 z-[100] flex flex-col-reverse gap-1 pointer-events-none items-end"
+        className="fixed bottom-24 left-2 md:left-4 z-[100] flex flex-col-reverse gap-1 pointer-events-none items-start"
         style={{ maxWidth: '200px' }}
       >
         <AnimatePresence mode="popLayout">
