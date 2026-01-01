@@ -78,17 +78,14 @@ function CompactRollCard({ notification, onComplete }: { notification: RollNotif
     return () => clearTimeout(timer);
   }, [notification.id, onComplete, notificationDuration]);
   
-  const bgColor = isNat20 
-    ? 'bg-yellow-600/90' 
-    : isNat1 
-      ? 'bg-red-800/90' 
-      : 'bg-blue-900/90';
+  // Use the same gradient colors as full notifications for consistency
+  const effectColor = notification.isHealing 
+    ? 'from-emerald-500 to-green-600' 
+    : 'from-orange-500 to-red-600';
   
-  const textColor = isNat20 
-    ? 'text-yellow-100' 
-    : isNat1 
-      ? 'text-red-200' 
-      : 'text-white';
+  const colorClass = notification.dieType 
+    ? DIE_COLORS[notification.dieType] || ROLL_COLORS[notification.type]
+    : (notification.type === 'effect' ? effectColor : ROLL_COLORS[notification.type]);
   
   return (
     <motion.div
@@ -99,19 +96,23 @@ function CompactRollCard({ notification, onComplete }: { notification: RollNotif
       className="pointer-events-auto"
     >
       <div className={`
-        ${bgColor} backdrop-blur-sm rounded-lg px-3 py-1.5 shadow-lg border border-blue-500/50
-        flex items-center gap-2 text-sm
+        relative overflow-hidden rounded-lg shadow-lg
+        bg-gradient-to-r ${colorClass}
+        border border-white/20
         ${isNat20 ? 'ring-2 ring-yellow-400' : ''}
         ${isNat1 ? 'ring-2 ring-red-500' : ''}
       `}>
-        <span className={`font-bold text-lg ${textColor}`}>
-          {notification.total}
-        </span>
-        <span className="text-stone-400 text-xs truncate max-w-[120px]">
-          {displayName}
-        </span>
-        {isNat20 && <span className="text-yellow-300 text-[10px] font-bold">CRIT!</span>}
-        {isNat1 && <span className="text-red-300 text-[10px] font-bold">FAIL</span>}
+        <div className="absolute inset-0 bg-black/20" />
+        <div className="relative px-3 py-1.5 flex items-center gap-2">
+          <span className={`font-bold text-lg text-white drop-shadow ${isNat20 ? 'text-yellow-200' : ''} ${isNat1 ? 'text-red-200' : ''}`}>
+            {notification.total}
+          </span>
+          <span className="text-white/70 text-xs truncate max-w-[100px]">
+            {displayName}
+          </span>
+          {isNat20 && <span className="text-yellow-200 text-[10px] font-bold">CRIT!</span>}
+          {isNat1 && <span className="text-red-200 text-[10px] font-bold">FAIL</span>}
+        </div>
       </div>
     </motion.div>
   );
@@ -312,7 +313,7 @@ export function RollNotificationContainer() {
     return (
       <div
         ref={containerRef}
-        className="fixed bottom-24 left-2 md:left-4 z-[100] flex flex-col-reverse gap-1 pointer-events-none items-start"
+        className="fixed bottom-36 left-2 md:left-4 z-[100] flex flex-col-reverse gap-1 pointer-events-none items-start"
         style={{ maxWidth: '200px' }}
       >
         <AnimatePresence mode="popLayout">
