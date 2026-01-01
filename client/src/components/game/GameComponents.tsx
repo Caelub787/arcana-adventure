@@ -22,7 +22,7 @@ import {
   Users, User, Plus, Minus, LogOut, Menu, ChevronRight, ChevronLeft, ChevronDown, ChevronUp,
   Heart, Zap, Backpack, Sparkles, Dice5, MessageSquare, RefreshCw, X, Trash2, Package, FolderOpen, Folder, FolderPlus, GripVertical, Lock, Unlock, Camera,
   BarChart3, Grid3X3, ScrollText, Upload, Image as ImageIcon, Layers, Search, TrendingUp, UserMinus, Ban,
-  MousePointer, Target, UserCheck, Swords, ArrowRight, ArrowLeft, Eye, EyeOff, Check, Moon, Coffee, AlertTriangle, GitBranch, Star, BookOpen, Pencil, Dna, Type, Library, Filter, MoreVertical, Flame, Highlighter
+  MousePointer, Target, UserCheck, Swords, ArrowRight, ArrowLeft, Eye, EyeOff, Check, Moon, Coffee, AlertTriangle, GitBranch, Star, BookOpen, Pencil, Dna, Type, Library, Filter, MoreVertical, Flame, Highlighter, Bell, BellOff
 } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useForm } from "react-hook-form";
@@ -37,7 +37,7 @@ import parchmentTexture from "@assets/generated_images/aged_parchment_paper_text
 import battleMapImage1 from "@/assets/rocky_coast_battlemap.jpg";
 import warriorToken from "@assets/generated_images/top_down_warrior_token.png";
 import goblinToken from "@assets/generated_images/top_down_goblin_token.png";
-import { triggerSkillRollNotification, triggerRollNotification, triggerEffectRollNotification } from './RollNotification';
+import { triggerSkillRollNotification, triggerRollNotification, triggerEffectRollNotification, getNotificationStyle, setNotificationStyle, type NotificationStyle } from './RollNotification';
 import { ImageBrowser } from '@/components/ImageBrowser';
 import { BattlemapAoeOverlay } from './BattlemapAoeOverlay';
 import { type AoeTargetState, getTokensInAoe } from '@/lib/aoeHelpers';
@@ -391,6 +391,9 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
   
   // Player viewport visibility toggle (GM only)
   const [showPlayerViewports, setShowPlayerViewports] = useState(false);
+  
+  // Notification style toggle (full vs compact)
+  const [notificationStyle, setNotificationStyleState] = useState<NotificationStyle>(getNotificationStyle);
   
   // Gesture state machine to prevent conflicts between pan/zoom/token drag
   type GestureMode = 'idle' | 'panning' | 'pinching' | 'draggingToken';
@@ -1310,6 +1313,25 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
             )}
           </div>
         )}
+        <Button 
+           size="sm" 
+           variant="secondary" 
+           className={`bg-black/50 hover:bg-black/80 text-xs border backdrop-blur-sm ${notificationStyle === 'compact' ? 'border-amber-500 text-amber-400' : 'border-white/10'}`}
+           onClick={() => {
+             const newStyle = notificationStyle === 'full' ? 'compact' : 'full';
+             setNotificationStyleState(newStyle);
+             setNotificationStyle(newStyle);
+             toast({
+               title: newStyle === 'compact' ? "Compact notifications" : "Full notifications",
+               description: newStyle === 'compact' ? "Roll notifications will appear small in the bottom right" : "Roll notifications will appear large at the top",
+               duration: 2000,
+             });
+           }}
+           data-testid="button-toggle-notification-style"
+           title={notificationStyle === 'compact' ? "Switch to full notifications (top center)" : "Switch to compact notifications (bottom right)"}
+        >
+          {notificationStyle === 'compact' ? <BellOff className="h-3 w-3" /> : <Bell className="h-3 w-3" />}
+        </Button>
         {role === 'gm' && thrownItems.length > 0 && scene?.id && (
           <Button 
              size="sm" 

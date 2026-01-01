@@ -4,6 +4,20 @@ import { Dices, Swords, Sparkles, Target, Shield, Zap, Flame, Heart } from 'luci
 import { type DieType } from '@/lib/diceSystem';
 import { gameWs } from '@/lib/api';
 
+const NOTIFICATION_STYLE_KEY = 'arcana_roll_notification_style';
+
+export type NotificationStyle = 'full' | 'compact';
+
+export function getNotificationStyle(): NotificationStyle {
+  if (typeof window === 'undefined') return 'full';
+  return (localStorage.getItem(NOTIFICATION_STYLE_KEY) as NotificationStyle) || 'full';
+}
+
+export function setNotificationStyle(style: NotificationStyle) {
+  localStorage.setItem(NOTIFICATION_STYLE_KEY, style);
+  window.dispatchEvent(new CustomEvent('notification-style-changed', { detail: style }));
+}
+
 export interface RollNotification {
   id: string;
   type: 'dice' | 'initiative' | 'attack' | 'skill' | 'save' | 'custom' | 'system' | 'effect';
@@ -50,6 +64,58 @@ const DIE_COLORS: Partial<Record<DieType, string>> = {
   d12: 'from-orange-500 to-orange-700',
   d20: 'from-cyan-500 to-cyan-700',
 };
+
+function CompactRollCard({ notification, onComplete }: { notification: RollNotification; onComplete: (id: string) => void }) {
+  const notificationDuration = notification.duration ?? 2500;
+  const displayName = notification.characterName || notification.username;
+  const isNat20 = notification.dieType === 'd20' && notification.result === 20;
+  const isNat1 = notification.dieType === 'd20' && notification.result === 1;
+  
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      onComplete(notification.id);
+    }, notificationDuration);
+    return () => clearTimeout(timer);
+  }, [notification.id, onComplete, notificationDuration]);
+  
+  const bgColor = isNat20 
+    ? 'bg-yellow-600/90' 
+    : isNat1 
+      ? 'bg-red-800/90' 
+      : 'bg-stone-800/90';
+  
+  const textColor = isNat20 
+    ? 'text-yellow-100' 
+    : isNat1 
+      ? 'text-red-200' 
+      : 'text-white';
+  
+  return (
+    <motion.div
+      initial={{ opacity: 0, x: 50, scale: 0.9 }}
+      animate={{ opacity: 1, x: 0, scale: 1 }}
+      exit={{ opacity: 0, x: 50, scale: 0.9 }}
+      transition={{ type: 'spring', damping: 25, stiffness: 400 }}
+      className="pointer-events-auto"
+    >
+      <div className={`
+        ${bgColor} backdrop-blur-sm rounded-lg px-3 py-1.5 shadow-lg border border-stone-600/50
+        flex items-center gap-2 text-sm
+        ${isNat20 ? 'ring-2 ring-yellow-400' : ''}
+        ${isNat1 ? 'ring-2 ring-red-500' : ''}
+      `}>
+        <span className={`font-bold text-lg ${textColor}`}>
+          {notification.total}
+        </span>
+        <span className="text-stone-400 text-xs truncate max-w-[120px]">
+          {displayName}
+        </span>
+        {isNat20 && <span className="text-yellow-300 text-[10px] font-bold">CRIT!</span>}
+        {isNat1 && <span className="text-red-300 text-[10px] font-bold">FAIL</span>}
+      </div>
+    </motion.div>
+  );
+}
 
 function RollCard({ notification, onComplete }: { notification: RollNotification; onComplete: (id: string) => void }) {
   // For effect type, use Heart icon for healing, Flame for damage
@@ -185,17 +251,31 @@ function RollCard({ notification, onComplete }: { notification: RollNotification
 
 export function RollNotificationContainer() {
   const [notifications, setNotifications] = useState<RollNotification[]>([]);
+  const [style, setStyle] = useState<NotificationStyle>(getNotificationStyle);
   const containerRef = useRef<HTMLDivElement>(null);
   
   const addNotification = useCallback((notification: RollNotification) => {
     setNotifications(prev => {
-      const filtered = prev.slice(-4);
+      const maxNotifications = style === 'compact' ? 6 : 4;
+      const filtered = prev.slice(-maxNotifications);
       return [...filtered, notification];
     });
-  }, []);
+  }, [style]);
   
   const removeNotification = useCallback((id: string) => {
     setNotifications(prev => prev.filter(n => n.id !== id));
+  }, []);
+  
+  // Listen for style changes
+  useEffect(() => {
+    const handleStyleChange = (event: CustomEvent<NotificationStyle>) => {
+      setStyle(event.detail);
+    };
+    
+    window.addEventListener('notification-style-changed' as any, handleStyleChange);
+    return () => {
+      window.removeEventListener('notification-style-changed' as any, handleStyleChange);
+    };
   }, []);
   
   useEffect(() => {
@@ -225,6 +305,28 @@ export function RollNotificationContainer() {
     
     return () => { unsubscribe(); };
   }, [addNotification]);
+  
+  // Full notifications: top center of screen
+  // Compact notifications: bottom right, above HP/DC display
+  if (style === 'compact') {
+    return (
+      <div
+        ref={containerRef}
+        className="fixed bottom-24 right-2 md:right-4 z-[100] flex flex-col-reverse gap-1 pointer-events-none items-end"
+        style={{ maxWidth: '200px' }}
+      >
+        <AnimatePresence mode="popLayout">
+          {notifications.map(notification => (
+            <CompactRollCard
+              key={notification.id}
+              notification={notification}
+              onComplete={removeNotification}
+            />
+          ))}
+        </AnimatePresence>
+      </div>
+    );
+  }
   
   return (
     <div
