@@ -6,7 +6,7 @@ import { BattlemapDiceOverlay, triggerBattlemapDiceRoll } from "@/components/gam
 import { type AoeTargetState, createInitialAoeState } from "@/lib/aoeHelpers";
 import { RollNotificationContainer, triggerInitiativeNotification, triggerEffectRollNotification, getNotificationStyle, setNotificationStyle, type NotificationStyle } from "@/components/game/RollNotification";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Loader2, Settings, Map as MapIcon, Layers, Trash2, MessageSquare, User, BarChart3, Zap, Backpack, Sparkles, Grid3X3, ScrollText, Swords, Dices, Users, Dna, Edit2, Bell } from "lucide-react";
+import { ArrowLeft, Loader2, Settings, Map as MapIcon, Layers, Trash2, MessageSquare, User, BarChart3, Zap, Backpack, Sparkles, Grid3X3, ScrollText, Swords, Dices, Users, Dna, Edit2, Bell, FileText, X, ChevronLeft } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -19,7 +19,9 @@ import battleMapImage2 from "@assets/generated_images/dark_fantasy_landscape_wit
 import warriorToken from "@assets/generated_images/top_down_warrior_token.png";
 import goblinToken from "@assets/generated_images/top_down_goblin_token.png";
 import { useAuth } from "@/lib/AuthContext";
-import { api, gameWs, type Scene, type CampaignSpecies, type FeatTree, type CharacterFolder, type SceneFolder, type TokenEffect, type TokenActiveEffect, type ThrownItem } from "@/lib/api";
+import { api, gameWs, type Scene, type CampaignSpecies, type FeatTree, type CharacterFolder, type SceneFolder, type TokenEffect, type TokenActiveEffect, type ThrownItem, type Note } from "@/lib/api";
+import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
+import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { Textarea } from "@/components/ui/textarea";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -747,6 +749,14 @@ export default function Campaign() {
   const [editingSceneFolderName, setEditingSceneFolderName] = useState('');
   const [draggingSceneId, setDraggingSceneId] = useState<string | null>(null);
   
+  // Notes panel state
+  const [notesPanelOpen, setNotesPanelOpen] = useState(false);
+  const [selectedCampaignNote, setSelectedCampaignNote] = useState<Note | null>(null);
+  const [noteTitle, setNoteTitle] = useState("");
+  const [noteContent, setNoteContent] = useState("");
+  const debouncedNoteTitle = useDebouncedValue(noteTitle, 1000);
+  const debouncedNoteContent = useDebouncedValue(noteContent, 1000);
+  
   // AoE targeting state
   const [aoeTargetState, setAoeTargetState] = useState<AoeTargetState>(createInitialAoeState());
   
@@ -1086,6 +1096,55 @@ export default function Campaign() {
     queryFn: () => api.getThrownItems(activeScene!.id),
     enabled: !!activeScene?.id,
   });
+
+  // Campaign notes query and mutations
+  const { data: campaignNotes = [], isLoading: notesLoading } = useQuery<Note[]>({
+    queryKey: ['/api/notes', effectiveCampaignId],
+    queryFn: () => api.getNotes(undefined, effectiveCampaignId!),
+    enabled: !!effectiveCampaignId && notesPanelOpen,
+  });
+
+  const createNoteMutation = useMutation({
+    mutationFn: (data: Partial<Note>) => api.createNote(data),
+    onSuccess: (newNote) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/notes', effectiveCampaignId] });
+      setSelectedCampaignNote(newNote);
+      setNoteTitle(newNote.title);
+      setNoteContent(newNote.content || "");
+      toast({ title: "Note created" });
+    },
+    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const updateNoteMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Partial<Note> }) => api.updateNote(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/notes', effectiveCampaignId] });
+    },
+    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const deleteNoteMutation = useMutation({
+    mutationFn: (id: string) => api.deleteNote(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/notes', effectiveCampaignId] });
+      setSelectedCampaignNote(null);
+      setNoteTitle("");
+      setNoteContent("");
+      toast({ title: "Note deleted" });
+    },
+    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  // Auto-save note changes
+  useEffect(() => {
+    if (selectedCampaignNote && (debouncedNoteTitle !== selectedCampaignNote.title || debouncedNoteContent !== (selectedCampaignNote.content || ""))) {
+      updateNoteMutation.mutate({
+        id: selectedCampaignNote.id,
+        data: { title: debouncedNoteTitle, content: debouncedNoteContent },
+      });
+    }
+  }, [debouncedNoteTitle, debouncedNoteContent]);
 
   // Campaign species mutations
   const createCampaignSpeciesMutation = useMutation({
@@ -2460,6 +2519,26 @@ export default function Campaign() {
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
+          
+          {/* Notes Button */}
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setNotesPanelOpen(!notesPanelOpen)}
+                  className={`text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto ${notesPanelOpen ? 'bg-amber-900/50 text-amber-400' : ''}`}
+                  data-testid="button-notes"
+                >
+                  <FileText className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="left" className="bg-stone-800 border-stone-700 text-stone-200">
+                <p>Notes</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         </div>
       </div>
 
@@ -3326,6 +3405,184 @@ export default function Campaign() {
         characters={characters as any[]}
         userId={user?.id}
       />
+      
+      {/* Notes Panel Overlay */}
+      {notesPanelOpen && (
+        <div className="fixed top-0 right-0 h-full z-40 pointer-events-auto" style={{ width: '400px', maxWidth: '90vw' }}>
+          <ResizablePanelGroup direction="horizontal" className="h-full">
+            <ResizableHandle withHandle className="bg-stone-700 hover:bg-amber-600 transition-colors" />
+            <ResizablePanel defaultSize={100} minSize={30}>
+              <div className="h-full bg-stone-900/98 border-l border-stone-700 flex flex-col shadow-2xl">
+                {/* Panel Header */}
+                <div className="flex items-center justify-between p-3 border-b border-stone-700 bg-stone-900">
+                  <div className="flex items-center gap-2">
+                    <FileText className="h-5 w-5 text-amber-500" />
+                    <h2 className="text-lg font-bold text-amber-500">Campaign Notes</h2>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setNotesPanelOpen(false)}
+                    className="text-stone-400 hover:text-white hover:bg-stone-700"
+                    data-testid="button-close-notes"
+                  >
+                    <X className="h-5 w-5" />
+                  </Button>
+                </div>
+                
+                {/* Notes Content Area */}
+                <div className="flex-1 flex overflow-hidden">
+                  {/* Notes Sidebar */}
+                  <div className="w-1/3 min-w-[120px] border-r border-stone-700 flex flex-col bg-stone-950/50">
+                    {/* New Note Button */}
+                    <div className="p-2 border-b border-stone-700">
+                      <Button
+                        size="sm"
+                        onClick={() => {
+                          createNoteMutation.mutate({
+                            title: "New Note",
+                            content: "",
+                            campaignId: effectiveCampaignId || undefined,
+                            type: "text",
+                            isPinned: false,
+                            isArchived: false,
+                            sortOrder: 0,
+                          });
+                        }}
+                        className="w-full bg-amber-700 hover:bg-amber-600 text-white text-xs"
+                        disabled={createNoteMutation.isPending}
+                        data-testid="button-create-note"
+                      >
+                        {createNoteMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <FileText className="h-3 w-3 mr-1" />}
+                        New Note
+                      </Button>
+                    </div>
+                    
+                    {/* Notes List */}
+                    <ScrollArea className="flex-1">
+                      {notesLoading ? (
+                        <div className="flex items-center justify-center py-8">
+                          <Loader2 className="h-5 w-5 animate-spin text-amber-500" />
+                        </div>
+                      ) : campaignNotes.length === 0 ? (
+                        <div className="p-3 text-center text-stone-500 text-xs">
+                          No notes yet. Create one to get started!
+                        </div>
+                      ) : (
+                        <div className="p-1">
+                          {campaignNotes.map((note) => (
+                            <button
+                              key={note.id}
+                              onClick={() => {
+                                setSelectedCampaignNote(note);
+                                setNoteTitle(note.title);
+                                setNoteContent(note.content || "");
+                              }}
+                              className={`w-full text-left p-2 rounded mb-1 transition-colors ${
+                                selectedCampaignNote?.id === note.id
+                                  ? 'bg-amber-900/40 text-amber-200 border border-amber-700'
+                                  : 'hover:bg-stone-800 text-stone-300 border border-transparent'
+                              }`}
+                              data-testid={`note-item-${note.id}`}
+                            >
+                              <div className="text-sm font-medium truncate">{note.title}</div>
+                              <div className="text-xs text-stone-500 truncate">
+                                {note.content?.slice(0, 30) || "Empty note"}
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </ScrollArea>
+                  </div>
+                  
+                  {/* Note Editor */}
+                  <div className="flex-1 flex flex-col overflow-hidden">
+                    {selectedCampaignNote ? (
+                      <>
+                        {/* Note Title */}
+                        <div className="p-3 border-b border-stone-700">
+                          <Input
+                            value={noteTitle}
+                            onChange={(e) => setNoteTitle(e.target.value)}
+                            className="bg-stone-800 border-stone-600 text-stone-100 font-medium"
+                            placeholder="Note title..."
+                            data-testid="input-note-title"
+                          />
+                        </div>
+                        
+                        {/* Note Content */}
+                        <div className="flex-1 p-3 overflow-hidden">
+                          <Textarea
+                            value={noteContent}
+                            onChange={(e) => setNoteContent(e.target.value)}
+                            className="h-full w-full bg-stone-800 border-stone-600 text-stone-200 resize-none"
+                            placeholder="Write your notes here..."
+                            data-testid="textarea-note-content"
+                          />
+                        </div>
+                        
+                        {/* Note Actions */}
+                        <div className="p-2 border-t border-stone-700 flex items-center justify-between">
+                          <span className="text-xs text-stone-500">
+                            {updateNoteMutation.isPending ? (
+                              <span className="flex items-center gap-1">
+                                <Loader2 className="h-3 w-3 animate-spin" /> Saving...
+                              </span>
+                            ) : (
+                              'Auto-saved'
+                            )}
+                          </span>
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-red-400 hover:text-red-300 hover:bg-red-900/20"
+                                data-testid="button-delete-note"
+                              >
+                                <Trash2 className="h-3 w-3 mr-1" /> Delete
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent className="bg-stone-900 border-stone-700">
+                              <AlertDialogHeader>
+                                <AlertDialogTitle className="text-red-400">Delete Note</AlertDialogTitle>
+                                <AlertDialogDescription className="text-stone-400">
+                                  Are you sure you want to delete "{selectedCampaignNote.title}"? This action cannot be undone.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel className="bg-stone-800 border-stone-700 text-stone-200 hover:bg-stone-700">
+                                  Cancel
+                                </AlertDialogCancel>
+                                <AlertDialogAction
+                                  onClick={() => deleteNoteMutation.mutate(selectedCampaignNote.id)}
+                                  className="bg-red-900 hover:bg-red-800 text-white"
+                                  disabled={deleteNoteMutation.isPending}
+                                >
+                                  {deleteNoteMutation.isPending ? "Deleting..." : "Delete"}
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="flex-1 flex items-center justify-center text-stone-500">
+                        <div className="text-center">
+                          <FileText className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                          <p className="text-sm">Select a note to view</p>
+                          <p className="text-xs mt-1">or create a new one</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </ResizablePanel>
+          </ResizablePanelGroup>
+        </div>
+      )}
     </div>
   );
 }

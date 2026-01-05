@@ -6289,7 +6289,7 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
       price: optionalNum(formData.price),
       carryCapacity: optionalNum(formData.carryCapacity),
       quantity: Number(formData.quantity) || 1,
-      breakChance: formData.itemType === 'ammunition' ? Number(formData.breakChance) || 10 : 10,
+      breakChance: formData.itemType === 'ammunition' ? (formData.breakChance === '' ? 10 : Number(formData.breakChance)) : 10,
       aoe: formData.aoe === 'none' ? undefined : formData.aoe,
       armorBonus: formData.itemType === 'armor' ? optionalNum(formData.armorBonus) : undefined,
       damageReduction: formData.itemType === 'armor' ? optionalNum(formData.damageReduction) : undefined,
@@ -6304,7 +6304,7 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
       throwableAoeDamage: formData.itemType === 'weapon' && formData.isThrowable && formData.throwableAoe ? formData.throwableAoeDamage : undefined,
       throwableAoeDamageType: formData.itemType === 'weapon' && formData.isThrowable && formData.throwableAoe ? formData.throwableAoeDamageType : undefined,
       throwablePickup: formData.itemType === 'weapon' && formData.isThrowable ? formData.throwablePickup : false,
-      throwableBreakChance: formData.itemType === 'weapon' && formData.isThrowable ? Number(formData.throwableBreakChance) || 10 : 10,
+      throwableBreakChance: formData.itemType === 'weapon' && formData.isThrowable ? (formData.throwableBreakChance === '' ? 10 : Number(formData.throwableBreakChance)) : 10,
       canApplyEffects: (formData.itemType === 'weapon' || (formData.itemType === 'weapon' && formData.isThrowable)) ? formData.canApplyEffects : false,
     };
     onSave(cleanedData);
@@ -6455,9 +6455,9 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
                     </Select>
                   </div>
                   <div className="col-span-2">
-                    <Label>Break Chance: {Number(formData.breakChance) || 10}%</Label>
+                    <Label>Break Chance: {formData.breakChance === '' ? 10 : Number(formData.breakChance)}%</Label>
                     <Slider
-                      value={[Number(formData.breakChance) || 10]}
+                      value={[formData.breakChance === '' ? 10 : Number(formData.breakChance)]}
                       onValueChange={(v) => setFormData({ ...formData, breakChance: v[0] })}
                       min={0}
                       max={100}
@@ -6703,9 +6703,9 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
                         </div>
                         <p className="text-xs text-stone-500">When enabled, thrown items attach to tokens or grid spaces and can be picked up</p>
                         <div className="mt-3">
-                          <Label>Throwable Break Chance: {Number(formData.throwableBreakChance) || 10}%</Label>
+                          <Label>Throwable Break Chance: {formData.throwableBreakChance === '' ? 10 : Number(formData.throwableBreakChance)}%</Label>
                           <Slider
-                            value={[Number(formData.throwableBreakChance) || 10]}
+                            value={[formData.throwableBreakChance === '' ? 10 : Number(formData.throwableBreakChance)]}
                             onValueChange={(v) => setFormData({ ...formData, throwableBreakChance: v[0] })}
                             min={0}
                             max={100}
