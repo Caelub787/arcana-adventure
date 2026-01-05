@@ -6053,7 +6053,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const folderId = req.query.folderId as string | undefined;
       const campaignId = req.query.campaignId as string | undefined;
-      const notes = await storage.getUserNotes(req.session.userId!, folderId, campaignId);
+      
+      // For campaign notes, use the special function that returns owned + shared notes
+      if (campaignId) {
+        const notes = await storage.getCampaignNotesForUser(req.session.userId!, campaignId, folderId);
+        return res.json(notes);
+      }
+      
+      // For personal notes (no campaign), just return user's own notes
+      const notes = await storage.getUserNotes(req.session.userId!, folderId, undefined);
       res.json(notes);
     } catch (e) {
       console.error("Failed to get notes:", e);

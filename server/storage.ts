@@ -312,6 +312,7 @@ export interface IStorage {
   getNote(id: string): Promise<Note | undefined>;
   getUserNotes(userId: string, folderId?: string, campaignId?: string): Promise<Note[]>;
   getSharedNotes(userId: string): Promise<Note[]>;
+  getCampaignNotesForUser(userId: string, campaignId: string, folderId?: string): Promise<Note[]>;
   updateNote(id: string, data: Partial<Note>): Promise<Note | undefined>;
   deleteNote(id: string): Promise<void>;
   searchNotes(userId: string, query: string): Promise<Note[]>;
@@ -2252,6 +2253,52 @@ export class DatabaseStorage implements IStorage {
       .innerJoin(notes, eq(noteShares.noteId, notes.id))
       .where(eq(noteShares.sharedWithId, userId));
     return shares.map(s => s.notes);
+  }
+
+  async getCampaignNotesForUser(userId: string, campaignId: string, folderId?: string): Promise<Note[]> {
+    // Get notes owned by user in this campaign
+    const ownedConditions = [
+      eq(notes.userId, userId),
+      eq(notes.campaignId, campaignId)
+    ];
+    if (folderId) {
+      ownedConditions.push(eq(notes.folderId, folderId));
+    }
+    
+    const ownedNotes = await db.select()
+      .from(notes)
+      .where(and(...ownedConditions))
+      .orderBy(desc(notes.isPinned), notes.sortOrder, desc(notes.updatedAt));
+    
+    // Get notes shared with user that belong to this campaign
+    const sharedConditions = [
+      eq(noteShares.sharedWithId, userId),
+      eq(notes.campaignId, campaignId)
+    ];
+    if (folderId) {
+      sharedConditions.push(eq(notes.folderId, folderId));
+    }
+    
+    const sharedData = await db.select()
+      .from(noteShares)
+      .innerJoin(notes, eq(noteShares.noteId, notes.id))
+      .where(and(...sharedConditions));
+    
+    const sharedNotes = sharedData.map(s => s.notes);
+    
+    // Combine and deduplicate (in case somehow a note is both owned and shared)
+    const allNotes = [...ownedNotes];
+    for (const note of sharedNotes) {
+      if (!allNotes.some(n => n.id === note.id)) {
+        allNotes.push(note);
+      }
+    }
+    
+    // Sort combined notes
+    return allNotes.sort((a, b) => {
+      if (a.isPinned !== b.isPinned) return b.isPinned ? 1 : -1;
+      return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
+    });
   }
 
   async updateNote(id: string, data: Partial<Note>): Promise<Note | undefined> {

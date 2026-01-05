@@ -925,7 +925,9 @@ export function CampaignNotesPanel({
           </div>
         ) : (
           <div className="p-1 space-y-0.5">
-            {sortedNotes.map((note) => (
+            {sortedNotes.map((note) => {
+              const isOwner = note.userId === user?.id;
+              return (
               <div
                 key={note.id}
                 className={`group p-2 rounded cursor-pointer transition-colors ${
@@ -947,6 +949,11 @@ export function CampaignNotesPanel({
                       {note.isPinned && <Pin className="inline h-2.5 w-2.5 mr-0.5 text-amber-500" />}
                       {note.title}
                     </span>
+                    {!isOwner && (
+                      <Badge variant="outline" className="text-[9px] px-1 py-0 h-4 text-cyan-400 border-cyan-600 flex-shrink-0">
+                        Shared
+                      </Badge>
+                    )}
                   </div>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
@@ -958,45 +965,55 @@ export function CampaignNotesPanel({
                       </button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="bg-stone-900 border-stone-700">
-                      <DropdownMenuItem
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleTogglePin(note);
-                        }}
-                      >
-                        <Pin className="h-3 w-3 mr-2" />
-                        {note.isPinned ? "Unpin" : "Pin"}
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleToggleArchive(note);
-                        }}
-                      >
-                        <Archive className="h-3 w-3 mr-2" />
-                        Archive
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          openShareDialog(note.id);
-                        }}
-                      >
-                        <Share2 className="h-3 w-3 mr-2" />
-                        Share
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator className="bg-stone-700" />
-                      <DropdownMenuItem
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setNoteToDelete(note);
-                          setDeleteNoteDialogOpen(true);
-                        }}
-                        className="text-red-400"
-                      >
-                        <Trash2 className="h-3 w-3 mr-2" />
-                        Delete
-                      </DropdownMenuItem>
+                      {isOwner && (
+                        <>
+                          <DropdownMenuItem
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleTogglePin(note);
+                            }}
+                          >
+                            <Pin className="h-3 w-3 mr-2" />
+                            {note.isPinned ? "Unpin" : "Pin"}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleToggleArchive(note);
+                            }}
+                          >
+                            <Archive className="h-3 w-3 mr-2" />
+                            Archive
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openShareDialog(note.id);
+                            }}
+                          >
+                            <Share2 className="h-3 w-3 mr-2" />
+                            Share
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator className="bg-stone-700" />
+                          <DropdownMenuItem
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setNoteToDelete(note);
+                              setDeleteNoteDialogOpen(true);
+                            }}
+                            className="text-red-400"
+                          >
+                            <Trash2 className="h-3 w-3 mr-2" />
+                            Delete
+                          </DropdownMenuItem>
+                        </>
+                      )}
+                      {!isOwner && (
+                        <DropdownMenuItem disabled className="text-stone-500 text-xs">
+                          <Eye className="h-3 w-3 mr-2" />
+                          Shared with you
+                        </DropdownMenuItem>
+                      )}
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </div>
@@ -1004,7 +1021,8 @@ export function CampaignNotesPanel({
                   {note.content?.slice(0, 40) || "Empty note"}
                 </p>
               </div>
-            ))}
+            );
+            })}
           </div>
         )}
       </ScrollArea>
