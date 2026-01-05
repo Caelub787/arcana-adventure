@@ -22,7 +22,7 @@ import {
   Users, User, Plus, Minus, LogOut, Menu, ChevronRight, ChevronLeft, ChevronDown, ChevronUp,
   Heart, Zap, Backpack, Sparkles, Dice5, MessageSquare, RefreshCw, X, Trash2, Package, FolderOpen, Folder, FolderPlus, GripVertical, Lock, Unlock, Camera,
   BarChart3, Grid3X3, ScrollText, Upload, Image as ImageIcon, Layers, Search, TrendingUp, UserMinus, Ban,
-  MousePointer, Target, UserCheck, Swords, ArrowRight, ArrowLeft, Eye, EyeOff, Check, Moon, Coffee, AlertTriangle, GitBranch, Star, BookOpen, Pencil, Dna, Type, Library, Filter, MoreVertical, Flame, Highlighter, Bell, BellOff, FileText
+  MousePointer, Target, UserCheck, Swords, ArrowRight, ArrowLeft, Eye, EyeOff, Check, Moon, Coffee, AlertTriangle, GitBranch, Star, BookOpen, Pencil, Dna, Type, Library, Filter, MoreVertical, Flame, Highlighter, Bell, BellOff, FileText, Download, Loader2
 } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useForm } from "react-hook-form";
@@ -6633,6 +6633,7 @@ export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onIn
   const [clearingChat, setClearingChat] = useState(false);
   const [showTemplateLibrary, setShowTemplateLibrary] = useState(false);
   const [templateSearchQuery, setTemplateSearchQuery] = useState('');
+  const [showImportDialog, setShowImportDialog] = useState(false);
   
   // Folder state
   const [draggingCharacterId, setDraggingCharacterId] = useState<string | null>(null);
@@ -6687,6 +6688,13 @@ export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onIn
     enabled: showTemplateLibrary,
   });
 
+  // Importable characters query (for importing from other campaigns)
+  const { data: importableData = [], isLoading: loadingImportable } = useQuery({
+    queryKey: ['importable-characters', campaignId],
+    queryFn: () => api.getImportableCharacters(campaignId!),
+    enabled: showImportDialog && !!campaignId,
+  });
+
   // Mutation to copy template to campaign
   const copyTemplateMutation = useMutation({
     mutationFn: (templateId: string) => api.copyTemplateToCompany(campaignId!, templateId),
@@ -6698,6 +6706,19 @@ export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onIn
     },
     onError: () => {
       toast({ title: 'Error', description: 'Failed to add character from template', variant: 'destructive' });
+    },
+  });
+
+  // Mutation to import character from another campaign
+  const importCharacterMutation = useMutation({
+    mutationFn: (sourceCharacterId: string) => api.importCharacter(campaignId!, sourceCharacterId),
+    onSuccess: (character) => {
+      queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${campaignId}/characters`] });
+      setShowImportDialog(false);
+      toast({ title: 'Character Imported', description: `${character.name} has been imported to the campaign` });
+    },
+    onError: () => {
+      toast({ title: 'Error', description: 'Failed to import character', variant: 'destructive' });
     },
   });
   
@@ -7435,6 +7456,18 @@ export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onIn
                    data-testid="button-add-from-library"
                  >
                    <Library className="mr-2 h-4 w-4" /> Add from Library
+                 </Button>
+               )}
+
+               {/* Import from Campaign Button (GM only) */}
+               {role === 'gm' && (
+                 <Button
+                   variant="secondary"
+                   className="w-full bg-stone-800/80 border-stone-700 hover:bg-stone-700"
+                   onClick={() => setShowImportDialog(true)}
+                   data-testid="button-import-character"
+                 >
+                   <Download className="mr-2 h-4 w-4" /> Import from Campaign
                  </Button>
                )}
                
@@ -8360,6 +8393,67 @@ export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onIn
               Close
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Import Character from Campaign Dialog */}
+      <Dialog open={showImportDialog} onOpenChange={setShowImportDialog}>
+        <DialogContent className="bg-stone-950 border-stone-800 text-stone-200 max-w-lg max-h-[70vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-amber-500 font-display text-xl">Import from Campaign</DialogTitle>
+            <DialogDescription className="text-stone-400">
+              Import a character from another campaign you manage
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 mt-4">
+            {loadingImportable ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-6 w-6 animate-spin text-amber-500" />
+              </div>
+            ) : importableData.length === 0 ? (
+              <div className="text-center py-8 text-stone-500">
+                <Users className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                <p>No characters available to import</p>
+                <p className="text-xs mt-1">You need to be a GM in other campaigns with characters</p>
+              </div>
+            ) : (
+              importableData.map((group: { campaign: any; characters: any[] }) => (
+                <div key={group.campaign.id} className="border border-stone-800 rounded-lg overflow-hidden">
+                  <div className="bg-stone-900 px-3 py-2 font-semibold text-stone-300 text-sm">
+                    {group.campaign.name}
+                  </div>
+                  <div className="divide-y divide-stone-800">
+                    {group.characters.map((char: any) => (
+                      <div
+                        key={char.id}
+                        className="flex items-center gap-3 p-3 hover:bg-stone-900/50 cursor-pointer transition-colors"
+                        onClick={() => importCharacterMutation.mutate(char.id)}
+                        data-testid={`import-character-${char.id}`}
+                      >
+                        <div className="w-10 h-10 rounded-full overflow-hidden border-2 border-stone-700 flex-shrink-0">
+                          {char.portrait ? (
+                            <img src={char.portrait} alt={char.name} className="w-full h-full object-cover" />
+                          ) : (
+                            <div className="w-full h-full bg-stone-800 flex items-center justify-center">
+                              <User className="h-5 w-5 text-stone-600" />
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium text-stone-100 truncate">{char.name}</div>
+                          <div className="text-xs text-stone-400">{char.race} • Lv {char.level || 1}</div>
+                        </div>
+                        {importCharacterMutation.isPending && importCharacterMutation.variables === char.id && (
+                          <Loader2 className="h-4 w-4 animate-spin text-amber-500" />
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
         </DialogContent>
       </Dialog>
     </>
