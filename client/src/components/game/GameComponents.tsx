@@ -17595,6 +17595,8 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
     throwableAoeDamage: string;
     throwableAoeDamageType: string;
     throwablePickup: boolean;
+    throwableBreakChance: number | string;
+    canApplyEffects: boolean;
   }>({
     name: '',
     image: '',
@@ -17635,6 +17637,8 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
     throwableAoeDamage: '',
     throwableAoeDamageType: '',
     throwablePickup: false,
+    throwableBreakChance: 10,
+    canApplyEffects: false,
   });
 
   const [showImageCrop, setShowImageCrop] = useState(false);
@@ -17688,6 +17692,8 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
       throwableAoeDamage: template.throwableAoeDamage || '',
       throwableAoeDamageType: template.throwableAoeDamageType || '',
       throwablePickup: template.throwablePickup || false,
+      throwableBreakChance: template.throwableBreakChance ?? 10,
+      canApplyEffects: template.canApplyEffects || false,
     };
     onSave(itemData);
   };
@@ -17818,6 +17824,8 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
       throwableAoeDamage: formData.throwableAoeDamage || undefined,
       throwableAoeDamageType: formData.throwableAoeDamageType || undefined,
       throwablePickup: formData.throwablePickup,
+      throwableBreakChance: formData.isThrowable ? (formData.throwableBreakChance === '' ? 10 : Number(formData.throwableBreakChance)) : 10,
+      canApplyEffects: formData.itemType === 'weapon' ? formData.canApplyEffects : false,
     };
     onSave(cleanedData);
     setFormData({
@@ -17860,6 +17868,8 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
       throwableAoeDamage: '',
       throwableAoeDamageType: '',
       throwablePickup: false,
+      throwableBreakChance: 10,
+      canApplyEffects: false,
     });
   };
 
@@ -18474,9 +18484,37 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
                             </TooltipContent>
                           </Tooltip>
                         </TooltipProvider>
+                        <div className="mt-3">
+                          <Label>Throwable Break Chance: {formData.throwableBreakChance === '' ? 10 : Number(formData.throwableBreakChance)}%</Label>
+                          <Slider 
+                            value={[formData.throwableBreakChance === '' ? 10 : Number(formData.throwableBreakChance)]} 
+                            onValueChange={(v) => setFormData({...formData, throwableBreakChance: v[0]})} 
+                            min={0} 
+                            max={100} 
+                            step={1} 
+                            className="mt-2"
+                            data-testid="slider-throwable-break-chance"
+                          />
+                          <p className="text-xs text-stone-500 mt-1">Chance of throwable item breaking when thrown</p>
+                        </div>
                       </div>
                     )}
                   </div>
+                </div>
+                <div className="border-t border-stone-600 pt-4 mt-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Checkbox
+                      id="canApplyEffects"
+                      checked={formData.canApplyEffects || false}
+                      onCheckedChange={(checked) => setFormData({...formData, canApplyEffects: !!checked})}
+                      data-testid="checkbox-can-apply-effects"
+                    />
+                    <Label htmlFor="canApplyEffects" className="cursor-pointer flex items-center gap-2">
+                      <Flame className="h-4 w-4 text-violet-400" />
+                      Can Apply Effects on Hit
+                    </Label>
+                  </div>
+                  <p className="text-xs text-stone-500">Enable this to apply token effects when the weapon lands an attack</p>
                 </div>
               </div>
             )}
