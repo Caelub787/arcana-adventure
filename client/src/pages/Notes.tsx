@@ -790,7 +790,10 @@ export default function Notes() {
   const rootFolders = folders.filter((f) => !f.parentId);
 
   const handleEntityClick = async (entityType: string, entityId: string) => {
-    setSelectedEntityType(entityType);
+    // Sanitize entity type - strip any leading brackets that might have leaked through
+    const cleanType = entityType.replace(/^\[+/, '').toLowerCase().trim();
+    
+    setSelectedEntityType(cleanType);
     setSelectedEntityId(entityId);
     setEntityDialogOpen(true);
     setEntityLoading(true);
@@ -798,7 +801,7 @@ export default function Notes() {
 
     try {
       let data: any = null;
-      switch (entityType.toLowerCase()) {
+      switch (cleanType) {
         case "spell":
           data = await api.getSystemSpell(entityId);
           break;
@@ -816,15 +819,23 @@ export default function Notes() {
           try {
             data = await api.getSystemItem(entityId);
           } catch {
+            data = null;
+          }
+          if (!data) {
             data = { name: "Item", description: "Item not found or access denied." };
           }
           break;
         case "character":
-          const character = await api.getCharacter(entityId);
-          data = character || { name: "Character", description: "Character not found or access denied." };
+          try {
+            const character = await api.getCharacter(entityId);
+            data = character || { name: "Character", description: "Character not found or access denied." };
+          } catch {
+            data = { name: "Character", description: "Character not found or you don't have permission to view it." };
+          }
           break;
         default:
-          data = { name: entityType, description: "Unknown entity type" };
+          console.warn("Unknown entity type:", cleanType, "original:", entityType);
+          data = { name: cleanType || "Unknown", description: `Entity type "${cleanType}" is not recognized.` };
       }
       setEntityData(data);
     } catch (error) {
@@ -1853,11 +1864,20 @@ export default function Notes() {
 
                 {selectedEntityType?.toLowerCase() === "item" && (
                   <>
+                    {entityData.image && (
+                      <div className="flex justify-center">
+                        <img 
+                          src={entityData.image} 
+                          alt={entityData.name}
+                          className="w-20 h-20 rounded object-cover border-2 border-stone-700"
+                        />
+                      </div>
+                    )}
                     <div className="grid grid-cols-2 gap-4">
-                      {entityData.type && (
+                      {(entityData.itemType || entityData.type) && (
                         <div>
                           <Label className="text-stone-400 text-xs uppercase tracking-wide">Type</Label>
-                          <p className="text-stone-300 mt-1 capitalize">{entityData.type}</p>
+                          <p className="text-stone-300 mt-1 capitalize">{entityData.itemType || entityData.type}</p>
                         </div>
                       )}
                       {entityData.rarity && (
@@ -1867,28 +1887,12 @@ export default function Notes() {
                         </div>
                       )}
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      {entityData.weight !== undefined && (
-                        <div>
-                          <Label className="text-stone-400 text-xs uppercase tracking-wide">Weight</Label>
-                          <p className="text-stone-300 mt-1">{entityData.weight} lbs</p>
-                        </div>
-                      )}
-                      {entityData.value !== undefined && (
-                        <div>
-                          <Label className="text-stone-400 text-xs uppercase tracking-wide">Value</Label>
-                          <p className="text-stone-300 mt-1">{entityData.value} gold</p>
-                        </div>
-                      )}
-                    </div>
-                    {(entityData.damageDice || entityData.damageType) && (
+                    {(entityData.damage || entityData.damageDice) && (
                       <div className="grid grid-cols-2 gap-4">
-                        {entityData.damageDice && (
-                          <div>
-                            <Label className="text-stone-400 text-xs uppercase tracking-wide">Damage</Label>
-                            <p className="text-stone-300 mt-1">{entityData.damageDice}</p>
-                          </div>
-                        )}
+                        <div>
+                          <Label className="text-stone-400 text-xs uppercase tracking-wide">Damage</Label>
+                          <p className="text-amber-400 mt-1">{entityData.damage || entityData.damageDice}</p>
+                        </div>
                         {entityData.damageType && (
                           <div>
                             <Label className="text-stone-400 text-xs uppercase tracking-wide">Damage Type</Label>
@@ -1897,10 +1901,40 @@ export default function Notes() {
                         )}
                       </div>
                     )}
-                    {entityData.range !== undefined && (
+                    {(entityData.range || entityData.mod !== undefined) && (
+                      <div className="grid grid-cols-2 gap-4">
+                        {entityData.range && (
+                          <div>
+                            <Label className="text-stone-400 text-xs uppercase tracking-wide">Range</Label>
+                            <p className="text-stone-300 mt-1">{entityData.range} ft</p>
+                          </div>
+                        )}
+                        {entityData.mod !== undefined && entityData.mod !== 0 && (
+                          <div>
+                            <Label className="text-stone-400 text-xs uppercase tracking-wide">Modifier</Label>
+                            <p className="text-stone-300 mt-1">{entityData.mod > 0 ? `+${entityData.mod}` : entityData.mod}</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    <div className="grid grid-cols-2 gap-4">
+                      {(entityData.itemWeight || entityData.weight) && (
+                        <div>
+                          <Label className="text-stone-400 text-xs uppercase tracking-wide">Weight</Label>
+                          <p className="text-stone-300 mt-1">{entityData.itemWeight || entityData.weight} lbs</p>
+                        </div>
+                      )}
+                      {entityData.durability && (
+                        <div>
+                          <Label className="text-stone-400 text-xs uppercase tracking-wide">Durability</Label>
+                          <p className="text-stone-300 mt-1">{entityData.durability}</p>
+                        </div>
+                      )}
+                    </div>
+                    {entityData.value !== undefined && (
                       <div>
-                        <Label className="text-stone-400 text-xs uppercase tracking-wide">Range</Label>
-                        <p className="text-stone-300 mt-1">{entityData.range} ft</p>
+                        <Label className="text-stone-400 text-xs uppercase tracking-wide">Value</Label>
+                        <p className="text-amber-300 mt-1">{entityData.value} gold</p>
                       </div>
                     )}
                   </>
@@ -1976,6 +2010,22 @@ export default function Notes() {
                         </div>
                       )}
                     </div>
+                    {entityData.campaignId && (
+                      <div className="pt-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="w-full border-amber-600 text-amber-400 hover:bg-amber-900/20"
+                          onClick={() => {
+                            setEntityDialogOpen(false);
+                            setLocation(`/campaign/${entityData.campaignId}`);
+                          }}
+                          data-testid="button-view-character-campaign"
+                        >
+                          View Character Sheet
+                        </Button>
+                      </div>
+                    )}
                   </>
                 )}
               </div>

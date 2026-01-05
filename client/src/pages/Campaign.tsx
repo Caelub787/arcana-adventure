@@ -3353,6 +3353,12 @@ export default function Campaign() {
                 campaignMembers={(members as any[] || [])
                   .filter((m: any) => m.userId !== user?.id)
                   .map((m: any) => ({ id: m.id, userId: m.userId, username: m.username }))}
+                onViewCharacter={(character) => {
+                  if (character) {
+                    setCharacterSheetDefaultTab("overview");
+                    setViewingCharacterSheet(character);
+                  }
+                }}
               />
             </ResizablePanel>
           </ResizablePanelGroup>

@@ -79,6 +79,7 @@ interface CampaignNotesPanelProps {
   onClose: () => void;
   isOpen: boolean;
   campaignMembers?: Array<{ id: string; userId: string; username: string }>;
+  onViewCharacter?: (character: any) => void;
 }
 
 const FOLDER_COLORS = [
@@ -206,6 +207,7 @@ export function CampaignNotesPanel({
   onClose,
   isOpen,
   campaignMembers = [],
+  onViewCharacter,
 }: CampaignNotesPanelProps) {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -721,7 +723,10 @@ export function CampaignNotesPanel({
   };
 
   const handleEntityClick = async (entityType: string, entityId: string) => {
-    setSelectedEntityType(entityType);
+    // Sanitize entity type - strip any leading brackets that might have leaked through
+    const cleanType = entityType.replace(/^\[+/, '').toLowerCase().trim();
+    
+    setSelectedEntityType(cleanType);
     setSelectedEntityId(entityId);
     setEntityDialogOpen(true);
     setEntityLoading(true);
@@ -729,7 +734,7 @@ export function CampaignNotesPanel({
 
     try {
       let data: any = null;
-      switch (entityType.toLowerCase()) {
+      switch (cleanType) {
         case "spell":
           data = await api.getSystemSpell(entityId);
           break;
@@ -747,15 +752,38 @@ export function CampaignNotesPanel({
           try {
             data = await api.getSystemItem(entityId);
           } catch {
+            data = null;
+          }
+          if (!data) {
             data = { name: "Item", description: "Item not found or access denied." };
           }
           break;
         case "character":
-          const character = await api.getCharacter(entityId);
-          data = character || { name: "Character", description: "Character not found or access denied." };
+          // If callback provided, try to open character sheet directly
+          if (onViewCharacter) {
+            try {
+              const character = await api.getCharacter(entityId);
+              if (character) {
+                setEntityDialogOpen(false);
+                setEntityLoading(false);
+                onViewCharacter(character);
+                return;
+              }
+            } catch {
+              // Fall through to dialog with error
+            }
+          }
+          // Fallback: show character info in dialog
+          try {
+            const character = await api.getCharacter(entityId);
+            data = character || { name: "Character", description: "Character not found or access denied." };
+          } catch {
+            data = { name: "Character", description: "Character not found or you don't have permission to view it." };
+          }
           break;
         default:
-          data = { name: entityType, description: "Unknown entity type" };
+          console.warn("Unknown entity type:", cleanType, "original:", entityType);
+          data = { name: cleanType || "Unknown", description: `Entity type "${cleanType}" is not recognized.` };
       }
       setEntityData(data);
     } catch (error) {
@@ -1729,10 +1757,10 @@ export function CampaignNotesPanel({
                       </div>
                     )}
                     <div className="grid grid-cols-2 gap-2">
-                      {entityData.itemType && (
+                      {(entityData.itemType || entityData.type) && (
                         <div>
                           <Label className="text-stone-400 text-xs uppercase tracking-wide">Type</Label>
-                          <p className="text-stone-300 mt-0.5 capitalize">{entityData.itemType}</p>
+                          <p className="text-stone-300 mt-0.5 capitalize">{entityData.itemType || entityData.type}</p>
                         </div>
                       )}
                       {entityData.rarity && (
@@ -1742,11 +1770,11 @@ export function CampaignNotesPanel({
                         </div>
                       )}
                     </div>
-                    {entityData.damage && (
+                    {(entityData.damage || entityData.damageDice) && (
                       <div className="grid grid-cols-2 gap-2">
                         <div>
                           <Label className="text-stone-400 text-xs uppercase tracking-wide">Damage</Label>
-                          <p className="text-amber-400 mt-0.5">{entityData.damage}</p>
+                          <p className="text-amber-400 mt-0.5">{entityData.damage || entityData.damageDice}</p>
                         </div>
                         {entityData.damageType && (
                           <div>
@@ -1772,12 +1800,12 @@ export function CampaignNotesPanel({
                         )}
                       </div>
                     )}
-                    {(entityData.itemWeight || entityData.durability) && (
+                    {(entityData.itemWeight || entityData.weight || entityData.durability) && (
                       <div className="grid grid-cols-2 gap-2">
-                        {entityData.itemWeight && (
+                        {(entityData.itemWeight || entityData.weight) && (
                           <div>
                             <Label className="text-stone-400 text-xs uppercase tracking-wide">Weight</Label>
-                            <p className="text-stone-300 mt-0.5">{entityData.itemWeight} lbs</p>
+                            <p className="text-stone-300 mt-0.5">{entityData.itemWeight || entityData.weight} lbs</p>
                           </div>
                         )}
                         {entityData.durability && (
@@ -1786,6 +1814,12 @@ export function CampaignNotesPanel({
                             <p className="text-stone-300 mt-0.5">{entityData.durability}</p>
                           </div>
                         )}
+                      </div>
+                    )}
+                    {entityData.value !== undefined && (
+                      <div>
+                        <Label className="text-stone-400 text-xs uppercase tracking-wide">Value</Label>
+                        <p className="text-amber-300 mt-0.5">{entityData.value} gold</p>
                       </div>
                     )}
                   </>
