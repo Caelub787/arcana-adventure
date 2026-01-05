@@ -1356,7 +1356,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
 
       {/* Draggable World Container - Large scrollable space beyond image bounds */}
       {/* Using custom pointer handlers instead of Framer Motion drag for stability */}
-      {/* GPU-accelerated with will-change and contain for smooth pan/zoom performance */}
+      {/* GPU-accelerated with will-change and translateZ(0) for smooth pan/zoom performance */}
       <motion.div 
         className={`absolute ${aoeTargetState?.active ? 'cursor-crosshair' : (isMapLocked || draggingToken ? 'cursor-default' : 'cursor-grab active:cursor-grabbing')} touch-none`}
         style={{ 
@@ -1370,7 +1370,9 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
           transformOrigin: "0 0",
           willChange: 'transform',
           backfaceVisibility: 'hidden',
-          contain: 'layout style paint'
+          // Removed 'contain: layout style paint' - was causing black square rendering glitches when zooming out
+          // Using translateZ(0) to force GPU layer creation without contain restrictions
+          transform: 'translateZ(0)'
         }}
         onPointerDown={handleMapPointerDown}
         onPointerMove={handleMapPointerMove}
