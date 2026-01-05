@@ -30,6 +30,47 @@ import { ImageBrowser } from "@/components/ImageBrowser";
 import { NotesGraph } from "@/components/notes/NotesGraph";
 import { ReferencePicker } from "@/components/notes/ReferencePicker";
 import type { SearchableEntity } from "@/lib/api";
+
+// Inline component to render references as hyperlinks
+function ReferenceHyperlinkDisplay({ content, onClick }: { content: string; onClick?: () => void }) {
+  const referencePattern = /\[\[(\w+):([^\|]+)\|([^\]]+)\]\]/g;
+  const parts: (string | React.ReactNode)[] = [];
+  let lastIndex = 0;
+  let match;
+
+  const contentCopy = content;
+  while ((match = referencePattern.exec(contentCopy)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push(content.slice(lastIndex, match.index));
+    }
+
+    const [, type, id, label] = match;
+    parts.push(
+      <span
+        key={`${type}-${id}-${match.index}`}
+        className="text-blue-400 underline cursor-pointer hover:text-blue-300"
+        data-testid={`reference-link-${id}`}
+      >
+        {label}
+      </span>
+    );
+
+    lastIndex = match.index + match[0].length;
+  }
+
+  if (lastIndex < content.length) {
+    parts.push(content.slice(lastIndex));
+  }
+
+  return (
+    <div 
+      className="whitespace-pre-wrap text-stone-200 cursor-text" 
+      onClick={onClick}
+    >
+      {parts.length > 0 ? parts : content}
+    </div>
+  );
+}
 import { Folder, FolderPlus, Plus, GripVertical, Eye, Radio, ChevronDown, ChevronRight, Pencil } from "lucide-react";
 
 // Scene Settings Form Component
@@ -765,6 +806,7 @@ export default function Campaign() {
   const [referencePickerOpen, setReferencePickerOpen] = useState(false);
   const [cursorPosition, setCursorPosition] = useState(0);
   const noteTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const [noteEditMode, setNoteEditMode] = useState(false);
   
   // Memoized callback for notes toggle to prevent infinite re-renders
   const handleToggleNotesPanel = useCallback(() => {
@@ -3502,6 +3544,7 @@ export default function Campaign() {
                           setSelectedCampaignNote(note);
                           setNoteTitle(note.title);
                           setNoteContent(note.content || "");
+                          setNoteEditMode(false);
                           setNotesViewMode("list");
                         }
                       }}
@@ -3553,6 +3596,7 @@ export default function Campaign() {
                                     setSelectedCampaignNote(note);
                                     setNoteTitle(note.title);
                                     setNoteContent(note.content || "");
+                                    setNoteEditMode(false);
                                   }}
                                   className={`w-full text-left p-2 rounded mb-1 transition-colors ${
                                     selectedCampaignNote?.id === note.id
@@ -3587,21 +3631,44 @@ export default function Campaign() {
                               />
                             </div>
                             
-                            {/* Note Content */}
+                            {/* Note Content - Toggle between read and edit modes */}
                             <div className="flex-1 p-3 overflow-hidden relative">
-                              <Textarea
-                                ref={noteTextareaRef}
-                                value={noteContent}
-                                onChange={handleNoteContentChange}
-                                className="h-full w-full bg-stone-800 border-stone-600 text-stone-200 resize-none"
-                                placeholder="Write your notes here... Type [[ to link entities"
-                                data-testid="textarea-note-content"
-                              />
-                              <ReferencePicker
-                                open={referencePickerOpen}
-                                onOpenChange={setReferencePickerOpen}
-                                onSelect={handleReferenceSelect}
-                              />
+                              {noteEditMode ? (
+                                <>
+                                  <Textarea
+                                    ref={noteTextareaRef}
+                                    value={noteContent}
+                                    onChange={handleNoteContentChange}
+                                    onBlur={() => setNoteEditMode(false)}
+                                    className="h-full w-full bg-stone-800 border-stone-600 text-stone-200 resize-none"
+                                    placeholder="Write your notes here... Type [[ to link entities"
+                                    data-testid="textarea-note-content"
+                                    autoFocus
+                                  />
+                                  <ReferencePicker
+                                    open={referencePickerOpen}
+                                    onOpenChange={setReferencePickerOpen}
+                                    onSelect={handleReferenceSelect}
+                                  />
+                                </>
+                              ) : (
+                                <ScrollArea className="h-full w-full">
+                                  <div 
+                                    className="min-h-full p-2 rounded bg-stone-800/50 border border-stone-700 cursor-text"
+                                    onClick={() => setNoteEditMode(true)}
+                                    data-testid="note-content-read-view"
+                                  >
+                                    {noteContent ? (
+                                      <ReferenceHyperlinkDisplay 
+                                        content={noteContent} 
+                                        onClick={() => setNoteEditMode(true)}
+                                      />
+                                    ) : (
+                                      <span className="text-stone-500 italic">Click to edit... Type [[ to link entities</span>
+                                    )}
+                                  </div>
+                                </ScrollArea>
+                              )}
                             </div>
                             
                             {/* Note Actions */}
