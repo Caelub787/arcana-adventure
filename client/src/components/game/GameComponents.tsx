@@ -312,9 +312,11 @@ interface BattleMapProps {
   onDeleteThrownItem?: (thrownItemId: string) => void;
   throwableGridTarget?: { x: number; y: number } | null;
   onGridTargetClick?: (gridX: number, gridY: number) => void;
+  notesPanelOpen?: boolean;
+  onNotesClick?: () => void;
 }
 
-export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClick, onDeleteToken, role, gridSize, backgroundImage, scene, onViewChange, characters = [], allSpecies = [], selectionMode = 'select', targetedTokenId, selectedTokenId, aoeTargetState, onAoeMouseMove, onAoeClick, otherPlayersAoe, myPermissions, tokenActiveEffects, allTokenEffects, onApplyEffect, onRemoveEffect, onToggleInvisibility, currentTurnCharacterId, otherPlayersTargeting, activeBeacons, onBeacon, otherPlayersViewports, thrownItems = [], onRefetchThrownItems, onDeleteThrownItem, throwableGridTarget, onGridTargetClick }: BattleMapProps) {
+export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClick, onDeleteToken, role, gridSize, backgroundImage, scene, onViewChange, characters = [], allSpecies = [], selectionMode = 'select', targetedTokenId, selectedTokenId, aoeTargetState, onAoeMouseMove, onAoeClick, otherPlayersAoe, myPermissions, tokenActiveEffects, allTokenEffects, onApplyEffect, onRemoveEffect, onToggleInvisibility, currentTurnCharacterId, otherPlayersTargeting, activeBeacons, onBeacon, otherPlayersViewports, thrownItems = [], onRefetchThrownItems, onDeleteThrownItem, throwableGridTarget, onGridTargetClick, notesPanelOpen = false, onNotesClick }: BattleMapProps) {
   // Derive isGM from role prop
   const isGM = role === 'gm';
   
@@ -1294,6 +1296,18 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
         >
           {showNametags ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
         </Button>
+        {onNotesClick && (
+          <Button 
+             size="sm" 
+             variant="secondary" 
+             className={`bg-black/50 hover:bg-black/80 text-xs border backdrop-blur-sm ${notesPanelOpen ? 'border-amber-500 text-amber-400' : 'border-white/10'}`}
+             onClick={onNotesClick}
+             data-testid="button-notes-battlemap"
+             title={notesPanelOpen ? "Close notes" : "Open notes"}
+          >
+            <FileText className="h-3 w-3" />
+          </Button>
+        )}
         {role === 'gm' && thrownItems.length > 0 && scene?.id && (
           <Button 
              size="sm" 

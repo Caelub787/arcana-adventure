@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useLocation, useSearch, useRoute } from "wouter";
 import { motion } from "framer-motion";
 import { CharacterCreation, BattleMap, CampaignMenu, CharacterSheet, BattleMapHotbars, SelectionModeButtons, InitiativeTracker, type SelectionMode } from "@/components/game/GameComponents";
@@ -758,6 +758,11 @@ export default function Campaign() {
   const [notesViewMode, setNotesViewMode] = useState<"list" | "graph">("list");
   const debouncedNoteTitle = useDebouncedValue(noteTitle, 1000);
   const debouncedNoteContent = useDebouncedValue(noteContent, 1000);
+  
+  // Memoized callback for notes toggle to prevent infinite re-renders
+  const handleToggleNotesPanel = useCallback(() => {
+    setNotesPanelOpen(prev => !prev);
+  }, []);
   
   // AoE targeting state
   const [aoeTargetState, setAoeTargetState] = useState<AoeTargetState>(createInitialAoeState());
@@ -2458,112 +2463,69 @@ export default function Campaign() {
         
         {/* Right Side: Settings / Menu Button for ALL Roles */}
         <div className="pointer-events-auto flex flex-col gap-2">
-          {notesPanelOpen ? (
+          <CampaignMenu 
+            campaignId={effectiveCampaignId || undefined}
+            role={role} 
+            inviteCode={(campaign && typeof campaign === 'object' && 'inviteCode' in campaign ? campaign.inviteCode as string : "") || ""}
+            inspectedChar={inspectedChar}
+            onInspectChar={setInspectedChar}
+            onAddCharacterToken={handleAddCharacterToken}
+            onChangeMap={handleChangeMap}
+            characters={characters as any[]}
+            members={members as any[]}
+            onAddCharacter={handleAddCharacter}
+            onViewCharacter={handleViewCharacter}
+            onLevelUpAll={handleLevelUpAll}
+            chatOpen={chatOpen}
+            onChatOpenChange={setChatOpen}
+            onAssignCharacter={handleAssignCharacter}
+            myPermissions={myPermissions}
+            onOpenCampaignSpecies={() => setCampaignSpeciesOpen(true)}
+            isOwner={!!(campaign && typeof campaign === 'object' && 'gmUserId' in campaign && (campaign as any).gmUserId === user?.id)}
+            gmUserId={(campaign && typeof campaign === 'object' && 'gmUserId' in campaign ? (campaign as any).gmUserId as string : undefined)}
+          />
+          
+          {/* Scenes Button (GM Only) - Icon only, directly under Settings */}
+          {role === 'gm' && (
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
                     variant="ghost"
                     size="icon"
-                    onClick={() => setNotesPanelOpen(false)}
-                    className="text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto"
-                    data-testid="button-close-notes-toolbar"
+                    onClick={() => setScenesManagementOpen(true)}
+                    className="text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto relative z-[60]"
+                    data-testid="button-scenes"
                   >
-                    <X className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
+                    <Layers className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent side="left" className="bg-stone-800 border-stone-700 text-stone-200">
-                  <p>Close Notes</p>
+                  <p>Scenes</p>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
-          ) : (
-            <>
-              <CampaignMenu 
-                campaignId={effectiveCampaignId || undefined}
-                role={role} 
-                inviteCode={(campaign && typeof campaign === 'object' && 'inviteCode' in campaign ? campaign.inviteCode as string : "") || ""}
-                inspectedChar={inspectedChar}
-                onInspectChar={setInspectedChar}
-                onAddCharacterToken={handleAddCharacterToken}
-                onChangeMap={handleChangeMap}
-                characters={characters as any[]}
-                members={members as any[]}
-                onAddCharacter={handleAddCharacter}
-                onViewCharacter={handleViewCharacter}
-                onLevelUpAll={handleLevelUpAll}
-                chatOpen={chatOpen}
-                onChatOpenChange={setChatOpen}
-                onAssignCharacter={handleAssignCharacter}
-                myPermissions={myPermissions}
-                onOpenCampaignSpecies={() => setCampaignSpeciesOpen(true)}
-                isOwner={!!(campaign && typeof campaign === 'object' && 'gmUserId' in campaign && (campaign as any).gmUserId === user?.id)}
-                gmUserId={(campaign && typeof campaign === 'object' && 'gmUserId' in campaign ? (campaign as any).gmUserId as string : undefined)}
-              />
-              
-              {/* Scenes Button (GM Only) - Icon only, directly under Settings */}
-              {role === 'gm' && (
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => setScenesManagementOpen(true)}
-                        className="text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto relative z-[60]"
-                        data-testid="button-scenes"
-                      >
-                        <Layers className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent side="left" className="bg-stone-800 border-stone-700 text-stone-200">
-                      <p>Scenes</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              )}
-              
-              {/* Initiative Button - Under scenes/settings */}
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => setInitiativeTrackerOpen(true)}
-                      className="text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto"
-                      data-testid="button-initiative"
-                    >
-                      <Swords className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="left" className="bg-stone-800 border-stone-700 text-stone-200">
-                    <p>Initiative</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-              
-              {/* Notes Button */}
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => setNotesPanelOpen(!notesPanelOpen)}
-                      className={`text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto ${notesPanelOpen ? 'bg-amber-900/50 text-amber-400' : ''}`}
-                      data-testid="button-notes"
-                    >
-                      <FileText className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="left" className="bg-stone-800 border-stone-700 text-stone-200">
-                    <p>Notes</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            </>
           )}
+          
+          {/* Initiative Button - Under scenes/settings */}
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setInitiativeTrackerOpen(true)}
+                  className="text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto"
+                  data-testid="button-initiative"
+                >
+                  <Swords className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="left" className="bg-stone-800 border-stone-700 text-stone-200">
+                <p>Initiative</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         </div>
       </div>
 
@@ -3241,6 +3203,8 @@ export default function Campaign() {
              }}
              throwableGridTarget={throwableGridTarget}
              onGridTargetClick={handleGridTargetClick}
+             notesPanelOpen={notesPanelOpen}
+             onNotesClick={handleToggleNotesPanel}
            />
            
            {/* Battlemap Dice Overlay for 3D dice rolling */}
