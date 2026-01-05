@@ -6653,6 +6653,24 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
                     </Select>
                   </div>
                   <div>
+                    <Label>Attack Attribute</Label>
+                    <Select value={formData.attribute || '_none'} onValueChange={(v) => setFormData({ ...formData, attribute: v === '_none' ? '' : v })}>
+                      <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-weapon-attribute">
+                        <SelectValue placeholder="None" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="_none">None</SelectItem>
+                        <SelectItem value="MIG">Might (MIG)</SelectItem>
+                        <SelectItem value="FIN">Finesse (FIN)</SelectItem>
+                        <SelectItem value="WIT">Wit (WIT)</SelectItem>
+                        <SelectItem value="WIL">Will (WIL)</SelectItem>
+                        <SelectItem value="PRE">Presence (PRE)</SelectItem>
+                        <SelectItem value="CRA">Craft (CRA)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-stone-500 mt-1">Adds attribute modifier to attack rolls</p>
+                  </div>
+                  <div>
                     <Label>Ammunition Required</Label>
                     <Select value={formData.ammunitionType || '_none'} onValueChange={(v) => setFormData({ ...formData, ammunitionType: v === '_none' ? '' : v })}>
                       <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-weapon-ammo">

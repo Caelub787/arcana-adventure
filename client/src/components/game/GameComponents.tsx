@@ -3032,6 +3032,13 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     enabled: !!hotbar?.traitId
   });
 
+  // Fetch custom skills for skill roll support
+  const { data: customSkills = [] } = useQuery({
+    queryKey: ['character-custom-skills', character.id],
+    queryFn: () => api.getCharacterCustomSkills(character.id),
+    enabled: !!character.id && !!hotbar?.skillName
+  });
+
   // Function to check if ammunition breaks (configurable chance) and update quantity
   const checkAmmunitionBreak = async (ammo: any) => {
     const breakChance = (ammo.breakChance ?? 10) / 100; // Convert percentage to probability
@@ -3875,30 +3882,48 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     if (!hotbar?.skillName) return;
     
     const skillName = hotbar.skillName;
-    // Get skill modifier from character - skills are stored as skill<SkillName> in character
-    // Convert skill name to camelCase key: "Sleight of Hand" -> "skillSleightOfHand"
-    const skillKey = `skill${skillName.split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()).join('')}` as keyof typeof character;
-    const skillModifier = typeof character[skillKey] === 'number' ? character[skillKey] : 0;
     
-    // Get attribute modifier for this skill
-    const attributeKey = SKILL_ATTRIBUTE_MAP[skillName];
-    if (!attributeKey) {
-      console.warn(`[SkillRoll] Unknown skill "${skillName}" - no attribute mapping found, using 0 modifier`);
+    // Check if this is a custom skill first
+    const customSkill = customSkills.find((cs: any) => cs.name === skillName);
+    
+    let skillModifier: number;
+    let attributeKey: keyof typeof character | undefined;
+    let attributeValue: number;
+    
+    if (customSkill) {
+      // Custom skill: use its value and parentAttribute
+      skillModifier = customSkill.value || 0;
+      // Map parentAttribute to character attribute key
+      const attrMapping: Record<string, keyof typeof character> = {
+        'might': 'might', 'mig': 'might',
+        'finesse': 'finesse', 'fin': 'finesse',
+        'wit': 'wit',
+        'presence': 'presence', 'pre': 'presence',
+        'will': 'will', 'wil': 'will',
+        'craft': 'craft', 'cra': 'craft',
+      };
+      attributeKey = attrMapping[customSkill.parentAttribute?.toLowerCase() || 'wit'];
+      attributeValue = attributeKey && typeof character[attributeKey] === 'number' ? character[attributeKey] as number : 0;
+    } else {
+      // Standard skill: use character's skill value and SKILL_ATTRIBUTE_MAP
+      const skillKey = `skill${skillName.split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()).join('')}` as keyof typeof character;
+      skillModifier = typeof character[skillKey] === 'number' ? character[skillKey] : 0;
+      
+      attributeKey = SKILL_ATTRIBUTE_MAP[skillName];
+      if (!attributeKey) {
+        console.warn(`[SkillRoll] Unknown skill "${skillName}" - no attribute mapping found, using 0 modifier`);
+      }
+      attributeValue = attributeKey && typeof character[attributeKey] === 'number' ? character[attributeKey] as number : 0;
     }
-    const attributeValue = attributeKey && typeof character[attributeKey] === 'number' ? character[attributeKey] as number : 0;
     
     // DEBUG: Log all values
     console.log('[SkillRoll DEBUG]', {
       skillName,
-      skillKey,
+      isCustomSkill: !!customSkill,
       skillModifier,
       attributeKey,
       attributeValue,
       characterId: character?.id,
-      characterMight: character?.might,
-      characterFinesse: character?.finesse,
-      characterWit: character?.wit,
-      fullCharacter: character
     });
     
     // Determine die type: d30 if attribute >= 5, otherwise d20
@@ -8519,6 +8544,12 @@ function HotbarsTabContent({ character, isGM, isOwner }: HotbarsTabContentProps)
     enabled: !!character.id
   });
 
+  const { data: characterCustomSkills = [] } = useQuery({
+    queryKey: ['character-custom-skills', character.id],
+    queryFn: () => api.getCharacterCustomSkills(character.id),
+    enabled: !!character.id
+  });
+
   const weaponItems = items.filter((item: any) => item.itemType === 'weapon');
   const ammunitionItems = items.filter((item: any) => item.itemType === 'ammunition');
   const consumableItems = items.filter((item: any) => item.itemType === 'consumable');
@@ -9275,6 +9306,33 @@ function HotbarsTabContent({ character, isGM, isOwner }: HotbarsTabContentProps)
                   );
                 })}
               </div>
+              
+              {/* Custom Skills Section */}
+              {characterCustomSkills.length > 0 && (
+                <div className="mt-4 pt-4 border-t border-stone-700">
+                  <Label className="text-xs text-stone-400 mb-2 block">Tap or drag custom skills to equip:</Label>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-48 overflow-y-auto">
+                    {characterCustomSkills.map((customSkill: any) => {
+                      const modifier = (customSkill.value || 0) >= 0 ? `+${customSkill.value || 0}` : `${customSkill.value || 0}`;
+                      return (
+                        <div
+                          key={customSkill.id}
+                          draggable
+                          onDragStart={(e) => handleDragStart(e, { type: 'skill', skillName: customSkill.name })}
+                          onClick={() => openEquipPicker('skills', { type: 'skill', skillName: customSkill.name }, customSkill.name)}
+                          className="px-2 py-1 bg-stone-900 rounded border border-stone-700 cursor-pointer hover:border-blue-500 hover:bg-stone-800 active:bg-blue-900/30 transition-all text-xs touch-target"
+                          data-testid={`drag-custom-skill-${customSkill.id}`}
+                        >
+                          <div className="flex justify-between items-center">
+                            <span className="font-medium text-violet-400 truncate">{customSkill.name}</span>
+                            <span className="text-stone-500">{modifier}</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
               
               {/* Traits Section */}
               {characterTraits.length > 0 && (
@@ -19639,6 +19697,40 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
                         <Label className="text-xs text-stone-400">Two-Handed</Label>
                         <p className="text-stone-200">{currentData.isHeavy ? 'Yes' : 'No'}</p>
                       </div>
+                      {currentData.isThrowable && (
+                        <>
+                          <div>
+                            <Label className="text-xs text-stone-400">Throwable</Label>
+                            <p className="text-stone-200">Yes</p>
+                          </div>
+                          <div>
+                            <Label className="text-xs text-stone-400">Break Chance</Label>
+                            <p className={`${(currentData.throwableBreakChance ?? 10) > 0 ? 'text-red-400' : 'text-stone-200'}`}>
+                              {currentData.throwableBreakChance ?? 10}%
+                            </p>
+                          </div>
+                          {currentData.throwablePickup && (
+                            <div>
+                              <Label className="text-xs text-stone-400">Pickup Mode</Label>
+                              <p className="text-stone-200">Enabled</p>
+                            </div>
+                          )}
+                          {currentData.throwableAoe && currentData.throwableAoeRange && (
+                            <>
+                              <div>
+                                <Label className="text-xs text-stone-400">AOE Range</Label>
+                                <p className="text-stone-200">{currentData.throwableAoeRange}ft</p>
+                              </div>
+                              {currentData.throwableAoeShape && (
+                                <div>
+                                  <Label className="text-xs text-stone-400">AOE Shape</Label>
+                                  <p className="text-stone-200 capitalize">{currentData.throwableAoeShape}</p>
+                                </div>
+                              )}
+                            </>
+                          )}
+                        </>
+                      )}
                     </div>
                   )}
                 </div>
