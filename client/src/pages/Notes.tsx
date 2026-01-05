@@ -1304,7 +1304,7 @@ export default function Notes() {
               ref={textareaRef}
               value={noteContent}
               onChange={handleContentChange}
-              placeholder="Start writing... Type [[ to link entities, [ to link notes"
+              placeholder="Start writing... Type [[ to link entities, // to link notes"
               className="flex-1 resize-none border-stone-800 bg-stone-900/30 min-h-[300px] w-full h-full"
               data-testid="textarea-note-content"
             />
