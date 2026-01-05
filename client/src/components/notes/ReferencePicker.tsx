@@ -23,7 +23,10 @@ import {
   Loader2,
   AlertCircle,
   RefreshCw,
+  FileText,
+  Plus,
 } from "lucide-react";
+import type { Note } from "@/lib/api";
 
 interface ReferencePickerProps {
   open: boolean;
@@ -59,6 +62,8 @@ function getEntityIcon(type: string) {
       return <Users className="h-4 w-4" />;
     case "character":
       return <Swords className="h-4 w-4" />;
+    case "note":
+      return <FileText className="h-4 w-4" />;
     default:
       return <Swords className="h-4 w-4" />;
   }
@@ -78,6 +83,8 @@ function getEntityColor(type: string) {
       return "bg-rose-900/50 text-rose-300 border-rose-700";
     case "character":
       return "bg-indigo-900/50 text-indigo-300 border-indigo-700";
+    case "note":
+      return "bg-cyan-900/50 text-cyan-300 border-cyan-700";
     default:
       return "bg-stone-800/50 text-stone-300 border-stone-700";
   }
@@ -290,6 +297,141 @@ export function ReferenceInlineDisplay({ content }: { content: string }) {
   }
 
   return <>{parts}</>;
+}
+
+interface NoteOnlyPickerProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  notes: Note[];
+  onSelectNote: (note: Note) => void;
+  onCreateNote: (name: string) => void;
+  initialSearch?: string;
+}
+
+export function NoteOnlyPicker({
+  open,
+  onOpenChange,
+  notes,
+  onSelectNote,
+  onCreateNote,
+  initialSearch = "",
+}: NoteOnlyPickerProps) {
+  const [searchQuery, setSearchQuery] = useState(initialSearch);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (open) {
+      setSearchQuery(initialSearch);
+      setTimeout(() => inputRef.current?.focus(), 0);
+    }
+  }, [open, initialSearch]);
+
+  const filteredNotes = notes.filter(note => 
+    note.title.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const exactMatch = notes.find(note => 
+    note.title.toLowerCase() === searchQuery.toLowerCase()
+  );
+
+  const showCreateOption = searchQuery.trim().length > 0 && !exactMatch;
+
+  const handleSelectNote = (note: Note) => {
+    onSelectNote(note);
+    onOpenChange(false);
+    setSearchQuery("");
+  };
+
+  const handleCreateNote = () => {
+    if (searchQuery.trim()) {
+      onCreateNote(searchQuery.trim());
+      onOpenChange(false);
+      setSearchQuery("");
+    }
+  };
+
+  return (
+    <Popover open={open} onOpenChange={onOpenChange}>
+      <PopoverContent
+        className="w-72 p-0 bg-stone-950 border-stone-800"
+        align="start"
+        side="bottom"
+        sideOffset={5}
+      >
+        <div className="p-3 border-b border-stone-800">
+          <div className="relative">
+            <FileText className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-cyan-500" />
+            <Input
+              ref={inputRef}
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search or create note..."
+              className="pl-9 bg-stone-900 border-stone-700 text-sm"
+              data-testid="input-note-search"
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && showCreateOption) {
+                  handleCreateNote();
+                }
+              }}
+            />
+          </div>
+        </div>
+
+        <ScrollArea className="max-h-60">
+          <div className="p-2">
+            {showCreateOption && (
+              <button
+                onClick={handleCreateNote}
+                className="w-full flex items-center gap-3 p-2 rounded hover:bg-cyan-900/30 transition-colors text-left border border-dashed border-cyan-700/50 mb-2"
+                data-testid="button-create-note-from-picker"
+              >
+                <div className="p-2 rounded bg-cyan-900/50 text-cyan-300">
+                  <Plus className="h-4 w-4" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <span className="text-sm font-medium text-cyan-300">
+                    Create "{searchQuery}"
+                  </span>
+                  <p className="text-xs text-stone-500">Create new note and link</p>
+                </div>
+              </button>
+            )}
+
+            {filteredNotes.length === 0 && !showCreateOption ? (
+              <div className="text-center py-6 text-stone-500 text-sm">
+                No notes found
+              </div>
+            ) : (
+              <div className="space-y-1">
+                {filteredNotes.slice(0, 20).map((note) => (
+                  <button
+                    key={note.id}
+                    onClick={() => handleSelectNote(note)}
+                    className="w-full flex items-center gap-3 p-2 rounded hover:bg-stone-800/50 transition-colors text-left"
+                    data-testid={`note-result-${note.id}`}
+                  >
+                    <div className="p-2 rounded bg-cyan-900/50 text-cyan-300">
+                      <FileText className="h-4 w-4" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <span className="text-sm font-medium text-stone-200 truncate block">
+                        {note.title}
+                      </span>
+                    </div>
+                  </button>
+                ))}
+                {filteredNotes.length > 20 && (
+                  <p className="text-xs text-stone-500 text-center py-2">
+                    Showing first 20 results
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        </ScrollArea>
+      </PopoverContent>
+    </Popover>
+  );
 }
 
 export { getEntityIcon, getEntityColor };

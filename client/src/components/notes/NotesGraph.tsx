@@ -79,6 +79,7 @@ function parseConnections(notes: Note[], entityMap: Map<string, GraphNode>): Gra
 
   for (const note of notes) {
     const content = note.content || "";
+    
     const referencePattern = /\[\[(\w+):([^\]|]+)\|?[^\]]*\]\]/g;
     let match;
     while ((match = referencePattern.exec(content)) !== null) {
@@ -94,6 +95,16 @@ function parseConnections(notes: Note[], entityMap: Map<string, GraphNode>): Gra
         if (entityMap.has(entityKey)) {
           addEdge(`note-${note.id}`, entityKey);
         }
+      }
+    }
+
+    const noteReferencePattern = /\[\*([^\]]+)\]/g;
+    let noteMatch;
+    while ((noteMatch = noteReferencePattern.exec(content)) !== null) {
+      const noteName = noteMatch[1];
+      const linkedNote = notes.find(n => n.title.toLowerCase() === noteName.toLowerCase());
+      if (linkedNote) {
+        addEdge(`note-${note.id}`, `note-${linkedNote.id}`);
       }
     }
 

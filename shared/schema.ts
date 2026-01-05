@@ -424,6 +424,9 @@ export const items = pgTable("items", {
   throwablePickup: boolean("throwable_pickup").default(false).notNull(), // If true, attaches to tokens/grid spaces when thrown
   throwableAoeDamage: text("throwable_aoe_damage"), // Dice notation for AOE detonation damage (e.g. "2d6")
   throwableAoeDamageType: text("throwable_aoe_damage_type"), // Damage type for AOE detonation: Sharp, Blunt, Piercing, Flame, etc.
+  throwableBreakChance: integer("throwable_break_chance").default(10).notNull(), // 0-100 percentage chance throwable breaks on use (similar to ammunition)
+  // Item effect toggle - when true, allows linking token effects to this weapon/item
+  canApplyEffects: boolean("can_apply_effects").default(false).notNull(), // Enables item to apply token effects on hit
 });
 
 export const insertItemSchema = createInsertSchema(items).omit({

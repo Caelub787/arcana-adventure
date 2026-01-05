@@ -6202,6 +6202,8 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
     throwableAoeDamage: string;
     throwableAoeDamageType: string;
     throwablePickup: boolean;
+    throwableBreakChance: number | string;
+    canApplyEffects: boolean;
   }>({
     name: initialData?.name || '',
     image: initialData?.image || '',
@@ -6241,6 +6243,8 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
     throwableAoeDamage: (initialData as any)?.throwableAoeDamage || '',
     throwableAoeDamageType: (initialData as any)?.throwableAoeDamageType || '',
     throwablePickup: (initialData as any)?.throwablePickup || false,
+    throwableBreakChance: (initialData as any)?.throwableBreakChance ?? 10,
+    canApplyEffects: (initialData as any)?.canApplyEffects || false,
   });
   
   const [showImageBrowser, setShowImageBrowser] = useState(false);
@@ -6300,6 +6304,8 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
       throwableAoeDamage: formData.itemType === 'weapon' && formData.isThrowable && formData.throwableAoe ? formData.throwableAoeDamage : undefined,
       throwableAoeDamageType: formData.itemType === 'weapon' && formData.isThrowable && formData.throwableAoe ? formData.throwableAoeDamageType : undefined,
       throwablePickup: formData.itemType === 'weapon' && formData.isThrowable ? formData.throwablePickup : false,
+      throwableBreakChance: formData.itemType === 'weapon' && formData.isThrowable ? Number(formData.throwableBreakChance) || 10 : 10,
+      canApplyEffects: (formData.itemType === 'weapon' || (formData.itemType === 'weapon' && formData.isThrowable)) ? formData.canApplyEffects : false,
     };
     onSave(cleanedData);
   };
@@ -6696,6 +6702,19 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
                           <Label>Pickup Mode</Label>
                         </div>
                         <p className="text-xs text-stone-500">When enabled, thrown items attach to tokens or grid spaces and can be picked up</p>
+                        <div className="mt-3">
+                          <Label>Throwable Break Chance: {Number(formData.throwableBreakChance) || 10}%</Label>
+                          <Slider
+                            value={[Number(formData.throwableBreakChance) || 10]}
+                            onValueChange={(v) => setFormData({ ...formData, throwableBreakChance: v[0] })}
+                            min={0}
+                            max={100}
+                            step={1}
+                            className="mt-2"
+                            data-testid="slider-throwable-break-chance"
+                          />
+                          <p className="text-xs text-stone-500 mt-1">Chance of throwable item breaking when thrown</p>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -6845,13 +6864,30 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
               )}
             </div>
 
-            {initialData && formData.itemType === 'weapon' && (
+            {formData.itemType === 'weapon' && (
               <div className="border-t border-stone-700 pt-4 mt-4">
-                <Label className="flex items-center gap-2 mb-3">
-                  <Flame className="h-4 w-4 text-violet-400" />
-                  Token Effects
-                </Label>
-                <ItemEffectsSection itemId={initialData.id} />
+                <div className="flex items-center gap-2 mb-3">
+                  <Checkbox
+                    checked={formData.canApplyEffects}
+                    onCheckedChange={(checked) => setFormData({ ...formData, canApplyEffects: !!checked })}
+                    data-testid="checkbox-can-apply-effects"
+                  />
+                  <Label className="flex items-center gap-2">
+                    <Flame className="h-4 w-4 text-violet-400" />
+                    Can Apply Effects on Hit
+                  </Label>
+                </div>
+                <p className="text-xs text-stone-500 mb-3">Enable this to apply token effects when the weapon lands an attack</p>
+                
+                {formData.canApplyEffects && initialData && (
+                  <div className="mt-3">
+                    <Label className="text-sm text-stone-300 mb-2 block">Manage Item Effects</Label>
+                    <ItemEffectsSection itemId={initialData.id} />
+                  </div>
+                )}
+                {formData.canApplyEffects && !initialData && (
+                  <p className="text-xs text-amber-500 mt-2">Save the item first to manage effects</p>
+                )}
               </div>
             )}
           </div>

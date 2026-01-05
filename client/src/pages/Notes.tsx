@@ -79,7 +79,7 @@ import {
   Network,
   List,
 } from "lucide-react";
-import { ReferencePicker, ReferenceInlineDisplay } from "@/components/notes/ReferencePicker";
+import { ReferencePicker, ReferenceInlineDisplay, NoteOnlyPicker } from "@/components/notes/ReferencePicker";
 import { CanvasEditor, CanvasData } from "@/components/notes/CanvasEditor";
 import { NotesGraph } from "@/components/notes/NotesGraph";
 import type { SearchableEntity } from "@/lib/api";
@@ -251,6 +251,8 @@ export default function Notes() {
   const debouncedCanvasData = useDebouncedValue(canvasData, 1000);
 
   const [referencePickerOpen, setReferencePickerOpen] = useState(false);
+  const [notePickerOpen, setNotePickerOpen] = useState(false);
+  const [notePickerInitialSearch, setNotePickerInitialSearch] = useState("");
   const [cursorPosition, setCursorPosition] = useState<number>(0);
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
 
@@ -631,6 +633,9 @@ export default function Notes() {
       const lastTwoChars = newContent.slice(pos - 2, pos);
       if (lastTwoChars === "[[") {
         setReferencePickerOpen(true);
+      } else if (lastTwoChars === "[*") {
+        setNotePickerInitialSearch("");
+        setNotePickerOpen(true);
       }
     }
   };
@@ -700,6 +705,69 @@ export default function Notes() {
     }
   };
 
+  const handleNotePickerSelect = (selectedNote: Note) => {
+    const referenceText = `[*${selectedNote.title}]`;
+    const beforeCursor = noteContent.slice(0, cursorPosition - 2);
+    const afterCursor = noteContent.slice(cursorPosition);
+    const newContent = beforeCursor + referenceText + afterCursor;
+    
+    setNoteContent(newContent);
+    setNotePickerOpen(false);
+
+    setTimeout(() => {
+      if (textareaRef.current) {
+        const newCursorPos = beforeCursor.length + referenceText.length;
+        textareaRef.current.focus();
+        textareaRef.current.setSelectionRange(newCursorPos, newCursorPos);
+      }
+    }, 0);
+  };
+
+  const handleNotePickerCreate = async (noteName: string) => {
+    const referenceText = `[*${noteName}]`;
+    const beforeCursor = noteContent.slice(0, cursorPosition - 2);
+    const afterCursor = noteContent.slice(cursorPosition);
+    const newContent = beforeCursor + referenceText + afterCursor;
+    
+    setNoteContent(newContent);
+    setNotePickerOpen(false);
+
+    setTimeout(() => {
+      if (textareaRef.current) {
+        const newCursorPos = beforeCursor.length + referenceText.length;
+        textareaRef.current.focus();
+        textareaRef.current.setSelectionRange(newCursorPos, newCursorPos);
+      }
+    }, 0);
+  };
+
+  const handleNoteReferenceClick = async (noteName: string) => {
+    const existingNote = notes.find(n => n.title.toLowerCase() === noteName.toLowerCase());
+    
+    if (existingNote) {
+      setLocation(`/notes/${existingNote.id}`);
+    } else {
+      try {
+        const newNote = await api.createNote({
+          title: noteName,
+          content: "",
+          folderId: selectedFolderId,
+          type: "markdown",
+          campaignId: campaignId ?? undefined,
+        });
+        queryClient.invalidateQueries({ queryKey: ["/api/notes"] });
+        setLocation(`/notes/${newNote.id}`);
+        toast({ title: `Note "${noteName}" created` });
+      } catch (err: any) {
+        toast({
+          title: "Error",
+          description: err.message,
+          variant: "destructive",
+        });
+      }
+    }
+  };
+
   const rootFolders = folders.filter((f) => !f.parentId);
 
   const handleEntityClick = async (entityType: string, entityId: string) => {
@@ -745,29 +813,44 @@ export default function Notes() {
   };
 
   const formatEntityReferences = (content: string): React.ReactNode[] => {
-    const regex = /\[\[([^:]+):([^\|]+)\|([^\]]+)\]\]/g;
+    const combinedRegex = /\[\[([^:]+):([^\|]+)\|([^\]]+)\]\]|\[\*([^\]]+)\]/g;
     const parts: React.ReactNode[] = [];
     let lastIndex = 0;
     let match;
 
-    while ((match = regex.exec(content)) !== null) {
+    while ((match = combinedRegex.exec(content)) !== null) {
       if (match.index > lastIndex) {
         parts.push(content.slice(lastIndex, match.index));
       }
-      const entityType = match[1];
-      const entityId = match[2];
-      const displayName = match[3];
-      parts.push(
-        <span
-          key={match.index}
-          className="text-amber-500 cursor-pointer hover:text-amber-400 hover:underline transition-colors"
-          onClick={() => handleEntityClick(entityType, entityId)}
-          data-testid={`entity-ref-${entityType}-${entityId}`}
-        >
-          [{displayName}]
-        </span>
-      );
-      lastIndex = regex.lastIndex;
+      
+      if (match[1] && match[2] && match[3]) {
+        const entityType = match[1];
+        const entityId = match[2];
+        const displayName = match[3];
+        parts.push(
+          <span
+            key={match.index}
+            className="text-amber-500 cursor-pointer hover:text-amber-400 hover:underline transition-colors"
+            onClick={() => handleEntityClick(entityType, entityId)}
+            data-testid={`entity-ref-${entityType}-${entityId}`}
+          >
+            [{displayName}]
+          </span>
+        );
+      } else if (match[4]) {
+        const noteName = match[4];
+        parts.push(
+          <span
+            key={match.index}
+            className="text-cyan-400 cursor-pointer hover:text-cyan-300 hover:underline transition-colors"
+            onClick={() => handleNoteReferenceClick(noteName)}
+            data-testid={`note-ref-${noteName}`}
+          >
+            [*{noteName}]
+          </span>
+        );
+      }
+      lastIndex = combinedRegex.lastIndex;
     }
 
     if (lastIndex < content.length) {
@@ -1171,7 +1254,7 @@ export default function Notes() {
               }
             />
             <span className="text-xs text-stone-500">
-              or type <kbd className="px-1.5 py-0.5 bg-stone-800 rounded text-stone-400">[[</kbd> to link entities
+              <kbd className="px-1.5 py-0.5 bg-stone-800 rounded text-stone-400">[[</kbd> entities, <kbd className="px-1.5 py-0.5 bg-stone-800 rounded text-cyan-400">[*</kbd> notes
             </span>
           </div>
           <div className="relative flex-1">
@@ -1179,9 +1262,17 @@ export default function Notes() {
               ref={textareaRef}
               value={noteContent}
               onChange={handleContentChange}
-              placeholder="Start writing... Type [[ to link game entities (Markdown supported)"
+              placeholder="Start writing... Type [[ to link entities, [* to link notes"
               className="flex-1 resize-none border-stone-800 bg-stone-900/30 min-h-[300px] w-full h-full"
               data-testid="textarea-note-content"
+            />
+            <NoteOnlyPicker
+              open={notePickerOpen}
+              onOpenChange={setNotePickerOpen}
+              notes={notes}
+              onSelectNote={handleNotePickerSelect}
+              onCreateNote={handleNotePickerCreate}
+              initialSearch={notePickerInitialSearch}
             />
           </div>
           {updateNoteMutation.isPending && (
