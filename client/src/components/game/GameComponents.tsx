@@ -1294,25 +1294,6 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
         >
           {showNametags ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
         </Button>
-        {role === 'gm' && (
-          <div className="relative">
-            <Button 
-               size="sm" 
-               variant="secondary" 
-               className={`bg-black/50 hover:bg-black/80 text-xs border backdrop-blur-sm ${showPlayerViewports ? 'border-cyan-500 text-cyan-400' : 'border-white/10'}`}
-               onClick={() => setShowPlayerViewports(!showPlayerViewports)}
-               data-testid="button-toggle-viewports"
-               title={showPlayerViewports ? `Hide player viewports (${otherPlayersViewports?.size || 0} online)` : `Show player viewports (${otherPlayersViewports?.size || 0} online)`}
-            >
-              <Users className="h-3 w-3" />
-            </Button>
-            {showPlayerViewports && otherPlayersViewports && otherPlayersViewports.size > 0 && (
-              <span className="absolute -top-1 -right-1 bg-cyan-500 text-white text-[10px] rounded-full w-4 h-4 flex items-center justify-center font-bold">
-                {otherPlayersViewports.size}
-              </span>
-            )}
-          </div>
-        )}
         {role === 'gm' && thrownItems.length > 0 && scene?.id && (
           <Button 
              size="sm" 

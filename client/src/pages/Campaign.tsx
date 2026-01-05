@@ -6,7 +6,7 @@ import { BattlemapDiceOverlay, triggerBattlemapDiceRoll } from "@/components/gam
 import { type AoeTargetState, createInitialAoeState } from "@/lib/aoeHelpers";
 import { RollNotificationContainer, triggerInitiativeNotification, triggerEffectRollNotification, getNotificationStyle, setNotificationStyle, type NotificationStyle } from "@/components/game/RollNotification";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Loader2, Settings, Map as MapIcon, Layers, Trash2, MessageSquare, User, BarChart3, Zap, Backpack, Sparkles, Grid3X3, ScrollText, Swords, Dices, Users, Dna, Edit2, Bell, FileText, X, ChevronLeft } from "lucide-react";
+import { ArrowLeft, Loader2, Settings, Map as MapIcon, Layers, Trash2, MessageSquare, User, BarChart3, Zap, Backpack, Sparkles, Grid3X3, ScrollText, Swords, Dices, Users, Dna, Edit2, Bell, FileText, X, ChevronLeft, Network, List } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -27,6 +27,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { ImageBrowser } from "@/components/ImageBrowser";
+import { NotesGraph } from "@/components/notes/NotesGraph";
 import { Folder, FolderPlus, Plus, GripVertical, Eye, Radio, ChevronDown, ChevronRight, Pencil } from "lucide-react";
 
 // Scene Settings Form Component
@@ -754,6 +755,7 @@ export default function Campaign() {
   const [selectedCampaignNote, setSelectedCampaignNote] = useState<Note | null>(null);
   const [noteTitle, setNoteTitle] = useState("");
   const [noteContent, setNoteContent] = useState("");
+  const [notesViewMode, setNotesViewMode] = useState<"list" | "graph">("list");
   const debouncedNoteTitle = useDebouncedValue(noteTitle, 1000);
   const debouncedNoteContent = useDebouncedValue(noteContent, 1000);
   
@@ -2456,89 +2458,112 @@ export default function Campaign() {
         
         {/* Right Side: Settings / Menu Button for ALL Roles */}
         <div className="pointer-events-auto flex flex-col gap-2">
-          <CampaignMenu 
-            campaignId={effectiveCampaignId || undefined}
-            role={role} 
-            inviteCode={(campaign && typeof campaign === 'object' && 'inviteCode' in campaign ? campaign.inviteCode as string : "") || ""}
-            inspectedChar={inspectedChar}
-            onInspectChar={setInspectedChar}
-            onAddCharacterToken={handleAddCharacterToken}
-            onChangeMap={handleChangeMap}
-            characters={characters as any[]}
-            members={members as any[]}
-            onAddCharacter={handleAddCharacter}
-            onViewCharacter={handleViewCharacter}
-            onLevelUpAll={handleLevelUpAll}
-            chatOpen={chatOpen}
-            onChatOpenChange={setChatOpen}
-            onAssignCharacter={handleAssignCharacter}
-            myPermissions={myPermissions}
-            onOpenCampaignSpecies={() => setCampaignSpeciesOpen(true)}
-            isOwner={!!(campaign && typeof campaign === 'object' && 'gmUserId' in campaign && (campaign as any).gmUserId === user?.id)}
-            gmUserId={(campaign && typeof campaign === 'object' && 'gmUserId' in campaign ? (campaign as any).gmUserId as string : undefined)}
-          />
-          
-          {/* Scenes Button (GM Only) - Icon only, directly under Settings */}
-          {role === 'gm' && (
+          {notesPanelOpen ? (
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
                     variant="ghost"
                     size="icon"
-                    onClick={() => setScenesManagementOpen(true)}
-                    className="text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto relative z-[60]"
-                    data-testid="button-scenes"
+                    onClick={() => setNotesPanelOpen(false)}
+                    className="text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto"
+                    data-testid="button-close-notes-toolbar"
                   >
-                    <Layers className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
+                    <X className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent side="left" className="bg-stone-800 border-stone-700 text-stone-200">
-                  <p>Scenes</p>
+                  <p>Close Notes</p>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
+          ) : (
+            <>
+              <CampaignMenu 
+                campaignId={effectiveCampaignId || undefined}
+                role={role} 
+                inviteCode={(campaign && typeof campaign === 'object' && 'inviteCode' in campaign ? campaign.inviteCode as string : "") || ""}
+                inspectedChar={inspectedChar}
+                onInspectChar={setInspectedChar}
+                onAddCharacterToken={handleAddCharacterToken}
+                onChangeMap={handleChangeMap}
+                characters={characters as any[]}
+                members={members as any[]}
+                onAddCharacter={handleAddCharacter}
+                onViewCharacter={handleViewCharacter}
+                onLevelUpAll={handleLevelUpAll}
+                chatOpen={chatOpen}
+                onChatOpenChange={setChatOpen}
+                onAssignCharacter={handleAssignCharacter}
+                myPermissions={myPermissions}
+                onOpenCampaignSpecies={() => setCampaignSpeciesOpen(true)}
+                isOwner={!!(campaign && typeof campaign === 'object' && 'gmUserId' in campaign && (campaign as any).gmUserId === user?.id)}
+                gmUserId={(campaign && typeof campaign === 'object' && 'gmUserId' in campaign ? (campaign as any).gmUserId as string : undefined)}
+              />
+              
+              {/* Scenes Button (GM Only) - Icon only, directly under Settings */}
+              {role === 'gm' && (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => setScenesManagementOpen(true)}
+                        className="text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto relative z-[60]"
+                        data-testid="button-scenes"
+                      >
+                        <Layers className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="left" className="bg-stone-800 border-stone-700 text-stone-200">
+                      <p>Scenes</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              )}
+              
+              {/* Initiative Button - Under scenes/settings */}
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => setInitiativeTrackerOpen(true)}
+                      className="text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto"
+                      data-testid="button-initiative"
+                    >
+                      <Swords className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="left" className="bg-stone-800 border-stone-700 text-stone-200">
+                    <p>Initiative</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+              
+              {/* Notes Button */}
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => setNotesPanelOpen(!notesPanelOpen)}
+                      className={`text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto ${notesPanelOpen ? 'bg-amber-900/50 text-amber-400' : ''}`}
+                      data-testid="button-notes"
+                    >
+                      <FileText className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="left" className="bg-stone-800 border-stone-700 text-stone-200">
+                    <p>Notes</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </>
           )}
-          
-          {/* Initiative Button - Under scenes/settings */}
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => setInitiativeTrackerOpen(true)}
-                  className="text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto"
-                  data-testid="button-initiative"
-                >
-                  <Swords className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="left" className="bg-stone-800 border-stone-700 text-stone-200">
-                <p>Initiative</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-          
-          {/* Notes Button */}
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => setNotesPanelOpen(!notesPanelOpen)}
-                  className={`text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto ${notesPanelOpen ? 'bg-amber-900/50 text-amber-400' : ''}`}
-                  data-testid="button-notes"
-                >
-                  <FileText className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="left" className="bg-stone-800 border-stone-700 text-stone-200">
-                <p>Notes</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
         </div>
       </div>
 
@@ -3419,164 +3444,201 @@ export default function Campaign() {
                     <FileText className="h-5 w-5 text-amber-500" />
                     <h2 className="text-lg font-bold text-amber-500">Campaign Notes</h2>
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => setNotesPanelOpen(false)}
-                    className="text-stone-400 hover:text-white hover:bg-stone-700"
-                    data-testid="button-close-notes"
-                  >
-                    <X className="h-5 w-5" />
-                  </Button>
+                  <div className="flex items-center gap-1">
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => setNotesViewMode(notesViewMode === "list" ? "graph" : "list")}
+                            className={`text-stone-400 hover:text-white hover:bg-stone-700 ${notesViewMode === "graph" ? 'bg-amber-900/50 text-amber-400' : ''}`}
+                            data-testid="button-toggle-notes-view"
+                          >
+                            {notesViewMode === "list" ? <Network className="h-4 w-4" /> : <List className="h-4 w-4" />}
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom" className="bg-stone-800 border-stone-700 text-stone-200">
+                          <p>{notesViewMode === "list" ? "Graph View" : "List View"}</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => setNotesPanelOpen(false)}
+                      className="text-stone-400 hover:text-white hover:bg-stone-700"
+                      data-testid="button-close-notes"
+                    >
+                      <X className="h-5 w-5" />
+                    </Button>
+                  </div>
                 </div>
                 
                 {/* Notes Content Area */}
                 <div className="flex-1 flex overflow-hidden">
-                  {/* Notes Sidebar */}
-                  <div className="w-1/3 min-w-[120px] border-r border-stone-700 flex flex-col bg-stone-950/50">
-                    {/* New Note Button */}
-                    <div className="p-2 border-b border-stone-700">
-                      <Button
-                        size="sm"
-                        onClick={() => {
-                          createNoteMutation.mutate({
-                            title: "New Note",
-                            content: "",
-                            campaignId: effectiveCampaignId || undefined,
-                            type: "text",
-                            isPinned: false,
-                            isArchived: false,
-                            sortOrder: 0,
-                          });
-                        }}
-                        className="w-full bg-amber-700 hover:bg-amber-600 text-white text-xs"
-                        disabled={createNoteMutation.isPending}
-                        data-testid="button-create-note"
-                      >
-                        {createNoteMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <FileText className="h-3 w-3 mr-1" />}
-                        New Note
-                      </Button>
-                    </div>
-                    
-                    {/* Notes List */}
-                    <ScrollArea className="flex-1">
-                      {notesLoading ? (
-                        <div className="flex items-center justify-center py-8">
-                          <Loader2 className="h-5 w-5 animate-spin text-amber-500" />
-                        </div>
-                      ) : campaignNotes.length === 0 ? (
-                        <div className="p-3 text-center text-stone-500 text-xs">
-                          No notes yet. Create one to get started!
-                        </div>
-                      ) : (
-                        <div className="p-1">
-                          {campaignNotes.map((note) => (
-                            <button
-                              key={note.id}
-                              onClick={() => {
-                                setSelectedCampaignNote(note);
-                                setNoteTitle(note.title);
-                                setNoteContent(note.content || "");
-                              }}
-                              className={`w-full text-left p-2 rounded mb-1 transition-colors ${
-                                selectedCampaignNote?.id === note.id
-                                  ? 'bg-amber-900/40 text-amber-200 border border-amber-700'
-                                  : 'hover:bg-stone-800 text-stone-300 border border-transparent'
-                              }`}
-                              data-testid={`note-item-${note.id}`}
-                            >
-                              <div className="text-sm font-medium truncate">{note.title}</div>
-                              <div className="text-xs text-stone-500 truncate">
-                                {note.content?.slice(0, 30) || "Empty note"}
-                              </div>
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </ScrollArea>
-                  </div>
-                  
-                  {/* Note Editor */}
-                  <div className="flex-1 flex flex-col overflow-hidden">
-                    {selectedCampaignNote ? (
-                      <>
-                        {/* Note Title */}
-                        <div className="p-3 border-b border-stone-700">
-                          <Input
-                            value={noteTitle}
-                            onChange={(e) => setNoteTitle(e.target.value)}
-                            className="bg-stone-800 border-stone-600 text-stone-100 font-medium"
-                            placeholder="Note title..."
-                            data-testid="input-note-title"
-                          />
+                  {notesViewMode === "graph" ? (
+                    <NotesGraph
+                      notes={campaignNotes}
+                      onNoteClick={(noteId) => {
+                        const note = campaignNotes.find(n => n.id === noteId);
+                        if (note) {
+                          setSelectedCampaignNote(note);
+                          setNoteTitle(note.title);
+                          setNoteContent(note.content || "");
+                          setNotesViewMode("list");
+                        }
+                      }}
+                    />
+                  ) : (
+                    <>
+                      {/* Notes Sidebar */}
+                      <div className="w-1/3 min-w-[120px] border-r border-stone-700 flex flex-col bg-stone-950/50">
+                        {/* New Note Button */}
+                        <div className="p-2 border-b border-stone-700">
+                          <Button
+                            size="sm"
+                            onClick={() => {
+                              createNoteMutation.mutate({
+                                title: "New Note",
+                                content: "",
+                                campaignId: effectiveCampaignId || undefined,
+                                type: "text",
+                                isPinned: false,
+                                isArchived: false,
+                                sortOrder: 0,
+                              });
+                            }}
+                            className="w-full bg-amber-700 hover:bg-amber-600 text-white text-xs"
+                            disabled={createNoteMutation.isPending}
+                            data-testid="button-create-note"
+                          >
+                            {createNoteMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <FileText className="h-3 w-3 mr-1" />}
+                            New Note
+                          </Button>
                         </div>
                         
-                        {/* Note Content */}
-                        <div className="flex-1 p-3 overflow-hidden">
-                          <Textarea
-                            value={noteContent}
-                            onChange={(e) => setNoteContent(e.target.value)}
-                            className="h-full w-full bg-stone-800 border-stone-600 text-stone-200 resize-none"
-                            placeholder="Write your notes here..."
-                            data-testid="textarea-note-content"
-                          />
-                        </div>
-                        
-                        {/* Note Actions */}
-                        <div className="p-2 border-t border-stone-700 flex items-center justify-between">
-                          <span className="text-xs text-stone-500">
-                            {updateNoteMutation.isPending ? (
-                              <span className="flex items-center gap-1">
-                                <Loader2 className="h-3 w-3 animate-spin" /> Saving...
-                              </span>
-                            ) : (
-                              'Auto-saved'
-                            )}
-                          </span>
-                          <AlertDialog>
-                            <AlertDialogTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="text-red-400 hover:text-red-300 hover:bg-red-900/20"
-                                data-testid="button-delete-note"
-                              >
-                                <Trash2 className="h-3 w-3 mr-1" /> Delete
-                              </Button>
-                            </AlertDialogTrigger>
-                            <AlertDialogContent className="bg-stone-900 border-stone-700">
-                              <AlertDialogHeader>
-                                <AlertDialogTitle className="text-red-400">Delete Note</AlertDialogTitle>
-                                <AlertDialogDescription className="text-stone-400">
-                                  Are you sure you want to delete "{selectedCampaignNote.title}"? This action cannot be undone.
-                                </AlertDialogDescription>
-                              </AlertDialogHeader>
-                              <AlertDialogFooter>
-                                <AlertDialogCancel className="bg-stone-800 border-stone-700 text-stone-200 hover:bg-stone-700">
-                                  Cancel
-                                </AlertDialogCancel>
-                                <AlertDialogAction
-                                  onClick={() => deleteNoteMutation.mutate(selectedCampaignNote.id)}
-                                  className="bg-red-900 hover:bg-red-800 text-white"
-                                  disabled={deleteNoteMutation.isPending}
+                        {/* Notes List */}
+                        <ScrollArea className="flex-1">
+                          {notesLoading ? (
+                            <div className="flex items-center justify-center py-8">
+                              <Loader2 className="h-5 w-5 animate-spin text-amber-500" />
+                            </div>
+                          ) : campaignNotes.length === 0 ? (
+                            <div className="p-3 text-center text-stone-500 text-xs">
+                              No notes yet. Create one to get started!
+                            </div>
+                          ) : (
+                            <div className="p-1">
+                              {campaignNotes.map((note) => (
+                                <button
+                                  key={note.id}
+                                  onClick={() => {
+                                    setSelectedCampaignNote(note);
+                                    setNoteTitle(note.title);
+                                    setNoteContent(note.content || "");
+                                  }}
+                                  className={`w-full text-left p-2 rounded mb-1 transition-colors ${
+                                    selectedCampaignNote?.id === note.id
+                                      ? 'bg-amber-900/40 text-amber-200 border border-amber-700'
+                                      : 'hover:bg-stone-800 text-stone-300 border border-transparent'
+                                  }`}
+                                  data-testid={`note-item-${note.id}`}
                                 >
-                                  {deleteNoteMutation.isPending ? "Deleting..." : "Delete"}
-                                </AlertDialogAction>
-                              </AlertDialogFooter>
-                            </AlertDialogContent>
-                          </AlertDialog>
-                        </div>
-                      </>
-                    ) : (
-                      <div className="flex-1 flex items-center justify-center text-stone-500">
-                        <div className="text-center">
-                          <FileText className="h-12 w-12 mx-auto mb-2 opacity-50" />
-                          <p className="text-sm">Select a note to view</p>
-                          <p className="text-xs mt-1">or create a new one</p>
-                        </div>
+                                  <div className="text-sm font-medium truncate">{note.title}</div>
+                                  <div className="text-xs text-stone-500 truncate">
+                                    {note.content?.slice(0, 30) || "Empty note"}
+                                  </div>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </ScrollArea>
                       </div>
-                    )}
-                  </div>
+                      
+                      {/* Note Editor */}
+                      <div className="flex-1 flex flex-col overflow-hidden">
+                        {selectedCampaignNote ? (
+                          <>
+                            {/* Note Title */}
+                            <div className="p-3 border-b border-stone-700">
+                              <Input
+                                value={noteTitle}
+                                onChange={(e) => setNoteTitle(e.target.value)}
+                                className="bg-stone-800 border-stone-600 text-stone-100 font-medium"
+                                placeholder="Note title..."
+                                data-testid="input-note-title"
+                              />
+                            </div>
+                            
+                            {/* Note Content */}
+                            <div className="flex-1 p-3 overflow-hidden">
+                              <Textarea
+                                value={noteContent}
+                                onChange={(e) => setNoteContent(e.target.value)}
+                                className="h-full w-full bg-stone-800 border-stone-600 text-stone-200 resize-none"
+                                placeholder="Write your notes here..."
+                                data-testid="textarea-note-content"
+                              />
+                            </div>
+                            
+                            {/* Note Actions */}
+                            <div className="p-2 border-t border-stone-700 flex items-center justify-between">
+                              <span className="text-xs text-stone-500">
+                                {updateNoteMutation.isPending ? (
+                                  <span className="flex items-center gap-1">
+                                    <Loader2 className="h-3 w-3 animate-spin" /> Saving...
+                                  </span>
+                                ) : (
+                                  'Auto-saved'
+                                )}
+                              </span>
+                              <AlertDialog>
+                                <AlertDialogTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="text-red-400 hover:text-red-300 hover:bg-red-900/20"
+                                    data-testid="button-delete-note"
+                                  >
+                                    <Trash2 className="h-3 w-3 mr-1" /> Delete
+                                  </Button>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent className="bg-stone-900 border-stone-700">
+                                  <AlertDialogHeader>
+                                    <AlertDialogTitle className="text-red-400">Delete Note</AlertDialogTitle>
+                                    <AlertDialogDescription className="text-stone-400">
+                                      Are you sure you want to delete "{selectedCampaignNote.title}"? This action cannot be undone.
+                                    </AlertDialogDescription>
+                                  </AlertDialogHeader>
+                                  <AlertDialogFooter>
+                                    <AlertDialogCancel className="bg-stone-800 border-stone-700 text-stone-200 hover:bg-stone-700">
+                                      Cancel
+                                    </AlertDialogCancel>
+                                    <AlertDialogAction
+                                      onClick={() => deleteNoteMutation.mutate(selectedCampaignNote.id)}
+                                      className="bg-red-900 hover:bg-red-800 text-white"
+                                      disabled={deleteNoteMutation.isPending}
+                                    >
+                                      {deleteNoteMutation.isPending ? "Deleting..." : "Delete"}
+                                    </AlertDialogAction>
+                                  </AlertDialogFooter>
+                                </AlertDialogContent>
+                              </AlertDialog>
+                            </div>
+                          </>
+                        ) : (
+                          <div className="flex-1 flex items-center justify-center text-stone-500">
+                            <div className="text-center">
+                              <FileText className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                              <p className="text-sm">Select a note to view</p>
+                              <p className="text-xs mt-1">or create a new one</p>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
             </ResizablePanel>
