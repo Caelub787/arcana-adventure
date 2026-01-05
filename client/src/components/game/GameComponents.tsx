@@ -14523,7 +14523,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                           </div>
                           <div className="flex items-center gap-1">
                             <span className="font-bold">
-                              {totalMod >= 0 ? `+${totalMod}` : totalMod}
+                              {skillValue >= 0 ? `+${skillValue}` : skillValue}
                             </span>
                             {(isOwner || isGM) && (
                               <Button

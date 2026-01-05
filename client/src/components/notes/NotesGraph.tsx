@@ -98,13 +98,17 @@ function parseConnections(notes: Note[], entityMap: Map<string, GraphNode>): Gra
       }
     }
 
-    const noteReferencePattern = /\[\*([^\]]+)\]/g;
+    // Match both legacy [*note name] and new [note name] formats
+    const noteReferencePattern = /\[\*([^\]]+)\]|\[([^\[\]:|\]]+)\]/g;
     let noteMatch;
     while ((noteMatch = noteReferencePattern.exec(content)) !== null) {
-      const noteName = noteMatch[1];
-      const linkedNote = notes.find(n => n.title.toLowerCase() === noteName.toLowerCase());
-      if (linkedNote) {
-        addEdge(`note-${note.id}`, `note-${linkedNote.id}`);
+      // Match group 1 for legacy [*note], group 2 for new [note]
+      const noteName = noteMatch[1] || noteMatch[2];
+      if (noteName) {
+        const linkedNote = notes.find(n => n.title.toLowerCase() === noteName.toLowerCase());
+        if (linkedNote) {
+          addEdge(`note-${note.id}`, `note-${linkedNote.id}`);
+        }
       }
     }
 

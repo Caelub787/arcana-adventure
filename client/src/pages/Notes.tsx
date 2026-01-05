@@ -253,6 +253,7 @@ export default function Notes() {
   const [referencePickerOpen, setReferencePickerOpen] = useState(false);
   const [notePickerOpen, setNotePickerOpen] = useState(false);
   const [notePickerInitialSearch, setNotePickerInitialSearch] = useState("");
+  const [notePickerTriggeredByTyping, setNotePickerTriggeredByTyping] = useState(false);
   const [cursorPosition, setCursorPosition] = useState<number>(0);
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
 
@@ -632,9 +633,18 @@ export default function Notes() {
     if (pos >= 2) {
       const lastTwoChars = newContent.slice(pos - 2, pos);
       if (lastTwoChars === "[[") {
+        // Open combined picker for both entities and notes
         setReferencePickerOpen(true);
-      } else if (lastTwoChars === "[*") {
+      }
+    } 
+    // Check for single [ that's not part of [[
+    if (pos >= 1) {
+      const lastChar = newContent.slice(pos - 1, pos);
+      const prevChar = pos >= 2 ? newContent.slice(pos - 2, pos - 1) : "";
+      // Single [ opens note-only picker for quick note linking (but not if it's part of [[)
+      if (lastChar === "[" && prevChar !== "[") {
         setNotePickerInitialSearch("");
+        setNotePickerTriggeredByTyping(true);
         setNotePickerOpen(true);
       }
     }
@@ -706,13 +716,17 @@ export default function Notes() {
   };
 
   const handleNotePickerSelect = (selectedNote: Note) => {
-    const referenceText = `[*${selectedNote.title}]`;
-    const beforeCursor = noteContent.slice(0, cursorPosition - 2);
+    // Use simple [note name] format without asterisk
+    const referenceText = `[${selectedNote.title}]`;
+    // Only remove the [ if the picker was triggered by typing [
+    const charsToRemove = notePickerTriggeredByTyping ? 1 : 0;
+    const beforeCursor = noteContent.slice(0, cursorPosition - charsToRemove);
     const afterCursor = noteContent.slice(cursorPosition);
     const newContent = beforeCursor + referenceText + afterCursor;
     
     setNoteContent(newContent);
     setNotePickerOpen(false);
+    setNotePickerTriggeredByTyping(false);
 
     setTimeout(() => {
       if (textareaRef.current) {
@@ -724,13 +738,17 @@ export default function Notes() {
   };
 
   const handleNotePickerCreate = async (noteName: string) => {
-    const referenceText = `[*${noteName}]`;
-    const beforeCursor = noteContent.slice(0, cursorPosition - 2);
+    // Use simple [note name] format without asterisk
+    const referenceText = `[${noteName}]`;
+    // Only remove the [ if the picker was triggered by typing [
+    const charsToRemove = notePickerTriggeredByTyping ? 1 : 0;
+    const beforeCursor = noteContent.slice(0, cursorPosition - charsToRemove);
     const afterCursor = noteContent.slice(cursorPosition);
     const newContent = beforeCursor + referenceText + afterCursor;
     
     setNoteContent(newContent);
     setNotePickerOpen(false);
+    setNotePickerTriggeredByTyping(false);
 
     setTimeout(() => {
       if (textareaRef.current) {
@@ -813,7 +831,9 @@ export default function Notes() {
   };
 
   const formatEntityReferences = (content: string): React.ReactNode[] => {
-    const combinedRegex = /\[\[([^:]+):([^\|]+)\|([^\]]+)\]\]|\[\*([^\]]+)\]/g;
+    // Match entity refs [[type:id|name]], new note refs [note name], and legacy [*note name]
+    // Note refs use single brackets and don't contain : or | characters
+    const combinedRegex = /\[\[([^:]+):([^\|]+)\|([^\]]+)\]\]|\[\*([^\]]+)\]|\[([^\[\]:|\]]+)\]/g;
     const parts: React.ReactNode[] = [];
     let lastIndex = 0;
     let match;
@@ -824,6 +844,7 @@ export default function Notes() {
       }
       
       if (match[1] && match[2] && match[3]) {
+        // Entity reference: [[type:id|name]]
         const entityType = match[1];
         const entityId = match[2];
         const displayName = match[3];
@@ -838,6 +859,7 @@ export default function Notes() {
           </span>
         );
       } else if (match[4]) {
+        // Legacy note reference: [*note name]
         const noteName = match[4];
         parts.push(
           <span
@@ -846,7 +868,20 @@ export default function Notes() {
             onClick={() => handleNoteReferenceClick(noteName)}
             data-testid={`note-ref-${noteName}`}
           >
-            [*{noteName}]
+            [{noteName}]
+          </span>
+        );
+      } else if (match[5]) {
+        // New note reference: [note name] - simple single-bracket format
+        const noteName = match[5];
+        parts.push(
+          <span
+            key={match.index}
+            className="text-cyan-400 cursor-pointer hover:text-cyan-300 hover:underline transition-colors"
+            onClick={() => handleNoteReferenceClick(noteName)}
+            data-testid={`note-ref-${noteName}`}
+          >
+            [{noteName}]
           </span>
         );
       }
@@ -1254,7 +1289,7 @@ export default function Notes() {
               }
             />
             <span className="text-xs text-stone-500">
-              <kbd className="px-1.5 py-0.5 bg-stone-800 rounded text-stone-400">[[</kbd> entities, <kbd className="px-1.5 py-0.5 bg-stone-800 rounded text-cyan-400">[*</kbd> notes
+              <kbd className="px-1.5 py-0.5 bg-stone-800 rounded text-stone-400">[[</kbd> entities, <kbd className="px-1.5 py-0.5 bg-stone-800 rounded text-cyan-400">[</kbd> notes
             </span>
           </div>
           <div className="relative flex-1">
@@ -1262,13 +1297,17 @@ export default function Notes() {
               ref={textareaRef}
               value={noteContent}
               onChange={handleContentChange}
-              placeholder="Start writing... Type [[ to link entities, [* to link notes"
+              placeholder="Start writing... Type [[ to link entities, [ to link notes"
               className="flex-1 resize-none border-stone-800 bg-stone-900/30 min-h-[300px] w-full h-full"
               data-testid="textarea-note-content"
             />
             <NoteOnlyPicker
               open={notePickerOpen}
-              onOpenChange={setNotePickerOpen}
+              onOpenChange={(open) => {
+                setNotePickerOpen(open);
+                // Reset typing trigger flag when picker closes
+                if (!open) setNotePickerTriggeredByTyping(false);
+              }}
               notes={notes}
               onSelectNote={handleNotePickerSelect}
               onCreateNote={handleNotePickerCreate}
