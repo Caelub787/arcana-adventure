@@ -3350,9 +3350,9 @@ export default function Campaign() {
                 campaignId={effectiveCampaignId}
                 onClose={() => setNotesPanelOpen(false)}
                 isOpen={notesPanelOpen}
-                campaignPlayers={(characters as any[] || [])
-                  .filter((c: any) => c.userId !== user?.id)
-                  .map((c: any) => ({ id: c.id, name: c.name, userId: c.userId }))}
+                campaignMembers={(members as any[] || [])
+                  .filter((m: any) => m.userId !== user?.id)
+                  .map((m: any) => ({ id: m.id, userId: m.userId, username: m.username }))}
               />
             </ResizablePanel>
           </ResizablePanelGroup>

@@ -78,7 +78,7 @@ interface CampaignNotesPanelProps {
   campaignId: string;
   onClose: () => void;
   isOpen: boolean;
-  campaignPlayers?: Array<{ id: string; name: string; userId: string }>;
+  campaignMembers?: Array<{ id: string; userId: string; username: string }>;
 }
 
 const FOLDER_COLORS = [
@@ -205,7 +205,7 @@ export function CampaignNotesPanel({
   campaignId,
   onClose,
   isOpen,
-  campaignPlayers = [],
+  campaignMembers = [],
 }: CampaignNotesPanelProps) {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -549,11 +549,11 @@ export function CampaignNotesPanel({
     });
   };
 
-  const handleShareWithPlayer = (player: { id: string; name: string; userId: string }) => {
+  const handleShareWithMember = (member: { id: string; userId: string; username: string }) => {
     if (!shareNoteId) return;
     shareNoteMutation.mutate({
       noteId: shareNoteId,
-      friendId: player.userId,
+      friendId: member.userId,
       permission: sharePermission,
     });
   };
@@ -1438,7 +1438,7 @@ export function CampaignNotesPanel({
           <Tabs value={shareTab} onValueChange={(v) => setShareTab(v as "friends" | "players")}>
             <TabsList className="w-full bg-stone-900">
               <TabsTrigger value="friends" className="flex-1 text-xs">Friends</TabsTrigger>
-              <TabsTrigger value="players" className="flex-1 text-xs">Campaign Players</TabsTrigger>
+              <TabsTrigger value="players" className="flex-1 text-xs">Campaign Members</TabsTrigger>
             </TabsList>
             <TabsContent value="friends" className="space-y-3 py-2">
               <div className="space-y-1">
@@ -1488,7 +1488,7 @@ export function CampaignNotesPanel({
             </TabsContent>
             <TabsContent value="players" className="space-y-3 py-2">
               <div className="space-y-1">
-                <Label className="text-xs">Share with Campaign Players</Label>
+                <Label className="text-xs">Share with Campaign Members</Label>
                 <Select
                   value={sharePermission}
                   onValueChange={(v) => setSharePermission(v as "view" | "edit")}
@@ -1509,28 +1509,37 @@ export function CampaignNotesPanel({
                     </SelectItem>
                   </SelectContent>
                 </Select>
-                {campaignPlayers.length === 0 ? (
-                  <p className="text-xs text-stone-500">No other players in this campaign</p>
-                ) : (
-                  <div className="space-y-1">
-                    {campaignPlayers.map((player) => (
-                      <div
-                        key={player.id}
-                        className="flex items-center justify-between py-1.5 px-2 bg-stone-900/50 rounded text-xs"
-                      >
-                        <span className="text-stone-300">{player.name}</span>
-                        <Button
-                          size="sm"
-                          className="h-6 text-xs bg-amber-700 hover:bg-amber-600"
-                          onClick={() => handleShareWithPlayer(player)}
-                          disabled={shareNoteMutation.isPending}
+                {(() => {
+                  const sharedUserIds = new Set(noteShares.map(s => s.sharedWithId));
+                  const unsharedMembers = campaignMembers.filter(m => !sharedUserIds.has(m.userId));
+                  if (unsharedMembers.length === 0) {
+                    return <p className="text-xs text-stone-500">
+                      {campaignMembers.length === 0 
+                        ? "No other members in this campaign" 
+                        : "Already shared with all campaign members"}
+                    </p>;
+                  }
+                  return (
+                    <div className="space-y-1">
+                      {unsharedMembers.map((member) => (
+                        <div
+                          key={member.id}
+                          className="flex items-center justify-between py-1.5 px-2 bg-stone-900/50 rounded text-xs"
                         >
-                          <Share2 className="h-3 w-3 mr-1" /> Share
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                          <span className="text-stone-300">{member.username}</span>
+                          <Button
+                            size="sm"
+                            className="h-6 text-xs bg-amber-700 hover:bg-amber-600"
+                            onClick={() => handleShareWithMember(member)}
+                            disabled={shareNoteMutation.isPending}
+                          >
+                            <Share2 className="h-3 w-3 mr-1" /> Share
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
               </div>
             </TabsContent>
           </Tabs>
@@ -1543,14 +1552,14 @@ export function CampaignNotesPanel({
               <div className="space-y-1">
                 {noteShares.map((share) => {
                   const friendProfile = friends.find((f) => f.id === share.sharedWithId);
-                  const playerProfile = campaignPlayers.find((p) => p.userId === share.sharedWithId);
+                  const memberProfile = campaignMembers.find((m) => m.userId === share.sharedWithId);
                   return (
                     <div
                       key={share.id}
                       className="flex items-center justify-between py-1.5 px-2 bg-stone-900/50 rounded text-xs"
                     >
                       <span className="text-stone-300">
-                        {friendProfile?.username || playerProfile?.name || share.sharedWithId}
+                        {friendProfile?.username || memberProfile?.username || share.sharedWithId}
                       </span>
                       <div className="flex items-center gap-1">
                         <Badge
