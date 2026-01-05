@@ -322,7 +322,7 @@ export function NoteOnlyPicker({
   useEffect(() => {
     if (open) {
       setSearchQuery(initialSearch);
-      setTimeout(() => inputRef.current?.focus(), 0);
+      // Don't auto-focus the input - let user continue typing in textarea
     }
   }, [open, initialSearch]);
 
@@ -351,12 +351,13 @@ export function NoteOnlyPicker({
   };
 
   return (
-    <Popover open={open} onOpenChange={onOpenChange}>
+    <Popover open={open} onOpenChange={onOpenChange} modal={false}>
       <PopoverContent
         className="w-72 p-0 bg-stone-950 border-stone-800"
         align="start"
         side="bottom"
         sideOffset={5}
+        onOpenAutoFocus={(e) => e.preventDefault()}
       >
         <div className="p-3 border-b border-stone-800">
           <div className="relative">
