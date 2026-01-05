@@ -2381,9 +2381,8 @@ export default function Campaign() {
       {/* Roll Notification Container */}
       <RollNotificationContainer />
       
-      {/* Top Bar: Nav & Settings - Hidden when notes panel is open */}
-      {!notesPanelOpen && (
-      <div className="absolute top-0 left-0 right-0 z-50 p-4 flex justify-between items-start pointer-events-none">
+      {/* Top Bar: Nav & Settings - Lower z-index when notes panel is open so it doesn't overlap */}
+      <div className={`absolute top-0 left-0 right-0 p-4 flex justify-between items-start pointer-events-none ${notesPanelOpen ? 'z-30' : 'z-50'}`}>
         {/* Left Side: Back button and Chat */}
         <div className="pointer-events-auto flex flex-col gap-2">
           <Button 
@@ -2529,7 +2528,6 @@ export default function Campaign() {
           </TooltipProvider>
         </div>
       </div>
-      )}
 
       {/* Show message when player has no character assigned */}
       {!character && role === 'player' && (
