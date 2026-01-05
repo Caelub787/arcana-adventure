@@ -255,8 +255,8 @@ export interface OtherPlayerAoe {
 // Helper to get grid span based on species size
 function getTokenGridSpan(size: string | undefined): number {
   switch (size) {
-    case 'Huge': return 4;
-    case 'Gargantuan': return 6;
+    case 'Huge': return 2;
+    case 'Gargantuan': return 3;
     default: return 1; // Tiny, Small, Medium, Large all use 1x1
   }
 }
