@@ -190,15 +190,15 @@ function RollCard({ notification, onComplete }: { notification: RollNotification
             </motion.div>
           </div>
           
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 text-white/80 text-sm">
-              <span className="font-medium truncate">{displayName}</span>
+          <div className="flex-1 min-w-0 overflow-hidden">
+            <div className="flex items-center gap-1 text-white/80 text-sm flex-wrap">
+              <span className="font-medium truncate max-w-[8rem]">{displayName}</span>
               <span className="text-white/50">•</span>
-              <span className="text-white/70">{notification.label}</span>
+              <span className="text-white/70 truncate">{notification.label}</span>
             </div>
             
             {notification.calculationBreakdown && (
-              <div className="text-white/60 text-xs mt-0.5">
+              <div className="text-white/60 text-xs mt-0.5 truncate">
                 {notification.calculationBreakdown}
               </div>
             )}
@@ -209,7 +209,7 @@ function RollCard({ notification, onComplete }: { notification: RollNotification
                   initial={{ scale: 0 }}
                   animate={{ scale: 1 }}
                   transition={{ type: 'spring', damping: 8, delay: 0.2 }}
-                  className={`text-3xl font-bold text-white drop-shadow-lg
+                  className={`text-2xl font-bold text-white drop-shadow-lg
                     ${isNat20 ? 'text-yellow-200' : ''}
                     ${isNat1 ? 'text-red-200' : ''}
                   `}
@@ -332,8 +332,7 @@ export function RollNotificationContainer() {
   return (
     <div
       ref={containerRef}
-      className="fixed top-4 left-1/2 -translate-x-1/2 z-[100] flex flex-col gap-2 pointer-events-none"
-      style={{ maxWidth: '90vw', width: '400px' }}
+      className="fixed top-4 left-1/2 -translate-x-1/2 z-[100] flex flex-col gap-2 pointer-events-none w-[calc(100vw-2rem)] max-w-sm"
     >
       <AnimatePresence mode="popLayout">
         {notifications.map(notification => (

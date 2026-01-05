@@ -7128,11 +7128,10 @@ export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onIn
       return;
     }
     
-    // Regular chat message
+    // Regular chat message - only send via WebSocket, listener will add to messages
     if (campaignId) {
       gameWs.sendChatMessage(user?.id || '', user?.username || 'Player', chatInput, 'chat');
     }
-    setMessages([...messages, { sender: user?.username || "You", userId: user?.id || null, text: chatInput, type: "chat" }]);
     setChatInput("");
   };
 
