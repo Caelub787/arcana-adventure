@@ -7225,32 +7225,31 @@ export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onIn
                   >
                     {msg.type === 'roll' ? (
                       <div className={`
-                        relative rounded-xl shadow-lg
+                        relative rounded-lg shadow-lg
                         bg-gradient-to-r ${isCritSuccess ? 'from-yellow-500 to-amber-600' : isCritFail ? 'from-red-800 to-red-900' : 'from-cyan-600 to-blue-700'}
                         border ${isCritSuccess ? 'border-yellow-400/50' : isCritFail ? 'border-red-600/50' : 'border-white/20'}
                         ${isCritSuccess ? 'ring-2 ring-yellow-400/50' : ''}
                         ${isCritFail ? 'ring-2 ring-red-500/50' : ''}
                       `}>
-                        <div className="absolute inset-0 bg-black/20 rounded-xl" />
-                        <div className="relative px-3 py-2">
-                          <div className="flex items-center justify-between gap-2">
-                            <div className="flex items-center gap-2 min-w-0">
-                              <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center flex-shrink-0">
-                                <Dice5 className="w-4 h-4 text-white" />
-                              </div>
-                              <div className="min-w-0">
-                                <div className="flex items-center gap-1 text-white/80 text-xs">
-                                  <span className="font-medium truncate max-w-[6rem]">{getDisplayName(msg.userId, msg.sender)}</span>
-                                  <span className="text-white/50">•</span>
-                                  <span className="text-white/70 truncate">{parseRollLabel(msg.text)}</span>
-                                </div>
-                              </div>
-                            </div>
-                            <span className={`text-xl font-bold text-white drop-shadow-lg flex-shrink-0 ${isCritSuccess ? 'text-yellow-100' : ''} ${isCritFail ? 'text-red-200' : ''}`}>
+                        <div className="absolute inset-0 bg-black/20 rounded-lg" />
+                        <div className="relative px-2 py-2">
+                          {/* Header row with name and roll type */}
+                          <div className="flex items-center gap-1.5 text-white/80 text-xs">
+                            <Dice5 className="w-4 h-4 text-white flex-shrink-0" />
+                            <span className="font-medium truncate">{getDisplayName(msg.userId, msg.sender)}</span>
+                            <span className="text-white/50">•</span>
+                            <span className="text-white/70 truncate">{parseRollLabel(msg.text)}</span>
+                          </div>
+                          {/* Total - prominent display */}
+                          <div className="flex items-baseline gap-2 mt-1">
+                            <span className={`text-2xl font-bold text-white drop-shadow-lg ${isCritSuccess ? 'text-yellow-100' : ''} ${isCritFail ? 'text-red-200' : ''}`}>
                               {parseRollTotal(msg.text) || '?'}
                             </span>
+                            {isCritSuccess && <span className="text-yellow-200 text-xs font-bold">CRIT!</span>}
+                            {isCritFail && <span className="text-red-200 text-xs font-bold">FAIL!</span>}
                           </div>
-                          <div className="text-white/60 text-xs mt-1 break-words">
+                          {/* Breakdown */}
+                          <div className="text-white/60 text-xs mt-0.5 break-words">
                             {parseRollBreakdown(msg.text)}
                           </div>
                         </div>
