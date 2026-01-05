@@ -705,12 +705,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
             return;
           }
           
-          // Check authorization
+          // Check authorization - GM, owner, or users with edit permission can roll
           const campaign = await storage.getCampaign(scene.campaignId);
-          const isGM = campaign?.gmUserId === authenticatedUserId;
+          const isGM = campaign?.gmUserId === authenticatedUserId || await storage.isGM(authenticatedUserId, scene.campaignId);
           const isOwner = character.userId === authenticatedUserId;
+          const editPermission = await storage.getCharacterPermission(characterId, authenticatedUserId);
+          const hasEditAccess = editPermission?.accessLevel === 'edit';
           
-          if (!isGM && !isOwner) {
+          if (!isGM && !isOwner && !hasEditAccess) {
             ws.send(JSON.stringify({
               type: "error",
               message: "Not authorized to roll initiative for this character"
@@ -5222,11 +5224,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       const campaign = await storage.getCampaign(scene.campaignId);
-      const isGM = campaign?.gmUserId === req.session.userId;
+      const isGM = campaign?.gmUserId === req.session.userId || await storage.isGM(req.session.userId!, scene.campaignId);
       const isOwner = character.userId === req.session.userId;
+      const editPermission = await storage.getCharacterPermission(characterId, req.session.userId!);
+      const hasEditAccess = editPermission?.accessLevel === 'edit';
       
-      // Only GM or character owner can roll initiative
-      if (!isGM && !isOwner) {
+      // GM, character owner, or users with edit permission can roll initiative
+      if (!isGM && !isOwner && !hasEditAccess) {
         return res.status(403).json({ error: "Not authorized to roll initiative for this character" });
       }
       
