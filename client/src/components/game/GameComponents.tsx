@@ -7225,33 +7225,33 @@ export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onIn
                   >
                     {msg.type === 'roll' ? (
                       <div className={`
-                        relative overflow-hidden rounded-xl shadow-lg
+                        relative rounded-xl shadow-lg
                         bg-gradient-to-r ${isCritSuccess ? 'from-yellow-500 to-amber-600' : isCritFail ? 'from-red-800 to-red-900' : 'from-cyan-600 to-blue-700'}
                         border ${isCritSuccess ? 'border-yellow-400/50' : isCritFail ? 'border-red-600/50' : 'border-white/20'}
                         ${isCritSuccess ? 'ring-2 ring-yellow-400/50' : ''}
                         ${isCritFail ? 'ring-2 ring-red-500/50' : ''}
                       `}>
-                        <div className="absolute inset-0 bg-black/20" />
-                        <div className="relative px-4 py-2 flex items-center gap-3">
-                          <div className="flex-shrink-0">
-                            <div className="w-10 h-10 rounded-lg bg-white/20 backdrop-blur-sm flex items-center justify-center">
-                              <Dice5 className="w-5 h-5 text-white" />
+                        <div className="absolute inset-0 bg-black/20 rounded-xl" />
+                        <div className="relative px-3 py-2">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center flex-shrink-0">
+                                <Dice5 className="w-4 h-4 text-white" />
+                              </div>
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-1 text-white/80 text-xs">
+                                  <span className="font-medium truncate max-w-[6rem]">{getDisplayName(msg.userId, msg.sender)}</span>
+                                  <span className="text-white/50">•</span>
+                                  <span className="text-white/70 truncate">{parseRollLabel(msg.text)}</span>
+                                </div>
+                              </div>
                             </div>
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 text-white/80 text-xs">
-                              <span className="font-medium truncate">{getDisplayName(msg.userId, msg.sender)}</span>
-                              <span className="text-white/50">•</span>
-                              <span className="text-white/70">{parseRollLabel(msg.text)}</span>
-                            </div>
-                            <div className="text-white/60 text-xs mt-0.5 truncate">
-                              {parseRollBreakdown(msg.text)}
-                            </div>
-                          </div>
-                          <div className="flex-shrink-0">
-                            <span className={`text-2xl font-bold text-white drop-shadow-lg ${isCritSuccess ? 'text-yellow-100' : ''} ${isCritFail ? 'text-red-200' : ''}`}>
+                            <span className={`text-xl font-bold text-white drop-shadow-lg flex-shrink-0 ${isCritSuccess ? 'text-yellow-100' : ''} ${isCritFail ? 'text-red-200' : ''}`}>
                               {parseRollTotal(msg.text) || '?'}
                             </span>
+                          </div>
+                          <div className="text-white/60 text-xs mt-1 break-words">
+                            {parseRollBreakdown(msg.text)}
                           </div>
                         </div>
                       </div>
