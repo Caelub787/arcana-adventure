@@ -49,7 +49,9 @@ Preferred communication style: Simple, everyday language.
     - **Feat Points System**: Characters earn feat points based on level for unlocking feats.
     - **Notes System**: Obsidian-like note-taking with folders, markdown support, and auto-save.
         - **Note Types**: Regular text notes and canvas pages for visual mind-mapping.
-        - **Entity References**: Type `[[` to search and link game entities (spells, items, traits, skills, species, characters). Opening the reference picker with blank search shows all available entities. References are clickable in read mode, displaying entity details in a popup dialog.
+        - **Entity References**: Type `[[` to search and link game entities (spells, items, traits, skills, species, characters). Opening the reference picker with blank search shows all available entities. References are clickable in read mode, displaying entity details in a popup dialog. Syntax: `[[type:id|name]]`.
+        - **Note Linking**: Type `//` to search and link existing notes. Syntax: `//note name//`. Clicking a note link opens a preview dialog showing the note's content (statblock-style) with Edit/Close buttons.
+        - **New Note Creation**: Use `(/note name/)` syntax to create a new note. Displays as `[noteName+]` in italic. Clicking creates the note and navigates to it for editing.
         - **Permission-Based Characters**: Users can reference characters they own or all characters in campaigns where they are GM. Character references show portrait, race, level, HP, and energy.
         - **Canvas Editor**: Infinite pan/zoom canvas with draggable text, note link, and entity nodes connected by curved lines.
         - **Graph View**: Force-directed visualization showing all notes, entities, and characters. Characters appear as orange nodes with their portraits, 40% larger than other nodes for visibility.
