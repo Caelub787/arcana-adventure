@@ -6238,10 +6238,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!friendId) {
         return res.status(400).json({ error: "friendId is required" });
       }
+      
+      // Check if they are friends
       const areFriends = await storage.areFriends(req.session.userId!, friendId);
-      if (!areFriends) {
-        return res.status(400).json({ error: "Can only share with friends" });
+      
+      // Also check if note is in a campaign and target user is a campaign member
+      let isCampaignMember = false;
+      if (note.campaignId) {
+        const campaignMembers = await storage.getCampaignMembers(note.campaignId);
+        isCampaignMember = campaignMembers.some(m => m.userId === friendId);
       }
+      
+      if (!areFriends && !isCampaignMember) {
+        return res.status(400).json({ error: "Can only share with friends or campaign members" });
+      }
+      
       const share = await storage.createNoteShare({
         noteId: req.params.id,
         ownerId: req.session.userId!,
