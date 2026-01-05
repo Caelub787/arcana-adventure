@@ -11102,9 +11102,10 @@ function InventoryItemRow({ item, depth, expandedContainers, toggleContainer, se
         onOpenChange={setShowDeleteDialog}
         item={item}
         onDelete={(count) => {
-          if (onDeleteMultiple && stackedItems.length > 0) {
-            const itemsToDelete = stackedItems.slice(0, count).map((i: any) => i.id);
-            onDeleteMultiple(itemsToDelete);
+          // Use same logic as onUpdateQuantity for decreasing - properly handle quantity
+          if (onUpdateQuantity && stackedItems.length > 0) {
+            // Call onUpdateQuantity with negative change to properly reduce/delete items
+            onUpdateQuantity(item.id, -count);
           }
           setShowDeleteDialog(false);
         }}
