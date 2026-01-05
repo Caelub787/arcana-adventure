@@ -858,11 +858,11 @@ export default function Notes() {
         parts.push(
           <span
             key={match.index}
-            className="text-amber-500 cursor-pointer hover:text-amber-400 hover:underline transition-colors"
+            className="text-amber-500 cursor-pointer hover:text-amber-400 hover:underline transition-colors font-medium"
             onClick={() => handleEntityClick(entityType, entityId)}
             data-testid={`entity-ref-${entityType}-${entityId}`}
           >
-            [{displayName}]
+            {displayName}
           </span>
         );
       } else if (match[4]) {
@@ -871,11 +871,11 @@ export default function Notes() {
         parts.push(
           <span
             key={match.index}
-            className="text-cyan-400 cursor-pointer hover:text-cyan-300 hover:underline transition-colors"
+            className="text-cyan-400 cursor-pointer hover:text-cyan-300 hover:underline transition-colors font-medium"
             onClick={() => handleNoteReferenceClick(noteName, false)}
             data-testid={`note-ref-${noteName}`}
           >
-            [{noteName}]
+            {noteName}
           </span>
         );
       } else if (match[5]) {
@@ -884,11 +884,11 @@ export default function Notes() {
         parts.push(
           <span
             key={match.index}
-            className="text-cyan-400 cursor-pointer hover:text-cyan-300 hover:underline transition-colors italic"
+            className="text-cyan-400 cursor-pointer hover:text-cyan-300 hover:underline transition-colors italic font-medium"
             onClick={() => handleNoteReferenceClick(noteName, true)}
             data-testid={`note-create-ref-${noteName}`}
           >
-            [{noteName}+]
+            {noteName}+
           </span>
         );
       }
@@ -1846,6 +1846,61 @@ export default function Notes() {
                       <div>
                         <Label className="text-stone-400 text-xs uppercase tracking-wide">Uses Per Long Rest</Label>
                         <p className="text-stone-300 mt-1">{entityData.usesPerLongRest}</p>
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {selectedEntityType?.toLowerCase() === "item" && (
+                  <>
+                    <div className="grid grid-cols-2 gap-4">
+                      {entityData.type && (
+                        <div>
+                          <Label className="text-stone-400 text-xs uppercase tracking-wide">Type</Label>
+                          <p className="text-stone-300 mt-1 capitalize">{entityData.type}</p>
+                        </div>
+                      )}
+                      {entityData.rarity && (
+                        <div>
+                          <Label className="text-stone-400 text-xs uppercase tracking-wide">Rarity</Label>
+                          <p className="text-stone-300 mt-1 capitalize">{entityData.rarity}</p>
+                        </div>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      {entityData.weight !== undefined && (
+                        <div>
+                          <Label className="text-stone-400 text-xs uppercase tracking-wide">Weight</Label>
+                          <p className="text-stone-300 mt-1">{entityData.weight} lbs</p>
+                        </div>
+                      )}
+                      {entityData.value !== undefined && (
+                        <div>
+                          <Label className="text-stone-400 text-xs uppercase tracking-wide">Value</Label>
+                          <p className="text-stone-300 mt-1">{entityData.value} gold</p>
+                        </div>
+                      )}
+                    </div>
+                    {(entityData.damageDice || entityData.damageType) && (
+                      <div className="grid grid-cols-2 gap-4">
+                        {entityData.damageDice && (
+                          <div>
+                            <Label className="text-stone-400 text-xs uppercase tracking-wide">Damage</Label>
+                            <p className="text-stone-300 mt-1">{entityData.damageDice}</p>
+                          </div>
+                        )}
+                        {entityData.damageType && (
+                          <div>
+                            <Label className="text-stone-400 text-xs uppercase tracking-wide">Damage Type</Label>
+                            <p className="text-stone-300 mt-1 capitalize">{entityData.damageType}</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    {entityData.range !== undefined && (
+                      <div>
+                        <Label className="text-stone-400 text-xs uppercase tracking-wide">Range</Label>
+                        <p className="text-stone-300 mt-1">{entityData.range} ft</p>
                       </div>
                     )}
                   </>

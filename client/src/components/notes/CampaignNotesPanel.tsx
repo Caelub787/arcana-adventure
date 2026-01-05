@@ -788,11 +788,11 @@ export function CampaignNotesPanel({
         parts.push(
           <span
             key={match.index}
-            className="text-amber-500 cursor-pointer hover:text-amber-400 hover:underline transition-colors"
+            className="text-amber-500 cursor-pointer hover:text-amber-400 hover:underline transition-colors font-medium"
             onClick={() => handleEntityClick(entityType, entityId)}
             data-testid={`panel-entity-ref-${entityType}-${entityId}`}
           >
-            [{displayName}]
+            {displayName}
           </span>
         );
       } else if (match[4]) {
@@ -801,11 +801,11 @@ export function CampaignNotesPanel({
         parts.push(
           <span
             key={match.index}
-            className="text-cyan-400 cursor-pointer hover:text-cyan-300 hover:underline transition-colors"
+            className="text-cyan-400 cursor-pointer hover:text-cyan-300 hover:underline transition-colors font-medium"
             onClick={() => handleNoteReferenceClick(noteName, false)}
             data-testid={`panel-note-ref-${noteName}`}
           >
-            [{noteName}]
+            {noteName}
           </span>
         );
       } else if (match[5]) {
@@ -814,11 +814,11 @@ export function CampaignNotesPanel({
         parts.push(
           <span
             key={match.index}
-            className="text-cyan-400 cursor-pointer hover:text-cyan-300 hover:underline transition-colors italic"
+            className="text-cyan-400 cursor-pointer hover:text-cyan-300 hover:underline transition-colors italic font-medium"
             onClick={() => handleNoteReferenceClick(noteName, true)}
             data-testid={`panel-note-create-ref-${noteName}`}
           >
-            [{noteName}+]
+            {noteName}+
           </span>
         );
       }
