@@ -737,7 +737,11 @@ export function CampaignNotesPanel({
           data = speciesList.find((s: SystemSpecies) => s.id === entityId) || null;
           break;
         case "item":
-          data = { name: "Item", description: "Item details are character-specific and cannot be displayed here." };
+          try {
+            data = await api.getSystemItem(entityId);
+          } catch {
+            data = { name: "Item", description: "Item not found or access denied." };
+          }
           break;
         case "character":
           const character = await api.getCharacter(entityId);
@@ -1677,6 +1681,190 @@ export function CampaignNotesPanel({
                         </div>
                       )}
                     </div>
+                    {(entityData.hp !== undefined || entityData.energy !== undefined) && (
+                      <div className="grid grid-cols-2 gap-2">
+                        {entityData.hp !== undefined && (
+                          <div>
+                            <Label className="text-stone-400 text-xs uppercase tracking-wide">HP</Label>
+                            <p className="text-red-400 mt-0.5">
+                              {entityData.hp} / {entityData.maxHp !== undefined ? entityData.maxHp : '—'}
+                            </p>
+                          </div>
+                        )}
+                        {entityData.energy !== undefined && (
+                          <div>
+                            <Label className="text-stone-400 text-xs uppercase tracking-wide">Energy</Label>
+                            <p className="text-blue-400 mt-0.5">
+                              {entityData.energy} / {entityData.maxEnergy !== undefined ? entityData.maxEnergy : '—'}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {selectedEntityType?.toLowerCase() === "item" && (
+                  <>
+                    {entityData.image && (
+                      <div className="flex justify-center">
+                        <img 
+                          src={entityData.image} 
+                          alt={entityData.name}
+                          className="w-16 h-16 rounded object-cover border-2 border-stone-700"
+                        />
+                      </div>
+                    )}
+                    <div className="grid grid-cols-2 gap-2">
+                      {entityData.itemType && (
+                        <div>
+                          <Label className="text-stone-400 text-xs uppercase tracking-wide">Type</Label>
+                          <p className="text-stone-300 mt-0.5 capitalize">{entityData.itemType}</p>
+                        </div>
+                      )}
+                      {entityData.rarity && (
+                        <div>
+                          <Label className="text-stone-400 text-xs uppercase tracking-wide">Rarity</Label>
+                          <p className="text-stone-300 mt-0.5 capitalize">{entityData.rarity}</p>
+                        </div>
+                      )}
+                    </div>
+                    {entityData.damage && (
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <Label className="text-stone-400 text-xs uppercase tracking-wide">Damage</Label>
+                          <p className="text-amber-400 mt-0.5">{entityData.damage}</p>
+                        </div>
+                        {entityData.damageType && (
+                          <div>
+                            <Label className="text-stone-400 text-xs uppercase tracking-wide">Damage Type</Label>
+                            <p className="text-stone-300 mt-0.5 capitalize">{entityData.damageType}</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    {(entityData.range || entityData.mod !== undefined) && (
+                      <div className="grid grid-cols-2 gap-2">
+                        {entityData.range && (
+                          <div>
+                            <Label className="text-stone-400 text-xs uppercase tracking-wide">Range</Label>
+                            <p className="text-stone-300 mt-0.5">{entityData.range} ft</p>
+                          </div>
+                        )}
+                        {entityData.mod !== undefined && entityData.mod !== 0 && (
+                          <div>
+                            <Label className="text-stone-400 text-xs uppercase tracking-wide">Modifier</Label>
+                            <p className="text-stone-300 mt-0.5">{entityData.mod > 0 ? `+${entityData.mod}` : entityData.mod}</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    {(entityData.itemWeight || entityData.durability) && (
+                      <div className="grid grid-cols-2 gap-2">
+                        {entityData.itemWeight && (
+                          <div>
+                            <Label className="text-stone-400 text-xs uppercase tracking-wide">Weight</Label>
+                            <p className="text-stone-300 mt-0.5">{entityData.itemWeight} lbs</p>
+                          </div>
+                        )}
+                        {entityData.durability && (
+                          <div>
+                            <Label className="text-stone-400 text-xs uppercase tracking-wide">Durability</Label>
+                            <p className="text-stone-300 mt-0.5">{entityData.durability}</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {selectedEntityType?.toLowerCase() === "trait" && (
+                  <>
+                    {entityData.image && (
+                      <div className="flex justify-center">
+                        <img 
+                          src={entityData.image} 
+                          alt={entityData.name}
+                          className="w-12 h-12 rounded object-cover border-2 border-stone-700"
+                        />
+                      </div>
+                    )}
+                    {entityData.usesPerLongRest !== undefined && entityData.usesPerLongRest > 0 && (
+                      <div>
+                        <Label className="text-stone-400 text-xs uppercase tracking-wide">Uses per Long Rest</Label>
+                        <p className="text-amber-400 mt-0.5">{entityData.usesPerLongRest}</p>
+                      </div>
+                    )}
+                    {entityData.diceNotation && (
+                      <div>
+                        <Label className="text-stone-400 text-xs uppercase tracking-wide">Dice</Label>
+                        <p className="text-amber-400 mt-0.5">{entityData.diceNotation}</p>
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {selectedEntityType?.toLowerCase() === "skill" && (
+                  <>
+                    {entityData.image && (
+                      <div className="flex justify-center">
+                        <img 
+                          src={entityData.image} 
+                          alt={entityData.name}
+                          className="w-12 h-12 rounded object-cover border-2 border-stone-700"
+                        />
+                      </div>
+                    )}
+                    {entityData.attribute && (
+                      <div>
+                        <Label className="text-stone-400 text-xs uppercase tracking-wide">Attribute</Label>
+                        <p className="text-stone-300 mt-0.5 capitalize">{entityData.attribute}</p>
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {selectedEntityType?.toLowerCase() === "species" && (
+                  <>
+                    {entityData.image && (
+                      <div className="flex justify-center">
+                        <img 
+                          src={entityData.image} 
+                          alt={entityData.name}
+                          className="w-16 h-16 rounded object-cover border-2 border-stone-700"
+                        />
+                      </div>
+                    )}
+                    <div className="grid grid-cols-2 gap-2">
+                      {entityData.size && (
+                        <div>
+                          <Label className="text-stone-400 text-xs uppercase tracking-wide">Size</Label>
+                          <p className="text-stone-300 mt-0.5 capitalize">{entityData.size}</p>
+                        </div>
+                      )}
+                      {entityData.speed && (
+                        <div>
+                          <Label className="text-stone-400 text-xs uppercase tracking-wide">Speed</Label>
+                          <p className="text-stone-300 mt-0.5">{entityData.speed} ft</p>
+                        </div>
+                      )}
+                    </div>
+                    {(entityData.hpPerLevel || entityData.energyPerLevel) && (
+                      <div className="grid grid-cols-2 gap-2">
+                        {entityData.hpPerLevel && (
+                          <div>
+                            <Label className="text-stone-400 text-xs uppercase tracking-wide">HP/Level</Label>
+                            <p className="text-red-400 mt-0.5">{entityData.hpPerLevel}</p>
+                          </div>
+                        )}
+                        {entityData.energyPerLevel && (
+                          <div>
+                            <Label className="text-stone-400 text-xs uppercase tracking-wide">Energy/Level</Label>
+                            <p className="text-blue-400 mt-0.5">{entityData.energyPerLevel}</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </>
                 )}
               </div>

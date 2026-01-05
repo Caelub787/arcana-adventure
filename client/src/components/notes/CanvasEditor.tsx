@@ -286,6 +286,9 @@ export function CanvasEditor({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [selectedNodeId, selectedConnectionId, deleteNode, deleteConnection, isConnecting, onClose]);
 
+  // Track if user has manually interacted with the canvas (panned/zoomed)
+  const userInteractedRef = useRef(false);
+
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -301,6 +304,7 @@ export function CanvasEditor({
       const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoomRef.current + delta));
       
       if (Math.abs(newZoom - zoomRef.current) > 0.001) {
+        userInteractedRef.current = true; // User zoomed manually
         const worldX = (mouseX - panRef.current.x) / zoomRef.current;
         const worldY = (mouseY - panRef.current.y) / zoomRef.current;
         
@@ -319,21 +323,72 @@ export function CanvasEditor({
     container.addEventListener("wheel", handleWheel, { passive: false });
     return () => container.removeEventListener("wheel", handleWheel);
   }, []);
-
-  // ResizeObserver to handle container resize
+  
+  // Helper to check if content is being clipped by current viewport (any direction)
+  const isContentClipped = useCallback(() => {
+    const container = containerRef.current;
+    if (!container || canvasData.nodes.length === 0) return false;
+    
+    const rect = container.getBoundingClientRect();
+    const safeMargin = 20; // Content must stay this far inside viewport to be considered "safe"
+    
+    // Calculate content bounds in screen coordinates
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    canvasData.nodes.forEach(node => {
+      const screenX = node.x * zoomRef.current + panRef.current.x;
+      const screenY = node.y * zoomRef.current + panRef.current.y;
+      const screenRight = (node.x + node.width) * zoomRef.current + panRef.current.x;
+      const screenBottom = (node.y + node.height) * zoomRef.current + panRef.current.y;
+      minX = Math.min(minX, screenX);
+      minY = Math.min(minY, screenY);
+      maxX = Math.max(maxX, screenRight);
+      maxY = Math.max(maxY, screenBottom);
+    });
+    
+    // Content is at risk of clipping if it's within safeMargin of the viewport edges or beyond
+    const leftClipped = minX < safeMargin;
+    const rightClipped = maxX > rect.width - safeMargin;
+    const topClipped = minY < safeMargin;
+    const bottomClipped = maxY > rect.height - safeMargin;
+    
+    return leftClipped || rightClipped || topClipped || bottomClipped;
+  }, [canvasData.nodes]);
+  
+  // Track nodes signature to detect canvas changes
+  const nodesSignatureRef = useRef(JSON.stringify(canvasData.nodes.map(n => n.id)));
+  
+  // ResizeObserver to handle container resize - resets view when content would be clipped
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
+    let resizeTimeout: ReturnType<typeof setTimeout>;
     const resizeObserver = new ResizeObserver(() => {
-      // Trigger a re-render to update viewport calculations
-      // We just update the pan/zoom state to force recalculation
-      setPan(prev => ({ ...prev }));
+      clearTimeout(resizeTimeout);
+      resizeTimeout = setTimeout(() => {
+        // Reset view if: canvas is empty, user hasn't interacted, or content is clipped
+        if (canvasData.nodes.length === 0 || !userInteractedRef.current || isContentClipped()) {
+          resetView();
+          userInteractedRef.current = false; // Reset after auto-fit so future resizes can trigger
+        }
+      }, 100);
     });
 
     resizeObserver.observe(container);
-    return () => resizeObserver.disconnect();
-  }, []);
+    return () => {
+      clearTimeout(resizeTimeout);
+      resizeObserver.disconnect();
+    };
+  }, [resetView, canvasData.nodes.length, isContentClipped]);
+  
+  // Reset user interaction flag when canvas data changes (new/different canvas)
+  useEffect(() => {
+    const newSignature = JSON.stringify(canvasData.nodes.map(n => n.id));
+    if (newSignature !== nodesSignatureRef.current) {
+      userInteractedRef.current = false;
+      nodesSignatureRef.current = newSignature;
+    }
+  }, [canvasData.nodes]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -350,6 +405,7 @@ export function CanvasEditor({
     const handleTouchMove = (e: TouchEvent) => {
       if (e.touches.length === 2 && lastTouchDistanceRef.current !== null) {
         e.preventDefault();
+        userInteractedRef.current = true; // User pinch-zoomed manually
         
         const dx = e.touches[0].clientX - e.touches[1].clientX;
         const dy = e.touches[0].clientY - e.touches[1].clientY;
@@ -425,6 +481,7 @@ export function CanvasEditor({
     }
     
     if (isPanning && panStartRef.current) {
+      userInteractedRef.current = true; // User panned manually
       const deltaX = e.clientX - panStartRef.current.pointerX;
       const deltaY = e.clientY - panStartRef.current.pointerY;
       

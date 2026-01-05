@@ -909,6 +909,11 @@ class ApiClient {
     return this.request(`/spells/${id}`, { method: 'DELETE' });
   }
 
+  // Public system item (single item for entity references)
+  async getSystemItem(id: string): Promise<Item> {
+    return this.request(`/system-items/${id}`);
+  }
+
   // Admin System Items
   async getSystemItems(): Promise<Item[]> {
     return this.request('/admin/system-items');

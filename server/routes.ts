@@ -3428,6 +3428,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
     next();
   };
 
+  // Public system item route (read-only for entity references in notes)
+  app.get("/api/system-items/:id", requireAuth, async (req, res) => {
+    try {
+      const item = await storage.getItem(req.params.id);
+      if (!item || !item.isTemplate || item.characterId || item.campaignId) {
+        return res.status(404).json({ error: "System item not found" });
+      }
+      res.json(item);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch system item" });
+    }
+  });
+
   // System item routes (admin only)
   app.get("/api/admin/system-items", requireAdmin, async (req, res) => {
     try {
