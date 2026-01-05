@@ -3883,8 +3883,8 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     
     const skillName = hotbar.skillName;
     
-    // Check if this is a custom skill first
-    const customSkill = customSkills.find((cs: any) => cs.name === skillName);
+    // Check if this is a custom skill first (case-insensitive match)
+    const customSkill = customSkills.find((cs: any) => cs.name?.toLowerCase() === skillName.toLowerCase());
     
     let skillModifier: number;
     let attributeKey: keyof typeof character | undefined;
