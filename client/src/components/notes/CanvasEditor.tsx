@@ -320,6 +320,21 @@ export function CanvasEditor({
     return () => container.removeEventListener("wheel", handleWheel);
   }, []);
 
+  // ResizeObserver to handle container resize
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const resizeObserver = new ResizeObserver(() => {
+      // Trigger a re-render to update viewport calculations
+      // We just update the pan/zoom state to force recalculation
+      setPan(prev => ({ ...prev }));
+    });
+
+    resizeObserver.observe(container);
+    return () => resizeObserver.disconnect();
+  }, []);
+
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -527,25 +542,33 @@ export function CanvasEditor({
     containerRef.current?.setPointerCapture(e.pointerId);
   };
 
-  const handleNoteSelect = (note: Note) => {
-    addNode("note", {
-      noteId: note.id,
-      noteTitle: note.title,
-      content: note.title,
-    });
+  const handleNoteSelect = useCallback((note: Note) => {
+    // Close dialog first, then add node after a microtask to avoid state conflicts
     setNoteSearchOpen(false);
     setNoteSearchQuery("");
-  };
-
-  const handleEntitySelect = (entity: SearchableEntity) => {
-    addNode("entity", {
-      entityType: entity.type,
-      entityId: entity.id,
-      entityName: entity.name,
-      content: entity.name,
+    // Use requestAnimationFrame to ensure the dialog close doesn't interfere with addNode
+    requestAnimationFrame(() => {
+      addNode("note", {
+        noteId: note.id,
+        noteTitle: note.title,
+        content: note.title,
+      });
     });
+  }, [addNode]);
+
+  const handleEntitySelect = useCallback((entity: SearchableEntity) => {
+    // Close picker first, then add node after a microtask to avoid state conflicts
     setEntityPickerOpen(false);
-  };
+    // Use requestAnimationFrame to ensure the picker close doesn't interfere with addNode
+    requestAnimationFrame(() => {
+      addNode("entity", {
+        entityType: entity.type,
+        entityId: entity.id,
+        entityName: entity.name,
+        content: entity.name,
+      });
+    });
+  }, [addNode]);
 
   const getConnectionPath = (connection: CanvasConnection) => {
     const fromNode = canvasData.nodes.find((n) => n.id === connection.fromNodeId);

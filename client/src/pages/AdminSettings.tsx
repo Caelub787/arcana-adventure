@@ -17,7 +17,7 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Slider } from '@/components/ui/slider';
 import { toast } from '@/hooks/use-toast';
-import { ArrowLeft, Plus, Pencil, Trash2, Sword, Shield, Package, Sparkles, Box, Coins, Search, Users, User, GitBranch, Library, Link, X, GripVertical, Star, Zap, Heart, ShieldCheck, BookOpen, RefreshCw, ZoomIn, ZoomOut, Wand2, Save, Flame, Upload, Image as ImageIcon, Folder, FolderPlus, ChevronDown, ChevronRight, Layers } from 'lucide-react';
+import { ArrowLeft, Plus, Pencil, Trash2, Sword, Shield, Package, Sparkles, Box, Coins, Search, Users, User, GitBranch, Library, Link, X, GripVertical, Star, Zap, Heart, ShieldCheck, BookOpen, RefreshCw, ZoomIn, ZoomOut, Wand2, Save, Flame, Upload, Image as ImageIcon, Folder, FolderPlus, ChevronDown, ChevronRight, Layers, Copy } from 'lucide-react';
 import { ImageBrowser } from '@/components/ImageBrowser';
 import { CharacterSheet } from '@/components/game/GameComponents';
 
@@ -52,6 +52,7 @@ export default function AdminSettings() {
   
   const [showAddItem, setShowAddItem] = useState(false);
   const [editingItem, setEditingItem] = useState<Item | null>(null);
+  const [duplicatingItem, setDuplicatingItem] = useState<Item | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
 
@@ -144,6 +145,7 @@ export default function AdminSettings() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['system-items'] });
       setShowAddItem(false);
+      setDuplicatingItem(null);
       toast({ title: 'Item Created', description: 'System item created successfully' });
     },
     onError: (error: any) => {
@@ -582,6 +584,10 @@ export default function AdminSettings() {
                 deleteItemMutation.mutate(id);
               }
             }}
+            onDuplicateItem={(item) => {
+              setDuplicatingItem(item);
+              setShowAddItem(true);
+            }}
           />
         )}
 
@@ -708,8 +714,12 @@ export default function AdminSettings() {
 
         <ItemFormDialog
           open={showAddItem}
-          onOpenChange={setShowAddItem}
+          onOpenChange={(open) => {
+            setShowAddItem(open);
+            if (!open) setDuplicatingItem(null);
+          }}
           onSave={(data) => createItemMutation.mutate(data)}
+          initialData={duplicatingItem ? { ...duplicatingItem, name: `${duplicatingItem.name} (Copy)` } : undefined}
           isLoading={createItemMutation.isPending}
         />
 
@@ -1004,9 +1014,10 @@ interface ItemsViewProps {
   onAddItem: () => void;
   onEditItem: (item: Item) => void;
   onDeleteItem: (id: string) => void;
+  onDuplicateItem: (item: Item) => void;
 }
 
-function ItemsView({ items, isLoading, searchQuery, setSearchQuery, typeFilter, setTypeFilter, onAddItem, onEditItem, onDeleteItem }: ItemsViewProps) {
+function ItemsView({ items, isLoading, searchQuery, setSearchQuery, typeFilter, setTypeFilter, onAddItem, onEditItem, onDeleteItem, onDuplicateItem }: ItemsViewProps) {
   return (
     <Card className="bg-stone-900 border-stone-700 flex-1 flex flex-col min-h-0">
       <CardHeader className="flex flex-row items-center justify-between shrink-0">
@@ -1087,6 +1098,16 @@ function ItemsView({ items, isLoading, searchQuery, setSearchQuery, typeFilter, 
                       </div>
                     </div>
                     <div className="flex gap-1 sm:gap-2 shrink-0">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => onDuplicateItem(item)}
+                        className="text-stone-400 hover:text-blue-500 h-8 w-8 sm:h-10 sm:w-10"
+                        data-testid={`button-duplicate-${item.id}`}
+                        title="Duplicate item"
+                      >
+                        <Copy className="h-4 w-4" />
+                      </Button>
                       <Button
                         variant="ghost"
                         size="icon"
@@ -6246,6 +6267,53 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
     throwableBreakChance: (initialData as any)?.throwableBreakChance ?? 10,
     canApplyEffects: (initialData as any)?.canApplyEffects || false,
   });
+
+  useEffect(() => {
+    if (open) {
+      setFormData({
+        name: initialData?.name || '',
+        image: initialData?.image || '',
+        description: initialData?.description || '',
+        rules: '',
+        rulesVisible: true,
+        itemType: initialData?.itemType || 'utility',
+        rarity: initialData?.rarity || 'common',
+        quantity: initialData?.quantity ?? '',
+        damage: initialData?.damage || '',
+        damageType: initialData?.damageType || '',
+        mod: initialData?.mod ?? '',
+        range: initialData?.range ?? '',
+        aoe: initialData?.aoe || 'none',
+        attribute: initialData?.attribute || '',
+        size: initialData?.size || '',
+        isHeavy: (initialData as any)?.isHeavy || false,
+        ammunitionType: (initialData as any)?.ammunitionType || '',
+        weaponCategory: (initialData as any)?.weaponCategory || '',
+        breakChance: (initialData as any)?.breakChance ?? '',
+        itemWeight: initialData?.itemWeight ?? '',
+        price: initialData?.price ?? '',
+        currency: initialData?.currency || 'copper',
+        durability: initialData?.durability ?? '',
+        isContainer: initialData?.isContainer || false,
+        carryCapacity: initialData?.carryCapacity ?? '',
+        armorSlot: (initialData as any)?.armorSlot || '',
+        armorBonus: (initialData as any)?.armorBonus ?? '',
+        damageReduction: (initialData as any)?.damageReduction ?? '',
+        damageReductionType: (initialData as any)?.damageReductionType || '',
+        rationServings: (initialData as any)?.rationServings ?? '',
+        isDamaging: (initialData as any)?.isDamaging || false,
+        isThrowable: (initialData as any)?.isThrowable || false,
+        throwableAoe: (initialData as any)?.throwableAoe || false,
+        throwableAoeShape: (initialData as any)?.throwableAoeShape || 'circle',
+        throwableAoeRange: (initialData as any)?.throwableAoeRange ?? 10,
+        throwableAoeDamage: (initialData as any)?.throwableAoeDamage || '',
+        throwableAoeDamageType: (initialData as any)?.throwableAoeDamageType || '',
+        throwablePickup: (initialData as any)?.throwablePickup || false,
+        throwableBreakChance: (initialData as any)?.throwableBreakChance ?? 10,
+        canApplyEffects: (initialData as any)?.canApplyEffects || false,
+      });
+    }
+  }, [open, initialData]);
   
   const [showImageBrowser, setShowImageBrowser] = useState(false);
   
