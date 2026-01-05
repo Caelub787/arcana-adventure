@@ -257,6 +257,9 @@ export function CampaignNotesPanel({
   const [entityData, setEntityData] = useState<any>(null);
   const [entityLoading, setEntityLoading] = useState(false);
 
+  const [notePreviewDialogOpen, setNotePreviewDialogOpen] = useState(false);
+  const [previewNote, setPreviewNote] = useState<Note | null>(null);
+
   const lastLoadedNoteIdRef = useRef<string | null>(null);
 
   const { data: folders = [], isLoading: foldersLoading } = useQuery<NoteFolder[]>({
@@ -569,11 +572,8 @@ export function CampaignNotesPanel({
       if (lastTwoChars === "[[") {
         setReferencePickerOpen(true);
       }
-    }
-    if (pos >= 1) {
-      const lastChar = newContent.slice(pos - 1, pos);
-      const prevChar = pos >= 2 ? newContent.slice(pos - 2, pos - 1) : "";
-      if (lastChar === "[" && prevChar !== "[") {
+      // Check for // to trigger note-only picker (new syntax)
+      if (lastTwoChars === "//") {
         setNotePickerInitialSearch("");
         setNotePickerTriggeredByTyping(true);
         setNotePickerOpen(true);
@@ -647,8 +647,10 @@ export function CampaignNotesPanel({
   };
 
   const handleNotePickerSelect = (selectedNote: Note) => {
-    const referenceText = `[${selectedNote.title}]`;
-    const charsToRemove = notePickerTriggeredByTyping ? 1 : 0;
+    // Use //note name// format for note links
+    const referenceText = `//${selectedNote.title}//`;
+    // Only remove the // if the picker was triggered by typing //
+    const charsToRemove = notePickerTriggeredByTyping ? 2 : 0;
     const beforeCursor = noteContent.slice(0, cursorPosition - charsToRemove);
     const afterCursor = noteContent.slice(cursorPosition);
     const newContent = beforeCursor + referenceText + afterCursor;
@@ -667,8 +669,10 @@ export function CampaignNotesPanel({
   };
 
   const handleNotePickerCreate = async (noteName: string) => {
-    const referenceText = `[${noteName}]`;
-    const charsToRemove = notePickerTriggeredByTyping ? 1 : 0;
+    // Use (/note name/) format for new note creation
+    const referenceText = `(/${noteName}/)`;
+    // Only remove the // if the picker was triggered by typing //
+    const charsToRemove = notePickerTriggeredByTyping ? 2 : 0;
     const beforeCursor = noteContent.slice(0, cursorPosition - charsToRemove);
     const afterCursor = noteContent.slice(cursorPosition);
     const newContent = beforeCursor + referenceText + afterCursor;
@@ -686,12 +690,15 @@ export function CampaignNotesPanel({
     }, 0);
   };
 
-  const handleNoteReferenceClick = async (noteName: string) => {
+  const handleNoteReferenceClick = async (noteName: string, forceCreate: boolean = false) => {
     const existingNote = notes.find(n => n.title.toLowerCase() === noteName.toLowerCase());
     
-    if (existingNote) {
-      setSelectedNoteId(existingNote.id);
+    if (existingNote && !forceCreate) {
+      // Show note content in a dialog (statblock style)
+      setPreviewNote(existingNote);
+      setNotePreviewDialogOpen(true);
     } else {
+      // Create new note and select it
       try {
         const newNote = await api.createNote({
           title: noteName,
@@ -760,7 +767,11 @@ export function CampaignNotesPanel({
   };
 
   const formatEntityReferences = (content: string): React.ReactNode[] => {
-    const combinedRegex = /\[\[([^:]+):([^\|]+)\|([^\]]+)\]\]|\[\*([^\]]+)\]|\[([^\[\]:|\]]+)\]/g;
+    // Match: 
+    // 1. Entity refs: [[type:id|name]]
+    // 2. Note links: //note name//
+    // 3. New note creation: (/note name/)
+    const combinedRegex = /\[\[([^:]+):([^\|]+)\|([^\]]+)\]\]|\/\/([^\/]+)\/\/|\(\/([^\/]+)\/\)/g;
     const parts: React.ReactNode[] = [];
     let lastIndex = 0;
     let match;
@@ -785,27 +796,29 @@ export function CampaignNotesPanel({
           </span>
         );
       } else if (match[4]) {
+        // Note link: //note name//
         const noteName = match[4];
         parts.push(
           <span
             key={match.index}
             className="text-cyan-400 cursor-pointer hover:text-cyan-300 hover:underline transition-colors"
-            onClick={() => handleNoteReferenceClick(noteName)}
+            onClick={() => handleNoteReferenceClick(noteName, false)}
             data-testid={`panel-note-ref-${noteName}`}
           >
             [{noteName}]
           </span>
         );
       } else if (match[5]) {
+        // New note creation: (/note name/)
         const noteName = match[5];
         parts.push(
           <span
             key={match.index}
-            className="text-cyan-400 cursor-pointer hover:text-cyan-300 hover:underline transition-colors"
-            onClick={() => handleNoteReferenceClick(noteName)}
-            data-testid={`panel-note-ref-${noteName}`}
+            className="text-cyan-400 cursor-pointer hover:text-cyan-300 hover:underline transition-colors italic"
+            onClick={() => handleNoteReferenceClick(noteName, true)}
+            data-testid={`panel-note-create-ref-${noteName}`}
           >
-            [{noteName}]
+            [{noteName}+]
           </span>
         );
       }
@@ -1874,6 +1887,50 @@ export function CampaignNotesPanel({
           </div>
           <DialogFooter>
             <Button variant="secondary" size="sm" onClick={() => setEntityDialogOpen(false)}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={notePreviewDialogOpen} onOpenChange={setNotePreviewDialogOpen}>
+        <DialogContent className="bg-stone-950 border-stone-800 text-stone-100 max-w-lg max-h-[70vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileText className="h-4 w-4 text-cyan-500" />
+              {previewNote?.title || "Note"}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="py-3">
+            {previewNote?.content ? (
+              <div className="text-stone-300 whitespace-pre-wrap leading-relaxed text-sm">
+                {formatEntityReferences(previewNote.content)}
+              </div>
+            ) : (
+              <p className="text-stone-500 text-center py-4 italic text-sm">This note is empty</p>
+            )}
+          </div>
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                if (previewNote) {
+                  setNotePreviewDialogOpen(false);
+                  setSelectedNoteId(previewNote.id);
+                }
+              }}
+              data-testid="button-edit-note-preview"
+            >
+              <Edit className="h-3 w-3 mr-1" />
+              Edit
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setNotePreviewDialogOpen(false)}
+              data-testid="button-close-note-preview"
+            >
               Close
             </Button>
           </DialogFooter>
