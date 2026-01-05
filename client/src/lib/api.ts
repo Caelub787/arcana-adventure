@@ -699,6 +699,18 @@ class ApiClient {
     });
   }
 
+  // Character Import (cross-campaign)
+  async getImportableCharacters(campaignId: string): Promise<{ campaign: Campaign, characters: Character[] }[]> {
+    return this.request(`/campaigns/${campaignId}/importable-characters`);
+  }
+
+  async importCharacter(campaignId: string, sourceCharacterId: string): Promise<Character> {
+    return this.request(`/campaigns/${campaignId}/import-character`, {
+      method: 'POST',
+      body: JSON.stringify({ sourceCharacterId }),
+    });
+  }
+
   // Rest actions
   async shortRest(characterId: string): Promise<{
     success: boolean;

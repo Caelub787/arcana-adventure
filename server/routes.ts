@@ -4279,6 +4279,117 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get importable characters from other campaigns where user is GM
+  app.get("/api/campaigns/:campaignId/importable-characters", requireAuth, async (req, res) => {
+    try {
+      const { campaignId } = req.params;
+      const userId = req.session.userId!;
+      
+      // Verify user is GM of the target campaign
+      const targetCampaign = await storage.getCampaign(campaignId);
+      if (!targetCampaign) {
+        return res.status(404).json({ error: "Campaign not found" });
+      }
+      
+      const isGm = await storage.isGM(userId, campaignId);
+      if (!isGm) {
+        return res.status(403).json({ error: "Only GMs can import characters" });
+      }
+      
+      // Get all campaigns where user is owner or assistant_gm
+      const { created, joined } = await storage.getUserCampaigns(userId);
+      const gmCampaigns: typeof created = [];
+      
+      // Add campaigns user created (owner)
+      for (const campaign of created) {
+        if (campaign.id !== campaignId) {
+          gmCampaigns.push(campaign);
+        }
+      }
+      
+      // Add campaigns where user is assistant_gm
+      for (const campaign of joined) {
+        if (campaign.id !== campaignId) {
+          const membership = await storage.getCampaignMembership(userId, campaign.id);
+          if (membership?.role === 'assistant_gm' || campaign.gmUserId === userId) {
+            gmCampaigns.push(campaign);
+          }
+        }
+      }
+      
+      // Get characters from each campaign
+      const result: { campaign: typeof targetCampaign, characters: any[] }[] = [];
+      for (const campaign of gmCampaigns) {
+        const characters = await storage.getCampaignCharacters(campaign.id);
+        if (characters.length > 0) {
+          result.push({ campaign, characters });
+        }
+      }
+      
+      res.json(result);
+    } catch (err) {
+      console.error('Error fetching importable characters:', err);
+      res.status(500).json({ error: "Failed to fetch importable characters" });
+    }
+  });
+
+  // Import character from another campaign
+  app.post("/api/campaigns/:campaignId/import-character", requireAuth, async (req, res) => {
+    try {
+      const { campaignId } = req.params;
+      const { sourceCharacterId } = req.body;
+      const userId = req.session.userId!;
+      
+      if (!sourceCharacterId) {
+        return res.status(400).json({ error: "sourceCharacterId is required" });
+      }
+      
+      // Verify user is GM of the target campaign
+      const targetCampaign = await storage.getCampaign(campaignId);
+      if (!targetCampaign) {
+        return res.status(404).json({ error: "Target campaign not found" });
+      }
+      
+      const isTargetGm = await storage.isGM(userId, campaignId);
+      if (!isTargetGm) {
+        return res.status(403).json({ error: "Only GMs can import characters to this campaign" });
+      }
+      
+      // Get the source character and verify GM access to source campaign
+      const sourceCharacter = await storage.getCharacter(sourceCharacterId);
+      if (!sourceCharacter) {
+        return res.status(404).json({ error: "Source character not found" });
+      }
+      
+      if (!sourceCharacter.campaignId) {
+        return res.status(400).json({ error: "Source character is not in a campaign" });
+      }
+      
+      const isSourceGm = await storage.isGM(userId, sourceCharacter.campaignId);
+      if (!isSourceGm) {
+        return res.status(403).json({ error: "You must be a GM in the source campaign to import characters" });
+      }
+      
+      // Perform the import (userId null for GM to assign later)
+      const importedCharacter = await storage.importCharacterToCampaign(
+        sourceCharacterId,
+        campaignId,
+        null
+      );
+      
+      // Broadcast to target campaign
+      broadcastToCampaign(campaignId, {
+        type: "character_added",
+        character: importedCharacter
+      });
+      
+      res.json(importedCharacter);
+    } catch (err) {
+      console.error('Error importing character:', err);
+      res.status(400).json({ error: "Failed to import character" });
+    }
+  });
+
   // Public system skills route (for character sheet)
   app.get("/api/skills", requireAuth, async (req, res) => {
     try {
