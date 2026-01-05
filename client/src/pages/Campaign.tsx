@@ -28,6 +28,8 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { ImageBrowser } from "@/components/ImageBrowser";
 import { NotesGraph } from "@/components/notes/NotesGraph";
+import { ReferencePicker } from "@/components/notes/ReferencePicker";
+import type { SearchableEntity } from "@/lib/api";
 import { Folder, FolderPlus, Plus, GripVertical, Eye, Radio, ChevronDown, ChevronRight, Pencil } from "lucide-react";
 
 // Scene Settings Form Component
@@ -759,6 +761,11 @@ export default function Campaign() {
   const debouncedNoteTitle = useDebouncedValue(noteTitle, 1000);
   const debouncedNoteContent = useDebouncedValue(noteContent, 1000);
   
+  // Reference picker state for notes
+  const [referencePickerOpen, setReferencePickerOpen] = useState(false);
+  const [cursorPosition, setCursorPosition] = useState(0);
+  const noteTextareaRef = useRef<HTMLTextAreaElement>(null);
+  
   // Memoized callback for notes toggle to prevent infinite re-renders
   const handleToggleNotesPanel = useCallback(() => {
     setNotesPanelOpen(prev => !prev);
@@ -1152,6 +1159,51 @@ export default function Campaign() {
       });
     }
   }, [debouncedNoteTitle, debouncedNoteContent]);
+
+  // Handle note content change with [[ detection for reference picker
+  const handleNoteContentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const newContent = e.target.value;
+    const pos = e.target.selectionStart;
+    setNoteContent(newContent);
+    setCursorPosition(pos);
+
+    if (pos >= 2) {
+      const lastTwoChars = newContent.slice(pos - 2, pos);
+      if (lastTwoChars === "[[") {
+        setReferencePickerOpen(true);
+      }
+    }
+  };
+
+  // Handle reference selection from picker
+  const handleReferenceSelect = (entity: SearchableEntity) => {
+    const referenceText = `[[${entity.type}:${entity.id}|${entity.name}]]`;
+    
+    const beforeCursor = noteContent.slice(0, cursorPosition - 2);
+    const afterCursor = noteContent.slice(cursorPosition);
+    const newContent = beforeCursor + referenceText + afterCursor;
+    
+    setNoteContent(newContent);
+    setReferencePickerOpen(false);
+
+    setTimeout(() => {
+      if (noteTextareaRef.current) {
+        const newCursorPos = beforeCursor.length + referenceText.length;
+        noteTextareaRef.current.focus();
+        noteTextareaRef.current.setSelectionRange(newCursorPos, newCursorPos);
+      }
+    }, 0);
+
+    if (selectedCampaignNote) {
+      api.createNoteReference(selectedCampaignNote.id, {
+        entityType: entity.type,
+        entityId: entity.id,
+        label: entity.name,
+      }).catch((err) => {
+        console.error("Failed to save reference:", err);
+      });
+    }
+  };
 
   // Campaign species mutations
   const createCampaignSpeciesMutation = useMutation({
@@ -3536,13 +3588,19 @@ export default function Campaign() {
                             </div>
                             
                             {/* Note Content */}
-                            <div className="flex-1 p-3 overflow-hidden">
+                            <div className="flex-1 p-3 overflow-hidden relative">
                               <Textarea
+                                ref={noteTextareaRef}
                                 value={noteContent}
-                                onChange={(e) => setNoteContent(e.target.value)}
+                                onChange={handleNoteContentChange}
                                 className="h-full w-full bg-stone-800 border-stone-600 text-stone-200 resize-none"
-                                placeholder="Write your notes here..."
+                                placeholder="Write your notes here... Type [[ to link entities"
                                 data-testid="textarea-note-content"
+                              />
+                              <ReferencePicker
+                                open={referencePickerOpen}
+                                onOpenChange={setReferencePickerOpen}
+                                onSelect={handleReferenceSelect}
                               />
                             </div>
                             
