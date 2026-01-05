@@ -1816,10 +1816,16 @@ export function CampaignNotesPanel({
                         )}
                       </div>
                     )}
-                    {entityData.value !== undefined && (
+                    {(entityData.breakChance !== undefined && entityData.breakChance > 0) && (
+                      <div>
+                        <Label className="text-stone-400 text-xs uppercase tracking-wide">Break Chance</Label>
+                        <p className="text-red-400 mt-0.5">{entityData.breakChance}%</p>
+                      </div>
+                    )}
+                    {entityData.value !== undefined && entityData.value > 0 && (
                       <div>
                         <Label className="text-stone-400 text-xs uppercase tracking-wide">Value</Label>
-                        <p className="text-amber-300 mt-0.5">{entityData.value} gold</p>
+                        <p className="text-amber-300 mt-0.5">{entityData.value} {entityData.currency || 'gold'}</p>
                       </div>
                     )}
                   </>
