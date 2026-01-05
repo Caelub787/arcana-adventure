@@ -1500,7 +1500,8 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
           }
           
           const character = getCharacterForToken(token);
-          const tokenImage = character?.portrait || token.image;
+          // Use enriched token data for image and size (works regardless of character permissions)
+          const tokenImage = (token as any).tokenImage || character?.portrait || token.image;
           const hpPercent = character ? (character.hp / character.maxHp) * 100 : null;
           const energyPercent = character ? (character.energy / character.maxEnergy) * 100 : null;
           const effectiveGridSize = scene?.gridSize || gridSize;
@@ -1514,8 +1515,10 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
           const canDrag = role === 'gm' || hasEditAccess;
           
           // Get species size for grid span calculation
+          // Use enriched speciesSize from token (works regardless of character permissions)
+          // Fall back to character lookup for backwards compatibility
           const speciesData = character?.race ? allSpecies.find(s => s.name === character.race) : null;
-          const gridSpan = getTokenGridSpan(speciesData?.size);
+          const gridSpan = getTokenGridSpan((token as any).speciesSize || speciesData?.size);
           
           const isDragging = draggingToken?.id === token.id;
           const isAnimating = animatingTokensRef.current.has(token.id);

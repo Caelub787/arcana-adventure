@@ -85,6 +85,7 @@ export interface IStorage {
   // Character operations
   createCharacter(character: InsertCharacter): Promise<Character>;
   getCharacter(id: string): Promise<Character | undefined>;
+  getCharactersByIds(ids: string[]): Promise<Character[]>;
   getCampaignCharacters(campaignId: string): Promise<Character[]>;
   updateCharacter(id: string, data: Partial<Character>): Promise<Character | undefined>;
   deleteCharacter(id: string): Promise<void>;
@@ -795,6 +796,11 @@ export class DatabaseStorage implements IStorage {
   async getCharacter(id: string): Promise<Character | undefined> {
     const [character] = await db.select().from(characters).where(eq(characters.id, id)).limit(1);
     return character;
+  }
+
+  async getCharactersByIds(ids: string[]): Promise<Character[]> {
+    if (ids.length === 0) return [];
+    return await db.select().from(characters).where(inArray(characters.id, ids));
   }
 
   async getCampaignCharacters(campaignId: string): Promise<Character[]> {

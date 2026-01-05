@@ -2607,7 +2607,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
         tokensList = await storage.getCampaignTokens(req.params.campaignId);
       }
       
-      res.json(tokensList);
+      // Enrich tokens with species size for proper rendering
+      // This ensures all players see correct token sizes regardless of character permissions
+      // Pre-fetch species data once (not per-token) for performance
+      const [systemSpecies, campaignSpecies] = await Promise.all([
+        storage.getSystemSpecies(),
+        storage.getCampaignSpecies(req.params.campaignId)
+      ]);
+      const allSpecies = [...systemSpecies, ...campaignSpecies];
+      
+      // Batch fetch characters for tokens that have characterId
+      const characterIds = tokensList.filter(t => t.characterId).map(t => t.characterId!);
+      const characters = await storage.getCharactersByIds(characterIds);
+      const characterMap = new Map(characters.map(c => [c.id, c]));
+      
+      const enrichedTokens = tokensList.map((token) => {
+        if (!token.characterId) return token;
+        
+        const character = characterMap.get(token.characterId);
+        if (!character?.race) return token;
+        
+        const species = allSpecies.find(s => s.name === character.race);
+        
+        return {
+          ...token,
+          speciesSize: species?.size || 'Medium',
+          tokenImage: character.portrait || token.image,
+        };
+      });
+      
+      res.json(enrichedTokens);
     } catch (err) {
       res.status(500).json({ error: "Failed to fetch tokens" });
     }
