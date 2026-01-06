@@ -195,7 +195,7 @@ export function FloatingPanel({
         top: position.y,
         width: size.width,
         height: isMinimized ? headerHeight : size.height,
-        zIndex,
+        zIndex: isFullscreen ? 100 : zIndex,
       }}
       data-testid="floating-panel"
     >
