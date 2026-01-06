@@ -711,8 +711,20 @@ export default function Campaign() {
   const [speciesFormOpen, setSpeciesFormOpen] = useState(false);
   const [deletingSpecies, setDeletingSpecies] = useState<CampaignSpecies | null>(null);
   const [chatOpen, setChatOpen] = useState(false);
-  const [viewingCharacterSheet, setViewingCharacterSheet] = useState<any>(null);
+  const [openCharacterSheets, setOpenCharacterSheets] = useState<any[]>([]);
   const [characterSheetDefaultTab, setCharacterSheetDefaultTab] = useState("overview");
+  
+  // Helper functions for managing multiple open character sheets
+  const openCharacterSheet = (char: any) => {
+    setOpenCharacterSheets(prev => {
+      if (prev.some(c => c.id === char.id)) return prev;
+      return [...prev, char];
+    });
+  };
+  
+  const closeCharacterSheet = (charId: string) => {
+    setOpenCharacterSheets(prev => prev.filter(c => c.id !== charId));
+  };
   
   const [showCampaignDialog, setShowCampaignDialog] = useState(false);
   const [newCampaignName, setNewCampaignName] = useState("");
@@ -751,6 +763,10 @@ export default function Campaign() {
   const [editingSceneFolderId, setEditingSceneFolderId] = useState<string | null>(null);
   const [editingSceneFolderName, setEditingSceneFolderName] = useState('');
   const [draggingSceneId, setDraggingSceneId] = useState<string | null>(null);
+  
+  // GM Character Hotbar state (5 slots for quick character access)
+  const [gmCharacterHotbar, setGmCharacterHotbar] = useState<(string | null)[]>([null, null, null, null, null]);
+  const [hotbarSelectorOpen, setHotbarSelectorOpen] = useState<number | null>(null);
   
   // Notes panel state
   const [notesPanelOpen, setNotesPanelOpen] = useState(false);
@@ -1017,15 +1033,18 @@ export default function Campaign() {
     enabled: !!effectiveCampaignId && !isNew,
   });
 
-  // Sync viewingCharacterSheet with the latest data from the characters query
+  // Sync openCharacterSheets with the latest data from the characters query
   useEffect(() => {
-    if (viewingCharacterSheet && characters) {
-      const updatedChar = (characters as any[]).find((c: any) => c.id === viewingCharacterSheet.id);
-      if (updatedChar && JSON.stringify(updatedChar) !== JSON.stringify(viewingCharacterSheet)) {
-        setViewingCharacterSheet(updatedChar);
-      }
+    if (openCharacterSheets.length > 0 && characters) {
+      setOpenCharacterSheets(prev => prev.map(sheet => {
+        const updatedChar = (characters as any[]).find((c: any) => c.id === sheet.id);
+        if (updatedChar && JSON.stringify(updatedChar) !== JSON.stringify(sheet)) {
+          return updatedChar;
+        }
+        return sheet;
+      }));
     }
-  }, [characters, viewingCharacterSheet]);
+  }, [characters]);
 
   // Load campaign members
   const { data: members, isLoading: membersLoading } = useQuery({
@@ -1064,6 +1083,13 @@ export default function Campaign() {
     queryKey: ['scene-folders', effectiveCampaignId],
     queryFn: () => api.getSceneFolders(effectiveCampaignId!),
     enabled: !!effectiveCampaignId,
+  });
+
+  // Load character folders for the campaign (used for GM hotbar character picker)
+  const { data: characterFolders = [] } = useQuery<CharacterFolder[]>({
+    queryKey: ['character-folders', effectiveCampaignId],
+    queryFn: () => api.getCampaignFolders(effectiveCampaignId!),
+    enabled: !!effectiveCampaignId && role === 'gm',
   });
 
   // Load system species for default token images and character stats (only needed when campaign is loaded)
@@ -1389,6 +1415,47 @@ export default function Campaign() {
     });
   };
 
+  // GM Character Hotbar helper functions
+  const getCharactersInFolder = (folderId: string | null) => {
+    return (characters as any[] || []).filter((c: any) => c.folderId === folderId);
+  };
+  const unfiledCharacters = (characters as any[] || []).filter((c: any) => !c.folderId);
+  
+  const addCharacterToHotbar = (slotIndex: number, characterId: string) => {
+    setGmCharacterHotbar(prev => {
+      const next = [...prev];
+      next[slotIndex] = characterId;
+      return next;
+    });
+    setHotbarSelectorOpen(null);
+  };
+  
+  const removeCharacterFromHotbar = (slotIndex: number) => {
+    setGmCharacterHotbar(prev => {
+      const next = [...prev];
+      next[slotIndex] = null;
+      return next;
+    });
+  };
+  
+  const handleHotbarSlotClick = (slotIndex: number) => {
+    const characterId = gmCharacterHotbar[slotIndex];
+    if (characterId) {
+      const char = (characters as any[] || []).find((c: any) => c.id === characterId);
+      if (char) {
+        openCharacterSheet(char);
+      }
+    } else {
+      setHotbarSelectorOpen(slotIndex);
+    }
+  };
+  
+  const getHotbarCharacter = (slotIndex: number) => {
+    const characterId = gmCharacterHotbar[slotIndex];
+    if (!characterId) return null;
+    return (characters as any[] || []).find((c: any) => c.id === characterId) || null;
+  };
+
   // Update character mutation
   const updateCharacterMutation = useMutation({
     mutationFn: ({ id, data }: { id: string; data: any }) => api.updateCharacter(id, data),
@@ -1569,13 +1636,10 @@ export default function Campaign() {
             }
             return prev;
           });
-          // Update viewingCharacterSheet if it matches (for character sheet dialog)
-          setViewingCharacterSheet((prev: any) => {
-            if (prev && prev.id === updatedChar.id) {
-              return updatedChar;
-            }
-            return prev;
-          });
+          // Update openCharacterSheets if any match (for character sheet panels)
+          setOpenCharacterSheets((prev: any[]) => 
+            prev.map((sheet: any) => sheet.id === updatedChar.id ? updatedChar : sheet)
+          );
           // Immediately update the characters query cache for instant UI updates
           queryClientRef.current.setQueryData(
             [`/api/campaigns/${effectiveCampaignId}/characters`],
@@ -2101,13 +2165,13 @@ export default function Campaign() {
         if (role === 'gm') {
           // GMs can view any character
           setCharacterSheetDefaultTab("overview");
-          setViewingCharacterSheet(charData);
+          openCharacterSheet(charData);
         } else if (role === 'player') {
           // Players need at least view access, but we want edit access for this feature
           const permission = myPermissions?.permissions?.[charData.id];
           if (permission === 'owner' || permission === 'edit') {
             setCharacterSheetDefaultTab("overview");
-            setViewingCharacterSheet(charData);
+            openCharacterSheet(charData);
           } else {
             toast({ title: "No Access", description: "You don't have edit access to this character", variant: "destructive" });
           }
@@ -2282,17 +2346,17 @@ export default function Campaign() {
     setScenesManagementOpen(false);
   };
 
-  const handleUpdateCharacter = (updates: any) => {
-    if (viewingCharacterSheet) {
-      updateCharacterMutation.mutate({ id: viewingCharacterSheet.id, data: updates });
-      // Optimistically update the local state
-      setViewingCharacterSheet({ ...viewingCharacterSheet, ...updates });
-    }
+  const handleUpdateCharacterById = (charId: string, updates: any) => {
+    updateCharacterMutation.mutate({ id: charId, data: updates });
+    // Optimistically update the local state in openCharacterSheets
+    setOpenCharacterSheets(prev => prev.map(sheet => 
+      sheet.id === charId ? { ...sheet, ...updates } : sheet
+    ));
   };
 
   const handleViewCharacter = (char: any) => {
     setCharacterSheetDefaultTab("overview");
-    setViewingCharacterSheet(char);
+    openCharacterSheet(char);
   };
 
   // Open character sheet to a specific tab
@@ -2302,7 +2366,7 @@ export default function Campaign() {
     const charToView = role === 'player' ? character : inspectedChar;
     if (charToView) {
       setCharacterSheetDefaultTab(tab);
-      setViewingCharacterSheet(charToView);
+      openCharacterSheet(charToView);
     }
   };
 
@@ -3366,30 +3430,30 @@ export default function Campaign() {
         </div>
       </div>
 
-      {/* Character Sheet - Dialog on mobile, FloatingPanel on desktop */}
+      {/* Character Sheet - Dialog on mobile (single), FloatingPanel on desktop (multiple) */}
       {isMobile ? (
-        <Dialog open={!!viewingCharacterSheet} onOpenChange={(open) => !open && setViewingCharacterSheet(null)}>
+        <Dialog open={openCharacterSheets.length > 0} onOpenChange={(open) => !open && setOpenCharacterSheets([])}>
           <DialogContent className="w-full h-full max-w-full max-h-full bg-stone-900 border-stone-700 text-stone-200 p-0 rounded-none flex flex-col">
             <DialogHeader className="p-4 pb-0 shrink-0">
               <DialogTitle className="text-lg text-amber-500 font-display truncate pr-8">
-                {viewingCharacterSheet?.name}
+                {openCharacterSheets[0]?.name}
               </DialogTitle>
             </DialogHeader>
-            {viewingCharacterSheet && (
+            {openCharacterSheets[0] && (
               <CharacterSheet
-                character={viewingCharacterSheet}
+                character={openCharacterSheets[0]}
                 isGM={role === 'gm'}
                 isOwner={
-                  viewingCharacterSheet.userId === user?.id || 
-                  myPermissions?.permissions?.[viewingCharacterSheet.id] === 'edit'
+                  openCharacterSheets[0].userId === user?.id || 
+                  myPermissions?.permissions?.[openCharacterSheets[0].id] === 'edit'
                 }
                 isAdmin={isAdmin}
                 accessLevel={
-                  viewingCharacterSheet.userId === user?.id ? 'owner' :
-                  (myPermissions?.permissions?.[viewingCharacterSheet.id] as 'name' | 'view' | 'edit' | undefined) || 'view'
+                  openCharacterSheets[0].userId === user?.id ? 'owner' :
+                  (myPermissions?.permissions?.[openCharacterSheets[0].id] as 'name' | 'view' | 'edit' | undefined) || 'view'
                 }
-                onUpdate={handleUpdateCharacter}
-                onClose={() => setViewingCharacterSheet(null)}
+                onUpdate={(updates) => handleUpdateCharacterById(openCharacterSheets[0].id, updates)}
+                onClose={() => setOpenCharacterSheets([])}
                 defaultTab={characterSheetDefaultTab}
                 campaignId={effectiveCampaignId || undefined}
                 sceneId={activeScene?.id}
@@ -3399,37 +3463,39 @@ export default function Campaign() {
           </DialogContent>
         </Dialog>
       ) : (
-        <FloatingPanel
-          open={!!viewingCharacterSheet}
-          onClose={() => setViewingCharacterSheet(null)}
-          title={viewingCharacterSheet?.name}
-          defaultSize={{ width: 600, height: window.innerHeight * 0.8 }}
-          minWidth={400}
-          minHeight={400}
-          zIndex={40}
-        >
-          {viewingCharacterSheet && (
+        openCharacterSheets.map((sheet, index) => (
+          <FloatingPanel
+            key={sheet.id}
+            open={true}
+            onClose={() => closeCharacterSheet(sheet.id)}
+            title={sheet.name}
+            defaultSize={{ width: 600, height: window.innerHeight * 0.8 }}
+            defaultPosition={{ x: 100 + (index * 30), y: 50 + (index * 30) }}
+            minWidth={400}
+            minHeight={400}
+            zIndex={40 + index}
+          >
             <CharacterSheet
-              character={viewingCharacterSheet}
+              character={sheet}
               isGM={role === 'gm'}
               isOwner={
-                viewingCharacterSheet.userId === user?.id || 
-                myPermissions?.permissions?.[viewingCharacterSheet.id] === 'edit'
+                sheet.userId === user?.id || 
+                myPermissions?.permissions?.[sheet.id] === 'edit'
               }
               isAdmin={isAdmin}
               accessLevel={
-                viewingCharacterSheet.userId === user?.id ? 'owner' :
-                (myPermissions?.permissions?.[viewingCharacterSheet.id] as 'name' | 'view' | 'edit' | undefined) || 'view'
+                sheet.userId === user?.id ? 'owner' :
+                (myPermissions?.permissions?.[sheet.id] as 'name' | 'view' | 'edit' | undefined) || 'view'
               }
-              onUpdate={handleUpdateCharacter}
-              onClose={() => setViewingCharacterSheet(null)}
+              onUpdate={(updates) => handleUpdateCharacterById(sheet.id, updates)}
+              onClose={() => closeCharacterSheet(sheet.id)}
               defaultTab={characterSheetDefaultTab}
               campaignId={effectiveCampaignId || undefined}
               sceneId={activeScene?.id}
               allSpecies={[...(systemSpecies || []), ...campaignSpeciesList]}
             />
-          )}
-        </FloatingPanel>
+          </FloatingPanel>
+        ))
       )}
       
       {/* Initiative Tracker Dialog */}
@@ -3475,13 +3541,158 @@ export default function Campaign() {
               onViewCharacter={(character) => {
                 if (character) {
                   setCharacterSheetDefaultTab("overview");
-                  setViewingCharacterSheet(character);
+                  openCharacterSheet(character);
                 }
               }}
             />
           </div>
         </div>
       )}
+      
+      {/* GM Character Hotbar - Bottom center of screen, desktop/tablet only */}
+      {role === 'gm' && !isMobile && (
+        <div 
+          className="fixed bottom-4 left-1/2 -translate-x-1/2 z-30 pointer-events-auto"
+          data-testid="gm-character-hotbar"
+        >
+          <div className="flex items-center gap-2 bg-stone-900/95 border border-stone-700 rounded-xl p-2 shadow-xl backdrop-blur-sm">
+            {gmCharacterHotbar.map((characterId, index) => {
+              const hotbarChar = getHotbarCharacter(index);
+              return (
+                <div key={index} className="relative group">
+                  <button
+                    onClick={() => handleHotbarSlotClick(index)}
+                    className={`
+                      w-14 h-14 rounded-lg border-2 flex items-center justify-center
+                      transition-all duration-200 hover:scale-105
+                      ${hotbarChar 
+                        ? 'border-amber-600 bg-stone-800 hover:border-amber-500' 
+                        : 'border-stone-600 bg-stone-800/50 hover:border-stone-500 hover:bg-stone-700/50'
+                      }
+                    `}
+                    data-testid={`gm-hotbar-slot-${index}`}
+                  >
+                    {hotbarChar ? (
+                      hotbarChar.portrait ? (
+                        <img 
+                          src={hotbarChar.portrait} 
+                          alt={hotbarChar.name} 
+                          className="w-12 h-12 rounded-md object-cover"
+                        />
+                      ) : (
+                        <div className="w-12 h-12 rounded-md bg-amber-900/50 flex items-center justify-center">
+                          <User className="h-6 w-6 text-amber-500" />
+                        </div>
+                      )
+                    ) : (
+                      <Plus className="h-6 w-6 text-stone-500" />
+                    )}
+                  </button>
+                  {hotbarChar && (
+                    <>
+                      <div className="absolute -bottom-5 left-1/2 -translate-x-1/2 text-xs text-stone-400 truncate max-w-[60px] text-center opacity-0 group-hover:opacity-100 transition-opacity">
+                        {hotbarChar.name}
+                      </div>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          removeCharacterFromHotbar(index);
+                        }}
+                        className="absolute -top-1 -right-1 w-5 h-5 bg-red-600 hover:bg-red-500 text-white rounded-full text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                        data-testid={`gm-hotbar-remove-${index}`}
+                      >
+                        ×
+                      </button>
+                    </>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+      
+      {/* GM Character Hotbar Selector Dialog */}
+      <Dialog open={hotbarSelectorOpen !== null} onOpenChange={(open) => !open && setHotbarSelectorOpen(null)}>
+        <DialogContent className="bg-stone-900 border-stone-700 text-stone-200 max-w-md max-h-[70vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="text-amber-500">Select Character</DialogTitle>
+            <DialogDescription className="text-stone-400">
+              Choose a character to add to the hotbar slot
+            </DialogDescription>
+          </DialogHeader>
+          <ScrollArea className="flex-1 pr-4">
+            <div className="space-y-3 py-2">
+              {characterFolders.map((folder) => {
+                const folderChars = getCharactersInFolder(folder.id);
+                if (folderChars.length === 0) return null;
+                return (
+                  <div key={folder.id} className="space-y-1">
+                    <div className="flex items-center gap-2 text-sm text-stone-400 font-medium px-1">
+                      <Folder className="h-4 w-4" />
+                      {folder.name}
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 pl-6">
+                      {folderChars.map((char: any) => (
+                        <button
+                          key={char.id}
+                          onClick={() => hotbarSelectorOpen !== null && addCharacterToHotbar(hotbarSelectorOpen, char.id)}
+                          className="flex items-center gap-2 p-2 bg-stone-800 hover:bg-stone-700 border border-stone-700 rounded-lg transition-colors"
+                          data-testid={`hotbar-select-char-${char.id}`}
+                        >
+                          {char.portrait ? (
+                            <img src={char.portrait} alt={char.name} className="w-8 h-8 rounded-full object-cover" />
+                          ) : (
+                            <div className="w-8 h-8 rounded-full bg-stone-700 flex items-center justify-center">
+                              <User className="h-4 w-4 text-stone-500" />
+                            </div>
+                          )}
+                          <span className="text-sm text-stone-200 truncate">{char.name}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+              
+              {unfiledCharacters.length > 0 && (
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2 text-sm text-stone-400 font-medium px-1">
+                    <Users className="h-4 w-4" />
+                    Unfiled Characters
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 pl-6">
+                    {unfiledCharacters.map((char: any) => (
+                      <button
+                        key={char.id}
+                        onClick={() => hotbarSelectorOpen !== null && addCharacterToHotbar(hotbarSelectorOpen, char.id)}
+                        className="flex items-center gap-2 p-2 bg-stone-800 hover:bg-stone-700 border border-stone-700 rounded-lg transition-colors"
+                        data-testid={`hotbar-select-char-${char.id}`}
+                      >
+                        {char.portrait ? (
+                          <img src={char.portrait} alt={char.name} className="w-8 h-8 rounded-full object-cover" />
+                        ) : (
+                          <div className="w-8 h-8 rounded-full bg-stone-700 flex items-center justify-center">
+                            <User className="h-4 w-4 text-stone-500" />
+                          </div>
+                        )}
+                        <span className="text-sm text-stone-200 truncate">{char.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              
+              {(!characters || (characters as any[]).length === 0) && (
+                <div className="text-center py-8 text-stone-500">
+                  <Users className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                  <p>No characters in this campaign</p>
+                </div>
+              )}
+            </div>
+          </ScrollArea>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

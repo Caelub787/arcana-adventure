@@ -1,5 +1,5 @@
 import * as React from "react";
-import { X, GripHorizontal } from "lucide-react";
+import { X, GripHorizontal, Minus, Maximize2, Minimize2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface FloatingPanelProps {
@@ -29,7 +29,6 @@ export function FloatingPanel({
 }: FloatingPanelProps) {
   const panelRef = React.useRef<HTMLDivElement>(null);
   
-  // Compute default size safely (guard against SSR/windowless environments)
   const computedDefaultSize = React.useMemo(() => {
     if (defaultSize) return defaultSize;
     const height = typeof window !== "undefined" ? window.innerHeight * 0.8 : 600;
@@ -49,6 +48,7 @@ export function FloatingPanel({
   const [isDragging, setIsDragging] = React.useState(false);
   const [isResizing, setIsResizing] = React.useState<string | null>(null);
   const [isFullscreen, setIsFullscreen] = React.useState(false);
+  const [isMinimized, setIsMinimized] = React.useState(false);
   const savedPanelStateRef = React.useRef<{ position: { x: number; y: number }; size: { width: number; height: number } } | null>(null);
   const dragStartRef = React.useRef({ x: 0, y: 0, posX: 0, posY: 0 });
   const resizeStartRef = React.useRef({ x: 0, y: 0, width: 0, height: 0, posX: 0, posY: 0 });
@@ -151,7 +151,11 @@ export function FloatingPanel({
     (e.target as HTMLElement).releasePointerCapture(e.pointerId);
   }, [isResizing]);
 
-  const handleDoubleClick = React.useCallback(() => {
+  const toggleMinimize = React.useCallback(() => {
+    setIsMinimized((prev) => !prev);
+  }, []);
+
+  const toggleFullscreen = React.useCallback(() => {
     if (isFullscreen) {
       if (savedPanelStateRef.current) {
         setPosition(savedPanelStateRef.current.position);
@@ -163,14 +167,20 @@ export function FloatingPanel({
       setPosition({ x: 0, y: 0 });
       setSize({ width: window.innerWidth, height: window.innerHeight });
       setIsFullscreen(true);
+      setIsMinimized(false);
     }
   }, [isFullscreen, position, size]);
+
+  const handleDoubleClick = React.useCallback(() => {
+    toggleMinimize();
+  }, [toggleMinimize]);
 
   if (!open) return null;
 
   const resizeHandleBase = "absolute bg-transparent hover:bg-amber-500/30 transition-colors";
   const cornerSize = 12;
   const edgeThickness = 6;
+  const headerHeight = 44;
 
   return (
     <div
@@ -184,7 +194,7 @@ export function FloatingPanel({
         left: position.x,
         top: position.y,
         width: size.width,
-        height: size.height,
+        height: isMinimized ? headerHeight : size.height,
         zIndex,
       }}
       data-testid="floating-panel"
@@ -205,84 +215,112 @@ export function FloatingPanel({
           <GripHorizontal className="h-4 w-4 text-stone-500 shrink-0" />
           <span className="truncate">{title}</span>
         </div>
-        <button
-          onClick={onClose}
-          className="p-1 rounded hover:bg-stone-700 transition-colors text-stone-400 hover:text-stone-200 shrink-0"
-          data-no-drag
-          data-testid="floating-panel-close"
-        >
-          <X className="h-5 w-5" />
-        </button>
+        <div className="flex items-center gap-1 shrink-0">
+          <button
+            onClick={toggleMinimize}
+            className="p-1 rounded hover:bg-stone-700 transition-colors text-stone-400 hover:text-stone-200"
+            data-no-drag
+            data-testid="floating-panel-minimize"
+            title={isMinimized ? "Restore" : "Minimize"}
+          >
+            <Minus className="h-5 w-5" />
+          </button>
+          <button
+            onClick={toggleFullscreen}
+            className="p-1 rounded hover:bg-stone-700 transition-colors text-stone-400 hover:text-stone-200"
+            data-no-drag
+            data-testid="floating-panel-fullscreen"
+            title={isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
+          >
+            {isFullscreen ? (
+              <Minimize2 className="h-5 w-5" />
+            ) : (
+              <Maximize2 className="h-5 w-5" />
+            )}
+          </button>
+          <button
+            onClick={onClose}
+            className="p-1 rounded hover:bg-stone-700 transition-colors text-stone-400 hover:text-stone-200"
+            data-no-drag
+            data-testid="floating-panel-close"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto overflow-x-hidden">
-        {children}
-      </div>
+      {!isMinimized && (
+        <>
+          <div className="flex-1 overflow-y-auto overflow-x-hidden">
+            {children}
+          </div>
 
-      <div
-        className={`${resizeHandleBase} top-0 left-${cornerSize}px right-${cornerSize}px cursor-n-resize`}
-        style={{ height: edgeThickness, left: cornerSize, right: cornerSize, top: 0 }}
-        onPointerDown={(e) => handleResizeStart(e, 'n')}
-        onPointerMove={handleResizeMove}
-        onPointerUp={handleResizeEnd}
-        onPointerCancel={handleResizeEnd}
-      />
-      <div
-        className={`${resizeHandleBase} bottom-0 cursor-s-resize`}
-        style={{ height: edgeThickness, left: cornerSize, right: cornerSize, bottom: 0 }}
-        onPointerDown={(e) => handleResizeStart(e, 's')}
-        onPointerMove={handleResizeMove}
-        onPointerUp={handleResizeEnd}
-        onPointerCancel={handleResizeEnd}
-      />
-      <div
-        className={`${resizeHandleBase} left-0 cursor-w-resize`}
-        style={{ width: edgeThickness, top: cornerSize, bottom: cornerSize, left: 0 }}
-        onPointerDown={(e) => handleResizeStart(e, 'w')}
-        onPointerMove={handleResizeMove}
-        onPointerUp={handleResizeEnd}
-        onPointerCancel={handleResizeEnd}
-      />
-      <div
-        className={`${resizeHandleBase} right-0 cursor-e-resize`}
-        style={{ width: edgeThickness, top: cornerSize, bottom: cornerSize, right: 0 }}
-        onPointerDown={(e) => handleResizeStart(e, 'e')}
-        onPointerMove={handleResizeMove}
-        onPointerUp={handleResizeEnd}
-        onPointerCancel={handleResizeEnd}
-      />
-      <div
-        className={`${resizeHandleBase} top-0 left-0 cursor-nw-resize`}
-        style={{ width: cornerSize, height: cornerSize }}
-        onPointerDown={(e) => handleResizeStart(e, 'nw')}
-        onPointerMove={handleResizeMove}
-        onPointerUp={handleResizeEnd}
-        onPointerCancel={handleResizeEnd}
-      />
-      <div
-        className={`${resizeHandleBase} top-0 right-0 cursor-ne-resize`}
-        style={{ width: cornerSize, height: cornerSize }}
-        onPointerDown={(e) => handleResizeStart(e, 'ne')}
-        onPointerMove={handleResizeMove}
-        onPointerUp={handleResizeEnd}
-        onPointerCancel={handleResizeEnd}
-      />
-      <div
-        className={`${resizeHandleBase} bottom-0 left-0 cursor-sw-resize`}
-        style={{ width: cornerSize, height: cornerSize }}
-        onPointerDown={(e) => handleResizeStart(e, 'sw')}
-        onPointerMove={handleResizeMove}
-        onPointerUp={handleResizeEnd}
-        onPointerCancel={handleResizeEnd}
-      />
-      <div
-        className={`${resizeHandleBase} bottom-0 right-0 cursor-se-resize`}
-        style={{ width: cornerSize, height: cornerSize }}
-        onPointerDown={(e) => handleResizeStart(e, 'se')}
-        onPointerMove={handleResizeMove}
-        onPointerUp={handleResizeEnd}
-        onPointerCancel={handleResizeEnd}
-      />
+          <div
+            className={`${resizeHandleBase} top-0 left-${cornerSize}px right-${cornerSize}px cursor-n-resize`}
+            style={{ height: edgeThickness, left: cornerSize, right: cornerSize, top: 0 }}
+            onPointerDown={(e) => handleResizeStart(e, 'n')}
+            onPointerMove={handleResizeMove}
+            onPointerUp={handleResizeEnd}
+            onPointerCancel={handleResizeEnd}
+          />
+          <div
+            className={`${resizeHandleBase} bottom-0 cursor-s-resize`}
+            style={{ height: edgeThickness, left: cornerSize, right: cornerSize, bottom: 0 }}
+            onPointerDown={(e) => handleResizeStart(e, 's')}
+            onPointerMove={handleResizeMove}
+            onPointerUp={handleResizeEnd}
+            onPointerCancel={handleResizeEnd}
+          />
+          <div
+            className={`${resizeHandleBase} left-0 cursor-w-resize`}
+            style={{ width: edgeThickness, top: cornerSize, bottom: cornerSize, left: 0 }}
+            onPointerDown={(e) => handleResizeStart(e, 'w')}
+            onPointerMove={handleResizeMove}
+            onPointerUp={handleResizeEnd}
+            onPointerCancel={handleResizeEnd}
+          />
+          <div
+            className={`${resizeHandleBase} right-0 cursor-e-resize`}
+            style={{ width: edgeThickness, top: cornerSize, bottom: cornerSize, right: 0 }}
+            onPointerDown={(e) => handleResizeStart(e, 'e')}
+            onPointerMove={handleResizeMove}
+            onPointerUp={handleResizeEnd}
+            onPointerCancel={handleResizeEnd}
+          />
+          <div
+            className={`${resizeHandleBase} top-0 left-0 cursor-nw-resize`}
+            style={{ width: cornerSize, height: cornerSize }}
+            onPointerDown={(e) => handleResizeStart(e, 'nw')}
+            onPointerMove={handleResizeMove}
+            onPointerUp={handleResizeEnd}
+            onPointerCancel={handleResizeEnd}
+          />
+          <div
+            className={`${resizeHandleBase} top-0 right-0 cursor-ne-resize`}
+            style={{ width: cornerSize, height: cornerSize }}
+            onPointerDown={(e) => handleResizeStart(e, 'ne')}
+            onPointerMove={handleResizeMove}
+            onPointerUp={handleResizeEnd}
+            onPointerCancel={handleResizeEnd}
+          />
+          <div
+            className={`${resizeHandleBase} bottom-0 left-0 cursor-sw-resize`}
+            style={{ width: cornerSize, height: cornerSize }}
+            onPointerDown={(e) => handleResizeStart(e, 'sw')}
+            onPointerMove={handleResizeMove}
+            onPointerUp={handleResizeEnd}
+            onPointerCancel={handleResizeEnd}
+          />
+          <div
+            className={`${resizeHandleBase} bottom-0 right-0 cursor-se-resize`}
+            style={{ width: cornerSize, height: cornerSize }}
+            onPointerDown={(e) => handleResizeStart(e, 'se')}
+            onPointerMove={handleResizeMove}
+            onPointerUp={handleResizeEnd}
+            onPointerCancel={handleResizeEnd}
+          />
+        </>
+      )}
     </div>
   );
 }

@@ -6000,10 +6000,13 @@ function SpellPickerDialog({ open, onOpenChange, character, onSelectSpell }: Spe
     return a.name.localeCompare(b.name);
   });
   
-  // Filter by search
-  const filteredSpells = sortedSpells.filter((spell: any) =>
-    spell.name.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // Filter by search AND only show AOE spells (this dialog is for AOE targeting)
+  const filteredSpells = sortedSpells.filter((spell: any) => {
+    const matchesSearch = spell.name.toLowerCase().includes(searchTerm.toLowerCase());
+    // Check if spell has AOE: either isAoe boolean flag, or aoe field with format "shape:radius"
+    const hasAoe = spell.isAoe || (spell.aoe && typeof spell.aoe === 'string' && spell.aoe.includes(':'));
+    return matchesSearch && hasAoe;
+  });
   
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -6011,7 +6014,7 @@ function SpellPickerDialog({ open, onOpenChange, character, onSelectSpell }: Spe
         <DialogHeader>
           <DialogTitle className="text-purple-400 flex items-center gap-2">
             <Sparkles className="h-5 w-5" />
-            Select Spell to Target
+            Select AOE Spell to Target
           </DialogTitle>
         </DialogHeader>
         
@@ -6031,8 +6034,8 @@ function SpellPickerDialog({ open, onOpenChange, character, onSelectSpell }: Spe
             {filteredSpells.length === 0 ? (
               <div className="text-center py-8 text-stone-400">
                 <Sparkles className="h-10 w-10 mx-auto mb-2 opacity-30" />
-                <p className="text-sm">No spells found</p>
-                <p className="text-xs mt-1">Add spells in your character sheet</p>
+                <p className="text-sm">No AOE spells found</p>
+                <p className="text-xs mt-1">Add spells with AOE enabled in your character sheet</p>
               </div>
             ) : (
               filteredSpells.map((spell: any) => {
@@ -9931,7 +9934,7 @@ function HotbarsTabContent({ character, isGM, isOwner }: HotbarsTabContentProps)
               Select a slot to equip this item
             </DialogDescription>
           </DialogHeader>
-          <div className="grid grid-cols-3 gap-2 py-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 py-4">
             {equipPickerData && Array.from({ length: getMaxSlots(equipPickerData.hotbarType) }).map((_, slotNum) => {
               const existingHotbar = getHotbarForSlot(equipPickerData.hotbarType, slotNum);
               const isSlot1Blocked = equipPickerData.hotbarType === 'weapons' && slotNum === 1 && heavyEquipped;
@@ -12150,7 +12153,7 @@ function TraitEditForm({
         />
       </div>
 
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         <div>
           <Label className="text-stone-300 text-xs">Long Rest Uses</Label>
           <Input
@@ -18663,7 +18666,7 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
             </div>
             <div className="border-t border-stone-700 pt-4">
               <h3 className="text-sm font-bold text-stone-300 mb-3">Price</h3>
-              <div className="grid grid-cols-4 gap-4">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                 <div>
                   <Label>Platinum</Label>
                   <Input type="number" min="0" value={formData.pricePlatinum} onChange={(e) => setFormData({...formData, pricePlatinum: e.target.value === '' ? '' : parseInt(e.target.value)})} className="bg-stone-800 border-stone-700" />
@@ -19430,7 +19433,7 @@ function ManageTemplatesDialog({ open, onOpenChange, campaignId }: { open: boole
                 )}
                 <div className="border-t border-stone-700 pt-4">
                   <h3 className="text-sm font-bold text-stone-300 mb-3">Price</h3>
-                  <div className="grid grid-cols-4 gap-4">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                     <div>
                       <Label>Platinum</Label>
                       <Input type="number" min="0" value={newItem.pricePlatinum} onChange={(e) => setNewItem({...newItem, pricePlatinum: e.target.value === '' ? '' : parseInt(e.target.value)})} className="bg-stone-800 border-stone-700" />

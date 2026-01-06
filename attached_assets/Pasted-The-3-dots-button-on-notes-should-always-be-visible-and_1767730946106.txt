@@ -1,0 +1,13 @@
+The 3 dots button on notes should always be visible and not require me to hold down in that section for it to appear.
+
+Also the canvas feature needs to open and be edited like a normal note.  It needs to not glitch out when i try to add references, and it needs to be opened only within the campaign notes panel and not fullscreen itself.  Maybe move the buttons for it to be in a vertical line and have them appear as icons but if I hover over them it reveals what they do.
+
+I want to be able to have multiple character sheets open at once.
+
+When a character sheet is resized, all elements must remain within their designated section and not overlap, this may mean needing to find ways to make some sections drop down or slightly move, like if the character sheet is made too slim, in the skills section instead of having 3 skills listed in a row it makes it 2 skills listed and drops the 3rd down one row.  Make sure all panels within a character sheet open properly and display everything properly as well.
+
+If I click the AOE spell button, only spells with an aoe effect should appear in that list.
+
+Add a new hotbar in the bottom middle of the screen (only the gm can see this, and only if he is on a desktop or tablet), there should be 5 slots in this hotbar, it should not overlap with any other elements in the app.  If any of these hotbars are clicked while empty it allows you to select from a list of all characters within the campaign (in their folder structures) to add to the hotbar.  If a hotbar with a character in it is pressed, it will open that character sheet without assigning the character to the GM.  The hotbars when they have a character in them need to show the following, Image of the character, name, and HP and Energy bars like tokens do.
+
+Lets change the functionality to fullscreen a character sheet.  Lets add 2 buttons next to the close one.  One is to minimize which minimizes the character sheet and only displays the tab bar which showcases the drag icon label, character name, and 3 buttons.  The other fullscreens it.  If double pressed on the bar it should minimize or re-open the character sheet instead.

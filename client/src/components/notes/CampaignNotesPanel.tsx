@@ -169,7 +169,7 @@ function FolderTreeItem({
           <DropdownMenuTrigger asChild>
             <button
               onClick={(e) => e.stopPropagation()}
-              className="p-0.5 hover:bg-stone-700 rounded opacity-0 group-hover:opacity-100"
+              className="p-0.5 hover:bg-stone-700 rounded"
             >
               <MoreVertical className="h-2.5 w-2.5" />
             </button>
@@ -1004,7 +1004,7 @@ export function CampaignNotesPanel({
                     <DropdownMenuTrigger asChild>
                       <button
                         onClick={(e) => e.stopPropagation()}
-                        className="p-0.5 hover:bg-stone-700 rounded opacity-0 group-hover:opacity-100"
+                        className="p-0.5 hover:bg-stone-700 rounded"
                       >
                         <MoreVertical className="h-3 w-3 text-stone-400" />
                       </button>
@@ -1323,7 +1323,7 @@ export function CampaignNotesPanel({
         </div>
       </div>
 
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex overflow-hidden min-h-0">
         {viewMode === "graph" ? (
           renderGraphView()
         ) : (
