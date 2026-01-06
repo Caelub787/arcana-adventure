@@ -3150,6 +3150,7 @@ export default function Campaign() {
              onGridTargetClick={handleGridTargetClick}
              notesPanelOpen={notesPanelOpen}
              onNotesClick={handleToggleNotesPanel}
+             inCombat={initiativeData?.inCombat ?? false}
            />
            
            {/* Battlemap Dice Overlay for 3D dice rolling */}

@@ -307,9 +307,10 @@ interface BattleMapProps {
   onGridTargetClick?: (gridX: number, gridY: number) => void;
   notesPanelOpen?: boolean;
   onNotesClick?: () => void;
+  inCombat?: boolean;
 }
 
-export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClick, onDeleteToken, role, gridSize, backgroundImage, scene, onViewChange, characters = [], allSpecies = [], selectionMode = 'select', targetedTokenId, selectedTokenId, aoeTargetState, onAoeMouseMove, onAoeClick, otherPlayersAoe, myPermissions, tokenActiveEffects, allTokenEffects, onApplyEffect, onRemoveEffect, onToggleInvisibility, currentTurnCharacterId, otherPlayersTargeting, activeBeacons, onBeacon, otherPlayersViewports, thrownItems = [], onRefetchThrownItems, onDeleteThrownItem, throwableGridTarget, onGridTargetClick, notesPanelOpen = false, onNotesClick }: BattleMapProps) {
+export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClick, onDeleteToken, role, gridSize, backgroundImage, scene, onViewChange, characters = [], allSpecies = [], selectionMode = 'select', targetedTokenId, selectedTokenId, aoeTargetState, onAoeMouseMove, onAoeClick, otherPlayersAoe, myPermissions, tokenActiveEffects, allTokenEffects, onApplyEffect, onRemoveEffect, onToggleInvisibility, currentTurnCharacterId, otherPlayersTargeting, activeBeacons, onBeacon, otherPlayersViewports, thrownItems = [], onRefetchThrownItems, onDeleteThrownItem, throwableGridTarget, onGridTargetClick, notesPanelOpen = false, onNotesClick, inCombat = false }: BattleMapProps) {
   // Derive isGM from role prop
   const isGM = role === 'gm';
   
@@ -811,6 +812,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
   /**
    * endTokenDrag - Finalizes token position on drag end
    * Commits the snapped position to the server
+   * Checks for collision with other tokens before allowing the move
    */
   const endTokenDrag = (e: React.PointerEvent, token: Token) => {
     if (!draggingToken || draggingToken.id !== token.id) return;
@@ -818,7 +820,61 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
     const target = e.currentTarget as HTMLElement;
     target.releasePointerCapture(e.pointerId);
     
-    // Save the final position
+    const effectiveGridSize = scene?.gridSize || gridSize;
+    
+    // Get the size of the token being dragged
+    const character = getCharacterForToken(token);
+    const speciesData = character?.race ? allSpecies.find(s => s.name === character.race) : null;
+    const draggedTokenGridSpan = getTokenGridSpan((token as any).speciesSize || speciesData?.size);
+    
+    // Calculate the grid cells that would be occupied by the dragged token
+    // Use Math.round to match the snap-to-grid rounding (visualX/visualY are already snapped)
+    const draggedMinGridX = Math.round(draggingToken.visualX / effectiveGridSize);
+    const draggedMinGridY = Math.round(draggingToken.visualY / effectiveGridSize);
+    const draggedMaxGridX = draggedMinGridX + draggedTokenGridSpan - 1;
+    const draggedMaxGridY = draggedMinGridY + draggedTokenGridSpan - 1;
+    
+    // Check for collision with other tokens
+    // Use the visual/rendered positions for accurate collision detection
+    let hasCollision = false;
+    for (const otherToken of tokens) {
+      if (otherToken.id === token.id) continue; // Skip self
+      
+      // Get size of the other token
+      const otherChar = getCharacterForToken(otherToken);
+      const otherSpeciesData = otherChar?.race ? allSpecies.find(s => s.name === otherChar.race) : null;
+      const otherGridSpan = getTokenGridSpan((otherToken as any).speciesSize || otherSpeciesData?.size);
+      
+      // Use the visual position for the other token (from getTokenDisplayPosition logic)
+      // This accounts for animations and other drags in progress
+      const otherDisplayPos = getTokenDisplayPosition(otherToken);
+      
+      // Calculate the grid cells occupied by the other token using its display position
+      // Use Math.round to match the snap-to-grid rounding
+      const otherMinGridX = Math.round(otherDisplayPos.x / effectiveGridSize);
+      const otherMinGridY = Math.round(otherDisplayPos.y / effectiveGridSize);
+      const otherMaxGridX = otherMinGridX + otherGridSpan - 1;
+      const otherMaxGridY = otherMinGridY + otherGridSpan - 1;
+      
+      // Check for overlap (boxes intersect if they overlap on both axes)
+      const overlapX = draggedMinGridX <= otherMaxGridX && draggedMaxGridX >= otherMinGridX;
+      const overlapY = draggedMinGridY <= otherMaxGridY && draggedMaxGridY >= otherMinGridY;
+      
+      if (overlapX && overlapY) {
+        hasCollision = true;
+        break;
+      }
+    }
+    
+    if (hasCollision) {
+      // Collision detected - don't move, keep token at original position
+      // The token will snap back to its start position
+      gestureModeRef.current = 'idle';
+      setDraggingToken(null);
+      return;
+    }
+    
+    // No collision - save the final position
     onMoveToken(token.id, draggingToken.visualX, draggingToken.visualY);
     
     // Reset gesture mode
@@ -1500,12 +1556,22 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
           const effectiveGridSize = scene?.gridSize || gridSize;
           
           // Check if user can drag this token:
-          // - GMs can drag any token
-          // - Users with 'edit' or 'owner' permission to the linked character can drag that character's token
+          // - GMs can always drag any token
+          // - During combat: Players can only drag if it's their character's turn
+          // - Outside combat: Users with 'edit' or 'owner' permission can drag
           // Note: token.type === 'player' alone is NOT sufficient - must have actual edit permission
           const permissionLevel = character ? myPermissions?.permissions?.[character.id] : undefined;
           const hasEditAccess = permissionLevel === 'edit' || permissionLevel === 'owner';
-          const canDrag = role === 'gm' || hasEditAccess;
+          
+          // During combat, players can only move tokens if it's that token's character's turn
+          // Only enforce turn restriction when combat is active AND a turn has been established
+          // If inCombat but no turn ID yet (during setup/transitions), allow normal movement
+          const isCombatWithActiveTurn = inCombat && currentTurnCharacterId;
+          const isTokensTurn = isCombatWithActiveTurn && token.characterId === currentTurnCharacterId;
+          // In active combat (with turn): only the token whose turn it is can move
+          // In combat without turn set OR not in combat: normal permission applies
+          const canDragDuringCombat = isCombatWithActiveTurn ? (isTokensTurn && hasEditAccess) : hasEditAccess;
+          const canDrag = role === 'gm' || canDragDuringCombat;
           
           // Get species size for grid span calculation
           // Use enriched speciesSize from token (works regardless of character permissions)

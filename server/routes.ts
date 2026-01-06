@@ -406,6 +406,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 return;
               }
               
+              // Check combat turn restriction - players can only move their character's token during their turn
+              // Only enforce turn restriction if combat is active AND a turn has been established
+              const tokenScene = await storage.getScene(token.sceneId);
+              if (tokenScene?.inCombat && tokenScene.currentTurnCharacterId) {
+                // In combat mode with active turn - check if it's this character's turn
+                if (tokenScene.currentTurnCharacterId !== token.characterId) {
+                  ws.send(JSON.stringify({
+                    type: "error",
+                    message: "It's not your turn to move"
+                  }));
+                  return;
+                }
+              }
+              
               // Check if user owns the character OR has edit permission
               const isOwner = character.userId === authenticatedUserId;
               if (!isOwner) {
@@ -428,6 +442,85 @@ export async function registerRoutes(app: Express): Promise<Server> {
               }));
               return;
             }
+          }
+          
+          // Collision detection - check if the target position would overlap with other tokens
+          const allTokens = await storage.getTokensByScene(token.sceneId);
+          const allCharacters = await storage.getCharactersByCampaign(campaignId);
+          const allSpecies = await storage.getAllSpecies(); // Get system species
+          const campaignSpecies = await storage.getCampaignSpecies(campaignId); // Get campaign species
+          const speciesList = [...allSpecies, ...campaignSpecies];
+          
+          // Get grid size from scene
+          const scene = await storage.getScene(token.sceneId);
+          const gridSize = scene?.gridSize || 50;
+          
+          // Helper to get grid span based on species size
+          const getTokenGridSpan = (size?: string) => {
+            switch (size?.toLowerCase()) {
+              case 'huge': return 2;
+              case 'gargantuan': return 3;
+              default: return 1;
+            }
+          };
+          
+          // Helper to get token size - checks token's enriched speciesSize first, then character's species
+          const getTokenSize = (tok: any, chars: any[], species: any[]) => {
+            // Check token's direct speciesSize field (enriched data)
+            if (tok.speciesSize) return tok.speciesSize;
+            // Fall back to character's species lookup
+            if (tok.characterId) {
+              const char = chars.find(c => c.id === tok.characterId);
+              if (char?.race) {
+                const spec = species.find(s => s.name === char.race);
+                if (spec?.size) return spec.size;
+              }
+            }
+            return 'Medium'; // Default
+          };
+          
+          // Get the moving token's species and size
+          const movingTokenSize = getTokenSize(token, allCharacters, speciesList);
+          const movingGridSpan = getTokenGridSpan(movingTokenSize);
+          
+          // Calculate grid cells for the moving token at new position
+          // Use Math.round to match the snap-to-grid rounding used in the client
+          const movingMinGridX = Math.round(x / gridSize);
+          const movingMinGridY = Math.round(y / gridSize);
+          const movingMaxGridX = movingMinGridX + movingGridSpan - 1;
+          const movingMaxGridY = movingMinGridY + movingGridSpan - 1;
+          
+          // Check collision with other tokens
+          let hasCollision = false;
+          for (const otherToken of allTokens) {
+            if (otherToken.id === tokenId) continue; // Skip self
+            
+            // Use the same helper to get other token's size
+            const otherTokenSize = getTokenSize(otherToken, allCharacters, speciesList);
+            const otherGridSpan = getTokenGridSpan(otherTokenSize);
+            
+            // Use Math.round to match snap-to-grid rounding
+            const otherMinGridX = Math.round(otherToken.x / gridSize);
+            const otherMinGridY = Math.round(otherToken.y / gridSize);
+            const otherMaxGridX = otherMinGridX + otherGridSpan - 1;
+            const otherMaxGridY = otherMinGridY + otherGridSpan - 1;
+            
+            // Check AABB overlap
+            const overlapX = movingMinGridX <= otherMaxGridX && movingMaxGridX >= otherMinGridX;
+            const overlapY = movingMinGridY <= otherMaxGridY && movingMaxGridY >= otherMinGridY;
+            
+            if (overlapX && overlapY) {
+              hasCollision = true;
+              break;
+            }
+          }
+          
+          if (hasCollision) {
+            ws.send(JSON.stringify({
+              type: "error",
+              message: "Cannot move to an occupied space"
+            }));
+            return;
           }
           
           // Update token position in database
