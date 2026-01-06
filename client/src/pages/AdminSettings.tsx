@@ -2933,6 +2933,46 @@ function FeatTreesView() {
     queryFn: () => api.getFeatTemplates(),
   });
 
+  // Query spells, traits, and skills for fallback descriptions
+  const { data: systemSpellsForFeats = [] } = useQuery({
+    queryKey: ['system-spells'],
+    queryFn: () => api.getSystemSpells(),
+  });
+  
+  const { data: systemTraitsForFeats = [] } = useQuery({
+    queryKey: ['system-traits'],
+    queryFn: () => api.getSystemTraits(),
+  });
+  
+  const { data: customSkillsForFeats = [] } = useQuery({
+    queryKey: ['system-skills'],
+    queryFn: () => api.getSystemSkills(),
+  });
+  
+  // Helper to get effective feat description - uses granted spell/trait/skill description if feat has no description
+  const getFeatDescription = (feat: Feat): string | undefined => {
+    if (feat.description) return feat.description;
+    
+    // Check for spell_grant, trait_grant, or skill_grant effects
+    if (feat.effects && Array.isArray(feat.effects)) {
+      for (const effect of feat.effects as any[]) {
+        if (effect.type === 'spell_grant' && effect.target) {
+          const spell = (systemSpellsForFeats as any[]).find(s => s.id === effect.target);
+          if (spell?.description) return spell.description;
+        }
+        if (effect.type === 'trait_grant' && effect.target) {
+          const trait = (systemTraitsForFeats as any[]).find(t => t.id === effect.target);
+          if (trait?.description) return trait.description;
+        }
+        if (effect.type === 'skill_grant' && effect.target) {
+          const skill = (customSkillsForFeats as any[]).find(s => s.id === effect.target);
+          if (skill?.description) return skill.description;
+        }
+      }
+    }
+    return undefined;
+  };
+
   const createTemplateMutation = useMutation({
     mutationFn: (template: Partial<FeatTemplate>) => api.createFeatTemplate(template),
     onSuccess: () => {
@@ -3843,9 +3883,9 @@ function FeatTreesView() {
                   <div className="text-sm font-bold text-white truncate w-full drop-shadow-lg">
                     {feat.name}
                   </div>
-                  {feat.description && (
+                  {getFeatDescription(feat) && (
                     <div className="text-[10px] text-stone-300 mt-1 line-clamp-2 w-full leading-tight">
-                      {feat.description}
+                      {getFeatDescription(feat)}
                     </div>
                   )}
                   {(feat.effects as any[])?.length > 0 && (
@@ -3890,11 +3930,13 @@ function FeatTreesView() {
                 <h3 className="font-display text-lg text-amber-500">
                   {featById.get(featActionMenu)?.name || 'Feat Actions'}
                 </h3>
-                {featById.get(featActionMenu)?.description && (
-                  <p className="text-xs text-stone-400 mt-1 line-clamp-2">
-                    {featById.get(featActionMenu)?.description}
-                  </p>
-                )}
+                {(() => {
+                  const actionFeat = featById.get(featActionMenu);
+                  const desc = actionFeat ? getFeatDescription(actionFeat) : undefined;
+                  return desc ? (
+                    <p className="text-xs text-stone-400 mt-1 line-clamp-2">{desc}</p>
+                  ) : null;
+                })()}
               </div>
               
               <div className="space-y-2">

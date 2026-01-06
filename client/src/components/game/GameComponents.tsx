@@ -17199,6 +17199,46 @@ function FeatTreeViewerGrid({
   const queryClient = useQueryClient();
   const [selectedFeat, setSelectedFeat] = useState<Feat | null>(null);
   
+  // Query spells, traits, and skills for fallback descriptions
+  const { data: systemSpells = [] } = useQuery({
+    queryKey: ['system-spells'],
+    queryFn: () => api.getSystemSpells(),
+  });
+  
+  const { data: systemTraits = [] } = useQuery({
+    queryKey: ['system-traits'],
+    queryFn: () => api.getSystemTraits(),
+  });
+  
+  const { data: customSkills = [] } = useQuery({
+    queryKey: ['system-skills'],
+    queryFn: () => api.getSystemSkills(),
+  });
+  
+  // Helper to get effective feat description - uses granted spell/trait/skill description if feat has no description
+  const getFeatDescription = (feat: Feat): string | undefined => {
+    if (feat.description) return feat.description;
+    
+    // Check for spell_grant, trait_grant, or skill_grant effects
+    if (feat.effects && Array.isArray(feat.effects)) {
+      for (const effect of feat.effects as any[]) {
+        if (effect.type === 'spell_grant' && effect.target) {
+          const spell = (systemSpells as any[]).find(s => s.id === effect.target);
+          if (spell?.description) return spell.description;
+        }
+        if (effect.type === 'trait_grant' && effect.target) {
+          const trait = (systemTraits as any[]).find(t => t.id === effect.target);
+          if (trait?.description) return trait.description;
+        }
+        if (effect.type === 'skill_grant' && effect.target) {
+          const skill = (customSkills as any[]).find(s => s.id === effect.target);
+          if (skill?.description) return skill.description;
+        }
+      }
+    }
+    return undefined;
+  };
+  
   const NODE_WIDTH = 160;
   const NODE_HEIGHT = 100;
   const CELL_SIZE = 100;
@@ -17660,8 +17700,8 @@ function FeatTreeViewerGrid({
             </div>
           </div>
           
-          {selectedFeat.description && (
-            <p className="text-sm text-stone-300 mb-3">{selectedFeat.description}</p>
+          {getFeatDescription(selectedFeat) && (
+            <p className="text-sm text-stone-300 mb-3">{getFeatDescription(selectedFeat)}</p>
           )}
           
           {selectedFeat.effects && (selectedFeat.effects as any[]).length > 0 && (
