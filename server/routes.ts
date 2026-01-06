@@ -2966,6 +2966,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // GM level-up all characters route (GM/Assistant GM)
+  // Only levels up characters where at least one player has edit access
   app.post("/api/campaigns/:campaignId/level-up-all", async (req, res) => {
     try {
       if (!req.session.userId) {
@@ -2986,8 +2987,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { mode, targetLevel } = req.body;
       const characters = await storage.getCampaignCharacters(req.params.campaignId);
       
+      // Get all campaign members (players) to check for edit access
+      const members = await storage.getCampaignMembers(req.params.campaignId);
+      const playerUserIds = members.filter(m => m.role === 'player').map(m => m.userId);
+      
       const updates = [];
       for (const char of characters) {
+        // Check if any player has edit access to this character
+        let hasPlayerEditAccess = false;
+        
+        // Check ownership first - if a player owns this character, they have edit access
+        if (char.userId && playerUserIds.includes(char.userId)) {
+          hasPlayerEditAccess = true;
+        }
+        
+        // If not owned by a player, check character permissions
+        if (!hasPlayerEditAccess) {
+          const permissions = await storage.getCharacterPermissions(char.id);
+          for (const perm of permissions) {
+            if (playerUserIds.includes(perm.userId) && perm.accessLevel === 'edit') {
+              hasPlayerEditAccess = true;
+              break;
+            }
+          }
+        }
+        
+        // Only level up if a player has edit access
+        if (!hasPlayerEditAccess) {
+          continue;
+        }
+        
         let newLevel = char.level;
         if (mode === 'set' && targetLevel) {
           newLevel = Math.min(20, Math.max(1, targetLevel));

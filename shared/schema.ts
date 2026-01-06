@@ -239,6 +239,7 @@ export const characters = pgTable("characters", {
   // Exhaustion (0-7 scale)
   exhaustion: integer("exhaustion").notNull().default(0),
   // Background/notes
+  nickname: text("nickname"), // Optional nickname to display on tokens instead of character name
   biography: text("biography"),
   gmNotes: text("gm_notes"),
   // Folder organization

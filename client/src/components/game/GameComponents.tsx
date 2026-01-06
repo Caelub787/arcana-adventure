@@ -1812,7 +1812,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                     lineHeight: 1.1
                   }}
                 >
-                  {character?.name || (token.type === 'player' ? 'Player' : 'Enemy')}
+                  {character?.nickname || character?.name || (token.type === 'player' ? 'Player' : 'Enemy')}
                 </div>
               )}
               
@@ -16602,6 +16602,27 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                     </div>
                   </DialogContent>
                 </Dialog>
+
+                {/* Nickname Section */}
+                <div>
+                  <Label className="text-sm text-stone-300 mb-2 block">Nickname</Label>
+                  <p className="text-xs text-stone-400 mb-2">
+                    If set, this will be displayed on the token instead of the character name.
+                  </p>
+                  {canEdit && onUpdate ? (
+                    <Input
+                      value={character.nickname || ''}
+                      onChange={(e) => onUpdate({ nickname: e.target.value || null })}
+                      placeholder="Leave blank to use character name"
+                      className="bg-stone-900 border-stone-700"
+                      data-testid="input-nickname"
+                    />
+                  ) : (
+                    <div className="p-2 bg-stone-900 rounded border border-stone-700 text-stone-300" data-testid="text-nickname">
+                      {character.nickname || <span className="text-stone-500 italic">No nickname set</span>}
+                    </div>
+                  )}
+                </div>
 
                 {/* Biography Section */}
                 <div>
