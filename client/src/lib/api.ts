@@ -670,6 +670,17 @@ class ApiClient {
     });
   }
 
+  async getGmHotbar(campaignId: string): Promise<(string | null)[]> {
+    return this.request(`/campaigns/${campaignId}/gm-hotbar`);
+  }
+
+  async updateGmHotbar(campaignId: string, hotbar: (string | null)[]): Promise<(string | null)[]> {
+    return this.request(`/campaigns/${campaignId}/gm-hotbar`, {
+      method: 'PUT',
+      body: JSON.stringify({ hotbar }),
+    });
+  }
+
   // Characters
   async createCharacter(campaignId: string, character: Omit<Character, 'id' | 'userId' | 'campaignId'>): Promise<Character> {
     return this.request(`/campaigns/${campaignId}/characters`, {

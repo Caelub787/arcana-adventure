@@ -1158,6 +1158,28 @@ export default function Campaign() {
     enabled: !!activeScene?.id,
   });
 
+  // GM Hotbar query - fetch persisted hotbar from database
+  const { data: gmHotbarData } = useQuery({
+    queryKey: ['gm-hotbar', effectiveCampaignId],
+    queryFn: () => api.getGmHotbar(effectiveCampaignId!),
+    enabled: !!effectiveCampaignId && role === 'gm',
+  });
+
+  // Update local state when server data loads
+  useEffect(() => {
+    if (gmHotbarData && role === 'gm') {
+      setGmCharacterHotbar(gmHotbarData);
+    }
+  }, [gmHotbarData, role]);
+
+  // GM Hotbar mutation - persist changes to database
+  const updateGmHotbarMutation = useMutation({
+    mutationFn: (hotbar: (string | null)[]) => api.updateGmHotbar(effectiveCampaignId!, hotbar),
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message || "Failed to save hotbar", variant: "destructive" });
+    },
+  });
+
   // Campaign species mutations
   const createCampaignSpeciesMutation = useMutation({
     mutationFn: (data: Partial<CampaignSpecies>) => api.createCampaignSpecies(effectiveCampaignId!, data),
@@ -1421,21 +1443,60 @@ export default function Campaign() {
   };
   const unfiledCharacters = (characters as any[] || []).filter((c: any) => !c.folderId);
   
+  // Long-press state for hotbar removal
+  const hotbarLongPressRef = useRef<{ timer: NodeJS.Timeout | null; slotIndex: number | null }>({ timer: null, slotIndex: null });
+  const [hotbarLongPressSlot, setHotbarLongPressSlot] = useState<number | null>(null);
+  
   const addCharacterToHotbar = (slotIndex: number, characterId: string) => {
-    setGmCharacterHotbar(prev => {
-      const next = [...prev];
-      next[slotIndex] = characterId;
-      return next;
-    });
+    const newHotbar = [...gmCharacterHotbar];
+    newHotbar[slotIndex] = characterId;
+    setGmCharacterHotbar(newHotbar);
     setHotbarSelectorOpen(null);
+    updateGmHotbarMutation.mutate(newHotbar);
   };
   
   const removeCharacterFromHotbar = (slotIndex: number) => {
-    setGmCharacterHotbar(prev => {
-      const next = [...prev];
-      next[slotIndex] = null;
-      return next;
-    });
+    const newHotbar = [...gmCharacterHotbar];
+    newHotbar[slotIndex] = null;
+    setGmCharacterHotbar(newHotbar);
+    updateGmHotbarMutation.mutate(newHotbar);
+  };
+  
+  const handleHotbarPointerDown = (slotIndex: number) => {
+    const characterId = gmCharacterHotbar[slotIndex];
+    if (characterId) {
+      hotbarLongPressRef.current.slotIndex = slotIndex;
+      hotbarLongPressRef.current.timer = setTimeout(() => {
+        setHotbarLongPressSlot(slotIndex);
+      }, 600); // 600ms for long press
+    }
+  };
+  
+  const handleHotbarPointerUp = (slotIndex: number) => {
+    if (hotbarLongPressRef.current.timer) {
+      clearTimeout(hotbarLongPressRef.current.timer);
+      hotbarLongPressRef.current.timer = null;
+    }
+    // If long press was triggered, the dialog is open - don't open character sheet
+    if (hotbarLongPressSlot !== null) return;
+    
+    // Normal click - open character sheet or selector
+    const characterId = gmCharacterHotbar[slotIndex];
+    if (characterId) {
+      const char = (characters as any[] || []).find((c: any) => c.id === characterId);
+      if (char) {
+        openCharacterSheet(char);
+      }
+    } else {
+      setHotbarSelectorOpen(slotIndex);
+    }
+  };
+  
+  const handleHotbarPointerLeave = () => {
+    if (hotbarLongPressRef.current.timer) {
+      clearTimeout(hotbarLongPressRef.current.timer);
+      hotbarLongPressRef.current.timer = null;
+    }
   };
   
   const handleHotbarSlotClick = (slotIndex: number) => {
@@ -3558,13 +3619,18 @@ export default function Campaign() {
           <div className="flex items-center gap-2 bg-stone-900/95 border border-stone-700 rounded-xl p-2 shadow-xl backdrop-blur-sm">
             {gmCharacterHotbar.map((characterId, index) => {
               const hotbarChar = getHotbarCharacter(index);
+              const hpPercent = hotbarChar ? Math.max(0, Math.min(100, (hotbarChar.hp / hotbarChar.maxHp) * 100)) : 0;
+              const energyPercent = hotbarChar ? Math.max(0, Math.min(100, (hotbarChar.energy / hotbarChar.maxEnergy) * 100)) : 0;
               return (
-                <div key={index} className="relative group">
+                <div key={index} className="relative group flex flex-col items-center">
                   <button
-                    onClick={() => handleHotbarSlotClick(index)}
+                    onPointerDown={() => handleHotbarPointerDown(index)}
+                    onPointerUp={() => handleHotbarPointerUp(index)}
+                    onPointerLeave={handleHotbarPointerLeave}
+                    onPointerCancel={handleHotbarPointerLeave}
                     className={`
                       w-14 h-14 rounded-lg border-2 flex items-center justify-center
-                      transition-all duration-200 hover:scale-105
+                      transition-all duration-200 hover:scale-105 select-none
                       ${hotbarChar 
                         ? 'border-amber-600 bg-stone-800 hover:border-amber-500' 
                         : 'border-stone-600 bg-stone-800/50 hover:border-stone-500 hover:bg-stone-700/50'
@@ -3577,7 +3643,7 @@ export default function Campaign() {
                         <img 
                           src={hotbarChar.portrait} 
                           alt={hotbarChar.name} 
-                          className="w-12 h-12 rounded-md object-cover"
+                          className="w-12 h-12 rounded-md object-cover pointer-events-none"
                         />
                       ) : (
                         <div className="w-12 h-12 rounded-md bg-amber-900/50 flex items-center justify-center">
@@ -3590,27 +3656,66 @@ export default function Campaign() {
                   </button>
                   {hotbarChar && (
                     <>
-                      <div className="absolute -bottom-5 left-1/2 -translate-x-1/2 text-xs text-stone-400 truncate max-w-[60px] text-center opacity-0 group-hover:opacity-100 transition-opacity">
+                      {/* HP/Energy bars under portrait */}
+                      <div className="w-14 mt-1 space-y-0.5">
+                        <div className="h-1.5 bg-stone-700 rounded-full overflow-hidden" title={`HP: ${hotbarChar.hp}/${hotbarChar.maxHp}`}>
+                          <div 
+                            className="h-full bg-red-500 transition-all duration-300"
+                            style={{ width: `${hpPercent}%` }}
+                          />
+                        </div>
+                        <div className="h-1.5 bg-stone-700 rounded-full overflow-hidden" title={`Energy: ${hotbarChar.energy}/${hotbarChar.maxEnergy}`}>
+                          <div 
+                            className="h-full bg-blue-500 transition-all duration-300"
+                            style={{ width: `${energyPercent}%` }}
+                          />
+                        </div>
+                      </div>
+                      <div className="text-[10px] text-stone-400 truncate max-w-[56px] text-center mt-0.5">
                         {hotbarChar.name}
                       </div>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          removeCharacterFromHotbar(index);
-                        }}
-                        className="absolute -top-1 -right-1 w-5 h-5 bg-red-600 hover:bg-red-500 text-white rounded-full text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                        data-testid={`gm-hotbar-remove-${index}`}
-                      >
-                        ×
-                      </button>
                     </>
                   )}
                 </div>
               );
             })}
           </div>
+          <div className="text-center text-[10px] text-stone-500 mt-1">Hold to remove</div>
         </div>
       )}
+      
+      {/* GM Hotbar Remove Confirmation Dialog */}
+      <Dialog open={hotbarLongPressSlot !== null} onOpenChange={(open) => !open && setHotbarLongPressSlot(null)}>
+        <DialogContent className="bg-stone-900 border-stone-700 text-stone-200 max-w-xs">
+          <DialogHeader>
+            <DialogTitle className="text-amber-500">Remove from Hotbar</DialogTitle>
+            <DialogDescription className="text-stone-400">
+              Remove {hotbarLongPressSlot !== null ? getHotbarCharacter(hotbarLongPressSlot)?.name : ''} from the hotbar?
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex gap-2 justify-end mt-4">
+            <Button
+              variant="ghost"
+              onClick={() => setHotbarLongPressSlot(null)}
+              className="text-stone-400 hover:text-stone-200"
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                if (hotbarLongPressSlot !== null) {
+                  removeCharacterFromHotbar(hotbarLongPressSlot);
+                  setHotbarLongPressSlot(null);
+                }
+              }}
+              data-testid="confirm-remove-from-hotbar"
+            >
+              Remove
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
       
       {/* GM Character Hotbar Selector Dialog */}
       <Dialog open={hotbarSelectorOpen !== null} onOpenChange={(open) => !open && setHotbarSelectorOpen(null)}>
