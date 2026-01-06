@@ -2228,13 +2228,13 @@ export default function Campaign() {
           setCharacterSheetDefaultTab("overview");
           openCharacterSheet(charData);
         } else if (role === 'player') {
-          // Players need at least view access, but we want edit access for this feature
+          // Players need at least view access to open character sheet
           const permission = myPermissions?.permissions?.[charData.id];
-          if (permission === 'owner' || permission === 'edit') {
+          if (permission === 'owner' || permission === 'edit' || permission === 'view') {
             setCharacterSheetDefaultTab("overview");
             openCharacterSheet(charData);
           } else {
-            toast({ title: "No Access", description: "You don't have edit access to this character", variant: "destructive" });
+            toast({ title: "No Access", description: "You don't have view access to this character", variant: "destructive" });
           }
         }
       }
