@@ -7124,6 +7124,8 @@ export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onIn
       // Character operations
       if (data.type === 'character_created' || data.type === 'character_updated' || data.type === 'character_deleted') {
         queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${campaignId}/characters`] });
+        // Also invalidate tokens since token images are derived from character portraits
+        queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${campaignId}/tokens`] });
         if (data.characterId) {
           queryClient.invalidateQueries({ queryKey: [`/api/characters/${data.characterId}`] });
         }
