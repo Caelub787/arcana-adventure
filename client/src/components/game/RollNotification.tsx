@@ -313,7 +313,7 @@ export function RollNotificationContainer() {
     return (
       <div
         ref={containerRef}
-        className="fixed bottom-36 left-2 md:left-4 z-[100] flex flex-col-reverse gap-1 pointer-events-none items-start"
+        className="fixed bottom-44 left-2 md:left-4 z-[100] flex flex-col-reverse gap-1 pointer-events-none items-start"
         style={{ maxWidth: '200px' }}
       >
         <AnimatePresence mode="popLayout">
