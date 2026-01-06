@@ -260,6 +260,7 @@ interface BattleMapProps {
   onMoveToken: (id: string, x: number, y: number) => void;
   onTokenClick?: (token: Token) => void;
   onTokenDoubleClick?: (token: Token) => void;
+  onTokenTripleClick?: (token: Token) => void;
   onDeleteToken?: (tokenId: string) => void;
   role: Role;
   gridSize: number;
@@ -310,7 +311,7 @@ interface BattleMapProps {
   inCombat?: boolean;
 }
 
-export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClick, onDeleteToken, role, gridSize, backgroundImage, scene, onViewChange, characters = [], allSpecies = [], selectionMode = 'select', targetedTokenId, selectedTokenId, aoeTargetState, onAoeMouseMove, onAoeClick, otherPlayersAoe, myPermissions, tokenActiveEffects, allTokenEffects, onApplyEffect, onRemoveEffect, onToggleInvisibility, currentTurnCharacterId, otherPlayersTargeting, activeBeacons, onBeacon, otherPlayersViewports, thrownItems = [], onRefetchThrownItems, onDeleteThrownItem, throwableGridTarget, onGridTargetClick, notesPanelOpen = false, onNotesClick, inCombat = false }: BattleMapProps) {
+export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClick, onTokenTripleClick, onDeleteToken, role, gridSize, backgroundImage, scene, onViewChange, characters = [], allSpecies = [], selectionMode = 'select', targetedTokenId, selectedTokenId, aoeTargetState, onAoeMouseMove, onAoeClick, otherPlayersAoe, myPermissions, tokenActiveEffects, allTokenEffects, onApplyEffect, onRemoveEffect, onToggleInvisibility, currentTurnCharacterId, otherPlayersTargeting, activeBeacons, onBeacon, otherPlayersViewports, thrownItems = [], onRefetchThrownItems, onDeleteThrownItem, throwableGridTarget, onGridTargetClick, notesPanelOpen = false, onNotesClick, inCombat = false }: BattleMapProps) {
   // Derive isGM from role prop
   const isGM = role === 'gm';
   
@@ -324,6 +325,9 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
   const [tokenToDelete, setTokenToDelete] = useState<string | null>(null);
   const [effectsDialogToken, setEffectsDialogToken] = useState<string | null>(null);
   const holdTimerRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // Triple-click detection ref
+  const clickCountRef = useRef<{ count: number; tokenId: string | null; lastClickTime: number }>({ count: 0, tokenId: null, lastClickTime: 0 });
   
   // Long-press delete mode for thrown items (mobile-friendly)
   const [thrownItemDeleteMode, setThrownItemDeleteMode] = useState<string | null>(null);
@@ -348,6 +352,21 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
     startPointerX: number;
     startPointerY: number;
   } | null>(null);
+  
+  // Multi-select state: Set of selected token IDs for shift+click selection
+  const [selectedTokenIds, setSelectedTokenIds] = useState<Set<string>>(new Set());
+  
+  // Track relative offsets of all selected tokens when starting a drag
+  // Key: token ID, Value: { offsetX, offsetY } relative to the dragged token's start position
+  const selectedTokenOffsetsRef = useRef<Map<string, { 
+    startX: number; 
+    startY: number; 
+    offsetX: number; 
+    offsetY: number 
+  }>>(new Map());
+  
+  // Track visual positions of all selected tokens during drag
+  const [selectedTokenVisualPositions, setSelectedTokenVisualPositions] = useState<Map<string, { x: number; y: number }>>(new Map());
   
   // Track animating tokens - tokens that are moving smoothly from one position to another
   // Used for remote player token movements received via WebSocket
@@ -565,11 +584,17 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
     };
   }, []);
   
-  // Helper to get current display position for a token (handles animation)
+  // Helper to get current display position for a token (handles animation and multi-select drag)
   const getTokenDisplayPosition = (token: Token): { x: number; y: number } => {
-    // Check if being dragged
+    // Check if being dragged (primary drag token)
     if (draggingToken?.id === token.id) {
       return { x: draggingToken.visualX, y: draggingToken.visualY };
+    }
+    
+    // Check if this token is part of multi-select drag (secondary drag token)
+    const multiSelectPos = selectedTokenVisualPositions.get(token.id);
+    if (multiSelectPos && draggingToken) {
+      return { x: multiSelectPos.x, y: multiSelectPos.y };
     }
     
     // Check if animating
@@ -743,6 +768,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
   /**
    * startTokenDrag - Initiates custom pointer-based token dragging
    * Captures pointer and sets up drag state for precise grid snapping
+   * Also calculates offsets for all selected tokens for multi-select dragging
    * @param startPointerX - Initial pointer X position (from pointerdown event)
    * @param startPointerY - Initial pointer Y position (from pointerdown event)
    */
@@ -771,6 +797,34 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
       startPointerY
     });
     
+    // Calculate offsets for all selected tokens relative to the dragged token
+    selectedTokenOffsetsRef.current = new Map();
+    const newVisualPositions = new Map<string, { x: number; y: number }>();
+    
+    if (selectedTokenIds.has(token.id) && selectedTokenIds.size > 1) {
+      tokens.forEach(t => {
+        if (selectedTokenIds.has(t.id) && t.id !== token.id) {
+          const offsetX = t.x - token.x;
+          const offsetY = t.y - token.y;
+          selectedTokenOffsetsRef.current.set(t.id, {
+            startX: t.x,
+            startY: t.y,
+            offsetX,
+            offsetY
+          });
+          // Calculate initial visual position for this token
+          const tVisualX = gridEnabled 
+            ? Math.round(t.x / effectiveGridSize) * effectiveGridSize 
+            : t.x;
+          const tVisualY = gridEnabled 
+            ? Math.round(t.y / effectiveGridSize) * effectiveGridSize 
+            : t.y;
+          newVisualPositions.set(t.id, { x: tVisualX, y: tVisualY });
+        }
+      });
+    }
+    setSelectedTokenVisualPositions(newVisualPositions);
+    
     // Clear any delete button
     setShowDeleteButton(null);
     if (holdTimerRef.current) {
@@ -782,6 +836,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
   /**
    * moveTokenDrag - Updates token position during drag with grid snapping
    * Token visually snaps to grid cells as pointer moves
+   * Also updates positions of all selected tokens for multi-select dragging
    */
   const moveTokenDrag = (e: React.PointerEvent) => {
     if (!draggingToken) return;
@@ -807,11 +862,29 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
       : rawY;
     
     setDraggingToken(prev => prev ? { ...prev, visualX, visualY } : null);
+    
+    // Update positions of all other selected tokens
+    if (selectedTokenOffsetsRef.current.size > 0) {
+      const newPositions = new Map<string, { x: number; y: number }>();
+      selectedTokenOffsetsRef.current.forEach((offset, tokenId) => {
+        // Calculate position based on offset from dragged token
+        const rawOtherX = offset.startX + deltaX;
+        const rawOtherY = offset.startY + deltaY;
+        const otherVisualX = gridEnabled 
+          ? Math.round(rawOtherX / effectiveGridSize) * effectiveGridSize 
+          : rawOtherX;
+        const otherVisualY = gridEnabled 
+          ? Math.round(rawOtherY / effectiveGridSize) * effectiveGridSize 
+          : rawOtherY;
+        newPositions.set(tokenId, { x: otherVisualX, y: otherVisualY });
+      });
+      setSelectedTokenVisualPositions(newPositions);
+    }
   };
 
   /**
    * endTokenDrag - Finalizes token position on drag end
-   * Commits the snapped position to the server
+   * Commits the snapped position to the server for all selected tokens
    * Checks for collision with other tokens before allowing the move
    */
   const endTokenDrag = (e: React.PointerEvent, token: Token) => {
@@ -820,67 +893,74 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
     const target = e.currentTarget as HTMLElement;
     target.releasePointerCapture(e.pointerId);
     
-    const effectiveGridSize = scene?.gridSize || gridSize;
-    
-    // Get the size of the token being dragged
-    const character = getCharacterForToken(token);
-    const speciesData = character?.race ? allSpecies.find(s => s.name === character.race) : null;
-    const draggedTokenGridSpan = getTokenGridSpan((token as any).speciesSize || speciesData?.size);
-    
-    // Calculate the grid cells that would be occupied by the dragged token
-    // Use Math.round to match the snap-to-grid rounding (visualX/visualY are already snapped)
-    const draggedMinGridX = Math.round(draggingToken.visualX / effectiveGridSize);
-    const draggedMinGridY = Math.round(draggingToken.visualY / effectiveGridSize);
-    const draggedMaxGridX = draggedMinGridX + draggedTokenGridSpan - 1;
-    const draggedMaxGridY = draggedMinGridY + draggedTokenGridSpan - 1;
-    
-    // Check for collision with other tokens
-    // Use the visual/rendered positions for accurate collision detection
-    let hasCollision = false;
-    for (const otherToken of tokens) {
-      if (otherToken.id === token.id) continue; // Skip self
+    try {
+      const effectiveGridSize = scene?.gridSize || gridSize;
       
-      // Get size of the other token
-      const otherChar = getCharacterForToken(otherToken);
-      const otherSpeciesData = otherChar?.race ? allSpecies.find(s => s.name === otherChar.race) : null;
-      const otherGridSpan = getTokenGridSpan((otherToken as any).speciesSize || otherSpeciesData?.size);
+      // Collect all tokens being moved (primary + selected others)
+      const tokensToMove: Array<{ id: string; visualX: number; visualY: number }> = [
+        { id: token.id, visualX: draggingToken.visualX, visualY: draggingToken.visualY }
+      ];
       
-      // Use the visual position for the other token (from getTokenDisplayPosition logic)
-      // This accounts for animations and other drags in progress
-      const otherDisplayPos = getTokenDisplayPosition(otherToken);
+      // Add other selected tokens
+      selectedTokenVisualPositions.forEach((pos, tokenId) => {
+        tokensToMove.push({ id: tokenId, visualX: pos.x, visualY: pos.y });
+      });
       
-      // Calculate the grid cells occupied by the other token using its display position
-      // Use Math.round to match the snap-to-grid rounding
-      const otherMinGridX = Math.round(otherDisplayPos.x / effectiveGridSize);
-      const otherMinGridY = Math.round(otherDisplayPos.y / effectiveGridSize);
-      const otherMaxGridX = otherMinGridX + otherGridSpan - 1;
-      const otherMaxGridY = otherMinGridY + otherGridSpan - 1;
+      // Check for collision with other tokens (not being moved)
+      const movingTokenIds = new Set(tokensToMove.map(t => t.id));
+      let hasCollision = false;
       
-      // Check for overlap (boxes intersect if they overlap on both axes)
-      const overlapX = draggedMinGridX <= otherMaxGridX && draggedMaxGridX >= otherMinGridX;
-      const overlapY = draggedMinGridY <= otherMaxGridY && draggedMaxGridY >= otherMinGridY;
-      
-      if (overlapX && overlapY) {
-        hasCollision = true;
-        break;
+      for (const movingToken of tokensToMove) {
+        const movingTokenData = tokens.find(t => t.id === movingToken.id);
+        if (!movingTokenData) continue;
+        
+        const movingChar = getCharacterForToken(movingTokenData);
+        const movingSpeciesData = movingChar?.race ? allSpecies.find(s => s.name === movingChar.race) : null;
+        const movingGridSpan = getTokenGridSpan((movingTokenData as any).speciesSize || movingSpeciesData?.size);
+        
+        const movingMinGridX = Math.round(movingToken.visualX / effectiveGridSize);
+        const movingMinGridY = Math.round(movingToken.visualY / effectiveGridSize);
+        const movingMaxGridX = movingMinGridX + movingGridSpan - 1;
+        const movingMaxGridY = movingMinGridY + movingGridSpan - 1;
+        
+        for (const otherToken of tokens) {
+          // Skip tokens that are part of the moving group
+          if (movingTokenIds.has(otherToken.id)) continue;
+          
+          const otherChar = getCharacterForToken(otherToken);
+          const otherSpeciesData = otherChar?.race ? allSpecies.find(s => s.name === otherChar.race) : null;
+          const otherGridSpan = getTokenGridSpan((otherToken as any).speciesSize || otherSpeciesData?.size);
+          
+          const otherDisplayPos = getTokenDisplayPosition(otherToken);
+          const otherMinGridX = Math.round(otherDisplayPos.x / effectiveGridSize);
+          const otherMinGridY = Math.round(otherDisplayPos.y / effectiveGridSize);
+          const otherMaxGridX = otherMinGridX + otherGridSpan - 1;
+          const otherMaxGridY = otherMinGridY + otherGridSpan - 1;
+          
+          const overlapX = movingMinGridX <= otherMaxGridX && movingMaxGridX >= otherMinGridX;
+          const overlapY = movingMinGridY <= otherMaxGridY && movingMaxGridY >= otherMinGridY;
+          
+          if (overlapX && overlapY) {
+            hasCollision = true;
+            break;
+          }
+        }
+        if (hasCollision) break;
       }
-    }
-    
-    if (hasCollision) {
-      // Collision detected - don't move, keep token at original position
-      // The token will snap back to its start position
+      
+      if (!hasCollision) {
+        // No collision - save final positions for all moved tokens
+        tokensToMove.forEach(t => {
+          onMoveToken(t.id, t.visualX, t.visualY);
+        });
+      }
+    } finally {
+      // Always cleanup: Reset gesture mode and clear multi-select drag state
       gestureModeRef.current = 'idle';
       setDraggingToken(null);
-      return;
+      setSelectedTokenVisualPositions(new Map());
+      selectedTokenOffsetsRef.current = new Map();
     }
-    
-    // No collision - save the final position
-    onMoveToken(token.id, draggingToken.visualX, draggingToken.visualY);
-    
-    // Reset gesture mode
-    gestureModeRef.current = 'idle';
-    
-    setDraggingToken(null);
   };
 
   /**
@@ -1023,6 +1103,16 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
         const cellY = Math.floor(worldY / effectiveGridSize);
         onGridTargetClick(cellX, cellY);
       }
+    }
+    
+    // Clear multi-select when clicking on empty space (didn't drag and not in special mode)
+    // Only clear if we didn't drag (click without movement) and not in AoE/highlight/target mode
+    if (!didDragRef.current && 
+        !aoeTargetState?.active && 
+        selectionMode !== 'highlight' && 
+        selectionMode !== 'target' &&
+        selectedTokenIds.size > 0) {
+      setSelectedTokenIds(new Set());
     }
     
     gestureModeRef.current = 'idle';
@@ -1681,6 +1771,8 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
             pendingDragRef.current = null;
             if (isDragging) {
               setDraggingToken(null);
+              setSelectedTokenVisualPositions(new Map());
+              selectedTokenOffsetsRef.current = new Map();
             }
           };
           
@@ -1697,13 +1789,52 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                 if (aoeTargetState?.active) return;
                 e.stopPropagation(); 
                 if (showDeleteButton !== token.id && !isDragging) {
+                  const now = Date.now();
+                  const clickData = clickCountRef.current;
+                  
+                  // Check if this is a continuation of clicks on the same token within 500ms
+                  if (clickData.tokenId === token.id && (now - clickData.lastClickTime) < 500) {
+                    clickData.count++;
+                    clickData.lastClickTime = now;
+                    
+                    if (clickData.count === 2) {
+                      // Double-click detected
+                      onTokenDoubleClick && onTokenDoubleClick(token);
+                    } else if (clickData.count >= 3) {
+                      // Triple-click detected - call handler and reset
+                      onTokenTripleClick && onTokenTripleClick(token);
+                      clickData.count = 0;
+                      clickData.tokenId = null;
+                      clickData.lastClickTime = 0;
+                      return; // Don't process further
+                    }
+                  } else {
+                    // First click on this token or timeout expired - reset counter
+                    clickData.count = 1;
+                    clickData.tokenId = token.id;
+                    clickData.lastClickTime = now;
+                  }
+                  
+                  // Handle multi-select with shift+click
+                  if (e.shiftKey) {
+                    // Toggle token in selection set
+                    setSelectedTokenIds(prev => {
+                      const newSet = new Set(prev);
+                      if (newSet.has(token.id)) {
+                        newSet.delete(token.id);
+                      } else {
+                        newSet.add(token.id);
+                      }
+                      return newSet;
+                    });
+                  } else {
+                    // Regular click - if token is already in selection, keep selection
+                    // Otherwise clear selection and select only this token
+                    if (!selectedTokenIds.has(token.id)) {
+                      setSelectedTokenIds(new Set([token.id]));
+                    }
+                  }
                   onTokenClick && onTokenClick(token);
-                }
-              }}
-              onDoubleClick={(e) => {
-                e.stopPropagation();
-                if (showDeleteButton !== token.id && !isDragging) {
-                  onTokenDoubleClick && onTokenDoubleClick(token);
                 }
               }}
               className={`absolute top-0 left-0 rounded-full shadow-xl ring-2 ring-white/20 overflow-visible bg-black token-shadow touch-none select-none ${canDrag ? 'cursor-grab' : 'cursor-default'} ${isDragging ? 'z-20 scale-110 cursor-grabbing' : 'hover:scale-105'} transition-transform`}
@@ -1731,14 +1862,26 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                 />
               )}
               
-              {/* Token border - shows targeting (red), selection (white), or default (blue/red based on type) */}
+              {/* Token border - shows targeting (red), multi-selection (cyan), single selection (white), or default (blue/red based on type) */}
               <div className={`absolute inset-0 rounded-full ${
                 targetedTokenId === token.id 
                   ? 'border-4 border-red-500 ring-2 ring-red-500/50 glow-red' 
-                  : selectedTokenId === token.id
-                    ? 'border-3 border-white ring-2 ring-white/30'
-                    : `border-2 ${token.type === 'player' ? 'border-blue-400 glow-amber' : 'border-red-500 glow-red'}`
+                  : selectedTokenIds.has(token.id)
+                    ? 'border-3 border-cyan-400 ring-2 ring-cyan-400/50'
+                    : selectedTokenId === token.id
+                      ? 'border-3 border-white ring-2 ring-white/30'
+                      : `border-2 ${token.type === 'player' ? 'border-blue-400 glow-amber' : 'border-red-500 glow-red'}`
               }`} />
+              
+              {/* Multi-selection glow effect */}
+              {selectedTokenIds.has(token.id) && (
+                <div 
+                  className="absolute -inset-1 rounded-full pointer-events-none"
+                  style={{
+                    boxShadow: '0 0 12px 3px rgba(34, 211, 238, 0.5), 0 0 20px 6px rgba(34, 211, 238, 0.3)',
+                  }}
+                />
+              )}
               
               {/* Delete Button - Show when holding click (GM only) */}
               {showDeleteButton === token.id && role === 'gm' && (

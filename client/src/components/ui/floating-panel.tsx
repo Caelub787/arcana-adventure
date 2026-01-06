@@ -48,6 +48,8 @@ export function FloatingPanel({
   const [size, setSize] = React.useState(computedDefaultSize);
   const [isDragging, setIsDragging] = React.useState(false);
   const [isResizing, setIsResizing] = React.useState<string | null>(null);
+  const [isFullscreen, setIsFullscreen] = React.useState(false);
+  const savedPanelStateRef = React.useRef<{ position: { x: number; y: number }; size: { width: number; height: number } } | null>(null);
   const dragStartRef = React.useRef({ x: 0, y: 0, posX: 0, posY: 0 });
   const resizeStartRef = React.useRef({ x: 0, y: 0, width: 0, height: 0, posX: 0, posY: 0 });
 
@@ -149,6 +151,21 @@ export function FloatingPanel({
     (e.target as HTMLElement).releasePointerCapture(e.pointerId);
   }, [isResizing]);
 
+  const handleDoubleClick = React.useCallback(() => {
+    if (isFullscreen) {
+      if (savedPanelStateRef.current) {
+        setPosition(savedPanelStateRef.current.position);
+        setSize(savedPanelStateRef.current.size);
+      }
+      setIsFullscreen(false);
+    } else {
+      savedPanelStateRef.current = { position, size };
+      setPosition({ x: 0, y: 0 });
+      setSize({ width: window.innerWidth, height: window.innerHeight });
+      setIsFullscreen(true);
+    }
+  }, [isFullscreen, position, size]);
+
   if (!open) return null;
 
   const resizeHandleBase = "absolute bg-transparent hover:bg-amber-500/30 transition-colors";
@@ -181,6 +198,7 @@ export function FloatingPanel({
         onPointerMove={handleDragMove}
         onPointerUp={handleDragEnd}
         onPointerCancel={handleDragEnd}
+        onDoubleClick={handleDoubleClick}
         data-testid="floating-panel-header"
       >
         <div className="flex items-center gap-2 text-amber-500 font-display text-lg truncate pr-4">

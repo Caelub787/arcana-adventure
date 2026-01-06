@@ -2089,6 +2089,33 @@ export default function Campaign() {
     setSelectedTokenId(token.id);
   };
 
+  // Handler for triple-clicking a token - opens character sheet WITHOUT assigning
+  const handleTokenTripleClick = (token: any) => {
+    if (selectionMode !== 'select') return;
+    
+    console.log('[TokenTripleClick] Opening character sheet without assigning:', token.id, token.characterId);
+    if (token.characterId && characters && Array.isArray(characters)) {
+      const charData = characters.find((c: any) => c.id === token.characterId);
+      if (charData) {
+        // Check permissions
+        if (role === 'gm') {
+          // GMs can view any character
+          setCharacterSheetDefaultTab("overview");
+          setViewingCharacterSheet(charData);
+        } else if (role === 'player') {
+          // Players need at least view access, but we want edit access for this feature
+          const permission = myPermissions?.permissions?.[charData.id];
+          if (permission === 'owner' || permission === 'edit') {
+            setCharacterSheetDefaultTab("overview");
+            setViewingCharacterSheet(charData);
+          } else {
+            toast({ title: "No Access", description: "You don't have edit access to this character", variant: "destructive" });
+          }
+        }
+      }
+    }
+  };
+
   // Handler for mode changes - clear targeting and selection when switching modes
   const handleModeChange = (mode: SelectionMode) => {
     // Clear targeted token when switching away from Target mode
@@ -3149,6 +3176,7 @@ export default function Campaign() {
              onMoveToken={handleMoveToken} 
              onTokenClick={handleTokenClick}
              onTokenDoubleClick={handleTokenDoubleClick}
+             onTokenTripleClick={handleTokenTripleClick}
              onDeleteToken={handleDeleteToken}
              role={role} 
              gridSize={activeScene?.gridSize || 50}
