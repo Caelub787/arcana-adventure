@@ -11219,12 +11219,14 @@ function InventoryItemRow({ item, depth, expandedContainers, toggleContainer, se
                   </div>
                   <span className="text-[10px]">{item.durability}/10</span>
                 </div>
-                {(item.priceGold > 0 || item.priceSilver > 0 || item.priceCopper > 0 || item.pricePlatinum > 0) && (
-                  <span className="flex gap-1">
-                    {item.pricePlatinum > 0 && <span className="text-purple-400">{item.pricePlatinum}p</span>}
-                    {item.priceGold > 0 && <span className="text-yellow-500">{item.priceGold}g</span>}
-                    {item.priceSilver > 0 && <span className="text-gray-400">{item.priceSilver}s</span>}
-                    {item.priceCopper > 0 && <span className="text-orange-600">{item.priceCopper}c</span>}
+                {item.price > 0 && (
+                  <span className={
+                    item.currency === 'platinum' ? 'text-purple-400' :
+                    item.currency === 'gold' ? 'text-yellow-500' :
+                    item.currency === 'silver' ? 'text-gray-400' :
+                    'text-orange-600'
+                  }>
+                    {item.price}{item.currency === 'platinum' ? 'p' : item.currency === 'gold' ? 'g' : item.currency === 'silver' ? 's' : 'c'}
                   </span>
                 )}
               </div>
@@ -13496,11 +13498,13 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
   const weightPercentage = (totalWeight / carryCapacity) * 100;
 
   const totalCurrency = items.reduce((acc: any, item: any) => {
+    const price = (item.price || 0) * item.quantity;
+    const currency = item.currency || 'copper';
     return {
-      copper: acc.copper + (item.priceCopper * item.quantity),
-      silver: acc.silver + (item.priceSilver * item.quantity),
-      gold: acc.gold + (item.priceGold * item.quantity),
-      platinum: acc.platinum + (item.pricePlatinum * item.quantity),
+      copper: acc.copper + (currency === 'copper' ? price : 0),
+      silver: acc.silver + (currency === 'silver' ? price : 0),
+      gold: acc.gold + (currency === 'gold' ? price : 0),
+      platinum: acc.platinum + (currency === 'platinum' ? price : 0),
     };
   }, { copper: 0, silver: 0, gold: 0, platinum: 0 });
 
@@ -13534,11 +13538,13 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
       case "weight-high":
         return b.itemWeight - a.itemWeight;
       case "price-low":
-        return (a.priceCopper + a.priceSilver*10 + a.priceGold*100 + a.pricePlatinum*1000) -
-               (b.priceCopper + b.priceSilver*10 + b.priceGold*100 + b.pricePlatinum*1000);
+        const aValueLow = (a.price || 0) * (a.currency === 'platinum' ? 1000 : a.currency === 'gold' ? 100 : a.currency === 'silver' ? 10 : 1);
+        const bValueLow = (b.price || 0) * (b.currency === 'platinum' ? 1000 : b.currency === 'gold' ? 100 : b.currency === 'silver' ? 10 : 1);
+        return aValueLow - bValueLow;
       case "price-high":
-        return (b.priceCopper + b.priceSilver*10 + b.priceGold*100 + b.pricePlatinum*1000) -
-               (a.priceCopper + a.priceSilver*10 + a.priceGold*100 + a.pricePlatinum*1000);
+        const aValueHigh = (a.price || 0) * (a.currency === 'platinum' ? 1000 : a.currency === 'gold' ? 100 : a.currency === 'silver' ? 10 : 1);
+        const bValueHigh = (b.price || 0) * (b.currency === 'platinum' ? 1000 : b.currency === 'gold' ? 100 : b.currency === 'silver' ? 10 : 1);
+        return bValueHigh - aValueHigh;
       case "rarity":
         const rarityOrder: Record<string, number> = { common: 0, uncommon: 1, rare: 2, epic: 3, legendary: 4 };
         return (rarityOrder[b.rarity] || 0) - (rarityOrder[a.rarity] || 0);
