@@ -20,7 +20,6 @@ import warriorToken from "@assets/generated_images/top_down_warrior_token.png";
 import goblinToken from "@assets/generated_images/top_down_goblin_token.png";
 import { useAuth } from "@/lib/AuthContext";
 import { api, gameWs, type Scene, type CampaignSpecies, type FeatTree, type CharacterFolder, type SceneFolder, type TokenEffect, type TokenActiveEffect, type ThrownItem, type Note } from "@/lib/api";
-import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Textarea } from "@/components/ui/textarea";
@@ -755,21 +754,42 @@ export default function Campaign() {
   
   // Notes panel state
   const [notesPanelOpen, setNotesPanelOpen] = useState(false);
-  const [notesPanelWidth, setNotesPanelWidth] = useState(450);
+  const [notesPanelWidth, setNotesPanelWidth] = useState(() => {
+    // Default to 40% of screen width (2/5ths), clamped between 300-800px
+    const defaultWidth = typeof window !== 'undefined' ? window.innerWidth * 0.4 : 450;
+    return Math.max(300, Math.min(800, defaultWidth));
+  });
   
   // Memoized callback for notes toggle to prevent infinite re-renders
   const handleToggleNotesPanel = useCallback(() => {
     setNotesPanelOpen(prev => !prev);
   }, []);
   
-  // Callback for notes panel resize (only on desktop)
-  const handleNotesPanelResize = useCallback((sizes: number[]) => {
-    if (!isMobile && sizes.length > 0) {
-      const panelPercentage = sizes[sizes.length - 1];
-      const newWidth = Math.max(300, Math.min(800, (window.innerWidth * panelPercentage) / 100));
-      setNotesPanelWidth(newWidth);
-    }
-  }, [isMobile]);
+  // State for notes panel resize dragging
+  const [isResizingNotes, setIsResizingNotes] = useState(false);
+  const notesResizeStartRef = useRef({ x: 0, width: 0 });
+  
+  // Handlers for notes panel resize (only on desktop)
+  const handleNotesResizeStart = useCallback((e: React.PointerEvent) => {
+    if (isMobile) return;
+    e.preventDefault();
+    setIsResizingNotes(true);
+    notesResizeStartRef.current = { x: e.clientX, width: notesPanelWidth };
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+  }, [isMobile, notesPanelWidth]);
+  
+  const handleNotesResizeMove = useCallback((e: React.PointerEvent) => {
+    if (!isResizingNotes || isMobile) return;
+    const dx = notesResizeStartRef.current.x - e.clientX;
+    const newWidth = Math.max(300, Math.min(window.innerWidth * 0.8, notesResizeStartRef.current.width + dx));
+    setNotesPanelWidth(newWidth);
+  }, [isResizingNotes, isMobile]);
+  
+  const handleNotesResizeEnd = useCallback((e: React.PointerEvent) => {
+    if (!isResizingNotes) return;
+    setIsResizingNotes(false);
+    (e.target as HTMLElement).releasePointerCapture(e.pointerId);
+  }, [isResizingNotes]);
   
   // AoE targeting state
   const [aoeTargetState, setAoeTargetState] = useState<AoeTargetState>(createInitialAoeState());
@@ -3398,35 +3418,40 @@ export default function Campaign() {
       {/* Notes Panel Overlay */}
       {notesPanelOpen && effectiveCampaignId && (
         <div 
-          className="fixed top-0 right-0 h-full z-40 pointer-events-auto transition-all duration-200" 
+          className="fixed top-0 right-0 h-full z-40 pointer-events-auto flex" 
           style={{ 
             width: isMobile ? '90vw' : `${notesPanelWidth}px`,
             maxWidth: '90vw' 
           }}
         >
-          <ResizablePanelGroup 
-            direction="horizontal" 
-            className="h-full"
-            onLayout={handleNotesPanelResize}
-          >
-            <ResizableHandle withHandle className="bg-stone-700 hover:bg-amber-600 transition-colors" />
-            <ResizablePanel defaultSize={100} minSize={30}>
-              <CampaignNotesPanel
-                campaignId={effectiveCampaignId}
-                onClose={() => setNotesPanelOpen(false)}
-                isOpen={notesPanelOpen}
-                campaignMembers={(members as any[] || [])
-                  .filter((m: any) => m.userId !== user?.id)
-                  .map((m: any) => ({ id: m.id, userId: m.userId, username: m.username }))}
-                onViewCharacter={(character) => {
-                  if (character) {
-                    setCharacterSheetDefaultTab("overview");
-                    setViewingCharacterSheet(character);
-                  }
-                }}
-              />
-            </ResizablePanel>
-          </ResizablePanelGroup>
+          {/* Resize handle on left edge (desktop only) */}
+          {!isMobile && (
+            <div
+              className={`w-2 h-full cursor-ew-resize flex items-center justify-center bg-stone-700 hover:bg-amber-600 transition-colors ${isResizingNotes ? 'bg-amber-600' : ''}`}
+              onPointerDown={handleNotesResizeStart}
+              onPointerMove={handleNotesResizeMove}
+              onPointerUp={handleNotesResizeEnd}
+              onPointerCancel={handleNotesResizeEnd}
+            >
+              <div className="w-1 h-8 bg-stone-500 rounded-full" />
+            </div>
+          )}
+          <div className="flex-1 h-full">
+            <CampaignNotesPanel
+              campaignId={effectiveCampaignId}
+              onClose={() => setNotesPanelOpen(false)}
+              isOpen={notesPanelOpen}
+              campaignMembers={(members as any[] || [])
+                .filter((m: any) => m.userId !== user?.id)
+                .map((m: any) => ({ id: m.id, userId: m.userId, username: m.username }))}
+              onViewCharacter={(character) => {
+                if (character) {
+                  setCharacterSheetDefaultTab("overview");
+                  setViewingCharacterSheet(character);
+                }
+              }}
+            />
+          </div>
         </div>
       )}
     </div>
