@@ -371,6 +371,28 @@ export interface IStorage {
 }
 
 export class DatabaseStorage implements IStorage {
+  // Helper to convert legacy multi-currency price fields to new price/currency format
+  private convertLegacyItemPrice(item: Item): Item {
+    // If item already has price set, return as-is
+    if (item.price && item.price > 0) {
+      return item;
+    }
+    
+    // Convert from legacy fields (priceCopper, priceSilver, priceGold, pricePlatinum)
+    const legacyItem = item as any;
+    if (legacyItem.pricePlatinum && legacyItem.pricePlatinum > 0) {
+      return { ...item, price: legacyItem.pricePlatinum, currency: 'platinum' };
+    } else if (legacyItem.priceGold && legacyItem.priceGold > 0) {
+      return { ...item, price: legacyItem.priceGold, currency: 'gold' };
+    } else if (legacyItem.priceSilver && legacyItem.priceSilver > 0) {
+      return { ...item, price: legacyItem.priceSilver, currency: 'silver' };
+    } else if (legacyItem.priceCopper && legacyItem.priceCopper > 0) {
+      return { ...item, price: legacyItem.priceCopper, currency: 'copper' };
+    }
+    
+    return item;
+  }
+
   // Entity search for notes reference picker
   async searchEntities(query: string, type?: string, userId?: string): Promise<SearchableEntity[]> {
     const results: SearchableEntity[] = [];
@@ -1419,9 +1441,11 @@ export class DatabaseStorage implements IStorage {
 
   // Item operations
   async getItemsByCharacter(characterId: string): Promise<Item[]> {
-    return await db.select()
+    const result = await db.select()
       .from(items)
       .where(eq(items.characterId, characterId)) as Item[];
+    
+    return result.map(item => this.convertLegacyItemPrice(item));
   }
 
   async createItem(item: InsertItem): Promise<Item> {
@@ -1459,27 +1483,29 @@ export class DatabaseStorage implements IStorage {
 
   async getItem(id: string): Promise<Item | undefined> {
     const [item] = await db.select().from(items).where(eq(items.id, id)).limit(1) as Item[];
-    return item;
+    return item ? this.convertLegacyItemPrice(item) : undefined;
   }
 
   async getSystemItems(): Promise<Item[]> {
-    return await db.select()
+    const result = await db.select()
       .from(items)
       .where(and(
         eq(items.isTemplate, true),
         sql`${items.characterId} IS NULL`,
         sql`${items.campaignId} IS NULL`
       )) as Item[];
+    return result.map(item => this.convertLegacyItemPrice(item));
   }
 
   async getCampaignTemplateItems(campaignId: string): Promise<Item[]> {
-    return await db.select()
+    const result = await db.select()
       .from(items)
       .where(and(
         eq(items.isTemplate, true),
         eq(items.campaignId, campaignId),
         sql`${items.characterId} IS NULL`
       )) as Item[];
+    return result.map(item => this.convertLegacyItemPrice(item));
   }
 
   async moveItemToContainer(itemId: string, containerId: string | null): Promise<Item | undefined> {
@@ -1491,9 +1517,10 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getContainerItems(containerId: string): Promise<Item[]> {
-    return await db.select()
+    const result = await db.select()
       .from(items)
       .where(eq(items.containerId, containerId)) as Item[];
+    return result.map(item => this.convertLegacyItemPrice(item));
   }
 
   // Spell operations
