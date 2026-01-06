@@ -3325,6 +3325,7 @@ export default function Campaign() {
               defaultTab={characterSheetDefaultTab}
               campaignId={effectiveCampaignId || undefined}
               sceneId={activeScene?.id}
+              allSpecies={[...(systemSpecies || []), ...campaignSpeciesList]}
             />
           )}
         </DialogContent>

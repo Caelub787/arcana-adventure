@@ -26,7 +26,7 @@ import {
 } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useForm } from "react-hook-form";
-import { type Scene, type Hotbar, type SystemSpecies, type FeatTreeWithData, type Feat, type FeatConnection, type CharacterFeat, type SystemSkill, type CharacterCustomSkill, type TokenEffect, type TokenActiveEffect, type ThrownItem, api, gameWs } from "@/lib/api";
+import { type Scene, type Hotbar, type SystemSpecies, type CampaignSpecies, type FeatTreeWithData, type Feat, type FeatConnection, type CharacterFeat, type SystemSkill, type CharacterCustomSkill, type TokenEffect, type TokenActiveEffect, type ThrownItem, api, gameWs } from "@/lib/api";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -11325,6 +11325,7 @@ interface CharacterSheetProps {
   campaignId?: string;
   sceneId?: string;
   isTemplate?: boolean;
+  allSpecies?: (SystemSpecies | CampaignSpecies)[];
 }
 
 // Custom Skill Form for adding new skills to a character
@@ -12066,7 +12067,7 @@ function TraitEditForm({
   );
 }
 
-export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, accessLevel = 'view', onUpdate, onClose, defaultTab = "overview", campaignId, sceneId, isTemplate = false }: CharacterSheetProps) {
+export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, accessLevel = 'view', onUpdate, onClose, defaultTab = "overview", campaignId, sceneId, isTemplate = false, allSpecies: passedSpecies }: CharacterSheetProps) {
   // Name-only mode: user only has 'name' access (token name only, no stats)
   // They can see name and portrait but not stats, inventory, or abilities
   const isViewOnly = accessLevel === 'name' && !isGM && !isOwner;
@@ -12192,11 +12193,15 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
     skillWisdom: character?.skillWisdom || 0
   });
   
-  // Fetch species from database
-  const { data: systemSpecies = [] } = useQuery({
+  // Fetch species from database (only if not passed as prop)
+  const { data: fetchedSpecies = [] } = useQuery({
     queryKey: ['species'],
     queryFn: () => api.getSpecies('Arcana Adventure'),
+    enabled: !passedSpecies, // Only fetch if species not provided via props
   });
+  
+  // Use passed species (includes campaign species) or fall back to fetched system species
+  const systemSpecies = passedSpecies || fetchedSpecies;
 
   // Get feat tree ID from the character's species (race), not from the character directly
   const characterSpecies = systemSpecies.find((s: SystemSpecies) => s.name === character?.race);
@@ -18422,7 +18427,17 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
               </div>
               <div>
                 <Label>Item Type</Label>
-                <Select value={formData.itemType} onValueChange={(v) => setFormData({...formData, itemType: v})}>
+                <Select value={formData.itemType} onValueChange={(v) => {
+                  const clearedFields: Record<string, any> = {
+                    damage: null, damageType: null, mod: 0, range: null, aoe: null, attribute: null, isHeavy: false, weaponCategory: null, canApplyEffects: false,
+                    armorSlot: null, armorBonus: 0, damageReduction: 0, damageReductionType: null,
+                    ammunitionType: null, breakChance: 10,
+                    rationServings: 0, isDamaging: false,
+                    isContainer: v === 'container', carryCapacity: v === 'container' ? 10 : 0,
+                    isThrowable: false, throwableAoe: false, throwableAoeShape: null, throwableAoeRange: 10, throwablePickup: false, throwableAoeDamage: null, throwableAoeDamageType: null, throwableBreakChance: 10,
+                  };
+                  setFormData({...formData, ...clearedFields, itemType: v});
+                }}>
                   <SelectTrigger className="bg-stone-800 border-stone-700">
                     <SelectValue />
                   </SelectTrigger>
@@ -19154,7 +19169,17 @@ function ManageTemplatesDialog({ open, onOpenChange, campaignId }: { open: boole
                   </div>
                   <div>
                     <Label>Item Type</Label>
-                    <Select value={newItem.itemType} onValueChange={(v) => setNewItem({...newItem, itemType: v})}>
+                    <Select value={newItem.itemType} onValueChange={(v) => {
+                      const clearedFields: Record<string, any> = {
+                        damage: '', damageType: '', mod: 0, range: '', aoe: '', attribute: '', isHeavy: false, weaponCategory: '', canApplyEffects: false,
+                        armorSlot: '', armorBonus: 0, damageReduction: 0, damageReductionType: '',
+                        ammunitionType: '', breakChance: 10,
+                        rationServings: 0, isDamaging: false,
+                        isContainer: v === 'container', carryCapacity: v === 'container' ? 10 : 0,
+                        isThrowable: false, throwableAoe: false, throwableAoeShape: '', throwableAoeRange: 10, throwablePickup: false, throwableAoeDamage: '', throwableAoeDamageType: '', throwableBreakChance: 10,
+                      };
+                      setNewItem({...newItem, ...clearedFields, itemType: v});
+                    }}>
                       <SelectTrigger className="bg-stone-800 border-stone-700">
                         <SelectValue />
                       </SelectTrigger>
@@ -19548,7 +19573,17 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
                   )}
                 </div>
                 {isEditing && canEditAllFields ? (
-                  <Select value={currentData.itemType} onValueChange={(v) => setEditData({ ...editData, itemType: v })}>
+                  <Select value={currentData.itemType} onValueChange={(v) => {
+                    const clearedFields: Record<string, any> = {
+                      damage: null, damageType: null, mod: 0, range: null, aoe: null, attribute: null, isHeavy: false, weaponCategory: null, canApplyEffects: false,
+                      armorSlot: null, armorBonus: 0, damageReduction: 0, damageReductionType: null,
+                      ammunitionType: null, breakChance: 10,
+                      rationServings: 0, isDamaging: false,
+                      isContainer: v === 'container', carryCapacity: v === 'container' ? 10 : 0,
+                      isThrowable: false, throwableAoe: false, throwableAoeShape: null, throwableAoeRange: 10, throwablePickup: false, throwableAoeDamage: null, throwableAoeDamageType: null, throwableBreakChance: 10,
+                    };
+                    setEditData({ ...editData, ...clearedFields, itemType: v });
+                  }}>
                     <SelectTrigger className="bg-stone-800 border-amber-700">
                       <SelectValue />
                     </SelectTrigger>
