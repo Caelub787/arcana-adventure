@@ -78,6 +78,8 @@ export interface IStorage {
   toggleFavorite(campaignId: string, userId: string): Promise<void>;
   setAssignedCharacter(campaignId: string, userId: string, characterId: string | null): Promise<void>;
   getAssignedCharacter(campaignId: string, userId: string): Promise<string | null>;
+  getGmHotbar(campaignId: string, userId: string): Promise<(string | null)[]>;
+  updateGmHotbar(campaignId: string, userId: string, hotbar: (string | null)[]): Promise<void>;
   isGM(userId: string, campaignId: string): Promise<boolean>;
   isOwner(userId: string, campaignId: string): Promise<boolean>;
   setMemberRole(campaignId: string, memberId: string, role: 'player' | 'assistant_gm'): Promise<CampaignMember | undefined>;
@@ -743,6 +745,47 @@ export class DatabaseStorage implements IStorage {
       .limit(1);
 
     return member?.assignedCharacterId || null;
+  }
+
+  async getGmHotbar(campaignId: string, userId: string): Promise<(string | null)[]> {
+    const [member] = await db.select()
+      .from(campaignMembers)
+      .where(and(
+        eq(campaignMembers.campaignId, campaignId),
+        eq(campaignMembers.userId, userId)
+      ))
+      .limit(1);
+
+    // Return stored hotbar or default 5-slot empty array
+    return member?.gmHotbar || [null, null, null, null, null];
+  }
+
+  async updateGmHotbar(campaignId: string, userId: string, hotbar: (string | null)[]): Promise<void> {
+    const [member] = await db.select()
+      .from(campaignMembers)
+      .where(and(
+        eq(campaignMembers.campaignId, campaignId),
+        eq(campaignMembers.userId, userId)
+      ))
+      .limit(1);
+
+    if (member) {
+      await db.update(campaignMembers)
+        .set({ gmHotbar: hotbar })
+        .where(eq(campaignMembers.id, member.id));
+    } else {
+      // Create a member record if one doesn't exist (e.g., for GM who created campaign)
+      const campaign = await this.getCampaign(campaignId);
+      if (campaign) {
+        const role = campaign.gmUserId === userId ? 'gm' : 'player';
+        await db.insert(campaignMembers).values({
+          campaignId,
+          userId,
+          role,
+          gmHotbar: hotbar,
+        });
+      }
+    }
   }
 
   async isGM(userId: string, campaignId: string): Promise<boolean> {

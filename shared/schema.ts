@@ -146,6 +146,7 @@ export const campaignMembers = pgTable("campaign_members", {
   role: text("role").notNull().default("player"), // "gm", "assistant_gm", or "player"
   favorite: boolean("favorite").default(false).notNull(),
   assignedCharacterId: varchar("assigned_character_id"), // Character auto-assigned to player on load
+  gmHotbar: text("gm_hotbar").array(), // Array of character IDs for GM's character hotbar
   joinedAt: timestamp("joined_at").defaultNow().notNull(),
 });
 

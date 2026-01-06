@@ -2800,6 +2800,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // GM Hotbar routes - get/update GM's character hotbar
+  app.get("/api/campaigns/:id/gm-hotbar", requireAuth, async (req, res) => {
+    try {
+      const hotbar = await storage.getGmHotbar(req.params.id, req.session.userId!);
+      res.json(hotbar);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch GM hotbar" });
+    }
+  });
+
+  app.put("/api/campaigns/:id/gm-hotbar", requireAuth, async (req, res) => {
+    try {
+      const { hotbar } = req.body;
+      if (!Array.isArray(hotbar)) {
+        return res.status(400).json({ error: "Hotbar must be an array" });
+      }
+      await storage.updateGmHotbar(req.params.id, req.session.userId!, hotbar);
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to update GM hotbar" });
+    }
+  });
+
   // Set member role (Owner only - can promote/demote to assistant_gm)
   app.patch("/api/campaigns/:campaignId/members/:memberId/role", requireAuth, async (req, res) => {
     try {
