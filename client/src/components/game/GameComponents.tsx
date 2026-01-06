@@ -40,7 +40,7 @@ import goblinToken from "@assets/generated_images/top_down_goblin_token.png";
 import { triggerSkillRollNotification, triggerRollNotification, triggerEffectRollNotification, getNotificationStyle, setNotificationStyle, type NotificationStyle } from './RollNotification';
 import { ImageBrowser } from '@/components/ImageBrowser';
 import { BattlemapAoeOverlay } from './BattlemapAoeOverlay';
-import { type AoeTargetState, getTokensInAoe, getTokenGridSpan } from '@/lib/aoeHelpers';
+import { type AoeTargetState, getTokensInAoe, getTokenGridSpan, getDistanceToTokenEdge, getDistanceBetweenTokensFeet, isTokenInRangeOfToken } from '@/lib/aoeHelpers';
 
 
 // --- Types & Mock Data ---
@@ -3239,6 +3239,19 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     return ['bow', 'crossbow', 'sling', 'firearm'].includes(weaponCategory?.toLowerCase() || '');
   };
 
+  // Calculate distance between two tokens in feet, using edge-based measurement for large tokens
+  // For 2x2 or 3x3 tokens, measures from nearest edge of each token's occupied space
+  const calculateTokenDistanceInFeet = (
+    token1X: number, token1Y: number, token1Size: string | undefined,
+    token2X: number, token2Y: number, token2Size: string | undefined
+  ): number => {
+    return getDistanceBetweenTokensFeet(
+      token1X, token1Y, token1Size,
+      token2X, token2Y, token2Size,
+      gridSize
+    );
+  };
+  
   // Calculate distance between two points in feet (each grid = 5ft)
   // Uses Chebyshev distance (grid-based) for TTRPG-style range - diagonal adjacent = 1 grid = 5ft
   const calculateDistanceInFeet = (x1: number, y1: number, x2: number, y2: number): number => {
@@ -3320,10 +3333,11 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     const targetData = getTargetData();
     
     // If targeting a token, check range (skip range check if attacker or target data is missing)
+    // Uses edge-based distance for large tokens (2x2, 3x3) - measures from nearest edge
     if (targetedTokenId && targetData?.token && attackerToken) {
-      const distance = calculateDistanceInFeet(
-        attackerToken.x, attackerToken.y,
-        targetData.token.x, targetData.token.y
+      const distance = calculateTokenDistanceInFeet(
+        attackerToken.x, attackerToken.y, (attackerToken as any).speciesSize,
+        targetData.token.x, targetData.token.y, (targetData.token as any).speciesSize
       );
       
       // Determine range:
@@ -3341,8 +3355,8 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
       const weaponRange = itemRange;
       
       console.log('[Range Check]', {
-        attacker: { x: attackerToken.x, y: attackerToken.y },
-        target: { x: targetData.token.x, y: targetData.token.y },
+        attacker: { x: attackerToken.x, y: attackerToken.y, size: (attackerToken as any).speciesSize },
+        target: { x: targetData.token.x, y: targetData.token.y, size: (targetData.token as any).speciesSize },
         gridSize,
         distance,
         weaponRange,
@@ -3358,7 +3372,7 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
           total: 0,
           username: character.name || 'Unknown',
           characterName: character.name,
-          calculationBreakdown: `Target not within range (${distance}ft > ${weaponRange}ft)`,
+          calculationBreakdown: `Target not within range (${Math.floor(distance)}ft > ${weaponRange}ft)`,
         });
         return;
       }
@@ -4114,10 +4128,13 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     
     // Priority 1: If a token is targeted, throw item attached to that token
     if (targetedTokenId) {
-      // Range check - validate target is within weapon range
+      // Range check - validate target is within weapon range (uses edge-based distance for large tokens)
       const targetToken = tokens?.find((t: any) => t.id === targetedTokenId);
       if (attackerToken && targetToken) {
-        const distanceFt = calculateDistanceInFeet(attackerToken.x, attackerToken.y, targetToken.x, targetToken.y);
+        const distanceFt = calculateTokenDistanceInFeet(
+          attackerToken.x, attackerToken.y, (attackerToken as any).speciesSize,
+          targetToken.x, targetToken.y, (targetToken as any).speciesSize
+        );
         if (distanceFt > weaponRange) {
           triggerRollNotification({
             type: 'system',
@@ -4126,7 +4143,7 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
             total: 0,
             username: character.name || 'Unknown',
             characterName: character.name,
-            calculationBreakdown: `Target is ${distanceFt}ft away. ${itemData.name} has a range of ${weaponRange}ft.`,
+            calculationBreakdown: `Target is ${Math.floor(distanceFt)}ft away. ${itemData.name} has a range of ${weaponRange}ft.`,
           });
           return;
         }
@@ -4235,15 +4252,20 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     
     // Priority 2: Grid target selected in Target mode - throw to that location
     if (throwableGridTarget) {
-      // Range check - validate grid target is within weapon range
+      // Range check - validate grid target is within weapon range (uses edge-based distance for large attackers)
       if (attackerToken) {
         const effectiveGridSize = gridSize || 50;
         // Convert grid coordinates to pixel coordinates for distance calculation
         const gridCenterX = (throwableGridTarget.x + 0.5) * effectiveGridSize;
         const gridCenterY = (throwableGridTarget.y + 0.5) * effectiveGridSize;
-        const attackerCenterX = attackerToken.x + effectiveGridSize / 2;
-        const attackerCenterY = attackerToken.y + effectiveGridSize / 2;
-        const distanceFt = calculateDistanceInFeet(attackerCenterX, attackerCenterY, gridCenterX, gridCenterY);
+        // Use edge-based distance from attacker token to grid point
+        const distancePixels = getDistanceToTokenEdge(
+          gridCenterX, gridCenterY,
+          attackerToken.x, attackerToken.y,
+          effectiveGridSize,
+          (attackerToken as any).speciesSize
+        );
+        const distanceFt = (distancePixels / effectiveGridSize) * 5;
         if (distanceFt > weaponRange) {
           triggerRollNotification({
             type: 'system',
@@ -4252,7 +4274,7 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
             total: 0,
             username: character.name || 'Unknown',
             characterName: character.name,
-            calculationBreakdown: `Target is ${distanceFt}ft away. ${itemData.name} has a range of ${weaponRange}ft.`,
+            calculationBreakdown: `Target is ${Math.floor(distanceFt)}ft away. ${itemData.name} has a range of ${weaponRange}ft.`,
           });
           return;
         }
@@ -4334,12 +4356,17 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
         return;
       }
       
-      // Range check - validate AOE target is within weapon range
+      // Range check - validate AOE target is within weapon range (uses edge-based distance for large attackers)
       if (attackerToken && aoeTargetState.center) {
         const effectiveGridSize = gridSize || 50;
-        const attackerCenterX = attackerToken.x + effectiveGridSize / 2;
-        const attackerCenterY = attackerToken.y + effectiveGridSize / 2;
-        const distanceFt = calculateDistanceInFeet(attackerCenterX, attackerCenterY, aoeTargetState.center.x, aoeTargetState.center.y);
+        // Use edge-based distance from attacker token to AOE center point
+        const distancePixels = getDistanceToTokenEdge(
+          aoeTargetState.center.x, aoeTargetState.center.y,
+          attackerToken.x, attackerToken.y,
+          effectiveGridSize,
+          (attackerToken as any).speciesSize
+        );
+        const distanceFt = (distancePixels / effectiveGridSize) * 5;
         if (distanceFt > weaponRange) {
           triggerRollNotification({
             type: 'system',
@@ -4348,7 +4375,7 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
             total: 0,
             username: character.name || 'Unknown',
             characterName: character.name,
-            calculationBreakdown: `Target is ${distanceFt}ft away. ${itemData.name} has a range of ${weaponRange}ft.`,
+            calculationBreakdown: `Target is ${Math.floor(distanceFt)}ft away. ${itemData.name} has a range of ${weaponRange}ft.`,
           });
           return;
         }
@@ -4512,19 +4539,21 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
         }
         
         for (const token of tokens) {
-          // Token center in pixels - account for token size
-          const tokenGridSpan = getTokenGridSpan((token as any).speciesSize);
-          const tokenCenterX = token.x + (tokenGridSpan * effectiveGridSize) / 2;
-          const tokenCenterY = token.y + (tokenGridSpan * effectiveGridSize) / 2;
-          
-          // Calculate pixel distance
-          const dx = tokenCenterX - thrownCenterX;
-          const dy = tokenCenterY - thrownCenterY;
-          const pixelDistance = Math.sqrt(dx * dx + dy * dy);
+          // Use edge-based distance calculation for large tokens
+          // This measures from the AOE center to the nearest edge of the token's occupied space
+          const distancePixels = getDistanceToTokenEdge(
+            thrownCenterX,
+            thrownCenterY,
+            token.x,
+            token.y,
+            effectiveGridSize,
+            (token as any).speciesSize
+          );
           
           // Each grid square = 5ft, so convert pixel distance to feet
-          const distanceFt = (pixelDistance / effectiveGridSize) * 5;
+          const distanceFt = (distancePixels / effectiveGridSize) * 5;
           
+          // Include ALL tokens in range - including the thrower (self-damage from AOE)
           if (distanceFt <= aoeRange) {
             // Increment overlap count for this token (or initialize if first time)
             const existing = tokenOverlapCounts.get(token.id);
