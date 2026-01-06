@@ -769,9 +769,10 @@ export class DatabaseStorage implements IStorage {
       ))
       .limit(1);
 
+    const filteredHotbar = hotbar.filter((id): id is string => id !== null);
     if (member) {
       await db.update(campaignMembers)
-        .set({ gmHotbar: hotbar })
+        .set({ gmHotbar: filteredHotbar })
         .where(eq(campaignMembers.id, member.id));
     } else {
       // Create a member record if one doesn't exist (e.g., for GM who created campaign)
@@ -782,7 +783,7 @@ export class DatabaseStorage implements IStorage {
           campaignId,
           userId,
           role,
-          gmHotbar: hotbar,
+          gmHotbar: filteredHotbar,
         });
       }
     }
@@ -951,7 +952,7 @@ export class DatabaseStorage implements IStorage {
     // First pass: create all items without containerId references
     const templateItems = await this.getItemsByCharacter(templateId);
     for (const item of templateItems) {
-      const { id: oldItemId, createdAt: itemCreatedAt, characterId, containerId, ...itemData } = item;
+      const { id: oldItemId, characterId, containerId, ...itemData } = item;
       const [newItem] = await db.insert(items).values({
         ...itemData,
         characterId: newChar.id,
@@ -1032,7 +1033,7 @@ export class DatabaseStorage implements IStorage {
     // First pass: create all items without containerId references
     const characterItems = await this.getItemsByCharacter(characterId);
     for (const item of characterItems) {
-      const { id: oldItemId, createdAt: itemCreatedAt, characterId: charId, containerId, ...itemData } = item;
+      const { id: oldItemId, characterId: charId, containerId, ...itemData } = item;
       const [newItem] = await db.insert(items).values({
         ...itemData,
         characterId: newTemplate.id,
@@ -1133,7 +1134,7 @@ export class DatabaseStorage implements IStorage {
     // First pass: create all items without containerId references
     const sourceItems = await this.getItemsByCharacter(characterId);
     for (const item of sourceItems) {
-      const { id: oldItemId, createdAt: itemCreatedAt, characterId: charId, containerId, ...itemData } = item;
+      const { id: oldItemId, characterId: charId, containerId, ...itemData } = item;
       const [newItem] = await db.insert(items).values({
         ...itemData,
         characterId: newChar.id,
@@ -1420,7 +1421,7 @@ export class DatabaseStorage implements IStorage {
   async getItemsByCharacter(characterId: string): Promise<Item[]> {
     return await db.select()
       .from(items)
-      .where(eq(items.characterId, characterId));
+      .where(eq(items.characterId, characterId)) as Item[];
   }
 
   async createItem(item: InsertItem): Promise<Item> {
@@ -1432,7 +1433,7 @@ export class DatabaseStorage implements IStorage {
     const [item] = await db.update(items)
       .set(updates)
       .where(eq(items.id, id))
-      .returning();
+      .returning() as Item[];
     return item;
   }
 
@@ -1444,20 +1445,20 @@ export class DatabaseStorage implements IStorage {
   }
 
   async damageItem(id: string, amount: number = 1): Promise<Item | undefined> {
-    const [item] = await db.select().from(items).where(eq(items.id, id)).limit(1);
+    const [item] = await db.select().from(items).where(eq(items.id, id)).limit(1) as Item[];
     if (!item) return undefined;
 
     const newDurability = Math.max(0, item.durability - amount);
     const [updatedItem] = await db.update(items)
       .set({ durability: newDurability })
       .where(eq(items.id, id))
-      .returning();
+      .returning() as Item[];
     
     return updatedItem;
   }
 
   async getItem(id: string): Promise<Item | undefined> {
-    const [item] = await db.select().from(items).where(eq(items.id, id)).limit(1);
+    const [item] = await db.select().from(items).where(eq(items.id, id)).limit(1) as Item[];
     return item;
   }
 
@@ -1468,7 +1469,7 @@ export class DatabaseStorage implements IStorage {
         eq(items.isTemplate, true),
         sql`${items.characterId} IS NULL`,
         sql`${items.campaignId} IS NULL`
-      ));
+      )) as Item[];
   }
 
   async getCampaignTemplateItems(campaignId: string): Promise<Item[]> {
@@ -1478,21 +1479,21 @@ export class DatabaseStorage implements IStorage {
         eq(items.isTemplate, true),
         eq(items.campaignId, campaignId),
         sql`${items.characterId} IS NULL`
-      ));
+      )) as Item[];
   }
 
   async moveItemToContainer(itemId: string, containerId: string | null): Promise<Item | undefined> {
     const [item] = await db.update(items)
       .set({ containerId })
       .where(eq(items.id, itemId))
-      .returning();
+      .returning() as Item[];
     return item;
   }
 
   async getContainerItems(containerId: string): Promise<Item[]> {
     return await db.select()
       .from(items)
-      .where(eq(items.containerId, containerId));
+      .where(eq(items.containerId, containerId)) as Item[];
   }
 
   // Spell operations

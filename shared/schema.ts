@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, timestamp, boolean, jsonb, real, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, timestamp, boolean, jsonb, real, uniqueIndex, type AnyPgColumn } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -374,7 +374,7 @@ export const items = pgTable("items", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   characterId: varchar("character_id").references(() => characters.id, { onDelete: "cascade" }), // Null for campaign template items
   campaignId: varchar("campaign_id").references(() => campaigns.id, { onDelete: "cascade" }), // For campaign template items
-  containerId: varchar("container_id").references(() => items.id, { onDelete: "cascade" }), // For nested inventories
+  containerId: varchar("container_id").references((): AnyPgColumn => items.id, { onDelete: "cascade" }), // For nested inventories
   isTemplate: boolean("is_template").default(false).notNull(), // True for campaign item templates
   name: text("name").notNull(),
   image: text("image"),

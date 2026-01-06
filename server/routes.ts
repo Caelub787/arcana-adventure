@@ -408,7 +408,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               
               // Check combat turn restriction - players can only move their character's token during their turn
               // Only enforce turn restriction if combat is active AND a turn has been established
-              const tokenScene = await storage.getScene(token.sceneId);
+              const tokenScene = token.sceneId ? await storage.getScene(token.sceneId) : null;
               if (tokenScene?.inCombat && tokenScene.currentTurnCharacterId) {
                 // In combat mode with active turn - check if it's this character's turn
                 if (tokenScene.currentTurnCharacterId !== token.characterId) {
@@ -445,14 +445,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
           
           // Collision detection - check if the target position would overlap with other tokens
-          const allTokens = await storage.getTokensByScene(token.sceneId);
-          const allCharacters = await storage.getCharactersByCampaign(campaignId);
-          const allSpecies = await storage.getAllSpecies(); // Get system species
+          const allTokens = token.sceneId ? await storage.getSceneTokens(token.sceneId) : [];
+          const allCharacters = await storage.getCampaignCharacters(campaignId);
+          const allSpecies = await storage.getSystemSpecies(); // Get system species
           const campaignSpecies = await storage.getCampaignSpecies(campaignId); // Get campaign species
           const speciesList = [...allSpecies, ...campaignSpecies];
           
           // Get grid size from scene
-          const scene = await storage.getScene(token.sceneId);
+          const scene = token.sceneId ? await storage.getScene(token.sceneId) : null;
           const gridSize = scene?.gridSize || 50;
           
           // Helper to get grid span based on species size
