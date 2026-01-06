@@ -15250,11 +15250,11 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                   <div>
                     <Label className="text-xs text-stone-400">Currency</Label>
                     <div className="text-sm text-stone-200 flex gap-2" data-testid="text-currency">
-                      {displayCurrency.platinum > 0 && <span className="text-purple-400">{displayCurrency.platinum}p</span>}
-                      {displayCurrency.gold > 0 && <span className="text-yellow-500">{displayCurrency.gold}g</span>}
-                      {displayCurrency.silver > 0 && <span className="text-gray-400">{displayCurrency.silver}s</span>}
-                      {displayCurrency.copper > 0 && <span className="text-orange-600">{displayCurrency.copper}c</span>}
-                      {displayCurrency.platinum === 0 && displayCurrency.gold === 0 && displayCurrency.silver === 0 && displayCurrency.copper === 0 && <span className="text-stone-500">No currency</span>}
+                      {totalCurrency.platinum > 0 && <span className="text-purple-400">{totalCurrency.platinum}p</span>}
+                      {totalCurrency.gold > 0 && <span className="text-yellow-500">{totalCurrency.gold}g</span>}
+                      {totalCurrency.silver > 0 && <span className="text-gray-400">{totalCurrency.silver}s</span>}
+                      {totalCurrency.copper > 0 && <span className="text-orange-600">{totalCurrency.copper}c</span>}
+                      {totalCurrency.platinum === 0 && totalCurrency.gold === 0 && totalCurrency.silver === 0 && totalCurrency.copper === 0 && <span className="text-stone-500">No currency</span>}
                     </div>
                   </div>
                 </div>
