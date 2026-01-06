@@ -1959,24 +1959,24 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                 </div>
               )}
               
-              {/* Energy Bar - Only show if token is linked to a character and user has view/edit permission */}
-              {character && energyPercent !== null && (role === 'gm' || ['view', 'edit'].includes(myPermissions?.permissions?.[character.id])) && (
-                <div className="absolute bottom-[9px] left-0.5 right-0.5 h-1.5 bg-black/50 rounded-full overflow-hidden border border-black/80">
-                  <div 
-                    className="h-full transition-all duration-300 bg-cyan-500"
-                    style={{ width: `${Math.max(0, Math.min(100, energyPercent))}%` }}
-                  />
-                </div>
-              )}
-              
               {/* HP Bar - Only show if token is linked to a character and user has view/edit permission */}
               {character && hpPercent !== null && (role === 'gm' || ['view', 'edit'].includes(myPermissions?.permissions?.[character.id])) && (
-                <div className="absolute bottom-0.5 left-0.5 right-0.5 h-1.5 bg-black/50 rounded-full overflow-hidden border border-black/80">
+                <div className="absolute bottom-[9px] left-0.5 right-0.5 h-1.5 bg-black/50 rounded-full overflow-hidden border border-black/80">
                   <div 
                     className={`h-full transition-all duration-300 ${
                       hpPercent > 60 ? 'bg-green-500' : hpPercent > 30 ? 'bg-yellow-500' : 'bg-red-500'
                     }`}
                     style={{ width: `${Math.max(0, Math.min(100, hpPercent))}%` }}
+                  />
+                </div>
+              )}
+              
+              {/* Energy Bar - Only show if token is linked to a character and user has view/edit permission */}
+              {character && energyPercent !== null && (role === 'gm' || ['view', 'edit'].includes(myPermissions?.permissions?.[character.id])) && (
+                <div className="absolute bottom-0.5 left-0.5 right-0.5 h-1.5 bg-black/50 rounded-full overflow-hidden border border-black/80">
+                  <div 
+                    className="h-full transition-all duration-300 bg-cyan-500"
+                    style={{ width: `${Math.max(0, Math.min(100, energyPercent))}%` }}
                   />
                 </div>
               )}
