@@ -22,12 +22,14 @@ import { useAuth } from "@/lib/AuthContext";
 import { api, gameWs, type Scene, type CampaignSpecies, type FeatTree, type CharacterFolder, type SceneFolder, type TokenEffect, type TokenActiveEffect, type ThrownItem, type Note } from "@/lib/api";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { Textarea } from "@/components/ui/textarea";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { ImageBrowser } from "@/components/ImageBrowser";
 import { CampaignNotesPanel } from "@/components/notes/CampaignNotesPanel";
+import { FloatingPanel } from "@/components/ui/floating-panel";
 import { Folder, FolderPlus, Plus, GripVertical, Eye, Radio, ChevronDown, ChevronRight, Pencil } from "lucide-react";
 
 // Scene Settings Form Component
@@ -694,6 +696,7 @@ export default function Campaign() {
   const queryClient = useQueryClient();
   const hasCreatedRef = useRef(false);
   const wsConnectedRef = useRef(false);
+  const isMobile = useIsMobile();
 
   const [character, setCharacter] = useState<any>(null);
   const [tokens, setTokens] = useState<any[]>([]);
@@ -752,11 +755,21 @@ export default function Campaign() {
   
   // Notes panel state
   const [notesPanelOpen, setNotesPanelOpen] = useState(false);
+  const [notesPanelWidth, setNotesPanelWidth] = useState(450);
   
   // Memoized callback for notes toggle to prevent infinite re-renders
   const handleToggleNotesPanel = useCallback(() => {
     setNotesPanelOpen(prev => !prev);
   }, []);
+  
+  // Callback for notes panel resize (only on desktop)
+  const handleNotesPanelResize = useCallback((sizes: number[]) => {
+    if (!isMobile && sizes.length > 0) {
+      const panelPercentage = sizes[sizes.length - 1];
+      const newWidth = Math.max(300, Math.min(800, (window.innerWidth * panelPercentage) / 100));
+      setNotesPanelWidth(newWidth);
+    }
+  }, [isMobile]);
   
   // AoE targeting state
   const [aoeTargetState, setAoeTargetState] = useState<AoeTargetState>(createInitialAoeState());
@@ -3102,7 +3115,12 @@ export default function Campaign() {
       )}
 
       {/* Game View - Always visible for all campaign members */}
-      <div className="flex flex-col h-full w-full">
+      <div 
+        className="flex flex-col h-full w-full transition-all duration-200"
+        style={{
+          paddingRight: notesPanelOpen && !isMobile ? `${notesPanelWidth}px` : 0
+        }}
+      >
         
         {/* Map Area - Takes full space, but HUD overlays it */}
         <div ref={battlemapContainerRef} className="relative flex-grow w-full bg-stone-900 z-0 overflow-hidden">
@@ -3300,14 +3318,48 @@ export default function Campaign() {
         </div>
       </div>
 
-      {/* Character Sheet Dialog - Full screen on mobile */}
-      <Dialog open={!!viewingCharacterSheet} onOpenChange={(open) => !open && setViewingCharacterSheet(null)}>
-        <DialogContent className="w-full h-full max-w-full max-h-full sm:max-w-4xl sm:h-[90vh] sm:max-h-[90vh] bg-stone-900 border-stone-700 text-stone-200 p-0 rounded-none sm:rounded-lg flex flex-col">
-          <DialogHeader className="p-4 pb-0 sm:p-6 sm:pb-0 shrink-0">
-            <DialogTitle className="text-lg sm:text-2xl text-amber-500 font-display truncate pr-8">
-              {viewingCharacterSheet?.name}
-            </DialogTitle>
-          </DialogHeader>
+      {/* Character Sheet - Dialog on mobile, FloatingPanel on desktop */}
+      {isMobile ? (
+        <Dialog open={!!viewingCharacterSheet} onOpenChange={(open) => !open && setViewingCharacterSheet(null)}>
+          <DialogContent className="w-full h-full max-w-full max-h-full bg-stone-900 border-stone-700 text-stone-200 p-0 rounded-none flex flex-col">
+            <DialogHeader className="p-4 pb-0 shrink-0">
+              <DialogTitle className="text-lg text-amber-500 font-display truncate pr-8">
+                {viewingCharacterSheet?.name}
+              </DialogTitle>
+            </DialogHeader>
+            {viewingCharacterSheet && (
+              <CharacterSheet
+                character={viewingCharacterSheet}
+                isGM={role === 'gm'}
+                isOwner={
+                  viewingCharacterSheet.userId === user?.id || 
+                  myPermissions?.permissions?.[viewingCharacterSheet.id] === 'edit'
+                }
+                isAdmin={isAdmin}
+                accessLevel={
+                  viewingCharacterSheet.userId === user?.id ? 'owner' :
+                  (myPermissions?.permissions?.[viewingCharacterSheet.id] as 'name' | 'view' | 'edit' | undefined) || 'view'
+                }
+                onUpdate={handleUpdateCharacter}
+                onClose={() => setViewingCharacterSheet(null)}
+                defaultTab={characterSheetDefaultTab}
+                campaignId={effectiveCampaignId || undefined}
+                sceneId={activeScene?.id}
+                allSpecies={[...(systemSpecies || []), ...campaignSpeciesList]}
+              />
+            )}
+          </DialogContent>
+        </Dialog>
+      ) : (
+        <FloatingPanel
+          open={!!viewingCharacterSheet}
+          onClose={() => setViewingCharacterSheet(null)}
+          title={viewingCharacterSheet?.name}
+          defaultSize={{ width: 600, height: window.innerHeight * 0.8 }}
+          minWidth={400}
+          minHeight={400}
+          zIndex={40}
+        >
           {viewingCharacterSheet && (
             <CharacterSheet
               character={viewingCharacterSheet}
@@ -3329,8 +3381,8 @@ export default function Campaign() {
               allSpecies={[...(systemSpecies || []), ...campaignSpeciesList]}
             />
           )}
-        </DialogContent>
-      </Dialog>
+        </FloatingPanel>
+      )}
       
       {/* Initiative Tracker Dialog */}
       <InitiativeTracker
@@ -3345,8 +3397,18 @@ export default function Campaign() {
       
       {/* Notes Panel Overlay */}
       {notesPanelOpen && effectiveCampaignId && (
-        <div className="fixed top-0 right-0 h-full z-40 pointer-events-auto" style={{ width: '450px', maxWidth: '90vw' }}>
-          <ResizablePanelGroup direction="horizontal" className="h-full">
+        <div 
+          className="fixed top-0 right-0 h-full z-40 pointer-events-auto transition-all duration-200" 
+          style={{ 
+            width: isMobile ? '90vw' : `${notesPanelWidth}px`,
+            maxWidth: '90vw' 
+          }}
+        >
+          <ResizablePanelGroup 
+            direction="horizontal" 
+            className="h-full"
+            onLayout={handleNotesPanelResize}
+          >
             <ResizableHandle withHandle className="bg-stone-700 hover:bg-amber-600 transition-colors" />
             <ResizablePanel defaultSize={100} minSize={30}>
               <CampaignNotesPanel
