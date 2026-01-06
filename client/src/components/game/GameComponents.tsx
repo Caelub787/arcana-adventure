@@ -40,7 +40,7 @@ import goblinToken from "@assets/generated_images/top_down_goblin_token.png";
 import { triggerSkillRollNotification, triggerRollNotification, triggerEffectRollNotification, getNotificationStyle, setNotificationStyle, type NotificationStyle } from './RollNotification';
 import { ImageBrowser } from '@/components/ImageBrowser';
 import { BattlemapAoeOverlay } from './BattlemapAoeOverlay';
-import { type AoeTargetState, getTokensInAoe } from '@/lib/aoeHelpers';
+import { type AoeTargetState, getTokensInAoe, getTokenGridSpan } from '@/lib/aoeHelpers';
 
 
 // --- Types & Mock Data ---
@@ -252,14 +252,7 @@ export interface OtherPlayerAoe {
   locked: boolean;
 }
 
-// Helper to get grid span based on species size
-function getTokenGridSpan(size: string | undefined): number {
-  switch (size) {
-    case 'Huge': return 2;
-    case 'Gargantuan': return 3;
-    default: return 1; // Tiny, Small, Medium, Large all use 1x1
-  }
-}
+// getTokenGridSpan is imported from '@/lib/aoeHelpers'
 
 // 2. BattleMap
 interface BattleMapProps {
@@ -1952,8 +1945,9 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
           if (aoeRadiusPixels <= 0 || !item.throwableAoe) return null;
           
           const tokenDisplayPos = getTokenDisplayPosition(attachedToken);
-          const tokenCenterX = 9000 + tokenDisplayPos.x + effectiveGridSize / 2;
-          const tokenCenterY = 9000 + tokenDisplayPos.y + effectiveGridSize / 2;
+          const tokenGridSpan = getTokenGridSpan((attachedToken as any).speciesSize);
+          const tokenCenterX = 9000 + tokenDisplayPos.x + (tokenGridSpan * effectiveGridSize) / 2;
+          const tokenCenterY = 9000 + tokenDisplayPos.y + (tokenGridSpan * effectiveGridSize) / 2;
           
           return (
             <div
@@ -4463,8 +4457,9 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
           // Find the attached token to get its current position (in case it moved)
           const attachedToken = tokens.find((t: any) => t.id === thrownItem.attachedToTokenId);
           if (attachedToken) {
-            thrownCenterX = attachedToken.x + effectiveGridSize / 2;
-            thrownCenterY = attachedToken.y + effectiveGridSize / 2;
+            const tokenGridSpan = getTokenGridSpan((attachedToken as any).speciesSize);
+            thrownCenterX = attachedToken.x + (tokenGridSpan * effectiveGridSize) / 2;
+            thrownCenterY = attachedToken.y + (tokenGridSpan * effectiveGridSize) / 2;
           } else {
             // Fallback to stored coordinates if token not found
             thrownCenterX = thrownItem.x + effectiveGridSize / 2;
@@ -4477,9 +4472,10 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
         }
         
         for (const token of tokens) {
-          // Token center in pixels
-          const tokenCenterX = token.x + effectiveGridSize / 2;
-          const tokenCenterY = token.y + effectiveGridSize / 2;
+          // Token center in pixels - account for token size
+          const tokenGridSpan = getTokenGridSpan((token as any).speciesSize);
+          const tokenCenterX = token.x + (tokenGridSpan * effectiveGridSize) / 2;
+          const tokenCenterY = token.y + (tokenGridSpan * effectiveGridSize) / 2;
           
           // Calculate pixel distance
           const dx = tokenCenterX - thrownCenterX;

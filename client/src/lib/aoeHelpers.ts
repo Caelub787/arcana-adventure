@@ -16,6 +16,14 @@ export const createInitialAoeState = (): AoeTargetState => ({
   locked: false,
 });
 
+export function getTokenGridSpan(size: string | undefined): number {
+  switch (size) {
+    case 'Huge': return 2;
+    case 'Gargantuan': return 3;
+    default: return 1; // Tiny, Small, Medium, Large all use 1x1
+  }
+}
+
 export function isTokenInCircle(
   tokenX: number,
   tokenY: number,
@@ -113,7 +121,7 @@ export function getTokensInAoe(
   tokens: any[],
   aoeState: AoeTargetState,
   gridSize: number,
-  casterToken?: { x: number; y: number; id?: string },
+  casterToken?: { x: number; y: number; id?: string; speciesSize?: string },
   aoeWidth?: number
 ): any[] {
   if (!aoeState.active || !aoeState.spell) return [];
@@ -140,8 +148,12 @@ export function getTokensInAoe(
   // Width for line/cone (in grid cells, default to 1 cell = 5 feet)
   const widthPixels = aoeWidth ? (aoeWidth / 5) * gridSize : gridSize;
 
+  // Calculate caster center accounting for token size
+  const casterGridSpan = getTokenGridSpan(casterToken?.speciesSize);
   const casterX = casterToken?.x ?? 0;
   const casterY = casterToken?.y ?? 0;
+  const casterCenterX = casterX + (casterGridSpan * gridSize) / 2;
+  const casterCenterY = casterY + (casterGridSpan * gridSize) / 2;
 
   return tokens.filter((token) => {
     // Exclude caster from cone and line AOE (they don't damage themselves)
@@ -150,8 +162,10 @@ export function getTokensInAoe(
       return false;
     }
     
-    const tokenCenterX = token.x + gridSize / 2;
-    const tokenCenterY = token.y + gridSize / 2;
+    // Calculate token center accounting for token size
+    const tokenGridSpan = getTokenGridSpan(token.speciesSize);
+    const tokenCenterX = token.x + (tokenGridSpan * gridSize) / 2;
+    const tokenCenterY = token.y + (tokenGridSpan * gridSize) / 2;
 
     switch (aoeShape) {
       case 'circle':
@@ -174,8 +188,8 @@ export function getTokensInAoe(
         return isTokenInCone(
           tokenCenterX,
           tokenCenterY,
-          casterX + gridSize / 2,
-          casterY + gridSize / 2,
+          casterCenterX,
+          casterCenterY,
           center.x,
           center.y,
           90,
@@ -185,8 +199,8 @@ export function getTokensInAoe(
         return isTokenInLine(
           tokenCenterX,
           tokenCenterY,
-          casterX + gridSize / 2,
-          casterY + gridSize / 2,
+          casterCenterX,
+          casterCenterY,
           center.x,
           center.y,
           widthPixels,
@@ -210,11 +224,22 @@ export function isCasterInRange(
   targetX: number,
   targetY: number,
   rangeNum: number,
-  gridSize: number
+  gridSize: number,
+  casterSize?: string
 ): boolean {
-  const dx = targetX - casterX;
-  const dy = targetY - casterY;
+  // Account for caster token size - distance is measured from edge of token
+  const casterGridSpan = getTokenGridSpan(casterSize);
+  const casterCenterX = casterX + (casterGridSpan * gridSize) / 2;
+  const casterCenterY = casterY + (casterGridSpan * gridSize) / 2;
+  
+  const dx = targetX - casterCenterX;
+  const dy = targetY - casterCenterY;
   const distancePixels = Math.sqrt(dx * dx + dy * dy);
-  const distanceFeet = (distancePixels / gridSize) * 5;
+  
+  // Subtract the distance from caster center to edge (radius of caster token)
+  const casterRadiusPixels = (casterGridSpan * gridSize) / 2;
+  const effectiveDistancePixels = Math.max(0, distancePixels - casterRadiusPixels);
+  
+  const distanceFeet = (effectiveDistancePixels / gridSize) * 5;
   return distanceFeet <= rangeNum;
 }
