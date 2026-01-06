@@ -1033,10 +1033,11 @@ export default function Campaign() {
     enabled: !!effectiveCampaignId,
   });
 
-  // Load system species for default token images (only needed when campaign is loaded)
+  // Load system species for default token images and character stats (only needed when campaign is loaded)
+  // Use public /api/species endpoint that all authenticated users can access
   const { data: systemSpecies } = useQuery({
-    queryKey: ['/api/admin/system-species'],
-    queryFn: () => api.getSystemSpecies(),
+    queryKey: ['/api/species'],
+    queryFn: () => api.getSpecies(),
     enabled: !!effectiveCampaignId && !isNew,
     staleTime: 5 * 60 * 1000, // Species data doesn't change often, cache for 5 minutes
   });
