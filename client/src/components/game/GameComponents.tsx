@@ -1757,8 +1757,8 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                 </div>
               )}
               
-              {/* Energy Bar - Only show if token is linked to a character and user has permission */}
-              {character && energyPercent !== null && (role === 'gm' || myPermissions?.permissions?.[character.id]) && (
+              {/* Energy Bar - Only show if token is linked to a character and user has view/edit permission */}
+              {character && energyPercent !== null && (role === 'gm' || ['view', 'edit'].includes(myPermissions?.permissions?.[character.id])) && (
                 <div className="absolute bottom-[9px] left-0.5 right-0.5 h-1.5 bg-black/50 rounded-full overflow-hidden border border-black/80">
                   <div 
                     className="h-full transition-all duration-300 bg-cyan-500"
@@ -1767,8 +1767,8 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                 </div>
               )}
               
-              {/* HP Bar - Only show if token is linked to a character and user has permission */}
-              {character && hpPercent !== null && (role === 'gm' || myPermissions?.permissions?.[character.id]) && (
+              {/* HP Bar - Only show if token is linked to a character and user has view/edit permission */}
+              {character && hpPercent !== null && (role === 'gm' || ['view', 'edit'].includes(myPermissions?.permissions?.[character.id])) && (
                 <div className="absolute bottom-0.5 left-0.5 right-0.5 h-1.5 bg-black/50 rounded-full overflow-hidden border border-black/80">
                   <div 
                     className={`h-full transition-all duration-300 ${
