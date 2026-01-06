@@ -197,7 +197,7 @@ export function FloatingPanel({
         </button>
       </div>
 
-      <div className="flex-1 overflow-hidden">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden">
         {children}
       </div>
 
