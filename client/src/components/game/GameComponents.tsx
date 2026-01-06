@@ -13456,10 +13456,8 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
         size: item.size,
         weight: item.weight,
         itemWeight: item.itemWeight,
-        priceCopper: item.priceCopper,
-        priceSilver: item.priceSilver,
-        priceGold: item.priceGold,
-        pricePlatinum: item.pricePlatinum,
+        price: item.price,
+        currency: item.currency,
         durability: item.durability,
         itemType: item.itemType,
         rarity: item.rarity,
@@ -18008,10 +18006,8 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
     size: string;
     weight: string;
     itemWeight: number | string;
-    priceCopper: number | string;
-    priceSilver: number | string;
-    priceGold: number | string;
-    pricePlatinum: number | string;
+    price: number | string;
+    currency: string;
     durability: number;
     isContainer: boolean;
     carryCapacity: number | string;
@@ -18050,10 +18046,8 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
     size: '',
     weight: 'light',
     itemWeight: '',
-    priceCopper: '',
-    priceSilver: '',
-    priceGold: '',
-    pricePlatinum: '',
+    price: '',
+    currency: 'copper',
     durability: 10,
     isContainer: false,
     carryCapacity: '',
@@ -18105,10 +18099,8 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
       size: template.size || '',
       weight: template.weight || 'light',
       itemWeight: template.itemWeight || 0,
-      priceCopper: template.priceCopper || 0,
-      priceSilver: template.priceSilver || 0,
-      priceGold: template.priceGold || 0,
-      pricePlatinum: template.pricePlatinum || 0,
+      price: template.price || 0,
+      currency: template.currency || 'copper',
       durability: template.durability || 10,
       isContainer: template.isContainer || false,
       carryCapacity: template.carryCapacity || 0,
@@ -18243,10 +18235,8 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
       mod: optionalNum(formData.mod),
       range: optionalNum(formData.range),
       itemWeight: optionalNum(formData.itemWeight),
-      priceCopper: optionalNum(formData.priceCopper),
-      priceSilver: optionalNum(formData.priceSilver),
-      priceGold: optionalNum(formData.priceGold),
-      pricePlatinum: optionalNum(formData.pricePlatinum),
+      price: optionalNum(formData.price),
+      currency: formData.currency || 'copper',
       quantity: Number(formData.quantity) || 1,
       carryCapacity: optionalNum(formData.carryCapacity),
       armorBonus: optionalNum(formData.armorBonus),
@@ -18281,10 +18271,8 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
       size: '',
       weight: 'light',
       itemWeight: '',
-      priceCopper: '',
-      priceSilver: '',
-      priceGold: '',
-      pricePlatinum: '',
+      price: '',
+      currency: 'copper',
       durability: 10,
       isContainer: false,
       carryCapacity: '',
@@ -18672,22 +18660,24 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
             </div>
             <div className="border-t border-stone-700 pt-4">
               <h3 className="text-sm font-bold text-stone-300 mb-3">Price</h3>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label>Platinum</Label>
-                  <Input type="number" min="0" value={formData.pricePlatinum} onChange={(e) => setFormData({...formData, pricePlatinum: e.target.value === '' ? '' : parseInt(e.target.value)})} className="bg-stone-800 border-stone-700" />
+                  <Label>Price</Label>
+                  <Input type="number" min="0" value={formData.price} onChange={(e) => setFormData({...formData, price: e.target.value === '' ? '' : parseInt(e.target.value)})} className="bg-stone-800 border-stone-700" />
                 </div>
                 <div>
-                  <Label>Gold</Label>
-                  <Input type="number" min="0" value={formData.priceGold} onChange={(e) => setFormData({...formData, priceGold: e.target.value === '' ? '' : parseInt(e.target.value)})} className="bg-stone-800 border-stone-700" />
-                </div>
-                <div>
-                  <Label>Silver</Label>
-                  <Input type="number" min="0" value={formData.priceSilver} onChange={(e) => setFormData({...formData, priceSilver: e.target.value === '' ? '' : parseInt(e.target.value)})} className="bg-stone-800 border-stone-700" />
-                </div>
-                <div>
-                  <Label>Copper</Label>
-                  <Input type="number" min="0" value={formData.priceCopper} onChange={(e) => setFormData({...formData, priceCopper: e.target.value === '' ? '' : parseInt(e.target.value)})} className="bg-stone-800 border-stone-700" />
+                  <Label>Currency</Label>
+                  <Select value={formData.currency} onValueChange={(v) => setFormData({...formData, currency: v})}>
+                    <SelectTrigger className="bg-stone-800 border-stone-700">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="copper">Copper</SelectItem>
+                      <SelectItem value="silver">Silver</SelectItem>
+                      <SelectItem value="gold">Gold</SelectItem>
+                      <SelectItem value="platinum">Platinum</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
             </div>
@@ -19156,10 +19146,8 @@ function ManageTemplatesDialog({ open, onOpenChange, campaignId }: { open: boole
     range: number | string;
     weight: string;
     itemWeight: number | string;
-    priceCopper: number | string;
-    priceSilver: number | string;
-    priceGold: number | string;
-    pricePlatinum: number | string;
+    price: number | string;
+    currency: string;
     durability: number;
     ammunitionType: string;
     weaponCategory: string;
@@ -19175,10 +19163,8 @@ function ManageTemplatesDialog({ open, onOpenChange, campaignId }: { open: boole
     range: '',
     weight: 'light',
     itemWeight: '',
-    priceCopper: '',
-    priceSilver: '',
-    priceGold: '',
-    pricePlatinum: '',
+    price: '',
+    currency: 'copper',
     durability: 10,
     ammunitionType: '',
     weaponCategory: '',
@@ -19208,10 +19194,8 @@ function ManageTemplatesDialog({ open, onOpenChange, campaignId }: { open: boole
         mod: optionalNum(data.mod),
         range: optionalNum(data.range),
         itemWeight: optionalNum(data.itemWeight),
-        priceCopper: optionalNum(data.priceCopper),
-        priceSilver: optionalNum(data.priceSilver),
-        priceGold: optionalNum(data.priceGold),
-        pricePlatinum: optionalNum(data.pricePlatinum),
+        price: optionalNum(data.price),
+        currency: data.currency || 'copper',
       };
       return api.createCampaignTemplateItem(campaignId!, cleanedData);
     },
@@ -19222,7 +19206,7 @@ function ManageTemplatesDialog({ open, onOpenChange, campaignId }: { open: boole
       setNewItem({
         name: '', description: '', itemType: 'utility', rarity: 'common',
         damage: '', damageType: '', mod: '', range: '', weight: 'light',
-        itemWeight: '', priceCopper: '', priceSilver: '', priceGold: '', pricePlatinum: '', durability: 10,
+        itemWeight: '', price: '', currency: 'copper', durability: 10,
         ammunitionType: '', weaponCategory: '', breakChance: 10,
       });
       toast({ title: "Template Created", description: "Campaign item template created successfully" });
@@ -19439,22 +19423,24 @@ function ManageTemplatesDialog({ open, onOpenChange, campaignId }: { open: boole
                 )}
                 <div className="border-t border-stone-700 pt-4">
                   <h3 className="text-sm font-bold text-stone-300 mb-3">Price</h3>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                  <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <Label>Platinum</Label>
-                      <Input type="number" min="0" value={newItem.pricePlatinum} onChange={(e) => setNewItem({...newItem, pricePlatinum: e.target.value === '' ? '' : parseInt(e.target.value)})} className="bg-stone-800 border-stone-700" />
+                      <Label>Price</Label>
+                      <Input type="number" min="0" value={newItem.price} onChange={(e) => setNewItem({...newItem, price: e.target.value === '' ? '' : parseInt(e.target.value)})} className="bg-stone-800 border-stone-700" />
                     </div>
                     <div>
-                      <Label>Gold</Label>
-                      <Input type="number" min="0" value={newItem.priceGold} onChange={(e) => setNewItem({...newItem, priceGold: e.target.value === '' ? '' : parseInt(e.target.value)})} className="bg-stone-800 border-stone-700" />
-                    </div>
-                    <div>
-                      <Label>Silver</Label>
-                      <Input type="number" min="0" value={newItem.priceSilver} onChange={(e) => setNewItem({...newItem, priceSilver: e.target.value === '' ? '' : parseInt(e.target.value)})} className="bg-stone-800 border-stone-700" />
-                    </div>
-                    <div>
-                      <Label>Copper</Label>
-                      <Input type="number" min="0" value={newItem.priceCopper} onChange={(e) => setNewItem({...newItem, priceCopper: e.target.value === '' ? '' : parseInt(e.target.value)})} className="bg-stone-800 border-stone-700" />
+                      <Label>Currency</Label>
+                      <Select value={newItem.currency} onValueChange={(v) => setNewItem({...newItem, currency: v})}>
+                        <SelectTrigger className="bg-stone-800 border-stone-700">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="copper">Copper</SelectItem>
+                          <SelectItem value="silver">Silver</SelectItem>
+                          <SelectItem value="gold">Gold</SelectItem>
+                          <SelectItem value="platinum">Platinum</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
                   </div>
                 </div>
@@ -19619,10 +19605,8 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
         mod: optionalNum(editData.mod),
         range: optionalNum(editData.range),
         itemWeight: optionalNum(editData.itemWeight),
-        priceCopper: optionalNum(editData.priceCopper),
-        priceSilver: optionalNum(editData.priceSilver),
-        priceGold: optionalNum(editData.priceGold),
-        pricePlatinum: optionalNum(editData.pricePlatinum),
+        price: optionalNum(editData.price),
+        currency: editData.currency || 'copper',
         quantity: Number(editData.quantity) || 1,
         carryCapacity: optionalNum(editData.carryCapacity),
       };
