@@ -1900,11 +1900,13 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                             <p className="text-xs text-stone-500 mt-1">Attached to token</p>
                             {isGM && onDeleteThrownItem && (
                               <button
+                                onPointerDown={(e) => e.stopPropagation()}
                                 onClick={(e) => {
                                   e.stopPropagation();
+                                  e.preventDefault();
                                   onDeleteThrownItem(thrownItem.id);
                                 }}
-                                className="mt-2 w-full text-xs text-red-400 hover:text-red-300 border border-stone-700 rounded px-2 py-1 flex items-center justify-center gap-1"
+                                className="mt-2 w-full text-xs text-red-400 hover:text-red-300 border border-stone-700 rounded px-2 py-1 flex items-center justify-center gap-1 cursor-pointer"
                                 data-testid={`delete-attached-item-${thrownItem.id}`}
                               >
                                 <X className="w-3 h-3" /> Remove
@@ -4151,13 +4153,54 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
         : null;
       const targetName = targetCharacter?.name || 'target';
       
+      // Perform attack roll to determine if throwable attaches to target or lands on grid
+      const attrName = itemData.attribute || 'finesse';
+      const attrMod = getAttributeModifier(attrName);
+      const roll = Math.floor(Math.random() * 20) + 1;
+      const total = roll + attrMod;
+      const targetDC = targetCharacter?.naturalArmor || 10;
+      const isCritSuccess = roll === 20;
+      const isCritFailure = roll === 1;
+      const isHit = isCritSuccess || (!isCritFailure && total >= targetDC);
+      
+      // Build attack roll display
+      const attrDisplayName = attrName.charAt(0).toUpperCase() + attrName.slice(1);
+      const modText = attrMod !== 0 ? ` + ${attrDisplayName} (${attrMod >= 0 ? '+' : ''}${attrMod})` : '';
+      const hitStatus = isCritSuccess ? 'Crit Success!' : isCritFailure ? 'Crit Failure!' : isHit ? 'HIT!' : 'MISS!';
+      
+      // Show attack roll notification
+      triggerRollNotification({
+        type: 'attack',
+        dieType: 'd20',
+        label: `${itemData.name} Throw vs ${targetName}`,
+        result: roll,
+        modifier: attrMod,
+        total,
+        username: character.name || 'Unknown',
+        characterName: character.name,
+        calculationBreakdown: `1d20 = ${roll}${modText} vs DC ${targetDC} - ${hitStatus}`,
+      });
+      
+      // Send attack roll to chat
+      if (character.campaignId) {
+        gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', 
+          `${itemData.name} Throw: 1d20 = ${roll}${modText} = ${total} vs ${targetName} (DC ${targetDC}) - ${hitStatus}`, 'roll');
+      }
+      
       try {
+        // Convert token pixel position to grid coordinates for miss case
+        const effectiveGridSize = gridSize || 50;
+        const gridX = Math.floor((throwTargetToken?.x ?? 0) / effectiveGridSize);
+        const gridY = Math.floor((throwTargetToken?.y ?? 0) / effectiveGridSize);
+        
         const thrownItem = await api.createThrownItem(sceneId, {
           itemId: itemData.id,
           characterId: character.id,
-          x: throwTargetToken?.x ?? 0,
-          y: throwTargetToken?.y ?? 0,
-          attachedToTokenId: targetedTokenId,
+          // If hit: use token pixel position; if miss: use grid coordinates
+          x: isHit ? (throwTargetToken?.x ?? 0) : gridX,
+          y: isHit ? (throwTargetToken?.y ?? 0) : gridY,
+          // Only attach to token if hit
+          attachedToTokenId: isHit ? targetedTokenId : undefined,
         });
         
         // Decrement item quantity
@@ -4171,21 +4214,16 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
         // Refetch thrown items
         onRefetchThrownItems?.();
         
-        // Notify
+        // Notify placement result
         triggerRollNotification({
           type: 'system',
-          label: `${itemData.name} Thrown!`,
+          label: `${itemData.name} ${isHit ? 'Attached!' : 'Landed!'}`,
           result: 0,
           total: 0,
           username: character.name || 'Unknown',
           characterName: character.name,
-          calculationBreakdown: `Attached to ${targetName}`,
+          calculationBreakdown: isHit ? `Attached to ${targetName}` : `Missed! Landed at grid (${gridX}, ${gridY})`,
         });
-        
-        if (character.campaignId) {
-          gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', 
-            `Threw ${itemData.name} at ${targetName}`, 'action');
-        }
         
         // Check if throwable breaks on impact (for items without pickup mode)
         await checkThrowableBreak(thrownItem.id, itemData);
@@ -4430,18 +4468,20 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
       return;
     }
     
-    // Roll damage once for all detonations
-    const { result: damageResult, dieType } = rollDice(diceNotation);
+    // Get base damage info (used per overlap)
+    const { dieType } = rollDice(diceNotation);
     const mod = sourceItem.mod || itemData.mod || 0;
-    const totalDamage = (damageResult || 0) + mod;
     
     // Get AOE range for each thrown item
     const aoeRange = sourceItem.throwableAoeRange || itemData.throwableAoeRange || 15;
     const aoeShape = (sourceItem.throwableAoeShape || itemData.throwableAoeShape || 'circle').toLowerCase();
+    const aoeDamageType = sourceItem.throwableAoeDamageType || itemData.throwableAoeDamageType || 'Fire';
     
-    // Collect all affected tokens and apply damage
-    const affectedTokenIds: string[] = [];
+    // Collect all affected tokens with overlap counts (for stacking damage)
+    // Key: token id, Value: { token, count of overlapping AOEs }
+    const tokenOverlapCounts = new Map<string, { token: any; count: number; targetChar?: any }>();
     const affectedNames: string[] = [];
+    const affectedTokenIds: string[] = [];
     
     const effectiveGridSize = gridSize || 50;
     
@@ -4485,24 +4525,51 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
           // Each grid square = 5ft, so convert pixel distance to feet
           const distanceFt = (pixelDistance / effectiveGridSize) * 5;
           
-          if (distanceFt <= aoeRange && !affectedTokenIds.includes(token.id)) {
-            affectedTokenIds.push(token.id);
-            
-            // Find character for this token and apply damage
-            const targetChar = allCharacters?.find((c: any) => c.id === token.characterId);
-            if (targetChar) {
-              affectedNames.push(targetChar.name);
-              
-              // Send combat damage via WebSocket - this handles BOTH the DB update AND broadcasting
-              // Do NOT call api.updateCharacter separately as that would cause double damage
-              const aoeDamageType = sourceItem.throwableAoeDamageType || itemData.throwableAoeDamageType || 'Fire';
-              gameWs.sendCombatDamage(targetChar.id, totalDamage, aoeDamageType, character.name);
-              queryClient.invalidateQueries({ queryKey: ['character', targetChar.id] });
-            } else if (token.name) {
-              affectedNames.push(token.name);
+          if (distanceFt <= aoeRange) {
+            // Increment overlap count for this token (or initialize if first time)
+            const existing = tokenOverlapCounts.get(token.id);
+            if (existing) {
+              existing.count++;
+            } else {
+              const targetChar = allCharacters?.find((c: any) => c.id === token.characterId);
+              tokenOverlapCounts.set(token.id, { token, count: 1, targetChar });
+              affectedTokenIds.push(token.id);
             }
           }
         }
+      }
+    }
+    
+    // Apply damage based on overlap count - multiple overlapping AOEs stack damage
+    // Track total damage dealt for notification
+    let totalDamageDealt = 0;
+    const targetDamageDetails: string[] = [];
+    
+    for (const [tokenId, { token, count, targetChar }] of tokenOverlapCounts) {
+      if (targetChar) {
+        // Roll damage once per overlap - stacking AOEs means rolling multiple times
+        // Note: mod is applied per roll (each explosion deals its own damage)
+        let stackedDamage = 0;
+        const rollResults: number[] = [];
+        for (let i = 0; i < count; i++) {
+          const { result: rollResult } = rollDice(diceNotation);
+          const baseRoll = rollResult || 0;
+          rollResults.push(baseRoll);
+          stackedDamage += baseRoll + mod;
+        }
+        
+        totalDamageDealt += stackedDamage;
+        
+        // Build readable damage string: "Goblin: 8 (2x)" or "Goblin: 4"
+        const stackSuffix = count > 1 ? ` (${count}x)` : '';
+        targetDamageDetails.push(`${targetChar.name}: ${stackedDamage}${stackSuffix}`);
+        affectedNames.push(targetChar.name);
+        
+        // Send combat damage via WebSocket
+        gameWs.sendCombatDamage(targetChar.id, stackedDamage, aoeDamageType, character.name);
+        queryClient.invalidateQueries({ queryKey: ['character', targetChar.id] });
+      } else if (token.name) {
+        affectedNames.push(token.name);
       }
     }
     
@@ -4514,26 +4581,29 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
       console.error('Failed to detonate thrown items:', err);
     }
     
-    // Calculate breakdown
-    let calculationBreakdown = mod !== 0 
-      ? `${diceNotation} = ${damageResult} + Mod (${mod >= 0 ? '+' : ''}${mod})`
-      : `${diceNotation} = ${damageResult}`;
-    
-    const aoeDamageType = sourceItem.throwableAoeDamageType || itemData.throwableAoeDamageType || '';
-    const damageTypeDisplay = aoeDamageType ? ` (${aoeDamageType})` : '';
+    // Build notification strings
+    const detonationCount = itemThrownItems.length;
+    const diceStr = mod !== 0 ? `${diceNotation}+${mod}` : diceNotation;
+    const damageTypeDisplay = aoeDamageType || 'damage';
     
     // Notify with detonation results
-    const label = affectedNames.length > 0 
-      ? `${itemData.name} Detonation → ${affectedNames.join(', ')}`
+    const label = targetDamageDetails.length > 0 
+      ? `${itemData.name} Detonation!`
       : `${itemData.name} Detonation - No targets hit!`;
+    
+    // Breakdown shows: "3 bombs (1d4+2 Fire each) = 14 total → Goblin: 8 (2x), Orc: 6"
+    let calculationBreakdown = `${detonationCount} bomb${detonationCount > 1 ? 's' : ''} (${diceStr} ${damageTypeDisplay} each)`;
+    if (targetDamageDetails.length > 0) {
+      calculationBreakdown += ` = ${totalDamageDealt} total → ${targetDamageDetails.join(', ')}`;
+    }
     
     triggerRollNotification({
       type: 'attack',
       dieType: dieType as any,
       label,
-      result: damageResult || 0,
-      modifier: mod,
-      total: totalDamage,
+      result: totalDamageDealt,
+      modifier: 0,
+      total: totalDamageDealt,
       username: character.name || 'Unknown',
       characterName: character.name,
       calculationBreakdown,
@@ -4541,18 +4611,17 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     
     // Send chat message
     if (character.campaignId) {
-      const chatText = affectedNames.length > 0
-        ? `${itemData.name} Detonation: ${calculationBreakdown} = ${totalDamage}${damageTypeDisplay} → ${affectedNames.join(', ')}`
-        : `${itemData.name} Detonation: ${calculationBreakdown} = ${totalDamage}${damageTypeDisplay} (no targets hit)`;
+      const chatText = targetDamageDetails.length > 0
+        ? `${itemData.name} Detonation: ${detonationCount} bomb${detonationCount > 1 ? 's' : ''} (${diceStr} ${damageTypeDisplay}) = ${totalDamageDealt} total → ${targetDamageDetails.join(', ')}`
+        : `${itemData.name} Detonation: ${detonationCount} bomb${detonationCount > 1 ? 's' : ''} (${diceStr} ${damageTypeDisplay}) - no targets hit`;
       gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', chatText, 'roll');
     }
     
-    // Broadcast detonation via WebSocket (use AOE damage type)
-    const broadcastDamageType = sourceItem.throwableAoeDamageType || itemData.throwableAoeDamageType || 'Fire';
+    // Broadcast detonation via WebSocket
     gameWs.sendThrownItemsDetonated(itemData.id, sceneId, {
       itemName: itemData.name,
-      damageRoll: totalDamage,
-      damageType: broadcastDamageType,
+      damageRoll: totalDamageDealt,
+      damageType: aoeDamageType,
       affectedTokenIds,
       affectedNames,
       characterName: character.name || 'Unknown',
