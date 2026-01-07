@@ -1165,12 +1165,26 @@ export default function Campaign() {
     enabled: !!effectiveCampaignId && role === 'gm',
   });
 
-  // Update local state when server data loads
+  // Get hotbar slots count from campaign settings
+  const hotbarSlotsCount = (campaign && typeof campaign === 'object' && 'hotbarSlots' in campaign 
+    ? (campaign as any).hotbarSlots as number 
+    : 5) || 5;
+
+  // Update local state when server data loads or hotbar slots count changes
   useEffect(() => {
-    if (gmHotbarData && role === 'gm') {
-      setGmCharacterHotbar(gmHotbarData);
+    if (role === 'gm') {
+      // If we have server data, use it and resize to match current slot count
+      if (gmHotbarData) {
+        const resizedHotbar = Array.from({ length: hotbarSlotsCount }, (_, i) => 
+          i < gmHotbarData.length ? gmHotbarData[i] : null
+        );
+        setGmCharacterHotbar(resizedHotbar);
+      } else {
+        // Initialize with nulls if no server data
+        setGmCharacterHotbar(Array.from({ length: hotbarSlotsCount }, () => null));
+      }
     }
-  }, [gmHotbarData, role]);
+  }, [gmHotbarData, role, hotbarSlotsCount]);
 
   // GM Hotbar mutation - persist changes to database
   const updateGmHotbarMutation = useMutation({
@@ -3427,7 +3441,6 @@ export default function Campaign() {
                targetedTokenId={targetedTokenId}
                characters={characters as any[]}
                gridSize={activeScene?.gridSize || 50}
-               hotbarSlots={(campaign && typeof campaign === 'object' && 'hotbarSlots' in campaign ? (campaign as any).hotbarSlots as number : 5) || 5}
                onEnterAoeMode={enterAoeMode}
                aoeTargetState={aoeTargetState}
                sceneId={activeScene?.id}

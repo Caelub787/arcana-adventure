@@ -3169,7 +3169,6 @@ interface BattleMapHotbarsProps {
   targetedTokenId?: string | null;
   characters?: any[];
   gridSize?: number;
-  hotbarSlots?: number; // Number of slots per hotbar (default 5)
   onEnterAoeMode?: (spell: any, casterTokenId: string) => void;
   aoeTargetState?: AoeTargetState;
   onAoeDamageRoll?: (tokensInAoe: any[], spell: any) => void;
@@ -5542,7 +5541,7 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
   );
 }
 
-export function BattleMapHotbars({ character, tokens, targetedTokenId, characters, gridSize, hotbarSlots = 5, onEnterAoeMode, aoeTargetState, onAoeDamageRoll, sceneId, thrownItems, onRefetchThrownItems, onEnterThrowableAoeMode, throwableGridTarget, onClearThrowableGridTarget }: BattleMapHotbarsProps) {
+export function BattleMapHotbars({ character, tokens, targetedTokenId, characters, gridSize, onEnterAoeMode, aoeTargetState, onAoeDamageRoll, sceneId, thrownItems, onRefetchThrownItems, onEnterThrowableAoeMode, throwableGridTarget, onClearThrowableGridTarget }: BattleMapHotbarsProps) {
   const [activeHotbar, setActiveHotbar] = useState<string>('weapons');
   
   const { data: hotbars = [], isLoading: hotbarsLoading } = useQuery({
@@ -5618,12 +5617,12 @@ export function BattleMapHotbars({ character, tokens, targetedTokenId, character
   if (!character) return null;
 
   const hotbarTypes = [
-    { type: 'weapons', icon: Sword, color: 'amber', maxSlots: 3 }, // Weapons fixed at 3 (left hand, ammo, right hand)
-    { type: 'armor', icon: Shield, color: 'cyan', maxSlots: hotbarSlots },
-    { type: 'magic', icon: Sparkles, color: 'purple', maxSlots: hotbarSlots },
-    { type: 'skills', icon: Dice5, color: 'blue', maxSlots: hotbarSlots },
-    { type: 'consumables', icon: Heart, color: 'green', maxSlots: hotbarSlots },
-    { type: 'utility', icon: Package, color: 'stone', maxSlots: hotbarSlots }
+    { type: 'weapons', icon: Sword, color: 'amber', maxSlots: 3 },
+    { type: 'armor', icon: Shield, color: 'cyan', maxSlots: 5 },
+    { type: 'magic', icon: Sparkles, color: 'purple', maxSlots: 5 },
+    { type: 'skills', icon: Dice5, color: 'blue', maxSlots: 5 },
+    { type: 'consumables', icon: Heart, color: 'green', maxSlots: 5 },
+    { type: 'utility', icon: Package, color: 'stone', maxSlots: 5 }
   ];
 
   const activeHotbarConfig = hotbarTypes.find(h => h.type === activeHotbar);
