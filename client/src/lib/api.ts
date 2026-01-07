@@ -946,6 +946,11 @@ class ApiClient {
     return this.request(`/campaigns/${campaignId}/template-items/summary`);
   }
 
+  // Lazy-load individual item image for item picker
+  async getItemImage(itemId: string): Promise<{ image: string | null }> {
+    return this.request(`/items/${itemId}/image`);
+  }
+
   // Admin System Items
   async getSystemItems(): Promise<Item[]> {
     return this.request('/admin/system-items');

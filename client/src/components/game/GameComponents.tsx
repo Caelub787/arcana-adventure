@@ -17980,6 +17980,61 @@ function FeatTreeViewerGrid({
   );
 }
 
+// Lazy-loading item image component using IntersectionObserver
+function LazyItemImage({ itemId, itemType }: { itemId: string; itemType: string }) {
+  const [isVisible, setIsVisible] = useState(false);
+  const imgRef = useRef<HTMLDivElement>(null);
+
+  // Fetch image only when visible
+  const { data: imageData } = useQuery({
+    queryKey: ['item-image', itemId],
+    queryFn: () => api.getItemImage(itemId),
+    enabled: isVisible,
+    staleTime: 30 * 60 * 1000, // Cache for 30 minutes
+  });
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setIsVisible(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: '100px' } // Start loading 100px before visible
+    );
+
+    if (imgRef.current) {
+      observer.observe(imgRef.current);
+    }
+
+    return () => observer.disconnect();
+  }, []);
+
+  // Show type icon while loading or if no image
+  const TypeIcon = itemType === 'weapon' ? Sword 
+    : itemType === 'armor' ? Shield 
+    : itemType === 'consumable' ? Beaker 
+    : itemType === 'currency' ? Coins 
+    : Package;
+  
+  const iconColor = itemType === 'weapon' ? 'text-red-400'
+    : itemType === 'armor' ? 'text-blue-400'
+    : itemType === 'consumable' ? 'text-green-400'
+    : itemType === 'currency' ? 'text-yellow-400'
+    : 'text-stone-500';
+
+  return (
+    <div ref={imgRef} className="h-10 w-10 rounded bg-stone-700 flex items-center justify-center pointer-events-none overflow-hidden">
+      {imageData?.image ? (
+        <img src={imageData.image} alt="" className="h-full w-full object-cover" />
+      ) : (
+        <TypeIcon className={`h-5 w-5 ${iconColor}`} />
+      )}
+    </div>
+  );
+}
+
 // Add Item Dialog Component
 function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open: boolean; onOpenChange: (open: boolean) => void; onSave: (data: any) => void; isGM: boolean; campaignId?: string }) {
   const [activeTab, setActiveTab] = useState<'templates' | 'create'>('templates');
@@ -18508,19 +18563,7 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
                       onPointerCancel={handleTemplatePointerLeave}
                       data-testid={`template-item-${item.id}`}
                     >
-                      <div className="h-10 w-10 rounded bg-stone-700 flex items-center justify-center pointer-events-none">
-                        {item.itemType === 'weapon' ? (
-                          <Sword className="h-5 w-5 text-red-400" />
-                        ) : item.itemType === 'armor' ? (
-                          <Shield className="h-5 w-5 text-blue-400" />
-                        ) : item.itemType === 'consumable' ? (
-                          <Beaker className="h-5 w-5 text-green-400" />
-                        ) : item.itemType === 'currency' ? (
-                          <Coins className="h-5 w-5 text-yellow-400" />
-                        ) : (
-                          <Package className="h-5 w-5 text-stone-500" />
-                        )}
-                      </div>
+                      <LazyItemImage itemId={item.id} itemType={item.itemType} />
                       <div className="flex-1 min-w-0 pointer-events-none">
                         <div className="flex items-center gap-2">
                           <span className="font-medium truncate">{item.name}</span>

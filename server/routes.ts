@@ -3617,6 +3617,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Lightweight image-only endpoint for lazy loading in item picker
+  app.get("/api/items/:id/image", requireAuth, async (req, res) => {
+    try {
+      const item = await storage.getItem(req.params.id);
+      if (!item) {
+        return res.status(404).json({ error: "Item not found" });
+      }
+      res.json({ image: item.image });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch item image" });
+    }
+  });
+
   // System item routes (admin only)
   app.get("/api/admin/system-items", requireAdmin, async (req, res) => {
     try {
