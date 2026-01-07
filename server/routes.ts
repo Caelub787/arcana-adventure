@@ -4875,6 +4875,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Lightweight summary endpoints for item picker (much faster loading)
+  app.get("/api/system-items/summary", requireAuth, async (req, res) => {
+    try {
+      const summaries = await storage.getSystemItemSummaries();
+      res.json(summaries);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch item summaries" });
+    }
+  });
+
+  app.get("/api/campaigns/:campaignId/template-items/summary", requireAuth, async (req, res) => {
+    try {
+      const campaign = await storage.getCampaign(req.params.campaignId);
+      if (!campaign) {
+        return res.status(404).json({ error: "Campaign not found" });
+      }
+      
+      // Get lightweight summaries for both campaign and system items
+      const [campaignItems, systemItems] = await Promise.all([
+        storage.getCampaignItemSummaries(req.params.campaignId),
+        storage.getSystemItemSummaries()
+      ]);
+      
+      res.json({ campaignItems, systemItems });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch template item summaries" });
+    }
+  });
+
   // Campaign template item routes (GM only)
   app.get("/api/campaigns/:campaignId/template-items", requireAuth, async (req, res) => {
     try {

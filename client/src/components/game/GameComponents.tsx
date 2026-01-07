@@ -12563,12 +12563,12 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
   const [itemTypeFilter, setItemTypeFilter] = useState("all");
   const [showAddItem, setShowAddItem] = useState(false);
   
-  // Prefetch item library when character sheet loads (not when dialog opens)
+  // Prefetch lightweight item summaries when character sheet loads
   // This makes "Add Item" dialog open instantly since data is already cached
   useQuery({
-    queryKey: campaignId ? ['template-items', campaignId] : ['system-items'],
-    queryFn: () => campaignId ? api.getTemplateItems(campaignId) : api.getSystemItems(),
-    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
+    queryKey: campaignId ? ['template-items-summary', campaignId] : ['system-items-summary'],
+    queryFn: () => campaignId ? api.getTemplateItemSummaries(campaignId) : api.getSystemItemSummaries(),
+    staleTime: 10 * 60 * 1000, // Cache for 10 minutes
   });
   const [showManageTemplates, setShowManageTemplates] = useState(false);
   const [selectedItem, setSelectedItem] = useState<any>(null);
@@ -18000,26 +18000,25 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
   const itemTypeOptions = ['weapon', 'armor', 'consumable', 'utility', 'container', 'currency'];
   const rarityOptions = ['common', 'uncommon', 'rare', 'epic', 'legendary'];
   
-  // For character templates (no campaignId), fetch system items directly
-  // Prefetch immediately (not just when dialog opens) and cache for 5 minutes
-  const { data: systemItemsOnly } = useQuery({
-    queryKey: ['system-items'],
-    queryFn: () => api.getSystemItems(),
+  // Use lightweight summary endpoints for fast loading (only id, name, type, rarity, image)
+  const { data: systemItemSummaries } = useQuery({
+    queryKey: ['system-items-summary'],
+    queryFn: () => api.getSystemItemSummaries(),
     enabled: !campaignId,
-    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
+    staleTime: 10 * 60 * 1000, // Cache for 10 minutes
   });
 
-  const { data: templateData } = useQuery({
-    queryKey: ['template-items', campaignId],
-    queryFn: () => api.getTemplateItems(campaignId!),
+  const { data: templateSummaries } = useQuery({
+    queryKey: ['template-items-summary', campaignId],
+    queryFn: () => api.getTemplateItemSummaries(campaignId!),
     enabled: !!campaignId,
-    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
+    staleTime: 10 * 60 * 1000, // Cache for 10 minutes
   });
 
   // Combine items from either source - campaign templates or system items only
   const allTemplates = campaignId 
-    ? [...(templateData?.systemItems || []), ...(templateData?.campaignItems || [])]
-    : (systemItemsOnly || []);
+    ? [...(templateSummaries?.systemItems || []), ...(templateSummaries?.campaignItems || [])]
+    : (systemItemSummaries || []);
   const filteredTemplates = allTemplates.filter((item: any) => {
     const matchesSearch = item.name.toLowerCase().includes(templateSearch.toLowerCase());
     const matchesType = templateTypeFilter === 'all' || item.itemType === templateTypeFilter;
@@ -18151,49 +18150,55 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
   // Image browser state for item images
   const [showItemImageBrowser, setShowItemImageBrowser] = useState(false);
 
-  const handleAddFromTemplate = (template: any, quantity: number = 1) => {
-    const itemData = {
-      name: template.name,
-      image: template.image || '',
-      description: template.description || '',
-      itemType: template.itemType,
-      rarity: template.rarity,
-      quantity: quantity,
-      damage: template.damage || '',
-      damageType: template.damageType || '',
-      mod: template.mod || 0,
-      range: template.range || 0,
-      aoe: template.aoe || '',
-      attribute: template.attribute || '',
-      size: template.size || '',
-      weight: template.weight || 'light',
-      itemWeight: template.itemWeight || 0,
-      price: template.price || 0,
-      currency: template.currency || 'copper',
-      durability: template.durability || 10,
-      isContainer: template.isContainer || false,
-      carryCapacity: template.carryCapacity || 0,
-      ammunitionType: template.ammunitionType || '',
-      weaponCategory: template.weaponCategory || '',
-      isHeavy: template.isHeavy || false,
-      armorSlot: template.armorSlot || '',
-      armorBonus: template.armorBonus || 0,
-      damageReduction: template.damageReduction || 0,
-      damageReductionType: template.damageReductionType || '',
-      breakChance: template.breakChance ?? 10,
-      rationServings: template.rationServings || 0,
-      isDamaging: template.isDamaging || false,
-      isThrowable: template.isThrowable || false,
-      throwableAoe: template.throwableAoe || false,
-      throwableAoeShape: template.throwableAoeShape || '',
-      throwableAoeRange: template.throwableAoeRange || 10,
-      throwableAoeDamage: template.throwableAoeDamage || '',
-      throwableAoeDamageType: template.throwableAoeDamageType || '',
-      throwablePickup: template.throwablePickup || false,
-      throwableBreakChance: template.throwableBreakChance ?? 10,
-      canApplyEffects: template.canApplyEffects || false,
-    };
-    onSave(itemData);
+  const handleAddFromTemplate = async (templateSummary: any, quantity: number = 1) => {
+    // Fetch full item data from the server (summaries only have basic fields)
+    try {
+      const template = await api.getSystemItem(templateSummary.id);
+      const itemData = {
+        name: template.name,
+        image: template.image || '',
+        description: template.description || '',
+        itemType: template.itemType,
+        rarity: template.rarity,
+        quantity: quantity,
+        damage: template.damage || '',
+        damageType: template.damageType || '',
+        mod: template.mod || 0,
+        range: template.range || 0,
+        aoe: template.aoe || '',
+        attribute: template.attribute || '',
+        size: template.size || '',
+        weight: template.weight || 'light',
+        itemWeight: template.itemWeight || 0,
+        price: template.price || 0,
+        currency: template.currency || 'copper',
+        durability: template.durability || 10,
+        isContainer: template.isContainer || false,
+        carryCapacity: template.carryCapacity || 0,
+        ammunitionType: template.ammunitionType || '',
+        weaponCategory: template.weaponCategory || '',
+        isHeavy: template.isHeavy || false,
+        armorSlot: template.armorSlot || '',
+        armorBonus: template.armorBonus || 0,
+        damageReduction: template.damageReduction || 0,
+        damageReductionType: template.damageReductionType || '',
+        breakChance: template.breakChance ?? 10,
+        rationServings: template.rationServings || 0,
+        isDamaging: template.isDamaging || false,
+        isThrowable: template.isThrowable || false,
+        throwableAoe: template.throwableAoe || false,
+        throwableAoeShape: template.throwableAoeShape || '',
+        throwableAoeRange: template.throwableAoeRange || 10,
+        throwableAoeDamage: template.throwableAoeDamage || '',
+        throwableAoeDamageType: template.throwableAoeDamageType || '',
+        throwablePickup: template.throwablePickup || false,
+        throwableBreakChance: template.throwableBreakChance ?? 10,
+        canApplyEffects: template.canApplyEffects || false,
+      };
+      onSave(itemData);
+    } catch (error) {
+      console.error('Failed to fetch item template:', error);
+    }
   };
 
   const rarityColors: Record<string, string> = {

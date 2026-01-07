@@ -148,6 +148,9 @@ export interface IStorage {
   getItemsByCharacter(characterId: string): Promise<Item[]>;
   getSystemItems(): Promise<Item[]>;
   getCampaignTemplateItems(campaignId: string): Promise<Item[]>;
+  // Lightweight summaries for picker dialogs (faster loading)
+  getSystemItemSummaries(): Promise<{ id: string; name: string; itemType: string; rarity: string; image: string | null; weight: number }[]>;
+  getCampaignItemSummaries(campaignId: string): Promise<{ id: string; name: string; itemType: string; rarity: string; image: string | null; weight: number }[]>;
   createItem(item: InsertItem): Promise<Item>;
   updateItem(id: string, updates: Partial<InsertItem>): Promise<Item | undefined>;
   deleteItem(id: string): Promise<void>;
@@ -1506,6 +1509,41 @@ export class DatabaseStorage implements IStorage {
         sql`${items.characterId} IS NULL`
       )) as Item[];
     return result.map(item => this.convertLegacyItemPrice(item));
+  }
+
+  // Lightweight summaries for faster item picker loading
+  async getSystemItemSummaries(): Promise<{ id: string; name: string; itemType: string; rarity: string; image: string; weight: number }[]> {
+    return await db.select({
+      id: items.id,
+      name: items.name,
+      itemType: items.itemType,
+      rarity: items.rarity,
+      image: items.image,
+      weight: items.itemWeight,
+    })
+      .from(items)
+      .where(and(
+        eq(items.isTemplate, true),
+        sql`${items.characterId} IS NULL`,
+        sql`${items.campaignId} IS NULL`
+      ));
+  }
+
+  async getCampaignItemSummaries(campaignId: string): Promise<{ id: string; name: string; itemType: string; rarity: string; image: string; weight: number }[]> {
+    return await db.select({
+      id: items.id,
+      name: items.name,
+      itemType: items.itemType,
+      rarity: items.rarity,
+      image: items.image,
+      weight: items.itemWeight,
+    })
+      .from(items)
+      .where(and(
+        eq(items.isTemplate, true),
+        eq(items.campaignId, campaignId),
+        sql`${items.characterId} IS NULL`
+      ));
   }
 
   async moveItemToContainer(itemId: string, containerId: string | null): Promise<Item | undefined> {
