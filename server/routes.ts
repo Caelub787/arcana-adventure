@@ -4879,8 +4879,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/system-items/summary", requireAuth, async (req, res) => {
     try {
       const summaries = await storage.getSystemItemSummaries();
+      console.log('[Summary] System items:', summaries.length);
       res.json(summaries);
     } catch (err) {
+      console.error('[Summary] Error fetching system items:', err);
       res.status(500).json({ error: "Failed to fetch item summaries" });
     }
   });
@@ -4898,8 +4900,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         storage.getSystemItemSummaries()
       ]);
       
+      console.log('[Summary] Campaign items:', campaignItems.length, ', System items:', systemItems.length);
       res.json({ campaignItems, systemItems });
     } catch (err) {
+      console.error('[Summary] Error fetching template items:', err);
       res.status(500).json({ error: "Failed to fetch template item summaries" });
     }
   });

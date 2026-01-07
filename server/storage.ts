@@ -149,8 +149,8 @@ export interface IStorage {
   getSystemItems(): Promise<Item[]>;
   getCampaignTemplateItems(campaignId: string): Promise<Item[]>;
   // Lightweight summaries for picker dialogs (faster loading)
-  getSystemItemSummaries(): Promise<{ id: string; name: string; itemType: string; rarity: string; image: string | null; weight: number }[]>;
-  getCampaignItemSummaries(campaignId: string): Promise<{ id: string; name: string; itemType: string; rarity: string; image: string | null; weight: number }[]>;
+  getSystemItemSummaries(): Promise<{ id: string; name: string; itemType: string; rarity: string; weight: number }[]>;
+  getCampaignItemSummaries(campaignId: string): Promise<{ id: string; name: string; itemType: string; rarity: string; weight: number }[]>;
   createItem(item: InsertItem): Promise<Item>;
   updateItem(id: string, updates: Partial<InsertItem>): Promise<Item | undefined>;
   deleteItem(id: string): Promise<void>;
@@ -1511,14 +1511,13 @@ export class DatabaseStorage implements IStorage {
     return result.map(item => this.convertLegacyItemPrice(item));
   }
 
-  // Lightweight summaries for faster item picker loading
-  async getSystemItemSummaries(): Promise<{ id: string; name: string; itemType: string; rarity: string; image: string; weight: number }[]> {
+  // Lightweight summaries for faster item picker loading (no images to avoid Neon 507 response size limit)
+  async getSystemItemSummaries(): Promise<{ id: string; name: string; itemType: string; rarity: string; weight: number }[]> {
     return await db.select({
       id: items.id,
       name: items.name,
       itemType: items.itemType,
       rarity: items.rarity,
-      image: items.image,
       weight: items.itemWeight,
     })
       .from(items)
@@ -1529,13 +1528,12 @@ export class DatabaseStorage implements IStorage {
       ));
   }
 
-  async getCampaignItemSummaries(campaignId: string): Promise<{ id: string; name: string; itemType: string; rarity: string; image: string; weight: number }[]> {
+  async getCampaignItemSummaries(campaignId: string): Promise<{ id: string; name: string; itemType: string; rarity: string; weight: number }[]> {
     return await db.select({
       id: items.id,
       name: items.name,
       itemType: items.itemType,
       rarity: items.rarity,
-      image: items.image,
       weight: items.itemWeight,
     })
       .from(items)

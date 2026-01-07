@@ -22,7 +22,7 @@ import {
   Users, User, Plus, Minus, LogOut, Menu, ChevronRight, ChevronLeft, ChevronDown, ChevronUp,
   Heart, Zap, Backpack, Sparkles, Dice5, MessageSquare, RefreshCw, X, Trash2, Package, FolderOpen, Folder, FolderPlus, GripVertical, Lock, Unlock, Camera,
   BarChart3, Grid3X3, ScrollText, Upload, Image as ImageIcon, Layers, Search, TrendingUp, UserMinus, Ban,
-  MousePointer, Target, UserCheck, Swords, ArrowRight, ArrowLeft, Eye, EyeOff, Check, Moon, Coffee, AlertTriangle, GitBranch, Star, BookOpen, Pencil, Dna, Type, Library, Filter, MoreVertical, Flame, Highlighter, Bell, BellOff, FileText, Download, Loader2
+  MousePointer, Target, UserCheck, Swords, ArrowRight, ArrowLeft, Eye, EyeOff, Check, Moon, Coffee, AlertTriangle, GitBranch, Star, BookOpen, Pencil, Dna, Type, Library, Filter, MoreVertical, Flame, Highlighter, Bell, BellOff, FileText, Download, Loader2, Beaker, Coins
 } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useForm } from "react-hook-form";
@@ -18508,13 +18508,19 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
                       onPointerCancel={handleTemplatePointerLeave}
                       data-testid={`template-item-${item.id}`}
                     >
-                      {item.image ? (
-                        <img src={item.image} alt={item.name} className="h-10 w-10 rounded object-cover pointer-events-none" />
-                      ) : (
-                        <div className="h-10 w-10 rounded bg-stone-700 flex items-center justify-center pointer-events-none">
+                      <div className="h-10 w-10 rounded bg-stone-700 flex items-center justify-center pointer-events-none">
+                        {item.itemType === 'weapon' ? (
+                          <Sword className="h-5 w-5 text-red-400" />
+                        ) : item.itemType === 'armor' ? (
+                          <Shield className="h-5 w-5 text-blue-400" />
+                        ) : item.itemType === 'consumable' ? (
+                          <Beaker className="h-5 w-5 text-green-400" />
+                        ) : item.itemType === 'currency' ? (
+                          <Coins className="h-5 w-5 text-yellow-400" />
+                        ) : (
                           <Package className="h-5 w-5 text-stone-500" />
-                        </div>
-                      )}
+                        )}
+                      </div>
                       <div className="flex-1 min-w-0 pointer-events-none">
                         <div className="flex items-center gap-2">
                           <span className="font-medium truncate">{item.name}</span>
@@ -18524,7 +18530,6 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
                         </div>
                         <div className="text-xs text-stone-400 flex items-center gap-2">
                           <span className="capitalize">{item.itemType}</span>
-                          {item.damage && <span>| {item.damage}</span>}
                         </div>
                       </div>
                       <Plus className="h-5 w-5 text-amber-500 pointer-events-none" />

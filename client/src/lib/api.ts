@@ -937,12 +937,12 @@ class ApiClient {
     return this.request(`/system-items/${id}`);
   }
 
-  // Lightweight item summaries for fast picker loading
-  async getSystemItemSummaries(): Promise<{ id: string; name: string; itemType: string; rarity: string; image: string | null; weight: number }[]> {
+  // Lightweight item summaries for fast picker loading (no images to avoid response size limits)
+  async getSystemItemSummaries(): Promise<{ id: string; name: string; itemType: string; rarity: string; weight: number }[]> {
     return this.request('/system-items/summary');
   }
 
-  async getTemplateItemSummaries(campaignId: string): Promise<{ campaignItems: { id: string; name: string; itemType: string; rarity: string; image: string | null; weight: number }[], systemItems: { id: string; name: string; itemType: string; rarity: string; image: string | null; weight: number }[] }> {
+  async getTemplateItemSummaries(campaignId: string): Promise<{ campaignItems: { id: string; name: string; itemType: string; rarity: string; weight: number }[], systemItems: { id: string; name: string; itemType: string; rarity: string; weight: number }[] }> {
     return this.request(`/campaigns/${campaignId}/template-items/summary`);
   }
 
