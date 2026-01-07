@@ -18001,19 +18001,21 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
   const rarityOptions = ['common', 'uncommon', 'rare', 'epic', 'legendary'];
   
   // Use lightweight summary endpoints for fast loading (only id, name, type, rarity, image)
-  const { data: systemItemSummaries } = useQuery({
+  const { data: systemItemSummaries, isLoading: isLoadingSystem } = useQuery({
     queryKey: ['system-items-summary'],
     queryFn: () => api.getSystemItemSummaries(),
     enabled: !campaignId,
     staleTime: 10 * 60 * 1000, // Cache for 10 minutes
   });
 
-  const { data: templateSummaries } = useQuery({
+  const { data: templateSummaries, isLoading: isLoadingTemplate } = useQuery({
     queryKey: ['template-items-summary', campaignId],
     queryFn: () => api.getTemplateItemSummaries(campaignId!),
     enabled: !!campaignId,
     staleTime: 10 * 60 * 1000, // Cache for 10 minutes
   });
+
+  const isLoading = campaignId ? isLoadingTemplate : isLoadingSystem;
 
   // Combine items from either source - campaign templates or system items only
   const allTemplates = campaignId 
@@ -18482,7 +18484,12 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
               </div>
 
               {/* Template Items List */}
-              {filteredTemplates.length === 0 ? (
+              {isLoading ? (
+                <div className="text-center py-12 text-stone-400">
+                  <div className="animate-spin h-8 w-8 border-2 border-amber-500 border-t-transparent rounded-full mx-auto mb-3" />
+                  <p>Loading items...</p>
+                </div>
+              ) : filteredTemplates.length === 0 ? (
                 <div className="text-center py-12 text-stone-400">
                   <Package className="h-12 w-12 mx-auto mb-3 opacity-50" />
                   <p className="font-bold">No items in library</p>
