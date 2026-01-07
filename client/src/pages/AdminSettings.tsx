@@ -23,6 +23,51 @@ import { CharacterSheet } from '@/components/game/GameComponents';
 
 type AdminView = 'dashboard' | 'items' | 'species' | 'spells' | 'skills' | 'traits' | 'feat-trees' | 'characters' | 'token-effects';
 
+// Lazy-loading item image component for admin list view
+function LazyAdminItemImage({ itemId, itemType }: { itemId: string; itemType: string }) {
+  const [isVisible, setIsVisible] = useState(false);
+  const imgRef = useRef<HTMLDivElement>(null);
+  const queryClient = useQueryClient();
+
+  // Fetch image only when visible
+  const { data: imageData } = useQuery({
+    queryKey: ['item-image', itemId],
+    queryFn: () => api.getItemImage(itemId),
+    enabled: isVisible,
+    staleTime: 30 * 60 * 1000, // Cache for 30 minutes
+  });
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setIsVisible(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: '100px' }
+    );
+
+    if (imgRef.current) {
+      observer.observe(imgRef.current);
+    }
+
+    return () => observer.disconnect();
+  }, []);
+
+  const Icon = itemTypeIcons[itemType] || Package;
+
+  return (
+    <div ref={imgRef} className="h-10 w-10 sm:h-12 sm:w-12 rounded bg-stone-700 flex items-center justify-center shrink-0 overflow-hidden">
+      {imageData?.image ? (
+        <img src={imageData.image} alt="" className="h-full w-full object-cover" />
+      ) : (
+        <Icon className="h-5 w-5 sm:h-6 sm:w-6 text-stone-400" />
+      )}
+    </div>
+  );
+}
+
 const itemTypeIcons: Record<string, any> = {
   weapon: Sword,
   armor: Shield,
@@ -86,10 +131,12 @@ export default function AdminSettings() {
   const [editingTokenEffect, setEditingTokenEffect] = useState<TokenEffect | null>(null);
   const [tokenEffectSearchQuery, setTokenEffectSearchQuery] = useState('');
 
-  const { data: systemItems = [], isLoading: itemsLoading } = useQuery({
-    queryKey: ['system-items'],
-    queryFn: () => api.getSystemItems(),
+  // Use lightweight summary endpoint for fast list loading (no images)
+  const { data: systemItemSummaries = [], isLoading: itemsLoading } = useQuery({
+    queryKey: ['system-items-summary'],
+    queryFn: () => api.getSystemItemSummaries(),
     enabled: isAdmin && currentView === 'items',
+    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
   });
 
   const { data: systemSpecies = [], isLoading: speciesLoading } = useQuery({
@@ -469,13 +516,12 @@ export default function AdminSettings() {
   const debouncedTokenEffectSearchQuery = useDebouncedValue(tokenEffectSearchQuery, 150);
   
   const filteredItems = useMemo(() => {
-    return systemItems.filter((item: Item) => {
-      const matchesSearch = item.name.toLowerCase().includes(debouncedSearchQuery.toLowerCase()) ||
-                            (item.description?.toLowerCase().includes(debouncedSearchQuery.toLowerCase()));
+    return systemItemSummaries.filter((item: any) => {
+      const matchesSearch = item.name.toLowerCase().includes(debouncedSearchQuery.toLowerCase());
       const matchesType = typeFilter === 'all' || item.itemType === typeFilter;
       return matchesSearch && matchesType;
     });
-  }, [systemItems, debouncedSearchQuery, typeFilter]);
+  }, [systemItemSummaries, debouncedSearchQuery, typeFilter]);
 
   const filteredSpecies = useMemo(() => {
     return systemSpecies.filter((species: SystemSpecies) => {
@@ -578,14 +624,20 @@ export default function AdminSettings() {
             typeFilter={typeFilter}
             setTypeFilter={setTypeFilter}
             onAddItem={() => setShowAddItem(true)}
-            onEditItem={setEditingItem}
+            onEditItem={async (itemId) => {
+              // Fetch full item data for editing
+              const fullItem = await api.getSystemItem(itemId);
+              setEditingItem(fullItem);
+            }}
             onDeleteItem={(id) => {
               if (confirm('Are you sure you want to delete this item?')) {
                 deleteItemMutation.mutate(id);
               }
             }}
-            onDuplicateItem={(item) => {
-              setDuplicatingItem(item);
+            onDuplicateItem={async (itemId) => {
+              // Fetch full item data for duplication
+              const fullItem = await api.getSystemItem(itemId);
+              setDuplicatingItem(fullItem);
               setShowAddItem(true);
             }}
           />
@@ -1005,16 +1057,16 @@ function DashboardView({ onNavigate }: { onNavigate: (view: AdminView) => void }
 }
 
 interface ItemsViewProps {
-  items: Item[];
+  items: any[];
   isLoading: boolean;
   searchQuery: string;
   setSearchQuery: (q: string) => void;
   typeFilter: string;
   setTypeFilter: (t: string) => void;
   onAddItem: () => void;
-  onEditItem: (item: Item) => void;
+  onEditItem: (itemId: string) => void;
   onDeleteItem: (id: string) => void;
-  onDuplicateItem: (item: Item) => void;
+  onDuplicateItem: (itemId: string) => void;
 }
 
 function ItemsView({ items, isLoading, searchQuery, setSearchQuery, typeFilter, setTypeFilter, onAddItem, onEditItem, onDeleteItem, onDuplicateItem }: ItemsViewProps) {
@@ -1070,21 +1122,13 @@ function ItemsView({ items, isLoading, searchQuery, setSearchQuery, typeFilter, 
         ) : (
           <ScrollArea className="flex-1 min-h-0">
             <div className="space-y-2">
-              {items.map((item: Item) => {
-                const Icon = itemTypeIcons[item.itemType] || Package;
-                return (
+              {items.map((item: any) => (
                   <div
                     key={item.id}
                     className="flex flex-wrap items-center gap-2 sm:gap-4 p-3 rounded-lg bg-stone-800 border border-stone-700 hover:border-stone-600"
                     data-testid={`item-row-${item.id}`}
                   >
-                    {item.image ? (
-                      <img src={item.image} alt={item.name} className="h-10 w-10 sm:h-12 sm:w-12 rounded object-cover shrink-0" />
-                    ) : (
-                      <div className="h-10 w-10 sm:h-12 sm:w-12 rounded bg-stone-700 flex items-center justify-center shrink-0">
-                        <Icon className="h-5 w-5 sm:h-6 sm:w-6 text-stone-400" />
-                      </div>
-                    )}
+                    <LazyAdminItemImage itemId={item.id} itemType={item.itemType} />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-medium truncate text-sm sm:text-base">{item.name}</span>
@@ -1094,14 +1138,13 @@ function ItemsView({ items, isLoading, searchQuery, setSearchQuery, typeFilter, 
                       </div>
                       <div className="text-xs sm:text-sm text-stone-400 flex items-center gap-2">
                         <span className="capitalize">{item.itemType}</span>
-                        {item.damage && <span>| {item.damage} {item.damageType}</span>}
                       </div>
                     </div>
                     <div className="flex gap-1 sm:gap-2 shrink-0">
                       <Button
                         variant="ghost"
                         size="icon"
-                        onClick={() => onDuplicateItem(item)}
+                        onClick={() => onDuplicateItem(item.id)}
                         className="text-stone-400 hover:text-blue-500 h-8 w-8 sm:h-10 sm:w-10"
                         data-testid={`button-duplicate-${item.id}`}
                         title="Duplicate item"
@@ -1111,7 +1154,7 @@ function ItemsView({ items, isLoading, searchQuery, setSearchQuery, typeFilter, 
                       <Button
                         variant="ghost"
                         size="icon"
-                        onClick={() => onEditItem(item)}
+                        onClick={() => onEditItem(item.id)}
                         className="text-stone-400 hover:text-amber-500 h-8 w-8 sm:h-10 sm:w-10"
                         data-testid={`button-edit-${item.id}`}
                       >
@@ -1128,8 +1171,7 @@ function ItemsView({ items, isLoading, searchQuery, setSearchQuery, typeFilter, 
                       </Button>
                     </div>
                   </div>
-                );
-              })}
+                ))}
             </div>
           </ScrollArea>
         )}
