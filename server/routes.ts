@@ -3604,6 +3604,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     next();
   };
 
+  // Lightweight summary endpoint for fast item picker loading (must be before :id route)
+  app.get("/api/system-items/summary", requireAuth, async (req, res) => {
+    try {
+      const summaries = await storage.getSystemItemSummaries();
+      console.log('[Summary] System items:', summaries.length);
+      res.json(summaries);
+    } catch (err) {
+      console.error('[Summary] Error fetching system items:', err);
+      res.status(500).json({ error: "Failed to fetch item summaries" });
+    }
+  });
+
   // Public system item route (read-only for entity references in notes)
   app.get("/api/system-items/:id", requireAuth, async (req, res) => {
     try {
@@ -4888,18 +4900,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Lightweight summary endpoints for item picker (much faster loading)
-  app.get("/api/system-items/summary", requireAuth, async (req, res) => {
-    try {
-      const summaries = await storage.getSystemItemSummaries();
-      console.log('[Summary] System items:', summaries.length);
-      res.json(summaries);
-    } catch (err) {
-      console.error('[Summary] Error fetching system items:', err);
-      res.status(500).json({ error: "Failed to fetch item summaries" });
-    }
-  });
-
+  // Lightweight template summary endpoint for campaign item picker
   app.get("/api/campaigns/:campaignId/template-items/summary", requireAuth, async (req, res) => {
     try {
       const campaign = await storage.getCampaign(req.params.campaignId);
