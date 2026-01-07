@@ -328,16 +328,22 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
   
   // Triple-click detection ref
   const clickCountRef = useRef<{ count: number; tokenId: string | null; lastClickTime: number }>({ count: 0, tokenId: null, lastClickTime: 0 });
+  // Delayed double-click timer - waits 667ms after second click to allow for third click
+  const doubleClickTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const pendingDoubleClickTokenRef = useRef<typeof tokens[0] | null>(null);
   
   // Long-press delete mode for thrown items (mobile-friendly)
   const [thrownItemDeleteMode, setThrownItemDeleteMode] = useState<string | null>(null);
   const thrownItemHoldTimerRef = useRef<NodeJS.Timeout | null>(null);
   
-  // Cleanup thrown item hold timer on unmount
+  // Cleanup timers on unmount
   useEffect(() => {
     return () => {
       if (thrownItemHoldTimerRef.current) {
         clearTimeout(thrownItemHoldTimerRef.current);
+      }
+      if (doubleClickTimerRef.current) {
+        clearTimeout(doubleClickTimerRef.current);
       }
     };
   }, []);
@@ -1798,10 +1804,26 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                     clickData.lastClickTime = now;
                     
                     if (clickData.count === 2) {
-                      // Double-click detected
-                      onTokenDoubleClick && onTokenDoubleClick(token);
+                      // Double-click detected - start 667ms timer to wait for possible third click
+                      pendingDoubleClickTokenRef.current = token;
+                      if (doubleClickTimerRef.current) {
+                        clearTimeout(doubleClickTimerRef.current);
+                      }
+                      doubleClickTimerRef.current = setTimeout(() => {
+                        // No third click came - execute double-click action (assign)
+                        if (pendingDoubleClickTokenRef.current) {
+                          onTokenDoubleClick && onTokenDoubleClick(pendingDoubleClickTokenRef.current);
+                          pendingDoubleClickTokenRef.current = null;
+                        }
+                        doubleClickTimerRef.current = null;
+                      }, 667); // 2/3 second delay
                     } else if (clickData.count >= 3) {
-                      // Triple-click detected - call handler and reset
+                      // Triple-click detected - cancel pending double-click and call triple handler
+                      if (doubleClickTimerRef.current) {
+                        clearTimeout(doubleClickTimerRef.current);
+                        doubleClickTimerRef.current = null;
+                      }
+                      pendingDoubleClickTokenRef.current = null;
                       onTokenTripleClick && onTokenTripleClick(token);
                       clickData.count = 0;
                       clickData.tokenId = null;
@@ -1813,6 +1835,12 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                     clickData.count = 1;
                     clickData.tokenId = token.id;
                     clickData.lastClickTime = now;
+                    // Also cancel any pending double-click from a previous token
+                    if (doubleClickTimerRef.current) {
+                      clearTimeout(doubleClickTimerRef.current);
+                      doubleClickTimerRef.current = null;
+                      pendingDoubleClickTokenRef.current = null;
+                    }
                   }
                   
                   // Handle multi-select with shift+click
