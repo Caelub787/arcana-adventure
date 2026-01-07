@@ -12562,6 +12562,14 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
   const [itemSort, setItemSort] = useState("name-asc");
   const [itemTypeFilter, setItemTypeFilter] = useState("all");
   const [showAddItem, setShowAddItem] = useState(false);
+  
+  // Prefetch item library when character sheet loads (not when dialog opens)
+  // This makes "Add Item" dialog open instantly since data is already cached
+  useQuery({
+    queryKey: campaignId ? ['template-items', campaignId] : ['system-items'],
+    queryFn: () => campaignId ? api.getTemplateItems(campaignId) : api.getSystemItems(),
+    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
+  });
   const [showManageTemplates, setShowManageTemplates] = useState(false);
   const [selectedItem, setSelectedItem] = useState<any>(null);
   const [showItemDetail, setShowItemDetail] = useState(false);
@@ -17993,16 +18001,19 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
   const rarityOptions = ['common', 'uncommon', 'rare', 'epic', 'legendary'];
   
   // For character templates (no campaignId), fetch system items directly
+  // Prefetch immediately (not just when dialog opens) and cache for 5 minutes
   const { data: systemItemsOnly } = useQuery({
     queryKey: ['system-items'],
     queryFn: () => api.getSystemItems(),
-    enabled: !campaignId && open,
+    enabled: !campaignId,
+    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
   });
 
   const { data: templateData } = useQuery({
     queryKey: ['template-items', campaignId],
     queryFn: () => api.getTemplateItems(campaignId!),
-    enabled: !!campaignId && open,
+    enabled: !!campaignId,
+    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
   });
 
   // Combine items from either source - campaign templates or system items only
