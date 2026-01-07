@@ -3169,6 +3169,7 @@ interface BattleMapHotbarsProps {
   targetedTokenId?: string | null;
   characters?: any[];
   gridSize?: number;
+  hotbarSlots?: number; // Number of slots per hotbar (default 5)
   onEnterAoeMode?: (spell: any, casterTokenId: string) => void;
   aoeTargetState?: AoeTargetState;
   onAoeDamageRoll?: (tokensInAoe: any[], spell: any) => void;
@@ -5541,7 +5542,7 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
   );
 }
 
-export function BattleMapHotbars({ character, tokens, targetedTokenId, characters, gridSize, onEnterAoeMode, aoeTargetState, onAoeDamageRoll, sceneId, thrownItems, onRefetchThrownItems, onEnterThrowableAoeMode, throwableGridTarget, onClearThrowableGridTarget }: BattleMapHotbarsProps) {
+export function BattleMapHotbars({ character, tokens, targetedTokenId, characters, gridSize, hotbarSlots = 5, onEnterAoeMode, aoeTargetState, onAoeDamageRoll, sceneId, thrownItems, onRefetchThrownItems, onEnterThrowableAoeMode, throwableGridTarget, onClearThrowableGridTarget }: BattleMapHotbarsProps) {
   const [activeHotbar, setActiveHotbar] = useState<string>('weapons');
   
   const { data: hotbars = [], isLoading: hotbarsLoading } = useQuery({
@@ -5617,12 +5618,12 @@ export function BattleMapHotbars({ character, tokens, targetedTokenId, character
   if (!character) return null;
 
   const hotbarTypes = [
-    { type: 'weapons', icon: Sword, color: 'amber', maxSlots: 3 },
-    { type: 'armor', icon: Shield, color: 'cyan', maxSlots: 5 },
-    { type: 'magic', icon: Sparkles, color: 'purple', maxSlots: 5 },
-    { type: 'skills', icon: Dice5, color: 'blue', maxSlots: 5 },
-    { type: 'consumables', icon: Heart, color: 'green', maxSlots: 5 },
-    { type: 'utility', icon: Package, color: 'stone', maxSlots: 5 }
+    { type: 'weapons', icon: Sword, color: 'amber', maxSlots: 3 }, // Weapons fixed at 3 (left hand, ammo, right hand)
+    { type: 'armor', icon: Shield, color: 'cyan', maxSlots: hotbarSlots },
+    { type: 'magic', icon: Sparkles, color: 'purple', maxSlots: hotbarSlots },
+    { type: 'skills', icon: Dice5, color: 'blue', maxSlots: hotbarSlots },
+    { type: 'consumables', icon: Heart, color: 'green', maxSlots: hotbarSlots },
+    { type: 'utility', icon: Package, color: 'stone', maxSlots: hotbarSlots }
   ];
 
   const activeHotbarConfig = hotbarTypes.find(h => h.type === activeHotbar);
@@ -6929,6 +6930,7 @@ interface CampaignMenuProps {
   campaignId?: string;
   role: Role;
   inviteCode?: string;
+  hotbarSlots?: number;
   inspectedChar?: Character;
   onInspectChar?: (char: Character | null) => void;
   onAddCharacterToken?: (character: any) => void;
@@ -6947,7 +6949,7 @@ interface CampaignMenuProps {
   gmUserId?: string;
 }
 
-export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onInspectChar, onAddCharacterToken, onChangeMap, characters, members, onAddCharacter, onViewCharacter, onLevelUpAll, chatOpen = false, onChatOpenChange, onAssignCharacter, myPermissions, onOpenCampaignSpecies, isOwner = false, gmUserId }: CampaignMenuProps) {
+export function CampaignMenu({ campaignId, role, inviteCode, hotbarSlots = 5, inspectedChar, onInspectChar, onAddCharacterToken, onChangeMap, characters, members, onAddCharacter, onViewCharacter, onLevelUpAll, chatOpen = false, onChatOpenChange, onAssignCharacter, myPermissions, onOpenCampaignSpecies, isOwner = false, gmUserId }: CampaignMenuProps) {
   const { user } = useAuth();
   const setChatOpen = onChatOpenChange || (() => {});
   const [addCharacterOpen, setAddCharacterOpen] = useState(false);
@@ -7013,6 +7015,18 @@ export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onIn
     mutationFn: ({ characterId, folderId }: { characterId: string; folderId: string | null }) => 
       api.moveCharacterToFolder(characterId, folderId),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${campaignId}/characters`] }),
+  });
+
+  // Campaign settings mutation
+  const updateCampaignMutation = useMutation({
+    mutationFn: (data: { hotbarSlots?: number }) => api.updateCampaign(campaignId!, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${campaignId}`] });
+      toast({ title: 'Settings Updated', description: 'Campaign settings have been saved' });
+    },
+    onError: () => {
+      toast({ title: 'Error', description: 'Failed to update campaign settings', variant: 'destructive' });
+    },
   });
 
   // Character template library query
@@ -7665,6 +7679,49 @@ export function CampaignMenu({ campaignId, role, inviteCode, inspectedChar, onIn
                 data-testid="toggle-notification-style"
               />
             </div>
+            
+            {/* Hotbar Slots Setting (GM Only) */}
+            {role === 'gm' && (
+              <div className="mt-4 pt-4 border-t border-stone-700">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="hotbar-slots" className="text-stone-300">Hotbar Slots</Label>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="h-7 w-7 border-stone-600"
+                      onClick={() => {
+                        const newValue = Math.max(1, hotbarSlots - 1);
+                        if (newValue !== hotbarSlots) {
+                          updateCampaignMutation.mutate({ hotbarSlots: newValue });
+                        }
+                      }}
+                      disabled={hotbarSlots <= 1 || updateCampaignMutation.isPending}
+                      data-testid="button-decrease-hotbar-slots"
+                    >
+                      <Minus className="h-3 w-3" />
+                    </Button>
+                    <span className="text-amber-400 font-mono w-6 text-center" data-testid="text-hotbar-slots">{hotbarSlots}</span>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="h-7 w-7 border-stone-600"
+                      onClick={() => {
+                        const newValue = Math.min(10, hotbarSlots + 1);
+                        if (newValue !== hotbarSlots) {
+                          updateCampaignMutation.mutate({ hotbarSlots: newValue });
+                        }
+                      }}
+                      disabled={hotbarSlots >= 10 || updateCampaignMutation.isPending}
+                      data-testid="button-increase-hotbar-slots"
+                    >
+                      <Plus className="h-3 w-3" />
+                    </Button>
+                  </div>
+                </div>
+                <p className="text-xs text-stone-500 mt-1">Number of slots per hotbar (1-10)</p>
+              </div>
+            )}
           </div>
 
           <Tabs defaultValue="players" className="w-full">

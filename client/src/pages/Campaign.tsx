@@ -2598,6 +2598,7 @@ export default function Campaign() {
             campaignId={effectiveCampaignId || undefined}
             role={role} 
             inviteCode={(campaign && typeof campaign === 'object' && 'inviteCode' in campaign ? campaign.inviteCode as string : "") || ""}
+            hotbarSlots={(campaign && typeof campaign === 'object' && 'hotbarSlots' in campaign ? (campaign as any).hotbarSlots as number : 5) || 5}
             inspectedChar={inspectedChar}
             onInspectChar={setInspectedChar}
             onAddCharacterToken={handleAddCharacterToken}
@@ -3426,6 +3427,7 @@ export default function Campaign() {
                targetedTokenId={targetedTokenId}
                characters={characters as any[]}
                gridSize={activeScene?.gridSize || 50}
+               hotbarSlots={(campaign && typeof campaign === 'object' && 'hotbarSlots' in campaign ? (campaign as any).hotbarSlots as number : 5) || 5}
                onEnterAoeMode={enterAoeMode}
                aoeTargetState={aoeTargetState}
                sceneId={activeScene?.id}

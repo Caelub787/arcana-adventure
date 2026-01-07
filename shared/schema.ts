@@ -78,6 +78,7 @@ export const campaigns = pgTable("campaigns", {
   gridSize: integer("grid_size").default(50).notNull(), // deprecated, kept for backward compat
   currentMap: text("current_map"), // deprecated, kept for backward compat
   activeSceneId: varchar("active_scene_id"),
+  hotbarSlots: integer("hotbar_slots").default(5).notNull(), // Number of slots per hotbar (default 5)
   createdAt: timestamp("created_at").defaultNow().notNull(),
   lastPlayed: timestamp("last_played").defaultNow().notNull(),
 });
