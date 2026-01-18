@@ -20,6 +20,14 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
+import {
   Type,
   FileText,
   Sparkles,
@@ -61,10 +69,23 @@ export interface CanvasNode {
   entityName?: string;
 }
 
+export type ConnectionSide = "top" | "right" | "bottom" | "left";
+export type ArrowType = "end" | "start" | "both" | "none";
+
+export interface ConnectionWaypoint {
+  id: string;
+  x: number;
+  y: number;
+}
+
 export interface CanvasConnection {
   id: string;
   fromNodeId: string;
   toNodeId: string;
+  fromSide?: ConnectionSide;
+  toSide?: ConnectionSide;
+  arrowType?: ArrowType;
+  waypoints?: ConnectionWaypoint[];
   label?: string;
   color?: string;
 }
@@ -110,9 +131,13 @@ export function CanvasEditor({
   const [isPanning, setIsPanning] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
-  const [connectionStart, setConnectionStart] = useState<{ nodeId: string; x: number; y: number } | null>(null);
+  const [connectionStart, setConnectionStart] = useState<{ nodeId: string; side: ConnectionSide; x: number; y: number } | null>(null);
   const [connectionEnd, setConnectionEnd] = useState<{ x: number; y: number } | null>(null);
   const [hoveredDropTarget, setHoveredDropTarget] = useState<string | null>(null);
+  const [hoveredDropSide, setHoveredDropSide] = useState<ConnectionSide | null>(null);
+  const [longPressTimer, setLongPressTimer] = useState<NodeJS.Timeout | null>(null);
+  const [showConnectionDelete, setShowConnectionDelete] = useState<string | null>(null);
+  const [draggingWaypoint, setDraggingWaypoint] = useState<{ connectionId: string; waypointId: string } | null>(null);
   
   const dragStartRef = useRef<{ nodeId: string; startX: number; startY: number; nodeX: number; nodeY: number } | null>(null);
   const panStartRef = useRef<{ pointerX: number; pointerY: number; panX: number; panY: number } | null>(null);
@@ -195,7 +220,7 @@ export function CanvasEditor({
     if (selectedConnectionId === connectionId) setSelectedConnectionId(null);
   }, [canvasData, onChange, selectedConnectionId, readOnly]);
 
-  const addConnection = useCallback((fromNodeId: string, toNodeId: string) => {
+  const addConnection = useCallback((fromNodeId: string, toNodeId: string, fromSide?: ConnectionSide, toSide?: ConnectionSide) => {
     if (readOnly) return;
     if (fromNodeId === toNodeId) return;
     const exists = canvasData.connections.some(
@@ -208,12 +233,58 @@ export function CanvasEditor({
       id: crypto.randomUUID(),
       fromNodeId,
       toNodeId,
+      fromSide: fromSide || "right",
+      toSide: toSide || "left",
+      arrowType: "end",
+      waypoints: [],
     };
     onChange({
       ...canvasData,
       connections: [...canvasData.connections, newConnection],
     });
   }, [canvasData, onChange, readOnly]);
+
+  const updateConnection = useCallback((connectionId: string, updates: Partial<CanvasConnection>) => {
+    if (readOnly) return;
+    const newConnections = canvasData.connections.map((c) =>
+      c.id === connectionId ? { ...c, ...updates } : c
+    );
+    onChange({ ...canvasData, connections: newConnections });
+  }, [canvasData, onChange, readOnly]);
+
+  const addWaypoint = useCallback((connectionId: string, x: number, y: number) => {
+    if (readOnly) return;
+    const connection = canvasData.connections.find((c) => c.id === connectionId);
+    if (!connection) return;
+    
+    const newWaypoint: ConnectionWaypoint = {
+      id: crypto.randomUUID(),
+      x,
+      y,
+    };
+    const waypoints = [...(connection.waypoints || []), newWaypoint];
+    updateConnection(connectionId, { waypoints });
+  }, [canvasData.connections, updateConnection, readOnly]);
+
+  const removeWaypoint = useCallback((connectionId: string, waypointId: string) => {
+    if (readOnly) return;
+    const connection = canvasData.connections.find((c) => c.id === connectionId);
+    if (!connection) return;
+    
+    const waypoints = (connection.waypoints || []).filter((w) => w.id !== waypointId);
+    updateConnection(connectionId, { waypoints });
+  }, [canvasData.connections, updateConnection, readOnly]);
+
+  const updateWaypoint = useCallback((connectionId: string, waypointId: string, x: number, y: number) => {
+    if (readOnly) return;
+    const connection = canvasData.connections.find((c) => c.id === connectionId);
+    if (!connection) return;
+    
+    const waypoints = (connection.waypoints || []).map((w) =>
+      w.id === waypointId ? { ...w, x, y } : w
+    );
+    updateConnection(connectionId, { waypoints });
+  }, [canvasData.connections, updateConnection, readOnly]);
 
   const resetView = useCallback(() => {
     if (canvasData.nodes.length === 0) {
@@ -521,7 +592,8 @@ export function CanvasEditor({
       const world = screenToWorld(e.clientX, e.clientY);
       const targetNode = findNodeAtPosition(world.x, world.y);
       if (targetNode && targetNode.id !== connectionStart.nodeId) {
-        addConnection(connectionStart.nodeId, targetNode.id);
+        const toSide = hoveredDropSide || "left";
+        addConnection(connectionStart.nodeId, targetNode.id, connectionStart.side, toSide);
       }
     }
     
@@ -536,6 +608,7 @@ export function CanvasEditor({
     setConnectionStart(null);
     setConnectionEnd(null);
     setHoveredDropTarget(null);
+    setHoveredDropSide(null);
     panStartRef.current = null;
     dragStartRef.current = null;
     resizeStartRef.current = null;
@@ -580,19 +653,30 @@ export function CanvasEditor({
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
   };
 
-  const handleConnectionHandlePointerDown = (e: React.PointerEvent, node: CanvasNode) => {
+  const getNodeAnchor = useCallback((node: CanvasNode, side: ConnectionSide) => {
+    switch (side) {
+      case "top": return { x: node.x + node.width / 2, y: node.y };
+      case "bottom": return { x: node.x + node.width / 2, y: node.y + node.height };
+      case "left": return { x: node.x, y: node.y + node.height / 2 };
+      case "right": return { x: node.x + node.width, y: node.y + node.height / 2 };
+    }
+  }, []);
+
+  const handleConnectionHandlePointerDown = (e: React.PointerEvent, node: CanvasNode, side: ConnectionSide) => {
     e.stopPropagation();
     if (readOnly) return;
     
+    const anchor = getNodeAnchor(node, side);
     setIsConnecting(true);
     setConnectionStart({
       nodeId: node.id,
-      x: node.x + node.width,
-      y: node.y + node.height / 2,
+      side,
+      x: anchor.x,
+      y: anchor.y,
     });
     setConnectionEnd({
-      x: node.x + node.width,
-      y: node.y + node.height / 2,
+      x: anchor.x,
+      y: anchor.y,
     });
     
     containerRef.current?.setPointerCapture(e.pointerId);
@@ -631,14 +715,65 @@ export function CanvasEditor({
     const toNode = canvasData.nodes.find((n) => n.id === connection.toNodeId);
     if (!fromNode || !toNode) return "";
     
-    const fromX = fromNode.x + fromNode.width;
-    const fromY = fromNode.y + fromNode.height / 2;
-    const toX = toNode.x;
-    const toY = toNode.y + toNode.height / 2;
+    const fromSide = connection.fromSide || "right";
+    const toSide = connection.toSide || "left";
+    const fromAnchor = getNodeAnchor(fromNode, fromSide);
+    const toAnchor = getNodeAnchor(toNode, toSide);
     
-    const controlX = (fromX + toX) / 2;
+    const waypoints = connection.waypoints || [];
+    const allPoints = [fromAnchor, ...waypoints, toAnchor];
     
-    return `M ${fromX} ${fromY} C ${controlX} ${fromY}, ${controlX} ${toY}, ${toX} ${toY}`;
+    if (allPoints.length === 2) {
+      const [start, end] = allPoints;
+      const controlOffset = Math.min(50, Math.abs(end.x - start.x) / 2, Math.abs(end.y - start.y) / 2) || 30;
+      
+      const getControlPoint = (point: {x: number, y: number}, side: ConnectionSide, offset: number) => {
+        switch (side) {
+          case "top": return { x: point.x, y: point.y - offset };
+          case "bottom": return { x: point.x, y: point.y + offset };
+          case "left": return { x: point.x - offset, y: point.y };
+          case "right": return { x: point.x + offset, y: point.y };
+        }
+      };
+      
+      const cp1 = getControlPoint(start, fromSide, controlOffset);
+      const cp2 = getControlPoint(end, toSide, controlOffset);
+      
+      return `M ${start.x} ${start.y} C ${cp1.x} ${cp1.y}, ${cp2.x} ${cp2.y}, ${end.x} ${end.y}`;
+    }
+    
+    let path = `M ${allPoints[0].x} ${allPoints[0].y}`;
+    for (let i = 1; i < allPoints.length; i++) {
+      const prev = allPoints[i - 1];
+      const curr = allPoints[i];
+      const cpX = (prev.x + curr.x) / 2;
+      path += ` Q ${cpX} ${prev.y}, ${cpX} ${(prev.y + curr.y) / 2}`;
+      path += ` Q ${cpX} ${curr.y}, ${curr.x} ${curr.y}`;
+    }
+    
+    return path;
+  };
+
+  const getConnectionMidpoint = (connection: CanvasConnection) => {
+    const fromNode = canvasData.nodes.find((n) => n.id === connection.fromNodeId);
+    const toNode = canvasData.nodes.find((n) => n.id === connection.toNodeId);
+    if (!fromNode || !toNode) return { x: 0, y: 0 };
+    
+    const fromSide = connection.fromSide || "right";
+    const toSide = connection.toSide || "left";
+    const fromAnchor = getNodeAnchor(fromNode, fromSide);
+    const toAnchor = getNodeAnchor(toNode, toSide);
+    
+    const waypoints = connection.waypoints || [];
+    if (waypoints.length > 0) {
+      const midIndex = Math.floor(waypoints.length / 2);
+      return waypoints[midIndex];
+    }
+    
+    return {
+      x: (fromAnchor.x + toAnchor.x) / 2,
+      y: (fromAnchor.y + toAnchor.y) / 2,
+    };
   };
 
   const renderNode = (node: CanvasNode) => {
@@ -744,17 +879,42 @@ export function CanvasEditor({
         
         {!readOnly && (
           <>
-            <div
-              className={`absolute -right-3 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full cursor-crosshair border-2 transition-opacity transition-transform ${
-                isConnecting 
-                  ? "bg-indigo-400 border-indigo-300 opacity-100 scale-110" 
-                  : "bg-indigo-500 border-indigo-400 opacity-80 hover:opacity-100 hover:scale-125 group-hover:opacity-100"
-              } shadow-lg shadow-indigo-500/50`}
-              onPointerDown={(e) => handleConnectionHandlePointerDown(e, node)}
-              data-testid={`connection-handle-${node.id}`}
-            >
-              <div className="absolute inset-0 rounded-full bg-indigo-400 animate-ping opacity-30" />
-            </div>
+            {/* Connection handles on all 4 sides */}
+            {(["top", "right", "bottom", "left"] as ConnectionSide[]).map((side) => {
+              const isDropHovered = isDropTarget && hoveredDropSide === side;
+              const positionClass = {
+                top: "left-1/2 -translate-x-1/2 -top-2.5",
+                right: "top-1/2 -translate-y-1/2 -right-2.5",
+                bottom: "left-1/2 -translate-x-1/2 -bottom-2.5",
+                left: "top-1/2 -translate-y-1/2 -left-2.5",
+              }[side];
+              
+              return (
+                <div
+                  key={side}
+                  className={`absolute ${positionClass} w-4 h-4 rounded-full cursor-crosshair border-2 transition-opacity ${
+                    isDropHovered
+                      ? "bg-green-400 border-green-300 opacity-100 scale-125"
+                      : isConnecting 
+                        ? "bg-indigo-400 border-indigo-300 opacity-100" 
+                        : "bg-indigo-500 border-indigo-400 opacity-0 hover:opacity-100 group-hover:opacity-60"
+                  } shadow-lg shadow-indigo-500/50`}
+                  onPointerDown={(e) => handleConnectionHandlePointerDown(e, node, side)}
+                  onPointerEnter={() => {
+                    if (isConnecting && connectionStart?.nodeId !== node.id) {
+                      setHoveredDropTarget(node.id);
+                      setHoveredDropSide(side);
+                    }
+                  }}
+                  onPointerLeave={() => {
+                    if (hoveredDropSide === side) {
+                      setHoveredDropSide(null);
+                    }
+                  }}
+                  data-testid={`connection-handle-${side}-${node.id}`}
+                />
+              );
+            })}
             <div
               className="absolute -right-1 -bottom-1 w-4 h-4 bg-stone-500 hover:bg-stone-400 rounded-sm cursor-se-resize opacity-0 group-hover:opacity-100 hover:opacity-100 transition-opacity"
               onPointerDown={(e) => handleResizePointerDown(e, node)}
@@ -893,74 +1053,167 @@ export function CanvasEditor({
                 style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transformOrigin: "0 0" }}
               >
                 <defs>
-                  <marker
-                    id="arrowhead"
-                    markerWidth="10"
-                    markerHeight="8"
-                    refX="9"
-                    refY="4"
-                    orient="auto"
-                    markerUnits="strokeWidth"
-                  >
+                  {/* End arrow markers */}
+                  <marker id="arrowhead" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto" markerUnits="strokeWidth">
                     <path d="M0,0 L0,8 L10,4 z" fill="rgb(120 113 108)" />
                   </marker>
-                  <marker
-                    id="arrowhead-selected"
-                    markerWidth="10"
-                    markerHeight="8"
-                    refX="9"
-                    refY="4"
-                    orient="auto"
-                    markerUnits="strokeWidth"
-                  >
+                  <marker id="arrowhead-selected" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto" markerUnits="strokeWidth">
                     <path d="M0,0 L0,8 L10,4 z" fill="rgb(99 102 241)" />
                   </marker>
-                  <marker
-                    id="arrowhead-preview"
-                    markerWidth="10"
-                    markerHeight="8"
-                    refX="9"
-                    refY="4"
-                    orient="auto"
-                    markerUnits="strokeWidth"
-                  >
+                  <marker id="arrowhead-preview" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto" markerUnits="strokeWidth">
                     <path d="M0,0 L0,8 L10,4 z" fill="rgb(129 140 248)" />
+                  </marker>
+                  {/* Start arrow markers (reversed) */}
+                  <marker id="arrowhead-start" markerWidth="10" markerHeight="8" refX="1" refY="4" orient="auto" markerUnits="strokeWidth">
+                    <path d="M10,0 L10,8 L0,4 z" fill="rgb(120 113 108)" />
+                  </marker>
+                  <marker id="arrowhead-start-selected" markerWidth="10" markerHeight="8" refX="1" refY="4" orient="auto" markerUnits="strokeWidth">
+                    <path d="M10,0 L10,8 L0,4 z" fill="rgb(99 102 241)" />
                   </marker>
                 </defs>
                 
-                {canvasData.connections.map((connection) => (
-                  <g key={connection.id}>
-                    <path
-                      d={getConnectionPath(connection)}
-                      stroke="transparent"
-                      strokeWidth={12}
-                      fill="none"
-                      className="cursor-pointer pointer-events-auto"
-                      onClick={() => {
-                        setSelectedConnectionId(connection.id);
-                        setSelectedNodeId(null);
-                      }}
-                    />
-                    <path
-                      d={getConnectionPath(connection)}
-                      stroke={selectedConnectionId === connection.id ? "rgb(99 102 241)" : (connection.color || "rgb(120 113 108)")}
-                      strokeWidth={selectedConnectionId === connection.id ? 2.5 : 2}
-                      fill="none"
-                      markerEnd={selectedConnectionId === connection.id ? "url(#arrowhead-selected)" : "url(#arrowhead)"}
-                      className="pointer-events-none"
-                      data-testid={`connection-${connection.id}`}
-                    />
-                    {connection.label && (
-                      <text
-                        x={(canvasData.nodes.find((n) => n.id === connection.fromNodeId)?.x ?? 0) + (canvasData.nodes.find((n) => n.id === connection.fromNodeId)?.width ?? 0) + 20}
-                        y={(canvasData.nodes.find((n) => n.id === connection.fromNodeId)?.y ?? 0) + (canvasData.nodes.find((n) => n.id === connection.fromNodeId)?.height ?? 0) / 2}
-                        className="text-xs fill-stone-400"
-                      >
-                        {connection.label}
-                      </text>
-                    )}
-                  </g>
-                ))}
+                {canvasData.connections.map((connection) => {
+                  const isSelected = selectedConnectionId === connection.id;
+                  const arrowType = connection.arrowType || "end";
+                  const strokeColor = isSelected ? "rgb(99 102 241)" : (connection.color || "rgb(120 113 108)");
+                  const midpoint = getConnectionMidpoint(connection);
+                  
+                  const getMarkerEnd = () => {
+                    if (arrowType === "none") return undefined;
+                    if (arrowType === "start") return undefined;
+                    return isSelected ? "url(#arrowhead-selected)" : "url(#arrowhead)";
+                  };
+                  
+                  const getMarkerStart = () => {
+                    if (arrowType === "none") return undefined;
+                    if (arrowType === "end") return undefined;
+                    return isSelected ? "url(#arrowhead-start-selected)" : "url(#arrowhead-start)";
+                  };
+                  
+                  return (
+                    <g key={connection.id}>
+                      {/* Invisible hit area for clicking */}
+                      <path
+                        d={getConnectionPath(connection)}
+                        stroke="transparent"
+                        strokeWidth={16}
+                        fill="none"
+                        className="cursor-pointer pointer-events-auto"
+                        onClick={(e) => {
+                          if (!readOnly) {
+                            const rect = containerRef.current?.getBoundingClientRect();
+                            if (rect) {
+                              const world = screenToWorld(e.clientX, e.clientY);
+                              addWaypoint(connection.id, world.x, world.y);
+                            }
+                          }
+                          setSelectedConnectionId(connection.id);
+                          setSelectedNodeId(null);
+                        }}
+                        onPointerDown={(e) => {
+                          if (readOnly) return;
+                          const timer = setTimeout(() => {
+                            setShowConnectionDelete(connection.id);
+                          }, 500);
+                          setLongPressTimer(timer);
+                        }}
+                        onPointerUp={() => {
+                          if (longPressTimer) {
+                            clearTimeout(longPressTimer);
+                            setLongPressTimer(null);
+                          }
+                        }}
+                        onPointerLeave={() => {
+                          if (longPressTimer) {
+                            clearTimeout(longPressTimer);
+                            setLongPressTimer(null);
+                          }
+                        }}
+                      />
+                      {/* Visible connection line */}
+                      <path
+                        d={getConnectionPath(connection)}
+                        stroke={strokeColor}
+                        strokeWidth={isSelected ? 2.5 : 2}
+                        fill="none"
+                        markerEnd={getMarkerEnd()}
+                        markerStart={getMarkerStart()}
+                        className="pointer-events-none"
+                        data-testid={`connection-${connection.id}`}
+                      />
+                      
+                      {/* Waypoints */}
+                      {(connection.waypoints || []).map((waypoint) => (
+                        <g key={waypoint.id}>
+                          <circle
+                            cx={waypoint.x}
+                            cy={waypoint.y}
+                            r={isSelected ? 6 : 4}
+                            fill={isSelected ? "rgb(99 102 241)" : "rgb(120 113 108)"}
+                            stroke="rgb(41 37 36)"
+                            strokeWidth={2}
+                            className="cursor-move pointer-events-auto"
+                            onPointerDown={(e) => {
+                              e.stopPropagation();
+                              if (readOnly) return;
+                              setDraggingWaypoint({ connectionId: connection.id, waypointId: waypoint.id });
+                              const timer = setTimeout(() => {
+                                removeWaypoint(connection.id, waypoint.id);
+                                setDraggingWaypoint(null);
+                              }, 600);
+                              setLongPressTimer(timer);
+                            }}
+                            onPointerMove={(e) => {
+                              if (draggingWaypoint?.waypointId === waypoint.id) {
+                                if (longPressTimer) {
+                                  clearTimeout(longPressTimer);
+                                  setLongPressTimer(null);
+                                }
+                                const world = screenToWorld(e.clientX, e.clientY);
+                                updateWaypoint(connection.id, waypoint.id, world.x, world.y);
+                              }
+                            }}
+                            onPointerUp={() => {
+                              if (longPressTimer) {
+                                clearTimeout(longPressTimer);
+                                setLongPressTimer(null);
+                              }
+                              setDraggingWaypoint(null);
+                            }}
+                            data-testid={`waypoint-${waypoint.id}`}
+                          />
+                        </g>
+                      ))}
+                      
+                      {/* Delete button when long-pressed */}
+                      {showConnectionDelete === connection.id && (
+                        <g
+                          className="pointer-events-auto cursor-pointer"
+                          onClick={() => {
+                            deleteConnection(connection.id);
+                            setShowConnectionDelete(null);
+                          }}
+                        >
+                          <circle cx={midpoint.x} cy={midpoint.y} r={12} fill="rgb(220 38 38)" />
+                          <text x={midpoint.x} y={midpoint.y + 4} textAnchor="middle" fontSize={14} fill="white">×</text>
+                        </g>
+                      )}
+                      
+                      {/* Label display (when not selected) */}
+                      {connection.label && !isSelected && (
+                        <text
+                          x={midpoint.x}
+                          y={midpoint.y - 8}
+                          textAnchor="middle"
+                          className="text-xs fill-stone-300 pointer-events-none"
+                          style={{ fontSize: 11 }}
+                        >
+                          {connection.label}
+                        </text>
+                      )}
+                    </g>
+                  );
+                })}
                 
                 {isConnecting && connectionStart && connectionEnd && (
                   <path
@@ -981,6 +1234,83 @@ export function CanvasEditor({
               >
                 {canvasData.nodes.map(renderNode)}
               </div>
+              
+              {/* Connection settings panel */}
+              {selectedConnectionId && !readOnly && (() => {
+                const selectedConnection = canvasData.connections.find((c) => c.id === selectedConnectionId);
+                if (!selectedConnection) return null;
+                
+                return (
+                  <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-stone-900 border border-stone-700 rounded-lg p-3 shadow-xl z-10 min-w-[280px]">
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="text-sm font-medium text-stone-200">Arrow Settings</span>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6 text-stone-400 hover:text-red-400"
+                        onClick={() => {
+                          deleteConnection(selectedConnectionId);
+                        }}
+                        data-testid="button-delete-connection"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                    
+                    <div className="space-y-3">
+                      <div className="space-y-1.5">
+                        <Label className="text-xs text-stone-400">Arrow Type</Label>
+                        <Select
+                          value={selectedConnection.arrowType || "end"}
+                          onValueChange={(value: ArrowType) => updateConnection(selectedConnectionId, { arrowType: value })}
+                        >
+                          <SelectTrigger className="h-8 text-xs bg-stone-800 border-stone-700">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent className="bg-stone-900 border-stone-700">
+                            <SelectItem value="end" className="text-xs">Arrow at end →</SelectItem>
+                            <SelectItem value="start" className="text-xs">Arrow at start ←</SelectItem>
+                            <SelectItem value="both" className="text-xs">Both ends ↔</SelectItem>
+                            <SelectItem value="none" className="text-xs">No arrow —</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      
+                      <div className="space-y-1.5">
+                        <Label className="text-xs text-stone-400">Label</Label>
+                        <Input
+                          value={selectedConnection.label || ""}
+                          onChange={(e) => updateConnection(selectedConnectionId, { label: e.target.value })}
+                          placeholder="Add a label..."
+                          className="h-8 text-xs bg-stone-800 border-stone-700"
+                          data-testid="input-connection-label"
+                        />
+                      </div>
+                      
+                      {(selectedConnection.waypoints?.length || 0) > 0 && (
+                        <div className="pt-2 border-t border-stone-700">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs text-stone-400">
+                              {selectedConnection.waypoints?.length} waypoint(s)
+                            </span>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 text-xs text-stone-400 hover:text-stone-200"
+                              onClick={() => updateConnection(selectedConnectionId, { waypoints: [] })}
+                            >
+                              Clear all
+                            </Button>
+                          </div>
+                          <p className="text-[10px] text-stone-500 mt-1">
+                            Drag waypoints to adjust. Hold to remove.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           </div>
         </div>
