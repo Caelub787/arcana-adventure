@@ -579,6 +579,8 @@ export function CanvasEditor({
     if (e.target !== e.currentTarget) return;
     if (e.button !== 0) return;
     
+    userInteractedRef.current = true; // Mark as user interaction to prevent view reset
+    
     // Track this pointer for multi-touch
     activePointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     
@@ -588,6 +590,15 @@ export function CanvasEditor({
       panStartRef.current = null;
       handlePinchUpdate();
       return;
+    }
+    
+    // Cancel any in-progress connection on canvas tap
+    if (isConnecting) {
+      setIsConnecting(false);
+      setConnectionStart(null);
+      setConnectionEnd(null);
+      setHoveredDropTarget(null);
+      setHoveredDropSide(null);
     }
     
     setSelectedNodeId(null);
@@ -734,6 +745,21 @@ export function CanvasEditor({
     if (readOnly) return;
     if (e.button !== 0) return;
     
+    userInteractedRef.current = true; // Mark as user interaction to prevent view reset
+    
+    // If we're in tap-to-connect mode (connection started), complete the connection
+    if (isConnecting && connectionStart && connectionStart.nodeId !== node.id) {
+      const world = screenToWorld(e.clientX, e.clientY);
+      const toSide = getClosestSide(node, world.x, world.y);
+      addConnection(connectionStart.nodeId, node.id, connectionStart.side, toSide);
+      setIsConnecting(false);
+      setConnectionStart(null);
+      setConnectionEnd(null);
+      setHoveredDropTarget(null);
+      setHoveredDropSide(null);
+      return;
+    }
+    
     setSelectedNodeId(node.id);
     setSelectedConnectionId(null);
     
@@ -781,6 +807,8 @@ export function CanvasEditor({
     e.stopPropagation();
     if (readOnly) return;
     
+    userInteractedRef.current = true; // Mark as user interaction to prevent view reset
+    
     const anchor = getNodeAnchor(node, side);
     setIsConnecting(true);
     setConnectionStart({
@@ -793,8 +821,11 @@ export function CanvasEditor({
       x: anchor.x,
       y: anchor.y,
     });
+    setSelectedNodeId(node.id);
     
-    containerRef.current?.setPointerCapture(e.pointerId);
+    // Don't capture pointer - this allows tap-to-connect workflow on mobile
+    // The connection will follow pointer moves via handleCanvasPointerMove
+    // and complete on tap via handleNodePointerDown or cancel on canvas tap
   };
 
   const handleNoteSelect = useCallback((note: Note) => {
