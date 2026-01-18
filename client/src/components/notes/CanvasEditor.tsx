@@ -147,6 +147,15 @@ export function CanvasEditor({
   const [noteSearchOpen, setNoteSearchOpen] = useState(false);
   const [noteSearchQuery, setNoteSearchQuery] = useState("");
   const [entityPickerOpen, setEntityPickerOpen] = useState(false);
+
+  // Cleanup long-press timer on unmount or selection change
+  useEffect(() => {
+    return () => {
+      if (longPressTimer) {
+        clearTimeout(longPressTimer);
+      }
+    };
+  }, [longPressTimer]);
   
   const { data: searchedNotes = [], isLoading: notesLoading } = useQuery({
     queryKey: ["/api/notes/search", noteSearchQuery],
@@ -723,18 +732,19 @@ export function CanvasEditor({
     const waypoints = connection.waypoints || [];
     const allPoints = [fromAnchor, ...waypoints, toAnchor];
     
+    const getControlPoint = (point: {x: number, y: number}, side: ConnectionSide, offset: number) => {
+      switch (side) {
+        case "top": return { x: point.x, y: point.y - offset };
+        case "bottom": return { x: point.x, y: point.y + offset };
+        case "left": return { x: point.x - offset, y: point.y };
+        case "right": return { x: point.x + offset, y: point.y };
+      }
+    };
+    
     if (allPoints.length === 2) {
       const [start, end] = allPoints;
-      const controlOffset = Math.min(50, Math.abs(end.x - start.x) / 2, Math.abs(end.y - start.y) / 2) || 30;
-      
-      const getControlPoint = (point: {x: number, y: number}, side: ConnectionSide, offset: number) => {
-        switch (side) {
-          case "top": return { x: point.x, y: point.y - offset };
-          case "bottom": return { x: point.x, y: point.y + offset };
-          case "left": return { x: point.x - offset, y: point.y };
-          case "right": return { x: point.x + offset, y: point.y };
-        }
-      };
+      const dist = Math.hypot(end.x - start.x, end.y - start.y);
+      const controlOffset = Math.max(30, Math.min(80, dist / 3));
       
       const cp1 = getControlPoint(start, fromSide, controlOffset);
       const cp2 = getControlPoint(end, toSide, controlOffset);
@@ -742,14 +752,36 @@ export function CanvasEditor({
       return `M ${start.x} ${start.y} C ${cp1.x} ${cp1.y}, ${cp2.x} ${cp2.y}, ${end.x} ${end.y}`;
     }
     
-    let path = `M ${allPoints[0].x} ${allPoints[0].y}`;
-    for (let i = 1; i < allPoints.length; i++) {
+    // With waypoints: use smooth bezier curves through all points
+    const start = allPoints[0];
+    const end = allPoints[allPoints.length - 1];
+    const startOffset = Math.min(40, Math.hypot(allPoints[1].x - start.x, allPoints[1].y - start.y) / 2);
+    const endOffset = Math.min(40, Math.hypot(end.x - allPoints[allPoints.length - 2].x, end.y - allPoints[allPoints.length - 2].y) / 2);
+    
+    let path = `M ${start.x} ${start.y}`;
+    
+    // First segment from start to first waypoint with control point based on side
+    const startCp = getControlPoint(start, fromSide, startOffset);
+    const firstWp = allPoints[1];
+    const midX1 = (start.x + firstWp.x) / 2;
+    const midY1 = (start.y + firstWp.y) / 2;
+    path += ` C ${startCp.x} ${startCp.y}, ${midX1} ${midY1}, ${firstWp.x} ${firstWp.y}`;
+    
+    // Middle waypoints with smooth curves
+    for (let i = 2; i < allPoints.length - 1; i++) {
       const prev = allPoints[i - 1];
       const curr = allPoints[i];
       const cpX = (prev.x + curr.x) / 2;
-      path += ` Q ${cpX} ${prev.y}, ${cpX} ${(prev.y + curr.y) / 2}`;
-      path += ` Q ${cpX} ${curr.y}, ${curr.x} ${curr.y}`;
+      const cpY = (prev.y + curr.y) / 2;
+      path += ` S ${cpX} ${cpY}, ${curr.x} ${curr.y}`;
     }
+    
+    // Last segment to end with control point based on side
+    const lastWp = allPoints[allPoints.length - 2];
+    const endCp = getControlPoint(end, toSide, endOffset);
+    const midX2 = (lastWp.x + end.x) / 2;
+    const midY2 = (lastWp.y + end.y) / 2;
+    path += ` C ${midX2} ${midY2}, ${endCp.x} ${endCp.y}, ${end.x} ${end.y}`;
     
     return path;
   };
@@ -1100,21 +1132,22 @@ export function CanvasEditor({
                         fill="none"
                         className="cursor-pointer pointer-events-auto"
                         onClick={(e) => {
-                          if (!readOnly) {
-                            const rect = containerRef.current?.getBoundingClientRect();
-                            if (rect) {
-                              const world = screenToWorld(e.clientX, e.clientY);
-                              addWaypoint(connection.id, world.x, world.y);
-                            }
-                          }
+                          setShowConnectionDelete(null);
                           setSelectedConnectionId(connection.id);
                           setSelectedNodeId(null);
                         }}
+                        onDoubleClick={(e) => {
+                          if (readOnly) return;
+                          const world = screenToWorld(e.clientX, e.clientY);
+                          addWaypoint(connection.id, world.x, world.y);
+                        }}
                         onPointerDown={(e) => {
                           if (readOnly) return;
+                          if (longPressTimer) clearTimeout(longPressTimer);
                           const timer = setTimeout(() => {
                             setShowConnectionDelete(connection.id);
-                          }, 500);
+                            setLongPressTimer(null);
+                          }, 600);
                           setLongPressTimer(timer);
                         }}
                         onPointerUp={() => {
@@ -1142,25 +1175,28 @@ export function CanvasEditor({
                         data-testid={`connection-${connection.id}`}
                       />
                       
-                      {/* Waypoints */}
-                      {(connection.waypoints || []).map((waypoint) => (
+                      {/* Waypoints - only shown when selected */}
+                      {isSelected && (connection.waypoints || []).map((waypoint) => (
                         <g key={waypoint.id}>
                           <circle
                             cx={waypoint.x}
                             cy={waypoint.y}
-                            r={isSelected ? 6 : 4}
-                            fill={isSelected ? "rgb(99 102 241)" : "rgb(120 113 108)"}
+                            r={6}
+                            fill="rgb(99 102 241)"
                             stroke="rgb(41 37 36)"
                             strokeWidth={2}
                             className="cursor-move pointer-events-auto"
                             onPointerDown={(e) => {
                               e.stopPropagation();
                               if (readOnly) return;
+                              (e.target as SVGCircleElement).setPointerCapture(e.pointerId);
                               setDraggingWaypoint({ connectionId: connection.id, waypointId: waypoint.id });
+                              if (longPressTimer) clearTimeout(longPressTimer);
                               const timer = setTimeout(() => {
                                 removeWaypoint(connection.id, waypoint.id);
                                 setDraggingWaypoint(null);
-                              }, 600);
+                                setLongPressTimer(null);
+                              }, 800);
                               setLongPressTimer(timer);
                             }}
                             onPointerMove={(e) => {
@@ -1173,7 +1209,10 @@ export function CanvasEditor({
                                 updateWaypoint(connection.id, waypoint.id, world.x, world.y);
                               }
                             }}
-                            onPointerUp={() => {
+                            onPointerUp={(e) => {
+                              try {
+                                (e.target as SVGCircleElement).releasePointerCapture(e.pointerId);
+                              } catch {}
                               if (longPressTimer) {
                                 clearTimeout(longPressTimer);
                                 setLongPressTimer(null);
