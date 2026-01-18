@@ -129,6 +129,7 @@ export function CanvasEditor({
   
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedConnectionId, setSelectedConnectionId] = useState<string | null>(null);
+  const [editingNodeId, setEditingNodeId] = useState<string | null>(null); // Separate editing state
   
   const [isDragging, setIsDragging] = useState(false);
   const [isPanning, setIsPanning] = useState(false);
@@ -603,6 +604,7 @@ export function CanvasEditor({
     
     setSelectedNodeId(null);
     setSelectedConnectionId(null);
+    setEditingNodeId(null); // Clear editing when clicking canvas background
     
     setIsPanning(true);
     panStartRef.current = {
@@ -762,6 +764,7 @@ export function CanvasEditor({
     
     setSelectedNodeId(node.id);
     setSelectedConnectionId(null);
+    if (editingNodeId !== node.id) setEditingNodeId(null); // Clear editing when selecting different node
     
     setIsDragging(true);
     const world = screenToWorld(e.clientX, e.clientY);
@@ -984,17 +987,26 @@ export function CanvasEditor({
                   {getEntityIcon(node.entityType)}
                 </span>
               )}
-              {!readOnly && isSelected ? (
+              {!readOnly && editingNodeId === node.id ? (
                 <Input
                   value={node.title ?? getDefaultTitle()}
                   onChange={(e) => updateNode(node.id, { title: e.target.value })}
                   onClick={(e) => e.stopPropagation()}
                   onPointerDown={(e) => e.stopPropagation()}
+                  onBlur={() => setEditingNodeId(null)}
+                  autoFocus
                   className="h-5 text-xs bg-stone-900/50 border-stone-700 px-1 py-0 flex-1 min-w-0"
                   data-testid={`input-node-title-${node.id}`}
                 />
               ) : (
-                <span className="text-xs text-stone-400 truncate">{node.title || getDefaultTitle()}</span>
+                <span 
+                  className="text-xs text-stone-400 truncate cursor-text"
+                  onDoubleClick={(e) => {
+                    if (readOnly) return;
+                    e.stopPropagation();
+                    setEditingNodeId(node.id);
+                  }}
+                >{node.title || getDefaultTitle()}</span>
               )}
             </div>
             {!readOnly && isSelected && (
@@ -1011,7 +1023,7 @@ export function CanvasEditor({
           </div>
           
           <div className="flex-1 overflow-hidden">
-            {node.type === "text" && !readOnly ? (
+            {node.type === "text" && !readOnly && editingNodeId === node.id ? (
               <Textarea
                 value={node.content || ""}
                 onChange={(e) => updateNode(node.id, { content: e.target.value })}
@@ -1019,10 +1031,18 @@ export function CanvasEditor({
                 placeholder="Enter text..."
                 onClick={(e) => e.stopPropagation()}
                 onPointerDown={(e) => e.stopPropagation()}
+                onBlur={() => setEditingNodeId(null)}
                 data-testid={`textarea-node-${node.id}`}
               />
             ) : node.type === "text" ? (
-              <div className="text-sm text-stone-300 whitespace-pre-wrap">{node.content}</div>
+              <div 
+                className="text-sm text-stone-300 whitespace-pre-wrap cursor-text h-full"
+                onDoubleClick={(e) => {
+                  if (readOnly) return;
+                  e.stopPropagation();
+                  setEditingNodeId(node.id);
+                }}
+              >{node.content || (isSelected ? "Double-tap to edit" : "")}</div>
             ) : node.type === "note" ? (
               <button
                 className="flex items-center gap-2 text-amber-400 hover:text-amber-300 text-sm w-full text-left"
@@ -1061,12 +1081,14 @@ export function CanvasEditor({
               return (
                 <div
                   key={side}
-                  className={`absolute ${positionClass} w-4 h-4 rounded-full cursor-crosshair border-2 transition-opacity ${
+                  className={`absolute ${positionClass} w-5 h-5 rounded-full cursor-crosshair border-2 transition-all ${
                     isDropHovered
                       ? "bg-green-400 border-green-300 opacity-100 scale-125"
                       : isConnecting 
                         ? "bg-indigo-400 border-indigo-300 opacity-100" 
-                        : "bg-indigo-500 border-indigo-400 opacity-0 hover:opacity-100 group-hover:opacity-60"
+                        : isSelected
+                          ? "bg-indigo-500 border-indigo-400 opacity-100"
+                          : "bg-indigo-500 border-indigo-400 opacity-0 hover:opacity-100 group-hover:opacity-60"
                   } shadow-lg shadow-indigo-500/50`}
                   onPointerDown={(e) => handleConnectionHandlePointerDown(e, node, side)}
                   onPointerEnter={() => {
