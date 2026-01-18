@@ -57,7 +57,7 @@ export async function sendPasswordResetEmail(to: string, resetToken: string, bas
             body {
               font-family: 'Inter', Arial, sans-serif;
               background-color: #0c0a09;
-              color: #d6d3d1;
+              color: #e7e5e4;
               padding: 20px;
             }
             .container {
@@ -67,6 +67,7 @@ export async function sendPasswordResetEmail(to: string, resetToken: string, bas
               border: 1px solid #44403c;
               border-radius: 8px;
               padding: 40px;
+              color: #e7e5e4;
             }
             .logo {
               text-align: center;
@@ -78,11 +79,16 @@ export async function sendPasswordResetEmail(to: string, resetToken: string, bas
             .content {
               line-height: 1.6;
               margin-bottom: 30px;
+              color: #e7e5e4;
+            }
+            .content p {
+              color: #e7e5e4;
+              margin: 16px 0;
             }
             .button {
               display: inline-block;
               background-color: #f59e0b;
-              color: #0c0a09;
+              color: #0c0a09 !important;
               padding: 14px 32px;
               text-decoration: none;
               border-radius: 6px;
@@ -102,39 +108,43 @@ export async function sendPasswordResetEmail(to: string, resetToken: string, bas
               font-size: 14px;
               color: #a8a29e;
             }
+            .footer p {
+              color: #a8a29e;
+            }
             .warning {
               background-color: #292524;
               border-left: 4px solid #f59e0b;
               padding: 12px;
               margin: 20px 0;
               border-radius: 4px;
+              color: #e7e5e4;
             }
           </style>
         </head>
-        <body>
-          <div class="container">
-            <div class="logo">⚔️ Arcana Adventure</div>
+        <body style="background-color: #0c0a09; color: #e7e5e4;">
+          <div class="container" style="background-color: #1c1917; color: #e7e5e4;">
+            <div class="logo" style="color: #f59e0b;">⚔️ Arcana Adventure</div>
             
-            <div class="content">
+            <div class="content" style="color: #e7e5e4;">
               <h2 style="color: #f59e0b;">Password Reset Request</h2>
-              <p>We received a request to reset your password for your Arcana Adventure account.</p>
+              <p style="color: #e7e5e4;">We received a request to reset your password for your Arcana Adventure account.</p>
               
               <div class="button-container">
-                <a href="${resetLink}" class="button">Reset Your Password</a>
+                <a href="${resetLink}" class="button" style="background-color: #f59e0b; color: #0c0a09; text-decoration: none; padding: 14px 32px; border-radius: 6px; font-weight: 600; display: inline-block;">Reset Your Password</a>
               </div>
               
-              <div class="warning">
-                <strong>⚠️ This link expires in 1 hour.</strong><br>
-                If you didn't request this password reset, you can safely ignore this email.
+              <div class="warning" style="background-color: #292524; border-left: 4px solid #f59e0b; padding: 12px; color: #e7e5e4;">
+                <strong style="color: #e7e5e4;">⚠️ This link expires in 1 hour.</strong><br>
+                <span style="color: #e7e5e4;">If you didn't request this password reset, you can safely ignore this email.</span>
               </div>
               
-              <p>If the button above doesn't work, copy and paste this link into your browser:</p>
+              <p style="color: #e7e5e4;">If the button above doesn't work, copy and paste this link into your browser:</p>
               <p style="word-break: break-all; color: #f59e0b; font-size: 12px;">${resetLink}</p>
             </div>
             
-            <div class="footer">
-              <p>This email was sent from Arcana Adventure.</p>
-              <p>For security reasons, this link will expire in 1 hour.</p>
+            <div class="footer" style="border-top: 1px solid #44403c; color: #a8a29e;">
+              <p style="color: #a8a29e;">This email was sent from Arcana Adventure.</p>
+              <p style="color: #a8a29e;">For security reasons, this link will expire in 1 hour.</p>
             </div>
           </div>
         </body>
