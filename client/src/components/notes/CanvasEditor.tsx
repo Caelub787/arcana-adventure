@@ -149,7 +149,9 @@ export function CanvasEditor({
   const dragStartRef = useRef<{ nodeId: string; startX: number; startY: number; nodeX: number; nodeY: number } | null>(null);
   const panStartRef = useRef<{ pointerX: number; pointerY: number; panX: number; panY: number } | null>(null);
   const resizeStartRef = useRef<{ nodeId: string; startX: number; startY: number; width: number; height: number } | null>(null);
-  const lastTouchDistanceRef = useRef<number | null>(null);
+  // Multi-touch pinch zoom tracking
+  const activePointersRef = useRef<Map<number, { x: number; y: number }>>(new Map());
+  const pinchStartRef = useRef<{ distance: number; midX: number; midY: number; zoom: number; panX: number; panY: number } | null>(null);
   
   const [noteSearchOpen, setNoteSearchOpen] = useState(false);
   const [noteSearchQuery, setNoteSearchQuery] = useState("");
@@ -518,68 +520,75 @@ export function CanvasEditor({
     }
   }, [canvasData.nodes]);
 
-  useEffect(() => {
+  // Unified multi-touch pinch zoom using pointer events
+  const handlePinchUpdate = useCallback(() => {
+    const pointers = Array.from(activePointersRef.current.values());
+    if (pointers.length !== 2) return;
+    
     const container = containerRef.current;
     if (!container) return;
-
-    const handleTouchStart = (e: TouchEvent) => {
-      if (e.touches.length === 2) {
-        const dx = e.touches[0].clientX - e.touches[1].clientX;
-        const dy = e.touches[0].clientY - e.touches[1].clientY;
-        lastTouchDistanceRef.current = Math.sqrt(dx * dx + dy * dy);
-      }
-    };
-
-    const handleTouchMove = (e: TouchEvent) => {
-      if (e.touches.length === 2 && lastTouchDistanceRef.current !== null) {
-        e.preventDefault();
-        userInteractedRef.current = true; // User pinch-zoomed manually
-        
-        const dx = e.touches[0].clientX - e.touches[1].clientX;
-        const dy = e.touches[0].clientY - e.touches[1].clientY;
-        const distance = Math.sqrt(dx * dx + dy * dy);
-        
-        const scale = distance / lastTouchDistanceRef.current;
-        const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoomRef.current * scale));
-        
-        const rect = container.getBoundingClientRect();
-        const centerX = (e.touches[0].clientX + e.touches[1].clientX) / 2 - rect.left;
-        const centerY = (e.touches[0].clientY + e.touches[1].clientY) / 2 - rect.top;
-        
-        const worldX = (centerX - panRef.current.x) / zoomRef.current;
-        const worldY = (centerY - panRef.current.y) / zoomRef.current;
-        
-        const newPan = {
-          x: centerX - worldX * newZoom,
-          y: centerY - worldY * newZoom,
-        };
-        
-        panRef.current = newPan;
-        zoomRef.current = newZoom;
-        lastTouchDistanceRef.current = distance;
-        setPan(newPan);
-        setZoom(newZoom);
-      }
-    };
-
-    const handleTouchEnd = () => {
-      lastTouchDistanceRef.current = null;
-    };
-
-    container.addEventListener("touchstart", handleTouchStart, { passive: true });
-    container.addEventListener("touchmove", handleTouchMove, { passive: false });
-    container.addEventListener("touchend", handleTouchEnd);
     
-    return () => {
-      container.removeEventListener("touchstart", handleTouchStart);
-      container.removeEventListener("touchmove", handleTouchMove);
-      container.removeEventListener("touchend", handleTouchEnd);
+    const rect = container.getBoundingClientRect();
+    const [p1, p2] = pointers;
+    
+    const dx = p1.x - p2.x;
+    const dy = p1.y - p2.y;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    const midX = (p1.x + p2.x) / 2 - rect.left;
+    const midY = (p1.y + p2.y) / 2 - rect.top;
+    
+    if (!pinchStartRef.current) {
+      // Initialize pinch gesture
+      pinchStartRef.current = {
+        distance,
+        midX,
+        midY,
+        zoom: zoomRef.current,
+        panX: panRef.current.x,
+        panY: panRef.current.y,
+      };
+      return;
+    }
+    
+    userInteractedRef.current = true;
+    
+    // Calculate scale from initial pinch distance
+    const scale = distance / pinchStartRef.current.distance;
+    const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, pinchStartRef.current.zoom * scale));
+    
+    // Calculate world point at initial pinch center
+    const worldX = (pinchStartRef.current.midX - pinchStartRef.current.panX) / pinchStartRef.current.zoom;
+    const worldY = (pinchStartRef.current.midY - pinchStartRef.current.panY) / pinchStartRef.current.zoom;
+    
+    // Pan to keep world point under current midpoint, plus any midpoint movement
+    const midDeltaX = midX - pinchStartRef.current.midX;
+    const midDeltaY = midY - pinchStartRef.current.midY;
+    
+    const newPan = {
+      x: midX - worldX * newZoom + midDeltaX,
+      y: midY - worldY * newZoom + midDeltaY,
     };
+    
+    panRef.current = newPan;
+    zoomRef.current = newZoom;
+    setPan(newPan);
+    setZoom(newZoom);
   }, []);
 
   const handleCanvasPointerDown = (e: React.PointerEvent) => {
     if (e.target !== e.currentTarget) return;
     if (e.button !== 0) return;
+    
+    // Track this pointer for multi-touch
+    activePointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    
+    // If 2+ fingers, handle as pinch gesture
+    if (activePointersRef.current.size >= 2) {
+      setIsPanning(false);
+      panStartRef.current = null;
+      handlePinchUpdate();
+      return;
+    }
     
     setSelectedNodeId(null);
     setSelectedConnectionId(null);
@@ -613,6 +622,17 @@ export function CanvasEditor({
   }, []);
 
   const handleCanvasPointerMove = (e: React.PointerEvent) => {
+    // Update tracked pointer position
+    if (activePointersRef.current.has(e.pointerId)) {
+      activePointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    }
+    
+    // Handle pinch gesture when 2 fingers are active
+    if (activePointersRef.current.size >= 2) {
+      handlePinchUpdate();
+      return; // Don't process other gestures during pinch
+    }
+    
     if (isConnecting && connectionStart) {
       const world = screenToWorld(e.clientX, e.clientY);
       setConnectionEnd(world);
@@ -667,6 +687,19 @@ export function CanvasEditor({
   };
 
   const handleCanvasPointerUp = (e: React.PointerEvent) => {
+    // Remove this pointer from tracking
+    activePointersRef.current.delete(e.pointerId);
+    
+    // Reset pinch state when fingers are released
+    if (activePointersRef.current.size < 2) {
+      pinchStartRef.current = null;
+    }
+    
+    // If still have one finger, don't reset pan state (could continue panning)
+    if (activePointersRef.current.size >= 1) {
+      return;
+    }
+    
     if (isConnecting && connectionStart) {
       const world = screenToWorld(e.clientX, e.clientY);
       const targetNode = findNodeAtPosition(world.x, world.y);
@@ -1151,6 +1184,7 @@ export function CanvasEditor({
               onPointerMove={handleCanvasPointerMove}
               onPointerUp={handleCanvasPointerUp}
               onPointerLeave={handleCanvasPointerUp}
+              onPointerCancel={handleCanvasPointerUp}
               data-testid="canvas-container"
             >
               <svg
