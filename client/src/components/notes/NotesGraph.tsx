@@ -35,11 +35,57 @@ const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 3;
 const DEFAULT_ZOOM = 0.8;
 const NODE_RADIUS = 8;
-const REPULSION_STRENGTH = 3000;
-const ATTRACTION_STRENGTH = 0.08;
-const DAMPING = 0.85;
-const MIN_DISTANCE = 80;
-const CENTER_GRAVITY = 0.01;
+
+// Golden angle for Fibonacci sphere distribution
+const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
+
+// Fibonacci sphere layout - distributes N points evenly on a sphere surface, then projects to 2D
+function layoutFibonacciSphere(nodes: GraphNode[], radius: number = 200): void {
+  const n = nodes.length;
+  if (n === 0) return;
+  
+  // Apply slight 3D rotation for visual interest (tilt the sphere)
+  const rotX = 0.3; // radians
+  const rotY = 0.5; // radians
+  const cosX = Math.cos(rotX);
+  const sinX = Math.sin(rotX);
+  const cosY = Math.cos(rotY);
+  const sinY = Math.sin(rotY);
+  
+  for (let i = 0; i < n; i++) {
+    // Fibonacci sphere: evenly distribute points on sphere surface
+    const y = 1 - (2 * (i + 0.5)) / n; // y goes from ~1 to ~-1
+    const r = Math.sqrt(1 - y * y); // radius at this y level
+    const theta = i * GOLDEN_ANGLE;
+    
+    // 3D coordinates on unit sphere
+    let x3d = r * Math.cos(theta);
+    let z3d = r * Math.sin(theta);
+    let y3d = y;
+    
+    // Apply rotation around X axis
+    const y1 = y3d * cosX - z3d * sinX;
+    const z1 = y3d * sinX + z3d * cosX;
+    y3d = y1;
+    z3d = z1;
+    
+    // Apply rotation around Y axis
+    const x1 = x3d * cosY + z3d * sinY;
+    const z2 = -x3d * sinY + z3d * cosY;
+    x3d = x1;
+    z3d = z2;
+    
+    // Project to 2D with slight perspective (nodes "further back" are slightly smaller/closer to center)
+    const perspective = 0.3;
+    const depth = (z3d + 1) / 2; // normalize to 0-1
+    const scale = 1 - perspective * (1 - depth);
+    
+    nodes[i].x = x3d * radius * scale;
+    nodes[i].y = y3d * radius * scale;
+    nodes[i].vx = 0;
+    nodes[i].vy = 0;
+  }
+}
 
 const FILTER_STORAGE_KEY = 'notesGraph.entityFilters';
 
@@ -177,25 +223,20 @@ function initializeNodes(
   skills: SystemSkill[],
   species: SystemSpecies[],
   items: ItemSummary[],
-  characters: Character[]
+  characters: Character[],
+  filters?: EntityFilters
 ): { nodes: GraphNodeExtended[]; entityMap: Map<string, GraphNodeExtended> } {
   const nodes: GraphNodeExtended[] = [];
   const entityMap = new Map<string, GraphNodeExtended>();
   
-  const totalCount = notes.length + spells.length + traits.length + skills.length + species.length + items.length + characters.length;
-  const radius = Math.max(200, Math.sqrt(totalCount) * 50);
-  let index = 0;
-  
   const addNode = (id: string, type: EntityType, name: string, description?: string, noteId?: string, characterId?: string, portrait?: string) => {
-    const angle = (index / totalCount) * Math.PI * 2;
-    const r = radius * (0.3 + Math.random() * 0.7);
     const node: GraphNodeExtended = {
       id,
       type,
       name,
       description,
-      x: Math.cos(angle) * r + (Math.random() - 0.5) * 100,
-      y: Math.sin(angle) * r + (Math.random() - 0.5) * 100,
+      x: 0,
+      y: 0,
       vx: 0,
       vy: 0,
       noteId,
@@ -204,7 +245,6 @@ function initializeNodes(
     };
     nodes.push(node);
     entityMap.set(id, node);
-    index++;
   };
 
   for (const note of notes) {
@@ -233,6 +273,20 @@ function initializeNodes(
 
   for (const char of characters) {
     addNode(`character-${char.id}`, 'character', char.name, char.biography, undefined, char.id, char.portrait);
+  }
+
+  // Apply Fibonacci sphere layout to visible nodes only
+  const activeFilters = filters || DEFAULT_FILTERS;
+  const visibleNodes = nodes.filter(n => activeFilters[n.type]);
+  const radius = Math.max(150, Math.min(400, visibleNodes.length * 8));
+  layoutFibonacciSphere(visibleNodes, radius);
+  
+  // Move hidden nodes off-screen
+  for (const node of nodes) {
+    if (!activeFilters[node.type]) {
+      node.x = 10000;
+      node.y = 10000;
+    }
   }
 
   return { nodes, entityMap };
