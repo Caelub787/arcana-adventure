@@ -130,6 +130,8 @@ export function CanvasEditor({
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedConnectionId, setSelectedConnectionId] = useState<string | null>(null);
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null); // Separate editing state
+  const [showDeleteNodeId, setShowDeleteNodeId] = useState<string | null>(null); // Long-press delete
+  const nodeLongPressTimerRef = useRef<NodeJS.Timeout | null>(null);
   
   const [isDragging, setIsDragging] = useState(false);
   const [isPanning, setIsPanning] = useState(false);
@@ -605,6 +607,7 @@ export function CanvasEditor({
     setSelectedNodeId(null);
     setSelectedConnectionId(null);
     setEditingNodeId(null); // Clear editing when clicking canvas background
+    setShowDeleteNodeId(null); // Hide delete button when clicking canvas background
     
     setIsPanning(true);
     panStartRef.current = {
@@ -713,27 +716,38 @@ export function CanvasEditor({
       return;
     }
     
-    if (isConnecting && connectionStart) {
+    // For drag-to-connect: complete connection if dropped on a valid target
+    if (isConnecting && connectionStart && isDragging === false) {
       const world = screenToWorld(e.clientX, e.clientY);
       const targetNode = findNodeAtPosition(world.x, world.y);
       if (targetNode && targetNode.id !== connectionStart.nodeId) {
-        const toSide = hoveredDropSide || "left";
+        const toSide = hoveredDropSide || getClosestSide(targetNode, world.x, world.y);
         addConnection(connectionStart.nodeId, targetNode.id, connectionStart.side, toSide);
+        // Reset connection state only after successful connection
+        setIsConnecting(false);
+        setConnectionStart(null);
+        setConnectionEnd(null);
+        setHoveredDropTarget(null);
+        setHoveredDropSide(null);
       }
+      // Don't reset connection state here for tap-to-connect workflow
+      // Connection persists until user taps another node or cancels via canvas tap
     }
     
     try {
       (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
     } catch {}
     
+    // Clear long-press timer
+    if (nodeLongPressTimerRef.current) {
+      clearTimeout(nodeLongPressTimerRef.current);
+      nodeLongPressTimerRef.current = null;
+    }
+    
     setIsPanning(false);
     setIsDragging(false);
     setIsResizing(false);
-    setIsConnecting(false);
-    setConnectionStart(null);
-    setConnectionEnd(null);
-    setHoveredDropTarget(null);
-    setHoveredDropSide(null);
+    // Don't clear connection state here - it persists for tap-to-connect
     setDraggingLabel(null);
     setResizingLabelId(null);
     labelResizeStartRef.current = null;
@@ -748,6 +762,17 @@ export function CanvasEditor({
     if (e.button !== 0) return;
     
     userInteractedRef.current = true; // Mark as user interaction to prevent view reset
+    
+    // Clear any existing long-press timer
+    if (nodeLongPressTimerRef.current) {
+      clearTimeout(nodeLongPressTimerRef.current);
+      nodeLongPressTimerRef.current = null;
+    }
+    
+    // Start long-press timer for delete button (700ms)
+    nodeLongPressTimerRef.current = setTimeout(() => {
+      setShowDeleteNodeId(node.id);
+    }, 700);
     
     // If we're in tap-to-connect mode (connection started), complete the connection
     if (isConnecting && connectionStart && connectionStart.nodeId !== node.id) {
@@ -765,6 +790,7 @@ export function CanvasEditor({
     setSelectedNodeId(node.id);
     setSelectedConnectionId(null);
     if (editingNodeId !== node.id) setEditingNodeId(null); // Clear editing when selecting different node
+    setShowDeleteNodeId(null); // Hide delete button on new selection
     
     setIsDragging(true);
     const world = screenToWorld(e.clientX, e.clientY);
@@ -783,6 +809,8 @@ export function CanvasEditor({
     e.stopPropagation();
     if (readOnly) return;
     if (e.button !== 0) return;
+    
+    userInteractedRef.current = true; // Mark as user interaction to prevent view reset
     
     setIsResizing(true);
     const world = screenToWorld(e.clientX, e.clientY);
@@ -1009,12 +1037,15 @@ export function CanvasEditor({
                 >{node.title || getDefaultTitle()}</span>
               )}
             </div>
-            {!readOnly && isSelected && (
+            {!readOnly && showDeleteNodeId === node.id && (
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-5 w-5 text-stone-400 hover:text-red-400 flex-shrink-0"
-                onClick={() => deleteNode(node.id)}
+                className="h-5 w-5 text-red-400 hover:text-red-300 flex-shrink-0 animate-pulse"
+                onClick={() => {
+                  deleteNode(node.id);
+                  setShowDeleteNodeId(null);
+                }}
                 data-testid={`delete-node-${node.id}`}
               >
                 <Trash2 className="h-3 w-3" />
@@ -1022,7 +1053,7 @@ export function CanvasEditor({
             )}
           </div>
           
-          <div className="flex-1 overflow-hidden">
+          <div className="flex-1 overflow-hidden border-t border-stone-700/50 pt-1 mt-1">
             {node.type === "text" && !readOnly && editingNodeId === node.id ? (
               <Textarea
                 value={node.content || ""}
