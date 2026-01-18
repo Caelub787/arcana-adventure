@@ -41,6 +41,36 @@ const DAMPING = 0.85;
 const MIN_DISTANCE = 80;
 const CENTER_GRAVITY = 0.01;
 
+const FILTER_STORAGE_KEY = 'notesGraph.entityFilters';
+
+type EntityFilters = Record<EntityType, boolean>;
+
+const DEFAULT_FILTERS: EntityFilters = {
+  note: true,
+  spell: true,
+  item: true,
+  trait: true,
+  skill: true,
+  species: true,
+  character: true,
+};
+
+function loadFilters(): EntityFilters {
+  try {
+    const stored = localStorage.getItem(FILTER_STORAGE_KEY);
+    if (stored) {
+      return { ...DEFAULT_FILTERS, ...JSON.parse(stored) };
+    }
+  } catch {}
+  return DEFAULT_FILTERS;
+}
+
+function saveFilters(filters: EntityFilters): void {
+  try {
+    localStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify(filters));
+  } catch {}
+}
+
 const NODE_COLORS: Record<EntityType, { fill: string; stroke: string; glow: string }> = {
   note: { fill: '#d946ef', stroke: '#e879f9', glow: 'rgba(217, 70, 239, 0.4)' },
   spell: { fill: '#ef4444', stroke: '#f87171', glow: 'rgba(239, 68, 68, 0.4)' },
@@ -213,8 +243,17 @@ export function NotesGraph({ notes, characters = [], onNoteClick, onCharacterCli
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [selectedNode, setSelectedNode] = useState<GraphNodeExtended | null>(null);
   const [showLabels, setShowLabels] = useState(false);
+  const [entityFilters, setEntityFilters] = useState<EntityFilters>(loadFilters);
   const isPanningRef = useRef(false);
   const isDraggingRef = useRef(false);
+  
+  const toggleFilter = useCallback((type: EntityType) => {
+    setEntityFilters(prev => {
+      const next = { ...prev, [type]: !prev[type] };
+      saveFilters(next);
+      return next;
+    });
+  }, []);
   const panStartRef = useRef<{ pointerX: number; pointerY: number; panX: number; panY: number; startedOnNode: GraphNodeExtended | null } | null>(null);
   const DRAG_THRESHOLD = 5;
 
@@ -539,9 +578,25 @@ export function NotesGraph({ notes, characters = [], onNoteClick, onCharacterCli
     return map;
   }, [nodes]);
 
+  // Apply entity type filters
+  const filteredNodes = useMemo(() => {
+    return nodes.filter(node => entityFilters[node.type]);
+  }, [nodes, entityFilters]);
+
+  const filteredNodeIds = useMemo(() => {
+    return new Set(filteredNodes.map(n => n.id));
+  }, [filteredNodes]);
+
+  const filteredEdges = useMemo(() => {
+    return edges.filter(edge => 
+      filteredNodeIds.has(edge.fromId) && filteredNodeIds.has(edge.toId)
+    );
+  }, [edges, filteredNodeIds]);
+
   const noteCount = notes.length;
   const characterCount = characters.length;
   const entityCount = spells.length + traits.length + skills.length + species.length + systemItems.length;
+  const visibleCount = filteredNodes.length;
 
   return (
     <div className="relative w-full h-full overflow-hidden bg-stone-950">
@@ -560,7 +615,7 @@ export function NotesGraph({ notes, characters = [], onNoteClick, onCharacterCli
           style={{ background: 'transparent' }}
         >
           <g transform={`translate(${pan.x}, ${pan.y}) scale(${zoom})`}>
-            {edges.map((edge, i) => {
+            {filteredEdges.map((edge, i) => {
               const fromNode = nodeMap.get(edge.fromId);
               const toNode = nodeMap.get(edge.toId);
               if (!fromNode || !toNode) return null;
@@ -585,7 +640,7 @@ export function NotesGraph({ notes, characters = [], onNoteClick, onCharacterCli
               );
             })}
 
-            {nodes.map((node) => {
+            {filteredNodes.map((node) => {
               const colors = NODE_COLORS[node.type];
               const connected = isConnected(node.id);
               const isHovered = hoveredNodeId === node.id;
@@ -796,7 +851,7 @@ export function NotesGraph({ notes, characters = [], onNoteClick, onCharacterCli
 
       <div className="absolute bottom-4 left-4 flex flex-col gap-1">
         <div className="text-xs text-stone-500">
-          {noteCount} notes • {characterCount} characters • {entityCount} entities • {edges.length} connections
+          {visibleCount} visible • {nodes.length} total • {filteredEdges.length} connections
           {isSimulating && " • Arranging..."}
         </div>
         <div className="flex flex-wrap gap-2 mt-1">
@@ -808,15 +863,30 @@ export function NotesGraph({ notes, characters = [], onNoteClick, onCharacterCli
             { type: 'trait' as EntityType, label: 'Traits' },
             { type: 'skill' as EntityType, label: 'Skills' },
             { type: 'species' as EntityType, label: 'Species' },
-          ].map(({ type, label }) => (
-            <div key={type} className="flex items-center gap-1">
-              <div
-                className="w-2.5 h-2.5 rounded-full"
-                style={{ backgroundColor: NODE_COLORS[type].fill }}
-              />
-              <span className="text-xs text-stone-500">{label}</span>
-            </div>
-          ))}
+          ].map(({ type, label }) => {
+            const isEnabled = entityFilters[type];
+            return (
+              <button
+                key={type}
+                onClick={() => toggleFilter(type)}
+                className={`flex items-center gap-1 px-1.5 py-0.5 rounded transition-all ${
+                  isEnabled 
+                    ? 'bg-stone-800/50 hover:bg-stone-700/50' 
+                    : 'bg-stone-900/30 opacity-50 hover:opacity-75'
+                }`}
+                data-testid={`filter-toggle-${type}`}
+                title={isEnabled ? `Hide ${label}` : `Show ${label}`}
+              >
+                <div
+                  className={`w-2.5 h-2.5 rounded-full transition-opacity ${isEnabled ? '' : 'opacity-40'}`}
+                  style={{ backgroundColor: NODE_COLORS[type].fill }}
+                />
+                <span className={`text-xs ${isEnabled ? 'text-stone-400' : 'text-stone-600 line-through'}`}>
+                  {label}
+                </span>
+              </button>
+            );
+          })}
         </div>
       </div>
     </div>
