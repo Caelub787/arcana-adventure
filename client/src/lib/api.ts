@@ -1570,9 +1570,12 @@ class ApiClient {
   }
 
   // Note Folder endpoints
-  async getNoteFolders(campaignId?: string): Promise<NoteFolder[]> {
-    const params = campaignId ? `?campaignId=${encodeURIComponent(campaignId)}` : '';
-    return this.request(`/notes/folders${params}`);
+  async getNoteFolders(campaignId?: string, showHidden?: boolean): Promise<NoteFolder[]> {
+    const params = new URLSearchParams();
+    if (campaignId) params.set('campaignId', campaignId);
+    if (showHidden) params.set('showHidden', 'true');
+    const queryString = params.toString();
+    return this.request(`/notes/folders${queryString ? `?${queryString}` : ''}`);
   }
 
   async createNoteFolder(folder: Partial<NoteFolder>): Promise<NoteFolder> {

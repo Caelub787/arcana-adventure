@@ -42,7 +42,7 @@ import {
   users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, items, spells, characterPermissions, initiativeEntries, systemSpecies, campaignSpecies, featTemplates, featTrees, feats, featConnections, characterFeats, systemSpells, systemSkills, characterCustomSkills, systemTraits, characterTraits, characterFolders, characterTemplateFolders, sceneFolders, friendRequests, friendships, noteFolders, notes, noteReferences, noteShares, tokenEffects, spellEffects, itemEffects, tokenActiveEffects, thrownItems
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, desc, sql, inArray, or } from "drizzle-orm";
+import { eq, and, desc, sql, inArray, or, isNull } from "drizzle-orm";
 
 export interface SearchableEntity {
   id: string;
@@ -310,7 +310,7 @@ export interface IStorage {
   // Note Folder operations
   createNoteFolder(folder: InsertNoteFolder): Promise<NoteFolder>;
   getNoteFolder(id: string): Promise<NoteFolder | undefined>;
-  getUserNoteFolders(userId: string, campaignId?: string): Promise<NoteFolder[]>;
+  getUserNoteFolders(userId: string, campaignId?: string, showHidden?: boolean): Promise<NoteFolder[]>;
   updateNoteFolder(id: string, data: Partial<NoteFolder>): Promise<NoteFolder | undefined>;
   deleteNoteFolder(id: string): Promise<void>;
 
@@ -2417,19 +2417,35 @@ export class DatabaseStorage implements IStorage {
     return folder;
   }
 
-  async getUserNoteFolders(userId: string, campaignId?: string): Promise<NoteFolder[]> {
+  async getUserNoteFolders(userId: string, campaignId?: string, showHidden?: boolean): Promise<NoteFolder[]> {
     if (campaignId) {
-      return await db.select()
-        .from(noteFolders)
-        .where(and(
-          eq(noteFolders.userId, userId),
-          eq(noteFolders.campaignId, campaignId)
-        ))
-        .orderBy(noteFolders.sortOrder);
+      if (showHidden) {
+        // Show all folders for the user (including those from other campaigns)
+        return await db.select()
+          .from(noteFolders)
+          .where(eq(noteFolders.userId, userId))
+          .orderBy(noteFolders.sortOrder);
+      } else {
+        // Show folders for this campaign OR global folders (null campaignId)
+        return await db.select()
+          .from(noteFolders)
+          .where(and(
+            eq(noteFolders.userId, userId),
+            or(
+              eq(noteFolders.campaignId, campaignId),
+              isNull(noteFolders.campaignId)
+            )
+          ))
+          .orderBy(noteFolders.sortOrder);
+      }
     }
+    // No campaign context - show only global folders (null campaignId)
     return await db.select()
       .from(noteFolders)
-      .where(eq(noteFolders.userId, userId))
+      .where(and(
+        eq(noteFolders.userId, userId),
+        isNull(noteFolders.campaignId)
+      ))
       .orderBy(noteFolders.sortOrder);
   }
 

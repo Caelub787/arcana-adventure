@@ -6347,7 +6347,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/notes/folders", requireAuth, async (req, res) => {
     try {
       const campaignId = req.query.campaignId as string | undefined;
-      const folders = await storage.getUserNoteFolders(req.session.userId!, campaignId);
+      const showHidden = req.query.showHidden === 'true';
+      const folders = await storage.getUserNoteFolders(req.session.userId!, campaignId, showHidden);
       res.json(folders);
     } catch (e) {
       console.error("Failed to get note folders:", e);

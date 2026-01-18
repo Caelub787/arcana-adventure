@@ -64,6 +64,7 @@ import {
   X,
   Edit,
   Eye,
+  EyeOff,
   Link2,
   Grid3X3,
   Network,
@@ -115,6 +116,7 @@ interface FolderTreeItemProps {
   onSelect: (id: string | null) => void;
   onContextMenu: (folder: NoteFolder) => void;
   level?: number;
+  currentCampaignId?: string;
 }
 
 function FolderTreeItem({
@@ -124,11 +126,16 @@ function FolderTreeItem({
   onSelect,
   onContextMenu,
   level = 0,
+  currentCampaignId,
 }: FolderTreeItemProps) {
   const [expanded, setExpanded] = useState(true);
   const children = folders.filter((f) => f.parentId === folder.id);
   const isSelected = selectedFolderId === folder.id;
   const hasChildren = children.length > 0;
+  
+  // Determine visibility status
+  const isGlobal = !folder.campaignId;
+  const isOtherCampaign = folder.campaignId && folder.campaignId !== currentCampaignId;
 
   return (
     <div>
@@ -136,6 +143,8 @@ function FolderTreeItem({
         className={`flex items-center gap-1 py-1 px-1.5 rounded cursor-pointer transition-colors text-xs ${
           isSelected
             ? "bg-amber-900/30 text-amber-400"
+            : isOtherCampaign
+            ? "hover:bg-stone-800/50 text-stone-500 opacity-60"
             : "hover:bg-stone-800/50 text-stone-300"
         }`}
         style={{ paddingLeft: `${level * 8 + 4}px` }}
@@ -165,6 +174,12 @@ function FolderTreeItem({
           <Folder className={`h-3 w-3 ${getFolderColorClass(folder.color)}`} />
         )}
         <span className="flex-1 truncate">{folder.name}</span>
+        {isGlobal && (
+          <Network className="h-2.5 w-2.5 text-stone-500" title="Global folder" />
+        )}
+        {isOtherCampaign && (
+          <EyeOff className="h-2.5 w-2.5 text-purple-400" title="Other campaign" />
+        )}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
@@ -196,6 +211,7 @@ function FolderTreeItem({
             onSelect={onSelect}
             onContextMenu={onContextMenu}
             level={level + 1}
+            currentCampaignId={currentCampaignId}
           />
         ))}
     </div>
@@ -227,6 +243,9 @@ export function CampaignNotesPanel({
   const [folderName, setFolderName] = useState("");
   const [folderColor, setFolderColor] = useState<string | null>(null);
   const [folderParentId, setFolderParentId] = useState<string | null>(null);
+
+  const [showHiddenFolders, setShowHiddenFolders] = useState(false);
+  const [folderCampaignAssignment, setFolderCampaignAssignment] = useState<string | null>(null);
 
   const [deleteNoteDialogOpen, setDeleteNoteDialogOpen] = useState(false);
   const [noteToDelete, setNoteToDelete] = useState<Note | null>(null);
@@ -265,8 +284,8 @@ export function CampaignNotesPanel({
   const lastLoadedNoteIdRef = useRef<string | null>(null);
 
   const { data: folders = [], isLoading: foldersLoading } = useQuery<NoteFolder[]>({
-    queryKey: ["/api/notes/folders", campaignId],
-    queryFn: () => api.getNoteFolders(campaignId),
+    queryKey: ["/api/notes/folders", campaignId, showHiddenFolders],
+    queryFn: () => api.getNoteFolders(campaignId, showHiddenFolders),
     enabled: !!user && isOpen,
   });
 
@@ -458,6 +477,7 @@ export function CampaignNotesPanel({
     setFolderName("");
     setFolderColor(null);
     setFolderParentId(null);
+    setFolderCampaignAssignment(campaignId);
   };
 
   const openFolderDialog = (folder?: NoteFolder) => {
@@ -466,6 +486,7 @@ export function CampaignNotesPanel({
       setFolderName(folder.name);
       setFolderColor(folder.color ?? null);
       setFolderParentId(folder.parentId ?? null);
+      setFolderCampaignAssignment(folder.campaignId ?? null);
     } else {
       setEditingFolder(null);
       resetFolderForm();
@@ -482,6 +503,7 @@ export function CampaignNotesPanel({
           name: folderName,
           color: folderColor,
           parentId: folderParentId,
+          campaignId: folderCampaignAssignment,
         },
       });
     } else {
@@ -489,7 +511,7 @@ export function CampaignNotesPanel({
         name: folderName,
         color: folderColor,
         parentId: folderParentId,
-        campaignId: campaignId,
+        campaignId: folderCampaignAssignment,
       });
     }
   };
@@ -918,6 +940,7 @@ export function CampaignNotesPanel({
                   setShowSharedNotes(false);
                 }}
                 onContextMenu={(f) => openFolderDialog(f)}
+                currentCampaignId={campaignId}
               />
             ))
           )}
@@ -937,6 +960,19 @@ export function CampaignNotesPanel({
         >
           <Users className="h-3 w-3" />
           <span>Shared</span>
+        </div>
+        <Separator className="my-1 bg-stone-800" />
+        <div
+          className={`flex items-center gap-1 py-1 px-1.5 rounded cursor-pointer transition-colors text-xs ${
+            showHiddenFolders
+              ? "bg-purple-900/30 text-purple-400"
+              : "hover:bg-stone-800/50 text-stone-400"
+          }`}
+          onClick={() => setShowHiddenFolders(!showHiddenFolders)}
+          data-testid="panel-toggle-hidden-folders"
+        >
+          {showHiddenFolders ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
+          <span className="truncate">{showHiddenFolders ? "Hide Others" : "Show Hidden"}</span>
         </div>
       </ScrollArea>
     </div>
@@ -1394,6 +1430,31 @@ export function CampaignNotesPanel({
                         {f.name}
                       </SelectItem>
                     ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Campaign Visibility</Label>
+              <Select
+                value={folderCampaignAssignment ?? "global"}
+                onValueChange={(v) => setFolderCampaignAssignment(v === "global" ? null : v)}
+              >
+                <SelectTrigger className="h-8 text-sm bg-stone-900 border-stone-700">
+                  <SelectValue placeholder="Select visibility" />
+                </SelectTrigger>
+                <SelectContent className="bg-stone-900 border-stone-700">
+                  <SelectItem value="global">
+                    <div className="flex items-center gap-2">
+                      <Network className="h-3 w-3 text-stone-400" />
+                      Global (visible everywhere)
+                    </div>
+                  </SelectItem>
+                  <SelectItem value={campaignId}>
+                    <div className="flex items-center gap-2">
+                      <Link2 className="h-3 w-3 text-amber-400" />
+                      This Campaign Only
+                    </div>
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </div>
