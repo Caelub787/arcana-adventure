@@ -207,25 +207,112 @@ export async function getImageBase64(fileId: string): Promise<string> {
   return `data:${mimeType};base64,${base64}`;
 }
 
-// Search for files by name
+// Get all folder IDs recursively under a parent folder (for recursive search)
+async function getAllFolderIds(parentId: string): Promise<string[]> {
+  const drive = await getGoogleDriveClient();
+  const allFolderIds: string[] = [parentId];
+  const foldersToProcess: string[] = [parentId];
+  
+  while (foldersToProcess.length > 0) {
+    const currentFolder = foldersToProcess.pop()!;
+    const response = await drive.files.list({
+      q: `mimeType='application/vnd.google-apps.folder' and trashed=false and '${currentFolder}' in parents`,
+      fields: 'files(id)',
+      pageSize: 100,
+    });
+    
+    const subfolders = response.data.files || [];
+    for (const folder of subfolders) {
+      if (folder.id) {
+        allFolderIds.push(folder.id);
+        foldersToProcess.push(folder.id);
+      }
+    }
+  }
+  
+  return allFolderIds;
+}
+
+// Cache for folder IDs to avoid repeated API calls
+let cachedFolderIds: string[] | null = null;
+let folderCacheTime = 0;
+const FOLDER_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+async function getAllowedFolderIds(): Promise<string[]> {
+  const now = Date.now();
+  if (cachedFolderIds && (now - folderCacheTime) < FOLDER_CACHE_TTL) {
+    return cachedFolderIds;
+  }
+  
+  cachedFolderIds = await getAllFolderIds(IMAGE_LIBRARY_ROOT_FOLDER_ID);
+  folderCacheTime = now;
+  console.log(`[GoogleDrive] Cached ${cachedFolderIds.length} allowed folder IDs`);
+  return cachedFolderIds;
+}
+
+// Search for files by name - RESTRICTED to allowed folder tree
 export async function searchImages(searchTerm: string, folderId?: string): Promise<{ id: string; name: string; thumbnailLink?: string; }[]> {
   const drive = await getGoogleDriveClient();
   
-  let query = `(mimeType contains 'image/') and trashed=false and name contains '${searchTerm.replace(/'/g, "\\'")}'`;
+  // Get allowed folder IDs for validation and search
+  const allowedFolderIds = await getAllowedFolderIds();
+  
+  // If a specific folder is provided, validate it's in the allowed tree
   if (folderId) {
-    query += ` and '${folderId}' in parents`;
+    if (!allowedFolderIds.includes(folderId)) {
+      console.warn(`[GoogleDrive] Search rejected: folderId ${folderId} not in allowed folder tree`);
+      return []; // Reject search in unauthorized folders
+    }
+    
+    const query = `(mimeType contains 'image/') and trashed=false and name contains '${searchTerm.replace(/'/g, "\\'")}' and '${folderId}' in parents`;
+    
+    const response = await drive.files.list({
+      q: query,
+      fields: 'files(id, name, thumbnailLink)',
+      orderBy: 'name',
+      pageSize: 50,
+    });
+
+    return (response.data.files || []).map(file => ({
+      id: file.id!,
+      name: file.name!,
+      thumbnailLink: file.thumbnailLink || undefined,
+    }));
   }
+  
+  // No folder specified - search recursively in all allowed folders
+  // allowedFolderIds already fetched above
+  
+  // Build query with all allowed folder IDs (OR conditions)
+  // Google Drive API has query length limits, so we batch if needed
+  const MAX_FOLDERS_PER_QUERY = 20;
+  const allResults: { id: string; name: string; thumbnailLink?: string; }[] = [];
+  
+  for (let i = 0; i < allowedFolderIds.length; i += MAX_FOLDERS_PER_QUERY) {
+    const folderBatch = allowedFolderIds.slice(i, i + MAX_FOLDERS_PER_QUERY);
+    const parentsClauses = folderBatch.map(id => `'${id}' in parents`).join(' or ');
+    const query = `(mimeType contains 'image/') and trashed=false and name contains '${searchTerm.replace(/'/g, "\\'")}' and (${parentsClauses})`;
+    
+    const response = await drive.files.list({
+      q: query,
+      fields: 'files(id, name, thumbnailLink)',
+      orderBy: 'name',
+      pageSize: 50,
+    });
 
-  const response = await drive.files.list({
-    q: query,
-    fields: 'files(id, name, thumbnailLink)',
-    orderBy: 'name',
-    pageSize: 50,
-  });
-
-  return (response.data.files || []).map(file => ({
-    id: file.id!,
-    name: file.name!,
-    thumbnailLink: file.thumbnailLink || undefined,
-  }));
+    const batchResults = (response.data.files || []).map(file => ({
+      id: file.id!,
+      name: file.name!,
+      thumbnailLink: file.thumbnailLink || undefined,
+    }));
+    
+    allResults.push(...batchResults);
+    
+    // Stop if we have enough results
+    if (allResults.length >= 50) break;
+  }
+  
+  // Dedupe and limit results
+  const uniqueResults = Array.from(new Map(allResults.map(r => [r.id, r])).values());
+  return uniqueResults.slice(0, 50);
 }
