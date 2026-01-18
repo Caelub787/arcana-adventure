@@ -1094,7 +1094,14 @@ export function CanvasEditor({
                   onChange={(e) => updateNode(node.id, { title: e.target.value })}
                   onClick={(e) => e.stopPropagation()}
                   onPointerDown={(e) => e.stopPropagation()}
-                  onBlur={() => setEditingNodeId(null)}
+                  onBlur={(e) => {
+                    // Only exit editing if focus moves outside the node
+                    const relatedTarget = e.relatedTarget as HTMLElement;
+                    const nodeElement = e.currentTarget.closest('[data-testid^="canvas-node-"]');
+                    if (!relatedTarget || !nodeElement?.contains(relatedTarget)) {
+                      setEditingNodeId(null);
+                    }
+                  }}
                   autoFocus
                   className="h-5 text-xs bg-stone-900/50 border-stone-700 px-1 py-0 flex-1 min-w-0"
                   data-testid={`input-node-title-${node.id}`}
@@ -1135,7 +1142,14 @@ export function CanvasEditor({
                 placeholder="Enter text..."
                 onClick={(e) => e.stopPropagation()}
                 onPointerDown={(e) => e.stopPropagation()}
-                onBlur={() => setEditingNodeId(null)}
+                onBlur={(e) => {
+                  // Only exit editing if focus moves outside the node
+                  const relatedTarget = e.relatedTarget as HTMLElement;
+                  const nodeElement = e.currentTarget.closest('[data-testid^="canvas-node-"]');
+                  if (!relatedTarget || !nodeElement?.contains(relatedTarget)) {
+                    setEditingNodeId(null);
+                  }
+                }}
                 data-testid={`textarea-node-${node.id}`}
               />
             ) : node.type === "text" ? (
