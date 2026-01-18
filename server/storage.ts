@@ -172,6 +172,7 @@ export interface IStorage {
   getCharacterPermission(characterId: string, userId: string): Promise<CharacterPermission | undefined>;
   getUserPermissionsForCharacters(userId: string, characterIds: string[]): Promise<CharacterPermission[]>;
   getCharacterPermissionsForUsers(characterId: string, userIds: string[]): Promise<CharacterPermission[]>;
+  getUserAccessibleCharacters(userId: string): Promise<Character[]>;
 
   // Campaign Membership Check
   isCampaignMember(campaignId: string, userId: string): Promise<boolean>;
@@ -1661,6 +1662,46 @@ export class DatabaseStorage implements IStorage {
         eq(characterPermissions.characterId, characterId),
         inArray(characterPermissions.userId, userIds)
       ));
+  }
+
+  async getUserAccessibleCharacters(userId: string): Promise<Character[]> {
+    // Get all characters from campaigns the user is in (as GM or player)
+    // Also get characters the user owns directly
+    const userCampaigns = await db.select()
+      .from(campaigns)
+      .where(eq(campaigns.gmUserId, userId));
+    
+    const userMemberships = await db.select()
+      .from(campaignMembers)
+      .where(eq(campaignMembers.userId, userId));
+    
+    const campaignIds = [
+      ...userCampaigns.map(c => c.id),
+      ...userMemberships.map(m => m.campaignId)
+    ];
+    
+    if (campaignIds.length === 0) {
+      // Just return characters owned by user
+      return db.select()
+        .from(characters)
+        .where(and(
+          eq(characters.userId, userId),
+          sql`${characters.isTemplate} IS NOT TRUE`
+        )) as Promise<Character[]>;
+    }
+    
+    // Get characters from user's campaigns plus characters they own
+    const result = await db.select()
+      .from(characters)
+      .where(and(
+        or(
+          inArray(characters.campaignId, campaignIds),
+          eq(characters.userId, userId)
+        ),
+        sql`${characters.isTemplate} IS NOT TRUE`
+      )) as Character[];
+    
+    return result;
   }
 
   async isCampaignMember(campaignId: string, userId: string): Promise<boolean> {

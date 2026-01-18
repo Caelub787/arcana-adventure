@@ -5111,7 +5111,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const itemList = await storage.getSystemItems();
       res.json(itemList);
     } catch (err) {
+      console.error('[system-items] Error fetching system items:', err);
       res.status(500).json({ error: "Failed to fetch system items" });
+    }
+  });
+
+  // Get all characters the user has access to (for notes graph)
+  app.get("/api/my-characters", requireAuth, async (req, res) => {
+    try {
+      const characters = await storage.getUserAccessibleCharacters(req.session.userId!);
+      res.json(characters);
+    } catch (err) {
+      console.error('[my-characters] Error fetching user characters:', err);
+      res.status(500).json({ error: "Failed to fetch characters" });
     }
   });
 

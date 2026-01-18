@@ -299,9 +299,30 @@ export function NotesGraph({ notes, characters = [], onNoteClick, onCharacterCli
     staleTime: 60000,
   });
 
+  // Fetch all characters the user has access to (from all campaigns)
+  const { data: myCharacters = [] } = useQuery({
+    queryKey: ['/api/my-characters'],
+    queryFn: () => api.getMyCharacters().catch(() => []),
+    staleTime: 60000,
+  });
+
+  // Combine prop characters with fetched characters, deduplicating by ID
+  const allCharacters = useMemo(() => {
+    const charMap = new Map<string, typeof characters[0]>();
+    for (const char of characters) {
+      charMap.set(char.id, char);
+    }
+    for (const char of myCharacters) {
+      if (!charMap.has(char.id)) {
+        charMap.set(char.id, char);
+      }
+    }
+    return Array.from(charMap.values());
+  }, [characters, myCharacters]);
+
   const { nodes: initialNodes, entityMap } = useMemo(
-    () => initializeNodes(notes, spells, traits, skills, species, systemItems, characters),
-    [notes, spells, traits, skills, species, systemItems, characters]
+    () => initializeNodes(notes, spells, traits, skills, species, systemItems, allCharacters),
+    [notes, spells, traits, skills, species, systemItems, allCharacters]
   );
 
   const edges = useMemo(() => parseConnections(notes, entityMap), [notes, entityMap]);
@@ -310,21 +331,24 @@ export function NotesGraph({ notes, characters = [], onNoteClick, onCharacterCli
   const [isSimulating, setIsSimulating] = useState(true);
 
   useEffect(() => {
-    const { nodes: newNodes, entityMap: newEntityMap } = initializeNodes(notes, spells, traits, skills, species, systemItems, characters);
+    const { nodes: newNodes, entityMap: newEntityMap } = initializeNodes(notes, spells, traits, skills, species, systemItems, allCharacters);
     setNodes(newNodes);
     nodesRef.current = newNodes;
     setIsSimulating(true);
-  }, [notes, spells, traits, skills, species, systemItems, characters]);
+  }, [notes, spells, traits, skills, species, systemItems, allCharacters]);
 
   // Restart simulation when filters change to re-form the layout
-  const prevFiltersRef = useRef(entityFilters);
+  const prevFiltersStringRef = useRef(JSON.stringify(entityFilters));
   useEffect(() => {
-    // Skip initial mount
-    if (prevFiltersRef.current === entityFilters) return;
-    prevFiltersRef.current = entityFilters;
+    const currentFiltersString = JSON.stringify(entityFilters);
+    // Skip if filters haven't actually changed
+    if (prevFiltersStringRef.current === currentFiltersString) return;
+    prevFiltersStringRef.current = currentFiltersString;
     
     // Reinitialize positions to random spots near center and restart simulation
     const currentNodes = nodesRef.current;
+    if (currentNodes.length === 0) return;
+    
     const angle = (2 * Math.PI) / currentNodes.length;
     const radius = Math.min(200, currentNodes.length * 8);
     
@@ -648,7 +672,7 @@ export function NotesGraph({ notes, characters = [], onNoteClick, onCharacterCli
   }, [edges, filteredNodeIds]);
 
   const noteCount = notes.length;
-  const characterCount = characters.length;
+  const characterCount = allCharacters.length;
   const entityCount = spells.length + traits.length + skills.length + species.length + systemItems.length;
   const visibleCount = filteredNodes.length;
 

@@ -961,6 +961,11 @@ class ApiClient {
     return this.request('/system-items');
   }
 
+  // Get all characters the user has access to (for notes graph)
+  async getMyCharacters(): Promise<Character[]> {
+    return this.request('/my-characters');
+  }
+
   async createSystemItem(item: Partial<Item>): Promise<Item> {
     return this.request('/admin/system-items', {
       method: 'POST',
