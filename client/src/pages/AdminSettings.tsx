@@ -6204,13 +6204,13 @@ function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading }:
                       </Select>
                     </div>
                     <div>
-                      <Label>AoE Range (feet)</Label>
+                      <Label>AoE Diameter (feet)</Label>
                       <Input
                         type="number"
                         min="0"
                         value={formData.aoeRange}
                         onChange={(e) => handleNumericChange('aoeRange', e.target.value)}
-                        placeholder="e.g. 15"
+                        placeholder="e.g. 30 (6 squares)"
                         className="bg-stone-800 border-stone-700"
                         data-testid="input-spell-aoe-range"
                       />
@@ -6818,13 +6818,14 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
                               </Select>
                             </div>
                             <div>
-                              <Label>AOE Range (ft)</Label>
+                              <Label>AOE Diameter (ft)</Label>
                               <Input
                                 type="number"
                                 min={5}
                                 step={5}
                                 value={formData.throwableAoeRange}
                                 onChange={(e) => setFormData({ ...formData, throwableAoeRange: e.target.value === '' ? '' : parseInt(e.target.value) })}
+                                placeholder="e.g. 30 (6 squares)"
                                 className="bg-stone-800 border-stone-700"
                                 data-testid="input-throwable-aoe-range"
                               />

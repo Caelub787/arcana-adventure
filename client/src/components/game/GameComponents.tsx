@@ -2132,7 +2132,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                               <p className="text-xs text-stone-400 mb-2">{item.description}</p>
                             )}
                             {hasAoe && (
-                              <p className="text-xs text-orange-400">AOE: {item.throwableAoeRange}ft radius</p>
+                              <p className="text-xs text-orange-400">AOE: {item.throwableAoeRange}ft diameter</p>
                             )}
                             <p className="text-xs text-stone-500 mt-1">Attached to token</p>
                             {isGM && onDeleteThrownItem && (
@@ -2176,10 +2176,12 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
           
           const effectiveGridSize = scene?.gridSize || gridSize;
           const item = thrownItem.item!;
+          // AOE stat is the diameter (edge-to-edge distance), not radius
+          // 30ft AOE = 6 squares diameter = 3 squares radius
           const aoeRangeInFeet = item.throwableAoeRange || 0;
           const feetPerCell = 5;
-          const aoeRadiusCells = aoeRangeInFeet / feetPerCell;
-          const aoeRadiusPixels = aoeRadiusCells * effectiveGridSize;
+          const aoeDiameterCells = aoeRangeInFeet / feetPerCell;
+          const aoeRadiusPixels = (aoeDiameterCells / 2) * effectiveGridSize;
           
           if (aoeRadiusPixels <= 0 || !item.throwableAoe) return null;
           
@@ -2214,10 +2216,12 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
           const gridThickness = scene?.gridThickness ?? 1;
           const tokenOffset = gridThickness + (effectiveGridSize - itemSize) / 2;
           
+          // AOE stat is the diameter (edge-to-edge distance), not radius
+          // 30ft AOE = 6 squares diameter = 3 squares radius
           const aoeRangeInFeet = item.throwableAoeRange || 0;
           const feetPerCell = 5;
-          const aoeRadiusCells = aoeRangeInFeet / feetPerCell;
-          const aoeRadiusPixels = aoeRadiusCells * effectiveGridSize;
+          const aoeDiameterCells = aoeRangeInFeet / feetPerCell;
+          const aoeRadiusPixels = (aoeDiameterCells / 2) * effectiveGridSize;
           
           return (
             <div key={thrownItem.id} data-testid={`thrown-item-${thrownItem.id}`}>
@@ -2496,8 +2500,11 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
           const [parsedShape, parsedRadius] = aoeField.split(':');
           const aoeShape = (parsedShape || 'circle').toLowerCase();
           const aoeRangeFeet = parseInt(parsedRadius, 10) || 15;
-          // aoeRangeFeet is the radius in feet (5ft = 1 grid cell)
-          const radiusPixels = (aoeRangeFeet / 5) * (scene?.gridSize || gridSize);
+          // AOE stat is the diameter (edge-to-edge distance), not radius
+          // 30ft AOE = 6 squares diameter = 3 squares radius
+          const effectiveGridSize = scene?.gridSize || gridSize;
+          const aoeDiameterCells = aoeRangeFeet / 5;
+          const radiusPixels = (aoeDiameterCells / 2) * effectiveGridSize;
           const { center, locked } = aoeTargetState;
           
           const casterToken = tokens.find(t => t.id === aoeTargetState.casterTokenId);
@@ -2626,8 +2633,11 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
           const item = aoeTargetState.throwableItem;
           const aoeShape = (item.throwableAoeShape || 'circle').toLowerCase();
           const aoeRangeFeet = item.throwableAoeRange || 10;
-          // aoeRangeFeet is the radius in feet (5ft = 1 grid cell)
-          const radiusPixels = (aoeRangeFeet / 5) * (scene?.gridSize || gridSize);
+          // AOE stat is the diameter (edge-to-edge distance), not radius
+          // 30ft AOE = 6 squares diameter = 3 squares radius
+          const effectiveGridSize = scene?.gridSize || gridSize;
+          const aoeDiameterCells = aoeRangeFeet / 5;
+          const radiusPixels = (aoeDiameterCells / 2) * effectiveGridSize;
           const { center, locked } = aoeTargetState;
           
           const casterToken = tokens.find(t => t.id === aoeTargetState.casterTokenId);
@@ -2729,8 +2739,11 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
           const [parsedShape, parsedRadius] = aoeField.split(':');
           const aoeShape = (parsedShape || 'circle').toLowerCase();
           const aoeRangeFeet = parseInt(parsedRadius, 10) || 15;
-          // aoeRangeFeet is the radius in feet (5ft = 1 grid cell)
-          const radiusPixels = (aoeRangeFeet / 5) * (scene?.gridSize || gridSize);
+          // AOE stat is the diameter (edge-to-edge distance), not radius
+          // 30ft AOE = 6 squares diameter = 3 squares radius
+          const effectiveGridSize = scene?.gridSize || gridSize;
+          const aoeDiameterCells = aoeRangeFeet / 5;
+          const radiusPixels = (aoeDiameterCells / 2) * effectiveGridSize;
           const { center, locked: playerLocked } = playerAoe;
           
           // Different colors for other players - use orange/amber theme
@@ -5349,7 +5362,7 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
         {displayQuantity !== null && <p className="text-sm text-amber-400">Total Quantity: x{displayQuantity}</p>}
         {itemData.durability !== undefined && <p className="text-sm">Durability: {itemData.durability}/10</p>}
         {itemData.isThrowable && itemData.throwableAoeRange && (
-          <p className="text-sm text-orange-400">AOE Range: {itemData.throwableAoeRange}ft ({itemData.throwableAoeShape || 'circle'})</p>
+          <p className="text-sm text-orange-400">AOE: {itemData.throwableAoeRange}ft diameter ({itemData.throwableAoeShape || 'circle'})</p>
         )}
         {isThrowableClickable ? (
           <p className="text-xs text-stone-400 mt-1">Click: Throw | 2x: Damage | 3x: Detonate AOE</p>

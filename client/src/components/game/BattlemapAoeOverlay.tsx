@@ -37,7 +37,11 @@ export function BattlemapAoeOverlay({
     aoeRangeFeet = spell.aoeRange || 15;
   }
   const spellRangeFeet = spell.rangeNum || 30;
-  const radiusPixels = (aoeRangeFeet / 5) * gridSize;
+  // AOE stat is the diameter (edge-to-edge distance), not radius
+  // 30ft AOE = 6 squares diameter = 3 squares radius
+  // Each grid square = 5ft
+  const diameterInCells = aoeRangeFeet / 5;
+  const radiusPixels = (diameterInCells / 2) * gridSize;
 
   const casterX = casterToken ? casterToken.x + gridSize / 2 : 0;
   const casterY = casterToken ? casterToken.y + gridSize / 2 : 0;

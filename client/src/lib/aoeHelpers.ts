@@ -142,8 +142,11 @@ export function getTokensInAoe(
     aoeRangeFeet = spell.aoeRange || 15;
   }
   
-  // aoeRangeFeet is the radius in feet (5ft = 1 grid cell)
-  const radiusPixels = (aoeRangeFeet / 5) * gridSize;
+  // AOE stat is the diameter (edge-to-edge distance), not radius
+  // 30ft AOE = 6 squares diameter = 3 squares radius
+  // Each grid square = 5ft
+  const diameterInCells = aoeRangeFeet / 5;
+  const radiusPixels = (diameterInCells / 2) * gridSize;
   
   // Width for line/cone (in grid cells, default to 1 cell = 5 feet)
   const widthPixels = aoeWidth ? (aoeWidth / 5) * gridSize : gridSize;
