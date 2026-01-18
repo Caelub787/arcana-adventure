@@ -393,71 +393,31 @@ export function NotesGraph({ notes, characters = [], onNoteClick, onCharacterCli
   }, [allCharactersKey]);
 
   const { nodes: initialNodes, entityMap } = useMemo(
-    () => initializeNodes(notes, spells, traits, skills, species, systemItems, allCharacters),
-    [notes, spells, traits, skills, species, systemItems, allCharacters]
+    () => initializeNodes(notes, spells, traits, skills, species, systemItems, allCharacters, entityFilters),
+    [notes, spells, traits, skills, species, systemItems, allCharacters, entityFilters]
   );
 
   const edges = useMemo(() => parseConnections(notes, entityMap), [notes, entityMap]);
   const [nodes, setNodes] = useState<GraphNodeExtended[]>(initialNodes);
   const nodesRef = useRef<GraphNodeExtended[]>(initialNodes);
-  const [isSimulating, setIsSimulating] = useState(true);
+  const [layoutComplete, setLayoutComplete] = useState(false);
 
   // Track previous data keys to prevent unnecessary re-initialization
   const prevDataKeyRef = useRef('');
+  const prevFiltersKeyRef = useRef(JSON.stringify(entityFilters));
   useEffect(() => {
     const dataKey = `${notes.map(n => n.id).join(',')}|${spells.length}|${traits.length}|${skills.length}|${species.length}|${systemItems.length}|${allCharactersKey}`;
-    if (prevDataKeyRef.current === dataKey) return;
-    prevDataKeyRef.current = dataKey;
+    const filtersKey = JSON.stringify(entityFilters);
     
-    const { nodes: newNodes } = initializeNodes(notes, spells, traits, skills, species, systemItems, allCharacters);
+    if (prevDataKeyRef.current === dataKey && prevFiltersKeyRef.current === filtersKey) return;
+    prevDataKeyRef.current = dataKey;
+    prevFiltersKeyRef.current = filtersKey;
+    
+    const { nodes: newNodes } = initializeNodes(notes, spells, traits, skills, species, systemItems, allCharacters, entityFilters);
     setNodes(newNodes);
     nodesRef.current = newNodes;
-    setIsSimulating(true);
-  }, [notes, spells, traits, skills, species, systemItems, allCharacters, allCharactersKey]);
-
-  // Restart simulation when filters change to re-form the layout
-  // Only position VISIBLE nodes in a circle, ignoring hidden ones
-  const prevFiltersStringRef = useRef(JSON.stringify(entityFilters));
-  useEffect(() => {
-    const currentFiltersString = JSON.stringify(entityFilters);
-    // Skip if filters haven't actually changed
-    if (prevFiltersStringRef.current === currentFiltersString) return;
-    prevFiltersStringRef.current = currentFiltersString;
-    
-    // Get only the visible nodes based on current filters
-    const currentNodes = nodesRef.current;
-    if (currentNodes.length === 0) return;
-    
-    const visibleNodes = currentNodes.filter(n => entityFilters[n.type]);
-    if (visibleNodes.length === 0) return;
-    
-    // Position only visible nodes in a proper circle
-    const angle = (2 * Math.PI) / visibleNodes.length;
-    const radius = Math.max(100, Math.min(300, visibleNodes.length * 12));
-    
-    for (let i = 0; i < visibleNodes.length; i++) {
-      const node = visibleNodes[i];
-      const a = angle * i;
-      node.x = Math.cos(a) * radius;
-      node.y = Math.sin(a) * radius;
-      node.vx = 0;
-      node.vy = 0;
-    }
-    
-    // Move hidden nodes far off-screen so they don't interfere with simulation
-    for (const node of currentNodes) {
-      if (!entityFilters[node.type]) {
-        node.x = 10000 + Math.random() * 1000;
-        node.y = 10000 + Math.random() * 1000;
-        node.vx = 0;
-        node.vy = 0;
-      }
-    }
-    
-    nodesRef.current = [...currentNodes];
-    setNodes([...currentNodes]);
-    setIsSimulating(true);
-  }, [entityFilters]);
+    setLayoutComplete(true);
+  }, [notes, spells, traits, skills, species, systemItems, allCharacters, allCharactersKey, entityFilters]);
 
   const connectedNodesMap = useMemo(() => {
     const map = new Map<string, Set<string>>();
@@ -469,85 +429,6 @@ export function NotesGraph({ notes, characters = [], onNoteClick, onCharacterCli
     }
     return map;
   }, [edges]);
-
-  useEffect(() => {
-    if (!isSimulating) return;
-
-    let iterations = 0;
-    const maxIterations = 300;
-
-    const simulate = () => {
-      const currentNodes = nodesRef.current;
-      if (currentNodes.length === 0) {
-        setIsSimulating(false);
-        return;
-      }
-
-      for (let i = 0; i < currentNodes.length; i++) {
-        let fx = 0;
-        let fy = 0;
-
-        for (let j = 0; j < currentNodes.length; j++) {
-          if (i === j) continue;
-          const dx = currentNodes[i].x - currentNodes[j].x;
-          const dy = currentNodes[i].y - currentNodes[j].y;
-          const distSq = dx * dx + dy * dy;
-          const dist = Math.sqrt(distSq) || 1;
-
-          const repulsion = REPULSION_STRENGTH / distSq;
-          fx += (dx / dist) * repulsion;
-          fy += (dy / dist) * repulsion;
-        }
-
-        const connected = connectedNodesMap.get(currentNodes[i].id);
-        if (connected) {
-          for (const otherId of Array.from(connected)) {
-            const other = currentNodes.find((n) => n.id === otherId);
-            if (!other) continue;
-
-            const dx = other.x - currentNodes[i].x;
-            const dy = other.y - currentNodes[i].y;
-            const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-
-            const attraction = (dist - MIN_DISTANCE) * ATTRACTION_STRENGTH;
-            fx += (dx / dist) * attraction;
-            fy += (dy / dist) * attraction;
-          }
-        }
-
-        fx -= currentNodes[i].x * CENTER_GRAVITY;
-        fy -= currentNodes[i].y * CENTER_GRAVITY;
-
-        currentNodes[i].vx = (currentNodes[i].vx + fx) * DAMPING;
-        currentNodes[i].vy = (currentNodes[i].vy + fy) * DAMPING;
-      }
-
-      let maxVelocity = 0;
-      for (const node of currentNodes) {
-        node.x += node.vx;
-        node.y += node.vy;
-        maxVelocity = Math.max(maxVelocity, Math.abs(node.vx), Math.abs(node.vy));
-      }
-
-      nodesRef.current = [...currentNodes];
-      setNodes([...currentNodes]);
-
-      iterations++;
-      if (maxVelocity < 0.05 || iterations >= maxIterations) {
-        setIsSimulating(false);
-      } else {
-        animationRef.current = requestAnimationFrame(simulate);
-      }
-    };
-
-    animationRef.current = requestAnimationFrame(simulate);
-
-    return () => {
-      if (animationRef.current) {
-        cancelAnimationFrame(animationRef.current);
-      }
-    };
-  }, [isSimulating, connectedNodesMap]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -765,10 +646,11 @@ export function NotesGraph({ notes, characters = [], onNoteClick, onCharacterCli
   }, [nodes]);
 
   useEffect(() => {
-    if (!isSimulating && nodes.length > 0) {
+    if (layoutComplete && nodes.length > 0) {
       resetView();
+      setLayoutComplete(false);
     }
-  }, [isSimulating]);
+  }, [layoutComplete, nodes.length, resetView]);
 
   const handleZoomIn = () => {
     const newZoom = Math.min(MAX_ZOOM, zoomRef.current * 1.3);
@@ -1148,7 +1030,6 @@ export function NotesGraph({ notes, characters = [], onNoteClick, onCharacterCli
       <div className="absolute bottom-4 left-4">
         <div className="text-xs text-stone-500">
           {visibleCount} visible • {nodes.length} total • {filteredEdges.length} connections
-          {isSimulating && " • Arranging..."}
         </div>
       </div>
     </div>
