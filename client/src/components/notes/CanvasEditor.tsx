@@ -875,9 +875,12 @@ export function CanvasEditor({
     });
     setSelectedNodeId(node.id);
     
-    // Don't capture pointer - this allows tap-to-connect workflow on mobile
-    // The connection will follow pointer moves via handleCanvasPointerMove
-    // and complete on tap via handleNodePointerDown or cancel on canvas tap
+    // Track this pointer and capture on canvas for drag-to-connect
+    // This enables drag-to-connect while still supporting tap-to-connect
+    activePointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (containerRef.current) {
+      containerRef.current.setPointerCapture(e.pointerId);
+    }
   };
 
   const handleNoteSelect = useCallback((note: Note) => {
