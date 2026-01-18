@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useLocation, useParams } from "wouter";
 import { motion } from "framer-motion";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, Note, NoteFolder, NoteShare, UserProfile, SystemSpell, SystemSkill, SystemTrait, SystemSpecies, Item } from "@/lib/api";
+import { api, Note, NoteFolder, NoteShare, UserProfile, SystemSpell, SystemSkill, SystemTrait, SystemSpecies, Item, noteWs, NotePresence } from "@/lib/api";
 import { useAuth } from "@/lib/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -294,6 +294,14 @@ export default function Notes() {
   const [notePreviewDialogOpen, setNotePreviewDialogOpen] = useState(false);
   const [previewNote, setPreviewNote] = useState<Note | null>(null);
 
+  // Live collaboration state
+  const [remotePresence, setRemotePresence] = useState<NotePresence[]>([]);
+  const isReceivingRemoteUpdateRef = useRef(false);
+  const lastLocalUpdateRef = useRef<number>(0);
+  const hasInitializedCollabRef = useRef(false);
+  const lastSentContentRef = useRef<{ title: string; content: string } | null>(null);
+  const lastSentCanvasRef = useRef<string | null>(null);
+
   const noteId = params.id;
   const isEditing = !!noteId;
 
@@ -367,6 +375,153 @@ export default function Notes() {
       }
     }
   }, [currentNote]);
+
+  // Join/leave note rooms for live collaboration
+  useEffect(() => {
+    if (noteId && user) {
+      // Join the note room
+      noteWs.joinNote(noteId);
+      setRemotePresence([]);
+      
+      // Cleanup: leave note room when unmounting or changing notes
+      return () => {
+        noteWs.leaveNote(noteId);
+        setRemotePresence([]);
+      };
+    }
+  }, [noteId, user]);
+
+  // Handle incoming WebSocket messages for note collaboration
+  useEffect(() => {
+    if (!noteId) return;
+
+    const handleMessage = (data: any) => {
+      // Only process messages for the current note
+      if (data.noteId !== noteId) return;
+
+      switch (data.type) {
+        case 'note_joined':
+          // Initial presence list when joining
+          setRemotePresence(data.presence?.filter((p: NotePresence) => p.userId !== user?.id) || []);
+          break;
+
+        case 'note_presence_update':
+          if (data.action === 'joined') {
+            setRemotePresence(prev => {
+              if (prev.some(p => p.userId === data.userId)) return prev;
+              return [...prev, { 
+                userId: data.userId, 
+                username: data.username, 
+                lastActive: Date.now() 
+              }];
+            });
+          } else if (data.action === 'left') {
+            setRemotePresence(prev => prev.filter(p => p.userId !== data.userId));
+          }
+          break;
+
+        case 'note_update':
+          // Ignore our own updates and updates that arrived shortly after our local change
+          if (data.userId === user?.id) return;
+          if (Date.now() - lastLocalUpdateRef.current < 500) return;
+          
+          // Apply remote changes
+          isReceivingRemoteUpdateRef.current = true;
+          if (data.title !== undefined) {
+            setNoteTitle(data.title);
+          }
+          if (data.content !== undefined) {
+            setNoteContent(data.content);
+          }
+          if (data.canvasData !== undefined) {
+            try {
+              const parsed = typeof data.canvasData === 'string' 
+                ? JSON.parse(data.canvasData) 
+                : data.canvasData;
+              setCanvasData(parsed);
+            } catch (e) {
+              console.error('Failed to parse remote canvas data:', e);
+            }
+          }
+          // Small delay to allow state to settle before re-enabling local updates
+          setTimeout(() => { isReceivingRemoteUpdateRef.current = false; }, 100);
+          break;
+
+        case 'cursor_update':
+          // Update remote user's cursor position
+          setRemotePresence(prev => 
+            prev.map(p => p.userId === data.userId 
+              ? { ...p, cursorPosition: data.cursorPosition, lastActive: Date.now() }
+              : p
+            )
+          );
+          break;
+      }
+    };
+
+    const unsubscribe = noteWs.onMessage(handleMessage);
+    return () => unsubscribe();
+  }, [noteId, user?.id]);
+
+  // Broadcast local changes via WebSocket (alongside the save)
+  useEffect(() => {
+    // Skip if no note, receiving remote update, or not initialized yet
+    if (!noteId || isReceivingRemoteUpdateRef.current) return;
+    
+    // Skip initial mount - only broadcast after first change
+    if (!hasInitializedCollabRef.current) {
+      hasInitializedCollabRef.current = true;
+      lastSentContentRef.current = { title: debouncedTitle, content: debouncedContent };
+      return;
+    }
+    
+    // Skip if content hasn't actually changed (prevents ping-pong)
+    const lastSent = lastSentContentRef.current;
+    if (lastSent && lastSent.title === debouncedTitle && lastSent.content === debouncedContent) {
+      return;
+    }
+    
+    // Track that we made a local update
+    lastLocalUpdateRef.current = Date.now();
+    lastSentContentRef.current = { title: debouncedTitle, content: debouncedContent };
+    
+    // Send update to other collaborators
+    noteWs.sendNoteUpdate(noteId, {
+      title: debouncedTitle,
+      content: debouncedContent,
+    });
+  }, [noteId, debouncedTitle, debouncedContent]);
+
+  // Broadcast canvas changes via WebSocket
+  useEffect(() => {
+    if (!noteId || isReceivingRemoteUpdateRef.current || currentNote?.type !== 'canvas') return;
+    
+    // Skip initial mount
+    if (!hasInitializedCollabRef.current) {
+      lastSentCanvasRef.current = JSON.stringify(debouncedCanvasData);
+      return;
+    }
+    
+    // Skip if canvas hasn't actually changed
+    const canvasString = JSON.stringify(debouncedCanvasData);
+    if (lastSentCanvasRef.current === canvasString) {
+      return;
+    }
+    
+    lastLocalUpdateRef.current = Date.now();
+    lastSentCanvasRef.current = canvasString;
+    
+    noteWs.sendNoteUpdate(noteId, {
+      canvasData: canvasString,
+    });
+  }, [noteId, debouncedCanvasData, currentNote?.type]);
+  
+  // Reset initialization flag when note changes
+  useEffect(() => {
+    hasInitializedCollabRef.current = false;
+    lastSentContentRef.current = null;
+    lastSentCanvasRef.current = null;
+  }, [noteId]);
 
   const createFolderMutation = useMutation({
     mutationFn: (data: Partial<NoteFolder>) => api.createNoteFolder(data),
@@ -1207,6 +1362,34 @@ export default function Notes() {
           <ArrowLeft className="h-4 w-4 mr-2" /> Back
         </Button>
         <div className="flex items-center gap-2">
+          {/* Live collaboration presence indicators */}
+          {remotePresence.length > 0 && (
+            <div className="flex items-center gap-1 mr-2" data-testid="presence-indicators-read">
+              {remotePresence.slice(0, 3).map((p, i) => (
+                <div
+                  key={p.userId}
+                  className="relative group"
+                  style={{ zIndex: remotePresence.length - i }}
+                >
+                  <div
+                    className="w-7 h-7 rounded-full bg-gradient-to-br from-amber-500 to-amber-600 flex items-center justify-center text-xs font-bold text-stone-900 border-2 border-stone-800 ring-2 ring-green-500/50"
+                    title={p.username}
+                  >
+                    {p.username.charAt(0).toUpperCase()}
+                  </div>
+                  <span className="absolute -bottom-1 -right-1 w-3 h-3 bg-green-500 rounded-full border border-stone-800" />
+                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-stone-900 border border-stone-700 rounded text-xs text-stone-300 whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                    {p.username}
+                  </div>
+                </div>
+              ))}
+              {remotePresence.length > 3 && (
+                <div className="w-7 h-7 rounded-full bg-stone-700 flex items-center justify-center text-xs font-bold text-stone-300 border-2 border-stone-800">
+                  +{remotePresence.length - 3}
+                </div>
+              )}
+            </div>
+          )}
           <Button
             variant="ghost"
             size="sm"
@@ -1290,6 +1473,34 @@ export default function Notes() {
           <ArrowLeft className="h-4 w-4 mr-2" /> Done
         </Button>
         <div className="flex items-center gap-2">
+          {/* Live collaboration presence indicators */}
+          {remotePresence.length > 0 && (
+            <div className="flex items-center gap-1 mr-2" data-testid="presence-indicators">
+              {remotePresence.slice(0, 3).map((p, i) => (
+                <div
+                  key={p.userId}
+                  className="relative group"
+                  style={{ zIndex: remotePresence.length - i }}
+                >
+                  <div
+                    className="w-7 h-7 rounded-full bg-gradient-to-br from-amber-500 to-amber-600 flex items-center justify-center text-xs font-bold text-stone-900 border-2 border-stone-800 ring-2 ring-green-500/50"
+                    title={p.username}
+                  >
+                    {p.username.charAt(0).toUpperCase()}
+                  </div>
+                  <span className="absolute -bottom-1 -right-1 w-3 h-3 bg-green-500 rounded-full border border-stone-800" />
+                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-stone-900 border border-stone-700 rounded text-xs text-stone-300 whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                    {p.username}
+                  </div>
+                </div>
+              ))}
+              {remotePresence.length > 3 && (
+                <div className="w-7 h-7 rounded-full bg-stone-700 flex items-center justify-center text-xs font-bold text-stone-300 border-2 border-stone-800">
+                  +{remotePresence.length - 3}
+                </div>
+              )}
+            </div>
+          )}
           <Button
             variant="ghost"
             size="sm"

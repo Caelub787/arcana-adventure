@@ -2276,3 +2276,160 @@ export class GameWebSocket {
 }
 
 export const gameWs = new GameWebSocket();
+
+// WebSocket client for note collaboration
+export interface NotePresence {
+  userId: string;
+  username: string;
+  cursorPosition?: { line: number; column: number } | null;
+  lastActive: number;
+}
+
+export type NoteCollaborationHandler = (data: any) => void;
+
+export class NoteWebSocket {
+  private ws: WebSocket | null = null;
+  private reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
+  private messageHandlers: Set<NoteCollaborationHandler> = new Set();
+  private joinedNotes: Set<string> = new Set();
+  private isConnected: boolean = false;
+  private reconnectAttempts: number = 0;
+  private maxReconnectAttempts: number = 5;
+
+  connect() {
+    if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
+      return;
+    }
+    
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${window.location.host}/ws`;
+    
+    console.log('NoteWebSocket: Creating connection');
+    this.ws = new WebSocket(wsUrl);
+
+    this.ws.onopen = () => {
+      console.log('NoteWebSocket: Connection opened');
+      this.isConnected = true;
+      this.reconnectAttempts = 0;
+      
+      // Rejoin any notes we were in
+      this.joinedNotes.forEach((noteId) => {
+        this.send({ type: 'join_note', noteId });
+      });
+    };
+
+    this.ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        
+        // Handle note-related messages
+        if (['note_joined', 'note_update', 'note_presence_update', 'cursor_update'].includes(data.type)) {
+          this.messageHandlers.forEach(handler => handler(data));
+        }
+      } catch (e) {
+        console.error('NoteWebSocket: Error parsing message:', e);
+      }
+    };
+
+    this.ws.onclose = () => {
+      console.log('NoteWebSocket: Connection closed');
+      this.isConnected = false;
+      
+      // Attempt reconnect if we have joined notes
+      if (this.joinedNotes.size > 0 && this.reconnectAttempts < this.maxReconnectAttempts) {
+        this.reconnectAttempts++;
+        const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 30000);
+        this.reconnectTimeout = setTimeout(() => {
+          console.log('NoteWebSocket: Attempting reconnect...');
+          this.connect();
+        }, delay);
+      }
+    };
+
+    this.ws.onerror = (error) => {
+      console.error('NoteWebSocket error:', error);
+    };
+  }
+
+  disconnect() {
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout);
+      this.reconnectTimeout = null;
+    }
+    
+    // Leave all notes before disconnecting
+    this.joinedNotes.forEach((noteId) => {
+      this.send({ type: 'leave_note', noteId });
+    });
+    
+    if (this.ws) {
+      this.ws.close();
+      this.ws = null;
+    }
+    
+    this.isConnected = false;
+    this.joinedNotes.clear();
+    this.messageHandlers.clear();
+  }
+
+  private send(data: any) {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify(data));
+    }
+  }
+
+  onMessage(handler: NoteCollaborationHandler) {
+    this.messageHandlers.add(handler);
+    return () => this.messageHandlers.delete(handler);
+  }
+
+  joinNote(noteId: string) {
+    if (!this.isConnected) {
+      this.connect();
+    }
+    
+    if (!this.joinedNotes.has(noteId)) {
+      this.joinedNotes.add(noteId);
+      this.send({ type: 'join_note', noteId });
+    }
+  }
+
+  leaveNote(noteId: string) {
+    if (this.joinedNotes.has(noteId)) {
+      this.joinedNotes.delete(noteId);
+      this.send({ type: 'leave_note', noteId });
+    }
+    
+    // If no more notes, we can disconnect
+    if (this.joinedNotes.size === 0) {
+      this.disconnect();
+    }
+  }
+
+  sendNoteUpdate(noteId: string, updates: { title?: string; content?: string; canvasData?: string }) {
+    if (!this.joinedNotes.has(noteId)) return;
+    
+    this.send({
+      type: 'note_update',
+      noteId,
+      ...updates
+    });
+  }
+
+  sendCursorUpdate(noteId: string, cursorPosition: { line: number; column: number } | null, selection?: { start: number; end: number }) {
+    if (!this.joinedNotes.has(noteId)) return;
+    
+    this.send({
+      type: 'cursor_update',
+      noteId,
+      cursorPosition,
+      selection
+    });
+  }
+
+  isJoinedToNote(noteId: string): boolean {
+    return this.joinedNotes.has(noteId) && this.isConnected;
+  }
+}
+
+export const noteWs = new NoteWebSocket();
