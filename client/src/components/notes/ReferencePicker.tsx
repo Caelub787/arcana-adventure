@@ -109,7 +109,7 @@ export function ReferencePicker({
       const results = await api.searchEntities(debouncedSearch, selectedType);
       return results.slice(0, MAX_RESULTS);
     },
-    enabled: open && debouncedSearch.length > 0, // Only fetch when user types something
+    enabled: open, // Fetch when open - show all entities when search is empty
     staleTime: 1000 * 60 * 5,
     retry: 3,
     retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 10000),
