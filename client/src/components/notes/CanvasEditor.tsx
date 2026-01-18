@@ -44,6 +44,7 @@ import {
   GripHorizontal,
   X,
   ArrowLeft,
+  Settings2,
 } from "lucide-react";
 import {
   Tooltip,
@@ -162,6 +163,7 @@ export function CanvasEditor({
   const [noteSearchOpen, setNoteSearchOpen] = useState(false);
   const [noteSearchQuery, setNoteSearchQuery] = useState("");
   const [entityPickerOpen, setEntityPickerOpen] = useState(false);
+  const [arrowSettingsOpen, setArrowSettingsOpen] = useState(false);
 
   // Cleanup long-press timer on unmount or selection change
   useEffect(() => {
@@ -1327,6 +1329,25 @@ export function CanvasEditor({
                   <p>Add Entity</p>
                 </TooltipContent>
               </Tooltip>
+
+              {selectedConnectionId && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => setArrowSettingsOpen(true)}
+                      className="h-8 w-8 text-indigo-400 hover:text-indigo-300"
+                      data-testid="button-arrow-settings"
+                    >
+                      <Settings2 className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="right">
+                    <p>Arrow Settings</p>
+                  </TooltipContent>
+                </Tooltip>
+              )}
             </div>
           )}
 
@@ -1346,22 +1367,22 @@ export function CanvasEditor({
                 style={{ overflow: "visible" }}
               >
                 <defs>
-                  {/* End arrow markers - refX=0 so arrow tip is at line end */}
-                  <marker id="arrowhead" markerWidth="12" markerHeight="10" refX="0" refY="5" orient="auto" markerUnits="userSpaceOnUse">
-                    <path d="M0,0 L12,5 L0,10 z" fill="rgb(120 113 108)" />
+                  {/* End arrow markers - strokeWidth units for zoom-independent sizing */}
+                  <marker id="arrowhead" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto" markerUnits="strokeWidth">
+                    <path d="M0,0 L6,3 L0,6 z" fill="rgb(120 113 108)" />
                   </marker>
-                  <marker id="arrowhead-selected" markerWidth="12" markerHeight="10" refX="0" refY="5" orient="auto" markerUnits="userSpaceOnUse">
-                    <path d="M0,0 L12,5 L0,10 z" fill="rgb(99 102 241)" />
+                  <marker id="arrowhead-selected" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto" markerUnits="strokeWidth">
+                    <path d="M0,0 L6,3 L0,6 z" fill="rgb(99 102 241)" />
                   </marker>
-                  <marker id="arrowhead-preview" markerWidth="12" markerHeight="10" refX="0" refY="5" orient="auto" markerUnits="userSpaceOnUse">
-                    <path d="M0,0 L12,5 L0,10 z" fill="rgb(129 140 248)" />
+                  <marker id="arrowhead-preview" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto" markerUnits="strokeWidth">
+                    <path d="M0,0 L6,3 L0,6 z" fill="rgb(129 140 248)" />
                   </marker>
                   {/* Start arrow markers (reversed) */}
-                  <marker id="arrowhead-start" markerWidth="12" markerHeight="10" refX="12" refY="5" orient="auto" markerUnits="userSpaceOnUse">
-                    <path d="M12,0 L0,5 L12,10 z" fill="rgb(120 113 108)" />
+                  <marker id="arrowhead-start" markerWidth="6" markerHeight="6" refX="1" refY="3" orient="auto" markerUnits="strokeWidth">
+                    <path d="M6,0 L0,3 L6,6 z" fill="rgb(120 113 108)" />
                   </marker>
-                  <marker id="arrowhead-start-selected" markerWidth="12" markerHeight="10" refX="12" refY="5" orient="auto" markerUnits="userSpaceOnUse">
-                    <path d="M12,0 L0,5 L12,10 z" fill="rgb(99 102 241)" />
+                  <marker id="arrowhead-start-selected" markerWidth="6" markerHeight="6" refX="1" refY="3" orient="auto" markerUnits="strokeWidth">
+                    <path d="M6,0 L0,3 L6,6 z" fill="rgb(99 102 241)" />
                   </marker>
                 </defs>
                 <g style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transformOrigin: "0 0" }}>
@@ -1665,75 +1686,6 @@ export function CanvasEditor({
                 {canvasData.nodes.map(renderNode)}
               </div>
               
-              {/* Connection settings panel */}
-              {selectedConnectionId && !readOnly && (() => {
-                const selectedConnection = canvasData.connections.find((c) => c.id === selectedConnectionId);
-                if (!selectedConnection) return null;
-                
-                return (
-                  <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-stone-900 border border-stone-700 rounded-lg p-3 shadow-xl z-10 min-w-[280px]">
-                    <div className="flex items-center justify-between mb-3">
-                      <span className="text-sm font-medium text-stone-200">Arrow Settings</span>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6 text-stone-400 hover:text-red-400"
-                        onClick={() => {
-                          deleteConnection(selectedConnectionId);
-                        }}
-                        data-testid="button-delete-connection"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                    
-                    <div className="space-y-3">
-                      <div className="space-y-1.5">
-                        <Label className="text-xs text-stone-400">Arrow Type</Label>
-                        <Select
-                          value={selectedConnection.arrowType || "end"}
-                          onValueChange={(value: ArrowType) => updateConnection(selectedConnectionId, { arrowType: value })}
-                        >
-                          <SelectTrigger className="h-8 text-xs bg-stone-800 border-stone-700">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent className="bg-stone-900 border-stone-700">
-                            <SelectItem value="end" className="text-xs">Arrow at end →</SelectItem>
-                            <SelectItem value="start" className="text-xs">Arrow at start ←</SelectItem>
-                            <SelectItem value="both" className="text-xs">Both ends ↔</SelectItem>
-                            <SelectItem value="none" className="text-xs">No arrow —</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      
-                      <p className="text-[10px] text-stone-500 italic">
-                        Double-click the label box on the arrow to edit text. Drag to reposition.
-                      </p>
-                      
-                      {(selectedConnection.waypoints?.length || 0) > 0 && (
-                        <div className="pt-2 border-t border-stone-700">
-                          <div className="flex items-center justify-between">
-                            <span className="text-xs text-stone-400">
-                              {selectedConnection.waypoints?.length} waypoint(s)
-                            </span>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-6 text-xs text-stone-400 hover:text-stone-200"
-                              onClick={() => updateConnection(selectedConnectionId, { waypoints: [] })}
-                            >
-                              Clear all
-                            </Button>
-                          </div>
-                          <p className="text-[10px] text-stone-500 mt-1">
-                            Drag waypoints to adjust. Hold to remove.
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })()}
             </div>
           </div>
         </div>
@@ -1785,6 +1737,82 @@ export function CanvasEditor({
                 )}
               </ScrollArea>
             </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Arrow Settings Dialog */}
+        <Dialog open={arrowSettingsOpen} onOpenChange={setArrowSettingsOpen}>
+          <DialogContent className="bg-stone-950 border-stone-800 max-w-[320px]">
+            <DialogHeader>
+              <DialogTitle className="text-stone-200">Arrow Settings</DialogTitle>
+            </DialogHeader>
+            {selectedConnectionId && (() => {
+              const selectedConnection = canvasData.connections.find((c) => c.id === selectedConnectionId);
+              if (!selectedConnection) return null;
+              
+              return (
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label className="text-sm text-stone-400">Arrow Type</Label>
+                    <Select
+                      value={selectedConnection.arrowType || "end"}
+                      onValueChange={(value: ArrowType) => updateConnection(selectedConnectionId, { arrowType: value })}
+                    >
+                      <SelectTrigger className="bg-stone-900 border-stone-700">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="bg-stone-900 border-stone-700">
+                        <SelectItem value="end">Arrow at end →</SelectItem>
+                        <SelectItem value="start">Arrow at start ←</SelectItem>
+                        <SelectItem value="both">Both ends ↔</SelectItem>
+                        <SelectItem value="none">No arrow —</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  
+                  <p className="text-xs text-stone-500 italic">
+                    Double-click the label on the arrow to edit text. Drag to reposition.
+                  </p>
+                  
+                  {(selectedConnection.waypoints?.length || 0) > 0 && (
+                    <div className="pt-3 border-t border-stone-700">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-stone-400">
+                          {selectedConnection.waypoints?.length} waypoint(s)
+                        </span>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-stone-400 hover:text-stone-200"
+                          onClick={() => updateConnection(selectedConnectionId, { waypoints: [] })}
+                        >
+                          Clear all
+                        </Button>
+                      </div>
+                      <p className="text-xs text-stone-500 mt-1">
+                        Drag waypoints to adjust. Hold to remove.
+                      </p>
+                    </div>
+                  )}
+                  
+                  <div className="pt-3 border-t border-stone-700">
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      className="w-full"
+                      onClick={() => {
+                        deleteConnection(selectedConnectionId);
+                        setArrowSettingsOpen(false);
+                      }}
+                      data-testid="button-delete-connection"
+                    >
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      Delete Arrow
+                    </Button>
+                  </div>
+                </div>
+              );
+            })()}
           </DialogContent>
         </Dialog>
       </div>
