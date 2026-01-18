@@ -797,26 +797,6 @@ export function CanvasEditor({
     
     userInteractedRef.current = true; // Mark as user interaction to prevent view reset
     
-    // If we're in tap-to-connect mode (connection started), complete the connection FIRST
-    if (isConnecting && connectionStart && connectionStart.nodeId !== node.id) {
-      // Clear any timers before completing connection
-      if (nodeLongPressTimerRef.current) {
-        clearTimeout(nodeLongPressTimerRef.current);
-        nodeLongPressTimerRef.current = null;
-      }
-      
-      const world = screenToWorld(e.clientX, e.clientY);
-      const toSide = getClosestSide(node, world.x, world.y);
-      addConnection(connectionStart.nodeId, node.id, connectionStart.side, toSide);
-      setIsConnecting(false);
-      setConnectionStart(null);
-      setConnectionEnd(null);
-      setHoveredDropTarget(null);
-      setHoveredDropSide(null);
-      connectionDragStartRef.current = null;
-      return;
-    }
-    
     // Clear any existing long-press timer
     if (nodeLongPressTimerRef.current) {
       clearTimeout(nodeLongPressTimerRef.current);
@@ -882,19 +862,7 @@ export function CanvasEditor({
     
     userInteractedRef.current = true; // Mark as user interaction to prevent view reset
     
-    // If we're already connecting and tap a handle on a DIFFERENT node, complete the connection
-    if (isConnecting && connectionStart && connectionStart.nodeId !== node.id) {
-      addConnection(connectionStart.nodeId, node.id, connectionStart.side, side);
-      setIsConnecting(false);
-      setConnectionStart(null);
-      setConnectionEnd(null);
-      setHoveredDropTarget(null);
-      setHoveredDropSide(null);
-      connectionDragStartRef.current = null;
-      return;
-    }
-    
-    // Otherwise, start a new connection from this handle
+    // Start a new connection from this handle (drag-only, no tap-to-connect)
     const anchor = getNodeAnchor(node, side);
     setIsConnecting(true);
     setConnectionStart({
@@ -1376,22 +1344,22 @@ export function CanvasEditor({
                 style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transformOrigin: "0 0" }}
               >
                 <defs>
-                  {/* End arrow markers */}
-                  <marker id="arrowhead" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto" markerUnits="strokeWidth">
-                    <path d="M0,0 L0,8 L10,4 z" fill="rgb(120 113 108)" />
+                  {/* End arrow markers - refX=0 so arrow tip is at line end */}
+                  <marker id="arrowhead" markerWidth="12" markerHeight="10" refX="0" refY="5" orient="auto" markerUnits="userSpaceOnUse">
+                    <path d="M0,0 L12,5 L0,10 z" fill="rgb(120 113 108)" />
                   </marker>
-                  <marker id="arrowhead-selected" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto" markerUnits="strokeWidth">
-                    <path d="M0,0 L0,8 L10,4 z" fill="rgb(99 102 241)" />
+                  <marker id="arrowhead-selected" markerWidth="12" markerHeight="10" refX="0" refY="5" orient="auto" markerUnits="userSpaceOnUse">
+                    <path d="M0,0 L12,5 L0,10 z" fill="rgb(99 102 241)" />
                   </marker>
-                  <marker id="arrowhead-preview" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto" markerUnits="strokeWidth">
-                    <path d="M0,0 L0,8 L10,4 z" fill="rgb(129 140 248)" />
+                  <marker id="arrowhead-preview" markerWidth="12" markerHeight="10" refX="0" refY="5" orient="auto" markerUnits="userSpaceOnUse">
+                    <path d="M0,0 L12,5 L0,10 z" fill="rgb(129 140 248)" />
                   </marker>
                   {/* Start arrow markers (reversed) */}
-                  <marker id="arrowhead-start" markerWidth="10" markerHeight="8" refX="1" refY="4" orient="auto" markerUnits="strokeWidth">
-                    <path d="M10,0 L10,8 L0,4 z" fill="rgb(120 113 108)" />
+                  <marker id="arrowhead-start" markerWidth="12" markerHeight="10" refX="12" refY="5" orient="auto" markerUnits="userSpaceOnUse">
+                    <path d="M12,0 L0,5 L12,10 z" fill="rgb(120 113 108)" />
                   </marker>
-                  <marker id="arrowhead-start-selected" markerWidth="10" markerHeight="8" refX="1" refY="4" orient="auto" markerUnits="strokeWidth">
-                    <path d="M10,0 L10,8 L0,4 z" fill="rgb(99 102 241)" />
+                  <marker id="arrowhead-start-selected" markerWidth="12" markerHeight="10" refX="12" refY="5" orient="auto" markerUnits="userSpaceOnUse">
+                    <path d="M12,0 L0,5 L12,10 z" fill="rgb(99 102 241)" />
                   </marker>
                 </defs>
                 
