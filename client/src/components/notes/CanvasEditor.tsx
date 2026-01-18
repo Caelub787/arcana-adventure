@@ -1070,14 +1070,14 @@ export function CanvasEditor({
                       setEditingNodeId(null);
                     }
                   }}
-                  autoFocus
                   className="h-5 text-xs bg-stone-900/50 border-stone-700 px-1 py-0 flex-1 min-w-0"
                   data-testid={`input-node-title-${node.id}`}
                 />
               ) : (
                 <span 
                   className="text-xs text-stone-400 truncate cursor-text"
-                  onDoubleClick={(e) => {
+                  onClick={(e) => {
+                    // Single tap on title when in editing mode focuses title
                     if (readOnly) return;
                     e.stopPropagation();
                     setEditingNodeId(node.id);
@@ -1118,6 +1118,7 @@ export function CanvasEditor({
                     setEditingNodeId(null);
                   }
                 }}
+                autoFocus
                 data-testid={`textarea-node-${node.id}`}
               />
             ) : node.type === "text" ? (
