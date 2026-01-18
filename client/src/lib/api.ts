@@ -956,6 +956,11 @@ class ApiClient {
     return this.request('/admin/system-items');
   }
 
+  // Public System Items (for notes graph and entity references)
+  async getPublicSystemItems(): Promise<Item[]> {
+    return this.request('/system-items');
+  }
+
   async createSystemItem(item: Partial<Item>): Promise<Item> {
     return this.request('/admin/system-items', {
       method: 'POST',

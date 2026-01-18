@@ -42,12 +42,12 @@ const MIN_DISTANCE = 80;
 const CENTER_GRAVITY = 0.01;
 
 const NODE_COLORS: Record<EntityType, { fill: string; stroke: string; glow: string }> = {
-  note: { fill: '#6366f1', stroke: '#818cf8', glow: 'rgba(99, 102, 241, 0.4)' },
-  spell: { fill: '#a855f7', stroke: '#c084fc', glow: 'rgba(168, 85, 247, 0.4)' },
+  note: { fill: '#d946ef', stroke: '#e879f9', glow: 'rgba(217, 70, 239, 0.4)' },
+  spell: { fill: '#ef4444', stroke: '#f87171', glow: 'rgba(239, 68, 68, 0.4)' },
   item: { fill: '#f59e0b', stroke: '#fbbf24', glow: 'rgba(245, 158, 11, 0.4)' },
   trait: { fill: '#22c55e', stroke: '#4ade80', glow: 'rgba(34, 197, 94, 0.4)' },
   skill: { fill: '#06b6d4', stroke: '#22d3ee', glow: 'rgba(6, 182, 212, 0.4)' },
-  species: { fill: '#ec4899', stroke: '#f472b6', glow: 'rgba(236, 72, 153, 0.4)' },
+  species: { fill: '#a855f7', stroke: '#c084fc', glow: 'rgba(168, 85, 247, 0.4)' },
   character: { fill: '#f97316', stroke: '#fb923c', glow: 'rgba(249, 115, 22, 0.4)' },
 };
 
@@ -243,8 +243,8 @@ export function NotesGraph({ notes, characters = [], onNoteClick, onCharacterCli
   });
 
   const { data: systemItems = [] } = useQuery({
-    queryKey: ['/api/admin/system-items'],
-    queryFn: () => api.getSystemItems().catch(() => []),
+    queryKey: ['/api/system-items'],
+    queryFn: () => api.getPublicSystemItems().catch(() => []),
     staleTime: 60000,
   });
 
