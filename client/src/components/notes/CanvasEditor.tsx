@@ -87,6 +87,9 @@ export interface CanvasConnection {
   arrowType?: ArrowType;
   waypoints?: ConnectionWaypoint[];
   label?: string;
+  labelOffset?: { x: number; y: number };
+  labelWidth?: number;
+  labelHeight?: number;
   color?: string;
 }
 
@@ -138,6 +141,10 @@ export function CanvasEditor({
   const [longPressTimer, setLongPressTimer] = useState<NodeJS.Timeout | null>(null);
   const [showConnectionDelete, setShowConnectionDelete] = useState<string | null>(null);
   const [draggingWaypoint, setDraggingWaypoint] = useState<{ connectionId: string; waypointId: string } | null>(null);
+  const [draggingLabel, setDraggingLabel] = useState<{ connectionId: string; startX: number; startY: number; offsetX: number; offsetY: number } | null>(null);
+  const [editingLabelId, setEditingLabelId] = useState<string | null>(null);
+  const [resizingLabelId, setResizingLabelId] = useState<string | null>(null);
+  const labelResizeStartRef = useRef<{ width: number; height: number; x: number; y: number } | null>(null);
   
   const dragStartRef = useRef<{ nodeId: string; startX: number; startY: number; nodeX: number; nodeY: number } | null>(null);
   const panStartRef = useRef<{ pointerX: number; pointerY: number; panX: number; panY: number } | null>(null);
@@ -156,7 +163,7 @@ export function CanvasEditor({
       }
     };
   }, [longPressTimer]);
-  
+
   const { data: searchedNotes = [], isLoading: notesLoading } = useQuery({
     queryKey: ["/api/notes/search", noteSearchQuery],
     queryFn: () => api.searchNotes(noteSearchQuery),
@@ -294,6 +301,48 @@ export function CanvasEditor({
     );
     updateConnection(connectionId, { waypoints });
   }, [canvasData.connections, updateConnection, readOnly]);
+
+  // Global pointer move/up handlers for label drag/resize
+  useEffect(() => {
+    if (!draggingLabel && !resizingLabelId) return;
+
+    const handleGlobalPointerMove = (e: PointerEvent) => {
+      if (draggingLabel) {
+        const world = screenToWorld(e.clientX, e.clientY);
+        const deltaX = world.x - draggingLabel.startX;
+        const deltaY = world.y - draggingLabel.startY;
+        
+        updateConnection(draggingLabel.connectionId, {
+          labelOffset: {
+            x: draggingLabel.offsetX + deltaX,
+            y: draggingLabel.offsetY + deltaY,
+          },
+        });
+      }
+      
+      if (resizingLabelId && labelResizeStartRef.current) {
+        const dx = (e.clientX - labelResizeStartRef.current.x) / zoomRef.current;
+        const dy = (e.clientY - labelResizeStartRef.current.y) / zoomRef.current;
+        updateConnection(resizingLabelId, {
+          labelWidth: Math.max(80, labelResizeStartRef.current.width + dx),
+          labelHeight: Math.max(30, labelResizeStartRef.current.height + dy),
+        });
+      }
+    };
+
+    const handleGlobalPointerUp = () => {
+      setDraggingLabel(null);
+      setResizingLabelId(null);
+      labelResizeStartRef.current = null;
+    };
+
+    window.addEventListener("pointermove", handleGlobalPointerMove);
+    window.addEventListener("pointerup", handleGlobalPointerUp);
+    return () => {
+      window.removeEventListener("pointermove", handleGlobalPointerMove);
+      window.removeEventListener("pointerup", handleGlobalPointerUp);
+    };
+  }, [draggingLabel, resizingLabelId, screenToWorld, updateConnection]);
 
   const resetView = useCallback(() => {
     if (canvasData.nodes.length === 0) {
@@ -559,7 +608,7 @@ export function CanvasEditor({
       }
     }
     
-    if (isPanning && panStartRef.current) {
+    if (isPanning && panStartRef.current && !draggingLabel && !resizingLabelId) {
       userInteractedRef.current = true; // User panned manually
       const deltaX = e.clientX - panStartRef.current.pointerX;
       const deltaY = e.clientY - panStartRef.current.pointerY;
@@ -594,6 +643,8 @@ export function CanvasEditor({
         height: Math.max(40, resizeStartRef.current.height + deltaY),
       });
     }
+    
+    // Label drag/resize is handled by global pointer handlers in useEffect
   };
 
   const handleCanvasPointerUp = (e: React.PointerEvent) => {
@@ -618,6 +669,9 @@ export function CanvasEditor({
     setConnectionEnd(null);
     setHoveredDropTarget(null);
     setHoveredDropSide(null);
+    setDraggingLabel(null);
+    setResizingLabelId(null);
+    labelResizeStartRef.current = null;
     panStartRef.current = null;
     dragStartRef.current = null;
     resizeStartRef.current = null;
@@ -1238,18 +1292,120 @@ export function CanvasEditor({
                         </g>
                       )}
                       
-                      {/* Label display (when not selected) */}
-                      {connection.label && !isSelected && (
-                        <text
-                          x={midpoint.x}
-                          y={midpoint.y - 8}
-                          textAnchor="middle"
-                          className="text-xs fill-stone-300 pointer-events-none"
-                          style={{ fontSize: 11 }}
-                        >
-                          {connection.label}
-                        </text>
-                      )}
+                      {/* Inline label note on arrow */}
+                      {(() => {
+                        const labelOffset = connection.labelOffset || { x: 0, y: -40 };
+                        const labelX = midpoint.x + labelOffset.x;
+                        const labelY = midpoint.y + labelOffset.y;
+                        const labelWidth = connection.labelWidth || 120;
+                        const labelHeight = connection.labelHeight || 40;
+                        const isEditing = editingLabelId === connection.id;
+                        const hasLabel = connection.label && connection.label.trim().length > 0;
+                        
+                        // Show label area when: has content, is selected, or is being edited
+                        if (!hasLabel && !isSelected && !isEditing) return null;
+                        
+                        return (
+                          <g>
+                            {/* Line connecting label to arrow midpoint */}
+                            <line
+                              x1={midpoint.x}
+                              y1={midpoint.y}
+                              x2={labelX + labelWidth / 2}
+                              y2={labelY + labelHeight / 2}
+                              stroke="rgb(87 83 78)"
+                              strokeWidth={1}
+                              strokeDasharray="3 3"
+                              className="pointer-events-none"
+                            />
+                            
+                            {/* Label container */}
+                            <foreignObject
+                              x={labelX}
+                              y={labelY}
+                              width={labelWidth}
+                              height={labelHeight}
+                              className="pointer-events-auto overflow-visible"
+                            >
+                              <div
+                                className={`w-full h-full rounded border ${
+                                  isSelected || isEditing
+                                    ? "border-indigo-500 bg-stone-900/95"
+                                    : "border-stone-700/50 bg-stone-900/80"
+                                } flex flex-col`}
+                                style={{ minWidth: labelWidth, minHeight: labelHeight }}
+                                onPointerDown={(e) => {
+                                  if (readOnly || isEditing) return;
+                                  e.stopPropagation();
+                                  e.preventDefault(); // Prevent text selection and scroll on mobile
+                                  const world = screenToWorld(e.clientX, e.clientY);
+                                  setDraggingLabel({
+                                    connectionId: connection.id,
+                                    startX: world.x,
+                                    startY: world.y,
+                                    offsetX: labelOffset.x,
+                                    offsetY: labelOffset.y,
+                                  });
+                                  setSelectedConnectionId(connection.id);
+                                  setSelectedNodeId(null);
+                                }}
+                                onDoubleClick={(e) => {
+                                  if (readOnly) return;
+                                  e.stopPropagation();
+                                  setEditingLabelId(connection.id);
+                                  setSelectedConnectionId(connection.id);
+                                }}
+                              >
+                                {isEditing ? (
+                                  <textarea
+                                    autoFocus
+                                    value={connection.label || ""}
+                                    onChange={(e) => updateConnection(connection.id, { label: e.target.value })}
+                                    onBlur={() => setEditingLabelId(null)}
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Escape") {
+                                        setEditingLabelId(null);
+                                      }
+                                    }}
+                                    className="w-full h-full bg-transparent text-stone-200 text-xs p-1.5 resize-none focus:outline-none"
+                                    style={{ minHeight: labelHeight - 4 }}
+                                    placeholder="Add label..."
+                                    data-testid={`label-input-${connection.id}`}
+                                  />
+                                ) : (
+                                  <div className="w-full h-full p-1.5 text-xs text-stone-300 whitespace-pre-wrap overflow-hidden cursor-move">
+                                    {connection.label || (isSelected ? "Double-click to add label" : "")}
+                                  </div>
+                                )}
+                              </div>
+                            </foreignObject>
+                            
+                            {/* Resize handle when selected */}
+                            {isSelected && !readOnly && (
+                              <rect
+                                x={labelX + labelWidth - 8}
+                                y={labelY + labelHeight - 8}
+                                width={10}
+                                height={10}
+                                fill="rgb(99 102 241)"
+                                rx={2}
+                                className="cursor-se-resize pointer-events-auto"
+                                onPointerDown={(e) => {
+                                  e.stopPropagation();
+                                  e.preventDefault(); // Prevent text selection and scroll on mobile
+                                  setResizingLabelId(connection.id);
+                                  labelResizeStartRef.current = {
+                                    width: labelWidth,
+                                    height: labelHeight,
+                                    x: e.clientX,
+                                    y: e.clientY,
+                                  };
+                                }}
+                              />
+                            )}
+                          </g>
+                        );
+                      })()}
                     </g>
                   );
                 })}
@@ -1315,16 +1471,9 @@ export function CanvasEditor({
                         </Select>
                       </div>
                       
-                      <div className="space-y-1.5">
-                        <Label className="text-xs text-stone-400">Label</Label>
-                        <Input
-                          value={selectedConnection.label || ""}
-                          onChange={(e) => updateConnection(selectedConnectionId, { label: e.target.value })}
-                          placeholder="Add a label..."
-                          className="h-8 text-xs bg-stone-800 border-stone-700"
-                          data-testid="input-connection-label"
-                        />
-                      </div>
+                      <p className="text-[10px] text-stone-500 italic">
+                        Double-click the label box on the arrow to edit text. Drag to reposition.
+                      </p>
                       
                       {(selectedConnection.waypoints?.length || 0) > 0 && (
                         <div className="pt-2 border-t border-stone-700">
