@@ -454,66 +454,84 @@ export function NotesGraph({ notes, characters = [], onNoteClick, onCharacterCli
     return map;
   }, [edges]);
 
-  // Continuous force-directed simulation - runs every frame, never fully stops
+  // Build index map for O(1) node lookups
+  const nodeIndexMap = useMemo(() => {
+    const map = new Map<string, number>();
+    nodes.forEach((node, idx) => map.set(node.id, idx));
+    return map;
+  }, [nodes]);
+
+  // Refs for direct SVG manipulation (no React re-renders during animation)
+  const nodeElementsRef = useRef<Map<string, SVGGElement>>(new Map());
+  const edgeElementsRef = useRef<Map<string, SVGLineElement>>(new Map());
+
+  // Continuous force-directed simulation - updates SVG directly, no React state
   useEffect(() => {
     let frameId: number;
     let lastTime = performance.now();
+    let frameCount = 0;
     
     const simulate = (currentTime: number) => {
-      const dt = Math.min((currentTime - lastTime) / 16.67, 2); // Normalize to ~60fps, cap at 2x
+      const dt = Math.min((currentTime - lastTime) / 16.67, 2);
       lastTime = currentTime;
+      frameCount++;
       
       const currentNodes = nodesRef.current;
-      const visibleNodes = currentNodes.filter(n => entityFilters[n.type]);
+      const visibleIndices: number[] = [];
+      for (let i = 0; i < currentNodes.length; i++) {
+        if (entityFilters[currentNodes[i].type]) {
+          visibleIndices.push(i);
+        }
+      }
       
-      if (visibleNodes.length === 0) {
+      if (visibleIndices.length === 0) {
         frameId = requestAnimationFrame(simulate);
         return;
       }
 
-      // Calculate target radius based on node count for dense sphere
-      const targetRadius = Math.max(120, Math.min(300, Math.sqrt(visibleNodes.length) * 25));
+      const targetRadius = Math.max(120, Math.min(300, Math.sqrt(visibleIndices.length) * 25));
       
-      // Apply forces to each visible node
-      for (let i = 0; i < visibleNodes.length; i++) {
-        const node = visibleNodes[i];
+      // Physics step - work directly with indices for speed
+      for (let i = 0; i < visibleIndices.length; i++) {
+        const node = currentNodes[visibleIndices[i]];
         let fx = 0;
         let fy = 0;
         
-        // 1. Repulsion force from all other nodes
-        for (let j = 0; j < visibleNodes.length; j++) {
+        // 1. Repulsion (O(n²) but with early exit for distant nodes)
+        for (let j = 0; j < visibleIndices.length; j++) {
           if (i === j) continue;
-          const other = visibleNodes[j];
+          const other = currentNodes[visibleIndices[j]];
           const dx = node.x - other.x;
           const dy = node.y - other.y;
           const distSq = dx * dx + dy * dy;
-          const dist = Math.sqrt(distSq) || 1;
           
-          // Mild repulsion inversely proportional to distance squared
+          // Skip very distant nodes for performance
+          if (distSq > 90000) continue; // 300px radius
+          
+          const dist = Math.sqrt(distSq) || 1;
           const repulsion = REPULSION_STRENGTH / (distSq + 100);
           fx += (dx / dist) * repulsion;
           fy += (dy / dist) * repulsion;
         }
         
-        // 2. Spring-like attraction for connected nodes
+        // 2. Spring attraction - use index map for O(1) lookup
         const connections = connectedNodesMap.get(node.id);
         if (connections) {
-          const connectionIds = Array.from(connections);
-          for (const otherId of connectionIds) {
-            const other = visibleNodes.find(n => n.id === otherId);
-            if (!other) continue;
+          for (const otherId of Array.from(connections)) {
+            const otherIdx = nodeIndexMap.get(otherId);
+            if (otherIdx === undefined) continue;
+            const other = currentNodes[otherIdx];
+            if (!entityFilters[other.type]) continue;
             
             const dx = other.x - node.x;
             const dy = other.y - node.y;
             const dist = Math.sqrt(dx * dx + dy * dy) || 1;
             
-            // Distance clamping - stronger attraction if edge is too stretched
             let strength = ATTRACTION_STRENGTH;
             if (dist > MAX_EDGE_LENGTH) {
               strength *= 2 + (dist - MAX_EDGE_LENGTH) / 100;
             }
             
-            // Spring force toward rest length
             const displacement = dist - EDGE_REST_LENGTH;
             const attraction = displacement * strength;
             fx += (dx / dist) * attraction;
@@ -521,42 +539,64 @@ export function NotesGraph({ notes, characters = [], onNoteClick, onCharacterCli
           }
         }
         
-        // 3. Central gravity - pull toward origin for spherical cohesion
-        const distFromCenter = Math.sqrt(node.x * node.x + node.y * node.y);
+        // 3. Central gravity
         fx -= node.x * CENTER_GRAVITY;
         fy -= node.y * CENTER_GRAVITY;
         
-        // 4. Dynamic attraction when nodes drift beyond target radius
+        // 4. Drift correction
+        const distFromCenter = Math.sqrt(node.x * node.x + node.y * node.y);
         if (distFromCenter > targetRadius) {
           const driftFactor = (distFromCenter - targetRadius) / targetRadius;
           fx -= (node.x / distFromCenter) * driftFactor * DRIFT_ATTRACTION * distFromCenter;
           fy -= (node.y / distFromCenter) * driftFactor * DRIFT_ATTRACTION * distFromCenter;
         }
         
-        // Apply forces with mass consideration
+        // Apply forces
         node.vx = (node.vx + fx / NODE_MASS) * DAMPING;
         node.vy = (node.vy + fy / NODE_MASS) * DAMPING;
         
-        // Maintain minimum velocity for gentle continuous motion
+        // Minimum velocity for gentle motion
         const speed = Math.sqrt(node.vx * node.vx + node.vy * node.vy);
         if (speed < MIN_VELOCITY && speed > 0) {
-          const boost = MIN_VELOCITY / speed;
-          node.vx *= boost * 0.3;
-          node.vy *= boost * 0.3;
+          node.vx *= (MIN_VELOCITY / speed) * 0.3;
+          node.vy *= (MIN_VELOCITY / speed) * 0.3;
         }
       }
       
       // Update positions
-      for (const node of visibleNodes) {
+      for (const idx of visibleIndices) {
+        const node = currentNodes[idx];
         node.x += node.vx * dt;
         node.y += node.vy * dt;
       }
       
-      // Update state for render (throttled to reduce re-renders)
-      nodesRef.current = [...currentNodes];
-      setNodes([...currentNodes]);
+      // Direct SVG updates - no React re-render
+      const nodeEntries = Array.from(nodeElementsRef.current.entries());
+      for (let i = 0; i < nodeEntries.length; i++) {
+        const [id, el] = nodeEntries[i];
+        const idx = nodeIndexMap.get(id);
+        if (idx !== undefined) {
+          const node = currentNodes[idx];
+          el.setAttribute('transform', `translate(${node.x}, ${node.y})`);
+        }
+      }
       
-      // Continue simulation
+      const edgeEntries = Array.from(edgeElementsRef.current.entries());
+      for (let i = 0; i < edgeEntries.length; i++) {
+        const [key, el] = edgeEntries[i];
+        const [fromId, toId] = key.split('|');
+        const fromIdx = nodeIndexMap.get(fromId);
+        const toIdx = nodeIndexMap.get(toId);
+        if (fromIdx !== undefined && toIdx !== undefined) {
+          const from = currentNodes[fromIdx];
+          const to = currentNodes[toIdx];
+          el.setAttribute('x1', String(from.x));
+          el.setAttribute('y1', String(from.y));
+          el.setAttribute('x2', String(to.x));
+          el.setAttribute('y2', String(to.y));
+        }
+      }
+      
       frameId = requestAnimationFrame(simulate);
     };
     
@@ -565,7 +605,7 @@ export function NotesGraph({ notes, characters = [], onNoteClick, onCharacterCli
     return () => {
       cancelAnimationFrame(frameId);
     };
-  }, [entityFilters, connectedNodesMap]);
+  }, [entityFilters, connectedNodesMap, nodeIndexMap]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -887,23 +927,32 @@ export function NotesGraph({ notes, characters = [], onNoteClick, onCharacterCli
               const fromNode = nodeMap.get(edge.fromId);
               const toNode = nodeMap.get(edge.toId);
               if (!fromNode || !toNode) return null;
+              
+              const x1 = fromNode.x || 0;
+              const y1 = fromNode.y || 0;
+              const x2 = toNode.x || 0;
+              const y2 = toNode.y || 0;
 
               const connected = isEdgeConnected(edge);
               const opacity = hoveredNodeId ? (connected ? 0.8 : 0.1) : 0.3;
               const strokeWidth = connected ? 1.5 : 1;
               const strokeColor = connected ? '#a8a29e' : '#57534e';
+              const edgeKey = `${edge.fromId}|${edge.toId}`;
 
               return (
                 <line
                   key={`edge-${i}`}
-                  x1={fromNode.x}
-                  y1={fromNode.y}
-                  x2={toNode.x}
-                  y2={toNode.y}
+                  ref={(el) => {
+                    if (el) edgeElementsRef.current.set(edgeKey, el);
+                    else edgeElementsRef.current.delete(edgeKey);
+                  }}
+                  x1={x1}
+                  y1={y1}
+                  x2={x2}
+                  y2={y2}
                   stroke={strokeColor}
                   strokeWidth={strokeWidth / zoom}
                   opacity={opacity}
-                  className="transition-opacity duration-150"
                 />
               );
             })}
@@ -919,11 +968,18 @@ export function NotesGraph({ notes, characters = [], onNoteClick, onCharacterCli
               const radius = baseRadius * scale;
               const displayName = node.name.length > 18 ? node.name.substring(0, 18) + '...' : node.name;
               const hasPortrait = isCharacter && node.portrait;
+              const nodeX = node.x || 0;
+              const nodeY = node.y || 0;
 
               return (
                 <g
                   key={node.id}
-                  className="graph-node cursor-pointer transition-all duration-150"
+                  ref={(el) => {
+                    if (el) nodeElementsRef.current.set(node.id, el);
+                    else nodeElementsRef.current.delete(node.id);
+                  }}
+                  transform={`translate(${nodeX}, ${nodeY})`}
+                  className="graph-node cursor-pointer"
                   style={{ opacity }}
                   onMouseEnter={() => !isDraggingRef.current && setHoveredNodeId(node.id)}
                   onMouseLeave={() => setHoveredNodeId(null)}
@@ -932,8 +988,8 @@ export function NotesGraph({ notes, characters = [], onNoteClick, onCharacterCli
                 >
                   {isHovered && (
                     <circle
-                      cx={node.x}
-                      cy={node.y}
+                      cx={0}
+                      cy={0}
                       r={radius + 4}
                       fill={colors.glow}
                       className="animate-pulse"
@@ -943,12 +999,12 @@ export function NotesGraph({ notes, characters = [], onNoteClick, onCharacterCli
                     <>
                       <defs>
                         <clipPath id={`clip-${node.id}`}>
-                          <circle cx={node.x} cy={node.y} r={radius - 1} />
+                          <circle cx={0} cy={0} r={radius - 1} />
                         </clipPath>
                       </defs>
                       <circle
-                        cx={node.x}
-                        cy={node.y}
+                        cx={0}
+                        cy={0}
                         r={radius}
                         fill={colors.fill}
                         stroke={colors.stroke}
@@ -956,8 +1012,8 @@ export function NotesGraph({ notes, characters = [], onNoteClick, onCharacterCli
                       />
                       <image
                         href={node.portrait}
-                        x={node.x - radius + 1}
-                        y={node.y - radius + 1}
+                        x={-radius + 1}
+                        y={-radius + 1}
                         width={(radius - 1) * 2}
                         height={(radius - 1) * 2}
                         clipPath={`url(#clip-${node.id})`}
@@ -966,8 +1022,8 @@ export function NotesGraph({ notes, characters = [], onNoteClick, onCharacterCli
                     </>
                   ) : (
                     <circle
-                      cx={node.x}
-                      cy={node.y}
+                      cx={0}
+                      cy={0}
                       r={radius}
                       fill={colors.fill}
                       stroke={colors.stroke}
@@ -977,8 +1033,8 @@ export function NotesGraph({ notes, characters = [], onNoteClick, onCharacterCli
                   {showLabels && !isHovered && (
                     <g className="pointer-events-none">
                       <rect
-                        x={node.x - 50 / zoom}
-                        y={node.y + NODE_RADIUS + 4 / zoom}
+                        x={-50 / zoom}
+                        y={NODE_RADIUS + 4 / zoom}
                         width={100 / zoom}
                         height={18 / zoom}
                         rx={3 / zoom}
@@ -987,8 +1043,8 @@ export function NotesGraph({ notes, characters = [], onNoteClick, onCharacterCli
                         strokeWidth={0.5 / zoom}
                       />
                       <text
-                        x={node.x}
-                        y={node.y + NODE_RADIUS + 16 / zoom}
+                        x={0}
+                        y={NODE_RADIUS + 16 / zoom}
                         textAnchor="middle"
                         fill="#d6d3d1"
                         fontSize={10 / zoom}
@@ -1001,8 +1057,8 @@ export function NotesGraph({ notes, characters = [], onNoteClick, onCharacterCli
                   {isHovered && (
                     <g className="pointer-events-none">
                       <rect
-                        x={node.x - 60 / zoom}
-                        y={node.y + radius + 8 / zoom}
+                        x={-60 / zoom}
+                        y={radius + 8 / zoom}
                         width={120 / zoom}
                         height={24 / zoom}
                         rx={4 / zoom}
@@ -1011,8 +1067,8 @@ export function NotesGraph({ notes, characters = [], onNoteClick, onCharacterCli
                         strokeWidth={1 / zoom}
                       />
                       <text
-                        x={node.x}
-                        y={node.y + radius + 20 / zoom}
+                        x={0}
+                        y={radius + 20 / zoom}
                         textAnchor="middle"
                         fill="#e7e5e4"
                         fontSize={12 / zoom}
