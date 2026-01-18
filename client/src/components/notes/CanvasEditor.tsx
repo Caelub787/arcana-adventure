@@ -595,6 +595,23 @@ export function CanvasEditor({
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
   };
 
+  const getClosestSide = useCallback((node: CanvasNode, worldX: number, worldY: number): ConnectionSide => {
+    const centerX = node.x + node.width / 2;
+    const centerY = node.y + node.height / 2;
+    const relX = worldX - centerX;
+    const relY = worldY - centerY;
+    
+    // Normalize to account for aspect ratio
+    const normX = relX / (node.width / 2);
+    const normY = relY / (node.height / 2);
+    
+    if (Math.abs(normX) > Math.abs(normY)) {
+      return normX > 0 ? "right" : "left";
+    } else {
+      return normY > 0 ? "bottom" : "top";
+    }
+  }, []);
+
   const handleCanvasPointerMove = (e: React.PointerEvent) => {
     if (isConnecting && connectionStart) {
       const world = screenToWorld(e.clientX, e.clientY);
@@ -603,8 +620,10 @@ export function CanvasEditor({
       const targetNode = findNodeAtPosition(world.x, world.y);
       if (targetNode && targetNode.id !== connectionStart.nodeId) {
         setHoveredDropTarget(targetNode.id);
+        setHoveredDropSide(getClosestSide(targetNode, world.x, world.y));
       } else {
         setHoveredDropTarget(null);
+        setHoveredDropSide(null);
       }
     }
     
