@@ -1294,30 +1294,36 @@ export function CanvasEditor({
                       
                       {/* Inline label note on arrow */}
                       {(() => {
-                        const labelOffset = connection.labelOffset || { x: 0, y: -40 };
-                        const labelX = midpoint.x + labelOffset.x;
-                        const labelY = midpoint.y + labelOffset.y;
                         const labelWidth = connection.labelWidth || 120;
                         const labelHeight = connection.labelHeight || 40;
+                        // Default offset centers the label on the midpoint
+                        const labelOffset = connection.labelOffset || { x: 0, y: 0 };
+                        const labelX = midpoint.x + labelOffset.x - labelWidth / 2;
+                        const labelY = midpoint.y + labelOffset.y - labelHeight / 2;
                         const isEditing = editingLabelId === connection.id;
                         const hasLabel = connection.label && connection.label.trim().length > 0;
                         
                         // Show label area when: has content, is selected, or is being edited
                         if (!hasLabel && !isSelected && !isEditing) return null;
                         
+                        // Only show connecting line if label is offset from center
+                        const showConnectingLine = Math.abs(labelOffset.x) > 5 || Math.abs(labelOffset.y) > 5;
+                        
                         return (
                           <g>
-                            {/* Line connecting label to arrow midpoint */}
-                            <line
-                              x1={midpoint.x}
-                              y1={midpoint.y}
-                              x2={labelX + labelWidth / 2}
-                              y2={labelY + labelHeight / 2}
-                              stroke="rgb(87 83 78)"
-                              strokeWidth={1}
-                              strokeDasharray="3 3"
-                              className="pointer-events-none"
-                            />
+                            {/* Line connecting label to arrow midpoint (only when offset) */}
+                            {showConnectingLine && (
+                              <line
+                                x1={midpoint.x}
+                                y1={midpoint.y}
+                                x2={labelX + labelWidth / 2}
+                                y2={labelY + labelHeight / 2}
+                                stroke="rgb(87 83 78)"
+                                strokeWidth={1}
+                                strokeDasharray="3 3"
+                                className="pointer-events-none"
+                              />
+                            )}
                             
                             {/* Label container */}
                             <foreignObject
