@@ -849,6 +849,18 @@ export function CanvasEditor({
     
     userInteractedRef.current = true; // Mark as user interaction to prevent view reset
     
+    // If we're already connecting and tap a handle on a DIFFERENT node, complete the connection
+    if (isConnecting && connectionStart && connectionStart.nodeId !== node.id) {
+      addConnection(connectionStart.nodeId, node.id, connectionStart.side, side);
+      setIsConnecting(false);
+      setConnectionStart(null);
+      setConnectionEnd(null);
+      setHoveredDropTarget(null);
+      setHoveredDropSide(null);
+      return;
+    }
+    
+    // Otherwise, start a new connection from this handle
     const anchor = getNodeAnchor(node, side);
     setIsConnecting(true);
     setConnectionStart({
