@@ -52,6 +52,7 @@ export interface CanvasNode {
   y: number;
   width: number;
   height: number;
+  title?: string;
   content?: string;
   noteId?: string;
   noteTitle?: string;
@@ -644,12 +645,18 @@ export function CanvasEditor({
     const isSelected = selectedNodeId === node.id;
     const isDropTarget = hoveredDropTarget === node.id;
     
+    const getDefaultTitle = () => {
+      if (node.type === "note") return node.noteTitle || "Note";
+      if (node.type === "entity") return node.entityName || "Entity";
+      return "Text";
+    };
+    
     return (
       <div
         key={node.id}
-        className={`absolute bg-stone-800 rounded-lg border-2 transition-all cursor-move group ${
+        className={`absolute bg-stone-800 rounded-lg border-2 cursor-move group ${
           isDropTarget 
-            ? "border-green-400 shadow-lg shadow-green-400/30 scale-105" 
+            ? "border-green-400 shadow-lg shadow-green-400/30" 
             : isSelected 
               ? "border-indigo-500 shadow-lg shadow-indigo-500/20" 
               : "border-stone-600 hover:border-stone-500"
@@ -664,22 +671,33 @@ export function CanvasEditor({
         data-testid={`canvas-node-${node.id}`}
       >
         <div className="p-2 h-full flex flex-col">
-          <div className="flex items-center justify-between mb-1">
-            <div className="flex items-center gap-1">
-              {node.type === "text" && <Type className="h-3 w-3 text-stone-400" />}
-              {node.type === "note" && <FileText className="h-3 w-3 text-amber-400" />}
+          <div className="flex items-center justify-between mb-1 gap-1">
+            <div className="flex items-center gap-1 flex-1 min-w-0">
+              {node.type === "text" && <Type className="h-3 w-3 text-stone-400 flex-shrink-0" />}
+              {node.type === "note" && <FileText className="h-3 w-3 text-amber-400 flex-shrink-0" />}
               {node.type === "entity" && node.entityType && (
-                <span className={getEntityColor(node.entityType)}>
+                <span className={`flex-shrink-0 ${getEntityColor(node.entityType)}`}>
                   {getEntityIcon(node.entityType)}
                 </span>
               )}
-              <span className="text-xs text-stone-500 capitalize">{node.type}</span>
+              {!readOnly && isSelected ? (
+                <Input
+                  value={node.title ?? getDefaultTitle()}
+                  onChange={(e) => updateNode(node.id, { title: e.target.value })}
+                  onClick={(e) => e.stopPropagation()}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  className="h-5 text-xs bg-stone-900/50 border-stone-700 px-1 py-0 flex-1 min-w-0"
+                  data-testid={`input-node-title-${node.id}`}
+                />
+              ) : (
+                <span className="text-xs text-stone-400 truncate">{node.title || getDefaultTitle()}</span>
+              )}
             </div>
             {!readOnly && isSelected && (
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-5 w-5 text-stone-400 hover:text-red-400"
+                className="h-5 w-5 text-stone-400 hover:text-red-400 flex-shrink-0"
                 onClick={() => deleteNode(node.id)}
                 data-testid={`delete-node-${node.id}`}
               >
@@ -727,7 +745,7 @@ export function CanvasEditor({
         {!readOnly && (
           <>
             <div
-              className={`absolute -right-3 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full cursor-crosshair border-2 transition-all ${
+              className={`absolute -right-3 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full cursor-crosshair border-2 transition-opacity transition-transform ${
                 isConnecting 
                   ? "bg-indigo-400 border-indigo-300 opacity-100 scale-110" 
                   : "bg-indigo-500 border-indigo-400 opacity-80 hover:opacity-100 hover:scale-125 group-hover:opacity-100"
@@ -738,7 +756,7 @@ export function CanvasEditor({
               <div className="absolute inset-0 rounded-full bg-indigo-400 animate-ping opacity-30" />
             </div>
             <div
-              className="absolute -right-1 -bottom-1 w-3 h-3 bg-stone-500 rounded-sm cursor-se-resize opacity-0 group-hover:opacity-100 hover:opacity-100"
+              className="absolute -right-1 -bottom-1 w-4 h-4 bg-stone-500 hover:bg-stone-400 rounded-sm cursor-se-resize opacity-0 group-hover:opacity-100 hover:opacity-100 transition-opacity"
               onPointerDown={(e) => handleResizePointerDown(e, node)}
               data-testid={`resize-handle-${node.id}`}
             />
@@ -835,12 +853,12 @@ export function CanvasEditor({
                 </TooltipContent>
               </Tooltip>
 
-              <ReferencePicker
-                open={entityPickerOpen}
-                onOpenChange={setEntityPickerOpen}
-                onSelect={handleEntitySelect}
-                triggerElement={
-                  <Tooltip>
+              <Tooltip>
+                <ReferencePicker
+                  open={entityPickerOpen}
+                  onOpenChange={setEntityPickerOpen}
+                  onSelect={handleEntitySelect}
+                  triggerElement={
                     <TooltipTrigger asChild>
                       <Button
                         variant="ghost"
@@ -851,12 +869,12 @@ export function CanvasEditor({
                         <Sparkles className="h-4 w-4" />
                       </Button>
                     </TooltipTrigger>
-                    <TooltipContent side="right">
-                      <p>Add Entity</p>
-                    </TooltipContent>
-                  </Tooltip>
-                }
-              />
+                  }
+                />
+                <TooltipContent side="right">
+                  <p>Add Entity</p>
+                </TooltipContent>
+              </Tooltip>
             </div>
           )}
 
