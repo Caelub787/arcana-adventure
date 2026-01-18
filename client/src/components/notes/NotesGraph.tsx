@@ -673,13 +673,14 @@ export function NotesGraph({ notes, characters = [], onNoteClick, onCharacterCli
     panStartRef.current = null;
     
     if (clickedNode && !wasDragging) {
-      if (clickedNode.type === 'note' && clickedNode.noteId && onNoteClick) {
-        onNoteClick(clickedNode.noteId);
+      if (clickedNode.type === 'character' && clickedNode.characterId && onCharacterClick) {
+        onCharacterClick(clickedNode.characterId);
       } else {
+        // Show popup for all entities including notes
         setSelectedNode(clickedNode);
       }
     }
-  }, [onNoteClick]);
+  }, [onCharacterClick]);
 
   // Touch event handlers for pinch-to-zoom
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
