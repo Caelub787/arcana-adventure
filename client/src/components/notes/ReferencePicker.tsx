@@ -109,35 +109,19 @@ export function ReferencePicker({
       const results = await api.searchEntities(debouncedSearch, selectedType);
       return results.slice(0, MAX_RESULTS);
     },
-    enabled: open, // Always enabled when picker is open - show all entities when search is empty
+    enabled: open && debouncedSearch.length > 0, // Only fetch when user types something
     staleTime: 1000 * 60 * 5,
     retry: 3,
     retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 10000),
   });
 
   useEffect(() => {
-    if (open) {
-      if (inputRef.current) {
-        setTimeout(() => inputRef.current?.focus(), 0);
-      }
-
-      const popularTypes = ["spell", "item", "trait"];
-      popularTypes.forEach((type) => {
-        queryClient.prefetchQuery({
-          queryKey: ["/api/search/entities", "", type],
-          queryFn: async () => {
-            const results = await api.searchEntities("", type);
-            return results.slice(0, MAX_RESULTS);
-          },
-          staleTime: 1000 * 60 * 5,
-        });
-      });
-    }
+    // Don't auto-focus - let user tap to search when ready
     if (!open) {
       setSearchQuery("");
       setSelectedType("all");
     }
-  }, [open, queryClient]);
+  }, [open]);
 
   const handleSelect = (entity: SearchableEntity) => {
     onSelect(entity);

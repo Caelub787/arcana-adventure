@@ -122,9 +122,12 @@ export function CanvasEditor({
 }: CanvasEditorProps) {
   const [, setLocation] = useLocation();
   const containerRef = useRef<HTMLDivElement>(null);
+  const svgGroupRef = useRef<SVGGElement>(null);
+  const nodesContainerRef = useRef<HTMLDivElement>(null);
   
   const panRef = useRef({ x: 0, y: 0 });
   const zoomRef = useRef(DEFAULT_ZOOM);
+  const rafIdRef = useRef<number | null>(null);
   const [zoom, setZoom] = useState(DEFAULT_ZOOM);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   
@@ -187,6 +190,17 @@ export function CanvasEditor({
     const x = (screenX - rect.left - panRef.current.x) / zoomRef.current;
     const y = (screenY - rect.top - panRef.current.y) / zoomRef.current;
     return { x, y };
+  }, []);
+
+  // Apply transforms directly to DOM without triggering React re-renders
+  const applyTransform = useCallback(() => {
+    const transform = `translate(${panRef.current.x}px, ${panRef.current.y}px) scale(${zoomRef.current})`;
+    if (svgGroupRef.current) {
+      svgGroupRef.current.style.transform = transform;
+    }
+    if (nodesContainerRef.current) {
+      nodesContainerRef.current.style.transform = transform;
+    }
   }, []);
 
   const getViewportCenter = useCallback(() => {
@@ -579,9 +593,10 @@ export function CanvasEditor({
     
     panRef.current = newPan;
     zoomRef.current = newZoom;
-    setPan(newPan);
-    setZoom(newZoom);
-  }, []);
+    // Apply transform directly for smooth pinch zoom
+    if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current);
+    rafIdRef.current = requestAnimationFrame(applyTransform);
+  }, [applyTransform]);
 
   const handleCanvasPointerDown = (e: React.PointerEvent) => {
     if (e.target !== e.currentTarget) return;
@@ -692,7 +707,9 @@ export function CanvasEditor({
       };
       
       panRef.current = newPan;
-      setPan(newPan);
+      // Apply transform directly without React state update for performance
+      if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current);
+      rafIdRef.current = requestAnimationFrame(applyTransform);
     }
     
     if (isDragging && dragStartRef.current) {
@@ -778,6 +795,12 @@ export function CanvasEditor({
     if (nodeLongPressTimerRef.current) {
       clearTimeout(nodeLongPressTimerRef.current);
       nodeLongPressTimerRef.current = null;
+    }
+    
+    // Sync React state with refs at end of gesture (for re-renders that need the values)
+    if (isPanning) {
+      setPan({ ...panRef.current });
+      setZoom(zoomRef.current);
     }
     
     setIsPanning(false);
@@ -1385,7 +1408,7 @@ export function CanvasEditor({
                     <path d="M6,0 L0,3 L6,6 z" fill="rgb(99 102 241)" />
                   </marker>
                 </defs>
-                <g style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transformOrigin: "0 0" }}>
+                <g ref={svgGroupRef} style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transformOrigin: "0 0" }}>
                 
                 {canvasData.connections.map((connection) => {
                   const isSelected = selectedConnectionId === connection.id;
@@ -1680,6 +1703,7 @@ export function CanvasEditor({
               </svg>
               
               <div
+                ref={nodesContainerRef}
                 className="absolute"
                 style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transformOrigin: "0 0" }}
               >
