@@ -175,10 +175,14 @@ function FolderTreeItem({
         )}
         <span className="flex-1 truncate">{folder.name}</span>
         {isGlobal && (
-          <Network className="h-2.5 w-2.5 text-stone-500" title="Global folder" />
+          <span title="Global folder">
+            <Network className="h-2.5 w-2.5 text-stone-500" />
+          </span>
         )}
         {isOtherCampaign && (
-          <EyeOff className="h-2.5 w-2.5 text-purple-400" title="Other campaign" />
+          <span title="Other campaign">
+            <EyeOff className="h-2.5 w-2.5 text-purple-400" />
+          </span>
         )}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

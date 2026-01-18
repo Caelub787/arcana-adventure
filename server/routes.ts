@@ -31,6 +31,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Map to track campaign rooms
   const campaignRooms = new Map<string, Set<any>>();
   
+  // Map to track note rooms for live collaborative editing
+  // Each note room tracks: { clients: Set<WebSocket>, presence: Map<userId, { username, cursorPosition, lastActive }> }
+  const noteRooms = new Map<string, { clients: Set<any>; presence: Map<string, { username: string; cursorPosition?: any; lastActive: number }> }>();
+  
   // Rate limiting map: userId -> { count, resetTime }
   const rateLimits = new Map<string, { count: number; resetTime: number }>();
   
@@ -1244,6 +1248,184 @@ export async function registerRoutes(app: Express): Promise<Server> {
             });
           }
         }
+        
+        // ============================================
+        // NOTE COLLABORATION EVENTS
+        // ============================================
+        
+        // Handle join_note - user opens a note for viewing/editing
+        if (message.type === "join_note") {
+          const { noteId } = message;
+          if (!noteId) return;
+          
+          // Verify user has access to this note
+          const note = await storage.getNote(noteId);
+          if (!note) {
+            ws.send(JSON.stringify({ type: "error", message: "Note not found" }));
+            return;
+          }
+          
+          // Check access permissions
+          const { canAccess } = await storage.canAccessNote(authenticatedUserId, noteId);
+          const isOwner = note.userId === authenticatedUserId;
+          
+          if (!canAccess && !isOwner) {
+            ws.send(JSON.stringify({ type: "error", message: "Not authorized to view this note" }));
+            return;
+          }
+          
+          // Initialize note room if doesn't exist
+          if (!noteRooms.has(noteId)) {
+            noteRooms.set(noteId, { clients: new Set(), presence: new Map() });
+          }
+          
+          const noteRoom = noteRooms.get(noteId)!;
+          noteRoom.clients.add(ws);
+          noteRoom.presence.set(authenticatedUserId, {
+            username,
+            cursorPosition: null,
+            lastActive: Date.now()
+          });
+          
+          // Track which notes this WebSocket has joined
+          if (!(ws as any).joinedNotes) {
+            (ws as any).joinedNotes = new Set<string>();
+          }
+          (ws as any).joinedNotes.add(noteId);
+          
+          // Send current presence to the new joiner
+          const presenceList = Array.from(noteRoom.presence.entries()).map(([userId, data]) => ({
+            userId,
+            ...data
+          }));
+          
+          ws.send(JSON.stringify({
+            type: "note_joined",
+            noteId,
+            presence: presenceList
+          }));
+          
+          // Broadcast user joined to others in the note room
+          const joinMessage = JSON.stringify({
+            type: "note_presence_update",
+            noteId,
+            userId: authenticatedUserId,
+            username,
+            action: "joined"
+          });
+          
+          noteRoom.clients.forEach((client) => {
+            if (client !== ws && client.readyState === 1) {
+              client.send(joinMessage);
+            }
+          });
+          
+          console.log(`[WebSocket] User ${username} joined note ${noteId}`);
+        }
+        
+        // Handle leave_note - user closes a note
+        if (message.type === "leave_note") {
+          const { noteId } = message;
+          if (!noteId) return;
+          
+          const noteRoom = noteRooms.get(noteId);
+          if (noteRoom) {
+            noteRoom.clients.delete(ws);
+            noteRoom.presence.delete(authenticatedUserId);
+            
+            // Remove from tracked notes
+            if ((ws as any).joinedNotes) {
+              (ws as any).joinedNotes.delete(noteId);
+            }
+            
+            // Broadcast user left to others
+            const leaveMessage = JSON.stringify({
+              type: "note_presence_update",
+              noteId,
+              userId: authenticatedUserId,
+              username,
+              action: "left"
+            });
+            
+            noteRoom.clients.forEach((client) => {
+              if (client.readyState === 1) {
+                client.send(leaveMessage);
+              }
+            });
+            
+            // Clean up empty rooms
+            if (noteRoom.clients.size === 0) {
+              noteRooms.delete(noteId);
+            }
+          }
+          
+          console.log(`[WebSocket] User ${username} left note ${noteId}`);
+        }
+        
+        // Handle note_update - broadcast content changes to other viewers
+        if (message.type === "note_update") {
+          const { noteId, title, content, canvasData } = message;
+          if (!noteId) return;
+          
+          const noteRoom = noteRooms.get(noteId);
+          if (!noteRoom || !noteRoom.clients.has(ws)) return;
+          
+          // Update presence activity
+          const presence = noteRoom.presence.get(authenticatedUserId);
+          if (presence) {
+            presence.lastActive = Date.now();
+          }
+          
+          // Broadcast update to all OTHER clients viewing this note
+          const updateMessage = JSON.stringify({
+            type: "note_update",
+            noteId,
+            userId: authenticatedUserId,
+            username,
+            title,
+            content,
+            canvasData,
+            timestamp: Date.now()
+          });
+          
+          noteRoom.clients.forEach((client) => {
+            if (client !== ws && client.readyState === 1) {
+              client.send(updateMessage);
+            }
+          });
+        }
+        
+        // Handle cursor_update - for live cursor/selection presence
+        if (message.type === "cursor_update") {
+          const { noteId, cursorPosition, selection } = message;
+          if (!noteId) return;
+          
+          const noteRoom = noteRooms.get(noteId);
+          if (!noteRoom || !noteRoom.clients.has(ws)) return;
+          
+          // Update presence
+          const presence = noteRoom.presence.get(authenticatedUserId);
+          if (presence) {
+            presence.cursorPosition = cursorPosition;
+            presence.lastActive = Date.now();
+          }
+          
+          // Broadcast cursor position to others
+          const cursorMessage = JSON.stringify({
+            type: "cursor_update",
+            noteId,
+            userId: authenticatedUserId,
+            username,
+            cursorPosition,
+            selection
+          });
+          
+          noteRoom.clients.forEach((client) => {
+            if (client !== ws && client.readyState === 1) {
+              client.send(cursorMessage);
+            }
+          });
+        }
       } catch (err) {
         console.error("WebSocket error:", err);
         ws.send(JSON.stringify({
@@ -1262,6 +1444,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
           room.delete(ws);
           if (room.size === 0) {
             campaignRooms.delete(campaignId);
+          }
+        }
+      });
+      
+      // Remove from all note rooms and broadcast presence update
+      const joinedNotes = (ws as any).joinedNotes || new Set<string>();
+      const disconnectedUserId = (ws as any).userId;
+      const disconnectedUsername = (ws as any).username;
+      
+      joinedNotes.forEach((noteId: string) => {
+        const noteRoom = noteRooms.get(noteId);
+        if (noteRoom) {
+          noteRoom.clients.delete(ws);
+          noteRoom.presence.delete(disconnectedUserId);
+          
+          // Broadcast user left to others
+          const leaveMessage = JSON.stringify({
+            type: "note_presence_update",
+            noteId,
+            userId: disconnectedUserId,
+            username: disconnectedUsername,
+            action: "left"
+          });
+          
+          noteRoom.clients.forEach((client) => {
+            if (client.readyState === 1) {
+              client.send(leaveMessage);
+            }
+          });
+          
+          // Clean up empty rooms
+          if (noteRoom.clients.size === 0) {
+            noteRooms.delete(noteId);
           }
         }
       });
