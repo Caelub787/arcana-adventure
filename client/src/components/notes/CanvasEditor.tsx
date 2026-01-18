@@ -1342,8 +1342,9 @@ export function CanvasEditor({
             >
               <svg
                 className="absolute inset-0 w-full h-full pointer-events-none"
-                style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transformOrigin: "0 0" }}
+                style={{ overflow: "visible" }}
               >
+                <g style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transformOrigin: "0 0" }}>
                 <defs>
                   {/* End arrow markers - refX=0 so arrow tip is at line end */}
                   <marker id="arrowhead" markerWidth="12" markerHeight="10" refX="0" refY="5" orient="auto" markerUnits="userSpaceOnUse">
@@ -1633,6 +1634,7 @@ export function CanvasEditor({
                     className="pointer-events-none"
                   />
                 )}
+                </g>
               </svg>
               
               <div
