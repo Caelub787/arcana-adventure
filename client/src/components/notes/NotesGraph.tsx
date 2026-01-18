@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Note, api, SystemSpell, SystemTrait, SystemSkill, SystemSpecies, Item, SearchableEntity, Character } from "@/lib/api";
-import { ZoomIn, ZoomOut, RotateCcw, X, Sparkles, Package, Shield, Zap, Users, FileText, Tag, UserCircle } from "lucide-react";
+import { ZoomIn, ZoomOut, RotateCcw, X, Sparkles, Package, Shield, Zap, Users, FileText, Tag, UserCircle, Filter, ChevronDown, ChevronUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CanvasData } from "./CanvasEditor";
 
@@ -246,6 +246,7 @@ export function NotesGraph({ notes, characters = [], onNoteClick, onCharacterCli
   const [selectedNode, setSelectedNode] = useState<GraphNodeExtended | null>(null);
   const [showLabels, setShowLabels] = useState(false);
   const [entityFilters, setEntityFilters] = useState<EntityFilters>(loadFilters);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const isPanningRef = useRef(false);
   const isDraggingRef = useRef(false);
   
@@ -322,11 +323,19 @@ export function NotesGraph({ notes, characters = [], onNoteClick, onCharacterCli
     if (prevFiltersRef.current === entityFilters) return;
     prevFiltersRef.current = entityFilters;
     
-    // Reset velocities and restart simulation for re-formation
+    // Reinitialize positions to random spots near center and restart simulation
     const currentNodes = nodesRef.current;
-    for (const node of currentNodes) {
-      node.vx = (Math.random() - 0.5) * 2;
-      node.vy = (Math.random() - 0.5) * 2;
+    const angle = (2 * Math.PI) / currentNodes.length;
+    const radius = Math.min(200, currentNodes.length * 8);
+    
+    for (let i = 0; i < currentNodes.length; i++) {
+      const node = currentNodes[i];
+      // Place nodes in a circular pattern with some randomness
+      const a = angle * i + (Math.random() - 0.5) * 0.5;
+      node.x = Math.cos(a) * radius * (0.5 + Math.random() * 0.5);
+      node.y = Math.sin(a) * radius * (0.5 + Math.random() * 0.5);
+      node.vx = 0;
+      node.vy = 0;
     }
     nodesRef.current = [...currentNodes];
     setNodes([...currentNodes]);
@@ -855,42 +864,64 @@ export function NotesGraph({ notes, characters = [], onNoteClick, onCharacterCli
       )}
 
       <div className="absolute top-4 right-4 flex flex-col gap-2">
-        {/* Filter toggles */}
-        <div className="bg-stone-900/90 border border-stone-700 rounded-lg p-2 flex flex-col gap-1">
-          <div className="text-xs text-stone-500 mb-1">Filters</div>
-          {[
-            { type: 'note' as EntityType, label: 'Notes', icon: <FileText className="h-3 w-3" /> },
-            { type: 'character' as EntityType, label: 'Characters', icon: <UserCircle className="h-3 w-3" /> },
-            { type: 'spell' as EntityType, label: 'Spells', icon: <Sparkles className="h-3 w-3" /> },
-            { type: 'item' as EntityType, label: 'Items', icon: <Package className="h-3 w-3" /> },
-            { type: 'trait' as EntityType, label: 'Traits', icon: <Shield className="h-3 w-3" /> },
-            { type: 'skill' as EntityType, label: 'Skills', icon: <Zap className="h-3 w-3" /> },
-            { type: 'species' as EntityType, label: 'Species', icon: <Users className="h-3 w-3" /> },
-          ].map(({ type, label, icon }) => {
-            const isEnabled = entityFilters[type];
-            return (
-              <button
-                key={type}
-                onClick={() => toggleFilter(type)}
-                className={`flex items-center gap-2 px-2 py-1 rounded text-left transition-all ${
-                  isEnabled 
-                    ? 'bg-stone-800/50 hover:bg-stone-700/50' 
-                    : 'bg-stone-900/30 opacity-40 hover:opacity-60'
-                }`}
-                data-testid={`filter-toggle-${type}`}
-                title={isEnabled ? `Hide ${label}` : `Show ${label}`}
+        {/* Filter toggle button */}
+        <Button
+          variant="outline"
+          size="icon"
+          onClick={() => setFiltersOpen(!filtersOpen)}
+          className={`bg-stone-900/80 border-stone-700 hover:bg-stone-800 ${filtersOpen ? 'text-amber-400 border-amber-600' : ''}`}
+          data-testid="button-toggle-filters"
+          title={filtersOpen ? "Hide filters" : "Show filters"}
+        >
+          <Filter className="h-4 w-4" />
+        </Button>
+        
+        {/* Collapsible filter panel */}
+        {filtersOpen && (
+          <div className="bg-stone-900/95 border border-stone-700 rounded-lg p-2 flex flex-col gap-1 animate-in fade-in slide-in-from-top-2 duration-200">
+            <div className="text-xs text-stone-500 mb-1 flex items-center justify-between">
+              <span>Filters</span>
+              <button 
+                onClick={() => setFiltersOpen(false)}
+                className="text-stone-500 hover:text-stone-300"
               >
-                <div
-                  className={`w-2.5 h-2.5 rounded-full flex-shrink-0`}
-                  style={{ backgroundColor: NODE_COLORS[type].fill, opacity: isEnabled ? 1 : 0.4 }}
-                />
-                <span className={`text-xs ${isEnabled ? 'text-stone-300' : 'text-stone-600 line-through'}`}>
-                  {label}
-                </span>
+                <X className="h-3 w-3" />
               </button>
-            );
-          })}
-        </div>
+            </div>
+            {[
+              { type: 'note' as EntityType, label: 'Notes' },
+              { type: 'character' as EntityType, label: 'Characters' },
+              { type: 'spell' as EntityType, label: 'Spells' },
+              { type: 'item' as EntityType, label: 'Items' },
+              { type: 'trait' as EntityType, label: 'Traits' },
+              { type: 'skill' as EntityType, label: 'Skills' },
+              { type: 'species' as EntityType, label: 'Species' },
+            ].map(({ type, label }) => {
+              const isEnabled = entityFilters[type];
+              return (
+                <button
+                  key={type}
+                  onClick={() => toggleFilter(type)}
+                  className={`flex items-center gap-2 px-2 py-1 rounded text-left transition-all ${
+                    isEnabled 
+                      ? 'bg-stone-800/50 hover:bg-stone-700/50' 
+                      : 'bg-stone-900/30 opacity-40 hover:opacity-60'
+                  }`}
+                  data-testid={`filter-toggle-${type}`}
+                  title={isEnabled ? `Hide ${label}` : `Show ${label}`}
+                >
+                  <div
+                    className={`w-2.5 h-2.5 rounded-full flex-shrink-0`}
+                    style={{ backgroundColor: NODE_COLORS[type].fill, opacity: isEnabled ? 1 : 0.4 }}
+                  />
+                  <span className={`text-xs ${isEnabled ? 'text-stone-300' : 'text-stone-600 line-through'}`}>
+                    {label}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
         
         {/* Zoom and view controls */}
         <Button
