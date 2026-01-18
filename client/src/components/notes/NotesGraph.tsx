@@ -233,7 +233,9 @@ function initializeNodes(
 export function NotesGraph({ notes, characters = [], onNoteClick, onCharacterClick }: NotesGraphProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
+  const transformGroupRef = useRef<SVGGElement>(null);
   const animationRef = useRef<number>(0);
+  const panAnimationRef = useRef<number>(0);
 
   const [zoom, setZoom] = useState(DEFAULT_ZOOM);
   const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -246,6 +248,15 @@ export function NotesGraph({ notes, characters = [], onNoteClick, onCharacterCli
   const [entityFilters, setEntityFilters] = useState<EntityFilters>(loadFilters);
   const isPanningRef = useRef(false);
   const isDraggingRef = useRef(false);
+  
+  const updateTransform = useCallback(() => {
+    if (transformGroupRef.current) {
+      transformGroupRef.current.setAttribute(
+        'transform',
+        `translate(${panRef.current.x}, ${panRef.current.y}) scale(${zoomRef.current})`
+      );
+    }
+  }, []);
   
   const toggleFilter = useCallback((type: EntityType) => {
     setEntityFilters(prev => {
@@ -303,6 +314,24 @@ export function NotesGraph({ notes, characters = [], onNoteClick, onCharacterCli
     nodesRef.current = newNodes;
     setIsSimulating(true);
   }, [notes, spells, traits, skills, species, systemItems, characters]);
+
+  // Restart simulation when filters change to re-form the layout
+  const prevFiltersRef = useRef(entityFilters);
+  useEffect(() => {
+    // Skip initial mount
+    if (prevFiltersRef.current === entityFilters) return;
+    prevFiltersRef.current = entityFilters;
+    
+    // Reset velocities and restart simulation for re-formation
+    const currentNodes = nodesRef.current;
+    for (const node of currentNodes) {
+      node.vx = (Math.random() - 0.5) * 2;
+      node.vy = (Math.random() - 0.5) * 2;
+    }
+    nodesRef.current = [...currentNodes];
+    setNodes([...currentNodes]);
+    setIsSimulating(true);
+  }, [entityFilters]);
 
   const connectedNodesMap = useMemo(() => {
     const map = new Map<string, Set<string>>();
@@ -411,14 +440,20 @@ export function NotesGraph({ notes, characters = [], onNoteClick, onCharacterCli
         const worldX = (mouseX - panRef.current.x) / zoomRef.current;
         const worldY = (mouseY - panRef.current.y) / zoomRef.current;
 
-        const newPan = {
+        panRef.current = {
           x: mouseX - worldX * newZoom,
           y: mouseY - worldY * newZoom,
         };
-
-        panRef.current = newPan;
         zoomRef.current = newZoom;
-        setPan(newPan);
+        
+        // Update transform directly, sync state after
+        if (transformGroupRef.current) {
+          transformGroupRef.current.setAttribute(
+            'transform',
+            `translate(${panRef.current.x}, ${panRef.current.y}) scale(${zoomRef.current})`
+          );
+        }
+        setPan({ ...panRef.current });
         setZoom(newZoom);
       }
     };
@@ -466,18 +501,28 @@ export function NotesGraph({ notes, characters = [], onNoteClick, onCharacterCli
     }
     
     if (isDraggingRef.current) {
-      const newPan = {
+      panRef.current = {
         x: panStartRef.current.panX + dx,
         y: panStartRef.current.panY + dy,
       };
-      panRef.current = newPan;
-      setPan(newPan);
+      // Use rAF batching for smooth panning - update DOM directly via ref
+      if (!panAnimationRef.current) {
+        panAnimationRef.current = requestAnimationFrame(() => {
+          updateTransform();
+          panAnimationRef.current = 0;
+        });
+      }
     }
-  }, []);
+  }, [updateTransform]);
 
   const handlePointerUp = useCallback(() => {
     const clickedNode = panStartRef.current?.startedOnNode;
     const wasDragging = isDraggingRef.current;
+    
+    // Sync state at end of drag for proper re-renders
+    if (wasDragging) {
+      setPan({ ...panRef.current });
+    }
     
     isPanningRef.current = false;
     isDraggingRef.current = false;
@@ -614,7 +659,7 @@ export function NotesGraph({ notes, characters = [], onNoteClick, onCharacterCli
           className="absolute inset-0 w-full h-full"
           style={{ background: 'transparent' }}
         >
-          <g transform={`translate(${pan.x}, ${pan.y}) scale(${zoom})`}>
+          <g ref={transformGroupRef} transform={`translate(${pan.x}, ${pan.y}) scale(${zoom})`}>
             {filteredEdges.map((edge, i) => {
               const fromNode = nodeMap.get(edge.fromId);
               const toNode = nodeMap.get(edge.toId);
@@ -810,6 +855,44 @@ export function NotesGraph({ notes, characters = [], onNoteClick, onCharacterCli
       )}
 
       <div className="absolute top-4 right-4 flex flex-col gap-2">
+        {/* Filter toggles */}
+        <div className="bg-stone-900/90 border border-stone-700 rounded-lg p-2 flex flex-col gap-1">
+          <div className="text-xs text-stone-500 mb-1">Filters</div>
+          {[
+            { type: 'note' as EntityType, label: 'Notes', icon: <FileText className="h-3 w-3" /> },
+            { type: 'character' as EntityType, label: 'Characters', icon: <UserCircle className="h-3 w-3" /> },
+            { type: 'spell' as EntityType, label: 'Spells', icon: <Sparkles className="h-3 w-3" /> },
+            { type: 'item' as EntityType, label: 'Items', icon: <Package className="h-3 w-3" /> },
+            { type: 'trait' as EntityType, label: 'Traits', icon: <Shield className="h-3 w-3" /> },
+            { type: 'skill' as EntityType, label: 'Skills', icon: <Zap className="h-3 w-3" /> },
+            { type: 'species' as EntityType, label: 'Species', icon: <Users className="h-3 w-3" /> },
+          ].map(({ type, label, icon }) => {
+            const isEnabled = entityFilters[type];
+            return (
+              <button
+                key={type}
+                onClick={() => toggleFilter(type)}
+                className={`flex items-center gap-2 px-2 py-1 rounded text-left transition-all ${
+                  isEnabled 
+                    ? 'bg-stone-800/50 hover:bg-stone-700/50' 
+                    : 'bg-stone-900/30 opacity-40 hover:opacity-60'
+                }`}
+                data-testid={`filter-toggle-${type}`}
+                title={isEnabled ? `Hide ${label}` : `Show ${label}`}
+              >
+                <div
+                  className={`w-2.5 h-2.5 rounded-full flex-shrink-0`}
+                  style={{ backgroundColor: NODE_COLORS[type].fill, opacity: isEnabled ? 1 : 0.4 }}
+                />
+                <span className={`text-xs ${isEnabled ? 'text-stone-300' : 'text-stone-600 line-through'}`}>
+                  {label}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+        
+        {/* Zoom and view controls */}
         <Button
           variant="outline"
           size="icon"
@@ -849,44 +932,10 @@ export function NotesGraph({ notes, characters = [], onNoteClick, onCharacterCli
         </Button>
       </div>
 
-      <div className="absolute bottom-4 left-4 flex flex-col gap-1">
+      <div className="absolute bottom-4 left-4">
         <div className="text-xs text-stone-500">
           {visibleCount} visible • {nodes.length} total • {filteredEdges.length} connections
           {isSimulating && " • Arranging..."}
-        </div>
-        <div className="flex flex-wrap gap-2 mt-1">
-          {[
-            { type: 'note' as EntityType, label: 'Notes' },
-            { type: 'character' as EntityType, label: 'Characters' },
-            { type: 'spell' as EntityType, label: 'Spells' },
-            { type: 'item' as EntityType, label: 'Items' },
-            { type: 'trait' as EntityType, label: 'Traits' },
-            { type: 'skill' as EntityType, label: 'Skills' },
-            { type: 'species' as EntityType, label: 'Species' },
-          ].map(({ type, label }) => {
-            const isEnabled = entityFilters[type];
-            return (
-              <button
-                key={type}
-                onClick={() => toggleFilter(type)}
-                className={`flex items-center gap-1 px-1.5 py-0.5 rounded transition-all ${
-                  isEnabled 
-                    ? 'bg-stone-800/50 hover:bg-stone-700/50' 
-                    : 'bg-stone-900/30 opacity-50 hover:opacity-75'
-                }`}
-                data-testid={`filter-toggle-${type}`}
-                title={isEnabled ? `Hide ${label}` : `Show ${label}`}
-              >
-                <div
-                  className={`w-2.5 h-2.5 rounded-full transition-opacity ${isEnabled ? '' : 'opacity-40'}`}
-                  style={{ backgroundColor: NODE_COLORS[type].fill }}
-                />
-                <span className={`text-xs ${isEnabled ? 'text-stone-400' : 'text-stone-600 line-through'}`}>
-                  {label}
-                </span>
-              </button>
-            );
-          })}
         </div>
       </div>
     </div>
