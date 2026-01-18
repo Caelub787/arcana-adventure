@@ -4909,8 +4909,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // Get lightweight summaries for both campaign and system items
+      // Pass userId to include GM's library items across all their campaigns
+      const isGM = campaign.gmUserId === req.session.userId;
       const [campaignItems, systemItems] = await Promise.all([
-        storage.getCampaignItemSummaries(req.params.campaignId),
+        storage.getCampaignItemSummaries(req.params.campaignId, isGM ? req.session.userId : undefined),
         storage.getSystemItemSummaries()
       ]);
       
@@ -4931,8 +4933,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // Get campaign template items and system items
+      // Pass userId to include GM's library items across all their campaigns
+      const isGM = campaign.gmUserId === req.session.userId;
       const [campaignItems, systemItems] = await Promise.all([
-        storage.getCampaignTemplateItems(req.params.campaignId),
+        storage.getCampaignTemplateItems(req.params.campaignId, isGM ? req.session.userId : undefined),
         storage.getSystemItems()
       ]);
       
@@ -4956,7 +4960,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ...req.body,
         isTemplate: true,
         characterId: null,
-        campaignId: req.params.campaignId
+        campaignId: req.params.campaignId,
+        createdByUserId: req.session.userId, // Track which GM created this item
       });
       const item = await storage.createItem(itemData);
       res.json(item);

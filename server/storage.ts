@@ -147,10 +147,10 @@ export interface IStorage {
   // Item operations
   getItemsByCharacter(characterId: string): Promise<Item[]>;
   getSystemItems(): Promise<Item[]>;
-  getCampaignTemplateItems(campaignId: string): Promise<Item[]>;
+  getCampaignTemplateItems(campaignId: string, userId?: string): Promise<Item[]>;
   // Lightweight summaries for picker dialogs (faster loading)
   getSystemItemSummaries(): Promise<{ id: string; name: string; itemType: string; rarity: string; weight: number }[]>;
-  getCampaignItemSummaries(campaignId: string): Promise<{ id: string; name: string; itemType: string; rarity: string; weight: number }[]>;
+  getCampaignItemSummaries(campaignId: string, userId?: string): Promise<{ id: string; name: string; itemType: string; rarity: string; weight: number }[]>;
   createItem(item: InsertItem): Promise<Item>;
   updateItem(id: string, updates: Partial<InsertItem>): Promise<Item | undefined>;
   deleteItem(id: string): Promise<void>;
@@ -1500,13 +1500,19 @@ export class DatabaseStorage implements IStorage {
     return result.map(item => this.convertLegacyItemPrice(item));
   }
 
-  async getCampaignTemplateItems(campaignId: string): Promise<Item[]> {
+  async getCampaignTemplateItems(campaignId: string, userId?: string): Promise<Item[]> {
+    // Get items specific to this campaign OR created by this user (GM library items)
     const result = await db.select()
       .from(items)
       .where(and(
         eq(items.isTemplate, true),
-        eq(items.campaignId, campaignId),
-        sql`${items.characterId} IS NULL`
+        sql`${items.characterId} IS NULL`,
+        userId 
+          ? or(
+              eq(items.campaignId, campaignId),
+              eq(items.createdByUserId, userId)
+            )
+          : eq(items.campaignId, campaignId)
       )) as Item[];
     return result.map(item => this.convertLegacyItemPrice(item));
   }
@@ -1528,7 +1534,8 @@ export class DatabaseStorage implements IStorage {
       ));
   }
 
-  async getCampaignItemSummaries(campaignId: string): Promise<{ id: string; name: string; itemType: string; rarity: string; weight: number }[]> {
+  async getCampaignItemSummaries(campaignId: string, userId?: string): Promise<{ id: string; name: string; itemType: string; rarity: string; weight: number }[]> {
+    // Get items specific to this campaign OR created by this user (GM library items)
     return await db.select({
       id: items.id,
       name: items.name,
@@ -1539,8 +1546,13 @@ export class DatabaseStorage implements IStorage {
       .from(items)
       .where(and(
         eq(items.isTemplate, true),
-        eq(items.campaignId, campaignId),
-        sql`${items.characterId} IS NULL`
+        sql`${items.characterId} IS NULL`,
+        userId 
+          ? or(
+              eq(items.campaignId, campaignId),
+              eq(items.createdByUserId, userId)
+            )
+          : eq(items.campaignId, campaignId)
       ));
   }
 

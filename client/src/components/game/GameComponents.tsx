@@ -18165,6 +18165,8 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
     name: string;
     image: string;
     description: string;
+    rules: string;
+    rulesVisible: boolean;
     itemType: string;
     rarity: string;
     quantity: number | string;
@@ -18205,6 +18207,8 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
     name: '',
     image: '',
     description: '',
+    rules: '',
+    rulesVisible: true,
     itemType: 'utility',
     rarity: 'common',
     quantity: 1,
@@ -18261,6 +18265,8 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
         name: template.name,
         image: template.image || '',
         description: template.description || '',
+        rules: template.rules || '',
+        rulesVisible: template.rulesVisible ?? true,
         itemType: template.itemType,
         rarity: template.rarity,
         quantity: quantity,
@@ -18409,6 +18415,8 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
     };
     const cleanedData = {
       ...formData,
+      rules: formData.rules || '',
+      rulesVisible: formData.rulesVisible,
       mod: optionalNum(formData.mod),
       range: optionalNum(formData.range),
       itemWeight: optionalNum(formData.itemWeight),
@@ -18436,6 +18444,8 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
       name: '',
       image: '',
       description: '',
+      rules: '',
+      rulesVisible: true,
       itemType: 'utility',
       rarity: 'common',
       quantity: 1,
@@ -18792,6 +18802,27 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
             <div>
               <Label>Description</Label>
               <Textarea value={formData.description} onChange={(e) => setFormData({...formData, description: e.target.value})} className="bg-stone-800 border-stone-700 min-h-[80px]" />
+            </div>
+            <div>
+              <Label>Rules / Mechanics</Label>
+              <Textarea 
+                value={formData.rules} 
+                onChange={(e) => setFormData({...formData, rules: e.target.value})} 
+                className="bg-stone-800 border-stone-700 min-h-[80px]"
+                placeholder="Item rules, special abilities, or mechanics..."
+                data-testid="textarea-item-rules"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <Checkbox 
+                id="rulesVisible" 
+                checked={formData.rulesVisible} 
+                onCheckedChange={(checked) => setFormData({...formData, rulesVisible: !!checked})}
+                data-testid="checkbox-rules-visible"
+              />
+              <Label htmlFor="rulesVisible" className="cursor-pointer">
+                Rules visible to players
+              </Label>
             </div>
             <div className="border-t border-stone-700 pt-4">
               <h3 className="text-sm font-bold text-stone-300 mb-3">Combat Stats</h3>
