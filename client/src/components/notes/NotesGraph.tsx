@@ -36,54 +36,40 @@ const MAX_ZOOM = 3;
 const DEFAULT_ZOOM = 0.8;
 const NODE_RADIUS = 8;
 
-// Golden angle for Fibonacci sphere distribution
+// Physics constants for continuous force-directed simulation
+const REPULSION_STRENGTH = 800;      // Mild repulsion between all nodes
+const ATTRACTION_STRENGTH = 0.015;   // Base spring strength for connected nodes
+const EDGE_REST_LENGTH = 60;         // Natural spring length for edges
+const MAX_EDGE_LENGTH = 200;         // Distance clamping - max edge stretch
+const CENTER_GRAVITY = 0.008;        // Pull toward center for spherical shape
+const TARGET_RADIUS = 180;           // Target radius for sphere
+const DRIFT_ATTRACTION = 0.02;       // Extra attraction when nodes drift beyond target
+const DAMPING = 0.92;                // Velocity damping (never fully stops)
+const MIN_VELOCITY = 0.01;           // Minimum velocity to maintain gentle motion
+const NODE_MASS = 1.5;               // Node mass for force calculations
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
 
-// Fibonacci sphere layout - distributes N points evenly on a sphere surface, then projects to 2D
-function layoutFibonacciSphere(nodes: GraphNode[], radius: number = 200): void {
+// Initialize nodes in a spherical shell pattern for even force distribution
+function initializeSphericalShell(nodes: GraphNode[], radius: number = 200): void {
   const n = nodes.length;
   if (n === 0) return;
   
-  // Apply slight 3D rotation for visual interest (tilt the sphere)
-  const rotX = 0.3; // radians
-  const rotY = 0.5; // radians
-  const cosX = Math.cos(rotX);
-  const sinX = Math.sin(rotX);
-  const cosY = Math.cos(rotY);
-  const sinY = Math.sin(rotY);
-  
   for (let i = 0; i < n; i++) {
-    // Fibonacci sphere: evenly distribute points on sphere surface
-    const y = 1 - (2 * (i + 0.5)) / n; // y goes from ~1 to ~-1
-    const r = Math.sqrt(1 - y * y); // radius at this y level
+    // Fibonacci sphere distribution on shell surface
+    const y = 1 - (2 * (i + 0.5)) / n;
+    const r = Math.sqrt(1 - y * y);
     const theta = i * GOLDEN_ANGLE;
     
-    // 3D coordinates on unit sphere
-    let x3d = r * Math.cos(theta);
-    let z3d = r * Math.sin(theta);
-    let y3d = y;
+    // Add slight randomness to prevent perfect symmetry
+    const jitter = 0.15;
+    const rx = (Math.random() - 0.5) * jitter;
+    const ry = (Math.random() - 0.5) * jitter;
     
-    // Apply rotation around X axis
-    const y1 = y3d * cosX - z3d * sinX;
-    const z1 = y3d * sinX + z3d * cosX;
-    y3d = y1;
-    z3d = z1;
-    
-    // Apply rotation around Y axis
-    const x1 = x3d * cosY + z3d * sinY;
-    const z2 = -x3d * sinY + z3d * cosY;
-    x3d = x1;
-    z3d = z2;
-    
-    // Project to 2D with slight perspective (nodes "further back" are slightly smaller/closer to center)
-    const perspective = 0.3;
-    const depth = (z3d + 1) / 2; // normalize to 0-1
-    const scale = 1 - perspective * (1 - depth);
-    
-    nodes[i].x = x3d * radius * scale;
-    nodes[i].y = y3d * radius * scale;
-    nodes[i].vx = 0;
-    nodes[i].vy = 0;
+    nodes[i].x = (r * Math.cos(theta) + rx) * radius;
+    nodes[i].y = (y + ry) * radius;
+    // Small random initial velocity for organic movement
+    nodes[i].vx = (Math.random() - 0.5) * 0.5;
+    nodes[i].vy = (Math.random() - 0.5) * 0.5;
   }
 }
 
@@ -275,17 +261,19 @@ function initializeNodes(
     addNode(`character-${char.id}`, 'character', char.name, char.biography, undefined, char.id, char.portrait);
   }
 
-  // Apply Fibonacci sphere layout to visible nodes only
+  // Initialize visible nodes on spherical shell for even force distribution
   const activeFilters = filters || DEFAULT_FILTERS;
   const visibleNodes = nodes.filter(n => activeFilters[n.type]);
-  const radius = Math.max(150, Math.min(400, visibleNodes.length * 8));
-  layoutFibonacciSphere(visibleNodes, radius);
+  const radius = Math.max(120, Math.min(300, Math.sqrt(visibleNodes.length) * 25));
+  initializeSphericalShell(visibleNodes, radius);
   
   // Move hidden nodes off-screen
   for (const node of nodes) {
     if (!activeFilters[node.type]) {
       node.x = 10000;
       node.y = 10000;
+      node.vx = 0;
+      node.vy = 0;
     }
   }
 
@@ -400,7 +388,7 @@ export function NotesGraph({ notes, characters = [], onNoteClick, onCharacterCli
   const edges = useMemo(() => parseConnections(notes, entityMap), [notes, entityMap]);
   const [nodes, setNodes] = useState<GraphNodeExtended[]>(initialNodes);
   const nodesRef = useRef<GraphNodeExtended[]>(initialNodes);
-  const [layoutComplete, setLayoutComplete] = useState(false);
+  const simulationActiveRef = useRef(true);
 
   // Track previous data keys to prevent unnecessary re-initialization
   const prevDataKeyRef = useRef('');
@@ -416,7 +404,7 @@ export function NotesGraph({ notes, characters = [], onNoteClick, onCharacterCli
     const { nodes: newNodes } = initializeNodes(notes, spells, traits, skills, species, systemItems, allCharacters, entityFilters);
     setNodes(newNodes);
     nodesRef.current = newNodes;
-    setLayoutComplete(true);
+    simulationActiveRef.current = true;
   }, [notes, spells, traits, skills, species, systemItems, allCharacters, allCharactersKey, entityFilters]);
 
   const connectedNodesMap = useMemo(() => {
@@ -429,6 +417,118 @@ export function NotesGraph({ notes, characters = [], onNoteClick, onCharacterCli
     }
     return map;
   }, [edges]);
+
+  // Continuous force-directed simulation - runs every frame, never fully stops
+  useEffect(() => {
+    let frameId: number;
+    let lastTime = performance.now();
+    
+    const simulate = (currentTime: number) => {
+      const dt = Math.min((currentTime - lastTime) / 16.67, 2); // Normalize to ~60fps, cap at 2x
+      lastTime = currentTime;
+      
+      const currentNodes = nodesRef.current;
+      const visibleNodes = currentNodes.filter(n => entityFilters[n.type]);
+      
+      if (visibleNodes.length === 0) {
+        frameId = requestAnimationFrame(simulate);
+        return;
+      }
+
+      // Calculate target radius based on node count for dense sphere
+      const targetRadius = Math.max(120, Math.min(300, Math.sqrt(visibleNodes.length) * 25));
+      
+      // Apply forces to each visible node
+      for (let i = 0; i < visibleNodes.length; i++) {
+        const node = visibleNodes[i];
+        let fx = 0;
+        let fy = 0;
+        
+        // 1. Repulsion force from all other nodes
+        for (let j = 0; j < visibleNodes.length; j++) {
+          if (i === j) continue;
+          const other = visibleNodes[j];
+          const dx = node.x - other.x;
+          const dy = node.y - other.y;
+          const distSq = dx * dx + dy * dy;
+          const dist = Math.sqrt(distSq) || 1;
+          
+          // Mild repulsion inversely proportional to distance squared
+          const repulsion = REPULSION_STRENGTH / (distSq + 100);
+          fx += (dx / dist) * repulsion;
+          fy += (dy / dist) * repulsion;
+        }
+        
+        // 2. Spring-like attraction for connected nodes
+        const connections = connectedNodesMap.get(node.id);
+        if (connections) {
+          for (const otherId of connections) {
+            const other = visibleNodes.find(n => n.id === otherId);
+            if (!other) continue;
+            
+            const dx = other.x - node.x;
+            const dy = other.y - node.y;
+            const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+            
+            // Distance clamping - stronger attraction if edge is too stretched
+            let strength = ATTRACTION_STRENGTH;
+            if (dist > MAX_EDGE_LENGTH) {
+              strength *= 2 + (dist - MAX_EDGE_LENGTH) / 100;
+            }
+            
+            // Spring force toward rest length
+            const displacement = dist - EDGE_REST_LENGTH;
+            const attraction = displacement * strength;
+            fx += (dx / dist) * attraction;
+            fy += (dy / dist) * attraction;
+          }
+        }
+        
+        // 3. Central gravity - pull toward origin for spherical cohesion
+        const distFromCenter = Math.sqrt(node.x * node.x + node.y * node.y);
+        fx -= node.x * CENTER_GRAVITY;
+        fy -= node.y * CENTER_GRAVITY;
+        
+        // 4. Dynamic attraction when nodes drift beyond target radius
+        if (distFromCenter > targetRadius) {
+          const driftFactor = (distFromCenter - targetRadius) / targetRadius;
+          fx -= (node.x / distFromCenter) * driftFactor * DRIFT_ATTRACTION * distFromCenter;
+          fy -= (node.y / distFromCenter) * driftFactor * DRIFT_ATTRACTION * distFromCenter;
+        }
+        
+        // Apply forces with mass consideration
+        node.vx = (node.vx + fx / NODE_MASS) * DAMPING;
+        node.vy = (node.vy + fy / NODE_MASS) * DAMPING;
+        
+        // Maintain minimum velocity for gentle continuous motion
+        const speed = Math.sqrt(node.vx * node.vx + node.vy * node.vy);
+        if (speed < MIN_VELOCITY && speed > 0) {
+          const boost = MIN_VELOCITY / speed;
+          node.vx *= boost * 0.3;
+          node.vy *= boost * 0.3;
+        }
+      }
+      
+      // Update positions
+      for (const node of visibleNodes) {
+        node.x += node.vx * dt;
+        node.y += node.vy * dt;
+      }
+      
+      // Update state for render (throttled to reduce re-renders)
+      nodesRef.current = [...currentNodes];
+      setNodes([...currentNodes]);
+      
+      // Continue simulation
+      frameId = requestAnimationFrame(simulate);
+    };
+    
+    frameId = requestAnimationFrame(simulate);
+    
+    return () => {
+      cancelAnimationFrame(frameId);
+    };
+  }, [entityFilters, connectedNodesMap]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -645,12 +745,18 @@ export function NotesGraph({ notes, characters = [], onNoteClick, onCharacterCli
     setZoom(newZoom);
   }, [nodes]);
 
+  // Reset view when nodes change significantly (initial load or filter change)
+  const initialViewSetRef = useRef(false);
   useEffect(() => {
-    if (layoutComplete && nodes.length > 0) {
-      resetView();
-      setLayoutComplete(false);
+    if (!initialViewSetRef.current && nodes.length > 0) {
+      // Delay initial reset to let simulation settle slightly
+      const timer = setTimeout(() => {
+        resetView();
+        initialViewSetRef.current = true;
+      }, 100);
+      return () => clearTimeout(timer);
     }
-  }, [layoutComplete, nodes.length, resetView]);
+  }, [nodes.length, resetView]);
 
   const handleZoomIn = () => {
     const newZoom = Math.min(MAX_ZOOM, zoomRef.current * 1.3);
