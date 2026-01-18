@@ -580,7 +580,8 @@ export function CanvasEditor({
 
   const handleCanvasPointerDown = (e: React.PointerEvent) => {
     if (e.target !== e.currentTarget) return;
-    if (e.button !== 0) return;
+    // Allow touch events and left mouse clicks
+    if (e.pointerType === "mouse" && e.button !== 0) return;
     
     userInteractedRef.current = true; // Mark as user interaction to prevent view reset
     
@@ -759,9 +760,29 @@ export function CanvasEditor({
   const handleNodePointerDown = (e: React.PointerEvent, node: CanvasNode) => {
     e.stopPropagation();
     if (readOnly) return;
-    if (e.button !== 0) return;
+    // Allow touch events (button is 0 for touch) and left mouse clicks
+    if (e.pointerType === "mouse" && e.button !== 0) return;
     
     userInteractedRef.current = true; // Mark as user interaction to prevent view reset
+    
+    // If we're in tap-to-connect mode (connection started), complete the connection FIRST
+    if (isConnecting && connectionStart && connectionStart.nodeId !== node.id) {
+      // Clear any timers before completing connection
+      if (nodeLongPressTimerRef.current) {
+        clearTimeout(nodeLongPressTimerRef.current);
+        nodeLongPressTimerRef.current = null;
+      }
+      
+      const world = screenToWorld(e.clientX, e.clientY);
+      const toSide = getClosestSide(node, world.x, world.y);
+      addConnection(connectionStart.nodeId, node.id, connectionStart.side, toSide);
+      setIsConnecting(false);
+      setConnectionStart(null);
+      setConnectionEnd(null);
+      setHoveredDropTarget(null);
+      setHoveredDropSide(null);
+      return;
+    }
     
     // Clear any existing long-press timer
     if (nodeLongPressTimerRef.current) {
@@ -773,19 +794,6 @@ export function CanvasEditor({
     nodeLongPressTimerRef.current = setTimeout(() => {
       setShowDeleteNodeId(node.id);
     }, 700);
-    
-    // If we're in tap-to-connect mode (connection started), complete the connection
-    if (isConnecting && connectionStart && connectionStart.nodeId !== node.id) {
-      const world = screenToWorld(e.clientX, e.clientY);
-      const toSide = getClosestSide(node, world.x, world.y);
-      addConnection(connectionStart.nodeId, node.id, connectionStart.side, toSide);
-      setIsConnecting(false);
-      setConnectionStart(null);
-      setConnectionEnd(null);
-      setHoveredDropTarget(null);
-      setHoveredDropSide(null);
-      return;
-    }
     
     setSelectedNodeId(node.id);
     setSelectedConnectionId(null);
@@ -808,7 +816,8 @@ export function CanvasEditor({
   const handleResizePointerDown = (e: React.PointerEvent, node: CanvasNode) => {
     e.stopPropagation();
     if (readOnly) return;
-    if (e.button !== 0) return;
+    // Allow touch events and left mouse clicks
+    if (e.pointerType === "mouse" && e.button !== 0) return;
     
     userInteractedRef.current = true; // Mark as user interaction to prevent view reset
     
