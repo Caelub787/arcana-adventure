@@ -155,6 +155,8 @@ export function CanvasEditor({
   // Multi-touch pinch zoom tracking
   const activePointersRef = useRef<Map<number, { x: number; y: number }>>(new Map());
   const pinchStartRef = useRef<{ distance: number; midX: number; midY: number; zoom: number; panX: number; panY: number } | null>(null);
+  // Connection drag tracking - only capture pointer after drag starts (not on tap)
+  const connectionDragStartRef = useRef<{ x: number; y: number; pointerId: number; captured: boolean } | null>(null);
   
   const [noteSearchOpen, setNoteSearchOpen] = useState(false);
   const [noteSearchQuery, setNoteSearchQuery] = useState("");
@@ -654,6 +656,18 @@ export function CanvasEditor({
       const world = screenToWorld(e.clientX, e.clientY);
       setConnectionEnd(world);
       
+      // Capture pointer for drag-to-connect after user starts dragging (5px threshold)
+      if (connectionDragStartRef.current && !connectionDragStartRef.current.captured) {
+        const dx = e.clientX - connectionDragStartRef.current.x;
+        const dy = e.clientY - connectionDragStartRef.current.y;
+        if (Math.sqrt(dx * dx + dy * dy) > 5) {
+          connectionDragStartRef.current.captured = true;
+          if (containerRef.current) {
+            containerRef.current.setPointerCapture(connectionDragStartRef.current.pointerId);
+          }
+        }
+      }
+      
       const targetNode = findNodeAtPosition(world.x, world.y);
       if (targetNode && targetNode.id !== connectionStart.nodeId) {
         setHoveredDropTarget(targetNode.id);
@@ -718,7 +732,8 @@ export function CanvasEditor({
     }
     
     // For drag-to-connect: complete connection if dropped on a valid target
-    if (isConnecting && connectionStart && isDragging === false) {
+    // Only applies when pointer was captured (user was actually dragging)
+    if (isConnecting && connectionStart && isDragging === false && connectionDragStartRef.current?.captured) {
       const world = screenToWorld(e.clientX, e.clientY);
       const targetNode = findNodeAtPosition(world.x, world.y);
       if (targetNode && targetNode.id !== connectionStart.nodeId) {
@@ -730,14 +745,26 @@ export function CanvasEditor({
         setConnectionEnd(null);
         setHoveredDropTarget(null);
         setHoveredDropSide(null);
+        connectionDragStartRef.current = null;
+      } else {
+        // Dropped on empty space during drag - cancel connection
+        setIsConnecting(false);
+        setConnectionStart(null);
+        setConnectionEnd(null);
+        setHoveredDropTarget(null);
+        setHoveredDropSide(null);
+        connectionDragStartRef.current = null;
       }
-      // Don't reset connection state here for tap-to-connect workflow
-      // Connection persists until user taps another node or cancels via canvas tap
     }
+    // Don't reset connection state for tap-to-connect workflow when no drag occurred
+    // Connection persists until user taps another node or cancels via canvas tap
     
     try {
       (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
     } catch {}
+    
+    // Clear connection drag tracking
+    connectionDragStartRef.current = null;
     
     // Clear long-press timer
     if (nodeLongPressTimerRef.current) {
@@ -781,6 +808,7 @@ export function CanvasEditor({
       setConnectionEnd(null);
       setHoveredDropTarget(null);
       setHoveredDropSide(null);
+      connectionDragStartRef.current = null;
       return;
     }
     
@@ -857,6 +885,7 @@ export function CanvasEditor({
       setConnectionEnd(null);
       setHoveredDropTarget(null);
       setHoveredDropSide(null);
+      connectionDragStartRef.current = null;
       return;
     }
     
@@ -875,12 +904,11 @@ export function CanvasEditor({
     });
     setSelectedNodeId(node.id);
     
-    // Track this pointer and capture on canvas for drag-to-connect
-    // This enables drag-to-connect while still supporting tap-to-connect
+    // Track this pointer for potential drag-to-connect
+    // Don't capture immediately - capture only when drag starts (in pointermove)
+    // This allows tap-to-connect to work (second tap goes to target node, not canvas)
     activePointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    if (containerRef.current) {
-      containerRef.current.setPointerCapture(e.pointerId);
-    }
+    connectionDragStartRef.current = { x: e.clientX, y: e.clientY, pointerId: e.pointerId, captured: false };
   };
 
   const handleNoteSelect = useCallback((note: Note) => {
