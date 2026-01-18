@@ -8577,7 +8577,7 @@ export function CampaignMenu({ campaignId, role, inviteCode, hotbarSlots = 5, in
               </DropdownMenuTrigger>
               <DropdownMenuContent className="bg-stone-800 border-stone-700">
                 <DropdownMenuItem 
-                  onClick={async () => {
+                  onSelect={async () => {
                     if (!selectedCharForAccess) return;
                     try {
                       const result = await api.setCharacterPermissionForAllPlayers(selectedCharForAccess.id, 'none');
@@ -8596,7 +8596,7 @@ export function CampaignMenu({ campaignId, role, inviteCode, hotbarSlots = 5, in
                   None (No access)
                 </DropdownMenuItem>
                 <DropdownMenuItem 
-                  onClick={async () => {
+                  onSelect={async () => {
                     if (!selectedCharForAccess) return;
                     try {
                       const result = await api.setCharacterPermissionForAllPlayers(selectedCharForAccess.id, 'name');
@@ -8615,7 +8615,7 @@ export function CampaignMenu({ campaignId, role, inviteCode, hotbarSlots = 5, in
                   Name (Token name only)
                 </DropdownMenuItem>
                 <DropdownMenuItem 
-                  onClick={async () => {
+                  onSelect={async () => {
                     if (!selectedCharForAccess) return;
                     try {
                       const result = await api.setCharacterPermissionForAllPlayers(selectedCharForAccess.id, 'view');
@@ -8634,7 +8634,7 @@ export function CampaignMenu({ campaignId, role, inviteCode, hotbarSlots = 5, in
                   View (Full stats)
                 </DropdownMenuItem>
                 <DropdownMenuItem 
-                  onClick={async () => {
+                  onSelect={async () => {
                     if (!selectedCharForAccess) return;
                     try {
                       const result = await api.setCharacterPermissionForAllPlayers(selectedCharForAccess.id, 'edit');
