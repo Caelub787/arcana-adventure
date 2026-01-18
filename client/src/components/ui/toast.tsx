@@ -23,19 +23,19 @@ const ToastViewport = React.forwardRef<
 ToastViewport.displayName = ToastPrimitives.Viewport.displayName
 
 const toastVariants = cva(
-  "group pointer-events-auto relative flex w-full items-center justify-between space-x-2 overflow-hidden rounded-lg border border-white/20 p-2 pr-6 shadow-lg transition-all data-[swipe=cancel]:translate-x-0 data-[swipe=end]:translate-x-[var(--radix-toast-swipe-end-x)] data-[swipe=move]:translate-x-[var(--radix-toast-swipe-move-x)] data-[swipe=move]:transition-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[swipe=end]:animate-out data-[state=closed]:fade-out-80 data-[state=closed]:slide-out-to-top-full data-[state=open]:slide-in-from-top-full",
+  "group pointer-events-auto relative flex w-full items-center justify-between space-x-2 overflow-hidden rounded-lg border p-2 pr-6 shadow-lg transition-all data-[swipe=cancel]:translate-x-0 data-[swipe=end]:translate-x-[var(--radix-toast-swipe-end-x)] data-[swipe=move]:translate-x-[var(--radix-toast-swipe-move-x)] data-[swipe=move]:transition-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[swipe=end]:animate-out data-[state=closed]:fade-out-80 data-[state=closed]:slide-out-to-top-full data-[state=open]:slide-in-from-top-full",
   {
     variants: {
       variant: {
-        default: "bg-gradient-to-r from-cyan-500 to-blue-600 text-white",
+        default: "bg-stone-900 border-stone-700 text-stone-200",
         destructive:
-          "destructive group bg-gradient-to-r from-red-500 to-rose-600 text-white border-red-400/30",
+          "destructive group bg-red-950 border-red-800 text-red-200",
         success:
-          "bg-gradient-to-r from-green-500 to-emerald-600 text-white border-green-400/30",
+          "bg-stone-900 border-amber-600 text-stone-200",
         warning:
-          "bg-gradient-to-r from-amber-500 to-orange-600 text-white border-amber-400/30",
+          "bg-amber-950 border-amber-700 text-amber-200",
         info:
-          "bg-gradient-to-r from-purple-500 to-violet-600 text-white border-purple-400/30",
+          "bg-stone-900 border-stone-600 text-stone-300",
       },
     },
     defaultVariants: {
@@ -66,7 +66,7 @@ const ToastAction = React.forwardRef<
   <ToastPrimitives.Action
     ref={ref}
     className={cn(
-      "inline-flex h-8 shrink-0 items-center justify-center rounded-md border border-white/30 bg-white/20 backdrop-blur-sm px-3 text-sm font-medium text-white transition-colors hover:bg-white/30 focus:outline-none focus:ring-2 focus:ring-white/30 disabled:pointer-events-none disabled:opacity-50",
+      "inline-flex h-8 shrink-0 items-center justify-center rounded-md border border-stone-600 bg-stone-800 px-3 text-sm font-medium text-stone-200 transition-colors hover:bg-stone-700 hover:border-amber-600 focus:outline-none focus:ring-2 focus:ring-amber-500/50 disabled:pointer-events-none disabled:opacity-50",
       className
     )}
     {...props}
@@ -81,7 +81,7 @@ const ToastClose = React.forwardRef<
   <ToastPrimitives.Close
     ref={ref}
     className={cn(
-      "absolute right-1 top-1 rounded-md p-0.5 text-white/60 opacity-100 transition-opacity hover:text-white focus:outline-none focus:ring-2 focus:ring-white/30",
+      "absolute right-1 top-1 rounded-md p-0.5 text-stone-400 opacity-100 transition-opacity hover:text-stone-200 focus:outline-none focus:ring-2 focus:ring-amber-500/50 group-[.destructive]:text-red-300 group-[.destructive]:hover:text-red-100",
       className
     )}
     toast-close=""
@@ -98,7 +98,7 @@ const ToastTitle = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <ToastPrimitives.Title
     ref={ref}
-    className={cn("text-xs font-bold text-white drop-shadow-sm", className)}
+    className={cn("text-xs font-bold text-amber-500 drop-shadow-sm group-[.destructive]:text-red-300", className)}
     {...props}
   />
 ))
@@ -110,7 +110,7 @@ const ToastDescription = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <ToastPrimitives.Description
     ref={ref}
-    className={cn("text-xs text-white/80", className)}
+    className={cn("text-xs text-stone-300 group-[.destructive]:text-red-200", className)}
     {...props}
   />
 ))

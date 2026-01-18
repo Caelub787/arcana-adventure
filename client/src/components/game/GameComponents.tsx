@@ -173,7 +173,7 @@ export function CharacterCreation({ onComplete, onCancel }: CharacterCreationPro
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
       <motion.div 
         initial={{ scale: 0.9, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
@@ -5827,6 +5827,12 @@ export function SelectionModeButtons({
     
     if (!character || !tokens || !onEnterSpellTargeting) {
       console.log('[SpellPicker] Missing required props, returning');
+      toast({
+        title: "Cannot target spell",
+        description: "Missing character or targeting configuration",
+        variant: "destructive",
+      });
+      setShowSpellPicker(false);
       return;
     }
     
@@ -5838,6 +5844,12 @@ export function SelectionModeButtons({
       setShowSpellPicker(false);
     } else {
       console.log('[SpellPicker] No caster token found for character:', character.id);
+      toast({
+        title: "No token on map",
+        description: "Place your character token on the battlemap first",
+        variant: "destructive",
+      });
+      setShowSpellPicker(false);
     }
   };
 
@@ -6072,11 +6084,17 @@ function SpellPickerDialog({ open, onOpenChange, character, onSelectSpell }: Spe
                 const hasAoe = spell.isAoe && spell.aoeShape;
                 
                 return (
-                  <div
+                  <button
+                    type="button"
                     key={spell.id}
-                    onClick={() => onSelectSpell(spell)}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      console.log('[SpellPickerDialog] Spell item clicked:', spell.name);
+                      onSelectSpell(spell);
+                    }}
                     className={`
-                      p-3 rounded-lg border cursor-pointer transition-all
+                      w-full text-left p-3 rounded-lg border cursor-pointer transition-all
                       ${isEquipped 
                         ? 'bg-purple-900/30 border-purple-600 hover:border-purple-400' 
                         : 'bg-stone-800 border-stone-700 hover:border-purple-500'}
@@ -6113,7 +6131,7 @@ function SpellPickerDialog({ open, onOpenChange, character, onSelectSpell }: Spe
                         </div>
                       </div>
                     </div>
-                  </div>
+                  </button>
                 );
               })
             )}

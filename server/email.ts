@@ -56,15 +56,15 @@ export async function sendPasswordResetEmail(to: string, resetToken: string, bas
           <style>
             body {
               font-family: 'Inter', Arial, sans-serif;
-              background-color: #0f0f1a;
-              color: #e0e0e0;
+              background-color: #0c0a09;
+              color: #d6d3d1;
               padding: 20px;
             }
             .container {
               max-width: 600px;
               margin: 0 auto;
-              background-color: #1a1a2e;
-              border: 1px solid #2d2d44;
+              background-color: #1c1917;
+              border: 1px solid #44403c;
               border-radius: 8px;
               padding: 40px;
             }
@@ -72,7 +72,7 @@ export async function sendPasswordResetEmail(to: string, resetToken: string, bas
               text-align: center;
               font-family: 'Cinzel', serif;
               font-size: 28px;
-              color: #d4af37;
+              color: #f59e0b;
               margin-bottom: 30px;
             }
             .content {
@@ -81,13 +81,16 @@ export async function sendPasswordResetEmail(to: string, resetToken: string, bas
             }
             .button {
               display: inline-block;
-              background-color: #d4af37;
-              color: #0f0f1a;
+              background-color: #f59e0b;
+              color: #0c0a09;
               padding: 14px 32px;
               text-decoration: none;
               border-radius: 6px;
               font-weight: 600;
               margin: 20px 0;
+            }
+            .button:hover {
+              background-color: #d97706;
             }
             .button-container {
               text-align: center;
@@ -95,13 +98,13 @@ export async function sendPasswordResetEmail(to: string, resetToken: string, bas
             .footer {
               margin-top: 30px;
               padding-top: 20px;
-              border-top: 1px solid #2d2d44;
+              border-top: 1px solid #44403c;
               font-size: 14px;
-              color: #888;
+              color: #a8a29e;
             }
             .warning {
-              background-color: #2d1f1f;
-              border-left: 4px solid #d4af37;
+              background-color: #292524;
+              border-left: 4px solid #f59e0b;
               padding: 12px;
               margin: 20px 0;
               border-radius: 4px;
@@ -113,7 +116,7 @@ export async function sendPasswordResetEmail(to: string, resetToken: string, bas
             <div class="logo">⚔️ Arcana Adventure</div>
             
             <div class="content">
-              <h2 style="color: #d4af37;">Password Reset Request</h2>
+              <h2 style="color: #f59e0b;">Password Reset Request</h2>
               <p>We received a request to reset your password for your Arcana Adventure account.</p>
               
               <div class="button-container">
@@ -126,7 +129,7 @@ export async function sendPasswordResetEmail(to: string, resetToken: string, bas
               </div>
               
               <p>If the button above doesn't work, copy and paste this link into your browser:</p>
-              <p style="word-break: break-all; color: #d4af37; font-size: 12px;">${resetLink}</p>
+              <p style="word-break: break-all; color: #f59e0b; font-size: 12px;">${resetLink}</p>
             </div>
             
             <div class="footer">
