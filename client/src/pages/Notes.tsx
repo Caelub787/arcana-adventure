@@ -60,6 +60,7 @@ import {
   Plus,
   Folder,
   FolderOpen,
+  FolderPlus,
   FileText,
   Pin,
   Archive,
@@ -78,6 +79,7 @@ import {
   Grid3X3,
   Network,
   List,
+  Palette,
 } from "lucide-react";
 import { ReferencePicker, ReferenceInlineDisplay, NoteOnlyPicker } from "@/components/notes/ReferencePicker";
 import { CanvasEditor, CanvasData } from "@/components/notes/CanvasEditor";
@@ -117,7 +119,9 @@ interface FolderTreeItemProps {
   folders: NoteFolder[];
   selectedFolderId: string | null;
   onSelect: (id: string | null) => void;
-  onContextMenu: (folder: NoteFolder) => void;
+  onEditFolder: (folder: NoteFolder) => void;
+  onAddSubfolder: (parentId: string) => void;
+  onDeleteFolder: (folder: NoteFolder) => void;
   level?: number;
 }
 
@@ -126,7 +130,9 @@ function FolderTreeItem({
   folders,
   selectedFolderId,
   onSelect,
-  onContextMenu,
+  onEditFolder,
+  onAddSubfolder,
+  onDeleteFolder,
   level = 0,
 }: FolderTreeItemProps) {
   const [expanded, setExpanded] = useState(true);
@@ -174,7 +180,7 @@ function FolderTreeItem({
           <DropdownMenuTrigger asChild>
             <button
               onClick={(e) => e.stopPropagation()}
-              className="p-1 hover:bg-stone-700 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+              className="p-1 hover:bg-stone-700 rounded text-stone-500 hover:text-stone-300"
               data-testid={`folder-menu-${folder.id}`}
             >
               <MoreVertical className="h-3 w-3" />
@@ -187,11 +193,31 @@ function FolderTreeItem({
             <DropdownMenuItem
               onClick={(e) => {
                 e.stopPropagation();
-                onContextMenu(folder);
+                onEditFolder(folder);
               }}
               data-testid={`folder-edit-${folder.id}`}
             >
-              <Edit className="h-4 w-4 mr-2" /> Edit
+              <Edit className="h-4 w-4 mr-2" /> Rename
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={(e) => {
+                e.stopPropagation();
+                onAddSubfolder(folder.id);
+              }}
+              data-testid={`folder-add-subfolder-${folder.id}`}
+            >
+              <FolderPlus className="h-4 w-4 mr-2" /> Add Subfolder
+            </DropdownMenuItem>
+            <DropdownMenuSeparator className="bg-stone-700" />
+            <DropdownMenuItem
+              onClick={(e) => {
+                e.stopPropagation();
+                onDeleteFolder(folder);
+              }}
+              className="text-red-400 focus:text-red-400"
+              data-testid={`folder-delete-${folder.id}`}
+            >
+              <Trash2 className="h-4 w-4 mr-2" /> Delete
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -204,7 +230,9 @@ function FolderTreeItem({
             folders={folders}
             selectedFolderId={selectedFolderId}
             onSelect={onSelect}
-            onContextMenu={onContextMenu}
+            onEditFolder={onEditFolder}
+            onAddSubfolder={onAddSubfolder}
+            onDeleteFolder={onDeleteFolder}
             level={level + 1}
           />
         ))}
@@ -973,8 +1001,19 @@ export default function Notes() {
                   setShowSharedNotes(false);
                   if (isMobile) setSidebarOpen(false);
                 }}
-                onContextMenu={(f) => {
+                onEditFolder={(f) => {
                   openFolderDialog(f);
+                }}
+                onAddSubfolder={(parentId) => {
+                  setEditingFolder(null);
+                  setFolderName("");
+                  setFolderColor(null);
+                  setFolderParentId(parentId);
+                  setFolderDialogOpen(true);
+                }}
+                onDeleteFolder={(f) => {
+                  setFolderToDelete(f);
+                  setDeleteFolderDialogOpen(true);
                 }}
               />
             ))
