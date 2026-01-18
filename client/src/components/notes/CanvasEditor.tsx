@@ -148,6 +148,7 @@ export function CanvasEditor({
   const [editingLabelId, setEditingLabelId] = useState<string | null>(null);
   const [resizingLabelId, setResizingLabelId] = useState<string | null>(null);
   const labelResizeStartRef = useRef<{ width: number; height: number; x: number; y: number } | null>(null);
+  const labelDragStartRef = useRef<{ connectionId: string; startX: number; startY: number; offsetX: number; offsetY: number } | null>(null);
   
   const dragStartRef = useRef<{ nodeId: string; startX: number; startY: number; nodeX: number; nodeY: number } | null>(null);
   const panStartRef = useRef<{ pointerX: number; pointerY: number; panX: number; panY: number } | null>(null);
@@ -1344,7 +1345,6 @@ export function CanvasEditor({
                 className="absolute inset-0 w-full h-full pointer-events-none"
                 style={{ overflow: "visible" }}
               >
-                <g style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transformOrigin: "0 0" }}>
                 <defs>
                   {/* End arrow markers - refX=0 so arrow tip is at line end */}
                   <marker id="arrowhead" markerWidth="12" markerHeight="10" refX="0" refY="5" orient="auto" markerUnits="userSpaceOnUse">
@@ -1364,6 +1364,7 @@ export function CanvasEditor({
                     <path d="M12,0 L0,5 L12,10 z" fill="rgb(99 102 241)" />
                   </marker>
                 </defs>
+                <g style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transformOrigin: "0 0" }}>
                 
                 {canvasData.connections.map((connection) => {
                   const isSelected = selectedConnectionId === connection.id;
@@ -1550,17 +1551,37 @@ export function CanvasEditor({
                                 onPointerDown={(e) => {
                                   if (readOnly || isEditing) return;
                                   e.stopPropagation();
-                                  e.preventDefault(); // Prevent text selection and scroll on mobile
-                                  const world = screenToWorld(e.clientX, e.clientY);
-                                  setDraggingLabel({
+                                  // Store potential drag start - actual drag begins on move
+                                  labelDragStartRef.current = {
                                     connectionId: connection.id,
-                                    startX: world.x,
-                                    startY: world.y,
+                                    startX: e.clientX,
+                                    startY: e.clientY,
                                     offsetX: labelOffset.x,
                                     offsetY: labelOffset.y,
-                                  });
+                                  };
                                   setSelectedConnectionId(connection.id);
                                   setSelectedNodeId(null);
+                                }}
+                                onPointerMove={(e) => {
+                                  if (!labelDragStartRef.current || labelDragStartRef.current.connectionId !== connection.id) return;
+                                  const dx = e.clientX - labelDragStartRef.current.startX;
+                                  const dy = e.clientY - labelDragStartRef.current.startY;
+                                  // Only start dragging after 5px movement
+                                  if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
+                                    e.preventDefault();
+                                    const world = screenToWorld(e.clientX, e.clientY);
+                                    setDraggingLabel({
+                                      connectionId: connection.id,
+                                      startX: world.x,
+                                      startY: world.y,
+                                      offsetX: labelDragStartRef.current.offsetX,
+                                      offsetY: labelDragStartRef.current.offsetY,
+                                    });
+                                    labelDragStartRef.current = null;
+                                  }
+                                }}
+                                onPointerUp={() => {
+                                  labelDragStartRef.current = null;
                                 }}
                                 onDoubleClick={(e) => {
                                   if (readOnly) return;
