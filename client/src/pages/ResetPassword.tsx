@@ -85,18 +85,18 @@ export default function ResetPassword() {
 
   if (!token) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-b from-background to-background/80">
+      <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-b from-stone-950 to-stone-900">
         <div className="w-full max-w-md">
-          <Card>
+          <Card className="bg-stone-900 border-stone-700">
             <CardHeader>
-              <CardTitle>Invalid Reset Link</CardTitle>
-              <CardDescription>
+              <CardTitle className="text-stone-100">Invalid Reset Link</CardTitle>
+              <CardDescription className="text-stone-400">
                 This password reset link is invalid or has expired.
               </CardDescription>
             </CardHeader>
             <CardFooter>
               <Link href="/forgot-password" className="w-full">
-                <Button className="w-full" data-testid="button-request-new">
+                <Button className="w-full bg-amber-600 hover:bg-amber-500 text-stone-950" data-testid="button-request-new">
                   Request New Reset Link
                 </Button>
               </Link>
@@ -108,17 +108,17 @@ export default function ResetPassword() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-b from-background to-background/80">
+    <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-b from-stone-950 to-stone-900">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <h1 className="text-4xl font-cinzel font-bold text-primary mb-2">⚔️ Arcana Adventure</h1>
-          <p className="text-muted-foreground">Reset Your Password</p>
+          <h1 className="text-4xl font-cinzel font-bold text-amber-500 mb-2">⚔️ Arcana Adventure</h1>
+          <p className="text-stone-400">Reset Your Password</p>
         </div>
 
-        <Card>
+        <Card className="bg-stone-900 border-stone-700">
           <CardHeader>
-            <CardTitle>Create New Password</CardTitle>
-            <CardDescription>
+            <CardTitle className="text-stone-100">Create New Password</CardTitle>
+            <CardDescription className="text-stone-400">
               {resetSuccess 
                 ? "Your password has been reset successfully"
                 : "Enter your new password below"
@@ -130,7 +130,7 @@ export default function ResetPassword() {
             <form onSubmit={handleSubmit}>
               <CardContent className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="newPassword">New Password</Label>
+                  <Label htmlFor="newPassword" className="text-stone-300">New Password</Label>
                   <Input
                     id="newPassword"
                     type="password"
@@ -139,15 +139,16 @@ export default function ResetPassword() {
                     onChange={(e) => setNewPassword(e.target.value)}
                     required
                     minLength={6}
+                    className="bg-stone-800 border-stone-600 text-stone-100 placeholder:text-stone-500"
                     data-testid="input-new-password"
                   />
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-xs text-stone-500">
                     Password must be at least 6 characters
                   </p>
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="confirmPassword">Confirm Password</Label>
+                  <Label htmlFor="confirmPassword" className="text-stone-300">Confirm Password</Label>
                   <Input
                     id="confirmPassword"
                     type="password"
@@ -156,6 +157,7 @@ export default function ResetPassword() {
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     required
                     minLength={6}
+                    className="bg-stone-800 border-stone-600 text-stone-100 placeholder:text-stone-500"
                     data-testid="input-confirm-password"
                   />
                 </div>
@@ -164,7 +166,7 @@ export default function ResetPassword() {
               <CardFooter className="flex flex-col space-y-4">
                 <Button
                   type="submit"
-                  className="w-full"
+                  className="w-full bg-amber-600 hover:bg-amber-500 text-stone-950"
                   disabled={isLoading}
                   data-testid="button-reset-password"
                 >
@@ -175,13 +177,13 @@ export default function ResetPassword() {
           ) : (
             <CardFooter className="flex flex-col space-y-4">
               <div className="text-center space-y-2">
-                <p className="text-sm text-muted-foreground">
+                <p className="text-sm text-stone-400">
                   You can now log in with your new password.
                 </p>
               </div>
 
               <Link href="/login" className="w-full">
-                <Button className="w-full" data-testid="button-go-to-login">
+                <Button className="w-full bg-amber-600 hover:bg-amber-500 text-stone-950" data-testid="button-go-to-login">
                   Go to Login
                 </Button>
               </Link>

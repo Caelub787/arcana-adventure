@@ -50,17 +50,17 @@ export default function ForgotPassword() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-b from-background to-background/80">
+    <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-b from-stone-950 to-stone-900">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <h1 className="text-4xl font-cinzel font-bold text-primary mb-2">⚔️ Arcana Adventure</h1>
-          <p className="text-muted-foreground">Password Recovery</p>
+          <h1 className="text-4xl font-cinzel font-bold text-amber-500 mb-2">⚔️ Arcana Adventure</h1>
+          <p className="text-stone-400">Password Recovery</p>
         </div>
 
-        <Card>
+        <Card className="bg-stone-900 border-stone-700">
           <CardHeader>
-            <CardTitle>Forgot Password</CardTitle>
-            <CardDescription>
+            <CardTitle className="text-stone-100">Forgot Password</CardTitle>
+            <CardDescription className="text-stone-400">
               {emailSent 
                 ? "Check your email for a password reset link"
                 : "Enter your email address and we'll send you a link to reset your password"
@@ -72,7 +72,7 @@ export default function ForgotPassword() {
             <form onSubmit={handleSubmit}>
               <CardContent className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
+                  <Label htmlFor="email" className="text-stone-300">Email</Label>
                   <Input
                     id="email"
                     type="email"
@@ -80,6 +80,7 @@ export default function ForgotPassword() {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     required
+                    className="bg-stone-800 border-stone-600 text-stone-100 placeholder:text-stone-500"
                     data-testid="input-email"
                   />
                 </div>
@@ -88,7 +89,7 @@ export default function ForgotPassword() {
               <CardFooter className="flex flex-col space-y-4">
                 <Button
                   type="submit"
-                  className="w-full"
+                  className="w-full bg-amber-600 hover:bg-amber-500 text-stone-950"
                   disabled={isLoading}
                   data-testid="button-send-reset"
                 >
@@ -96,7 +97,7 @@ export default function ForgotPassword() {
                 </Button>
 
                 <div className="text-center text-sm">
-                  <Link href="/login" className="text-primary hover:underline" data-testid="link-back-to-login">
+                  <Link href="/login" className="text-amber-500 hover:text-amber-400 hover:underline" data-testid="link-back-to-login">
                     Back to Login
                   </Link>
                 </div>
@@ -105,10 +106,10 @@ export default function ForgotPassword() {
           ) : (
             <CardFooter className="flex flex-col space-y-4">
               <div className="text-center space-y-2">
-                <p className="text-sm text-muted-foreground">
+                <p className="text-sm text-stone-400">
                   If an account exists with that email, you'll receive a password reset link shortly.
                 </p>
-                <p className="text-sm text-muted-foreground">
+                <p className="text-sm text-stone-400">
                   The link will expire in 1 hour.
                 </p>
               </div>
@@ -119,14 +120,14 @@ export default function ForgotPassword() {
                   setEmail("");
                 }}
                 variant="outline"
-                className="w-full"
+                className="w-full border-stone-600 text-stone-300 hover:bg-stone-800"
                 data-testid="button-send-another"
               >
                 Send Another Email
               </Button>
 
               <div className="text-center text-sm">
-                <Link href="/login" className="text-primary hover:underline" data-testid="link-login">
+                <Link href="/login" className="text-amber-500 hover:text-amber-400 hover:underline" data-testid="link-login">
                   Back to Login
                 </Link>
               </div>
