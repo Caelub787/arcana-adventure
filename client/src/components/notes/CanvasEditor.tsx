@@ -731,22 +731,30 @@ export function CanvasEditor({
       return;
     }
     
-    // For drag-to-connect: complete connection if dropped on a valid target
-    // Only applies when pointer was captured (user was actually dragging)
-    if (isConnecting && connectionStart && isDragging === false && connectionDragStartRef.current?.captured) {
-      // Use hoveredDropTarget first (more reliable on mobile where release is often slightly off)
-      // Fall back to hit-testing at release position
-      const world = screenToWorld(e.clientX, e.clientY);
-      const targetNodeId = hoveredDropTarget || findNodeAtPosition(world.x, world.y)?.id;
-      
-      if (targetNodeId && targetNodeId !== connectionStart.nodeId) {
-        const targetNode = canvasData.nodes.find(n => n.id === targetNodeId);
-        if (targetNode) {
-          const toSide = hoveredDropSide || getClosestSide(targetNode, world.x, world.y);
-          addConnection(connectionStart.nodeId, targetNodeId, connectionStart.side, toSide);
-        }
+    // For drag-to-connect: complete connection if we have a hovered target (green glow)
+    // This is the most reliable check - if they see green, the connection should work
+    if (isConnecting && connectionStart && hoveredDropTarget) {
+      const targetNode = canvasData.nodes.find(n => n.id === hoveredDropTarget);
+      if (targetNode && hoveredDropTarget !== connectionStart.nodeId) {
+        const toSide = hoveredDropSide || getClosestSide(targetNode, screenToWorld(e.clientX, e.clientY).x, screenToWorld(e.clientX, e.clientY).y);
+        addConnection(connectionStart.nodeId, hoveredDropTarget, connectionStart.side, toSide);
       }
-      // Always reset connection state after drag (whether successful or not)
+      // Reset connection state after drag
+      setIsConnecting(false);
+      setConnectionStart(null);
+      setConnectionEnd(null);
+      setHoveredDropTarget(null);
+      setHoveredDropSide(null);
+      connectionDragStartRef.current = null;
+    } else if (isConnecting && connectionStart && connectionDragStartRef.current?.captured) {
+      // Fallback: if dragging but no hover target, try hit-testing at release position
+      const world = screenToWorld(e.clientX, e.clientY);
+      const targetNode = findNodeAtPosition(world.x, world.y);
+      if (targetNode && targetNode.id !== connectionStart.nodeId) {
+        const toSide = getClosestSide(targetNode, world.x, world.y);
+        addConnection(connectionStart.nodeId, targetNode.id, connectionStart.side, toSide);
+      }
+      // Reset after drag attempt
       setIsConnecting(false);
       setConnectionStart(null);
       setConnectionEnd(null);
@@ -754,8 +762,7 @@ export function CanvasEditor({
       setHoveredDropSide(null);
       connectionDragStartRef.current = null;
     }
-    // Don't reset connection state for tap-to-connect workflow when no drag occurred
-    // Connection persists until user taps another node or cancels via canvas tap
+    // Don't reset for tap-to-connect (no drag, no hover)
     
     try {
       (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
@@ -1053,6 +1060,22 @@ export function CanvasEditor({
           height: node.height,
         }}
         onPointerDown={(e) => handleNodePointerDown(e, node)}
+        onPointerUp={(e) => {
+          // Complete connection when released on the node body
+          if (isConnecting && connectionStart && connectionStart.nodeId !== node.id) {
+            e.stopPropagation();
+            const world = screenToWorld(e.clientX, e.clientY);
+            const toSide = getClosestSide(node, world.x, world.y);
+            addConnection(connectionStart.nodeId, node.id, connectionStart.side, toSide);
+            setIsConnecting(false);
+            setConnectionStart(null);
+            setConnectionEnd(null);
+            setHoveredDropTarget(null);
+            setHoveredDropSide(null);
+            connectionDragStartRef.current = null;
+            activePointersRef.current.delete(e.pointerId);
+          }
+        }}
         data-testid={`canvas-node-${node.id}`}
       >
         <div className="p-2 h-full flex flex-col">
@@ -1172,6 +1195,20 @@ export function CanvasEditor({
                           : "bg-indigo-500 border-indigo-400 opacity-0 hover:opacity-100 group-hover:opacity-60"
                   } shadow-lg shadow-indigo-500/50`}
                   onPointerDown={(e) => handleConnectionHandlePointerDown(e, node, side)}
+                  onPointerUp={(e) => {
+                    // Complete connection when released on a handle
+                    if (isConnecting && connectionStart && connectionStart.nodeId !== node.id) {
+                      e.stopPropagation();
+                      addConnection(connectionStart.nodeId, node.id, connectionStart.side, side);
+                      setIsConnecting(false);
+                      setConnectionStart(null);
+                      setConnectionEnd(null);
+                      setHoveredDropTarget(null);
+                      setHoveredDropSide(null);
+                      connectionDragStartRef.current = null;
+                      activePointersRef.current.delete(e.pointerId);
+                    }
+                  }}
                   onPointerEnter={() => {
                     if (isConnecting && connectionStart?.nodeId !== node.id) {
                       setHoveredDropTarget(node.id);
