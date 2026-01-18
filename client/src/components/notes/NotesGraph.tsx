@@ -258,6 +258,9 @@ export function NotesGraph({ notes, characters = [], onNoteClick, onCharacterCli
   const isPanningRef = useRef(false);
   const isDraggingRef = useRef(false);
   
+  // Touch gesture tracking for pinch-to-zoom
+  const touchStartRef = useRef<{ touches: { x: number; y: number }[]; zoom: number; pan: { x: number; y: number } } | null>(null);
+  
   const updateTransform = useCallback(() => {
     if (transformGroupRef.current) {
       transformGroupRef.current.setAttribute(
@@ -359,6 +362,7 @@ export function NotesGraph({ notes, characters = [], onNoteClick, onCharacterCli
   }, [notes, spells, traits, skills, species, systemItems, allCharacters, allCharactersKey]);
 
   // Restart simulation when filters change to re-form the layout
+  // Only position VISIBLE nodes in a circle, ignoring hidden ones
   const prevFiltersStringRef = useRef(JSON.stringify(entityFilters));
   useEffect(() => {
     const currentFiltersString = JSON.stringify(entityFilters);
@@ -366,22 +370,36 @@ export function NotesGraph({ notes, characters = [], onNoteClick, onCharacterCli
     if (prevFiltersStringRef.current === currentFiltersString) return;
     prevFiltersStringRef.current = currentFiltersString;
     
-    // Reinitialize positions to random spots near center and restart simulation
+    // Get only the visible nodes based on current filters
     const currentNodes = nodesRef.current;
     if (currentNodes.length === 0) return;
     
-    const angle = (2 * Math.PI) / currentNodes.length;
-    const radius = Math.min(200, currentNodes.length * 8);
+    const visibleNodes = currentNodes.filter(n => entityFilters[n.type]);
+    if (visibleNodes.length === 0) return;
     
-    for (let i = 0; i < currentNodes.length; i++) {
-      const node = currentNodes[i];
-      // Place nodes in a circular pattern with some randomness
-      const a = angle * i + (Math.random() - 0.5) * 0.5;
-      node.x = Math.cos(a) * radius * (0.5 + Math.random() * 0.5);
-      node.y = Math.sin(a) * radius * (0.5 + Math.random() * 0.5);
+    // Position only visible nodes in a proper circle
+    const angle = (2 * Math.PI) / visibleNodes.length;
+    const radius = Math.max(100, Math.min(300, visibleNodes.length * 12));
+    
+    for (let i = 0; i < visibleNodes.length; i++) {
+      const node = visibleNodes[i];
+      const a = angle * i;
+      node.x = Math.cos(a) * radius;
+      node.y = Math.sin(a) * radius;
       node.vx = 0;
       node.vy = 0;
     }
+    
+    // Move hidden nodes far off-screen so they don't interfere with simulation
+    for (const node of currentNodes) {
+      if (!entityFilters[node.type]) {
+        node.x = 10000 + Math.random() * 1000;
+        node.y = 10000 + Math.random() * 1000;
+        node.vx = 0;
+        node.vy = 0;
+      }
+    }
+    
     nodesRef.current = [...currentNodes];
     setNodes([...currentNodes]);
     setIsSimulating(true);
@@ -591,6 +609,68 @@ export function NotesGraph({ notes, characters = [], onNoteClick, onCharacterCli
     }
   }, [onNoteClick]);
 
+  // Touch event handlers for pinch-to-zoom
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    if (e.touches.length === 2) {
+      e.preventDefault();
+      const touches = Array.from(e.touches).map(t => ({ x: t.clientX, y: t.clientY }));
+      touchStartRef.current = {
+        touches,
+        zoom: zoomRef.current,
+        pan: { ...panRef.current },
+      };
+    }
+  }, []);
+
+  const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    if (e.touches.length === 2 && touchStartRef.current) {
+      e.preventDefault();
+      const touch1 = e.touches[0];
+      const touch2 = e.touches[1];
+      
+      // Calculate new distance between fingers
+      const currentDist = Math.hypot(touch2.clientX - touch1.clientX, touch2.clientY - touch1.clientY);
+      const startDist = Math.hypot(
+        touchStartRef.current.touches[1].x - touchStartRef.current.touches[0].x,
+        touchStartRef.current.touches[1].y - touchStartRef.current.touches[0].y
+      );
+      
+      // Calculate zoom scale
+      const scale = currentDist / startDist;
+      const newZoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, touchStartRef.current.zoom * scale));
+      
+      // Calculate pinch center for zoom origin
+      const centerX = (touch1.clientX + touch2.clientX) / 2;
+      const centerY = (touch1.clientY + touch2.clientY) / 2;
+      const startCenterX = (touchStartRef.current.touches[0].x + touchStartRef.current.touches[1].x) / 2;
+      const startCenterY = (touchStartRef.current.touches[0].y + touchStartRef.current.touches[1].y) / 2;
+      
+      // Adjust pan to keep content under pinch center
+      const zoomDelta = newZoom / touchStartRef.current.zoom;
+      const newPanX = centerX - (startCenterX - touchStartRef.current.pan.x) * zoomDelta;
+      const newPanY = centerY - (startCenterY - touchStartRef.current.pan.y) * zoomDelta;
+      
+      zoomRef.current = newZoom;
+      panRef.current = { x: newPanX, y: newPanY };
+      
+      if (!panAnimationRef.current) {
+        panAnimationRef.current = requestAnimationFrame(() => {
+          updateTransform();
+          panAnimationRef.current = 0;
+        });
+      }
+    }
+  }, [updateTransform]);
+
+  const handleTouchEnd = useCallback((e: React.TouchEvent) => {
+    if (e.touches.length < 2 && touchStartRef.current) {
+      // Sync state when pinch ends
+      setPan({ ...panRef.current });
+      setZoom(zoomRef.current);
+      touchStartRef.current = null;
+    }
+  }, []);
+
   const resetView = useCallback(() => {
     const rect = containerRef.current?.getBoundingClientRect();
     if (!rect || nodes.length === 0) {
@@ -701,11 +781,14 @@ export function NotesGraph({ notes, characters = [], onNoteClick, onCharacterCli
     <div className="relative w-full h-full overflow-hidden bg-stone-950">
       <div
         ref={containerRef}
-        className="absolute inset-0 cursor-grab active:cursor-grabbing"
+        className="absolute inset-0 cursor-grab active:cursor-grabbing touch-none"
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onPointerLeave={handlePointerUp}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
         data-testid="notes-graph-container"
       >
         <svg
