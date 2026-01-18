@@ -57,6 +57,8 @@ Preferred communication style: Simple, everyday language.
         - **Graph View**: Force-directed visualization showing all notes, entities, and characters. Characters appear as orange nodes with their portraits, 40% larger than other nodes for visibility.
         - **Sharing**: Share notes with friends with view or edit permissions.
         - **Campaign Notes**: Notes can be scoped to campaigns via "Campaign Notes" button.
+        - **Campaign-Linked Folders**: Note folders can be assigned to specific campaigns (visible only in that campaign's notes) or global (visible in main notes area). "Show Hidden Folders" toggle reveals folders from other campaigns. Visual indicators show folder visibility status (Network icon for global, EyeOff for other campaigns).
+        - **Real-time Collaboration**: Live collaborative note editing with WebSocket-based sync. When multiple users view/edit the same note, changes broadcast in real-time with last-write-wins conflict resolution. Presence indicators show who else is viewing the note (avatar circles with green online status). Debounced updates with change detection prevent unnecessary broadcasts and feedback loops.
     - **Social Features**: User profiles with avatars/bios, friend system with requests, and user search.
 
 ### Backend
