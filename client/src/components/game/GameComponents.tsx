@@ -7879,7 +7879,7 @@ export function CampaignMenu({ campaignId, role, inviteCode, hotbarSlots = 5, in
                    onClick={() => setAddCharacterOpen(true)}
                    data-testid="button-add-character"
                  >
-                   <Plus className="mr-2 h-4 w-4" /> Add Character
+                   <Plus className="mr-2 h-4 w-4" /> Create Character
                  </Button>
                )}
 
@@ -19229,33 +19229,35 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
                 </div>
               </div>
             )}
-            <div className="border-t border-stone-700 pt-4">
-              <h3 className="text-sm font-bold text-stone-300 mb-3">Container Settings</h3>
-              <div className="flex items-center gap-4">
-                <div className="flex items-center gap-2">
-                  <Checkbox 
-                    id="isContainer" 
-                    checked={formData.isContainer} 
-                    onCheckedChange={(checked) => setFormData({...formData, isContainer: !!checked})}
-                    data-testid="checkbox-is-container"
-                  />
-                  <Label htmlFor="isContainer" className="cursor-pointer">This is a container</Label>
-                </div>
-                {formData.isContainer && (
+            {formData.itemType === 'container' && (
+              <div className="border-t border-stone-700 pt-4">
+                <h3 className="text-sm font-bold text-stone-300 mb-3">Container Settings</h3>
+                <div className="flex items-center gap-4">
                   <div className="flex items-center gap-2">
-                    <Label>Carry Capacity Bonus:</Label>
-                    <Input 
-                      type="number" 
-                      min="0" 
-                      value={formData.carryCapacity} 
-                      onChange={(e) => setFormData({...formData, carryCapacity: e.target.value === '' ? '' : parseInt(e.target.value)})} 
-                      className="w-20 bg-stone-800 border-stone-700"
-                      data-testid="input-carry-capacity"
+                    <Checkbox 
+                      id="isContainer" 
+                      checked={formData.isContainer} 
+                      onCheckedChange={(checked) => setFormData({...formData, isContainer: !!checked})}
+                      data-testid="checkbox-is-container"
                     />
+                    <Label htmlFor="isContainer" className="cursor-pointer">This is a container</Label>
                   </div>
-                )}
+                  {formData.isContainer && (
+                    <div className="flex items-center gap-2">
+                      <Label>Carry Capacity Bonus:</Label>
+                      <Input 
+                        type="number" 
+                        min="0" 
+                        value={formData.carryCapacity} 
+                        onChange={(e) => setFormData({...formData, carryCapacity: e.target.value === '' ? '' : parseInt(e.target.value)})} 
+                        className="w-20 bg-stone-800 border-stone-700"
+                        data-testid="input-carry-capacity"
+                      />
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
+            )}
             <div className="flex gap-2 pt-4 pb-4">
               <Button onClick={handleSubmit} disabled={!formData.name} data-testid="button-create-item">Add Item</Button>
               <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
