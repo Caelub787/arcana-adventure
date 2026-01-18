@@ -49,6 +49,42 @@ const MIN_VELOCITY = 0.01;           // Minimum velocity to maintain gentle moti
 const NODE_MASS = 1.5;               // Node mass for force calculations
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
 
+// Extract first few sentences from note content for preview
+function extractNotePreview(content: string | null | undefined, maxLength: number = 150): string {
+  if (!content) return '';
+  
+  // Remove markdown formatting for cleaner preview
+  const cleaned = content
+    .replace(/^#+\s*/gm, '') // headers
+    .replace(/\*\*([^*]+)\*\*/g, '$1') // bold
+    .replace(/\*([^*]+)\*/g, '$1') // italic
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // links
+    .replace(/`[^`]+`/g, '') // inline code
+    .replace(/```[\s\S]*?```/g, '') // code blocks
+    .replace(/\[\[.*?\]\]/g, '') // entity references
+    .replace(/\/\/.*?\/\//g, '') // note links
+    .trim();
+  
+  // Find sentence boundaries
+  const sentences = cleaned.match(/[^.!?]+[.!?]+/g) || [cleaned];
+  let preview = '';
+  
+  for (const sentence of sentences) {
+    if (preview.length + sentence.length <= maxLength) {
+      preview += sentence;
+    } else {
+      break;
+    }
+  }
+  
+  // If no complete sentence fits, just truncate
+  if (!preview && cleaned.length > 0) {
+    preview = cleaned.substring(0, maxLength) + '...';
+  }
+  
+  return preview.trim();
+}
+
 // Initialize nodes in a spherical shell pattern for even force distribution
 function initializeSphericalShell(nodes: GraphNode[], radius: number = 200): void {
   const n = nodes.length;
@@ -234,7 +270,7 @@ function initializeNodes(
   };
 
   for (const note of notes) {
-    addNode(`note-${note.id}`, 'note', note.title, note.content?.substring(0, 200), note.id);
+    addNode(`note-${note.id}`, 'note', note.title, extractNotePreview(note.content), note.id);
   }
 
   for (const spell of spells) {
@@ -462,7 +498,8 @@ export function NotesGraph({ notes, characters = [], onNoteClick, onCharacterCli
         // 2. Spring-like attraction for connected nodes
         const connections = connectedNodesMap.get(node.id);
         if (connections) {
-          for (const otherId of connections) {
+          const connectionIds = Array.from(connections);
+          for (const otherId of connectionIds) {
             const other = visibleNodes.find(n => n.id === otherId);
             if (!other) continue;
             
@@ -771,14 +808,20 @@ export function NotesGraph({ notes, characters = [], onNoteClick, onCharacterCli
   };
 
   const handleNodeClick = useCallback((node: GraphNodeExtended) => {
-    if (node.type === 'note' && node.noteId && onNoteClick) {
-      onNoteClick(node.noteId);
-    } else if (node.type === 'character' && node.characterId && onCharacterClick) {
+    if (node.type === 'character' && node.characterId && onCharacterClick) {
       onCharacterClick(node.characterId);
     } else {
+      // Show popup for all entities including notes
       setSelectedNode(node);
     }
-  }, [onNoteClick, onCharacterClick]);
+  }, [onCharacterClick]);
+  
+  const handleNoteDoubleClick = useCallback(() => {
+    if (selectedNode?.type === 'note' && selectedNode.noteId && onNoteClick) {
+      onNoteClick(selectedNode.noteId);
+      setSelectedNode(null);
+    }
+  }, [selectedNode, onNoteClick]);
 
   const isConnected = (nodeId: string) => {
     if (!hoveredNodeId) return false;
@@ -985,7 +1028,7 @@ export function NotesGraph({ notes, characters = [], onNoteClick, onCharacterCli
         </svg>
       </div>
 
-      {selectedNode && selectedNode.type !== 'note' && (
+      {selectedNode && (
         <div 
           className="entity-popup absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 
                      bg-stone-900 border border-stone-700 rounded-lg shadow-2xl p-4 max-w-sm z-50"
@@ -1023,12 +1066,19 @@ export function NotesGraph({ notes, characters = [], onNoteClick, onCharacterCli
             </Button>
           </div>
           {selectedNode.description && (
-            <p className="text-sm text-stone-300 line-clamp-4">
+            <p 
+              className={`text-sm text-stone-300 line-clamp-4 ${selectedNode.type === 'note' ? 'cursor-pointer hover:text-stone-100 transition-colors' : ''}`}
+              onDoubleClick={selectedNode.type === 'note' ? handleNoteDoubleClick : undefined}
+              title={selectedNode.type === 'note' ? 'Double-click to open note' : undefined}
+            >
               {selectedNode.description}
             </p>
           )}
-          <div className="mt-3 text-xs text-stone-500">
-            {connectedNodesMap.get(selectedNode.id)?.size || 0} connections
+          <div className="mt-3 flex items-center justify-between text-xs text-stone-500">
+            <span>{connectedNodesMap.get(selectedNode.id)?.size || 0} connections</span>
+            {selectedNode.type === 'note' && (
+              <span className="text-stone-600 italic">Double-click to open</span>
+            )}
           </div>
         </div>
       )}
