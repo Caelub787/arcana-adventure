@@ -162,13 +162,21 @@ interface GraphNodeExtended extends GraphNode {
   portrait?: string;
 }
 
+interface ItemSummary {
+  id: string;
+  name: string;
+  itemType: string;
+  rarity: string;
+  weight: number;
+}
+
 function initializeNodes(
   notes: Note[],
   spells: SystemSpell[],
   traits: SystemTrait[],
   skills: SystemSkill[],
   species: SystemSpecies[],
-  items: Item[],
+  items: ItemSummary[],
   characters: Character[]
 ): { nodes: GraphNodeExtended[]; entityMap: Map<string, GraphNodeExtended> } {
   const nodes: GraphNodeExtended[] = [];
@@ -220,7 +228,7 @@ function initializeNodes(
   }
 
   for (const item of items) {
-    addNode(`item-${item.id}`, 'item', item.name, item.description);
+    addNode(`item-${item.id}`, 'item', item.name, `${item.itemType} (${item.rarity})`);
   }
 
   for (const char of characters) {
@@ -294,8 +302,8 @@ export function NotesGraph({ notes, characters = [], onNoteClick, onCharacterCli
   });
 
   const { data: systemItems = [] } = useQuery({
-    queryKey: ['/api/system-items'],
-    queryFn: () => api.getPublicSystemItems().catch(() => []),
+    queryKey: ['/api/system-items/summary'],
+    queryFn: () => api.getSystemItemSummaries().catch(() => []),
     staleTime: 60000,
   });
 
@@ -307,6 +315,12 @@ export function NotesGraph({ notes, characters = [], onNoteClick, onCharacterCli
   });
 
   // Combine prop characters with fetched characters, deduplicating by ID
+  // Use stable reference via JSON comparison to prevent infinite loops
+  const allCharactersKey = useMemo(() => {
+    const ids = [...characters.map(c => c.id), ...myCharacters.map(c => c.id)].sort().join(',');
+    return ids;
+  }, [characters, myCharacters]);
+
   const allCharacters = useMemo(() => {
     const charMap = new Map<string, typeof characters[0]>();
     for (const char of characters) {
@@ -318,7 +332,8 @@ export function NotesGraph({ notes, characters = [], onNoteClick, onCharacterCli
       }
     }
     return Array.from(charMap.values());
-  }, [characters, myCharacters]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allCharactersKey]);
 
   const { nodes: initialNodes, entityMap } = useMemo(
     () => initializeNodes(notes, spells, traits, skills, species, systemItems, allCharacters),
@@ -330,12 +345,18 @@ export function NotesGraph({ notes, characters = [], onNoteClick, onCharacterCli
   const nodesRef = useRef<GraphNodeExtended[]>(initialNodes);
   const [isSimulating, setIsSimulating] = useState(true);
 
+  // Track previous data keys to prevent unnecessary re-initialization
+  const prevDataKeyRef = useRef('');
   useEffect(() => {
-    const { nodes: newNodes, entityMap: newEntityMap } = initializeNodes(notes, spells, traits, skills, species, systemItems, allCharacters);
+    const dataKey = `${notes.map(n => n.id).join(',')}|${spells.length}|${traits.length}|${skills.length}|${species.length}|${systemItems.length}|${allCharactersKey}`;
+    if (prevDataKeyRef.current === dataKey) return;
+    prevDataKeyRef.current = dataKey;
+    
+    const { nodes: newNodes } = initializeNodes(notes, spells, traits, skills, species, systemItems, allCharacters);
     setNodes(newNodes);
     nodesRef.current = newNodes;
     setIsSimulating(true);
-  }, [notes, spells, traits, skills, species, systemItems, allCharacters]);
+  }, [notes, spells, traits, skills, species, systemItems, allCharacters, allCharactersKey]);
 
   // Restart simulation when filters change to re-form the layout
   const prevFiltersStringRef = useRef(JSON.stringify(entityFilters));
@@ -887,7 +908,54 @@ export function NotesGraph({ notes, characters = [], onNoteClick, onCharacterCli
         </div>
       )}
 
-      <div className="absolute top-4 right-4 flex flex-col gap-2">
+      {/* Collapsible filter panel - positioned absolutely to not affect button layout */}
+      {filtersOpen && (
+        <div className="absolute top-4 right-16 bg-stone-900/95 border border-stone-700 rounded-lg p-2 flex flex-col gap-1 animate-in fade-in slide-in-from-right-2 duration-200 z-20">
+          <div className="text-xs text-stone-500 mb-1 flex items-center justify-between">
+            <span>Filters</span>
+            <button 
+              onClick={() => setFiltersOpen(false)}
+              className="text-stone-500 hover:text-stone-300"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </div>
+          {[
+            { type: 'note' as EntityType, label: 'Notes' },
+            { type: 'character' as EntityType, label: 'Characters' },
+            { type: 'spell' as EntityType, label: 'Spells' },
+            { type: 'item' as EntityType, label: 'Items' },
+            { type: 'trait' as EntityType, label: 'Traits' },
+            { type: 'skill' as EntityType, label: 'Skills' },
+            { type: 'species' as EntityType, label: 'Species' },
+          ].map(({ type, label }) => {
+            const isEnabled = entityFilters[type];
+            return (
+              <button
+                key={type}
+                onClick={() => toggleFilter(type)}
+                className={`flex items-center gap-2 px-2 py-1 rounded text-left transition-all ${
+                  isEnabled 
+                    ? 'bg-stone-800/50 hover:bg-stone-700/50' 
+                    : 'bg-stone-900/30 opacity-40 hover:opacity-60'
+                }`}
+                data-testid={`filter-toggle-${type}`}
+                title={isEnabled ? `Hide ${label}` : `Show ${label}`}
+              >
+                <div
+                  className={`w-2.5 h-2.5 rounded-full flex-shrink-0`}
+                  style={{ backgroundColor: NODE_COLORS[type].fill, opacity: isEnabled ? 1 : 0.4 }}
+                />
+                <span className={`text-xs ${isEnabled ? 'text-stone-300' : 'text-stone-600 line-through'}`}>
+                  {label}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      <div className="absolute top-4 right-4 flex flex-col gap-2 z-10">
         {/* Filter toggle button */}
         <Button
           variant="outline"
@@ -899,53 +967,6 @@ export function NotesGraph({ notes, characters = [], onNoteClick, onCharacterCli
         >
           <Filter className="h-4 w-4" />
         </Button>
-        
-        {/* Collapsible filter panel */}
-        {filtersOpen && (
-          <div className="bg-stone-900/95 border border-stone-700 rounded-lg p-2 flex flex-col gap-1 animate-in fade-in slide-in-from-top-2 duration-200">
-            <div className="text-xs text-stone-500 mb-1 flex items-center justify-between">
-              <span>Filters</span>
-              <button 
-                onClick={() => setFiltersOpen(false)}
-                className="text-stone-500 hover:text-stone-300"
-              >
-                <X className="h-3 w-3" />
-              </button>
-            </div>
-            {[
-              { type: 'note' as EntityType, label: 'Notes' },
-              { type: 'character' as EntityType, label: 'Characters' },
-              { type: 'spell' as EntityType, label: 'Spells' },
-              { type: 'item' as EntityType, label: 'Items' },
-              { type: 'trait' as EntityType, label: 'Traits' },
-              { type: 'skill' as EntityType, label: 'Skills' },
-              { type: 'species' as EntityType, label: 'Species' },
-            ].map(({ type, label }) => {
-              const isEnabled = entityFilters[type];
-              return (
-                <button
-                  key={type}
-                  onClick={() => toggleFilter(type)}
-                  className={`flex items-center gap-2 px-2 py-1 rounded text-left transition-all ${
-                    isEnabled 
-                      ? 'bg-stone-800/50 hover:bg-stone-700/50' 
-                      : 'bg-stone-900/30 opacity-40 hover:opacity-60'
-                  }`}
-                  data-testid={`filter-toggle-${type}`}
-                  title={isEnabled ? `Hide ${label}` : `Show ${label}`}
-                >
-                  <div
-                    className={`w-2.5 h-2.5 rounded-full flex-shrink-0`}
-                    style={{ backgroundColor: NODE_COLORS[type].fill, opacity: isEnabled ? 1 : 0.4 }}
-                  />
-                  <span className={`text-xs ${isEnabled ? 'text-stone-300' : 'text-stone-600 line-through'}`}>
-                    {label}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        )}
         
         {/* Zoom and view controls */}
         <Button
