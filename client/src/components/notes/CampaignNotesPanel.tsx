@@ -115,6 +115,7 @@ interface FolderTreeItemProps {
   selectedFolderId: string | null;
   onSelect: (id: string | null) => void;
   onContextMenu: (folder: NoteFolder) => void;
+  onDeleteFolder: (folder: NoteFolder) => void;
   level?: number;
   currentCampaignId?: string;
 }
@@ -125,6 +126,7 @@ function FolderTreeItem({
   selectedFolderId,
   onSelect,
   onContextMenu,
+  onDeleteFolder,
   level = 0,
   currentCampaignId,
 }: FolderTreeItemProps) {
@@ -188,7 +190,7 @@ function FolderTreeItem({
           <DropdownMenuTrigger asChild>
             <button
               onClick={(e) => e.stopPropagation()}
-              className="p-0.5 hover:bg-stone-700 rounded"
+              className="p-0.5 hover:bg-stone-700 rounded opacity-50 hover:opacity-100"
             >
               <MoreVertical className="h-2.5 w-2.5" />
             </button>
@@ -200,7 +202,17 @@ function FolderTreeItem({
                 onContextMenu(folder);
               }}
             >
-              <Edit className="h-3 w-3 mr-2" /> Edit
+              <Edit className="h-3 w-3 mr-2" /> Rename
+            </DropdownMenuItem>
+            <DropdownMenuSeparator className="bg-stone-700" />
+            <DropdownMenuItem
+              onClick={(e) => {
+                e.stopPropagation();
+                onDeleteFolder(folder);
+              }}
+              className="text-red-400 focus:text-red-400"
+            >
+              <Trash2 className="h-3 w-3 mr-2" /> Delete
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -214,6 +226,7 @@ function FolderTreeItem({
             selectedFolderId={selectedFolderId}
             onSelect={onSelect}
             onContextMenu={onContextMenu}
+            onDeleteFolder={onDeleteFolder}
             level={level + 1}
             currentCampaignId={currentCampaignId}
           />
@@ -944,6 +957,10 @@ export function CampaignNotesPanel({
                   setShowSharedNotes(false);
                 }}
                 onContextMenu={(f) => openFolderDialog(f)}
+                onDeleteFolder={(f) => {
+                  setFolderToDelete(f);
+                  setDeleteFolderDialogOpen(true);
+                }}
                 currentCampaignId={campaignId}
               />
             ))

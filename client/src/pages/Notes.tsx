@@ -180,7 +180,7 @@ function FolderTreeItem({
           <DropdownMenuTrigger asChild>
             <button
               onClick={(e) => e.stopPropagation()}
-              className="p-1 hover:bg-stone-700 rounded text-stone-500 hover:text-stone-300"
+              className="p-1 hover:bg-stone-700 rounded text-stone-500 hover:text-stone-300 opacity-50 hover:opacity-100"
               data-testid={`folder-menu-${folder.id}`}
             >
               <MoreVertical className="h-3 w-3" />

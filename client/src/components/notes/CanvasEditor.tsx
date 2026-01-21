@@ -1150,12 +1150,22 @@ export function CanvasEditor({
             ) : node.type === "text" ? (
               <div 
                 className="text-sm text-stone-300 whitespace-pre-wrap cursor-text h-full"
+                onClick={(e) => {
+                  // On PC: click to edit when node is already selected
+                  // On mobile: first tap selects, second tap edits
+                  if (readOnly) return;
+                  e.stopPropagation();
+                  if (isSelected) {
+                    setEditingNodeId(node.id);
+                  }
+                }}
                 onDoubleClick={(e) => {
+                  // Fallback: double-click always enters edit mode
                   if (readOnly) return;
                   e.stopPropagation();
                   setEditingNodeId(node.id);
                 }}
-              >{node.content || (isSelected ? "Double-tap to edit" : "")}</div>
+              >{node.content || (isSelected ? "Click to edit" : "")}</div>
             ) : node.type === "note" ? (
               <button
                 className="flex items-center gap-2 text-amber-400 hover:text-amber-300 text-sm w-full text-left"
