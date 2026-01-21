@@ -664,6 +664,12 @@ export function CanvasEditor({
       activePointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     }
     
+    // Clear long-press timer when user starts moving (prevents delete button during drag)
+    if (nodeLongPressTimerRef.current && isDragging) {
+      clearTimeout(nodeLongPressTimerRef.current);
+      nodeLongPressTimerRef.current = null;
+    }
+    
     // Handle pinch gesture when 2 fingers are active
     if (activePointersRef.current.size >= 2) {
       handlePinchUpdate();
@@ -1116,7 +1122,9 @@ export function CanvasEditor({
                 variant="ghost"
                 size="icon"
                 className="h-5 w-5 text-red-400 hover:text-red-300 flex-shrink-0 animate-pulse"
-                onClick={() => {
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation();
                   deleteNode(node.id);
                   setShowDeleteNodeId(null);
                 }}
