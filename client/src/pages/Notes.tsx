@@ -1266,10 +1266,10 @@ export default function Notes() {
                     <DropdownMenuTrigger asChild>
                       <button
                         onClick={(e) => e.stopPropagation()}
-                        className="p-1 hover:bg-stone-700 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                        className="p-1 hover:bg-stone-700 rounded text-stone-500 hover:text-stone-300"
                         data-testid={`button-note-menu-${note.id}`}
                       >
-                        <MoreVertical className="h-4 w-4 text-stone-400" />
+                        <MoreVertical className="h-4 w-4" />
                       </button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent

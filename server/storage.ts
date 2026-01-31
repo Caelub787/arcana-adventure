@@ -2539,10 +2539,16 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getCampaignNotesForUser(userId: string, campaignId: string, folderId?: string): Promise<Note[]> {
-    // Get notes owned by user in this campaign
+    // Get notes owned by user in this campaign OR personal notes (no campaign)
+    // This allows users to see their personal notes from the main notes page when in a campaign
+    const campaignOrPersonal = or(
+      eq(notes.campaignId, campaignId),
+      isNull(notes.campaignId)
+    );
+    
     const ownedConditions = [
       eq(notes.userId, userId),
-      eq(notes.campaignId, campaignId)
+      campaignOrPersonal
     ];
     if (folderId) {
       ownedConditions.push(eq(notes.folderId, folderId));
@@ -2553,7 +2559,8 @@ export class DatabaseStorage implements IStorage {
       .where(and(...ownedConditions))
       .orderBy(desc(notes.isPinned), notes.sortOrder, desc(notes.updatedAt));
     
-    // Get notes shared with user that belong to this campaign
+    // Get notes shared with user that belong to this campaign ONLY (not personal notes from others)
+    // This prevents notes shared by others without a campaign from leaking into campaign view
     const sharedConditions = [
       eq(noteShares.sharedWithId, userId),
       eq(notes.campaignId, campaignId)
