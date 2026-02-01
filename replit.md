@@ -1,7 +1,7 @@
 # Arcana Adventure - Mobile RPG Manager & Tabletop Hub
 
 ## Overview
-Arcana Adventure is a full-stack web application designed for real-time tabletop RPG gameplay. It provides Game Masters (GMs) and players with collaborative tools for managing campaigns, including an interactive battle map with token management, comprehensive character creation and tracking, real-time chat, and campaign administration. The application features a dark fantasy aesthetic, offers distinct GM and player perspectives with role-based access control, and aims to serve as a central hub for TTRPG enthusiasts.
+Arcana Adventure is a full-stack web application designed to be a central hub for real-time tabletop RPG gameplay. It provides Game Masters (GMs) and players with collaborative tools for managing campaigns, including an interactive battle map with token management, comprehensive character creation and tracking, real-time chat, and campaign administration. The application features a dark fantasy aesthetic, offers distinct GM and player perspectives with robust role-based access control, and aims to streamline the TTRPG experience.
 
 ## User Preferences
 Preferred communication style: Simple, everyday language.
@@ -9,87 +9,54 @@ Preferred communication style: Simple, everyday language.
 ## System Architecture
 
 ### Frontend
-- **Technology Stack**: React 18 with TypeScript, Vite, Wouter for routing, TanStack Query for server state.
-- **UI/UX**: Tailwind CSS v4 with a dark fantasy theme, `shadcn/ui` components (Radix UI) with a "new-york" style variant, and Lucide React for iconography.
-- **State Management**: React Context for authentication, TanStack Query for server state, local React hooks for component state.
-- **Real-time Communication**: WebSockets for live updates across campaigns.
+- **Technology Stack**: React 18 with TypeScript, Vite, Wouter, TanStack Query.
+- **UI/UX**: Tailwind CSS v4 with a dark fantasy theme, `shadcn/ui` components (Radix UI) styled in "new-york" variant, and Lucide React for iconography.
+- **State Management**: React Context for authentication, TanStack Query for server state.
+- **Real-time Communication**: WebSockets for live updates.
 - **Key Features**:
-    - **Battle Map**: Infinite grid space, fluid pan & zoom, GM scene management, configurable square/hexagon grids, real-time draggable character tokens with HP and energy bars, custom background uploads, and viewport-independent centering. **Size-based Token Scaling**: Tokens automatically scale based on species size (Huge = 2x2, Gargantuan = 3x3 grid cells). **Initiative Glow**: Active turn tokens display a golden pulsating glow effect. **Player Viewport Tracking**: GM-only toggle to display colored outlines showing what each player can see on their screen in real-time. **Beacon System**: Clicking grid spaces creates 1.5s pulsating ring animations visible to all players via WebSocket for drawing attention to locations.
-    - **Scene Management**: Folder-based organization for scenes with drag-drop support. **View/Activate buttons** separate GM editing from player visibility - GMs can "View" a scene privately for editing while a different scene remains "Active" for players. WebSocket-synced active scene changes.
-    - **Character Sheet**: Mobile-optimized design, responsive layout, single-scroll interface, and real-time updates.
-    - **Species/Race System**: Database-driven management of custom species with auto-filled attributes. Supports both **System Species** (admin-created, global) and **Campaign Species** (GM-created, campaign-local with "(Campaign)" badge).
-    - **Level-Up HP System**: Dynamic HP gain based on species `hpPerLevel` and level-dependent dice rolls. HP gains add to both current HP and max HP. Dice count: 1 base + 1 extra every 3 levels (1d at L1, 1d at L2, 2d at L3, etc.).
-    - **Level-Up Energy System**: Dynamic energy gain based on species `energyPerLevel` (configurable die size per species, default d6). Dice count: 2d when level is divisible by 3, otherwise 1d. Energy gains add to both current energy and max energy. Separate tracking from HP level-ups.
-    - **Campaign Chat**: Real-time chat with dice roll integration, automatic scroll to latest messages when opened.
-    - **Character Templates**: Admin-created pre-configured character sheets with folder organization. Templates can be copied to campaigns by GMs. Admin template folders for organizing templates by type/category.
-    - **Attributes & Skills**: Six core attributes and seventeen skills with modifiers. Features single-click rolls, Roll Modifier Panel, and d30 usage for high attribute values. Includes a flexible **Custom Skills System** for admin-defined and character-specific skills.
-    - **Traits System**: Admin-defined and character-specific traits with uses-per-long-rest tracking. Traits reset on long rest. Full admin management in Admin Settings and character sheet integration with use tracking, rolling, and visual uses display.
-    - **Rest Mechanics**: Short and Long Rest options that restore HP and manage exhaustion, consuming rations automatically.
-    - **Exhaustion System**: 0-5 levels tracked per character with visual display and GM controls, impacting speed, skill checks, and attack rolls.
-    - **Inventory & Hotbars**: Comprehensive inventory with weight calculation, quantity management, item stacking, and hotbars for weapons, magic, skills, consumables, and utility items. Features an **Ammunition System** with configurable break chance and automatic re-equip. **Throwable Items System**: Weapons can be marked as throwable with configurable AOE settings (shape, range). Throwables can be thrown onto the battle map where they persist as tokens with visible AOE circles. Triple-clicking a throwable in hotbar detonates all placed instances, calculating and applying AOE damage to all tokens in range. **GM Library Items**: Items created by a GM are tracked with `createdByUserId` and appear in the item library for ALL campaigns where that user is GM, enabling cross-campaign item reuse. Items have optional `rules` text field and `rulesVisible` toggle to control player visibility of mechanics.
-    - **Initiative Tracking**: Real-time initiative system with GM controls for combat management.
-    - **Roll Notification System**: Visual, animated notifications for all server-authoritative dice rolls integrated into chat.
-    - **Targeting System**: Token targeting with range validation, hit detection (HIT!/MISS!/Crit Success!/Crit Failure!), and GM access to character hotbars.
-    - **Armor Damage Reduction System**: Configurable armor items with damage reduction properties by type (Sharp/Blunt/Piercing/Flame/Frost/Storm/Tide/Stone/Flux/Light/Dark/Sound) and slot.
-    - **Token Effects System**: Combat status effects (poison, burning, stun, etc.) with admin-defined effects, timing configuration (start of round vs start of turn), and optional damage settings.
-        - **Effect Definitions**: Admin-created effects with name, image, description, timing, and optional damage (dice + type).
-        - **Spell/Item Integration**: Effects can be linked to spells and weapons with trigger conditions (always, on success, on failure).
-        - **Battle Map Display**: Effects icon on token top-right for GMs to apply effects, active effects shown on right side of tokens (max 4 visible with overflow indicator).
-        - **Automatic Effect Processing**: When combat advances (start of turn or new round), effects automatically trigger dice rolls, apply damage/healing to characters, create chat messages, and broadcast WebSocket notifications. Multiple effects on the same turn accumulate correctly.
-        - **Effect Duration System**: Optional auto-expiration with configurable duration in rounds/turns. Duration badge displayed on effect icons, countdown decrements at each trigger, and effects automatically removed with chat notification when expired.
-        - **Token Management**: Delete button moved to left side with confirmation dialog for safety.
-    - **Feat Tree System**: Comprehensive, interactive skill tree editor for character progression.
-        - **Feat Nodes**: Draggable nodes with tier-based visual styling (Bronze to Legendary).
-        - **Prerequisites**: Curved SVG connection lines, requiring at least one prerequisite to be unlocked.
-        - **Species Integration**: Feat trees assigned to species, inherited by characters.
-        - **Feat Effects**: Eight effect types dynamically calculated client-side (hp_bonus, energy_bonus, dc_bonus, attribute_bonus, skill_bonus, spell_grant, item_grant, skill_grant for custom skills, trait_grant).
-        - **Editor**: Context-sensitive effect editor and visual bonus indicators.
-        - **Feat Library**: All feats are automatically saved to a reusable library. Enhanced template selector with search, effect previews, and tier badges when adding feats from library.
-    - **Spell Management System**: System for defining and managing spells with properties like damage dice, type, range, energy cost, and attribute. Spells are granted via feats, roll like weapons, and support 13 damage types, including "Health" for healing.
-    - **Feat Points System**: Characters earn feat points based on level for unlocking feats.
-    - **Notes System**: Obsidian-like note-taking with folders, markdown support, and auto-save.
-        - **Note Types**: Regular text notes and canvas pages for visual mind-mapping.
-        - **Entity References**: Type `[[` to search and link game entities (spells, items, traits, skills, species, characters). Opening the reference picker with blank search shows all available entities. References are clickable in read mode, displaying entity details in a popup dialog. Syntax: `[[type:id|name]]`.
-        - **Note Linking**: Type `//` to search and link existing notes. Syntax: `//note name//`. Clicking a note link opens a preview dialog showing the note's content (statblock-style) with Edit/Close buttons.
-        - **New Note Creation**: Use `(/note name/)` syntax to create a new note. Displays as `[noteName+]` in italic. Clicking creates the note and navigates to it for editing.
-        - **Permission-Based Characters**: Users can reference characters they own or all characters in campaigns where they are GM. Character references show portrait, race, level, HP, and energy.
-        - **Canvas Editor**: Infinite pan/zoom canvas with draggable text, note link, and entity nodes connected by curved lines.
-        - **Graph View**: Force-directed visualization showing all notes, entities, and characters. Characters appear as orange nodes with their portraits, 40% larger than other nodes for visibility.
-        - **Sharing**: Share notes with friends with view or edit permissions.
-        - **Campaign Notes**: Notes can be scoped to campaigns via "Campaign Notes" button.
-        - **Campaign-Linked Folders**: Note folders can be assigned to specific campaigns (visible only in that campaign's notes) or global (visible in main notes area). "Show Hidden Folders" toggle reveals folders from other campaigns. Visual indicators show folder visibility status (Network icon for global, EyeOff for other campaigns).
-        - **Real-time Collaboration**: Live collaborative note editing with WebSocket-based sync. When multiple users view/edit the same note, changes broadcast in real-time with last-write-wins conflict resolution. Presence indicators show who else is viewing the note (avatar circles with green online status). Debounced updates with change detection prevent unnecessary broadcasts and feedback loops.
-    - **Social Features**: User profiles with avatars/bios, friend system with requests, and user search.
+    - **Battle Map**: Infinite grid, pan/zoom, GM scene management, configurable grids, real-time draggable tokens with HP/energy, custom backgrounds, size-based token scaling, initiative glow, GM player viewport tracking, and a beacon system for highlighting map areas.
+    - **Scene Management**: Folder-based organization with drag-drop, separate "View" (GM private) and "Active" (player visible) states, synchronized via WebSockets.
+    - **Character Sheet**: Mobile-optimized, responsive, single-scroll interface with real-time updates.
+    - **Species/Race System**: Database-driven management of custom species (system-wide or campaign-local).
+    - **Level-Up Systems**: Dynamic HP and Energy gain based on species-defined rates and level-dependent dice rolls.
+    - **Campaign Chat**: Real-time chat with integrated dice rolls and auto-scroll.
+    - **Character Templates**: Admin-created, folder-organized, pre-configured character sheets copyable by GMs.
+    - **Attributes & Skills**: Six core attributes, seventeen skills, single-click rolls, Roll Modifier Panel, d30 usage, and a flexible custom skills system.
+    - **Traits System**: Admin-defined and character-specific traits with uses-per-long-rest tracking and reset mechanics.
+    - **Rest Mechanics**: Short and Long Rest options to restore HP and manage exhaustion.
+    - **Exhaustion System**: 0-5 levels tracked per character with visual display and GM controls.
+    - **Inventory & Hotbars**: Comprehensive inventory with weight, quantity, stacking. Hotbars for various item types, including an ammunition system with break chance and re-equip, and a throwable items system for persistent map tokens with AOE detonation. GM Library Items enable cross-campaign reuse.
+    - **Initiative Tracking**: Real-time initiative system with GM controls.
+    - **Roll Notification System**: Visual, animated notifications for all server-authoritative dice rolls.
+    - **Targeting System**: Token targeting with range validation, hit detection (HIT!/MISS!/Crit), and GM access to hotbars.
+    - **Armor Damage Reduction System**: Configurable armor with damage reduction by type and slot.
+    - **Token Effects System**: Combat status effects (poison, burning, etc.) with admin-defined effects, timing configuration, optional damage, spell/item integration, battle map display, automatic processing with duration tracking, and auto-removal.
+    - **Feat Tree System**: Interactive skill tree editor with draggable nodes, tier-based styling, prerequisites, species integration, eight dynamic effect types (hp_bonus, energy_bonus, dc_bonus, attribute_bonus, skill_bonus, spell_grant, item_grant, skill_grant, trait_grant), context-sensitive editor, and a reusable feat library.
+    - **Spell Management System**: System for defining spells with properties like damage, type, range, cost, and attribute, granted via feats.
+    - **Feat Points System**: Characters earn feat points based on level.
+    - **Notes System**: Obsidian-like note-taking with nested folders, markdown support, auto-save, multiple tabs, rich text editing, entity references, note linking, new note creation syntax, permission-based character references, a Canvas editor for visual mind-mapping (text, note links, entities, images, videos, external links), Graph View, sharing options, campaign-specific notes/folders, and real-time collaborative editing with presence indicators.
+    - **Social Features**: User profiles, friend system, and user search.
 
 ### Backend
-- **Technology Stack**: Express.js with TypeScript, `express-session` for session management.
+- **Technology Stack**: Express.js with TypeScript, `express-session`.
 - **API Design**: RESTful endpoints, WebSocket server at `/ws`, session-based authentication, and role-based access control.
 
 ### Data Storage
 - **Database**: PostgreSQL via Neon serverless, managed with Drizzle ORM.
-- **Schema**: Comprehensive schema covering users, campaigns, scenes, characters, tokens, chat messages, initiative entries, feat data, spell definitions, custom skills, and traits.
-- **Validation**: Zod schemas derived from Drizzle for client/server input validation.
+- **Schema**: Comprehensive schema covering all application entities.
+- **Validation**: Zod schemas for input validation.
 
 ### Authentication & Authorization
-- **Authentication**: `bcryptjs` for password hashing, session-based authentication using `express-session` with PostgreSQL storage.
-- **Authorization**: Three-tier role system:
-    - **Owner (Primary GM)**: Full campaign control including role management
-    - **Assistant GM**: Elevated permissions via isGM() for most GM actions, but cannot kick/ban the owner or change roles
-    - **Player**: Standard player permissions
-  Role changes available via dropdown in campaign settings (owner-only).
-- **Character Access Levels**: Four-tier permission system for character visibility:
-    - **None**: No access to the character
-    - **Name**: Token name only access (minimal visibility - just sees name on battle map tokens)
-    - **View**: Full stats and inventory visible (can see but not edit)
-    - **Edit**: Can edit existing character data (attributes, skills, biography, etc.) but cannot add new items, spells, custom skills, or traits. Only owners and GMs can add new content.
-  GMs can grant access via character settings, including "All Players" quick action for bulk permission setting.
+- **Authentication**: `bcryptjs` for password hashing, session-based authentication.
+- **Authorization**: Three-tier role system (Owner, Assistant GM, Player) with distinct permissions.
+- **Character Access Levels**: Four-tier permission system (None, Name, View, Edit) for character visibility and modification.
 - **Security**: Hashed passwords, session cookies, CSRF protection, and PII sanitization.
 
 ## External Dependencies
 
 ### Third-Party Services
 - **Neon Database**: Serverless PostgreSQL hosting.
-- **Google Drive Integration**: Image library browser for character portraits and item images, restricted to a specific shared folder.
+- **Google Drive Integration**: Image library browser for character/item images from a shared folder.
 
 ### Build & Development Tools
 - **Replit Integrations**: `@replit/vite-plugin-cartographer`, `@replit/vite-plugin-dev-banner`, `@replit/vite-plugin-runtime-error-modal`.
