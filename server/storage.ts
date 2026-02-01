@@ -379,6 +379,19 @@ export interface IStorage {
   // Admin Notification operations
   createAdminNotification(data: InsertAdminNotification): Promise<AdminNotification>;
   getRecentNotifications(limit?: number): Promise<AdminNotification[]>;
+
+  // Admin User Management operations
+  getAllUsers(): Promise<User[]>;
+  banUser(userId: string, reason?: string, expiresAt?: Date): Promise<User>;
+  unbanUser(userId: string): Promise<User>;
+  updateBan(userId: string, reason?: string, expiresAt?: Date): Promise<User>;
+  setUserAdmin(userId: string, isAdmin: boolean): Promise<User>;
+  getUserActivity(userId: string): Promise<{
+    campaigns: Campaign[];
+    characters: Character[];
+    notes: Note[];
+    memberships: CampaignMember[];
+  }>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2955,6 +2968,78 @@ export class DatabaseStorage implements IStorage {
       .from(adminNotifications)
       .orderBy(desc(adminNotifications.createdAt))
       .limit(limit);
+  }
+
+  // Admin User Management operations
+  async getAllUsers(): Promise<User[]> {
+    return await db.select().from(users).orderBy(desc(users.createdAt));
+  }
+
+  async banUser(userId: string, reason?: string, expiresAt?: Date): Promise<User> {
+    const [updated] = await db.update(users)
+      .set({
+        bannedAt: new Date(),
+        banReason: reason || null,
+        banExpiresAt: expiresAt || null,
+      })
+      .where(eq(users.id, userId))
+      .returning();
+    return updated;
+  }
+
+  async unbanUser(userId: string): Promise<User> {
+    const [updated] = await db.update(users)
+      .set({
+        bannedAt: null,
+        banReason: null,
+        banExpiresAt: null,
+      })
+      .where(eq(users.id, userId))
+      .returning();
+    return updated;
+  }
+
+  async updateBan(userId: string, reason?: string, expiresAt?: Date): Promise<User> {
+    const updateData: Partial<User> = {};
+    if (reason !== undefined) {
+      updateData.banReason = reason || null;
+    }
+    if (expiresAt !== undefined) {
+      updateData.banExpiresAt = expiresAt || null;
+    }
+    const [updated] = await db.update(users)
+      .set(updateData)
+      .where(eq(users.id, userId))
+      .returning();
+    return updated;
+  }
+
+  async setUserAdmin(userId: string, isAdmin: boolean): Promise<User> {
+    const [updated] = await db.update(users)
+      .set({ isAdmin })
+      .where(eq(users.id, userId))
+      .returning();
+    return updated;
+  }
+
+  async getUserActivity(userId: string): Promise<{
+    campaigns: Campaign[];
+    characters: Character[];
+    notes: Note[];
+    memberships: CampaignMember[];
+  }> {
+    const [userCampaigns, userCharacters, userNotes, userMemberships] = await Promise.all([
+      db.select().from(campaigns).where(eq(campaigns.gmUserId, userId)),
+      db.select().from(characters).where(eq(characters.userId, userId)),
+      db.select().from(notes).where(eq(notes.userId, userId)),
+      db.select().from(campaignMembers).where(eq(campaignMembers.userId, userId)),
+    ]);
+    return {
+      campaigns: userCampaigns,
+      characters: userCharacters,
+      notes: userNotes,
+      memberships: userMemberships,
+    };
   }
 }
 

@@ -1520,10 +1520,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Authentication middleware
-  const requireAuth = (req: any, res: any, next: any) => {
+  const requireAuth = async (req: any, res: any, next: any) => {
     if (!req.session.userId) {
       return res.status(401).json({ error: "Unauthorized" });
     }
+    
+    // Ban check: verify user is not banned
+    const user = await storage.getUser(req.session.userId);
+    if (user && user.bannedAt) {
+      // Check if ban has expired
+      if (user.banExpiresAt && new Date(user.banExpiresAt) < new Date()) {
+        // Auto-unban: ban has expired
+        await storage.unbanUser(user.id);
+      } else {
+        // Still banned - return 403 with ban details
+        return res.status(403).json({
+          error: "Your account has been banned",
+          bannedAt: user.bannedAt,
+          banExpiresAt: user.banExpiresAt,
+          banReason: user.banReason,
+        });
+      }
+    }
+    
     next();
   };
 
@@ -3917,6 +3936,141 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
     next();
   };
+
+  // Helper to sanitize user object (exclude password)
+  const sanitizeUserForAdmin = (user: any) => ({
+    id: user.id,
+    email: user.email,
+    username: user.username,
+    name: user.name,
+    avatarUrl: user.avatarUrl,
+    createdAt: user.createdAt,
+    isAdmin: user.isAdmin,
+    bannedAt: user.bannedAt,
+    banExpiresAt: user.banExpiresAt,
+    banReason: user.banReason,
+  });
+
+  // Admin broadcast site update to all connected clients
+  app.post("/api/admin/broadcast-update", requireAdmin, async (req, res) => {
+    try {
+      broadcastToAllClients({
+        type: "site_update",
+        message: "App updated, please refresh to continue using. Failure to do so may cause issues with syncing or other."
+      });
+      res.json({ success: true, message: "Site update broadcast sent to all connected clients" });
+    } catch (err) {
+      console.error('[Admin] Error broadcasting site update:', err);
+      res.status(500).json({ error: "Failed to broadcast site update" });
+    }
+  });
+
+  // Admin User Management Routes
+  app.get("/api/admin/users", requireAdmin, async (req, res) => {
+    try {
+      const allUsers = await storage.getAllUsers();
+      res.json(allUsers.map(sanitizeUserForAdmin));
+    } catch (err) {
+      console.error('[Admin] Error fetching users:', err);
+      res.status(500).json({ error: "Failed to fetch users" });
+    }
+  });
+
+  app.post("/api/admin/users/:userId/ban", requireAdmin, async (req, res) => {
+    try {
+      const { userId } = req.params;
+      const { reason, expiresAt } = req.body;
+      
+      const user = await storage.getUser(userId);
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+      
+      const parsedExpiresAt = expiresAt ? new Date(expiresAt) : undefined;
+      const updatedUser = await storage.banUser(userId, reason, parsedExpiresAt);
+      res.json(sanitizeUserForAdmin(updatedUser));
+    } catch (err) {
+      console.error('[Admin] Error banning user:', err);
+      res.status(500).json({ error: "Failed to ban user" });
+    }
+  });
+
+  app.post("/api/admin/users/:userId/unban", requireAdmin, async (req, res) => {
+    try {
+      const { userId } = req.params;
+      
+      const user = await storage.getUser(userId);
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+      
+      const updatedUser = await storage.unbanUser(userId);
+      res.json(sanitizeUserForAdmin(updatedUser));
+    } catch (err) {
+      console.error('[Admin] Error unbanning user:', err);
+      res.status(500).json({ error: "Failed to unban user" });
+    }
+  });
+
+  app.put("/api/admin/users/:userId/ban", requireAdmin, async (req, res) => {
+    try {
+      const { userId } = req.params;
+      const { reason, expiresAt } = req.body;
+      
+      const user = await storage.getUser(userId);
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+      
+      const parsedExpiresAt = expiresAt !== undefined 
+        ? (expiresAt ? new Date(expiresAt) : undefined)
+        : undefined;
+      const updatedUser = await storage.updateBan(userId, reason, parsedExpiresAt);
+      res.json(sanitizeUserForAdmin(updatedUser));
+    } catch (err) {
+      console.error('[Admin] Error updating ban:', err);
+      res.status(500).json({ error: "Failed to update ban" });
+    }
+  });
+
+  app.get("/api/admin/users/:userId/activity", requireAdmin, async (req, res) => {
+    try {
+      const { userId } = req.params;
+      
+      const user = await storage.getUser(userId);
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+      
+      const activity = await storage.getUserActivity(userId);
+      res.json(activity);
+    } catch (err) {
+      console.error('[Admin] Error fetching user activity:', err);
+      res.status(500).json({ error: "Failed to fetch user activity" });
+    }
+  });
+
+  app.post("/api/admin/set-admin/:userId", requireAdmin, async (req, res) => {
+    try {
+      const { userId } = req.params;
+      const { isAdmin } = req.body;
+      
+      if (typeof isAdmin !== 'boolean') {
+        return res.status(400).json({ error: "isAdmin must be a boolean" });
+      }
+      
+      const user = await storage.getUser(userId);
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+      
+      const updatedUser = await storage.setUserAdmin(userId, isAdmin);
+      res.json(sanitizeUserForAdmin(updatedUser));
+    } catch (err) {
+      console.error('[Admin] Error setting admin status:', err);
+      res.status(500).json({ error: "Failed to set admin status" });
+    }
+  });
 
   // Lightweight summary endpoint for fast item picker loading (must be before :id route)
   app.get("/api/system-items/summary", requireAuth, async (req, res) => {

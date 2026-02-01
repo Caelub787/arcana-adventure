@@ -15,6 +15,25 @@ export interface User {
   isAdmin?: boolean;
 }
 
+export interface AdminUser {
+  id: string;
+  email: string;
+  username: string;
+  name: string;
+  avatarUrl?: string;
+  createdAt: string;
+  isAdmin?: boolean;
+  bannedAt?: string | null;
+  banExpiresAt?: string | null;
+  banReason?: string | null;
+}
+
+export interface UserActivity {
+  campaigns: { id: string; name: string; role: string; createdAt: string }[];
+  characters: { id: string; name: string; campaignId: string; campaignName: string }[];
+  notes: { id: string; title: string; createdAt: string }[];
+}
+
 export interface Campaign {
   id: string;
   name: string;
@@ -1345,6 +1364,48 @@ class ApiClient {
 
   async deleteCharacterTemplateFolder(id: string): Promise<void> {
     return this.request(`/admin/character-template-folders/${id}`, { method: 'DELETE' });
+  }
+
+  // Admin User Management (Site Security)
+  async getAllUsers(): Promise<AdminUser[]> {
+    return this.request('/admin/users');
+  }
+
+  async banUser(userId: string, reason?: string, expiresAt?: string): Promise<AdminUser> {
+    return this.request(`/admin/users/${userId}/ban`, {
+      method: 'POST',
+      body: JSON.stringify({ reason, expiresAt }),
+    });
+  }
+
+  async unbanUser(userId: string): Promise<AdminUser> {
+    return this.request(`/admin/users/${userId}/unban`, {
+      method: 'POST',
+    });
+  }
+
+  async updateBan(userId: string, reason?: string, expiresAt?: string | null): Promise<AdminUser> {
+    return this.request(`/admin/users/${userId}/ban`, {
+      method: 'PUT',
+      body: JSON.stringify({ reason, expiresAt }),
+    });
+  }
+
+  async getUserActivity(userId: string): Promise<UserActivity> {
+    return this.request(`/admin/users/${userId}/activity`);
+  }
+
+  async setUserAdmin(userId: string, isAdmin: boolean): Promise<AdminUser> {
+    return this.request(`/admin/set-admin/${userId}`, {
+      method: 'POST',
+      body: JSON.stringify({ isAdmin }),
+    });
+  }
+
+  async broadcastSiteUpdate(): Promise<{ success: boolean; message: string }> {
+    return this.request('/admin/broadcast-update', {
+      method: 'POST',
+    });
   }
 
   // Public character templates (for campaign use)
