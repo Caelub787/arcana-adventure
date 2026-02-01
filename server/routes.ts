@@ -5032,7 +5032,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
         createdBy: req.session.userId!,
       });
       
-      // Broadcast to all connected clients
+      // Create individual notifications for all users
+      const allUsers = await storage.getAllUsers();
+      const fullMessage = patchNotes ? `${message}\n\nPatch Notes:\n${patchNotes}` : message;
+      for (const user of allUsers) {
+        await storage.createUserNotification({
+          userId: user.id,
+          type: 'system',
+          title,
+          message: fullMessage,
+          referenceId: notification.id,
+          isRead: false,
+        });
+      }
+      
+      // Broadcast to all connected clients for real-time update
       broadcastToAllClients({
         type: 'admin_notification',
         title: notification.title,

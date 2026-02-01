@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Bell, Check, X, Trash2, CheckCheck, Loader2 } from "lucide-react";
 import {
@@ -17,6 +17,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 function formatTimeAgo(dateString: string): string {
   const date = new Date(dateString);
@@ -36,6 +37,7 @@ function formatTimeAgo(dateString: string): string {
 export default function NotificationsBell() {
   const queryClient = useQueryClient();
   const [isOpen, setIsOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<"unread" | "read">("unread");
 
   const { data: unreadCount = 0 } = useQuery({
     queryKey: ["/api/notifications/count"],
@@ -48,6 +50,16 @@ export default function NotificationsBell() {
     queryFn: getNotifications,
     enabled: isOpen,
   });
+
+  const unreadNotifications = useMemo(
+    () => notifications.filter((n) => !n.isRead),
+    [notifications]
+  );
+
+  const readNotifications = useMemo(
+    () => notifications.filter((n) => n.isRead),
+    [notifications]
+  );
 
   const markReadMutation = useMutation({
     mutationFn: markNotificationRead,
@@ -104,6 +116,99 @@ export default function NotificationsBell() {
     }
   };
 
+  const renderNotificationItem = (notification: UserNotification) => (
+    <div
+      key={notification.id}
+      className={`p-3 ${
+        notification.isRead ? "bg-stone-900/50" : "bg-stone-800/50"
+      }`}
+      data-testid={`notification-item-${notification.id}`}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex-1 min-w-0">
+          <p
+            className={`text-sm font-medium truncate ${
+              notification.isRead ? "text-stone-400" : "text-stone-200"
+            }`}
+          >
+            {notification.title}
+          </p>
+          {notification.message && (
+            <p className="text-xs text-stone-500 mt-1 line-clamp-2">
+              {notification.message}
+            </p>
+          )}
+          <p className="text-xs text-stone-600 mt-1">
+            {formatTimeAgo(notification.createdAt)}
+          </p>
+        </div>
+        <div className="flex items-center gap-1 shrink-0">
+          {!notification.isRead && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => markReadMutation.mutate(notification.id)}
+              disabled={markReadMutation.isPending}
+              className="h-6 w-6 text-stone-500 hover:text-green-400 hover:bg-green-950/30"
+              title="Mark as read"
+              data-testid={`button-mark-read-${notification.id}`}
+            >
+              <Check className="h-3 w-3" />
+            </Button>
+          )}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => deleteMutation.mutate(notification.id)}
+            disabled={deleteMutation.isPending}
+            className="h-6 w-6 text-stone-500 hover:text-red-400 hover:bg-red-950/30"
+            title="Delete"
+            data-testid={`button-delete-notification-${notification.id}`}
+          >
+            <Trash2 className="h-3 w-3" />
+          </Button>
+        </div>
+      </div>
+      {notification.type === "friend_request" && notification.referenceId && (
+        <div className="flex gap-2 mt-2">
+          <Button
+            size="sm"
+            onClick={() => handleAcceptFriend(notification.referenceId)}
+            disabled={acceptFriendMutation.isPending || declineFriendMutation.isPending}
+            className="flex-1 h-7 bg-green-700 text-stone-100 hover:bg-green-600 text-xs"
+            data-testid={`button-accept-friend-${notification.id}`}
+          >
+            {acceptFriendMutation.isPending ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <>
+                <Check className="h-3 w-3 mr-1" />
+                Accept
+              </>
+            )}
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => handleDeclineFriend(notification.referenceId)}
+            disabled={acceptFriendMutation.isPending || declineFriendMutation.isPending}
+            className="flex-1 h-7 border-stone-700 text-stone-400 hover:text-red-400 hover:bg-red-950/30 text-xs"
+            data-testid={`button-decline-friend-${notification.id}`}
+          >
+            {declineFriendMutation.isPending ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <>
+                <X className="h-3 w-3 mr-1" />
+                Decline
+              </>
+            )}
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <Popover open={isOpen} onOpenChange={setIsOpen}>
       <PopoverTrigger asChild>
@@ -116,7 +221,7 @@ export default function NotificationsBell() {
           <Bell className="h-5 w-5" />
           {unreadCount > 0 && (
             <span
-              className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-amber-600 text-xs font-medium text-stone-950"
+              className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-600 text-xs font-medium text-white"
               data-testid="badge-notification-count"
             >
               {unreadCount > 99 ? "99+" : unreadCount}
@@ -131,7 +236,7 @@ export default function NotificationsBell() {
       >
         <div className="flex items-center justify-between border-b border-stone-800 px-4 py-3">
           <h3 className="text-sm font-semibold text-amber-500">Notifications</h3>
-          {notifications.some((n) => !n.isRead) && (
+          {unreadNotifications.length > 0 && activeTab === "unread" && (
             <Button
               variant="ghost"
               size="sm"
@@ -151,113 +256,68 @@ export default function NotificationsBell() {
             </Button>
           )}
         </div>
-        <ScrollArea className="h-80">
-          {isLoading ? (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 className="h-6 w-6 animate-spin text-stone-500" />
-            </div>
-          ) : notifications.length === 0 ? (
-            <div className="py-8 text-center text-stone-500">
-              <Bell className="h-10 w-10 mx-auto mb-2 opacity-50" />
-              <p className="text-sm">No notifications</p>
-            </div>
-          ) : (
-            <div className="divide-y divide-stone-800">
-              {notifications.map((notification) => (
-                <div
-                  key={notification.id}
-                  className={`p-3 ${
-                    notification.isRead ? "bg-stone-900/50" : "bg-stone-800/50"
-                  }`}
-                  data-testid={`notification-item-${notification.id}`}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex-1 min-w-0">
-                      <p
-                        className={`text-sm font-medium truncate ${
-                          notification.isRead ? "text-stone-400" : "text-stone-200"
-                        }`}
-                      >
-                        {notification.title}
-                      </p>
-                      {notification.message && (
-                        <p className="text-xs text-stone-500 mt-1 line-clamp-2">
-                          {notification.message}
-                        </p>
-                      )}
-                      <p className="text-xs text-stone-600 mt-1">
-                        {formatTimeAgo(notification.createdAt)}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-1 shrink-0">
-                      {!notification.isRead && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => markReadMutation.mutate(notification.id)}
-                          disabled={markReadMutation.isPending}
-                          className="h-6 w-6 text-stone-500 hover:text-green-400 hover:bg-green-950/30"
-                          title="Mark as read"
-                          data-testid={`button-mark-read-${notification.id}`}
-                        >
-                          <Check className="h-3 w-3" />
-                        </Button>
-                      )}
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => deleteMutation.mutate(notification.id)}
-                        disabled={deleteMutation.isPending}
-                        className="h-6 w-6 text-stone-500 hover:text-red-400 hover:bg-red-950/30"
-                        title="Delete"
-                        data-testid={`button-delete-notification-${notification.id}`}
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
-                    </div>
-                  </div>
-                  {notification.type === "friend_request" && notification.referenceId && (
-                    <div className="flex gap-2 mt-2">
-                      <Button
-                        size="sm"
-                        onClick={() => handleAcceptFriend(notification.referenceId)}
-                        disabled={acceptFriendMutation.isPending || declineFriendMutation.isPending}
-                        className="flex-1 h-7 bg-green-700 text-stone-100 hover:bg-green-600 text-xs"
-                        data-testid={`button-accept-friend-${notification.id}`}
-                      >
-                        {acceptFriendMutation.isPending ? (
-                          <Loader2 className="h-3 w-3 animate-spin" />
-                        ) : (
-                          <>
-                            <Check className="h-3 w-3 mr-1" />
-                            Accept
-                          </>
-                        )}
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => handleDeclineFriend(notification.referenceId)}
-                        disabled={acceptFriendMutation.isPending || declineFriendMutation.isPending}
-                        className="flex-1 h-7 border-stone-700 text-stone-400 hover:text-red-400 hover:bg-red-950/30 text-xs"
-                        data-testid={`button-decline-friend-${notification.id}`}
-                      >
-                        {declineFriendMutation.isPending ? (
-                          <Loader2 className="h-3 w-3 animate-spin" />
-                        ) : (
-                          <>
-                            <X className="h-3 w-3 mr-1" />
-                            Decline
-                          </>
-                        )}
-                      </Button>
-                    </div>
-                  )}
+        
+        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "unread" | "read")} className="w-full">
+          <TabsList className="w-full bg-stone-800 rounded-none border-b border-stone-700">
+            <TabsTrigger 
+              value="unread" 
+              className="flex-1 data-[state=active]:bg-stone-700 data-[state=active]:text-amber-400 rounded-none"
+              data-testid="tab-unread-notifications"
+            >
+              Unread
+              {unreadCount > 0 && (
+                <span className="ml-2 px-1.5 py-0.5 text-xs bg-red-600 text-white rounded-full">
+                  {unreadCount}
+                </span>
+              )}
+            </TabsTrigger>
+            <TabsTrigger 
+              value="read" 
+              className="flex-1 data-[state=active]:bg-stone-700 data-[state=active]:text-amber-400 rounded-none"
+              data-testid="tab-read-notifications"
+            >
+              Read
+            </TabsTrigger>
+          </TabsList>
+          
+          <TabsContent value="unread" className="m-0">
+            <ScrollArea className="h-72">
+              {isLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin text-stone-500" />
                 </div>
-              ))}
-            </div>
-          )}
-        </ScrollArea>
+              ) : unreadNotifications.length === 0 ? (
+                <div className="py-8 text-center text-stone-500">
+                  <Bell className="h-10 w-10 mx-auto mb-2 opacity-50" />
+                  <p className="text-sm">No unread notifications</p>
+                </div>
+              ) : (
+                <div className="divide-y divide-stone-800">
+                  {unreadNotifications.map(renderNotificationItem)}
+                </div>
+              )}
+            </ScrollArea>
+          </TabsContent>
+          
+          <TabsContent value="read" className="m-0">
+            <ScrollArea className="h-72">
+              {isLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin text-stone-500" />
+                </div>
+              ) : readNotifications.length === 0 ? (
+                <div className="py-8 text-center text-stone-500">
+                  <Bell className="h-10 w-10 mx-auto mb-2 opacity-50" />
+                  <p className="text-sm">No read notifications</p>
+                </div>
+              ) : (
+                <div className="divide-y divide-stone-800">
+                  {readNotifications.map(renderNotificationItem)}
+                </div>
+              )}
+            </ScrollArea>
+          </TabsContent>
+        </Tabs>
       </PopoverContent>
     </Popover>
   );
