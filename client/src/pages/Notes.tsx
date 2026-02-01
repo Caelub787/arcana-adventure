@@ -68,6 +68,9 @@ import {
   Share2,
   MoreVertical,
   ChevronRight,
+  ChevronLeft,
+  PanelLeftClose,
+  PanelLeft,
   Menu,
   Users,
   Loader2,
@@ -251,6 +254,7 @@ export default function Notes() {
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
   const [showSharedNotes, setShowSharedNotes] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [viewMode, setViewMode] = useState<"list" | "graph">("list");
   const [noteMode, setNoteMode] = useState<"read" | "edit">("read");
@@ -1618,10 +1622,38 @@ export default function Notes() {
         ) : (
           <motion.aside
             initial={{ x: -280 }}
-            animate={{ x: 0 }}
-            className="w-64 bg-stone-950/80 backdrop-blur border-r border-stone-800 flex-shrink-0"
+            animate={{ x: 0, width: sidebarCollapsed ? 48 : 256 }}
+            transition={{ duration: 0.2 }}
+            className="bg-stone-950/80 backdrop-blur border-r border-stone-800 flex-shrink-0 relative"
           >
-            {sidebarContent}
+            {sidebarCollapsed ? (
+              <div className="flex flex-col h-full items-center py-4">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setSidebarCollapsed(false)}
+                  className="text-stone-400 hover:text-amber-400"
+                  data-testid="button-expand-sidebar"
+                  title="Expand folders"
+                >
+                  <PanelLeft className="h-5 w-5" />
+                </Button>
+              </div>
+            ) : (
+              <>
+                {sidebarContent}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setSidebarCollapsed(true)}
+                  className="absolute bottom-4 right-2 text-stone-400 hover:text-amber-400"
+                  data-testid="button-collapse-sidebar"
+                  title="Collapse folders"
+                >
+                  <PanelLeftClose className="h-4 w-4" />
+                </Button>
+              </>
+            )}
           </motion.aside>
         )}
 
