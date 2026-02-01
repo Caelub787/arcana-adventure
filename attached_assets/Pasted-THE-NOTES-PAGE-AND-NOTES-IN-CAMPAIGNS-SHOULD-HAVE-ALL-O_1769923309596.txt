@@ -1,0 +1,33 @@
+THE NOTES PAGE AND NOTES IN CAMPAIGNS SHOULD HAVE ALL OF THE SAME FEATURES AND EVERYTHING ELSE AS THEY ARE SUPPOSTED TO BE THE SAME THING!!!!!
+THE CHARACTER SHEETS IN ADMIN AND IN CAMPAIGNS SHOULD HAVE ALL OF THE SAME FEATURES AND EVERYTHING ELSE AS THEY ARE SUPPOSTED TO BE THE SAME THING!!!!!
+THE CHARACTER CREATION IN ADMIN AND IN CAMPAIGNS SHOULD HAVE ALL OF THE SAME FEATURES AND EVERYTHING ELSE AS THEY ARE SUPPOSTED TO BE THE SAME THING!!!!!
+THE ITEM CREATION IN ADMIN AND IN CAMPAIGNS SHOULD HAVE ALL OF THE SAME FEATURES AND EVERYTHING ELSE AS THEY ARE SUPPOSTED TO BE THE SAME THING!!!!!
+
+
+1. Add way to add images/playable videos/links to canvas'
+2. Add a way to delete folders in notes (both in notes section and notes in campaigns but clicking the 3 dots on the right side of the folder name
+3. Add a "Tabs" feature to both notes pages, that allows you to have multiple tabs of notes opened at once.
+4. I want to be able to have folders within folders, creating an organized hierarchy.  I want to be able to open a folder in the folders page to see the notes names, and other things within that folder at will.
+5. I want the item hotbars in the bottom right of a campaign screen to be re-organized in the following order: Weapons, Magic, Consumables, Armor, Utility, Skills
+6. The beacon/ping/marker feature, when pressed on the battlemap is super transparent.  I want it fully visible.
+6a. I also want players when they join the campaign to be given an RGB color picker and they can select a color that will then be used as their beacon color until they log out.
+7. When I minimize a character sheet I want the "Tab" to be minimized as much as it can without covering the name of the tab/character
+8. I want the tooltips at the top of both notes sections to properly display what needs to be typed to link notes and entities, and I want you to remove the "Insert Reference" button since it can be done using those commands in the notes.
+9. When I reference an item, or anything else, in the editor i want it to be displayed as "[[" followed by the name of the linked reference highlighted blue.
+9a. When I reference a note I want it highlighted blue as well
+10. When I drag an item into a container item, it doesn't let me drag more items into the container.  It needs to allow me to keep dragging them into it.
+11. I want the spells and other admin made things to do what you did with items to ensure they load faster in all menus.
+12. I want the Invite code to be hidden by default and a button needs to be clicked to reveal the code, and clicking on the code, hidden or not copies the code.
+13. Remove the "campaign notes" button from settings.
+14. I want the folders panel in notes to be collapsible.
+15. I want to be able to bolden/italic/change fonts/ and other writing edits to notes when I'm editing.
+16. Add ability for users to sync google docs and their notes so they can create a backup of their notes in google drive and import existing notes into this.  This should be a live sync thing.
+17. I need to be able to add "1." or "-" at the beginning of a line to create bullet points in that style.
+18. PUSH NOTIFICATIONS!!!!  
+18a.  There should be a tab in admin settings that allows for me as an admin to send a push notification to anyone signed in.  I should be able to choose what I send.  I also want when I update the site for there to be an expandable text field for me to give patch notes in through the notification.
+19.  When I am in canvas I want to be able to when trying to add a note reference if I search for a note that doesn't exist and click enter I want it to create a note with that title and allow me to reference it and go edit it later.
+20.  In canvas if I am dragging the connection arrow and let go in an empty space, allow me to choose between adding a text, note reference, or entity in that location that automatically connects to the arrow I just dragged.
+21.  Add a way in the campaigns page on the main menu to duplicate campaigns.
+22.  When someone is editing their skill points or attribute points, add a button at the top that asks if they want to cancel any points out.  If they choose to do so, allow them to choose to cancel 1 or 2 negative points.  Doing so means that they need one or two less negative points to place but in return lose the same amount of positive points to add.
+23.  The token effects dont disappear after the set amount of turns or rounds, they just stop doing the effect.  Their label needs to disappear, and please make the label showing how long they are there for count down with the round/turn as set.
+24.  Add a way for images to be added to notes, and image files to the notes pages instead of just notes/canvas'.

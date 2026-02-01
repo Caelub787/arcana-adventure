@@ -1593,7 +1593,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                       width: effectiveGridSize * 0.8,
                       height: effectiveGridSize * 0.8,
                       animation: 'beacon-pulse 1.5s ease-out forwards',
-                      boxShadow: '0 0 20px 4px rgba(251, 191, 36, 0.6), inset 0 0 10px rgba(251, 191, 36, 0.3)',
+                      boxShadow: '0 0 30px 8px rgba(251, 191, 36, 1), inset 0 0 15px rgba(251, 191, 36, 0.6)',
                     }}
                   />
                   <style>{`
@@ -1601,12 +1601,15 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                       0% {
                         transform: scale(0.5);
                         opacity: 1;
-                        border-width: 6px;
+                        border-width: 8px;
+                      }
+                      70% {
+                        opacity: 1;
                       }
                       100% {
                         transform: scale(2.5);
                         opacity: 0;
-                        border-width: 2px;
+                        border-width: 3px;
                       }
                     }
                   `}</style>
@@ -5659,11 +5662,11 @@ export function BattleMapHotbars({ character, tokens, targetedTokenId, character
 
   const hotbarTypes = [
     { type: 'weapons', icon: Sword, color: 'amber', maxSlots: 3 },
-    { type: 'armor', icon: Shield, color: 'cyan', maxSlots: 5 },
     { type: 'magic', icon: Sparkles, color: 'purple', maxSlots: 5 },
-    { type: 'skills', icon: Dice5, color: 'blue', maxSlots: 5 },
     { type: 'consumables', icon: Heart, color: 'green', maxSlots: 5 },
-    { type: 'utility', icon: Package, color: 'stone', maxSlots: 5 }
+    { type: 'armor', icon: Shield, color: 'cyan', maxSlots: 5 },
+    { type: 'utility', icon: Package, color: 'stone', maxSlots: 5 },
+    { type: 'skills', icon: Dice5, color: 'blue', maxSlots: 5 }
   ];
 
   const activeHotbarConfig = hotbarTypes.find(h => h.type === activeHotbar);
@@ -6998,6 +7001,52 @@ export function InitiativeTracker({ open, onOpenChange, sceneId, campaignId, isG
   );
 }
 
+// Invite Code Section with hide/reveal and copy functionality
+function InviteCodeSection({ inviteCode }: { inviteCode?: string }) {
+  const [showCode, setShowCode] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const { toast } = useToast();
+  
+  const handleCopy = () => {
+    if (inviteCode) {
+      navigator.clipboard.writeText(inviteCode);
+      setCopied(true);
+      toast({ title: "Copied!", description: "Invite code copied to clipboard" });
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+  
+  return (
+    <div className="mb-8 p-4 bg-stone-900/50 border border-stone-800 rounded-lg">
+      <h3 className="text-xs font-bold text-stone-400 uppercase mb-2 flex items-center gap-2">
+        <Sparkles className="h-3 w-3 text-amber-500" /> Invite Code
+      </h3>
+      <div className="flex items-center gap-2">
+        <div 
+          className="flex-1 font-mono text-xl text-amber-100 tracking-widest bg-black/30 p-2 rounded text-center border border-dashed border-stone-700 cursor-pointer hover:bg-black/40 transition-colors"
+          onClick={handleCopy}
+          title="Click to copy"
+          data-testid="invite-code-display"
+        >
+          {showCode ? (inviteCode || "LOADING...") : "••••••••"}
+        </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setShowCode(!showCode)}
+          className="text-stone-400 hover:text-amber-400"
+          data-testid="invite-code-toggle"
+        >
+          {showCode ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+        </Button>
+      </div>
+      <p className="text-xs text-stone-500 mt-2 text-center">
+        {copied ? "Copied!" : "Click code to copy"}
+      </p>
+    </div>
+  );
+}
+
 // 5. Campaign Menu & Chat
 interface CampaignMenuProps {
   campaignId?: string;
@@ -7694,16 +7743,7 @@ export function CampaignMenu({ campaignId, role, inviteCode, hotbarSlots = 5, in
           </div>
           
           {/* Invite Code Section */}
-          <div className="mb-8 p-4 bg-stone-900/50 border border-stone-800 rounded-lg">
-            <h3 className="text-xs font-bold text-stone-400 uppercase mb-2 flex items-center gap-2">
-              <Sparkles className="h-3 w-3 text-amber-500" /> Invite Code
-            </h3>
-            <div className="flex items-center gap-2">
-              <div className="flex-1 font-mono text-xl text-amber-100 tracking-widest bg-black/30 p-2 rounded text-center border border-dashed border-stone-700 select-all">
-                {inviteCode || "LOADING..."}
-              </div>
-            </div>
-          </div>
+          <InviteCodeSection inviteCode={inviteCode} />
 
           {/* Campaign Species Button (GM Only) */}
           {role === 'gm' && onOpenCampaignSpecies && (
@@ -7717,16 +7757,6 @@ export function CampaignMenu({ campaignId, role, inviteCode, hotbarSlots = 5, in
             </Button>
           )}
 
-          {/* Campaign Notes Button */}
-          <a href={`/notes?campaign=${campaignId}`} className="block">
-            <Button
-              variant="secondary"
-              className="w-full mb-4 bg-indigo-900/50 hover:bg-indigo-800/50 border border-indigo-700"
-              data-testid="button-campaign-notes"
-            >
-              <BookOpen className="mr-2 h-4 w-4" /> Campaign Notes
-            </Button>
-          </a>
 
           {/* Display Settings */}
           <div className="mb-6 p-4 bg-stone-900/50 border border-stone-800 rounded-lg">
