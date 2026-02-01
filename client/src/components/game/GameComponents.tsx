@@ -7017,7 +7017,6 @@ export function InitiativeTracker({ open, onOpenChange, sceneId, campaignId, isG
 function InviteCodeSection({ inviteCode }: { inviteCode?: string }) {
   const [showCode, setShowCode] = useState(false);
   const [copied, setCopied] = useState(false);
-  const { toast } = useToast();
   
   const handleCopy = () => {
     if (inviteCode) {
