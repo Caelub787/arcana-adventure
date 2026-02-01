@@ -74,6 +74,7 @@ import {
   CloudUpload,
   CloudDownload,
   ExternalLink,
+  Home,
 } from "lucide-react";
 import { ReferencePicker, NoteOnlyPicker } from "@/components/notes/ReferencePicker";
 import { CanvasEditor, CanvasData } from "@/components/notes/CanvasEditor";
@@ -346,10 +347,12 @@ export function CampaignNotesPanel({
 
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
   const [showSharedNotes, setShowSharedNotes] = useState(false);
+  const [showHomeView, setShowHomeView] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
+  const [sidebarSearchQuery, setSidebarSearchQuery] = useState("");
   const [viewMode, setViewMode] = useState<"list" | "graph">("list");
   const [noteMode, setNoteMode] = useState<"read" | "edit">("read");
-  const [showSidebar, setShowSidebar] = useState(true);
+  const [showSidebar, setShowSidebar] = useState(window.innerWidth >= 768);
 
   const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
 
@@ -512,9 +515,11 @@ export function CampaignNotesPanel({
           setSelectedNoteId(newActiveNote.noteId);
         } else {
           setSelectedNoteId(null);
+          setShowHomeView(true);
         }
       } else {
         setSelectedNoteId(null);
+        setShowHomeView(true);
       }
     }
   };
@@ -1168,21 +1173,67 @@ export function CampaignNotesPanel({
           <Plus className="h-3 w-3" />
         </Button>
       </div>
+      <div className="p-1 border-b border-stone-700">
+        <div className="relative">
+          <Search className="absolute left-1.5 top-1/2 -translate-y-1/2 h-2.5 w-2.5 text-stone-500" />
+          <Input
+            placeholder="Search..."
+            value={sidebarSearchQuery}
+            onChange={(e) => setSidebarSearchQuery(e.target.value)}
+            className="h-6 pl-5 text-xs bg-stone-900/50 border-stone-700"
+            data-testid="panel-input-sidebar-search"
+          />
+          {sidebarSearchQuery && (
+            <button
+              onClick={() => setSidebarSearchQuery("")}
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 text-stone-500 hover:text-stone-300"
+            >
+              <X className="h-2.5 w-2.5" />
+            </button>
+          )}
+        </div>
+      </div>
+      {sidebarSearchQuery ? (
+        <ScrollArea className="flex-1 p-1">
+          {allNotesForTree
+            .filter((n) => n.title.toLowerCase().includes(sidebarSearchQuery.toLowerCase()))
+            .map((note) => (
+              <div
+                key={note.id}
+                onClick={() => {
+                  setShowHomeView(false);
+                  setSelectedNoteId(note.id);
+                  setSidebarSearchQuery("");
+                }}
+                className="flex items-center gap-1 py-1 px-1.5 rounded cursor-pointer transition-colors text-xs hover:bg-stone-800/50 text-stone-300"
+                data-testid={`panel-sidebar-search-result-${note.id}`}
+              >
+                <FileText className="h-2.5 w-2.5 flex-shrink-0" />
+                <span className="flex-1 truncate">{note.title || "Untitled"}</span>
+              </div>
+            ))}
+          {allNotesForTree.filter((n) => n.title.toLowerCase().includes(sidebarSearchQuery.toLowerCase())).length === 0 && (
+            <p className="text-xs text-stone-500 text-center py-2">No notes found</p>
+          )}
+        </ScrollArea>
+      ) : (
       <ScrollArea className="flex-1 p-1">
         <div
           className={`flex items-center gap-1 py-1 px-1.5 rounded cursor-pointer transition-colors text-xs ${
-            !selectedFolderId && !showSharedNotes
+            showHomeView && !selectedFolderId && !showSharedNotes
               ? "bg-amber-900/30 text-amber-400"
               : "hover:bg-stone-800/50 text-stone-300"
           }`}
           onClick={() => {
             setSelectedFolderId(null);
             setShowSharedNotes(false);
+            setShowHomeView(true);
+            setSelectedNoteId(null);
           }}
-          data-testid="panel-folder-all-notes"
+          data-testid="panel-folder-home"
         >
-          <FileText className="h-3 w-3" />
-          <span>All Notes</span>
+          <Home className="h-3 w-3" />
+          <span>Home</span>
         </div>
         <Separator className="my-1 bg-stone-800" />
         <div className="space-y-0.5 group">
@@ -1204,6 +1255,7 @@ export function CampaignNotesPanel({
                   setShowSharedNotes(false);
                 }}
                 onNoteSelect={(id) => {
+                  setShowHomeView(false);
                   setSelectedNoteId(id);
                 }}
                 onContextMenu={(f) => openFolderDialog(f)}
@@ -1260,6 +1312,41 @@ export function CampaignNotesPanel({
           <span className="truncate">{showHiddenFolders ? "Hide Others" : "Show Hidden"}</span>
         </div>
       </ScrollArea>
+      )}
+    </div>
+  );
+
+  const renderHomeView = () => (
+    <div className="flex-1 flex flex-col items-center justify-center p-4">
+      <div className="text-center max-w-xs">
+        <Home className="h-10 w-10 mx-auto mb-4 text-stone-600" />
+        <h2 className="text-lg font-display font-bold text-stone-200 mb-2">
+          Notes
+        </h2>
+        <p className="text-xs text-stone-400 mb-4">
+          Create a new note or select a folder from the sidebar.
+        </p>
+        <div className="flex items-center justify-center gap-2">
+          <Button
+            onClick={handleCreateNote}
+            size="sm"
+            className="bg-amber-700 hover:bg-amber-600"
+            data-testid="panel-button-home-create-note"
+          >
+            <Plus className="h-3 w-3 mr-1" />
+            Note
+          </Button>
+          <Button
+            onClick={handleCreateCanvas}
+            size="sm"
+            className="bg-indigo-700 hover:bg-indigo-600"
+            data-testid="panel-button-home-create-canvas"
+          >
+            <Grid3X3 className="h-3 w-3 mr-1" />
+            Canvas
+          </Button>
+        </div>
+      </div>
     </div>
   );
 
@@ -1727,6 +1814,8 @@ export function CampaignNotesPanel({
             {renderSidebar()}
             {selectedNoteId ? (
               currentNote?.type === "canvas" || noteMode === "edit" ? renderNoteEditor() : renderNoteReadView()
+            ) : showHomeView ? (
+              renderHomeView()
             ) : (
               renderNoteList()
             )}

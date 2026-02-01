@@ -345,6 +345,7 @@ export default function Notes() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [sidebarSearchQuery, setSidebarSearchQuery] = useState("");
   const [viewMode, setViewMode] = useState<"list" | "graph">("list");
   const [noteMode, setNoteMode] = useState<"read" | "edit">("read");
 
@@ -526,9 +527,11 @@ export default function Notes() {
           setLocation(`/notes/${newActiveNote.noteId}`);
         } else {
           setLocation("/notes");
+          setShowHomeView(true);
         }
       } else {
         setLocation("/notes");
+        setShowHomeView(true);
       }
     }
   };
@@ -1419,6 +1422,51 @@ export default function Notes() {
           <Plus className="h-4 w-4" />
         </Button>
       </div>
+      <div className="p-2 border-b border-stone-800">
+        <div className="relative">
+          <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-stone-500" />
+          <Input
+            placeholder="Search notes..."
+            value={sidebarSearchQuery}
+            onChange={(e) => setSidebarSearchQuery(e.target.value)}
+            className="h-8 pl-7 text-sm bg-stone-900/50 border-stone-700"
+            data-testid="input-sidebar-search-notes"
+          />
+          {sidebarSearchQuery && (
+            <button
+              onClick={() => setSidebarSearchQuery("")}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-stone-500 hover:text-stone-300"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          )}
+        </div>
+      </div>
+      {sidebarSearchQuery ? (
+        <ScrollArea className="flex-1 p-2">
+          {allNotesForTree
+            .filter((n) => n.title.toLowerCase().includes(sidebarSearchQuery.toLowerCase()))
+            .map((note) => (
+              <div
+                key={note.id}
+                onClick={() => {
+                  setShowHomeView(false);
+                  setLocation(`/notes/${note.id}`);
+                  setSidebarSearchQuery("");
+                  if (isMobile) setSidebarOpen(false);
+                }}
+                className="flex items-center gap-2 py-1.5 px-2 rounded cursor-pointer transition-colors hover:bg-stone-800/50 text-stone-300"
+                data-testid={`sidebar-search-result-${note.id}`}
+              >
+                <FileText className="h-4 w-4 flex-shrink-0" />
+                <span className="flex-1 truncate text-sm">{note.title || "Untitled"}</span>
+              </div>
+            ))}
+          {allNotesForTree.filter((n) => n.title.toLowerCase().includes(sidebarSearchQuery.toLowerCase())).length === 0 && (
+            <p className="text-xs text-stone-500 text-center py-4">No notes found</p>
+          )}
+        </ScrollArea>
+      ) : (
       <ScrollArea className="flex-1 p-2">
         <div
           className={`flex items-center gap-2 py-1.5 px-2 rounded cursor-pointer transition-colors ${
@@ -1506,6 +1554,7 @@ export default function Notes() {
           <span className="text-sm">Shared with me</span>
         </div>
       </ScrollArea>
+      )}
     </div>
   );
 
