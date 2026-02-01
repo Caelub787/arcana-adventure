@@ -1734,15 +1734,7 @@ export default function Notes() {
 
   const renderNoteReadView = () => (
     <div className="flex-1 flex flex-col overflow-hidden">
-      <div className="flex items-center justify-between p-4 border-b border-stone-800">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => setLocation("/notes")}
-          data-testid="button-back-to-notes"
-        >
-          <ArrowLeft className="h-4 w-4 mr-2" /> Back
-        </Button>
+      <div className="flex items-center justify-end p-4 border-b border-stone-800">
         <div className="flex items-center gap-2">
           {/* Live collaboration presence indicators */}
           {remotePresence.length > 0 && (

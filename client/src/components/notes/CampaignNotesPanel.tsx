@@ -1441,15 +1441,7 @@ export function CampaignNotesPanel({
 
   const renderNoteReadView = () => (
     <div className="flex-1 flex flex-col overflow-hidden">
-      <div className="flex items-center justify-between p-2 border-b border-stone-700">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-6 text-xs"
-          onClick={() => setSelectedNoteId(null)}
-        >
-          <ChevronLeft className="h-3 w-3 mr-1" /> Back
-        </Button>
+      <div className="flex items-center justify-end p-2 border-b border-stone-700">
         <div className="flex items-center gap-1">
           <Button
             variant="ghost"
