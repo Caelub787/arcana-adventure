@@ -599,8 +599,21 @@ export interface ThrownItem {
   } | null;
 }
 
+export interface BanDetails {
+  isBanned: boolean;
+  banExpiresAt?: string | null;
+  banReason?: string | null;
+}
+
+type BanCallback = (banDetails: BanDetails) => void;
+
 class ApiClient {
   private baseUrl = '/api';
+  private banCallback: BanCallback | null = null;
+
+  setBanCallback(callback: BanCallback | null) {
+    this.banCallback = callback;
+  }
 
   private async request<T>(url: string, options?: RequestInit): Promise<T> {
     const response = await fetch(`${this.baseUrl}${url}`, {
@@ -614,6 +627,18 @@ class ApiClient {
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({ error: 'Request failed' }));
+      
+      if (response.status === 403 && error.banned) {
+        const banDetails: BanDetails = {
+          isBanned: true,
+          banExpiresAt: error.banExpiresAt || null,
+          banReason: error.banReason || null,
+        };
+        if (this.banCallback) {
+          this.banCallback(banDetails);
+        }
+      }
+      
       throw new Error(error.error || 'Request failed');
     }
 
@@ -1910,11 +1935,12 @@ export class GameWebSocket {
   private messageHandlers: Set<(data: any) => void> = new Set();
   private joinedCampaign: boolean = false;
   private pendingMessages: Array<any> = [];
+  private incognitoMode: boolean = false;
 
-  connect(campaignId: string) {
-    // If already connected to this campaign and joined, don't reconnect
-    if (this.campaignId === campaignId && this.joinedCampaign && this.ws && this.ws.readyState === WebSocket.OPEN) {
-      console.log('WebSocket: Already connected and joined to campaign:', campaignId);
+  connect(campaignId: string, incognito: boolean = false) {
+    // If already connected to this campaign and joined with same incognito mode, don't reconnect
+    if (this.campaignId === campaignId && this.joinedCampaign && this.incognitoMode === incognito && this.ws && this.ws.readyState === WebSocket.OPEN) {
+      console.log('WebSocket: Already connected and joined to campaign:', campaignId, incognito ? '(incognito)' : '');
       return;
     }
     
@@ -1932,15 +1958,16 @@ export class GameWebSocket {
     this.campaignId = campaignId;
     this.joinedCampaign = false;
     this.pendingMessages = [];
+    this.incognitoMode = incognito;
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = `${protocol}//${window.location.host}/ws`;
     
-    console.log('WebSocket: Creating new connection for campaign:', campaignId);
+    console.log('WebSocket: Creating new connection for campaign:', campaignId, incognito ? '(INCOGNITO)' : '');
     this.ws = new WebSocket(wsUrl);
 
     this.ws.onopen = () => {
-      console.log('WebSocket: Connection opened, sending join_campaign for:', campaignId);
-      this.send({ type: 'join_campaign', campaignId });
+      console.log('WebSocket: Connection opened, sending join_campaign for:', campaignId, this.incognitoMode ? '(incognito)' : '');
+      this.send({ type: 'join_campaign', campaignId, incognito: this.incognitoMode });
     };
 
     this.ws.onmessage = (event) => {
@@ -1971,10 +1998,11 @@ export class GameWebSocket {
     this.ws.onclose = () => {
       console.log('WebSocket: Connection closed');
       this.joinedCampaign = false;
+      const savedIncognitoMode = this.incognitoMode;
       this.reconnectTimeout = setTimeout(() => {
         if (this.campaignId) {
-          console.log('WebSocket: Attempting reconnect to campaign:', this.campaignId);
-          this.connect(this.campaignId);
+          console.log('WebSocket: Attempting reconnect to campaign:', this.campaignId, savedIncognitoMode ? '(incognito)' : '');
+          this.connect(this.campaignId, savedIncognitoMode);
         }
       }, 3000);
     };
@@ -1995,7 +2023,12 @@ export class GameWebSocket {
     this.campaignId = null;
     this.joinedCampaign = false;
     this.pendingMessages = [];
+    this.incognitoMode = false;
     this.messageHandlers.clear();
+  }
+  
+  isIncognito(): boolean {
+    return this.incognitoMode;
   }
 
   send(data: any) {

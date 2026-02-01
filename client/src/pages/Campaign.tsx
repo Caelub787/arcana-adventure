@@ -688,6 +688,7 @@ export default function Campaign() {
   const [match, params] = useRoute("/campaign/:id");
   const queryParams = new URLSearchParams(search);
   const isNew = queryParams.get("new") === "true";
+  const isIncognitoMode = queryParams.get("incognito") === "true";
   const campaignId = params?.id;
 
   const { user, isAdmin } = useAuth();
@@ -1001,9 +1002,17 @@ export default function Campaign() {
   // Determine effective campaign ID (from URL or newly created)
   const effectiveCampaignId = campaignId || createdCampaignId;
 
-  // Load campaign data from API
+  // Load campaign data from API (with incognito support for admins)
   const { data: campaign, isLoading: campaignLoading } = useQuery({
-    queryKey: [`/api/campaigns/${effectiveCampaignId}`],
+    queryKey: [`/api/campaigns/${effectiveCampaignId}`, isIncognitoMode && isAdmin],
+    queryFn: async () => {
+      const url = isIncognitoMode && isAdmin 
+        ? `/api/campaigns/${effectiveCampaignId}?incognito=true`
+        : `/api/campaigns/${effectiveCampaignId}`;
+      const res = await fetch(url, { credentials: 'include' });
+      if (!res.ok) throw new Error('Failed to load campaign');
+      return res.json();
+    },
     enabled: !!effectiveCampaignId && !isNew,
   });
 
@@ -1768,10 +1777,11 @@ export default function Campaign() {
     return fallbackUsername;
   };
 
-  // WebSocket connection
+  // WebSocket connection (with incognito support for admins)
   useEffect(() => {
     if (effectiveCampaignId && !wsConnectedRef.current) {
-      gameWs.connect(effectiveCampaignId);
+      const shouldUseIncognito = isIncognitoMode && isAdmin;
+      gameWs.connect(effectiveCampaignId, shouldUseIncognito);
       wsConnectedRef.current = true;
 
       const unsubscribe = gameWs.onMessage((data) => {
@@ -2645,6 +2655,19 @@ export default function Campaign() {
       
       {/* Roll Notification Container */}
       <RollNotificationContainer />
+      
+      {/* Incognito Mode Indicator Badge */}
+      {isIncognitoMode && isAdmin && (
+        <div 
+          className="absolute top-4 left-1/2 transform -translate-x-1/2 z-[60] pointer-events-none"
+          data-testid="incognito-badge"
+        >
+          <div className="bg-purple-900/80 border border-purple-500/50 rounded-full px-3 py-1 flex items-center gap-2 shadow-lg backdrop-blur-sm">
+            <Eye className="h-3.5 w-3.5 text-purple-300" />
+            <span className="text-xs font-medium text-purple-200">Incognito Mode</span>
+          </div>
+        </div>
+      )}
       
       {/* Top Bar: Nav & Settings - Lower z-index when notes panel is open so it doesn't overlap */}
       <div className={`absolute top-0 left-0 right-0 p-4 flex justify-between items-start pointer-events-none ${notesPanelOpen ? 'z-30' : 'z-50'}`}>

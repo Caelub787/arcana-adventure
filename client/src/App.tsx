@@ -19,6 +19,7 @@ import SiteSecurity from "@/pages/SiteSecurity";
 import Notes from "@/pages/Notes";
 import Join from "@/pages/Join";
 import { AuthProvider, useAuth } from "./lib/AuthContext";
+import { BannedScreen } from "@/components/BannedScreen";
 
 function SiteUpdateBanner() {
   const { user } = useAuth();
@@ -166,6 +167,12 @@ function Router() {
 }
 
 function AppContent() {
+  const { isBanned, banDetails } = useAuth();
+
+  if (isBanned) {
+    return <BannedScreen banExpiresAt={banDetails?.banExpiresAt} />;
+  }
+
   return (
     <>
       <SiteUpdateBanner />

@@ -1,10 +1,12 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { api, type User } from './api';
+import { api, type User, type BanDetails } from './api';
 
 interface AuthContextType {
   user: User | null;
   loading: boolean;
   isAdmin: boolean;
+  isBanned: boolean;
+  banDetails: BanDetails | null;
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string, username: string, name: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -16,9 +18,18 @@ const AuthContext = createContext<AuthContextType | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [banDetails, setBanDetails] = useState<BanDetails | null>(null);
 
   useEffect(() => {
+    api.setBanCallback((details) => {
+      setBanDetails(details);
+    });
+    
     checkAuth();
+    
+    return () => {
+      api.setBanCallback(null);
+    };
   }, []);
 
   const checkAuth = async () => {
@@ -45,9 +56,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = async () => {
     await api.logout();
     setUser(null);
+    setBanDetails(null);
   };
 
-  // isAdmin comes from server response
+  const isBanned = banDetails?.isBanned ?? false;
   const isAdmin = user?.isAdmin ?? false;
 
   const refetchUser = async () => {
@@ -55,7 +67,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, isAdmin, login, register, logout, refetchUser }}>
+    <AuthContext.Provider value={{ user, loading, isAdmin, isBanned, banDetails, login, register, logout, refetchUser }}>
       {children}
     </AuthContext.Provider>
   );

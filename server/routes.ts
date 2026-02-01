@@ -338,7 +338,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         
         if (message.type === "join_campaign" && message.campaignId) {
           const campaignId = message.campaignId;
-          console.log(`[WebSocket] Processing join_campaign request from ${username} for campaign ${campaignId}`);
+          const incognitoMode = message.incognito === true;
+          console.log(`[WebSocket] Processing join_campaign request from ${username} for campaign ${campaignId}${incognitoMode ? ' (INCOGNITO)' : ''}`);
           
           // Check if user is a member of this campaign or is the GM
           const campaign = await storage.getCampaign(campaignId);
@@ -351,13 +352,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
             return;
           }
           
+          // Check if user is admin (for incognito access)
+          const wsUser = await storage.getUser(authenticatedUserId);
+          const isUserAdmin = wsUser ? (wsUser.isAdmin || ADMIN_EMAILS.includes(wsUser.email.toLowerCase())) : false;
+          
           // Check if user is GM (owner)
           const isGM = campaign.gmUserId === authenticatedUserId;
-          console.log(`[WebSocket] User ${username} isGM: ${isGM}, gmUserId: ${campaign.gmUserId}, userId: ${authenticatedUserId}`);
+          console.log(`[WebSocket] User ${username} isGM: ${isGM}, isAdmin: ${isUserAdmin}, gmUserId: ${campaign.gmUserId}, userId: ${authenticatedUserId}`);
           
           // Check if user is a member
           const membership = await storage.getCampaignMembership(authenticatedUserId, campaignId);
           console.log(`[WebSocket] User ${username} membership:`, membership);
+          
+          // Admin incognito mode: allow access without membership
+          if (incognitoMode && isUserAdmin) {
+            console.log(`[WebSocket] Admin ${username} accessing campaign ${campaignId} in INCOGNITO mode`);
+            
+            // Store campaign with GM role but mark as incognito
+            (ws as any).campaigns.set(campaignId, { role: 'gm', incognito: true });
+            
+            // DO NOT add to room - incognito users should not be visible to others
+            // and should not receive broadcasts from other users
+            
+            // Send confirmation with GM role and incognito flag
+            const confirmationMsg = JSON.stringify({
+              type: "joined_campaign",
+              campaignId,
+              role: 'gm',
+              incognito: true
+            });
+            console.log(`[WebSocket] Sending incognito joined_campaign confirmation to ${username}:`, confirmationMsg);
+            ws.send(confirmationMsg);
+            
+            console.log(`[WebSocket] Admin ${username} joined campaign ${campaignId} in INCOGNITO mode with GM access`);
+            return;
+          }
           
           if (!isGM && !membership) {
             console.log(`[WebSocket] User ${username} not authorized for campaign ${campaignId}`);
@@ -1986,8 +2015,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const userId = req.session.userId!;
     const isOwner = campaign.gmUserId === userId;
     
+    // Check for admin incognito mode
+    const incognitoMode = req.query.incognito === 'true';
+    const user = await storage.getUser(userId);
+    const userIsAdmin = user ? (user.isAdmin || ADMIN_EMAILS.includes(user.email.toLowerCase())) : false;
+    
     let userRole: 'gm' | 'player' = 'player';
-    if (isOwner) {
+    let isIncognito = false;
+    
+    // Admin incognito mode: grant GM access without membership
+    if (incognitoMode && userIsAdmin) {
+      userRole = 'gm';
+      isIncognito = true;
+    } else if (isOwner) {
       userRole = 'gm';
     } else {
       // Check membership for assistant_gm role
@@ -1997,7 +2037,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
     }
     
-    res.json({ ...campaign, userRole });
+    res.json({ ...campaign, userRole, isIncognito });
   });
   
   // Get chat messages for a campaign
