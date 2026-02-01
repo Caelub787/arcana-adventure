@@ -666,6 +666,10 @@ class ApiClient {
     return this.request(`/campaigns/${id}/favorite`, { method: 'POST' });
   }
 
+  async duplicateCampaign(id: string): Promise<Campaign> {
+    return this.request(`/campaigns/${id}/duplicate`, { method: 'POST' });
+  }
+
   async getAssignedCharacter(campaignId: string): Promise<{ characterId: string | null }> {
     return this.request(`/campaigns/${campaignId}/assigned-character`);
   }

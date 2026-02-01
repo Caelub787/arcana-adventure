@@ -12475,6 +12475,10 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
   const [editingAttributes, setEditingAttributes] = useState(false);
   const [editingSkills, setEditingSkills] = useState(false);
   
+  // Point cancellation states (local UI only, not persisted)
+  const [cancelledAttrPoints, setCancelledAttrPoints] = useState(0);
+  const [cancelledSkillPoints, setCancelledSkillPoints] = useState(0);
+  
   // Live character data state (for real-time updates)
   const [liveCharacter, setLiveCharacter] = useState(character);
   
@@ -14637,8 +14641,11 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                 <p className="text-xs text-stone-500 mb-4">Attributes range from -2 to 5. The modifier equals the value.</p>
                 {(() => {
                   const level = liveCharacter.level || 1;
-                  const maxPositiveAttrPoints = 6 + Math.floor(level / 3);
-                  const maxNegativeAttrPoints = 4;
+                  const baseMaxPositiveAttrPoints = 6 + Math.floor(level / 3);
+                  const baseMaxNegativeAttrPoints = 4;
+                  
+                  const maxPositiveAttrPoints = baseMaxPositiveAttrPoints - cancelledAttrPoints;
+                  const maxNegativeAttrPoints = baseMaxNegativeAttrPoints - cancelledAttrPoints;
                   
                   const attrValues = editingAttributes 
                     ? [
@@ -14675,6 +14682,25 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                           {negativeAttrUsed} / {maxNegativeAttrPoints} {negativeAttrUsed !== maxNegativeAttrPoints && (negativeAttrUsed < maxNegativeAttrPoints ? '(need more)' : '(too many)')}
                         </span>
                       </div>
+                      {editingAttributes && (
+                        <div className="flex items-center justify-between mt-3 pt-3 border-t border-stone-700">
+                          <span className="text-xs text-stone-400">Cancel Negative Points:</span>
+                          <div className="flex gap-1">
+                            {[0, 1, 2].map((val) => (
+                              <Button
+                                key={val}
+                                size="sm"
+                                variant={cancelledAttrPoints === val ? "default" : "outline"}
+                                className={`h-7 w-7 p-0 text-xs ${cancelledAttrPoints === val ? 'bg-amber-700 hover:bg-amber-600' : 'bg-stone-800 border-stone-600'}`}
+                                onClick={() => setCancelledAttrPoints(val)}
+                                data-testid={`button-cancel-attr-${val}`}
+                              >
+                                {val}
+                              </Button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   );
                 })()}
@@ -14859,8 +14885,11 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                 <p className="text-xs text-stone-500 mb-4">Skills range from -2 to 5. The modifier equals the value.</p>
                 {(() => {
                   const level = liveCharacter.level || 1;
-                  const maxPositiveSkillPoints = 12 + ((level - 1) * 2);
-                  const maxNegativeSkillPoints = 6;
+                  const baseMaxPositiveSkillPoints = 12 + ((level - 1) * 2);
+                  const baseMaxNegativeSkillPoints = 6;
+                  
+                  const maxPositiveSkillPoints = baseMaxPositiveSkillPoints - cancelledSkillPoints;
+                  const maxNegativeSkillPoints = baseMaxNegativeSkillPoints - cancelledSkillPoints;
                   
                   // Standard skill values
                   const standardSkillValues = editingSkills 
@@ -14931,6 +14960,25 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                           {negativeSkillUsed} / {maxNegativeSkillPoints} {negativeSkillUsed !== maxNegativeSkillPoints && (negativeSkillUsed < maxNegativeSkillPoints ? '(need more)' : '(too many)')}
                         </span>
                       </div>
+                      {editingSkills && (
+                        <div className="flex items-center justify-between mt-3 pt-3 border-t border-stone-700">
+                          <span className="text-xs text-stone-400">Cancel Negative Points:</span>
+                          <div className="flex gap-1">
+                            {[0, 1, 2].map((val) => (
+                              <Button
+                                key={val}
+                                size="sm"
+                                variant={cancelledSkillPoints === val ? "default" : "outline"}
+                                className={`h-7 w-7 p-0 text-xs ${cancelledSkillPoints === val ? 'bg-amber-700 hover:bg-amber-600' : 'bg-stone-800 border-stone-600'}`}
+                                onClick={() => setCancelledSkillPoints(val)}
+                                data-testid={`button-cancel-skill-${val}`}
+                              >
+                                {val}
+                              </Button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   );
                 })()}

@@ -153,6 +153,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
   }
 
   /**
+   * broadcastToAllClients - Broadcast to ALL connected WebSocket clients
+   * 
+   * This function broadcasts messages to every connected client across all campaign rooms.
+   * Used for admin notifications that should reach all users.
+   */
+  function broadcastToAllClients(message: any): void {
+    const messageString = JSON.stringify(message);
+    const sentTo = new Set<WebSocket>(); // Avoid duplicates if user is in multiple campaigns
+    
+    campaignRooms.forEach((room) => {
+      room.forEach((client) => {
+        if (client.readyState === 1 && !sentTo.has(client)) { // OPEN
+          client.send(messageString);
+          sentTo.add(client);
+        }
+      });
+    });
+  }
+
+  /**
    * calculateFeatHpBonus - Calculate total HP bonus from character's unlocked feats
    * 
    * This function fetches a character's unlocked feats and sums up all hp_bonus effects.
@@ -2092,6 +2112,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ error: err.message });
       }
       res.status(400).json({ error: "Failed to toggle favorite" });
+    }
+  });
+
+  // Duplicate campaign (owner/GM only)
+  app.post("/api/campaigns/:id/duplicate", requireAuth, async (req, res) => {
+    try {
+      const campaignId = req.params.id;
+      const userId = req.session.userId!;
+
+      // Verify user is the campaign owner or GM
+      const campaign = await storage.getCampaign(campaignId);
+      if (!campaign) {
+        return res.status(404).json({ error: "Campaign not found" });
+      }
+
+      const isOwner = campaign.gmUserId === userId;
+      const membership = await storage.getCampaignMembership(userId, campaignId);
+      const isAssistantGM = membership?.role === 'assistant_gm';
+
+      if (!isOwner && !isAssistantGM) {
+        return res.status(403).json({ error: "Only the campaign owner or GM can duplicate this campaign" });
+      }
+
+      // Duplicate the campaign with the current user as the new owner
+      const newCampaign = await storage.duplicateCampaign(campaignId, userId);
+      res.json(newCampaign);
+    } catch (err: any) {
+      console.error("Failed to duplicate campaign:", err);
+      res.status(400).json({ error: err.message || "Failed to duplicate campaign" });
     }
   });
 
@@ -4694,6 +4743,48 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Admin notification routes
+  app.get("/api/admin/notifications", requireAdmin, async (req, res) => {
+    try {
+      const limit = req.query.limit ? parseInt(req.query.limit as string) : 20;
+      const notifications = await storage.getRecentNotifications(limit);
+      res.json(notifications);
+    } catch (err) {
+      console.error('Error fetching admin notifications:', err);
+      res.status(500).json({ error: "Failed to fetch notifications" });
+    }
+  });
+
+  app.post("/api/admin/notifications", requireAdmin, async (req, res) => {
+    try {
+      const { title, message, patchNotes } = req.body;
+      
+      if (!title || !message) {
+        return res.status(400).json({ error: "Title and message are required" });
+      }
+      
+      const notification = await storage.createAdminNotification({
+        title,
+        message,
+        patchNotes: patchNotes || null,
+        createdBy: req.session.userId!,
+      });
+      
+      // Broadcast to all connected clients
+      broadcastToAllClients({
+        type: 'admin_notification',
+        title: notification.title,
+        message: notification.message,
+        patchNotes: notification.patchNotes,
+      });
+      
+      res.json(notification);
+    } catch (err) {
+      console.error('Error creating admin notification:', err);
+      res.status(500).json({ error: "Failed to create notification" });
+    }
+  });
+
   // Public character templates route (for adding to campaigns)
   app.get("/api/character-templates", requireAuth, async (req, res) => {
     try {
@@ -5870,6 +5961,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Process effect triggers for start of turn/round
   // This endpoint is called when a character's turn starts to process their active token effects
+  // It also decrements duration for ALL effects on ALL tokens in the scene (not just current character)
   app.post("/api/scenes/:sceneId/effect-triggers", requireAuth, async (req, res) => {
     try {
       const { characterId, timing, isNewRound } = req.body;
@@ -5890,123 +5982,133 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ error: "User not found" });
       }
       
-      // Get all tokens in this campaign that belong to the character
-      const allTokens = await storage.getCampaignTokens(scene.campaignId);
-      const characterTokens = allTokens.filter((t: { characterId?: string | null }) => t.characterId === characterId);
+      // Get ALL tokens in this scene (for duration countdown on all effects)
+      const sceneTokens = await storage.getSceneTokens(req.params.sceneId);
       
-      if (characterTokens.length === 0) {
-        return res.json({ processed: [], message: "No tokens found for character" });
-      }
+      // Get tokens belonging to the current character (for damage/healing effects)
+      const characterTokens = sceneTokens.filter((t: { characterId?: string | null }) => t.characterId === characterId);
       
-      const character = await storage.getCharacter(characterId);
-      if (!character) {
-        return res.status(404).json({ error: "Character not found" });
-      }
+      const character = characterId ? await storage.getCharacter(characterId) : null;
       
       const results: any[] = [];
-      // Track current HP to accumulate damage from multiple effects
-      let currentHp = character.hp;
+      // Track current HP to accumulate damage from multiple effects (for current character only)
+      let currentHp = character?.hp ?? 0;
       
-      // Process each token's active effects
-      for (const token of characterTokens) {
+      // STEP 1: Process damage/healing effects for the CURRENT CHARACTER's turn only
+      if (character && characterTokens.length > 0) {
+        for (const token of characterTokens) {
+          const activeEffects = await storage.getTokenActiveEffects(token.id);
+          
+          for (const activeEffect of activeEffects) {
+            const effect = activeEffect.effect;
+            
+            // Check if this effect should trigger based on timing
+            const shouldTrigger = 
+              (timing === 'start_of_turn' && effect.timing === 'start_of_turn') ||
+              (timing === 'start_of_round' && effect.timing === 'start_of_round') ||
+              (isNewRound && effect.timing === 'start_of_round');
+            
+            if (!shouldTrigger) continue;
+            
+            // If effect causes damage, roll dice and apply
+            if (effect.causesDamage && effect.diceAmount) {
+              // Parse dice notation (e.g., "1d6", "2d4+2")
+              const diceMatch = effect.diceAmount.match(/^(\d+)d(\d+)(?:\+(\d+))?$/i);
+              if (!diceMatch) continue;
+              
+              const numDice = parseInt(diceMatch[1], 10);
+              const dieSize = parseInt(diceMatch[2], 10);
+              const bonus = diceMatch[3] ? parseInt(diceMatch[3], 10) : 0;
+              
+              // Roll the dice
+              let total = bonus;
+              const rolls: number[] = [];
+              for (let i = 0; i < numDice; i++) {
+                const roll = crypto.randomInt(1, dieSize + 1);
+                rolls.push(roll);
+                total += roll;
+              }
+              
+              // Calculate new HP from current accumulated HP value
+              const previousHp = currentHp;
+              const isHealing = effect.damageType === 'Health';
+              const newHp = isHealing 
+                ? Math.min(character.maxHp, currentHp + total)
+                : Math.max(0, currentHp - total);
+              
+              // Update accumulated HP for subsequent effects
+              currentHp = newHp;
+              
+              await storage.updateCharacter(characterId, { hp: newHp });
+              
+              // Create chat message
+              const chatMessage = await storage.createChatMessage({
+                campaignId: scene.campaignId,
+                userId: req.session.userId!,
+                sender: 'System',
+                text: `**${effect.name}** ${isHealing ? 'heals' : 'damages'} ${character.name} for **${total}** ${effect.damageType || ''} (${rolls.join(' + ')}${bonus > 0 ? ` + ${bonus}` : ''})`,
+                type: 'system'
+              });
+              
+              // Broadcast HP update with correct previous HP for this specific effect
+              broadcastToCampaign(scene.campaignId, {
+                type: "character_hp_update",
+                characterId,
+                hp: newHp,
+                previousHp,
+                damage: isHealing ? -total : total,
+                isHealing,
+                attackerName: effect.name
+              });
+              
+              // Broadcast chat message
+              broadcastToCampaign(scene.campaignId, {
+                type: "chat_message",
+                message: chatMessage
+              });
+              
+              // Broadcast effect roll notification
+              broadcastToCampaign(scene.campaignId, {
+                type: "effect_roll",
+                effectName: effect.name,
+                effectImage: effect.imageUrl,
+                characterName: character.name,
+                rolls,
+                bonus,
+                total,
+                damageType: effect.damageType,
+                isHealing
+              });
+              
+              results.push({
+                effectId: effect.id,
+                effectName: effect.name,
+                rolls,
+                bonus,
+                total,
+                damageType: effect.damageType,
+                isHealing,
+                characterName: character.name,
+                newHp
+              });
+            }
+          }
+        }
+      }
+      
+      // STEP 2: Process duration countdown for ALL tokens in the scene
+      // This ensures all effects countdown each turn/round, not just the current character's effects
+      for (const token of sceneTokens) {
         const activeEffects = await storage.getTokenActiveEffects(token.id);
+        const tokenCharacter = token.characterId ? await storage.getCharacter(token.characterId) : null;
+        const tokenCharacterName = tokenCharacter?.name || 'Unknown';
         
         for (const activeEffect of activeEffects) {
           const effect = activeEffect.effect;
           
-          // Check if this effect should trigger based on timing
-          const shouldTrigger = 
-            (timing === 'start_of_turn' && effect.timing === 'start_of_turn') ||
-            (timing === 'start_of_round' && effect.timing === 'start_of_round') ||
-            (isNewRound && effect.timing === 'start_of_round');
-          
-          if (!shouldTrigger) continue;
-          
-          // If effect causes damage, roll dice and apply
-          if (effect.causesDamage && effect.diceAmount) {
-            // Parse dice notation (e.g., "1d6", "2d4+2")
-            const diceMatch = effect.diceAmount.match(/^(\d+)d(\d+)(?:\+(\d+))?$/i);
-            if (!diceMatch) continue;
-            
-            const numDice = parseInt(diceMatch[1], 10);
-            const dieSize = parseInt(diceMatch[2], 10);
-            const bonus = diceMatch[3] ? parseInt(diceMatch[3], 10) : 0;
-            
-            // Roll the dice
-            let total = bonus;
-            const rolls: number[] = [];
-            for (let i = 0; i < numDice; i++) {
-              const roll = crypto.randomInt(1, dieSize + 1);
-              rolls.push(roll);
-              total += roll;
-            }
-            
-            // Calculate new HP from current accumulated HP value
-            const previousHp = currentHp;
-            const isHealing = effect.damageType === 'Health';
-            const newHp = isHealing 
-              ? Math.min(character.maxHp, currentHp + total)
-              : Math.max(0, currentHp - total);
-            
-            // Update accumulated HP for subsequent effects
-            currentHp = newHp;
-            
-            await storage.updateCharacter(characterId, { hp: newHp });
-            
-            // Create chat message
-            const chatMessage = await storage.createChatMessage({
-              campaignId: scene.campaignId,
-              userId: req.session.userId!,
-              sender: 'System',
-              text: `**${effect.name}** ${isHealing ? 'heals' : 'damages'} ${character.name} for **${total}** ${effect.damageType || ''} (${rolls.join(' + ')}${bonus > 0 ? ` + ${bonus}` : ''})`,
-              type: 'system'
-            });
-            
-            // Broadcast HP update with correct previous HP for this specific effect
-            broadcastToCampaign(scene.campaignId, {
-              type: "character_hp_update",
-              characterId,
-              hp: newHp,
-              previousHp,
-              damage: isHealing ? -total : total,
-              isHealing,
-              attackerName: effect.name
-            });
-            
-            // Broadcast chat message
-            broadcastToCampaign(scene.campaignId, {
-              type: "chat_message",
-              message: chatMessage
-            });
-            
-            // Broadcast effect roll notification
-            broadcastToCampaign(scene.campaignId, {
-              type: "effect_roll",
-              effectName: effect.name,
-              effectImage: effect.imageUrl,
-              characterName: character.name,
-              rolls,
-              bonus,
-              total,
-              damageType: effect.damageType,
-              isHealing
-            });
-            
-            results.push({
-              effectId: effect.id,
-              effectName: effect.name,
-              rolls,
-              bonus,
-              total,
-              damageType: effect.damageType,
-              isHealing,
-              characterName: character.name,
-              newHp
-            });
-          }
-          
-          // Handle duration decrement and expiration
-          // Duration only decrements based on durationType: 'turns' = on player's turn, 'rounds' = at start of round
+          // Handle duration decrement and expiration for ALL effects
+          // - durationType: 'turns' = decrement every turn
+          // - durationType: 'rounds' = decrement only at start of new round
           const shouldDecrementDuration = activeEffect.duration !== null && activeEffect.duration > 0 && (
             (effect.durationType === 'rounds' && isNewRound) ||
             (effect.durationType !== 'rounds' && timing === 'start_of_turn')
@@ -6024,7 +6126,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 tokenId: token.id,
                 effectId: effect.id,
                 effectName: effect.name,
-                characterName: character.name
+                characterName: tokenCharacterName
               });
               
               // Create chat message for effect expiration
@@ -6032,7 +6134,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 campaignId: scene.campaignId,
                 userId: req.session.userId!,
                 sender: 'System',
-                text: `**${effect.name}** effect on ${character.name} has expired.`,
+                text: `**${effect.name}** effect on ${tokenCharacterName} has expired.`,
                 type: 'system'
               });
             } else {

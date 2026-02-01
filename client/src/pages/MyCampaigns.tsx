@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowLeft, Trash2, LogOut, Play, Plus, Crown, User, Heart, Search, Loader2 } from "lucide-react";
+import { ArrowLeft, Trash2, LogOut, Play, Plus, Crown, User, Heart, Search, Loader2, Copy } from "lucide-react";
 import bgImage from "@assets/generated_images/dark_fantasy_landscape_with_arcane_ruins.png";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/AuthContext";
@@ -91,6 +91,17 @@ export default function MyCampaigns() {
     },
   });
 
+  const duplicateCampaignMutation = useMutation({
+    mutationFn: (campaignId: string) => api.duplicateCampaign(campaignId),
+    onSuccess: (newCampaign: any) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/campaigns'] });
+      toast({ title: "Campaign duplicated!", description: `Created "${newCampaign.name}"` });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message || "Failed to duplicate campaign", variant: "destructive" });
+    },
+  });
+
   const handleDelete = (id: string, name: string) => {
     setCampaignToDelete({ id, name });
     setDeleteDialogOpen(true);
@@ -163,6 +174,18 @@ export default function MyCampaigns() {
               >
                 <Heart className={`h-4 w-4 ${campaign.favorite ? 'fill-current' : ''}`} />
               </Button>
+              {isCreated && (
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  className="h-8 w-8 text-stone-600 hover:text-blue-400 hover:bg-blue-950/30"
+                  onClick={() => duplicateCampaignMutation.mutate(campaign.id)}
+                  data-testid={`button-duplicate-${campaign.id}`}
+                  disabled={duplicateCampaignMutation.isPending}
+                >
+                  {duplicateCampaignMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Copy className="h-4 w-4" />}
+                </Button>
+              )}
               <Button 
                 variant="ghost" 
                 size="icon" 

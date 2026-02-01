@@ -39,7 +39,8 @@ import {
   type ItemEffect, type InsertItemEffect,
   type TokenActiveEffect, type InsertTokenActiveEffect,
   type ThrownItem, type InsertThrownItem,
-  users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, items, spells, characterPermissions, initiativeEntries, systemSpecies, campaignSpecies, featTemplates, featTrees, feats, featConnections, characterFeats, systemSpells, systemSkills, characterCustomSkills, systemTraits, characterTraits, characterFolders, characterTemplateFolders, sceneFolders, friendRequests, friendships, noteFolders, notes, noteReferences, noteShares, tokenEffects, spellEffects, itemEffects, tokenActiveEffects, thrownItems
+  type AdminNotification, type InsertAdminNotification,
+  users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, items, spells, characterPermissions, initiativeEntries, systemSpecies, campaignSpecies, featTemplates, featTrees, feats, featConnections, characterFeats, systemSpells, systemSkills, characterCustomSkills, systemTraits, characterTraits, characterFolders, characterTemplateFolders, sceneFolders, friendRequests, friendships, noteFolders, notes, noteReferences, noteShares, tokenEffects, spellEffects, itemEffects, tokenActiveEffects, thrownItems, adminNotifications
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql, inArray, or, isNull } from "drizzle-orm";
@@ -69,6 +70,7 @@ export interface IStorage {
   updateCampaign(id: string, data: Partial<Campaign>): Promise<Campaign | undefined>;
   deleteCampaign(id: string): Promise<void>;
   getUserCampaigns(userId: string): Promise<{ created: Campaign[], joined: Campaign[] }>;
+  duplicateCampaign(campaignId: string, newGmUserId: string): Promise<Campaign>;
 
   // Campaign Member operations
   addCampaignMember(member: InsertCampaignMember): Promise<CampaignMember>;
@@ -373,6 +375,10 @@ export interface IStorage {
   deleteThrownItem(id: string): Promise<void>;
   deleteThrownItemsByItemId(itemId: string): Promise<void>;
   deleteThrownItemsByScene(sceneId: string): Promise<void>;
+
+  // Admin Notification operations
+  createAdminNotification(data: InsertAdminNotification): Promise<AdminNotification>;
+  getRecentNotifications(limit?: number): Promise<AdminNotification[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -653,6 +659,75 @@ export class DatabaseStorage implements IStorage {
       created: [...createdCampaigns, ...assistantGmCampaigns],
       joined: joinedCampaigns
     };
+  }
+
+  async duplicateCampaign(campaignId: string, newGmUserId: string): Promise<Campaign> {
+    // Get the original campaign
+    const originalCampaign = await this.getCampaign(campaignId);
+    if (!originalCampaign) {
+      throw new Error("Campaign not found");
+    }
+
+    // Generate a new unique invite code
+    const inviteCode = "ARCANA-" + Math.floor(1000 + Math.random() * 9000);
+
+    // Create the new campaign with copied properties
+    const [newCampaign] = await db.insert(campaigns).values({
+      name: originalCampaign.name + " (Copy)",
+      inviteCode,
+      gmUserId: newGmUserId,
+      gridSize: originalCampaign.gridSize,
+      hotbarSlots: originalCampaign.hotbarSlots,
+    }).returning();
+
+    // Get and copy scene folders first (so we can map old folder IDs to new folder IDs)
+    const originalSceneFolders = await this.getSceneFolders(campaignId);
+    const folderIdMap = new Map<string, string>(); // old folderId -> new folderId
+
+    for (const folder of originalSceneFolders) {
+      const [newFolder] = await db.insert(sceneFolders).values({
+        campaignId: newCampaign.id,
+        name: folder.name,
+        sortOrder: folder.sortOrder,
+      }).returning();
+      folderIdMap.set(folder.id, newFolder.id);
+    }
+
+    // Get and copy scenes
+    const originalScenes = await this.getCampaignScenes(campaignId);
+    const sceneIdMap = new Map<string, string>(); // old sceneId -> new sceneId
+
+    for (const scene of originalScenes) {
+      const newFolderId = scene.folderId ? folderIdMap.get(scene.folderId) : null;
+      const [newScene] = await db.insert(scenes).values({
+        campaignId: newCampaign.id,
+        folderId: newFolderId || null,
+        name: scene.name,
+        backgroundImage: scene.backgroundImage,
+        gridEnabled: scene.gridEnabled,
+        gridType: scene.gridType,
+        gridSize: scene.gridSize,
+        gridColor: scene.gridColor,
+        gridThickness: scene.gridThickness,
+        gridOpacity: scene.gridOpacity,
+        defaultViewX: scene.defaultViewX,
+        defaultViewY: scene.defaultViewY,
+        defaultViewZoom: scene.defaultViewZoom,
+        defaultViewVersion: scene.defaultViewVersion,
+        inCombat: false, // Reset combat state
+        currentTurnCharacterId: null,
+      }).returning();
+      sceneIdMap.set(scene.id, newScene.id);
+    }
+
+    // If the original campaign had an active scene, set the corresponding new scene as active
+    if (originalCampaign.activeSceneId && sceneIdMap.has(originalCampaign.activeSceneId)) {
+      await this.updateCampaign(newCampaign.id, {
+        activeSceneId: sceneIdMap.get(originalCampaign.activeSceneId),
+      });
+    }
+
+    return newCampaign;
   }
 
   // Campaign Member operations
@@ -2867,6 +2942,19 @@ export class DatabaseStorage implements IStorage {
 
   async deleteThrownItemsByScene(sceneId: string): Promise<void> {
     await db.delete(thrownItems).where(eq(thrownItems.sceneId, sceneId));
+  }
+
+  // Admin Notification operations
+  async createAdminNotification(data: InsertAdminNotification): Promise<AdminNotification> {
+    const [notification] = await db.insert(adminNotifications).values(data).returning();
+    return notification;
+  }
+
+  async getRecentNotifications(limit: number = 20): Promise<AdminNotification[]> {
+    return await db.select()
+      .from(adminNotifications)
+      .orderBy(desc(adminNotifications.createdAt))
+      .limit(limit);
   }
 }
 

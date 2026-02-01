@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { useLocation } from "wouter";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, Note, SearchableEntity } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -185,6 +185,24 @@ export function CanvasEditor({
   const [linkUrl, setLinkUrl] = useState("");
   const [linkTitle, setLinkTitle] = useState("");
   const [linkDescription, setLinkDescription] = useState("");
+  const [connectionDropMenu, setConnectionDropMenu] = useState<{
+    visible: boolean;
+    x: number;
+    y: number;
+    worldX: number;
+    worldY: number;
+    sourceNodeId: string;
+    sourceSide: ConnectionSide;
+  } | null>(null);
+  const [pendingConnection, setPendingConnection] = useState<{
+    worldX: number;
+    worldY: number;
+    sourceNodeId: string;
+    sourceSide: ConnectionSide;
+  } | null>(null);
+  const [isCreatingNote, setIsCreatingNote] = useState(false);
+
+  const queryClient = useQueryClient();
 
   // Cleanup long-press timer on unmount or selection change
   useEffect(() => {
@@ -800,14 +818,43 @@ export function CanvasEditor({
       if (targetNode && targetNode.id !== connectionStart.nodeId) {
         const toSide = getClosestSide(targetNode, world.x, world.y);
         addConnection(connectionStart.nodeId, targetNode.id, connectionStart.side, toSide);
+        // Reset after successful connection
+        setIsConnecting(false);
+        setConnectionStart(null);
+        setConnectionEnd(null);
+        setHoveredDropTarget(null);
+        setHoveredDropSide(null);
+        connectionDragStartRef.current = null;
+      } else if (!targetNode && !readOnly) {
+        // Dropped on empty space - show context menu to create a new node
+        const rect = containerRef.current?.getBoundingClientRect();
+        if (rect) {
+          setConnectionDropMenu({
+            visible: true,
+            x: e.clientX - rect.left,
+            y: e.clientY - rect.top,
+            worldX: world.x,
+            worldY: world.y,
+            sourceNodeId: connectionStart.nodeId,
+            sourceSide: connectionStart.side,
+          });
+        }
+        // Reset connection state but keep menu visible
+        setIsConnecting(false);
+        setConnectionStart(null);
+        setConnectionEnd(null);
+        setHoveredDropTarget(null);
+        setHoveredDropSide(null);
+        connectionDragStartRef.current = null;
+      } else {
+        // Reset after failed drag attempt
+        setIsConnecting(false);
+        setConnectionStart(null);
+        setConnectionEnd(null);
+        setHoveredDropTarget(null);
+        setHoveredDropSide(null);
+        connectionDragStartRef.current = null;
       }
-      // Reset after drag attempt
-      setIsConnecting(false);
-      setConnectionStart(null);
-      setConnectionEnd(null);
-      setHoveredDropTarget(null);
-      setHoveredDropSide(null);
-      connectionDragStartRef.current = null;
     }
     // Don't reset for tap-to-connect (no drag, no hover)
     
@@ -941,29 +988,171 @@ export function CanvasEditor({
     // Close dialog first, then add node after a microtask to avoid state conflicts
     setNoteSearchOpen(false);
     setNoteSearchQuery("");
+    
+    const pending = pendingConnection;
+    setPendingConnection(null);
+    
     // Use requestAnimationFrame to ensure the dialog close doesn't interfere with addNode
     requestAnimationFrame(() => {
-      addNode("note", {
-        noteId: note.id,
-        noteTitle: note.title,
-        content: note.title,
-      });
+      if (pending) {
+        // Create node at pending position and connect
+        const newNode = addNodeAtPosition("note", pending.worldX, pending.worldY, {
+          noteId: note.id,
+          noteTitle: note.title,
+          content: note.title,
+        });
+        if (newNode) {
+          const toSide: ConnectionSide = pending.sourceSide === "right" ? "left" : 
+                                         pending.sourceSide === "left" ? "right" :
+                                         pending.sourceSide === "top" ? "bottom" : "top";
+          addConnection(pending.sourceNodeId, newNode.id, pending.sourceSide, toSide);
+        }
+      } else {
+        addNode("note", {
+          noteId: note.id,
+          noteTitle: note.title,
+          content: note.title,
+        });
+      }
     });
-  }, [addNode]);
+  }, [addNode, addNodeAtPosition, addConnection, pendingConnection]);
+
+  const handleCreateNoteFromSearch = useCallback(async (title: string) => {
+    if (!title.trim() || isCreatingNote) return;
+    
+    const pending = pendingConnection;
+    setPendingConnection(null);
+    
+    setIsCreatingNote(true);
+    try {
+      const newNote = await api.createNote({
+        title: title.trim(),
+        content: "",
+        type: "document",
+      });
+      
+      queryClient.invalidateQueries({ queryKey: ["/api/notes/search"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/notes"] });
+      
+      setNoteSearchOpen(false);
+      setNoteSearchQuery("");
+      
+      requestAnimationFrame(() => {
+        if (pending) {
+          // Create node at pending position and connect
+          const createdNode = addNodeAtPosition("note", pending.worldX, pending.worldY, {
+            noteId: newNote.id,
+            noteTitle: newNote.title,
+            content: newNote.title,
+          });
+          if (createdNode) {
+            const toSide: ConnectionSide = pending.sourceSide === "right" ? "left" : 
+                                           pending.sourceSide === "left" ? "right" :
+                                           pending.sourceSide === "top" ? "bottom" : "top";
+            addConnection(pending.sourceNodeId, createdNode.id, pending.sourceSide, toSide);
+          }
+        } else {
+          addNode("note", {
+            noteId: newNote.id,
+            noteTitle: newNote.title,
+            content: newNote.title,
+          });
+        }
+      });
+    } catch (error) {
+      console.error("Failed to create note:", error);
+    } finally {
+      setIsCreatingNote(false);
+    }
+  }, [addNode, addNodeAtPosition, addConnection, isCreatingNote, pendingConnection, queryClient]);
+
+  const addNodeAtPosition = useCallback((type: CanvasNode["type"], worldX: number, worldY: number, extra: Partial<CanvasNode> = {}) => {
+    if (readOnly) return null;
+    const newNode: CanvasNode = {
+      id: crypto.randomUUID(),
+      type,
+      x: worldX - 75,
+      y: worldY - 50,
+      width: 150,
+      height: 100,
+      ...extra,
+    };
+    onChange({
+      ...canvasData,
+      nodes: [...canvasData.nodes, newNode],
+    });
+    setSelectedNodeId(newNode.id);
+    return newNode;
+  }, [canvasData, onChange, readOnly]);
+
+  const handleConnectionDropMenuSelect = useCallback((nodeType: "text" | "note" | "entity") => {
+    if (!connectionDropMenu) return;
+    
+    const { worldX, worldY, sourceNodeId, sourceSide } = connectionDropMenu;
+    
+    if (nodeType === "note") {
+      setPendingConnection({ worldX, worldY, sourceNodeId, sourceSide });
+      setConnectionDropMenu(null);
+      setNoteSearchOpen(true);
+      return;
+    }
+    
+    if (nodeType === "entity") {
+      setPendingConnection({ worldX, worldY, sourceNodeId, sourceSide });
+      setConnectionDropMenu(null);
+      setEntityPickerOpen(true);
+      return;
+    }
+    
+    const newNode = addNodeAtPosition("text", worldX, worldY, {
+      title: "Text",
+      content: "",
+    });
+    
+    if (newNode) {
+      const toSide: ConnectionSide = sourceSide === "right" ? "left" : 
+                                     sourceSide === "left" ? "right" :
+                                     sourceSide === "top" ? "bottom" : "top";
+      addConnection(sourceNodeId, newNode.id, sourceSide, toSide);
+      setEditingNodeId(newNode.id);
+    }
+    
+    setConnectionDropMenu(null);
+  }, [connectionDropMenu, addNodeAtPosition, addConnection]);
 
   const handleEntitySelect = useCallback((entity: SearchableEntity) => {
     // Close picker first, then add node after a microtask to avoid state conflicts
     setEntityPickerOpen(false);
+    
+    const pending = pendingConnection;
+    setPendingConnection(null);
+    
     // Use requestAnimationFrame to ensure the picker close doesn't interfere with addNode
     requestAnimationFrame(() => {
-      addNode("entity", {
-        entityType: entity.type,
-        entityId: entity.id,
-        entityName: entity.name,
-        content: entity.name,
-      });
+      if (pending) {
+        // Create node at pending position and connect
+        const newNode = addNodeAtPosition("entity", pending.worldX, pending.worldY, {
+          entityType: entity.type,
+          entityId: entity.id,
+          entityName: entity.name,
+          content: entity.name,
+        });
+        if (newNode) {
+          const toSide: ConnectionSide = pending.sourceSide === "right" ? "left" : 
+                                         pending.sourceSide === "left" ? "right" :
+                                         pending.sourceSide === "top" ? "bottom" : "top";
+          addConnection(pending.sourceNodeId, newNode.id, pending.sourceSide, toSide);
+        }
+      } else {
+        addNode("entity", {
+          entityType: entity.type,
+          entityId: entity.id,
+          entityName: entity.name,
+          content: entity.name,
+        });
+      }
     });
-  }, [addNode]);
+  }, [addNode, addNodeAtPosition, addConnection, pendingConnection]);
 
   const getConnectionPath = (connection: CanvasConnection) => {
     const fromNode = canvasData.nodes.find((n) => n.id === connection.fromNodeId);
@@ -1501,7 +1690,12 @@ export function CanvasEditor({
               <Tooltip>
                 <ReferencePicker
                   open={entityPickerOpen}
-                  onOpenChange={setEntityPickerOpen}
+                  onOpenChange={(open) => {
+                    setEntityPickerOpen(open);
+                    if (!open) {
+                      setPendingConnection(null);
+                    }
+                  }}
                   onSelect={handleEntitySelect}
                   triggerElement={
                     <TooltipTrigger asChild>
@@ -1929,11 +2123,66 @@ export function CanvasEditor({
                 {canvasData.nodes.map(renderNode)}
               </div>
               
+              {connectionDropMenu && connectionDropMenu.visible && (
+                <div
+                  className="absolute z-50 bg-stone-900 border border-stone-700 rounded-lg shadow-lg py-1 min-w-[160px]"
+                  style={{
+                    left: connectionDropMenu.x,
+                    top: connectionDropMenu.y,
+                  }}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  data-testid="connection-drop-menu"
+                >
+                  <div className="px-3 py-1.5 text-xs text-stone-500 border-b border-stone-700">
+                    Create Node
+                  </div>
+                  <button
+                    className="w-full flex items-center gap-3 px-3 py-2 hover:bg-stone-800 transition-colors text-left"
+                    onClick={() => handleConnectionDropMenuSelect("text")}
+                    data-testid="drop-menu-text"
+                  >
+                    <Type className="h-4 w-4 text-stone-400" />
+                    <span className="text-sm text-stone-200">Text</span>
+                  </button>
+                  <button
+                    className="w-full flex items-center gap-3 px-3 py-2 hover:bg-stone-800 transition-colors text-left"
+                    onClick={() => handleConnectionDropMenuSelect("note")}
+                    data-testid="drop-menu-note"
+                  >
+                    <FileText className="h-4 w-4 text-amber-400" />
+                    <span className="text-sm text-stone-200">Note Reference</span>
+                  </button>
+                  <button
+                    className="w-full flex items-center gap-3 px-3 py-2 hover:bg-stone-800 transition-colors text-left"
+                    onClick={() => handleConnectionDropMenuSelect("entity")}
+                    data-testid="drop-menu-entity"
+                  >
+                    <Sparkles className="h-4 w-4 text-purple-400" />
+                    <span className="text-sm text-stone-200">Entity Reference</span>
+                  </button>
+                  <div className="border-t border-stone-700 mt-1 pt-1">
+                    <button
+                      className="w-full flex items-center gap-3 px-3 py-2 hover:bg-stone-800 transition-colors text-left"
+                      onClick={() => setConnectionDropMenu(null)}
+                      data-testid="drop-menu-cancel"
+                    >
+                      <X className="h-4 w-4 text-stone-500" />
+                      <span className="text-sm text-stone-400">Cancel</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+              
             </div>
           </div>
         </div>
 
-        <Dialog open={noteSearchOpen} onOpenChange={setNoteSearchOpen}>
+        <Dialog open={noteSearchOpen} onOpenChange={(open) => {
+          setNoteSearchOpen(open);
+          if (!open) {
+            setPendingConnection(null);
+          }
+        }}>
           <DialogContent className="bg-stone-950 border-stone-800">
             <DialogHeader>
               <DialogTitle className="text-stone-200">Link to Note</DialogTitle>
@@ -1944,34 +2193,65 @@ export function CanvasEditor({
                 <Input
                   value={noteSearchQuery}
                   onChange={(e) => setNoteSearchQuery(e.target.value)}
-                  placeholder="Search notes..."
+                  placeholder="Search or create note..."
                   className="pl-9 bg-stone-900 border-stone-700"
                   data-testid="input-note-search"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && noteSearchQuery.trim()) {
+                      const exactMatch = searchedNotes.find(
+                        (note) => note.title.toLowerCase() === noteSearchQuery.toLowerCase()
+                      );
+                      if (exactMatch) {
+                        handleNoteSelect(exactMatch);
+                      } else {
+                        handleCreateNoteFromSearch(noteSearchQuery);
+                      }
+                    }
+                  }}
                 />
               </div>
               <ScrollArea className="h-60">
-                {notesLoading ? (
+                {notesLoading || isCreatingNote ? (
                   <div className="flex items-center justify-center py-8 text-stone-500">
                     <Loader2 className="h-5 w-5 animate-spin mr-2" />
-                    {noteSearchQuery.length > 0 ? 'Searching...' : 'Loading notes...'}
-                  </div>
-                ) : searchedNotes.length === 0 ? (
-                  <div className="text-center py-8 text-stone-500 text-sm">
-                    No notes found
+                    {isCreatingNote ? 'Creating note...' : noteSearchQuery.length > 0 ? 'Searching...' : 'Loading notes...'}
                   </div>
                 ) : (
                   <div className="space-y-1">
-                    {searchedNotes.map((note) => (
+                    {noteSearchQuery.trim() && !searchedNotes.find(
+                      (note) => note.title.toLowerCase() === noteSearchQuery.toLowerCase()
+                    ) && (
                       <button
-                        key={note.id}
-                        onClick={() => handleNoteSelect(note)}
-                        className="w-full flex items-center gap-3 p-2 rounded hover:bg-stone-800/50 transition-colors text-left"
-                        data-testid={`note-result-${note.id}`}
+                        onClick={() => handleCreateNoteFromSearch(noteSearchQuery)}
+                        className="w-full flex items-center gap-3 p-2 rounded hover:bg-cyan-900/30 transition-colors text-left border border-dashed border-cyan-700/50 mb-2"
+                        data-testid="button-create-note-from-search"
                       >
-                        <FileText className="h-4 w-4 text-amber-400" />
-                        <span className="text-sm text-stone-200 truncate">{note.title}</span>
+                        <Plus className="h-4 w-4 text-cyan-400" />
+                        <div className="flex-1 min-w-0">
+                          <span className="text-sm font-medium text-cyan-300">
+                            Create "{noteSearchQuery}"
+                          </span>
+                          <p className="text-xs text-stone-500">Create new note and link</p>
+                        </div>
                       </button>
-                    ))}
+                    )}
+                    {searchedNotes.length === 0 && !noteSearchQuery.trim() ? (
+                      <div className="text-center py-8 text-stone-500 text-sm">
+                        No notes found
+                      </div>
+                    ) : (
+                      searchedNotes.map((note) => (
+                        <button
+                          key={note.id}
+                          onClick={() => handleNoteSelect(note)}
+                          className="w-full flex items-center gap-3 p-2 rounded hover:bg-stone-800/50 transition-colors text-left"
+                          data-testid={`note-result-${note.id}`}
+                        >
+                          <FileText className="h-4 w-4 text-amber-400" />
+                          <span className="text-sm text-stone-200 truncate">{note.title}</span>
+                        </button>
+                      ))
+                    )}
                   </div>
                 )}
               </ScrollArea>

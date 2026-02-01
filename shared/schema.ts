@@ -1050,3 +1050,21 @@ export const insertTokenActiveEffectSchema = createInsertSchema(tokenActiveEffec
 
 export type InsertTokenActiveEffect = z.infer<typeof insertTokenActiveEffectSchema>;
 export type TokenActiveEffect = typeof tokenActiveEffects.$inferSelect;
+
+// Admin Notifications table (for broadcasting push notifications to all users)
+export const adminNotifications = pgTable("admin_notifications", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  title: text("title").notNull(),
+  message: text("message").notNull(),
+  patchNotes: text("patch_notes"), // Optional, for site update patch notes
+  createdBy: varchar("created_by").notNull().references(() => users.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertAdminNotificationSchema = createInsertSchema(adminNotifications).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertAdminNotification = z.infer<typeof insertAdminNotificationSchema>;
+export type AdminNotification = typeof adminNotifications.$inferSelect;

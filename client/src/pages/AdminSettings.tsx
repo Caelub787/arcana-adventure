@@ -17,11 +17,11 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Slider } from '@/components/ui/slider';
 import { toast } from '@/hooks/use-toast';
-import { ArrowLeft, Plus, Pencil, Trash2, Sword, Shield, Package, Sparkles, Box, Coins, Search, Users, User, GitBranch, Library, Link, X, GripVertical, Star, Zap, Heart, ShieldCheck, BookOpen, RefreshCw, ZoomIn, ZoomOut, Wand2, Save, Flame, Upload, Image as ImageIcon, Folder, FolderPlus, ChevronDown, ChevronRight, Layers, Copy } from 'lucide-react';
+import { ArrowLeft, Plus, Pencil, Trash2, Sword, Shield, Package, Sparkles, Box, Coins, Search, Users, User, GitBranch, Library, Link, X, GripVertical, Star, Zap, Heart, ShieldCheck, BookOpen, RefreshCw, ZoomIn, ZoomOut, Wand2, Save, Flame, Upload, Image as ImageIcon, Folder, FolderPlus, ChevronDown, ChevronRight, Layers, Copy, Bell, Send } from 'lucide-react';
 import { ImageBrowser } from '@/components/ImageBrowser';
 import { CharacterSheet } from '@/components/game/GameComponents';
 
-type AdminView = 'dashboard' | 'items' | 'species' | 'spells' | 'skills' | 'traits' | 'feat-trees' | 'characters' | 'token-effects';
+type AdminView = 'dashboard' | 'items' | 'species' | 'spells' | 'skills' | 'traits' | 'feat-trees' | 'characters' | 'token-effects' | 'notifications';
 
 // Lazy-loading item image component for admin list view
 function LazyAdminItemImage({ itemId, itemType }: { itemId: string; itemType: string }) {
@@ -596,7 +596,8 @@ export default function AdminSettings() {
                currentView === 'skills' ? 'Custom Skills' : 
                currentView === 'traits' ? 'Traits' : 
                currentView === 'characters' ? 'Character Templates' : 
-               currentView === 'token-effects' ? 'Token Effects' : 'Feat Trees'}
+               currentView === 'token-effects' ? 'Token Effects' : 
+               currentView === 'notifications' ? 'Push Notifications' : 'Feat Trees'}
             </p>
           </div>
           <div className="w-[200px]">
@@ -762,6 +763,10 @@ export default function AdminSettings() {
 
         {currentView === 'feat-trees' && (
           <FeatTreesView />
+        )}
+
+        {currentView === 'notifications' && (
+          <NotificationsView />
         )}
 
         <ItemFormDialog
@@ -1051,6 +1056,199 @@ function DashboardView({ onNavigate }: { onNavigate: (view: AdminView) => void }
             Create and manage feat progression trees for characters
           </CardDescription>
         </CardHeader>
+      </Card>
+
+      <Card 
+        className="bg-stone-900 border-stone-700 cursor-pointer hover:border-amber-600 transition-colors"
+        onClick={() => onNavigate('notifications')}
+        data-testid="card-notifications"
+      >
+        <CardHeader>
+          <div className="h-12 w-12 rounded-lg bg-orange-700/20 flex items-center justify-center mb-2">
+            <Bell className="h-6 w-6 text-orange-500" />
+          </div>
+          <CardTitle className="text-orange-500">Push Notifications</CardTitle>
+          <CardDescription className="text-stone-400">
+            Send announcements and patch notes to all active users
+          </CardDescription>
+        </CardHeader>
+      </Card>
+    </div>
+  );
+}
+
+interface AdminNotification {
+  id: string;
+  title: string;
+  message: string;
+  patchNotes: string | null;
+  createdBy: string;
+  createdAt: string;
+}
+
+function NotificationsView() {
+  const queryClient = useQueryClient();
+  const [title, setTitle] = useState('');
+  const [message, setMessage] = useState('');
+  const [patchNotes, setPatchNotes] = useState('');
+  const [showPatchNotes, setShowPatchNotes] = useState(false);
+
+  const { data: notifications = [], isLoading } = useQuery<AdminNotification[]>({
+    queryKey: ['/api/admin/notifications'],
+    queryFn: async () => {
+      const res = await fetch('/api/admin/notifications', { credentials: 'include' });
+      if (!res.ok) throw new Error('Failed to fetch notifications');
+      return res.json();
+    },
+  });
+
+  const sendNotificationMutation = useMutation({
+    mutationFn: async (data: { title: string; message: string; patchNotes?: string }) => {
+      const res = await fetch('/api/admin/notifications', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) throw new Error('Failed to send notification');
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/notifications'] });
+      setTitle('');
+      setMessage('');
+      setPatchNotes('');
+      setShowPatchNotes(false);
+      toast({ title: 'Notification Sent', description: 'Notification has been broadcast to all active users' });
+    },
+    onError: () => {
+      toast({ title: 'Error', description: 'Failed to send notification', variant: 'destructive' });
+    },
+  });
+
+  const handleSend = () => {
+    if (!title.trim() || !message.trim()) {
+      toast({ title: 'Error', description: 'Title and message are required', variant: 'destructive' });
+      return;
+    }
+    sendNotificationMutation.mutate({
+      title: title.trim(),
+      message: message.trim(),
+      patchNotes: patchNotes.trim() || undefined,
+    });
+  };
+
+  return (
+    <div className="flex flex-col gap-6">
+      <Card className="bg-stone-900 border-stone-700">
+        <CardHeader>
+          <CardTitle className="text-orange-500 flex items-center gap-2">
+            <Send className="h-5 w-5" />
+            Send Notification
+          </CardTitle>
+          <CardDescription className="text-stone-400">
+            Broadcast a notification to all users currently in an active campaign session
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          <div>
+            <Label htmlFor="notif-title" className="text-stone-300">Title</Label>
+            <Input
+              id="notif-title"
+              placeholder="Notification title..."
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              className="bg-stone-800 border-stone-700 mt-1"
+              data-testid="input-notification-title"
+            />
+          </div>
+          <div>
+            <Label htmlFor="notif-message" className="text-stone-300">Message</Label>
+            <Textarea
+              id="notif-message"
+              placeholder="Notification message..."
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              className="bg-stone-800 border-stone-700 mt-1 min-h-[100px]"
+              data-testid="input-notification-message"
+            />
+          </div>
+          <div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowPatchNotes(!showPatchNotes)}
+              className="text-stone-400 hover:text-stone-200 p-0 h-auto"
+              data-testid="button-toggle-patch-notes"
+            >
+              {showPatchNotes ? <ChevronDown className="h-4 w-4 mr-1" /> : <ChevronRight className="h-4 w-4 mr-1" />}
+              {showPatchNotes ? 'Hide' : 'Add'} Patch Notes (optional)
+            </Button>
+            {showPatchNotes && (
+              <Textarea
+                id="notif-patchnotes"
+                placeholder="Patch notes or changelog..."
+                value={patchNotes}
+                onChange={(e) => setPatchNotes(e.target.value)}
+                className="bg-stone-800 border-stone-700 mt-2 min-h-[120px]"
+                data-testid="input-notification-patchnotes"
+              />
+            )}
+          </div>
+          <Button
+            onClick={handleSend}
+            disabled={sendNotificationMutation.isPending || !title.trim() || !message.trim()}
+            className="bg-orange-700 hover:bg-orange-600 w-fit"
+            data-testid="button-send-notification"
+          >
+            {sendNotificationMutation.isPending ? (
+              <>Sending...</>
+            ) : (
+              <>
+                <Send className="h-4 w-4 mr-2" />
+                Send Notification
+              </>
+            )}
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card className="bg-stone-900 border-stone-700">
+        <CardHeader>
+          <CardTitle className="text-stone-300 flex items-center gap-2">
+            <Bell className="h-5 w-5" />
+            Notification History
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <div className="text-stone-500 text-center py-8">Loading...</div>
+          ) : notifications.length === 0 ? (
+            <div className="text-stone-500 text-center py-8">No notifications sent yet</div>
+          ) : (
+            <div className="flex flex-col gap-3">
+              {notifications.map((notif) => (
+                <div key={notif.id} className="bg-stone-800 rounded-lg p-4 border border-stone-700">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex-1">
+                      <h4 className="font-semibold text-orange-400">{notif.title}</h4>
+                      <p className="text-stone-300 mt-1 whitespace-pre-wrap">{notif.message}</p>
+                      {notif.patchNotes && (
+                        <div className="mt-2 p-2 bg-stone-900 rounded text-stone-400 text-sm whitespace-pre-wrap">
+                          <span className="text-stone-500 text-xs uppercase tracking-wide">Patch Notes:</span>
+                          <div className="mt-1">{notif.patchNotes}</div>
+                        </div>
+                      )}
+                    </div>
+                    <div className="text-stone-500 text-xs shrink-0">
+                      {new Date(notif.createdAt).toLocaleDateString()} {new Date(notif.createdAt).toLocaleTimeString()}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
       </Card>
     </div>
   );

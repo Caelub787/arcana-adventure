@@ -2210,6 +2210,18 @@ export default function Campaign() {
             queryClientRef.current.invalidateQueries({ queryKey: ['thrown-items', currentSceneId] });
           }
         }
+        
+        // Handle admin notification - show toast to all users
+        if (data.type === 'admin_notification') {
+          const description = data.patchNotes 
+            ? `${data.message}\n\nPatch Notes:\n${data.patchNotes}`
+            : data.message;
+          toastRef.current({
+            title: data.title || 'Site Announcement',
+            description,
+            duration: 10000,
+          });
+        }
       });
 
       return () => {
