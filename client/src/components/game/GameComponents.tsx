@@ -7080,9 +7080,11 @@ interface CampaignMenuProps {
   onOpenCampaignSpecies?: () => void;
   isOwner?: boolean;
   gmUserId?: string;
+  beaconColor?: string;
+  onChangeBeaconColor?: () => void;
 }
 
-export function CampaignMenu({ campaignId, role, inviteCode, hotbarSlots = 5, inspectedChar, onInspectChar, onAddCharacterToken, onChangeMap, characters, members, onAddCharacter, onViewCharacter, onLevelUpAll, chatOpen = false, onChatOpenChange, onAssignCharacter, myPermissions, onOpenCampaignSpecies, isOwner = false, gmUserId }: CampaignMenuProps) {
+export function CampaignMenu({ campaignId, role, inviteCode, hotbarSlots = 5, inspectedChar, onInspectChar, onAddCharacterToken, onChangeMap, characters, members, onAddCharacter, onViewCharacter, onLevelUpAll, chatOpen = false, onChatOpenChange, onAssignCharacter, myPermissions, onOpenCampaignSpecies, isOwner = false, gmUserId, beaconColor, onChangeBeaconColor }: CampaignMenuProps) {
   const { user } = useAuth();
   const setChatOpen = onChatOpenChange || (() => {});
   const [addCharacterOpen, setAddCharacterOpen] = useState(false);
@@ -7793,6 +7795,29 @@ export function CampaignMenu({ campaignId, role, inviteCode, hotbarSlots = 5, in
                 data-testid="toggle-notification-style"
               />
             </div>
+            
+            {/* Beacon Color Setting */}
+            {onChangeBeaconColor && (
+              <div className="mt-4 pt-4 border-t border-stone-700">
+                <div className="flex items-center justify-between">
+                  <Label className="text-stone-300">My Beacon Color</Label>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="border-stone-600 hover:border-amber-500 flex items-center gap-2"
+                    onClick={onChangeBeaconColor}
+                    data-testid="button-change-beacon-color"
+                  >
+                    <div 
+                      className="w-4 h-4 rounded-full border border-stone-500"
+                      style={{ backgroundColor: beaconColor || '#FBB524' }}
+                    />
+                    Change
+                  </Button>
+                </div>
+                <p className="text-xs text-stone-500 mt-1">Color shown when you click on the map</p>
+              </div>
+            )}
             
             {/* Hotbar Slots Setting (GM Only) */}
             {role === 'gm' && (

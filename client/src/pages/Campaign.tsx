@@ -2737,6 +2737,11 @@ export default function Campaign() {
             onOpenCampaignSpecies={() => setCampaignSpeciesOpen(true)}
             isOwner={!!(campaign && typeof campaign === 'object' && 'gmUserId' in campaign && (campaign as any).gmUserId === user?.id)}
             gmUserId={(campaign && typeof campaign === 'object' && 'gmUserId' in campaign ? (campaign as any).gmUserId as string : undefined)}
+            beaconColor={myMembership?.beaconColor || '#FBB524'}
+            onChangeBeaconColor={() => {
+              setPendingBeaconColor(myMembership?.beaconColor || '#FBB524');
+              setBeaconColorDialogOpen(true);
+            }}
           />
           
           {/* Scenes Button (GM Only) - Icon only, directly under Settings */}
@@ -2788,30 +2793,6 @@ export default function Campaign() {
         <div className="fixed bottom-4 left-4 z-40 bg-stone-900/90 border border-stone-700 rounded-lg p-3 text-stone-300 text-sm">
           No character assigned
         </div>
-      )}
-
-      {/* Beacon Color Indicator Button - allows players to change their beacon color */}
-      {myMembership && (
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                onClick={() => {
-                  setPendingBeaconColor(myMembership.beaconColor || '#FBB524');
-                  setBeaconColorDialogOpen(true);
-                }}
-                className="fixed bottom-4 right-4 z-40 w-10 h-10 rounded-full p-0 border-2 border-stone-700 hover:border-amber-500 transition-colors"
-                style={{ backgroundColor: myMembership.beaconColor || '#FBB524' }}
-                data-testid="button-change-beacon-color"
-              >
-                <Radio className="h-4 w-4 text-white" style={{ filter: 'drop-shadow(0 0 2px black)' }} />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="left" className="bg-stone-800 border-stone-700 text-stone-200">
-              <p>Change Beacon Color</p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
       )}
 
       {/* Scenes Management Sheet (GM Only) */}
