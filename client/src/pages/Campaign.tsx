@@ -1020,11 +1020,12 @@ export default function Campaign() {
   const sceneIdForTokens = role === 'gm' && gmViewingSceneId ? gmViewingSceneId : campaignActiveSceneId;
   
   // Load tokens for the current scene
+  // Use staleTime to prevent refetch flicker - WebSocket handles real-time sync
   const { data: tokensData, isLoading: tokensLoading } = useQuery({
     queryKey: [`/api/campaigns/${effectiveCampaignId}/tokens`, sceneIdForTokens],
     queryFn: () => api.getCampaignTokens(effectiveCampaignId!, sceneIdForTokens || undefined),
     enabled: !!effectiveCampaignId && !isNew && !!sceneIdForTokens,
-    staleTime: 0, // Always refetch to get latest token positions
+    staleTime: 5000, // Cache for 5s - WebSocket updates positions in real-time
   });
 
   // Load characters for the campaign
@@ -1261,13 +1262,50 @@ export default function Campaign() {
     },
   });
 
-  // Update token mutation
+  // Update token mutation with optimistic updates to prevent position glitching
   const updateTokenMutation = useMutation({
     mutationFn: ({ id, x, y }: { id: string; x: number; y: number }) => 
       api.updateToken(id, { x, y }),
-    onError: (error: any) => {
+    onMutate: async ({ id, x, y }) => {
+      // Guard: skip optimistic update if campaign ID is not available
+      if (!effectiveCampaignId || !sceneIdForTokens) return { previousTokens: undefined, previousLocalTokens: undefined };
+      
+      const queryKey = [`/api/campaigns/${effectiveCampaignId}/tokens`, sceneIdForTokens];
+      
+      // Cancel any outgoing refetches to avoid overwriting optimistic update
+      await queryClient.cancelQueries({ queryKey });
+      
+      // Snapshot previous values (both query cache and local state)
+      const previousTokens = queryClient.getQueryData(queryKey);
+      const previousLocalTokens = [...tokens];
+      
+      // Optimistically update the token position immediately
+      queryClient.setQueryData(queryKey, (old: any[]) => 
+        old?.map(token => token.id === id ? { ...token, x, y } : token) || []
+      );
+      
+      // Also update local state for immediate visual feedback
+      setTokens(prev => prev.map(token => token.id === id ? { ...token, x, y } : token));
+      
+      return { previousTokens, previousLocalTokens, queryKey };
+    },
+    onError: (error: any, _, context) => {
+      // Rollback both query cache and local state on error
+      if (context?.previousTokens && context?.queryKey) {
+        queryClient.setQueryData(context.queryKey, context.previousTokens);
+      }
+      if (context?.previousLocalTokens) {
+        setTokens(context.previousLocalTokens);
+      }
       toast({ title: "Error", description: error.message || "Failed to update token", variant: "destructive" });
     },
+    onSettled: (_, error, ___, context) => {
+      // Only invalidate on error to ensure consistency
+      // On success, trust the optimistic update and WebSocket sync
+      if (error && context?.queryKey) {
+        queryClient.invalidateQueries({ queryKey: context.queryKey });
+      }
+    }
   });
 
   // Delete token mutation

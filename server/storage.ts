@@ -2480,13 +2480,10 @@ export class DatabaseStorage implements IStorage {
           .orderBy(noteFolders.sortOrder);
       }
     }
-    // No campaign context - show only global folders (null campaignId)
+    // No campaign context (main notes page) - show ALL folders including campaign-specific ones
     return await db.select()
       .from(noteFolders)
-      .where(and(
-        eq(noteFolders.userId, userId),
-        isNull(noteFolders.campaignId)
-      ))
+      .where(eq(noteFolders.userId, userId))
       .orderBy(noteFolders.sortOrder);
   }
 
