@@ -2418,6 +2418,113 @@ export class GameWebSocket {
 
 export const gameWs = new GameWebSocket();
 
+// User Notification types
+export interface UserNotification {
+  id: string;
+  userId: string;
+  type: string;
+  title: string;
+  message: string | null;
+  referenceId: string | null;
+  isRead: boolean;
+  createdAt: string;
+}
+
+// Terms & Conditions types
+export interface TermsAndConditions {
+  id: string;
+  version: number;
+  content: string;
+  updatedBy: string;
+  createdAt: string;
+}
+
+// User Notification API functions
+export async function getNotifications(): Promise<UserNotification[]> {
+  const response = await fetch('/api/notifications');
+  if (!response.ok) {
+    throw new Error('Failed to fetch notifications');
+  }
+  return response.json();
+}
+
+export async function getUnreadNotificationCount(): Promise<number> {
+  const response = await fetch('/api/notifications/count');
+  if (!response.ok) {
+    throw new Error('Failed to fetch notification count');
+  }
+  const data = await response.json();
+  return data.count;
+}
+
+export async function markNotificationRead(id: string): Promise<void> {
+  const response = await fetch(`/api/notifications/${id}/read`, {
+    method: 'POST',
+  });
+  if (!response.ok) {
+    throw new Error('Failed to mark notification as read');
+  }
+}
+
+export async function markAllNotificationsRead(): Promise<void> {
+  const response = await fetch('/api/notifications/read-all', {
+    method: 'POST',
+  });
+  if (!response.ok) {
+    throw new Error('Failed to mark all notifications as read');
+  }
+}
+
+export async function deleteNotification(id: string): Promise<void> {
+  const response = await fetch(`/api/notifications/${id}`, {
+    method: 'DELETE',
+  });
+  if (!response.ok) {
+    throw new Error('Failed to delete notification');
+  }
+}
+
+// Terms & Conditions API functions
+export async function getTerms(): Promise<TermsAndConditions | null> {
+  const response = await fetch('/api/terms');
+  if (!response.ok) {
+    throw new Error('Failed to fetch terms');
+  }
+  return response.json();
+}
+
+export async function updateTerms(content: string): Promise<TermsAndConditions> {
+  const response = await fetch('/api/terms', {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ content }),
+  });
+  if (!response.ok) {
+    throw new Error('Failed to update terms');
+  }
+  return response.json();
+}
+
+export async function getTermsStatus(): Promise<boolean> {
+  const response = await fetch('/api/terms/status');
+  if (!response.ok) {
+    throw new Error('Failed to check terms status');
+  }
+  const data = await response.json();
+  return data.hasAccepted;
+}
+
+export async function acceptTerms(): Promise<void> {
+  const response = await fetch('/api/terms/accept', {
+    method: 'POST',
+  });
+  if (!response.ok) {
+    throw new Error('Failed to accept terms');
+  }
+}
+
 // WebSocket client for note collaboration
 export interface NotePresence {
   userId: string;

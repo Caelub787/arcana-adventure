@@ -1,24 +1,60 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Play, Users, BookOpen, ScrollText, Plus, Heart, Loader2, Shield } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Play, Users, BookOpen, ScrollText, Plus, Heart, Loader2, Shield, FileText } from "lucide-react";
 import bgImage from "@assets/home_background.webp";
 import { useAuth } from "@/lib/AuthContext";
-import { api } from "@/lib/api";
-import { useQuery } from "@tanstack/react-query";
+import { api, getTerms, getTermsStatus, acceptTerms, type TermsAndConditions } from "@/lib/api";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import ProfileDropdown from "@/components/ProfileDropdown";
+import NotificationsBell from "@/components/NotificationsBell";
 
 export default function Home() {
   const [location, setLocation] = useLocation();
   const { user, isAdmin, logout } = useAuth();
+  const queryClient = useQueryClient();
+  const [showTermsPopup, setShowTermsPopup] = useState(false);
+  const [showTermsView, setShowTermsView] = useState(false);
   
   // Load campaigns from API with React Query
   const { data: campaignsData, isLoading } = useQuery<{ created: any[], joined: any[] }>({
     queryKey: ['/api/campaigns'],
     enabled: !!user,
   });
+
+  // Query for terms and conditions
+  const { data: currentTerms } = useQuery<TermsAndConditions | null>({
+    queryKey: ['/api/terms'],
+    queryFn: getTerms,
+    enabled: !!user,
+  });
+
+  // Query for terms acceptance status
+  const { data: termsStatus } = useQuery<{ hasAccepted: boolean; currentVersion: number | null }>({
+    queryKey: ['/api/terms/status'],
+    queryFn: getTermsStatus,
+    enabled: !!user,
+  });
+
+  // Accept terms mutation
+  const acceptTermsMutation = useMutation({
+    mutationFn: acceptTerms,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/terms/status'] });
+      setShowTermsPopup(false);
+    },
+  });
+
+  // Show terms popup if user hasn't accepted current terms
+  useEffect(() => {
+    if (termsStatus && !termsStatus.hasAccepted && termsStatus.currentVersion !== null) {
+      setShowTermsPopup(true);
+    }
+  }, [termsStatus]);
 
   const userCampaigns = campaignsData ?? { created: [], joined: [] };
   const favorites = [...(userCampaigns.created ?? []), ...(userCampaigns.joined ?? [])].filter((c: any) => c.favorite);
@@ -42,7 +78,14 @@ export default function Home() {
       {/* Content Layer */}
       <div className="relative z-10 flex min-h-screen flex-col items-center justify-center p-6">
         
-        {/* Profile Dropdown */}
+        {/* Notifications Bell - Top Left */}
+        {user && (
+          <div className="absolute top-4 left-4">
+            <NotificationsBell />
+          </div>
+        )}
+
+        {/* Profile Dropdown - Top Right */}
         <div className="absolute top-4 right-4">
           <ProfileDropdown onLogout={handleLogout} />
         </div>
@@ -171,8 +214,88 @@ export default function Home() {
 
         </motion.div>
 
-        <div className="mt-12 text-xs text-stone-600 font-mono">v0.1 Beta • Mystereed</div>
+        {/* Footer with Terms Link */}
+        <div className="mt-12 flex flex-col items-center gap-2">
+          <button
+            onClick={() => setShowTermsView(true)}
+            className="text-xs text-stone-500 hover:text-amber-400 transition-colors underline"
+            data-testid="button-view-terms"
+          >
+            <FileText className="h-3 w-3 inline mr-1" />
+            Terms and Conditions
+          </button>
+          <div className="text-xs text-stone-600 font-mono">v0.1 Beta • Mystereed</div>
+        </div>
       </div>
+
+      {/* Terms Acceptance Popup - Cannot be dismissed without accepting */}
+      <Dialog open={showTermsPopup} onOpenChange={() => {}}>
+        <DialogContent 
+          className="bg-stone-900 border-stone-700 max-w-2xl max-h-[90vh]"
+          onPointerDownOutside={(e) => e.preventDefault()}
+          onEscapeKeyDown={(e) => e.preventDefault()}
+        >
+          <DialogHeader>
+            <DialogTitle className="text-amber-400 flex items-center gap-2">
+              <FileText className="h-5 w-5" />
+              Terms and Conditions Updated
+            </DialogTitle>
+            <DialogDescription className="text-stone-400">
+              Please review and accept the updated terms and conditions to continue using the app.
+            </DialogDescription>
+          </DialogHeader>
+          <ScrollArea className="max-h-[50vh] pr-4">
+            <div className="text-stone-300 whitespace-pre-wrap text-sm">
+              {currentTerms?.content || "Loading terms..."}
+            </div>
+          </ScrollArea>
+          <DialogFooter className="flex flex-col gap-2 sm:flex-row">
+            <div className="text-xs text-stone-500 flex-1">
+              I'm sorry but you have to accept to use the app. If you do not want to accept, please cancel your subscription if you have one.
+            </div>
+            <Button
+              onClick={() => acceptTermsMutation.mutate()}
+              disabled={acceptTermsMutation.isPending}
+              className="bg-amber-600 hover:bg-amber-500 text-stone-900"
+              data-testid="button-accept-terms"
+            >
+              {acceptTermsMutation.isPending ? "Accepting..." : "I Accept"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Terms View Dialog - Can be closed */}
+      <Dialog open={showTermsView} onOpenChange={setShowTermsView}>
+        <DialogContent className="bg-stone-900 border-stone-700 max-w-2xl max-h-[90vh]">
+          <DialogHeader>
+            <DialogTitle className="text-amber-400 flex items-center gap-2">
+              <FileText className="h-5 w-5" />
+              Terms and Conditions
+            </DialogTitle>
+            {currentTerms && (
+              <DialogDescription className="text-stone-500">
+                Version {currentTerms.version} • Last updated: {new Date(currentTerms.createdAt).toLocaleDateString()}
+              </DialogDescription>
+            )}
+          </DialogHeader>
+          <ScrollArea className="max-h-[60vh] pr-4">
+            <div className="text-stone-300 whitespace-pre-wrap text-sm">
+              {currentTerms?.content || "No terms and conditions have been set yet."}
+            </div>
+          </ScrollArea>
+          <DialogFooter>
+            <Button
+              onClick={() => setShowTermsView(false)}
+              variant="outline"
+              className="border-stone-600 text-stone-300 hover:bg-stone-800"
+              data-testid="button-close-terms"
+            >
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

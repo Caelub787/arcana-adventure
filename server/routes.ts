@@ -7621,5 +7621,118 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ============================================
+  // User Notifications API
+  // ============================================
+
+  app.get("/api/notifications", requireAuth, async (req, res) => {
+    try {
+      const notifications = await storage.getUserNotifications(req.session.userId!);
+      res.json(notifications);
+    } catch (err) {
+      console.error("Failed to fetch notifications:", err);
+      res.status(500).json({ error: "Failed to fetch notifications" });
+    }
+  });
+
+  app.get("/api/notifications/count", requireAuth, async (req, res) => {
+    try {
+      const count = await storage.getUnreadNotificationCount(req.session.userId!);
+      res.json({ count });
+    } catch (err) {
+      console.error("Failed to fetch notification count:", err);
+      res.status(500).json({ error: "Failed to fetch notification count" });
+    }
+  });
+
+  app.post("/api/notifications/:id/read", requireAuth, async (req, res) => {
+    try {
+      await storage.markNotificationRead(req.params.id);
+      res.json({ success: true });
+    } catch (err) {
+      console.error("Failed to mark notification as read:", err);
+      res.status(500).json({ error: "Failed to mark notification as read" });
+    }
+  });
+
+  app.post("/api/notifications/read-all", requireAuth, async (req, res) => {
+    try {
+      await storage.markAllNotificationsRead(req.session.userId!);
+      res.json({ success: true });
+    } catch (err) {
+      console.error("Failed to mark all notifications as read:", err);
+      res.status(500).json({ error: "Failed to mark all notifications as read" });
+    }
+  });
+
+  app.delete("/api/notifications/:id", requireAuth, async (req, res) => {
+    try {
+      await storage.deleteNotification(req.params.id);
+      res.json({ success: true });
+    } catch (err) {
+      console.error("Failed to delete notification:", err);
+      res.status(500).json({ error: "Failed to delete notification" });
+    }
+  });
+
+  // ============================================
+  // Terms & Conditions API
+  // ============================================
+
+  app.get("/api/terms", async (req, res) => {
+    try {
+      const terms = await storage.getCurrentTerms();
+      res.json(terms || null);
+    } catch (err) {
+      console.error("Failed to fetch terms:", err);
+      res.status(500).json({ error: "Failed to fetch terms" });
+    }
+  });
+
+  app.put("/api/terms", requireAuth, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user || !user.isAdmin) {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+
+      const { content } = req.body;
+      if (!content || typeof content !== 'string') {
+        return res.status(400).json({ error: "Content is required" });
+      }
+
+      const terms = await storage.updateTerms(content, req.session.userId!);
+      res.json(terms);
+    } catch (err) {
+      console.error("Failed to update terms:", err);
+      res.status(500).json({ error: "Failed to update terms" });
+    }
+  });
+
+  app.get("/api/terms/status", requireAuth, async (req, res) => {
+    try {
+      const hasAccepted = await storage.hasUserAcceptedCurrentTerms(req.session.userId!);
+      res.json({ hasAccepted });
+    } catch (err) {
+      console.error("Failed to check terms status:", err);
+      res.status(500).json({ error: "Failed to check terms status" });
+    }
+  });
+
+  app.post("/api/terms/accept", requireAuth, async (req, res) => {
+    try {
+      const currentTerms = await storage.getCurrentTerms();
+      if (!currentTerms) {
+        return res.status(404).json({ error: "No terms found" });
+      }
+
+      const acceptance = await storage.acceptTerms(req.session.userId!, currentTerms.version);
+      res.json(acceptance);
+    } catch (err) {
+      console.error("Failed to accept terms:", err);
+      res.status(500).json({ error: "Failed to accept terms" });
+    }
+  });
+
   return httpServer;
 }

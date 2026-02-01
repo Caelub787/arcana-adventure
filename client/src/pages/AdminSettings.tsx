@@ -1058,37 +1058,6 @@ function DashboardView({ onNavigate }: { onNavigate: (view: AdminView) => void }
         </CardHeader>
       </Card>
 
-      <Card 
-        className="bg-stone-900 border-stone-700 cursor-pointer hover:border-amber-600 transition-colors"
-        onClick={() => onNavigate('notifications')}
-        data-testid="card-notifications"
-      >
-        <CardHeader>
-          <div className="h-12 w-12 rounded-lg bg-orange-700/20 flex items-center justify-center mb-2">
-            <Bell className="h-6 w-6 text-orange-500" />
-          </div>
-          <CardTitle className="text-orange-500">Push Notifications</CardTitle>
-          <CardDescription className="text-stone-400">
-            Send announcements and patch notes to all active users
-          </CardDescription>
-        </CardHeader>
-      </Card>
-
-      <Card 
-        className="bg-stone-900 border-stone-700 cursor-pointer hover:border-red-600 transition-colors"
-        onClick={() => window.location.href = '/admin/security'}
-        data-testid="card-site-security"
-      >
-        <CardHeader>
-          <div className="h-12 w-12 rounded-lg bg-red-700/20 flex items-center justify-center mb-2">
-            <ShieldCheck className="h-6 w-6 text-red-500" />
-          </div>
-          <CardTitle className="text-red-500">Site Security</CardTitle>
-          <CardDescription className="text-stone-400">
-            Manage users, ban accounts, view activity, and control site-wide updates
-          </CardDescription>
-        </CardHeader>
-      </Card>
     </div>
   );
 }

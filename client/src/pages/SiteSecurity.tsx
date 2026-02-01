@@ -1,7 +1,8 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useLocation } from 'wouter';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { api, type AdminUser, type UserActivity } from '@/lib/api';
+import { api, type AdminUser, type UserActivity, type TermsAndConditions } from '@/lib/api';
+import { getTerms, updateTerms } from '@/lib/api';
 import { useAuth } from '@/lib/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,7 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -17,7 +18,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { toast } from '@/hooks/use-toast';
-import { Search, Shield, ShieldOff, Users, Clock, User, MapPin, FileText, Eye, Ban, ShieldCheck, X, Calendar, ExternalLink, Radio } from 'lucide-react';
+import { Search, Shield, ShieldOff, Users, Clock, User, MapPin, FileText, Eye, Ban, ShieldCheck, X, Calendar, ExternalLink, Radio, Bell, Send, ChevronDown, ChevronRight } from 'lucide-react';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 
 type BanDuration = 'permanent' | '1day' | '1week' | '1month' | 'custom';
@@ -72,6 +73,7 @@ export default function SiteSecurity() {
   const { user: currentUser, isAdmin } = useAuth();
   const queryClient = useQueryClient();
 
+  const [mainTab, setMainTab] = useState<'users' | 'notifications' | 'terms'>('users');
   const [activeTab, setActiveTab] = useState<'all' | 'banned'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null);
@@ -82,6 +84,13 @@ export default function SiteSecurity() {
   const [customBanDate, setCustomBanDate] = useState('');
   const [userToBan, setUserToBan] = useState<AdminUser | null>(null);
   const [showBroadcastDialog, setShowBroadcastDialog] = useState(false);
+
+  const [notifTitle, setNotifTitle] = useState('');
+  const [notifMessage, setNotifMessage] = useState('');
+  const [notifPatchNotes, setNotifPatchNotes] = useState('');
+  const [showPatchNotes, setShowPatchNotes] = useState(false);
+
+  const [termsContent, setTermsContent] = useState('');
 
   const { data: users = [], isLoading } = useQuery({
     queryKey: ['admin-users'],
@@ -94,6 +103,37 @@ export default function SiteSecurity() {
     queryFn: () => api.getUserActivity(selectedUser!.id),
     enabled: !!selectedUser,
   });
+
+  interface AdminNotification {
+    id: string;
+    title: string;
+    message: string;
+    patchNotes: string | null;
+    createdBy: string;
+    createdAt: string;
+  }
+
+  const { data: notifications = [], isLoading: notificationsLoading } = useQuery<AdminNotification[]>({
+    queryKey: ['/api/admin/notifications'],
+    queryFn: async () => {
+      const res = await fetch('/api/admin/notifications', { credentials: 'include' });
+      if (!res.ok) throw new Error('Failed to fetch notifications');
+      return res.json();
+    },
+    enabled: isAdmin && mainTab === 'notifications',
+  });
+
+  const { data: terms, isLoading: termsLoading } = useQuery<TermsAndConditions | null>({
+    queryKey: ['terms'],
+    queryFn: () => getTerms(),
+    enabled: isAdmin && mainTab === 'terms',
+  });
+
+  useEffect(() => {
+    if (terms?.content && !termsContent) {
+      setTermsContent(terms.content);
+    }
+  }, [terms]);
 
   const banMutation = useMutation({
     mutationFn: ({ userId, reason, expiresAt }: { userId: string; reason?: string; expiresAt?: string }) =>
@@ -163,6 +203,41 @@ export default function SiteSecurity() {
     },
     onError: (error: any) => {
       toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    },
+  });
+
+  const sendNotificationMutation = useMutation({
+    mutationFn: async (data: { title: string; message: string; patchNotes?: string }) => {
+      const res = await fetch('/api/admin/notifications', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) throw new Error('Failed to send notification');
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/notifications'] });
+      setNotifTitle('');
+      setNotifMessage('');
+      setNotifPatchNotes('');
+      setShowPatchNotes(false);
+      toast({ title: 'Notification Sent', description: 'Notification has been broadcast to all active users' });
+    },
+    onError: () => {
+      toast({ title: 'Error', description: 'Failed to send notification', variant: 'destructive' });
+    },
+  });
+
+  const updateTermsMutation = useMutation({
+    mutationFn: (content: string) => updateTerms(content),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['terms'] });
+      toast({ title: 'Terms Updated', description: 'New terms version created. All users will need to re-accept.' });
+    },
+    onError: () => {
+      toast({ title: 'Error', description: 'Failed to update terms', variant: 'destructive' });
     },
   });
 
@@ -261,6 +336,26 @@ export default function SiteSecurity() {
     window.open(`/campaign/${campaignId}?incognito=true`, '_blank');
   };
 
+  const handleSendNotification = () => {
+    if (!notifTitle.trim() || !notifMessage.trim()) {
+      toast({ title: 'Error', description: 'Title and message are required', variant: 'destructive' });
+      return;
+    }
+    sendNotificationMutation.mutate({
+      title: notifTitle.trim(),
+      message: notifMessage.trim(),
+      patchNotes: notifPatchNotes.trim() || undefined,
+    });
+  };
+
+  const handleSaveTerms = () => {
+    if (!termsContent.trim()) {
+      toast({ title: 'Error', description: 'Terms content cannot be empty', variant: 'destructive' });
+      return;
+    }
+    updateTermsMutation.mutate(termsContent.trim());
+  };
+
   if (!isAdmin) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-stone-900 to-stone-950 flex items-center justify-center">
@@ -316,32 +411,61 @@ export default function SiteSecurity() {
           </AlertDialogContent>
         </AlertDialog>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2">
-            <Card className="bg-stone-800/90 border-stone-700">
-              <CardHeader className="pb-4">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                  <CardTitle className="text-amber-400 flex items-center gap-2">
-                    <Users className="h-5 w-5" />
-                    User Management
-                  </CardTitle>
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-stone-400" />
-                    <Input
-                      placeholder="Search users..."
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      className="pl-9 bg-stone-700 border-stone-600 text-stone-100 w-full sm:w-64"
-                      data-testid="input-search-users"
-                    />
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'all' | 'banned')}>
-                  <TabsList className="bg-stone-700 mb-4">
-                    <TabsTrigger value="all" className="data-[state=active]:bg-amber-600" data-testid="tab-all-users">
-                      All Users ({users.length})
+        <Tabs value={mainTab} onValueChange={(v) => setMainTab(v as 'users' | 'notifications' | 'terms')} className="w-full">
+          <TabsList className="bg-stone-800 border border-stone-700 mb-6">
+            <TabsTrigger 
+              value="users" 
+              className="data-[state=active]:bg-amber-600 data-[state=active]:text-stone-900"
+              data-testid="tab-user-management"
+            >
+              <Users className="h-4 w-4 mr-2" />
+              User Management
+            </TabsTrigger>
+            <TabsTrigger 
+              value="notifications" 
+              className="data-[state=active]:bg-amber-600 data-[state=active]:text-stone-900"
+              data-testid="tab-push-notifications"
+            >
+              <Bell className="h-4 w-4 mr-2" />
+              Push Notifications
+            </TabsTrigger>
+            <TabsTrigger 
+              value="terms" 
+              className="data-[state=active]:bg-amber-600 data-[state=active]:text-stone-900"
+              data-testid="tab-terms"
+            >
+              <FileText className="h-4 w-4 mr-2" />
+              Terms & Conditions
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="users" className="mt-0">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <div className="lg:col-span-2">
+                <Card className="bg-stone-800/90 border-stone-700">
+                  <CardHeader className="pb-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                      <CardTitle className="text-amber-400 flex items-center gap-2">
+                        <Users className="h-5 w-5" />
+                        User Management
+                      </CardTitle>
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-stone-400" />
+                        <Input
+                          placeholder="Search users..."
+                          value={searchQuery}
+                          onChange={(e) => setSearchQuery(e.target.value)}
+                          className="pl-9 bg-stone-700 border-stone-600 text-stone-100 w-full sm:w-64"
+                          data-testid="input-search-users"
+                        />
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'all' | 'banned')}>
+                      <TabsList className="bg-stone-700 mb-4">
+                        <TabsTrigger value="all" className="data-[state=active]:bg-amber-600" data-testid="tab-all-users">
+                          All Users ({users.length})
                     </TabsTrigger>
                     <TabsTrigger value="banned" className="data-[state=active]:bg-red-600" data-testid="tab-banned-users">
                       Banned ({users.filter(isBanned).length})
@@ -716,8 +840,179 @@ export default function SiteSecurity() {
                 </CardContent>
               </Card>
             )}
+            </div>
           </div>
-        </div>
+          </TabsContent>
+
+          <TabsContent value="notifications" className="mt-0">
+            <div className="flex flex-col gap-6">
+              <Card className="bg-stone-800/90 border-stone-700">
+                <CardHeader>
+                  <CardTitle className="text-amber-400 flex items-center gap-2">
+                    <Send className="h-5 w-5" />
+                    Send Notification
+                  </CardTitle>
+                  <CardDescription className="text-stone-400">
+                    Broadcast a notification to all users currently in an active campaign session
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="flex flex-col gap-4">
+                  <div>
+                    <Label htmlFor="notif-title" className="text-stone-300">Title</Label>
+                    <Input
+                      id="notif-title"
+                      placeholder="Notification title..."
+                      value={notifTitle}
+                      onChange={(e) => setNotifTitle(e.target.value)}
+                      className="bg-stone-700 border-stone-600 mt-1"
+                      data-testid="input-notification-title"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="notif-message" className="text-stone-300">Message</Label>
+                    <Textarea
+                      id="notif-message"
+                      placeholder="Notification message..."
+                      value={notifMessage}
+                      onChange={(e) => setNotifMessage(e.target.value)}
+                      className="bg-stone-700 border-stone-600 mt-1 min-h-[100px]"
+                      data-testid="input-notification-message"
+                    />
+                  </div>
+                  <div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setShowPatchNotes(!showPatchNotes)}
+                      className="text-stone-400 hover:text-stone-200 p-0 h-auto"
+                      data-testid="button-toggle-patch-notes"
+                    >
+                      {showPatchNotes ? <ChevronDown className="h-4 w-4 mr-1" /> : <ChevronRight className="h-4 w-4 mr-1" />}
+                      {showPatchNotes ? 'Hide' : 'Add'} Patch Notes (optional)
+                    </Button>
+                    {showPatchNotes && (
+                      <Textarea
+                        id="notif-patchnotes"
+                        placeholder="Patch notes or changelog..."
+                        value={notifPatchNotes}
+                        onChange={(e) => setNotifPatchNotes(e.target.value)}
+                        className="bg-stone-700 border-stone-600 mt-2 min-h-[120px]"
+                        data-testid="input-notification-patchnotes"
+                      />
+                    )}
+                  </div>
+                  <Button
+                    onClick={handleSendNotification}
+                    disabled={sendNotificationMutation.isPending || !notifTitle.trim() || !notifMessage.trim()}
+                    className="bg-amber-600 hover:bg-amber-700 text-stone-900 w-fit"
+                    data-testid="button-send-notification"
+                  >
+                    {sendNotificationMutation.isPending ? (
+                      <>Sending...</>
+                    ) : (
+                      <>
+                        <Send className="h-4 w-4 mr-2" />
+                        Send Notification
+                      </>
+                    )}
+                  </Button>
+                </CardContent>
+              </Card>
+
+              <Card className="bg-stone-800/90 border-stone-700">
+                <CardHeader>
+                  <CardTitle className="text-stone-300 flex items-center gap-2">
+                    <Bell className="h-5 w-5" />
+                    Notification History
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {notificationsLoading ? (
+                    <div className="text-stone-500 text-center py-8">Loading...</div>
+                  ) : notifications.length === 0 ? (
+                    <div className="text-stone-500 text-center py-8">No notifications sent yet</div>
+                  ) : (
+                    <div className="flex flex-col gap-3">
+                      {notifications.map((notif) => (
+                        <div key={notif.id} className="bg-stone-700/50 rounded-lg p-4 border border-stone-600">
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="flex-1">
+                              <h4 className="font-semibold text-amber-400">{notif.title}</h4>
+                              <p className="text-stone-300 mt-1 whitespace-pre-wrap">{notif.message}</p>
+                              {notif.patchNotes && (
+                                <div className="mt-2 p-2 bg-stone-800 rounded text-stone-400 text-sm whitespace-pre-wrap">
+                                  <span className="text-stone-500 text-xs uppercase tracking-wide">Patch Notes:</span>
+                                  <div className="mt-1">{notif.patchNotes}</div>
+                                </div>
+                              )}
+                            </div>
+                            <div className="text-stone-500 text-xs shrink-0">
+                              {new Date(notif.createdAt).toLocaleDateString()} {new Date(notif.createdAt).toLocaleTimeString()}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="terms" className="mt-0">
+            <Card className="bg-stone-800/90 border-stone-700">
+              <CardHeader>
+                <CardTitle className="text-amber-400 flex items-center gap-2">
+                  <FileText className="h-5 w-5" />
+                  Terms & Conditions
+                </CardTitle>
+                <CardDescription className="text-stone-400">
+                  Edit the site terms and conditions. Saving will create a new version that all users must re-accept.
+                </CardDescription>
+                {terms && (
+                  <div className="mt-2 flex items-center gap-4 text-sm">
+                    <Badge className="bg-amber-600 text-stone-900">Version {terms.version}</Badge>
+                    <span className="text-stone-500">
+                      Last updated: {new Date(terms.createdAt).toLocaleDateString()} at {new Date(terms.createdAt).toLocaleTimeString()}
+                    </span>
+                  </div>
+                )}
+              </CardHeader>
+              <CardContent className="flex flex-col gap-4">
+                {termsLoading ? (
+                  <div className="text-stone-500 text-center py-8">Loading terms...</div>
+                ) : (
+                  <>
+                    <div>
+                      <Label htmlFor="terms-content" className="text-stone-300">Terms Content</Label>
+                      <Textarea
+                        id="terms-content"
+                        placeholder="Enter terms and conditions..."
+                        value={termsContent}
+                        onChange={(e) => setTermsContent(e.target.value)}
+                        className="bg-stone-700 border-stone-600 mt-1 min-h-[400px] font-mono text-sm"
+                        data-testid="input-terms-content"
+                      />
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <Button
+                        onClick={handleSaveTerms}
+                        disabled={updateTermsMutation.isPending || !termsContent.trim()}
+                        className="bg-amber-600 hover:bg-amber-700 text-stone-900"
+                        data-testid="button-save-terms"
+                      >
+                        {updateTermsMutation.isPending ? 'Saving...' : 'Save Terms'}
+                      </Button>
+                      <span className="text-stone-500 text-sm">
+                        Note: Saving creates a new version that requires all users to re-accept
+                      </span>
+                    </div>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
       </div>
 
       <Dialog open={showBanDialog} onOpenChange={setShowBanDialog}>
