@@ -1033,7 +1033,7 @@ export default function Notes() {
     }
   };
 
-  const formatEntityReferences = (content: string): React.ReactNode[] => {
+  const formatInlineReferences = (content: string, keyPrefix: string): React.ReactNode[] => {
     // Match: 
     // 1. Entity refs: [[type:id|name]]
     // 2. Note links: //note name//
@@ -1055,12 +1055,12 @@ export default function Notes() {
         const displayName = match[3];
         parts.push(
           <span
-            key={match.index}
-            className="text-amber-500 cursor-pointer hover:text-amber-400 hover:underline transition-colors font-medium"
+            key={`${keyPrefix}-${match.index}`}
+            className="text-blue-400 hover:text-blue-300 cursor-pointer font-medium"
             onClick={() => handleEntityClick(entityType, entityId)}
             data-testid={`entity-ref-${entityType}-${entityId}`}
           >
-            {displayName}
+            [[{displayName}]]
           </span>
         );
       } else if (match[4]) {
@@ -1068,7 +1068,7 @@ export default function Notes() {
         const noteName = match[4];
         parts.push(
           <span
-            key={match.index}
+            key={`${keyPrefix}-${match.index}`}
             className="text-cyan-400 cursor-pointer hover:text-cyan-300 hover:underline transition-colors font-medium"
             onClick={() => handleNoteReferenceClick(noteName, false)}
             data-testid={`note-ref-${noteName}`}
@@ -1081,7 +1081,7 @@ export default function Notes() {
         const noteName = match[5];
         parts.push(
           <span
-            key={match.index}
+            key={`${keyPrefix}-${match.index}`}
             className="text-cyan-400 cursor-pointer hover:text-cyan-300 hover:underline transition-colors italic font-medium"
             onClick={() => handleNoteReferenceClick(noteName, true)}
             data-testid={`note-create-ref-${noteName}`}
@@ -1098,6 +1098,62 @@ export default function Notes() {
     }
 
     return parts.length > 0 ? parts : [content];
+  };
+
+  const formatEntityReferences = (content: string): React.ReactNode => {
+    // Split content by lines to handle bullet points
+    const lines = content.split('\n');
+    
+    return (
+      <div className="space-y-1">
+        {lines.map((line, lineIndex) => {
+          // Check for bullet list items: - or * at start
+          const bulletMatch = line.match(/^(\s*)(-|\*)\s+(.*)$/);
+          if (bulletMatch) {
+            const [, indent, , text] = bulletMatch;
+            const indentLevel = Math.floor(indent.length / 2);
+            return (
+              <div 
+                key={lineIndex} 
+                className="flex items-start gap-2"
+                style={{ paddingLeft: `${indentLevel * 16}px` }}
+              >
+                <span className="text-amber-500 mt-0.5">•</span>
+                <span>{formatInlineReferences(text, `line-${lineIndex}`)}</span>
+              </div>
+            );
+          }
+          
+          // Check for numbered list items: 1. 2. etc.
+          const numberedMatch = line.match(/^(\s*)(\d+)\.\s+(.*)$/);
+          if (numberedMatch) {
+            const [, indent, num, text] = numberedMatch;
+            const indentLevel = Math.floor(indent.length / 2);
+            return (
+              <div 
+                key={lineIndex} 
+                className="flex items-start gap-2"
+                style={{ paddingLeft: `${indentLevel * 16}px` }}
+              >
+                <span className="text-amber-500 font-medium min-w-[1.5rem]">{num}.</span>
+                <span>{formatInlineReferences(text, `line-${lineIndex}`)}</span>
+              </div>
+            );
+          }
+          
+          // Regular line - handle inline references
+          if (line.trim() === '') {
+            return <div key={lineIndex} className="h-4" />;
+          }
+          
+          return (
+            <div key={lineIndex}>
+              {formatInlineReferences(line, `line-${lineIndex}`)}
+            </div>
+          );
+        })}
+      </div>
+    );
   };
 
   const sortedNotes = [...notes]
@@ -1436,7 +1492,7 @@ export default function Notes() {
           <h1 className="text-3xl font-display font-bold text-stone-100 mb-6" data-testid="text-note-read-title">
             {currentNote?.title}
           </h1>
-          <div className="flex-1 text-stone-300 whitespace-pre-wrap leading-relaxed" data-testid="text-note-read-content">
+          <div className="flex-1 text-stone-300 leading-relaxed" data-testid="text-note-read-content">
             {formatEntityReferences(currentNote?.content || "")}
           </div>
         </div>
@@ -1542,28 +1598,22 @@ export default function Notes() {
             className="text-2xl font-display border-none bg-transparent focus-visible:ring-0 px-0 mb-4"
             data-testid="input-note-title"
           />
-          <div className="flex items-center gap-2 mb-2">
-            <ReferencePicker
-              open={referencePickerOpen}
-              onOpenChange={setReferencePickerOpen}
-              onSelect={handleReferenceSelectFromButton}
-              triggerElement={
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="border-stone-700 hover:bg-stone-800"
-                  onClick={handleInsertReferenceClick}
-                  data-testid="button-insert-reference"
-                >
-                  <Link2 className="h-4 w-4 mr-2" />
-                  Insert Reference
-                </Button>
-              }
-            />
-            <span className="text-xs text-stone-500">
-              <kbd className="px-1.5 py-0.5 bg-stone-800 rounded text-stone-400">[[</kbd> entities, <kbd className="px-1.5 py-0.5 bg-stone-800 rounded text-cyan-400">[</kbd> notes
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mb-2 text-xs text-stone-500">
+            <span>
+              <kbd className="px-1.5 py-0.5 bg-stone-800 rounded text-blue-400">[[</kbd> link entities
+            </span>
+            <span>
+              <kbd className="px-1.5 py-0.5 bg-stone-800 rounded text-cyan-400">//</kbd> link notes
+            </span>
+            <span>
+              <kbd className="px-1.5 py-0.5 bg-stone-800 rounded text-amber-400">-</kbd> or <kbd className="px-1.5 py-0.5 bg-stone-800 rounded text-amber-400">1.</kbd> bullets
             </span>
           </div>
+          <ReferencePicker
+            open={referencePickerOpen}
+            onOpenChange={setReferencePickerOpen}
+            onSelect={handleReferenceSelectFromButton}
+          />
           <div className="relative flex-1">
             <Textarea
               ref={textareaRef}
@@ -2343,7 +2393,7 @@ export default function Notes() {
           </DialogHeader>
           <div className="py-4">
             {previewNote?.content ? (
-              <div className="text-stone-300 whitespace-pre-wrap leading-relaxed">
+              <div className="text-stone-300 leading-relaxed">
                 {formatEntityReferences(previewNote.content)}
               </div>
             ) : (
