@@ -1073,6 +1073,22 @@ function DashboardView({ onNavigate }: { onNavigate: (view: AdminView) => void }
           </CardDescription>
         </CardHeader>
       </Card>
+
+      <Card 
+        className="bg-stone-900 border-stone-700 cursor-pointer hover:border-red-600 transition-colors"
+        onClick={() => window.location.href = '/admin/security'}
+        data-testid="card-site-security"
+      >
+        <CardHeader>
+          <div className="h-12 w-12 rounded-lg bg-red-700/20 flex items-center justify-center mb-2">
+            <ShieldCheck className="h-6 w-6 text-red-500" />
+          </div>
+          <CardTitle className="text-red-500">Site Security</CardTitle>
+          <CardDescription className="text-stone-400">
+            Manage users, ban accounts, view activity, and control site-wide updates
+          </CardDescription>
+        </CardHeader>
+      </Card>
     </div>
   );
 }
