@@ -6615,6 +6615,7 @@ export function InitiativeTracker({ open, onOpenChange, sceneId, campaignId, isG
     queryFn: () => api.getSceneInitiative(sceneId!),
     enabled: !!sceneId && open,
     refetchInterval: open ? 3000 : false,
+    staleTime: 2000, // Cache for 2s to prevent flash re-fetches
   });
 
   const entries = initiativeData?.entries || [];
@@ -6630,7 +6631,21 @@ export function InitiativeTracker({ open, onOpenChange, sceneId, campaignId, isG
   const updateMutation = useMutation({
     mutationFn: ({ id, data }: { id: string; data: { value?: number; isHidden?: boolean } }) => 
       api.updateInitiativeEntry(id, data),
-    onSuccess: () => {
+    onMutate: async ({ id, data }) => {
+      await queryClient.cancelQueries({ queryKey: [`/api/scenes/${sceneId}/initiative`] });
+      const previousData = queryClient.getQueryData([`/api/scenes/${sceneId}/initiative`]);
+      queryClient.setQueryData([`/api/scenes/${sceneId}/initiative`], (old: any) => ({
+        ...old,
+        entries: old?.entries?.map((e: any) => e.id === id ? { ...e, ...data } : e) || []
+      }));
+      return { previousData };
+    },
+    onError: (_, __, context) => {
+      if (context?.previousData) {
+        queryClient.setQueryData([`/api/scenes/${sceneId}/initiative`], context.previousData);
+      }
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/scenes/${sceneId}/initiative`] });
     },
   });

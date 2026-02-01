@@ -177,10 +177,13 @@ export function CanvasEditor({
     };
   }, [longPressTimer]);
 
+  // Get user's notes when search is empty, otherwise search
   const { data: searchedNotes = [], isLoading: notesLoading } = useQuery({
     queryKey: ["/api/notes/search", noteSearchQuery],
-    queryFn: () => api.searchNotes(noteSearchQuery),
-    enabled: noteSearchOpen && noteSearchQuery.length > 0,
+    queryFn: () => noteSearchQuery.length > 0 
+      ? api.searchNotes(noteSearchQuery) 
+      : api.getNotes(), // Show all notes when empty
+    enabled: noteSearchOpen,
     staleTime: 30000,
   });
 
@@ -1108,10 +1111,15 @@ export function CanvasEditor({
               ) : (
                 <span 
                   className="text-xs text-stone-400 truncate cursor-text"
+                  onPointerDown={(e) => {
+                    // Prevent parent drag from intercepting the click
+                    e.stopPropagation();
+                  }}
                   onClick={(e) => {
-                    // Single tap on title when in editing mode focuses title
+                    // Click on title enters edit mode directly
                     if (readOnly) return;
                     e.stopPropagation();
+                    setSelectedNodeId(node.id);
                     setEditingNodeId(node.id);
                   }}
                 >{node.title || getDefaultTitle()}</span>
@@ -1748,11 +1756,7 @@ export function CanvasEditor({
                 {notesLoading ? (
                   <div className="flex items-center justify-center py-8 text-stone-500">
                     <Loader2 className="h-5 w-5 animate-spin mr-2" />
-                    Searching...
-                  </div>
-                ) : noteSearchQuery.length === 0 ? (
-                  <div className="text-center py-8 text-stone-500 text-sm">
-                    Type to search for notes
+                    {noteSearchQuery.length > 0 ? 'Searching...' : 'Loading notes...'}
                   </div>
                 ) : searchedNotes.length === 0 ? (
                   <div className="text-center py-8 text-stone-500 text-sm">

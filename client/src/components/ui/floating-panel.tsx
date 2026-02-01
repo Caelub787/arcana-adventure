@@ -32,7 +32,7 @@ export function FloatingPanel({
   const computedDefaultSize = React.useMemo(() => {
     if (defaultSize) return defaultSize;
     const height = typeof window !== "undefined" ? window.innerHeight * 0.8 : 600;
-    return { width: 600, height };
+    return { width: 680, height };
   }, [defaultSize]);
   
   const [position, setPosition] = React.useState(() => {

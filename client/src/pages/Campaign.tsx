@@ -1109,9 +1109,10 @@ export default function Campaign() {
   });
 
   // Load feat trees for species form (to assign racial feat trees)
+  // Use public endpoint so GMs can access feat trees without admin requirement
   const { data: featTrees = [] } = useQuery<FeatTree[]>({
-    queryKey: ['/api/admin/feat-trees'],
-    queryFn: () => api.getFeatTrees(),
+    queryKey: ['/api/feat-trees'],
+    queryFn: () => api.getPublicFeatTrees(),
     enabled: role === 'gm' && speciesFormOpen,
   });
 
@@ -1336,16 +1337,46 @@ export default function Campaign() {
     }
   });
 
-  // Toggle token invisibility mutation
+  // Toggle token invisibility mutation with optimistic updates for instant feedback
   const toggleInvisibilityMutation = useMutation({
     mutationFn: ({ tokenId, isInvisible }: { tokenId: string; isInvisible: boolean }) => 
       api.updateToken(tokenId, { isInvisible } as any),
+    onMutate: async ({ tokenId, isInvisible }) => {
+      // Guard: skip optimistic update if campaign ID is not available
+      if (!effectiveCampaignId) return { previousTokens: undefined };
+      
+      const queryKey = [`/api/campaigns/${effectiveCampaignId}/tokens`];
+      
+      // Cancel any outgoing refetches to avoid overwriting optimistic update
+      await queryClient.cancelQueries({ queryKey });
+      
+      // Snapshot previous value
+      const previousTokens = queryClient.getQueryData(queryKey);
+      
+      // Optimistically update the token
+      queryClient.setQueryData(queryKey, (old: any[]) => 
+        old?.map(token => token.id === tokenId ? { ...token, isInvisible } : token) || []
+      );
+      
+      return { previousTokens, queryKey };
+    },
     onSuccess: (_, { isInvisible }) => {
-      queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${effectiveCampaignId}/tokens`] });
       toast({ title: isInvisible ? 'Token hidden from players' : 'Token visible to players' });
     },
-    onError: () => {
+    onError: (_, __, context) => {
+      // Rollback on error
+      if (context?.previousTokens && context?.queryKey) {
+        queryClient.setQueryData(context.queryKey, context.previousTokens);
+      }
       toast({ title: 'Failed to toggle invisibility', variant: 'destructive' });
+    },
+    onSettled: (_, __, ___, context) => {
+      // Refetch to ensure consistency
+      if (context?.queryKey) {
+        queryClient.invalidateQueries({ queryKey: context.queryKey });
+      } else if (effectiveCampaignId) {
+        queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${effectiveCampaignId}/tokens`] });
+      }
     }
   });
 
