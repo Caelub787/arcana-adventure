@@ -18,7 +18,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { toast } from '@/hooks/use-toast';
-import { Search, Shield, ShieldOff, Users, Clock, User, MapPin, FileText, Eye, Ban, ShieldCheck, X, Calendar, ExternalLink, Radio, Bell, Send, ChevronDown, ChevronRight } from 'lucide-react';
+import { Search, Shield, ShieldOff, Users, Clock, User, MapPin, FileText, Eye, Ban, ShieldCheck, X, Calendar, ExternalLink, Radio, Bell, Send, ChevronDown, ChevronRight, Trash2, Mail } from 'lucide-react';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 
 type BanDuration = 'permanent' | '1day' | '1week' | '1month' | 'custom';
@@ -84,6 +84,8 @@ export default function SiteSecurity() {
   const [customBanDate, setCustomBanDate] = useState('');
   const [userToBan, setUserToBan] = useState<AdminUser | null>(null);
   const [showBroadcastDialog, setShowBroadcastDialog] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [userToDelete, setUserToDelete] = useState<AdminUser | null>(null);
 
   const [notifTitle, setNotifTitle] = useState('');
   const [notifMessage, setNotifMessage] = useState('');
@@ -186,6 +188,30 @@ export default function SiteSecurity() {
         title: variables.isAdmin ? 'Admin Granted' : 'Admin Revoked',
         description: `User admin status has been ${variables.isAdmin ? 'granted' : 'revoked'}.`,
       });
+    },
+    onError: (error: any) => {
+      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    },
+  });
+
+  const deleteUserMutation = useMutation({
+    mutationFn: (userId: string) => api.deleteUser(userId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-users'] });
+      setShowDeleteDialog(false);
+      setUserToDelete(null);
+      setSelectedUser(null);
+      toast({ title: 'Account Deleted', description: 'The user account has been permanently deleted.' });
+    },
+    onError: (error: any) => {
+      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    },
+  });
+
+  const sendPasswordResetMutation = useMutation({
+    mutationFn: (userId: string) => api.sendPasswordResetEmail(userId),
+    onSuccess: () => {
+      toast({ title: 'Email Sent', description: 'Password reset email has been sent to the user.' });
     },
     onError: (error: any) => {
       toast({ title: 'Error', description: error.message, variant: 'destructive' });
@@ -406,6 +432,31 @@ export default function SiteSecurity() {
                 data-testid="button-confirm-broadcast"
               >
                 {broadcastUpdateMutation.isPending ? 'Sending...' : 'Broadcast Update'}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+          <AlertDialogContent className="bg-stone-800 border-stone-700">
+            <AlertDialogHeader>
+              <AlertDialogTitle className="text-red-400">Delete User Account</AlertDialogTitle>
+              <AlertDialogDescription className="text-stone-300">
+                This will permanently delete the account for <span className="font-semibold text-stone-100">@{userToDelete?.username}</span>. 
+                This action cannot be undone. All of the user's data including campaigns, characters, notes, and permissions will be deleted.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel className="bg-stone-700 text-stone-200 hover:bg-stone-600 border-stone-600">
+                Cancel
+              </AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => userToDelete && deleteUserMutation.mutate(userToDelete.id)}
+                disabled={deleteUserMutation.isPending}
+                className="bg-red-600 text-white hover:bg-red-700"
+                data-testid="button-confirm-delete-user"
+              >
+                {deleteUserMutation.isPending ? 'Deleting...' : 'Delete Account'}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
@@ -733,6 +784,40 @@ export default function SiteSecurity() {
                         <ShieldCheck className="h-4 w-4 text-amber-500" />
                         Admin Access
                       </Label>
+                    </div>
+
+                    <div className="border-t border-stone-700 pt-4">
+                      <h4 className="text-sm font-medium text-stone-400 mb-3">Admin Actions</h4>
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => sendPasswordResetMutation.mutate(selectedUser.id)}
+                          disabled={sendPasswordResetMutation.isPending}
+                          className="border-stone-600 text-stone-300 hover:bg-stone-700"
+                          data-testid={`button-send-reset-${selectedUser.id}`}
+                        >
+                          <Mail className="h-4 w-4 mr-2" />
+                          {sendPasswordResetMutation.isPending ? 'Sending...' : 'Send Password Reset'}
+                        </Button>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={() => {
+                            setUserToDelete(selectedUser);
+                            setShowDeleteDialog(true);
+                          }}
+                          disabled={selectedUser.id === currentUser?.id}
+                          className="bg-red-600 hover:bg-red-700"
+                          data-testid={`button-delete-user-${selectedUser.id}`}
+                        >
+                          <Trash2 className="h-4 w-4 mr-2" />
+                          Delete Account
+                        </Button>
+                      </div>
+                      {selectedUser.id === currentUser?.id && (
+                        <p className="text-xs text-stone-500 mt-2">You cannot delete your own account</p>
+                      )}
                     </div>
 
                     <div className="border-t border-stone-700 pt-4">
