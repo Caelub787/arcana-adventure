@@ -748,6 +748,7 @@ export default function Campaign() {
   // Beacon color picker dialog state
   const [beaconColorDialogOpen, setBeaconColorDialogOpen] = useState(false);
   const [pendingBeaconColor, setPendingBeaconColor] = useState('#FBB524');
+  const beaconColorPromptShownRef = useRef(false); // Track if we've already shown the prompt this session
   
   // Initiative tracker state
   const [initiativeTrackerOpen, setInitiativeTrackerOpen] = useState(false);
@@ -1076,13 +1077,14 @@ export default function Campaign() {
     },
   });
 
-  // Show beacon color dialog when user joins and hasn't set a color yet
+  // Show beacon color dialog when user joins and hasn't set a color yet (only once per session)
   useEffect(() => {
-    if (myMembership && !myMembership.beaconColor && !beaconColorDialogOpen && !isNew) {
+    if (myMembership && !myMembership.beaconColor && !beaconColorDialogOpen && !isNew && !beaconColorPromptShownRef.current) {
       // Generate a random color as default suggestion
       const randomColor = '#' + Math.floor(Math.random()*16777215).toString(16).padStart(6, '0').toUpperCase();
       setPendingBeaconColor(randomColor);
       setBeaconColorDialogOpen(true);
+      beaconColorPromptShownRef.current = true; // Mark as shown so it doesn't re-appear
     }
   }, [myMembership, beaconColorDialogOpen, isNew]);
 
