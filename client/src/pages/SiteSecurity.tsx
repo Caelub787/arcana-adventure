@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { useLocation } from 'wouter';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, type AdminUser, type UserActivity, type TermsAndConditions } from '@/lib/api';
@@ -10,6 +11,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
@@ -72,6 +74,7 @@ export default function SiteSecurity() {
   const [, setLocation] = useLocation();
   const { user: currentUser, isAdmin } = useAuth();
   const queryClient = useQueryClient();
+  const isMobile = useIsMobile();
 
   const [mainTab, setMainTab] = useState<'users' | 'notifications' | 'terms'>('users');
   const [activeTab, setActiveTab] = useState<'all' | 'banned'>('all');
@@ -463,30 +466,30 @@ export default function SiteSecurity() {
         </AlertDialog>
 
         <Tabs value={mainTab} onValueChange={(v) => setMainTab(v as 'users' | 'notifications' | 'terms')} className="w-full">
-          <TabsList className="bg-stone-800 border border-stone-700 mb-6">
+          <TabsList className="bg-stone-800 border border-stone-700 mb-6 w-full sm:w-auto">
             <TabsTrigger 
               value="users" 
-              className="data-[state=active]:bg-amber-600 data-[state=active]:text-stone-900"
+              className="data-[state=active]:bg-amber-600 data-[state=active]:text-stone-900 flex-1 sm:flex-initial"
               data-testid="tab-user-management"
             >
-              <Users className="h-4 w-4 mr-2" />
-              User Management
+              <Users className="h-4 w-4 sm:mr-2" />
+              <span className="hidden sm:inline">User Management</span>
             </TabsTrigger>
             <TabsTrigger 
               value="notifications" 
-              className="data-[state=active]:bg-amber-600 data-[state=active]:text-stone-900"
+              className="data-[state=active]:bg-amber-600 data-[state=active]:text-stone-900 flex-1 sm:flex-initial"
               data-testid="tab-push-notifications"
             >
-              <Bell className="h-4 w-4 mr-2" />
-              Push Notifications
+              <Bell className="h-4 w-4 sm:mr-2" />
+              <span className="hidden sm:inline">Push Notifications</span>
             </TabsTrigger>
             <TabsTrigger 
               value="terms" 
-              className="data-[state=active]:bg-amber-600 data-[state=active]:text-stone-900"
+              className="data-[state=active]:bg-amber-600 data-[state=active]:text-stone-900 flex-1 sm:flex-initial"
               data-testid="tab-terms"
             >
-              <FileText className="h-4 w-4 mr-2" />
-              Terms & Conditions
+              <FileText className="h-4 w-4 sm:mr-2" />
+              <span className="hidden sm:inline">Terms & Conditions</span>
             </TabsTrigger>
           </TabsList>
 
@@ -692,6 +695,139 @@ export default function SiteSecurity() {
             </Card>
           </div>
 
+          {/* Mobile Sheet for User Details */}
+          {isMobile && (
+          <Sheet open={!!selectedUser} onOpenChange={(open) => !open && setSelectedUser(null)}>
+            <SheetContent side="right" className="w-full sm:max-w-md bg-stone-900 border-stone-700 overflow-y-auto">
+              <SheetHeader className="pb-4">
+                <SheetTitle className="text-amber-400 flex items-center gap-2">
+                  <User className="h-5 w-5" />
+                  User Details
+                </SheetTitle>
+              </SheetHeader>
+              {selectedUser && (
+                <div className="space-y-4">
+                  <div className="flex items-center gap-3">
+                    <Avatar className="h-12 w-12 border-2 border-stone-600">
+                      <AvatarImage src={selectedUser.avatarUrl || undefined} />
+                      <AvatarFallback className="bg-stone-700 text-amber-400 text-lg">
+                        {selectedUser.username.slice(0, 2).toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="min-w-0">
+                      <h3 className="text-base font-semibold text-stone-100 truncate">{selectedUser.name}</h3>
+                      <p className="text-sm text-stone-400 truncate">@{selectedUser.username}</p>
+                      <p className="text-xs text-stone-500 truncate">{selectedUser.email}</p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3 text-sm">
+                    <div>
+                      <span className="text-stone-500 text-xs">Joined</span>
+                      <p className="text-stone-300 text-sm">{new Date(selectedUser.createdAt).toLocaleDateString()}</p>
+                    </div>
+                    <div>
+                      <span className="text-stone-500 text-xs">Status</span>
+                      <div className="mt-0.5">
+                        {isBanned(selectedUser) ? (
+                          <Badge className="bg-red-600 text-xs">Banned</Badge>
+                        ) : (
+                          <Badge className="bg-green-600 text-xs">Active</Badge>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {isBanned(selectedUser) && (
+                    <div className="p-2 bg-red-950/30 rounded-lg border border-red-900/50">
+                      <h4 className="text-xs font-medium text-red-400 mb-1">Ban Details</h4>
+                      <div className="space-y-0.5 text-xs">
+                        {selectedUser.banExpiresAt ? (
+                          <p className="text-stone-300">Expires: {new Date(selectedUser.banExpiresAt).toLocaleDateString()}</p>
+                        ) : (
+                          <p className="text-red-400">Permanent ban</p>
+                        )}
+                        {selectedUser.banReason && (
+                          <p className="text-stone-400 truncate">Reason: {selectedUser.banReason}</p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                    <Checkbox
+                      id={`admin-mobile-${selectedUser.id}`}
+                      checked={selectedUser.isAdmin || false}
+                      onCheckedChange={(checked) => {
+                        setAdminMutation.mutate({
+                          userId: selectedUser.id,
+                          isAdmin: !!checked,
+                        });
+                      }}
+                      disabled={selectedUser.id === currentUser?.id}
+                    />
+                    <Label htmlFor={`admin-mobile-${selectedUser.id}`} className="text-stone-300 flex items-center gap-2 cursor-pointer text-sm">
+                      <ShieldCheck className="h-4 w-4 text-amber-500" />
+                      Admin Access
+                    </Label>
+                  </div>
+
+                  <div className="border-t border-stone-700 pt-3">
+                    <h4 className="text-xs font-medium text-stone-400 mb-2">Admin Actions</h4>
+                    <div className="flex flex-col gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => sendPasswordResetMutation.mutate(selectedUser.id)}
+                        disabled={sendPasswordResetMutation.isPending}
+                        className="border-stone-600 text-stone-300 hover:bg-stone-700 w-full justify-start"
+                      >
+                        <Mail className="h-4 w-4 mr-2" />
+                        {sendPasswordResetMutation.isPending ? 'Sending...' : 'Send Password Reset'}
+                      </Button>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => {
+                          setUserToDelete(selectedUser);
+                          setShowDeleteDialog(true);
+                        }}
+                        disabled={selectedUser.id === currentUser?.id}
+                        className="bg-red-600 hover:bg-red-700 w-full justify-start"
+                      >
+                        <Trash2 className="h-4 w-4 mr-2" />
+                        Delete Account
+                      </Button>
+                    </div>
+                  </div>
+
+                  {userActivity && (
+                    <div className="border-t border-stone-700 pt-3">
+                      <h4 className="text-xs font-medium text-stone-400 mb-2">User Activity</h4>
+                      <div className="space-y-2 text-xs">
+                        <p className="text-stone-300">
+                          <MapPin className="inline h-3 w-3 mr-1" />
+                          {userActivity.campaigns.length} campaigns
+                        </p>
+                        <p className="text-stone-300">
+                          <User className="inline h-3 w-3 mr-1" />
+                          {userActivity.characters.length} characters
+                        </p>
+                        <p className="text-stone-300">
+                          <FileText className="inline h-3 w-3 mr-1" />
+                          {userActivity.notes.length} notes
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </SheetContent>
+          </Sheet>
+          )}
+
+          {/* Desktop Panel for User Details */}
+          {!isMobile && (
           <div className="lg:col-span-1">
             {selectedUser ? (
               <Card className="bg-stone-800/90 border-stone-700 sticky top-6">
@@ -926,6 +1062,7 @@ export default function SiteSecurity() {
               </Card>
             )}
             </div>
+          )}
           </div>
           </TabsContent>
 
