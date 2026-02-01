@@ -262,15 +262,13 @@ export function ReferenceInlineDisplay({ content }: { content: string }) {
 
     const [_, type, id, label] = match;
     parts.push(
-      <Badge
+      <span
         key={`${type}-${id}-${match.index}`}
-        variant="outline"
-        className={`inline-flex items-center gap-1 mx-0.5 text-xs cursor-pointer hover:opacity-80 ${getEntityColor(type)}`}
-        data-testid={`reference-badge-${id}`}
+        className="text-blue-400 hover:text-blue-300 cursor-pointer font-medium"
+        data-testid={`reference-link-${id}`}
       >
-        {getEntityIcon(type)}
-        {label}
-      </Badge>
+        [[{label}]]
+      </span>
     );
 
     lastIndex = match.index + match[0].length;
