@@ -3745,6 +3745,27 @@ export default function Campaign() {
           data-testid="gm-character-hotbar"
         >
           <div className="flex items-center gap-2 bg-stone-900/95 border border-stone-700 rounded-xl p-2 shadow-xl backdrop-blur-sm">
+            {/* Unassign button - only visible when a character is inspected */}
+            {inspectedChar && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => setInspectedChar(null)}
+                      className="w-10 h-10 rounded-lg border border-stone-600 bg-stone-800/50 hover:bg-red-900/50 hover:border-red-600 text-stone-400 hover:text-red-400 mr-2"
+                      data-testid="button-unassign-character"
+                    >
+                      <X className="h-5 w-5" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="bg-stone-800 border-stone-700 text-stone-200">
+                    <p>Unassign {inspectedChar.name}</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
             {gmCharacterHotbar.map((characterId, index) => {
               const hotbarChar = getHotbarCharacter(index);
               const hpPercent = hotbarChar ? Math.max(0, Math.min(100, (hotbarChar.hp / hotbarChar.maxHp) * 100)) : 0;

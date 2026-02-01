@@ -332,6 +332,9 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
   const doubleClickTimerRef = useRef<NodeJS.Timeout | null>(null);
   const pendingDoubleClickTokenRef = useRef<typeof tokens[0] | null>(null);
   
+  // Grid double-click tracking for beacon (in select mode)
+  const gridDoubleClickRef = useRef<{ cellKey: string; lastClickTime: number }>({ cellKey: '', lastClickTime: 0 });
+  
   // Long-press delete mode for thrown items (mobile-friendly)
   const [thrownItemDeleteMode, setThrownItemDeleteMode] = useState<string | null>(null);
   const thrownItemHoldTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -1076,8 +1079,8 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
       }
     }
     
-    // If we're in highlight mode and didn't drag, create a beacon at the grid cell
-    if (selectionMode === 'highlight' && !didDragRef.current && onBeacon) {
+    // Double-click on empty grid space in select mode triggers beacon
+    if (selectionMode === 'select' && !didDragRef.current && onBeacon) {
       const container = containerRef.current;
       if (container) {
         const rect = container.getBoundingClientRect();
@@ -1090,7 +1093,28 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
         const cellX = Math.floor(worldX / effectiveGridSize);
         const cellY = Math.floor(worldY / effectiveGridSize);
         const cellKey = `${cellX},${cellY}`;
-        onBeacon(cellKey);
+        
+        // Check if there's a token at this position - only beacon on empty grid
+        const tokenAtCell = tokens.find(t => {
+          const tokenCellX = Math.floor(t.x / effectiveGridSize);
+          const tokenCellY = Math.floor(t.y / effectiveGridSize);
+          return tokenCellX === cellX && tokenCellY === cellY;
+        });
+        
+        if (!tokenAtCell) {
+          const now = Date.now();
+          const lastClick = gridDoubleClickRef.current;
+          
+          if (lastClick.cellKey === cellKey && now - lastClick.lastClickTime < 400) {
+            // Double-click detected - trigger beacon
+            onBeacon(cellKey);
+            // Reset to prevent triple-click from triggering another beacon
+            gridDoubleClickRef.current = { cellKey: '', lastClickTime: 0 };
+          } else {
+            // First click - record for potential double-click
+            gridDoubleClickRef.current = { cellKey, lastClickTime: now };
+          }
+        }
       }
     }
     
@@ -1112,10 +1136,9 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
     }
     
     // Clear multi-select when clicking on empty space (didn't drag and not in special mode)
-    // Only clear if we didn't drag (click without movement) and not in AoE/highlight/target mode
+    // Only clear if we didn't drag (click without movement) and not in AoE/target mode
     if (!didDragRef.current && 
         !aoeTargetState?.active && 
-        selectionMode !== 'highlight' && 
         selectionMode !== 'target' &&
         selectedTokenIds.size > 0) {
       setSelectedTokenIds(new Set());
@@ -5909,56 +5932,34 @@ export function SelectionModeButtons({
             </Tooltip>
           </TooltipProvider>
           
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  onClick={() => onModeChange('target')}
-                  className={`
-                    w-9 h-9 md:w-10 md:h-10 rounded-lg border-2 flex items-center justify-center
-                    transition-all duration-200 shadow-lg backdrop-blur-sm
-                    ${getColorClasses('red', selectionMode === 'target')}
-                    ${selectionMode === 'target' ? 'scale-110 ring-2 ring-white/20' : 'hover:scale-105'}
-                  `}
-                  aria-label="Target mode"
-                  data-testid="selection-mode-target"
-                >
-                  <Target className="h-4 w-4 md:h-5 md:w-5" />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="right">
-                <p className="font-bold">Target</p>
-                <p className="text-xs text-stone-400">Mark a token for attacks</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+          {/* Target Button - only show when character is assigned */}
+          {character && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={() => onModeChange('target')}
+                    className={`
+                      w-9 h-9 md:w-10 md:h-10 rounded-lg border-2 flex items-center justify-center
+                      transition-all duration-200 shadow-lg backdrop-blur-sm
+                      ${getColorClasses('red', selectionMode === 'target')}
+                      ${selectionMode === 'target' ? 'scale-110 ring-2 ring-white/20' : 'hover:scale-105'}
+                    `}
+                    aria-label="Target mode"
+                    data-testid="selection-mode-target"
+                  >
+                    <Target className="h-4 w-4 md:h-5 md:w-5" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="right">
+                  <p className="font-bold">Target</p>
+                  <p className="text-xs text-stone-400">Mark a token for attacks</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
           
-          {/* Grid Highlight Button */}
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  onClick={() => onModeChange('highlight')}
-                  className={`
-                    w-9 h-9 md:w-10 md:h-10 rounded-lg border-2 flex items-center justify-center
-                    transition-all duration-200 shadow-lg backdrop-blur-sm
-                    ${getColorClasses('amber', selectionMode === 'highlight')}
-                    ${selectionMode === 'highlight' ? 'scale-110 ring-2 ring-white/20' : 'hover:scale-105'}
-                  `}
-                  aria-label="Highlight mode"
-                  data-testid="selection-mode-highlight"
-                >
-                  <Highlighter className="h-4 w-4 md:h-5 md:w-5" />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="right">
-                <p className="font-bold">Beacon</p>
-                <p className="text-xs text-stone-400">Click grid to ping a location</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-          
-          {/* Spell Target Button */}
+          {/* Spell Target Button - only show when character is assigned */}
           {character && (
             <TooltipProvider>
               <Tooltip>
