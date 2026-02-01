@@ -6749,6 +6749,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const request = await storage.createFriendRequest(req.session.userId!, recipient.id, message);
+      
+      // Create a notification for the recipient
+      const sender = await storage.getUser(req.session.userId!);
+      if (sender) {
+        await storage.createUserNotification({
+          userId: recipient.id,
+          type: "friend_request",
+          title: "New Friend Request",
+          message: `${sender.displayName || sender.username} sent you a friend request`,
+          data: { requestId: request.id, senderId: sender.id, senderUsername: sender.username },
+        });
+      }
+      
       res.status(201).json(request);
     } catch (e) {
       console.error("Failed to send friend request:", e);
