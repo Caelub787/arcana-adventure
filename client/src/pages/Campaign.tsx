@@ -742,7 +742,12 @@ export default function Campaign() {
     gridX: number;
     gridY: number;
     username: string;
+    beaconColor?: string;
   }>>([]);
+  
+  // Beacon color picker dialog state
+  const [beaconColorDialogOpen, setBeaconColorDialogOpen] = useState(false);
+  const [pendingBeaconColor, setPendingBeaconColor] = useState('#FBB524');
   
   // Initiative tracker state
   const [initiativeTrackerOpen, setInitiativeTrackerOpen] = useState(false);
@@ -1054,6 +1059,32 @@ export default function Campaign() {
     enabled: !!effectiveCampaignId && !isNew,
     staleTime: 0, // Always refetch to get latest members
   });
+
+  // Current user's membership (for beacon color)
+  const myMembership = (members as any[] | undefined)?.find((m: any) => m.userId === user?.id);
+
+  // Mutation to update beacon color
+  const updateBeaconColorMutation = useMutation({
+    mutationFn: (beaconColor: string) => api.updateBeaconColor(effectiveCampaignId!, beaconColor),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${effectiveCampaignId}/members`] });
+      setBeaconColorDialogOpen(false);
+      toast({ title: "Beacon Color Updated", description: "Your beacon color has been saved" });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to update beacon color", variant: "destructive" });
+    },
+  });
+
+  // Show beacon color dialog when user joins and hasn't set a color yet
+  useEffect(() => {
+    if (myMembership && !myMembership.beaconColor && !beaconColorDialogOpen && !isNew) {
+      // Generate a random color as default suggestion
+      const randomColor = '#' + Math.floor(Math.random()*16777215).toString(16).padStart(6, '0').toUpperCase();
+      setPendingBeaconColor(randomColor);
+      setBeaconColorDialogOpen(true);
+    }
+  }, [myMembership, beaconColorDialogOpen, isNew]);
 
   // Load current user's permissions for all characters in the campaign
   const { data: myPermissions } = useQuery({
@@ -2133,10 +2164,10 @@ export default function Campaign() {
         
         // Handle beacon messages from all players (including self for consistency)
         if (data.type === 'beacon') {
-          const { id, gridX, gridY, username } = data;
+          const { id, gridX, gridY, username, beaconColor } = data;
           
-          // Add the new beacon
-          setActiveBeacons(prev => [...prev, { id, gridX, gridY, username }]);
+          // Add the new beacon with its color
+          setActiveBeacons(prev => [...prev, { id, gridX, gridY, username, beaconColor }]);
           
           // Remove beacon after animation completes (~1.5 seconds)
           setTimeout(() => {
@@ -2749,6 +2780,30 @@ export default function Campaign() {
         <div className="fixed bottom-4 left-4 z-40 bg-stone-900/90 border border-stone-700 rounded-lg p-3 text-stone-300 text-sm">
           No character assigned
         </div>
+      )}
+
+      {/* Beacon Color Indicator Button - allows players to change their beacon color */}
+      {myMembership && (
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                onClick={() => {
+                  setPendingBeaconColor(myMembership.beaconColor || '#FBB524');
+                  setBeaconColorDialogOpen(true);
+                }}
+                className="fixed bottom-4 right-4 z-40 w-10 h-10 rounded-full p-0 border-2 border-stone-700 hover:border-amber-500 transition-colors"
+                style={{ backgroundColor: myMembership.beaconColor || '#FBB524' }}
+                data-testid="button-change-beacon-color"
+              >
+                <Radio className="h-4 w-4 text-white" style={{ filter: 'drop-shadow(0 0 2px black)' }} />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="left" className="bg-stone-800 border-stone-700 text-stone-200">
+              <p>Change Beacon Color</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
       )}
 
       {/* Scenes Management Sheet (GM Only) */}
@@ -3880,6 +3935,68 @@ export default function Campaign() {
               )}
             </div>
           </ScrollArea>
+        </DialogContent>
+      </Dialog>
+      
+      {/* Beacon Color Picker Dialog */}
+      <Dialog open={beaconColorDialogOpen} onOpenChange={setBeaconColorDialogOpen}>
+        <DialogContent className="bg-stone-900 border-stone-700 text-stone-200 max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-amber-500 font-display text-xl">Choose Your Beacon Color</DialogTitle>
+            <DialogDescription className="text-stone-400">
+              Select a color for your beacon clicks on the battle map. Other players will see your beacons in this color.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 mt-4">
+            <div className="flex items-center gap-4">
+              <div 
+                className="w-16 h-16 rounded-full border-2 border-stone-600"
+                style={{ backgroundColor: pendingBeaconColor }}
+              />
+              <div className="flex-1 space-y-2">
+                <Label htmlFor="beacon-color" className="text-stone-300">Pick a color</Label>
+                <Input
+                  id="beacon-color"
+                  type="color"
+                  value={pendingBeaconColor}
+                  onChange={(e) => setPendingBeaconColor(e.target.value.toUpperCase())}
+                  className="h-10 p-1 bg-stone-800 border-stone-700 cursor-pointer"
+                  data-testid="input-beacon-color"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-8 gap-2">
+              {['#FF5500', '#FF0000', '#00FF00', '#0000FF', '#FFFF00', '#FF00FF', '#00FFFF', '#FBB524',
+                '#E11D48', '#7C3AED', '#2563EB', '#059669', '#D97706', '#EC4899', '#8B5CF6', '#FFFFFF'].map((color) => (
+                <button
+                  key={color}
+                  onClick={() => setPendingBeaconColor(color)}
+                  className={`w-8 h-8 rounded-full border-2 transition-transform hover:scale-110 ${pendingBeaconColor === color ? 'border-amber-500 ring-2 ring-amber-500/50' : 'border-stone-600'}`}
+                  style={{ backgroundColor: color }}
+                  data-testid={`preset-color-${color.replace('#', '')}`}
+                />
+              ))}
+            </div>
+          </div>
+          <div className="flex gap-2 justify-end mt-6">
+            <Button
+              variant="ghost"
+              onClick={() => setBeaconColorDialogOpen(false)}
+              className="text-stone-400 hover:text-stone-200"
+              data-testid="button-cancel-beacon-color"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => updateBeaconColorMutation.mutate(pendingBeaconColor)}
+              disabled={updateBeaconColorMutation.isPending}
+              className="bg-amber-600 hover:bg-amber-700 text-white"
+              data-testid="button-save-beacon-color"
+            >
+              {updateBeaconColorMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              Save Color
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

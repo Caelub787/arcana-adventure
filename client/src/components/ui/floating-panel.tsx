@@ -180,7 +180,8 @@ export function FloatingPanel({
   const resizeHandleBase = "absolute bg-transparent hover:bg-amber-500/30 transition-colors";
   const cornerSize = 12;
   const edgeThickness = 6;
-  const headerHeight = 44;
+  const headerHeight = isMinimized ? 32 : 44;
+  const minimizedMaxWidth = 180;
 
   return (
     <div
@@ -193,7 +194,7 @@ export function FloatingPanel({
       style={{
         left: position.x,
         top: position.y,
-        width: size.width,
+        width: isMinimized ? minimizedMaxWidth : size.width,
         height: isMinimized ? headerHeight : size.height,
         zIndex: isFullscreen ? 100 : zIndex,
       }}
@@ -201,7 +202,8 @@ export function FloatingPanel({
     >
       <div
         className={cn(
-          "flex items-center justify-between px-4 py-2 bg-stone-800 border-b border-stone-700 cursor-grab select-none shrink-0",
+          "flex items-center justify-between bg-stone-800 border-b border-stone-700 cursor-grab select-none shrink-0",
+          isMinimized ? "px-2 py-1 gap-1" : "px-4 py-2",
           isDragging && "cursor-grabbing"
         )}
         onPointerDown={handleDragStart}
@@ -211,40 +213,51 @@ export function FloatingPanel({
         onDoubleClick={handleDoubleClick}
         data-testid="floating-panel-header"
       >
-        <div className="flex items-center gap-2 text-amber-500 font-display text-lg truncate pr-4">
-          <GripHorizontal className="h-4 w-4 text-stone-500 shrink-0" />
+        <div className={cn(
+          "flex items-center text-amber-500 font-display truncate min-w-0",
+          isMinimized ? "gap-1 text-sm pr-1" : "gap-2 text-lg pr-4"
+        )}>
+          {!isMinimized && <GripHorizontal className="h-4 w-4 text-stone-500 shrink-0" />}
           <span className="truncate">{title}</span>
         </div>
-        <div className="flex items-center gap-1 shrink-0">
+        <div className={cn("flex items-center shrink-0", isMinimized ? "gap-0" : "gap-1")}>
           <button
             onClick={toggleMinimize}
-            className="p-1 rounded hover:bg-stone-700 transition-colors text-stone-400 hover:text-stone-200"
+            className={cn(
+              "rounded hover:bg-stone-700 transition-colors text-stone-400 hover:text-stone-200",
+              isMinimized ? "p-0.5" : "p-1"
+            )}
             data-no-drag
             data-testid="floating-panel-minimize"
             title={isMinimized ? "Restore" : "Minimize"}
           >
-            <Minus className="h-5 w-5" />
+            <Minus className={isMinimized ? "h-3.5 w-3.5" : "h-5 w-5"} />
           </button>
-          <button
-            onClick={toggleFullscreen}
-            className="p-1 rounded hover:bg-stone-700 transition-colors text-stone-400 hover:text-stone-200"
-            data-no-drag
-            data-testid="floating-panel-fullscreen"
-            title={isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
-          >
-            {isFullscreen ? (
-              <Minimize2 className="h-5 w-5" />
-            ) : (
-              <Maximize2 className="h-5 w-5" />
-            )}
-          </button>
+          {!isMinimized && (
+            <button
+              onClick={toggleFullscreen}
+              className="p-1 rounded hover:bg-stone-700 transition-colors text-stone-400 hover:text-stone-200"
+              data-no-drag
+              data-testid="floating-panel-fullscreen"
+              title={isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
+            >
+              {isFullscreen ? (
+                <Minimize2 className="h-5 w-5" />
+              ) : (
+                <Maximize2 className="h-5 w-5" />
+              )}
+            </button>
+          )}
           <button
             onClick={onClose}
-            className="p-1 rounded hover:bg-stone-700 transition-colors text-stone-400 hover:text-stone-200"
+            className={cn(
+              "rounded hover:bg-stone-700 transition-colors text-stone-400 hover:text-stone-200",
+              isMinimized ? "p-0.5" : "p-1"
+            )}
             data-no-drag
             data-testid="floating-panel-close"
           >
-            <X className="h-5 w-5" />
+            <X className={isMinimized ? "h-3.5 w-3.5" : "h-5 w-5"} />
           </button>
         </div>
       </div>

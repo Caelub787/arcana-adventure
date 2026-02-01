@@ -1229,6 +1229,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const userCampaign = (ws as any).campaigns.get(campaignId);
           if (!userCampaign) return;
           
+          // Get the user's beacon color from their membership
+          const membership = await storage.getCampaignMembership(authenticatedUserId, campaignId);
+          const beaconColor = membership?.beaconColor || '#FBB524'; // Default amber color
+          
           // Broadcast beacon to ALL campaign members (including sender for consistency)
           const room = campaignRooms.get(campaignId);
           if (room) {
@@ -1238,7 +1242,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
               userId: authenticatedUserId,
               username,
               gridX,
-              gridY
+              gridY,
+              beaconColor
             });
             
             room.forEach((client) => {
@@ -3081,6 +3086,42 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (err) {
       console.error('Error setting member role:', err);
       res.status(500).json({ error: "Failed to update member role" });
+    }
+  });
+
+  // Update member beacon color (player can update their own color)
+  app.patch("/api/campaigns/:campaignId/beacon-color", requireAuth, async (req, res) => {
+    try {
+      const { campaignId } = req.params;
+      const { beaconColor } = req.body;
+      const userId = req.session.userId!;
+      
+      // Validate color format (hex color)
+      if (!beaconColor || !/^#[0-9A-Fa-f]{6}$/.test(beaconColor)) {
+        return res.status(400).json({ error: "Invalid color format. Must be a hex color like #FF5500" });
+      }
+      
+      // Check if user is a member of this campaign
+      const membership = await storage.getCampaignMembership(userId, campaignId);
+      const campaign = await storage.getCampaign(campaignId);
+      
+      if (!membership && campaign?.gmUserId !== userId) {
+        return res.status(403).json({ error: "Not a member of this campaign" });
+      }
+      
+      const updatedMember = await storage.updateMemberBeaconColor(campaignId, userId, beaconColor);
+      
+      // Broadcast member update to all campaign members
+      const updatedMembers = await storage.getCampaignMembers(campaignId);
+      broadcastToCampaign(campaignId, {
+        type: "members_updated",
+        members: updatedMembers
+      });
+      
+      res.json(updatedMember);
+    } catch (err) {
+      console.error('Error updating beacon color:', err);
+      res.status(500).json({ error: "Failed to update beacon color" });
     }
   });
 
@@ -6672,6 +6713,85 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (e) {
       console.error("Failed to search notes:", e);
       res.status(500).json({ error: "Failed to search notes" });
+    }
+  });
+
+  // ========== GOOGLE DOCS SYNC ROUTES ==========
+  
+  // List Google Docs for import selection
+  app.get("/api/notes/drive-files", requireAuth, async (req, res) => {
+    try {
+      const { listGoogleDocs } = await import("./googleDrive.js");
+      const docs = await listGoogleDocs(50);
+      res.json(docs);
+    } catch (e: any) {
+      console.error("Failed to list Google Docs:", e);
+      if (e.message?.includes("not connected")) {
+        return res.status(400).json({ error: "Google Drive not connected. Please connect it in settings." });
+      }
+      res.status(500).json({ error: "Failed to list Google Docs" });
+    }
+  });
+
+  // Export a note to Google Docs
+  app.post("/api/notes/:id/export-to-drive", requireAuth, async (req, res) => {
+    try {
+      const access = await storage.canAccessNote(req.session.userId!, req.params.id);
+      if (!access.canAccess) {
+        return res.status(403).json({ error: "Not authorized to access this note" });
+      }
+      
+      const note = await storage.getNote(req.params.id);
+      if (!note) {
+        return res.status(404).json({ error: "Note not found" });
+      }
+      
+      const { exportNoteToGoogleDoc } = await import("./googleDrive.js");
+      const { existingDocId } = req.body || {};
+      const result = await exportNoteToGoogleDoc(note.title, note.content || '', existingDocId);
+      
+      res.json({
+        success: true,
+        docId: result.docId,
+        webViewLink: result.webViewLink,
+      });
+    } catch (e: any) {
+      console.error("Failed to export note to Google Docs:", e);
+      if (e.message?.includes("not connected")) {
+        return res.status(400).json({ error: "Google Drive not connected. Please connect it in settings." });
+      }
+      res.status(500).json({ error: "Failed to export note to Google Docs" });
+    }
+  });
+
+  // Import a Google Doc as a new note
+  app.post("/api/notes/import-from-drive", requireAuth, async (req, res) => {
+    try {
+      const { docId, folderId, campaignId } = req.body;
+      if (!docId) {
+        return res.status(400).json({ error: "Document ID is required" });
+      }
+      
+      const { importGoogleDoc } = await import("./googleDrive.js");
+      const { title, content } = await importGoogleDoc(docId);
+      
+      // Create a new note with the imported content
+      const note = await storage.createNote({
+        title,
+        content,
+        type: "markdown",
+        userId: req.session.userId!,
+        folderId: folderId || null,
+        campaignId: campaignId || null,
+      });
+      
+      res.status(201).json(note);
+    } catch (e: any) {
+      console.error("Failed to import Google Doc:", e);
+      if (e.message?.includes("not connected")) {
+        return res.status(400).json({ error: "Google Drive not connected. Please connect it in settings." });
+      }
+      res.status(500).json({ error: "Failed to import Google Doc" });
     }
   });
 

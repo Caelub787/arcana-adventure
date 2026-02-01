@@ -1,5 +1,12 @@
 // API client for backend communication
 
+export interface GoogleDocInfo {
+  id: string;
+  name: string;
+  modifiedTime?: string;
+  webViewLink?: string;
+}
+
 export interface User {
   id: string;
   email: string;
@@ -811,6 +818,13 @@ class ApiClient {
     return this.request(`/campaigns/${campaignId}/members/${memberId}/role`, {
       method: 'PATCH',
       body: JSON.stringify({ role }),
+    });
+  }
+
+  async updateBeaconColor(campaignId: string, beaconColor: string): Promise<CampaignMember> {
+    return this.request(`/campaigns/${campaignId}/beacon-color`, {
+      method: 'PATCH',
+      body: JSON.stringify({ beaconColor }),
     });
   }
   
@@ -1643,6 +1657,25 @@ class ApiClient {
 
   async deleteNote(id: string): Promise<{ success: boolean }> {
     return this.request(`/notes/${id}`, { method: 'DELETE' });
+  }
+
+  // Google Docs sync endpoints
+  async getDriveFiles(): Promise<GoogleDocInfo[]> {
+    return this.request('/notes/drive-files');
+  }
+
+  async exportNoteToDrive(noteId: string, existingDocId?: string): Promise<{ success: boolean; docId: string; webViewLink: string }> {
+    return this.request(`/notes/${noteId}/export-to-drive`, {
+      method: 'POST',
+      body: JSON.stringify({ existingDocId }),
+    });
+  }
+
+  async importFromDrive(docId: string, folderId?: string, campaignId?: string): Promise<Note> {
+    return this.request('/notes/import-from-drive', {
+      method: 'POST',
+      body: JSON.stringify({ docId, folderId, campaignId }),
+    });
   }
 
   // Note Reference endpoints

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, Note, NoteFolder, NoteShare, UserProfile, SystemSpell, SystemSkill, SystemTrait, SystemSpecies } from "@/lib/api";
+import { api, Note, NoteFolder, NoteShare, UserProfile, SystemSpell, SystemSkill, SystemTrait, SystemSpecies, GoogleDocInfo } from "@/lib/api";
 import { useAuth } from "@/lib/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
@@ -71,11 +71,15 @@ import {
   Grid3X3,
   Network,
   List,
+  CloudUpload,
+  CloudDownload,
+  ExternalLink,
 } from "lucide-react";
 import { ReferencePicker, NoteOnlyPicker } from "@/components/notes/ReferencePicker";
 import { CanvasEditor, CanvasData } from "@/components/notes/CanvasEditor";
 import { NotesGraph } from "@/components/notes/NotesGraph";
 import { NoteTabs, useNoteTabs, OpenNote } from "@/components/notes/NoteTabs";
+import { FormattingToolbar, renderFormattedText, getFontClass, type NoteFont } from "@/components/notes/FormattingToolbar";
 import type { SearchableEntity } from "@/lib/api";
 
 interface CampaignNotesPanelProps {
@@ -337,6 +341,7 @@ export function CampaignNotesPanel({
 
   const [noteTitle, setNoteTitle] = useState("");
   const [noteContent, setNoteContent] = useState("");
+  const [noteFont, setNoteFont] = useState<NoteFont>("inherit");
   const [canvasData, setCanvasData] = useState<CanvasData>({ nodes: [], connections: [] });
   const debouncedTitle = useDebouncedValue(noteTitle, 1000);
   const debouncedContent = useDebouncedValue(noteContent, 1000);
@@ -357,6 +362,13 @@ export function CampaignNotesPanel({
 
   const [notePreviewDialogOpen, setNotePreviewDialogOpen] = useState(false);
   const [previewNote, setPreviewNote] = useState<Note | null>(null);
+
+  // Google Drive sync state
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [driveFiles, setDriveFiles] = useState<GoogleDocInfo[]>([]);
+  const [driveFilesLoading, setDriveFilesLoading] = useState(false);
+  const [selectedDriveFile, setSelectedDriveFile] = useState<string | null>(null);
+  const [exportingNoteId, setExportingNoteId] = useState<string | null>(null);
 
   // Note tabs state
   const {
@@ -579,6 +591,89 @@ export function CampaignNotesPanel({
     onError: (err: any) =>
       toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
+
+  // Google Drive export mutation
+  const exportToDriveMutation = useMutation({
+    mutationFn: (noteId: string) => api.exportNoteToDrive(noteId),
+    onSuccess: (data) => {
+      setExportingNoteId(null);
+      toast({ 
+        title: "Exported to Google Docs",
+        description: "Note has been saved to your Google Drive.",
+        action: (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => window.open(data.webViewLink, '_blank')}
+          >
+            <ExternalLink className="h-3 w-3 mr-1" /> Open
+          </Button>
+        ),
+      });
+    },
+    onError: (err: any) => {
+      setExportingNoteId(null);
+      toast({
+        title: "Export failed",
+        description: err.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Google Drive import mutation
+  const importFromDriveMutation = useMutation({
+    mutationFn: ({ docId, folderId, campaignId }: { docId: string; folderId?: string; campaignId?: string }) =>
+      api.importFromDrive(docId, folderId, campaignId),
+    onSuccess: (note) => {
+      setImportDialogOpen(false);
+      setSelectedDriveFile(null);
+      queryClient.invalidateQueries({ queryKey: ["/api/notes"] });
+      toast({ title: "Note imported from Google Docs" });
+      setSelectedNoteId(note.id);
+    },
+    onError: (err: any) =>
+      toast({
+        title: "Import failed",
+        description: err.message,
+        variant: "destructive",
+      }),
+  });
+
+  // Handler to open import dialog and fetch drive files
+  const handleOpenImportDialog = async () => {
+    setImportDialogOpen(true);
+    setDriveFilesLoading(true);
+    setSelectedDriveFile(null);
+    try {
+      const files = await api.getDriveFiles();
+      setDriveFiles(files);
+    } catch (err: any) {
+      toast({
+        title: "Failed to load Google Docs",
+        description: err.message,
+        variant: "destructive",
+      });
+    } finally {
+      setDriveFilesLoading(false);
+    }
+  };
+
+  // Handler to export current note
+  const handleExportToDrive = (id: string) => {
+    setExportingNoteId(id);
+    exportToDriveMutation.mutate(id);
+  };
+
+  // Handler to import selected file
+  const handleImportFromDrive = () => {
+    if (!selectedDriveFile) return;
+    importFromDriveMutation.mutate({
+      docId: selectedDriveFile,
+      folderId: selectedFolderId ?? undefined,
+      campaignId: campaignId,
+    });
+  };
 
   useEffect(() => {
     if (selectedNoteId && currentNote && (debouncedTitle !== currentNote.title || debouncedContent !== currentNote.content)) {
@@ -953,7 +1048,8 @@ export function CampaignNotesPanel({
 
     while ((match = combinedRegex.exec(content)) !== null) {
       if (match.index > lastIndex) {
-        parts.push(content.slice(lastIndex, match.index));
+        const plainText = content.slice(lastIndex, match.index);
+        parts.push(...renderFormattedText(plainText, `panel-plain-${lastIndex}`));
       }
       
       if (match[1] && match[2] && match[3]) {
@@ -1001,10 +1097,11 @@ export function CampaignNotesPanel({
     }
 
     if (lastIndex < content.length) {
-      parts.push(content.slice(lastIndex));
+      const plainText = content.slice(lastIndex);
+      parts.push(...renderFormattedText(plainText, `panel-plain-${lastIndex}`));
     }
 
-    return parts.length > 0 ? parts : [content];
+    return parts.length > 0 ? parts : renderFormattedText(content, "panel-content");
   };
 
   const rootFolders = folders.filter((f) => !f.parentId);
@@ -1218,6 +1315,22 @@ export function CampaignNotesPanel({
                             <Share2 className="h-3 w-3 mr-2" />
                             Share
                           </DropdownMenuItem>
+                          {note.type !== 'canvas' && (
+                            <DropdownMenuItem
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleExportToDrive(note.id);
+                              }}
+                              disabled={exportingNoteId === note.id}
+                            >
+                              {exportingNoteId === note.id ? (
+                                <Loader2 className="h-3 w-3 mr-2 animate-spin" />
+                              ) : (
+                                <CloudUpload className="h-3 w-3 mr-2" />
+                              )}
+                              Export to Drive
+                            </DropdownMenuItem>
+                          )}
                           <DropdownMenuSeparator className="bg-stone-700" />
                           <DropdownMenuItem
                             onClick={(e) => {
@@ -1252,6 +1365,15 @@ export function CampaignNotesPanel({
       </ScrollArea>
 
       <div className="p-2 border-t border-stone-700 flex gap-1">
+        <Button
+          size="sm"
+          onClick={handleOpenImportDialog}
+          className="h-7 text-xs bg-blue-700 hover:bg-blue-600"
+          title="Import from Google Docs"
+          data-testid="panel-button-import-from-drive"
+        >
+          <CloudDownload className="h-3 w-3" />
+        </Button>
         <Button
           size="sm"
           onClick={handleCreateNote}
@@ -1303,6 +1425,20 @@ export function CampaignNotesPanel({
           <Button
             variant="ghost"
             size="sm"
+            className="h-6 w-6 p-0"
+            onClick={() => selectedNoteId && handleExportToDrive(selectedNoteId)}
+            disabled={exportingNoteId === selectedNoteId || currentNote?.type === 'canvas'}
+            title={currentNote?.type === 'canvas' ? 'Canvas notes cannot be exported' : 'Export to Google Docs'}
+          >
+            {exportingNoteId === selectedNoteId ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <CloudUpload className="h-3 w-3" />
+            )}
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
             className="h-6 w-6 p-0 text-red-400"
             onClick={() => {
               if (currentNote) {
@@ -1324,7 +1460,7 @@ export function CampaignNotesPanel({
           <h1 className="text-lg font-bold text-stone-100 mb-3" data-testid="panel-text-note-read-title">
             {currentNote?.title}
           </h1>
-          <div className="text-sm text-stone-300 whitespace-pre-wrap leading-relaxed" data-testid="panel-text-note-read-content">
+          <div className={`text-sm text-stone-300 whitespace-pre-wrap leading-relaxed ${getFontClass(noteFont)}`} data-testid="panel-text-note-read-content">
             {formatEntityReferences(currentNote?.content || "")}
           </div>
         </ScrollArea>
@@ -1401,6 +1537,14 @@ export function CampaignNotesPanel({
               className="text-sm font-medium border-none bg-transparent focus-visible:ring-0 px-0 mb-2 h-7"
               data-testid="panel-input-note-title"
             />
+            <FormattingToolbar
+              textareaRef={textareaRef}
+              content={noteContent}
+              onContentChange={setNoteContent}
+              font={noteFont}
+              onFontChange={setNoteFont}
+              compact={true}
+            />
             <div className="flex items-center gap-1 mb-1">
               <ReferencePicker
                 open={referencePickerOpen}
@@ -1421,14 +1565,40 @@ export function CampaignNotesPanel({
               <span className="text-xs text-stone-500">
                 <kbd className="px-1 py-0.5 bg-stone-800 rounded text-stone-400 text-xs">[[</kbd> entities
               </span>
+              <span className="text-xs text-stone-500">
+                <kbd className="px-1 py-0.5 bg-stone-800 rounded text-stone-400 text-xs">**</kbd>bold
+              </span>
+              <span className="text-xs text-stone-500">
+                <kbd className="px-1 py-0.5 bg-stone-800 rounded text-stone-400 text-xs">*</kbd>italic
+              </span>
             </div>
             <div className="relative flex-1 overflow-hidden">
               <Textarea
                 ref={textareaRef}
                 value={noteContent}
                 onChange={handleContentChange}
+                onKeyDown={(e) => {
+                  if ((e.ctrlKey || e.metaKey) && ['b', 'i', 'u'].includes(e.key.toLowerCase())) {
+                    e.preventDefault();
+                    const textarea = textareaRef.current;
+                    if (!textarea) return;
+                    const start = textarea.selectionStart;
+                    const end = textarea.selectionEnd;
+                    const selectedText = noteContent.slice(start, end);
+                    if (selectedText) {
+                      const prefix = e.key.toLowerCase() === 'b' ? '**' : e.key.toLowerCase() === 'i' ? '*' : '__';
+                      const suffix = prefix;
+                      const newContent = noteContent.slice(0, start) + prefix + selectedText + suffix + noteContent.slice(end);
+                      setNoteContent(newContent);
+                      setTimeout(() => {
+                        textarea.focus();
+                        textarea.setSelectionRange(start + prefix.length, end + prefix.length);
+                      }, 0);
+                    }
+                  }
+                }}
                 placeholder="Start writing... Type [[ to link entities, // to link notes"
-                className="flex-1 resize-none border-stone-800 bg-stone-900/30 text-sm h-full w-full"
+                className={`flex-1 resize-none border-stone-800 bg-stone-900/30 text-sm h-full w-full ${getFontClass(noteFont)}`}
                 data-testid="panel-textarea-note-content"
               />
               <NoteOnlyPicker
@@ -2186,6 +2356,105 @@ export function CampaignNotesPanel({
               data-testid="button-close-note-preview"
             >
               Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Import from Google Drive Dialog */}
+      <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
+        <DialogContent className="bg-stone-950 border-stone-800 text-stone-100 max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CloudDownload className="h-4 w-4 text-blue-400" />
+              Import from Google Docs
+            </DialogTitle>
+          </DialogHeader>
+          <div className="py-3">
+            {driveFilesLoading ? (
+              <div className="flex flex-col items-center justify-center py-6">
+                <Loader2 className="h-6 w-6 animate-spin text-blue-400 mb-2" />
+                <p className="text-stone-400 text-sm">Loading your Google Docs...</p>
+              </div>
+            ) : driveFiles.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-6 text-stone-400">
+                <FileText className="h-10 w-10 mb-2 opacity-50" />
+                <p className="text-sm">No Google Docs found</p>
+              </div>
+            ) : (
+              <ScrollArea className="h-[250px] pr-3">
+                <div className="space-y-1.5">
+                  {driveFiles.map((file) => (
+                    <div
+                      key={file.id}
+                      onClick={() => setSelectedDriveFile(file.id)}
+                      className={`p-2.5 rounded-lg border cursor-pointer transition-colors ${
+                        selectedDriveFile === file.id
+                          ? "border-blue-500 bg-blue-500/10"
+                          : "border-stone-700 hover:border-stone-600 hover:bg-stone-800/50"
+                      }`}
+                      data-testid={`panel-drive-file-${file.id}`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <FileText className="h-4 w-4 text-blue-400 flex-shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-stone-200 truncate">{file.name}</p>
+                          {file.modifiedTime && (
+                            <p className="text-xs text-stone-500">
+                              {format(new Date(file.modifiedTime), "MMM d, yyyy")}
+                            </p>
+                          )}
+                        </div>
+                        {file.webViewLink && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 w-6 p-0"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              window.open(file.webViewLink, '_blank');
+                            }}
+                            title="Open in Google Docs"
+                          >
+                            <ExternalLink className="h-3 w-3" />
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </ScrollArea>
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setImportDialogOpen(false);
+                setSelectedDriveFile(null);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              onClick={handleImportFromDrive}
+              disabled={!selectedDriveFile || importFromDriveMutation.isPending}
+              className="bg-blue-600 hover:bg-blue-500"
+              data-testid="panel-button-confirm-import"
+            >
+              {importFromDriveMutation.isPending ? (
+                <>
+                  <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                  Importing...
+                </>
+              ) : (
+                <>
+                  <CloudDownload className="h-3 w-3 mr-1" />
+                  Import
+                </>
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>

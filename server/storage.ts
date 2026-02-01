@@ -83,6 +83,7 @@ export interface IStorage {
   isGM(userId: string, campaignId: string): Promise<boolean>;
   isOwner(userId: string, campaignId: string): Promise<boolean>;
   setMemberRole(campaignId: string, memberId: string, role: 'player' | 'assistant_gm'): Promise<CampaignMember | undefined>;
+  updateMemberBeaconColor(campaignId: string, userId: string, beaconColor: string): Promise<CampaignMember | undefined>;
 
   // Character operations
   createCharacter(character: InsertCharacter): Promise<Character>;
@@ -852,6 +853,17 @@ export class DatabaseStorage implements IStorage {
       .where(and(
         eq(campaignMembers.id, memberId),
         eq(campaignMembers.campaignId, campaignId)
+      ))
+      .returning();
+    return member;
+  }
+
+  async updateMemberBeaconColor(campaignId: string, userId: string, beaconColor: string): Promise<CampaignMember | undefined> {
+    const [member] = await db.update(campaignMembers)
+      .set({ beaconColor })
+      .where(and(
+        eq(campaignMembers.campaignId, campaignId),
+        eq(campaignMembers.userId, userId)
       ))
       .returning();
     return member;

@@ -290,7 +290,7 @@ interface BattleMapProps {
     characterId?: string;
     characterName?: string;
   }>;
-  activeBeacons?: Array<{ id: string; gridX: number; gridY: number; username: string }>;
+  activeBeacons?: Array<{ id: string; gridX: number; gridY: number; username: string; beaconColor?: string }>;
   onBeacon?: (cellKey: string) => void;
   otherPlayersViewports?: Map<string, {
     userId: string;
@@ -1587,17 +1587,29 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                   }}
                   data-testid={`beacon-${beacon.id}`}
                 >
-                  <div 
-                    className="rounded-full border-4 border-amber-400"
-                    style={{
-                      width: effectiveGridSize * 0.8,
-                      height: effectiveGridSize * 0.8,
-                      animation: 'beacon-pulse 1.5s ease-out forwards',
-                      boxShadow: '0 0 30px 8px rgba(251, 191, 36, 1), inset 0 0 15px rgba(251, 191, 36, 0.6)',
-                    }}
-                  />
+                  {(() => {
+                    const color = beacon.beaconColor || '#FBB524';
+                    const hexToRgba = (hex: string, alpha: number) => {
+                      const r = parseInt(hex.slice(1, 3), 16);
+                      const g = parseInt(hex.slice(3, 5), 16);
+                      const b = parseInt(hex.slice(5, 7), 16);
+                      return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+                    };
+                    return (
+                      <div 
+                        className="rounded-full"
+                        style={{
+                          width: effectiveGridSize * 0.8,
+                          height: effectiveGridSize * 0.8,
+                          animation: `beacon-pulse-${beacon.id} 1.5s ease-out forwards`,
+                          border: `4px solid ${color}`,
+                          boxShadow: `0 0 30px 8px ${hexToRgba(color, 1)}, inset 0 0 15px ${hexToRgba(color, 0.6)}`,
+                        }}
+                      />
+                    );
+                  })()}
                   <style>{`
-                    @keyframes beacon-pulse {
+                    @keyframes beacon-pulse-${beacon.id} {
                       0% {
                         transform: scale(0.5);
                         opacity: 1;
@@ -11216,6 +11228,17 @@ function InventoryItemRow({ item, depth, expandedContainers, toggleContainer, se
   const [pendingDeleteItemId, setPendingDeleteItemId] = useState<string | null>(null);
   const [pendingDeleteItemName, setPendingDeleteItemName] = useState<string>("");
   
+  // Use a ref to track drag enter/leave counter - this prevents false positives
+  // when dragging over child elements within the container
+  const dragCounterRef = useRef(0);
+  
+  // Reset drag state when item changes or component unmounts
+  useEffect(() => {
+    return () => {
+      dragCounterRef.current = 0;
+    };
+  }, [item.id]);
+  
   const rarityColors: Record<string, string> = {
     common: 'text-stone-400 border-stone-600',
     uncommon: 'text-green-400 border-green-600',
@@ -11230,22 +11253,38 @@ function InventoryItemRow({ item, depth, expandedContainers, toggleContainer, se
   const totalQuantity = item.totalQuantity || item.quantity || 1;
   const stackedItems = item.items || [item];
   
+  const handleDragEnter = (e: React.DragEvent) => {
+    if (!item.isContainer || !canEdit) return;
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current++;
+    if (dragCounterRef.current === 1) {
+      setIsDragOver(true);
+    }
+  };
+  
   const handleDragOver = (e: React.DragEvent) => {
     if (!item.isContainer || !canEdit) return;
     e.preventDefault();
     e.stopPropagation();
     e.dataTransfer.dropEffect = 'move';
-    setIsDragOver(true);
   };
   
   const handleDragLeave = (e: React.DragEvent) => {
+    if (!item.isContainer || !canEdit) return;
     e.stopPropagation();
-    setIsDragOver(false);
+    dragCounterRef.current--;
+    if (dragCounterRef.current === 0) {
+      setIsDragOver(false);
+    }
   };
   
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    
+    // Reset drag counter and visual state
+    dragCounterRef.current = 0;
     setIsDragOver(false);
     
     if (!item.isContainer || !canEdit) return;
@@ -11275,7 +11314,7 @@ function InventoryItemRow({ item, depth, expandedContainers, toggleContainer, se
       moveItemToContainer(draggedItemId, item.id);
     }
     
-    // Clear global state
+    // Clear global state immediately after processing
     globalDraggedItem = null;
   };
   
@@ -11310,6 +11349,7 @@ function InventoryItemRow({ item, depth, expandedContainers, toggleContainer, se
           // Clear global state
           globalDraggedItem = null;
         }}
+        onDragEnter={handleDragEnter}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
@@ -11548,7 +11588,8 @@ function InventoryItemRow({ item, depth, expandedContainers, toggleContainer, se
       {/* Empty container drop zone */}
       {item.isContainer && isExpanded && (!item.children || item.children.length === 0) && (
         <div 
-          className="mt-2 ml-4 p-4 border-2 border-dashed border-stone-700 rounded text-center text-stone-500 text-sm"
+          className={`mt-2 ml-4 p-4 border-2 border-dashed rounded text-center text-sm transition-colors ${isDragOver ? 'border-amber-500 bg-amber-900/30 text-amber-400' : 'border-stone-700 text-stone-500'}`}
+          onDragEnter={handleDragEnter}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
