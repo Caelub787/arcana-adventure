@@ -127,9 +127,7 @@ export default function Home() {
                   <CardTitle className="font-display text-xl text-stone-200 group-hover:text-blue-400">My Campaigns</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <p className="text-sm text-stone-500 group-hover:text-stone-400">
-                    Resume your adventures, manage your created campaigns, or join new ones.
-                  </p>
+                  <p className="text-sm text-stone-500 group-hover:text-stone-400">Manage your created campaigns, or join new ones.</p>
                 </CardContent>
               </Card>
             </Link>
