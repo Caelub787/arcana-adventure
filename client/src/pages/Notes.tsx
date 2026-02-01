@@ -464,7 +464,7 @@ export default function Notes() {
     };
 
     const unsubscribe = noteWs.onMessage(handleMessage);
-    return () => unsubscribe();
+    return () => { unsubscribe(); };
   }, [noteId, user?.id]);
 
   // Broadcast local changes via WebSocket (alongside the save)
