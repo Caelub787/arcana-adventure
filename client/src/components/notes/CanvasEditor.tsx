@@ -1125,11 +1125,11 @@ export function CanvasEditor({
                 >{node.title || getDefaultTitle()}</span>
               )}
             </div>
-            {!readOnly && showDeleteNodeId === node.id && (
+            {!readOnly && (selectedNodeId === node.id || showDeleteNodeId === node.id) && (
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-5 w-5 text-red-400 hover:text-red-300 flex-shrink-0 animate-pulse"
+                className={`h-5 w-5 text-red-400 hover:text-red-300 hover:bg-red-900/30 flex-shrink-0 ${showDeleteNodeId === node.id ? 'animate-pulse' : ''}`}
                 onPointerDown={(e) => e.stopPropagation()}
                 onClick={(e) => {
                   e.stopPropagation();
@@ -1137,6 +1137,7 @@ export function CanvasEditor({
                   setShowDeleteNodeId(null);
                 }}
                 data-testid={`delete-node-${node.id}`}
+                title="Delete node"
               >
                 <Trash2 className="h-3 w-3" />
               </Button>

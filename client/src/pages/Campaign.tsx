@@ -3657,10 +3657,10 @@ export default function Campaign() {
       {/* Notes Panel Overlay */}
       {notesPanelOpen && effectiveCampaignId && (
         <div 
-          className="fixed top-0 right-0 h-full z-40 pointer-events-auto flex" 
+          className={`fixed top-0 right-0 z-40 pointer-events-auto flex ${isMobile ? 'inset-0' : 'h-full'}`}
           style={{ 
-            width: isMobile ? '90vw' : `${notesPanelWidth}px`,
-            maxWidth: '90vw' 
+            width: isMobile ? '100vw' : `${notesPanelWidth}px`,
+            maxWidth: isMobile ? '100vw' : '90vw' 
           }}
         >
           {/* Resize handle on left edge (desktop only) */}
