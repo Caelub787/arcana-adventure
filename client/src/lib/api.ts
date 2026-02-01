@@ -2507,13 +2507,13 @@ export async function updateTerms(content: string): Promise<TermsAndConditions> 
   return response.json();
 }
 
-export async function getTermsStatus(): Promise<boolean> {
+export async function getTermsStatus(): Promise<{ hasAccepted: boolean; currentVersion: number | null }> {
   const response = await fetch('/api/terms/status');
   if (!response.ok) {
     throw new Error('Failed to check terms status');
   }
   const data = await response.json();
-  return data.hasAccepted;
+  return { hasAccepted: data.hasAccepted, currentVersion: data.currentVersion ?? null };
 }
 
 export async function acceptTerms(): Promise<void> {

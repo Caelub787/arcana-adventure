@@ -7724,8 +7724,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/terms/status", requireAuth, async (req, res) => {
     try {
+      const currentTerms = await storage.getCurrentTerms();
       const hasAccepted = await storage.hasUserAcceptedCurrentTerms(req.session.userId!);
-      res.json({ hasAccepted });
+      res.json({ 
+        hasAccepted, 
+        currentVersion: currentTerms?.version ?? null 
+      });
     } catch (err) {
       console.error("Failed to check terms status:", err);
       res.status(500).json({ error: "Failed to check terms status" });
