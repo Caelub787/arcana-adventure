@@ -1072,3 +1072,58 @@ export const insertAdminNotificationSchema = createInsertSchema(adminNotificatio
 
 export type InsertAdminNotification = z.infer<typeof insertAdminNotificationSchema>;
 export type AdminNotification = typeof adminNotifications.$inferSelect;
+
+// User Notifications table (for friend requests, system notifications, etc.)
+export const userNotifications = pgTable("user_notifications", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  type: text("type").notNull(), // "friend_request", "friend_accepted", "system"
+  title: text("title").notNull(),
+  message: text("message"),
+  referenceId: varchar("reference_id"), // ID of related entity (e.g., friend request ID)
+  isRead: boolean("is_read").default(false).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertUserNotificationSchema = createInsertSchema(userNotifications).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertUserNotification = z.infer<typeof insertUserNotificationSchema>;
+export type UserNotification = typeof userNotifications.$inferSelect;
+
+// Terms and Conditions table
+export const termsAndConditions = pgTable("terms_and_conditions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  version: integer("version").notNull(),
+  content: text("content").notNull(),
+  updatedBy: varchar("updated_by").notNull().references(() => users.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertTermsAndConditionsSchema = createInsertSchema(termsAndConditions).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertTermsAndConditions = z.infer<typeof insertTermsAndConditionsSchema>;
+export type TermsAndConditions = typeof termsAndConditions.$inferSelect;
+
+// User Terms Acceptance tracking
+export const userTermsAcceptance = pgTable("user_terms_acceptance", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  termsVersion: integer("terms_version").notNull(),
+  acceptedAt: timestamp("accepted_at").defaultNow().notNull(),
+}, (table) => ({
+  uniqueUserVersion: uniqueIndex("user_terms_unique").on(table.userId, table.termsVersion),
+}));
+
+export const insertUserTermsAcceptanceSchema = createInsertSchema(userTermsAcceptance).omit({
+  id: true,
+  acceptedAt: true,
+});
+
+export type InsertUserTermsAcceptance = z.infer<typeof insertUserTermsAcceptanceSchema>;
+export type UserTermsAcceptance = typeof userTermsAcceptance.$inferSelect;

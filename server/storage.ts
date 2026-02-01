@@ -40,7 +40,10 @@ import {
   type TokenActiveEffect, type InsertTokenActiveEffect,
   type ThrownItem, type InsertThrownItem,
   type AdminNotification, type InsertAdminNotification,
-  users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, items, spells, characterPermissions, initiativeEntries, systemSpecies, campaignSpecies, featTemplates, featTrees, feats, featConnections, characterFeats, systemSpells, systemSkills, characterCustomSkills, systemTraits, characterTraits, characterFolders, characterTemplateFolders, sceneFolders, friendRequests, friendships, noteFolders, notes, noteReferences, noteShares, tokenEffects, spellEffects, itemEffects, tokenActiveEffects, thrownItems, adminNotifications
+  type UserNotification, type InsertUserNotification,
+  type TermsAndConditions, type InsertTermsAndConditions,
+  type UserTermsAcceptance, type InsertUserTermsAcceptance,
+  users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, items, spells, characterPermissions, initiativeEntries, systemSpecies, campaignSpecies, featTemplates, featTrees, feats, featConnections, characterFeats, systemSpells, systemSkills, characterCustomSkills, systemTraits, characterTraits, characterFolders, characterTemplateFolders, sceneFolders, friendRequests, friendships, noteFolders, notes, noteReferences, noteShares, tokenEffects, spellEffects, itemEffects, tokenActiveEffects, thrownItems, adminNotifications, userNotifications, termsAndConditions, userTermsAcceptance
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql, inArray, or, isNull } from "drizzle-orm";
@@ -392,6 +395,20 @@ export interface IStorage {
     notes: Note[];
     memberships: CampaignMember[];
   }>;
+
+  // User Notification operations
+  getUserNotifications(userId: string): Promise<UserNotification[]>;
+  getUnreadNotificationCount(userId: string): Promise<number>;
+  createUserNotification(data: InsertUserNotification): Promise<UserNotification>;
+  markNotificationRead(id: string): Promise<void>;
+  markAllNotificationsRead(userId: string): Promise<void>;
+  deleteNotification(id: string): Promise<void>;
+
+  // Terms and Conditions operations
+  getCurrentTerms(): Promise<TermsAndConditions | undefined>;
+  updateTerms(content: string, updatedBy: string): Promise<TermsAndConditions>;
+  hasUserAcceptedCurrentTerms(userId: string): Promise<boolean>;
+  acceptTerms(userId: string, version: number): Promise<UserTermsAcceptance>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -3040,6 +3057,84 @@ export class DatabaseStorage implements IStorage {
       notes: userNotes,
       memberships: userMemberships,
     };
+  }
+
+  // User Notification operations
+  async getUserNotifications(userId: string): Promise<UserNotification[]> {
+    return db.select().from(userNotifications)
+      .where(eq(userNotifications.userId, userId))
+      .orderBy(desc(userNotifications.createdAt));
+  }
+
+  async getUnreadNotificationCount(userId: string): Promise<number> {
+    const result = await db.select({ count: sql<number>`count(*)` })
+      .from(userNotifications)
+      .where(and(
+        eq(userNotifications.userId, userId),
+        eq(userNotifications.isRead, false)
+      ));
+    return Number(result[0]?.count || 0);
+  }
+
+  async createUserNotification(data: InsertUserNotification): Promise<UserNotification> {
+    const [notification] = await db.insert(userNotifications).values(data).returning();
+    return notification;
+  }
+
+  async markNotificationRead(id: string): Promise<void> {
+    await db.update(userNotifications)
+      .set({ isRead: true })
+      .where(eq(userNotifications.id, id));
+  }
+
+  async markAllNotificationsRead(userId: string): Promise<void> {
+    await db.update(userNotifications)
+      .set({ isRead: true })
+      .where(eq(userNotifications.userId, userId));
+  }
+
+  async deleteNotification(id: string): Promise<void> {
+    await db.delete(userNotifications).where(eq(userNotifications.id, id));
+  }
+
+  // Terms and Conditions operations
+  async getCurrentTerms(): Promise<TermsAndConditions | undefined> {
+    const result = await db.select().from(termsAndConditions)
+      .orderBy(desc(termsAndConditions.version))
+      .limit(1);
+    return result[0];
+  }
+
+  async updateTerms(content: string, updatedBy: string): Promise<TermsAndConditions> {
+    const current = await this.getCurrentTerms();
+    const newVersion = (current?.version || 0) + 1;
+    const [terms] = await db.insert(termsAndConditions).values({
+      version: newVersion,
+      content,
+      updatedBy,
+    }).returning();
+    return terms;
+  }
+
+  async hasUserAcceptedCurrentTerms(userId: string): Promise<boolean> {
+    const current = await this.getCurrentTerms();
+    if (!current) return true; // No terms = no acceptance needed
+    
+    const acceptance = await db.select().from(userTermsAcceptance)
+      .where(and(
+        eq(userTermsAcceptance.userId, userId),
+        eq(userTermsAcceptance.termsVersion, current.version)
+      ))
+      .limit(1);
+    return acceptance.length > 0;
+  }
+
+  async acceptTerms(userId: string, version: number): Promise<UserTermsAcceptance> {
+    const [acceptance] = await db.insert(userTermsAcceptance).values({
+      userId,
+      termsVersion: version,
+    }).returning();
+    return acceptance;
   }
 }
 
