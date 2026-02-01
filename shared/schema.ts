@@ -12,6 +12,10 @@ export const users = pgTable("users", {
   password: text("password").notNull(),
   avatarUrl: text("avatar_url"), // User profile picture
   bio: text("bio"), // Optional user bio
+  isAdmin: boolean("is_admin").default(false), // Site administrator
+  bannedAt: timestamp("banned_at"), // When user was banned (null = not banned)
+  banExpiresAt: timestamp("ban_expires_at"), // When ban expires (null = permanent)
+  banReason: text("ban_reason"), // Reason for the ban
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

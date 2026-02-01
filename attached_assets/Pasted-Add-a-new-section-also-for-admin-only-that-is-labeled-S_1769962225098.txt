@@ -1,0 +1,14 @@
+Add a new section also for admin only that is labeled Site Security.  
+In Site Security I want to be able to see ALL users who have created an account, I want to be able to see their information (Name, Email, Etc) and I want to be able to ban/delete user accounts if needed (if someone is banned when they re-open the site it doesn't allow them to use it and just says "We are sorry to inform you but due to recent account activity we have decided to terminate your account with us.  If you think this was a mistake, please email us at support@arcanaadventure.com".
+All data from banned users must be saved as well, as well as the ability to see banned users and unban them.  If I unban them all their existing campaigns, notes etc are kept on their account so they can re-access it.  I also want the ability to ban them for a specific amount of time, if this happens a countdown appears for them in the ban screen and I as the admin in site security can edit the time remaining, or anything else if I choose to.
+
+In Site Security I want to be able to click on a user to see all of their account activity, what campaigns they've created, images they've uploaded, characters, notes, etc.  I want to be able to secretly open their campaigns and view them without it saying I have joined, since I wont actually be joining just incognito joining to see their worlds.
+
+I need to be able to publish the app and have those changes ONLY apply to me as the admin until I click a button in site security settings that updates the rest of the site for ALL other users. 
+When I update the site via that button, it needs to cause a notification to appear for all users on the site at that moment that doesn't go away until they refresh that just says "App updated, please refresh to continue using.  Failure to do so may cause issues with syncing or other."
+
+Move the push notifications tab from admin into Site Security.
+
+I want a notifications button in the main menu on the top left side of the screen where notifications appear if you get friend requests, from that you can mark a notification as read or accept/decline the friend request.  
+
+From here I also want to be able to update the terms and conditions, anytime I do this it needs to pop up for all users that I have updated them and they need to accept them, if they do not accept them then it will give a message "I'm sorry but you have to accept to use the app, if you do not want to accept then please cancel your subscription if you have one." If they accept it then the popup disappears completely.  There should also be a small site label at the bottom of the main menu that reads Terms and Conditions and if pressed opens the terms and conditions to be viewed, can be closed.
