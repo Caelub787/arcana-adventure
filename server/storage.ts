@@ -389,6 +389,7 @@ export interface IStorage {
   unbanUser(userId: string): Promise<User>;
   updateBan(userId: string, reason?: string, expiresAt?: Date): Promise<User>;
   setUserAdmin(userId: string, isAdmin: boolean): Promise<User>;
+  deleteUser(userId: string): Promise<void>;
   getUserActivity(userId: string): Promise<{
     campaigns: Campaign[];
     characters: Character[];
@@ -3037,6 +3038,58 @@ export class DatabaseStorage implements IStorage {
       .where(eq(users.id, userId))
       .returning();
     return updated;
+  }
+
+  async deleteUser(userId: string): Promise<void> {
+    // Delete all user-related data in the correct order to avoid foreign key conflicts
+    // This is a cascading delete operation
+    
+    // Delete notifications
+    await db.delete(userNotifications).where(eq(userNotifications.userId, userId));
+    
+    // Delete terms acceptance records
+    await db.delete(userTermsAcceptance).where(eq(userTermsAcceptance.userId, userId));
+    
+    // Delete password reset tokens
+    await db.delete(passwordResetTokens).where(eq(passwordResetTokens.userId, userId));
+    
+    // Delete friend requests (both sent and received)
+    await db.delete(friendRequests).where(or(
+      eq(friendRequests.senderId, userId),
+      eq(friendRequests.recipientId, userId)
+    ));
+    
+    // Delete friendships
+    await db.delete(friendships).where(or(
+      eq(friendships.userId, userId),
+      eq(friendships.friendId, userId)
+    ));
+    
+    // Delete note shares (where user is shared with)
+    await db.delete(noteShares).where(eq(noteShares.sharedWithId, userId));
+    
+    // Delete notes created by user
+    const userNotes = await db.select({ id: notes.id }).from(notes).where(eq(notes.userId, userId));
+    for (const note of userNotes) {
+      await db.delete(noteReferences).where(eq(noteReferences.noteId, note.id));
+      await db.delete(noteShares).where(eq(noteShares.noteId, note.id));
+    }
+    await db.delete(notes).where(eq(notes.userId, userId));
+    
+    // Delete note folders created by user
+    await db.delete(noteFolders).where(eq(noteFolders.userId, userId));
+    
+    // Delete character permissions
+    await db.delete(characterPermissions).where(eq(characterPermissions.userId, userId));
+    
+    // Delete campaign memberships
+    await db.delete(campaignMembers).where(eq(campaignMembers.userId, userId));
+    
+    // Delete campaign bans
+    await db.delete(campaignBans).where(eq(campaignBans.userId, userId));
+    
+    // Finally, delete the user
+    await db.delete(users).where(eq(users.id, userId));
   }
 
   async getUserActivity(userId: string): Promise<{

@@ -4090,6 +4090,65 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Admin: Delete user account
+  app.delete("/api/admin/users/:userId", requireAdmin, async (req, res) => {
+    try {
+      const { userId } = req.params;
+      
+      // Prevent self-deletion
+      if (userId === req.session.userId) {
+        return res.status(400).json({ error: "Cannot delete your own account" });
+      }
+      
+      const user = await storage.getUser(userId);
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+      
+      await storage.deleteUser(userId);
+      console.log(`[Admin] User ${user.email} deleted by admin ${req.session.userId}`);
+      res.json({ success: true, message: "User account deleted successfully" });
+    } catch (err) {
+      console.error('[Admin] Error deleting user:', err);
+      res.status(500).json({ error: "Failed to delete user account" });
+    }
+  });
+
+  // Admin: Send password reset email to user
+  app.post("/api/admin/users/:userId/send-password-reset", requireAdmin, async (req, res) => {
+    try {
+      const { userId } = req.params;
+      
+      const user = await storage.getUser(userId);
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+      
+      // Delete any existing reset tokens for this user
+      await storage.deleteUserPasswordResetTokens(userId);
+      
+      // Create new reset token
+      const resetToken = crypto.randomBytes(32).toString('hex');
+      const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+      
+      await storage.createPasswordResetToken({
+        userId: user.id,
+        token: resetToken,
+        expiresAt
+      });
+      
+      // Send the email
+      const baseUrl = req.protocol + '://' + req.get('host');
+      await sendPasswordResetEmail(user.email, resetToken, baseUrl);
+      
+      console.log(`[Admin] Password reset email sent to ${user.email} by admin ${req.session.userId}`);
+      res.json({ success: true, message: "Password reset email sent successfully" });
+    } catch (err) {
+      console.error('[Admin] Error sending password reset email:', err);
+      res.status(500).json({ error: "Failed to send password reset email" });
+    }
+  });
+
   app.post("/api/admin/set-admin/:userId", requireAdmin, async (req, res) => {
     try {
       const { userId } = req.params;
