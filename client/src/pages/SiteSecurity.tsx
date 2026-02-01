@@ -17,7 +17,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { toast } from '@/hooks/use-toast';
-import { ArrowLeft, Search, Shield, ShieldOff, Users, Clock, User, MapPin, FileText, Eye, Ban, ShieldCheck, X, Calendar, ExternalLink, Radio } from 'lucide-react';
+import { Search, Shield, ShieldOff, Users, Clock, User, MapPin, FileText, Eye, Ban, ShieldCheck, X, Calendar, ExternalLink, Radio } from 'lucide-react';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 
 type BanDuration = 'permanent' | '1day' | '1week' | '1month' | 'custom';
@@ -277,20 +277,9 @@ export default function SiteSecurity() {
     <div className="min-h-screen bg-gradient-to-b from-stone-900 to-stone-950 text-stone-100">
       <div className="container mx-auto px-4 py-6">
         <div className="flex items-center justify-between gap-4 mb-6">
-          <div className="flex items-center gap-4">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setLocation('/admin')}
-              className="text-stone-400 hover:text-amber-400"
-              data-testid="button-back"
-            >
-              <ArrowLeft className="h-5 w-5" />
-            </Button>
-            <div className="flex items-center gap-3">
-              <Shield className="h-7 w-7 text-amber-500" />
-              <h1 className="text-2xl font-bold text-amber-400">Site Security</h1>
-            </div>
+          <div className="flex items-center gap-3">
+            <Shield className="h-7 w-7 text-amber-500" />
+            <h1 className="text-xl sm:text-2xl font-bold text-amber-400">Site Security</h1>
           </div>
           <Button
             onClick={() => setShowBroadcastDialog(true)}
@@ -368,8 +357,8 @@ export default function SiteSecurity() {
                           <TableHeader>
                             <TableRow className="border-stone-700 hover:bg-transparent">
                               <TableHead className="text-stone-400">User</TableHead>
-                              <TableHead className="text-stone-400">Email</TableHead>
-                              <TableHead className="text-stone-400">Joined</TableHead>
+                              <TableHead className="text-stone-400 hidden md:table-cell">Email</TableHead>
+                              <TableHead className="text-stone-400 hidden lg:table-cell">Joined</TableHead>
                               <TableHead className="text-stone-400">Status</TableHead>
                               <TableHead className="text-stone-400">Actions</TableHead>
                             </TableRow>
@@ -402,8 +391,8 @@ export default function SiteSecurity() {
                                     </div>
                                   </div>
                                 </TableCell>
-                                <TableCell className="text-stone-300">{user.email}</TableCell>
-                                <TableCell className="text-stone-400">
+                                <TableCell className="text-stone-300 hidden md:table-cell">{user.email}</TableCell>
+                                <TableCell className="text-stone-400 hidden lg:table-cell">
                                   {new Date(user.createdAt).toLocaleDateString()}
                                 </TableCell>
                                 <TableCell>

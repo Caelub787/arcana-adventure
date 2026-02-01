@@ -5891,17 +5891,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.put("/api/characters/:id/permissions/all", requireAuth, async (req, res) => {
     try {
       const { accessLevel } = req.body;
+      console.log(`[Bulk Permission Update] Request for character ${req.params.id}, accessLevel: ${accessLevel}`);
+      
       if (!["none", "name", "view", "edit"].includes(accessLevel)) {
         return res.status(400).json({ error: "Invalid access level" });
       }
       
       const character = await storage.getCharacter(req.params.id);
       if (!character) {
+        console.log(`[Bulk Permission Update] Character not found: ${req.params.id}`);
         return res.status(404).json({ error: "Character not found" });
       }
       
       const campaign = await storage.getCampaign(character.campaignId);
-      if (!campaign || campaign.gmUserId !== req.session.userId) {
+      const requestingUser = await storage.getUser(req.session.userId!);
+      const isAdmin = requestingUser?.isAdmin === true;
+      
+      if (!campaign || (campaign.gmUserId !== req.session.userId && !isAdmin)) {
+        console.log(`[Bulk Permission Update] Access denied - userId: ${req.session.userId}, gmUserId: ${campaign?.gmUserId}, isAdmin: ${isAdmin}`);
         return res.status(403).json({ error: "Only GMs can set character permissions" });
       }
       

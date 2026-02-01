@@ -1,6 +1,7 @@
 import React, { useState, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { User, LogOut, Edit2, Users } from "lucide-react";
+import { useLocation } from "wouter";
+import { User, LogOut, Edit2, Users, ShieldCheck } from "lucide-react";
 import { api, type UserProfile } from "@/lib/api";
 import { useAuth } from "@/lib/AuthContext";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
@@ -31,7 +32,8 @@ interface ProfileDropdownProps {
 }
 
 export default function ProfileDropdown({ onLogout }: ProfileDropdownProps) {
-  const { user, refetchUser } = useAuth();
+  const [, setLocation] = useLocation();
+  const { user, refetchUser, isAdmin } = useAuth();
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -186,6 +188,19 @@ export default function ProfileDropdown({ onLogout }: ProfileDropdownProps) {
             <Users className="mr-2 h-4 w-4 text-stone-400" />
             <span>Friends</span>
           </DropdownMenuItem>
+          {isAdmin && (
+            <>
+              <DropdownMenuSeparator className="bg-stone-800" />
+              <DropdownMenuItem
+                onClick={() => setLocation('/admin/security')}
+                className="cursor-pointer hover:bg-stone-800 focus:bg-stone-800 text-red-400"
+                data-testid="menu-item-site-security"
+              >
+                <ShieldCheck className="mr-2 h-4 w-4" />
+                <span>Site Security</span>
+              </DropdownMenuItem>
+            </>
+          )}
           <DropdownMenuSeparator className="bg-stone-800" />
           <DropdownMenuItem
             onClick={onLogout}
