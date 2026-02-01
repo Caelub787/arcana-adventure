@@ -1427,6 +1427,18 @@ class ApiClient {
     });
   }
 
+  async deleteUser(userId: string): Promise<{ success: boolean; message: string }> {
+    return this.request(`/admin/users/${userId}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async sendPasswordResetEmail(userId: string): Promise<{ success: boolean; message: string }> {
+    return this.request(`/admin/users/${userId}/send-password-reset`, {
+      method: 'POST',
+    });
+  }
+
   async broadcastSiteUpdate(): Promise<{ success: boolean; message: string }> {
     return this.request('/admin/broadcast-update', {
       method: 'POST',
