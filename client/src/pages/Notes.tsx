@@ -68,6 +68,7 @@ import {
   Share2,
   MoreVertical,
   ChevronRight,
+  ChevronDown,
   ChevronLeft,
   PanelLeftClose,
   PanelLeft,
@@ -87,6 +88,7 @@ import {
 import { ReferencePicker, ReferenceInlineDisplay, NoteOnlyPicker } from "@/components/notes/ReferencePicker";
 import { CanvasEditor, CanvasData } from "@/components/notes/CanvasEditor";
 import { NotesGraph } from "@/components/notes/NotesGraph";
+import { NoteTabs, useNoteTabs, OpenNote } from "@/components/notes/NoteTabs";
 import type { SearchableEntity } from "@/lib/api";
 
 import bgImage from "@assets/generated_images/dark_fantasy_landscape_with_arcane_ruins.png";
@@ -125,6 +127,7 @@ interface FolderTreeItemProps {
   onEditFolder: (folder: NoteFolder) => void;
   onAddSubfolder: (parentId: string) => void;
   onDeleteFolder: (folder: NoteFolder) => void;
+  onMoveFolder: (folderId: string, newParentId: string | null) => void;
   level?: number;
 }
 
@@ -136,23 +139,67 @@ function FolderTreeItem({
   onEditFolder,
   onAddSubfolder,
   onDeleteFolder,
+  onMoveFolder,
   level = 0,
 }: FolderTreeItemProps) {
   const [expanded, setExpanded] = useState(true);
+  const [isDragOver, setIsDragOver] = useState(false);
   const children = folders.filter((f) => f.parentId === folder.id);
   const isSelected = selectedFolderId === folder.id;
   const hasChildren = children.length > 0;
+
+  const isDescendant = (parentId: string, childId: string): boolean => {
+    const child = folders.find(f => f.id === childId);
+    if (!child) return false;
+    if (child.parentId === parentId) return true;
+    if (child.parentId) return isDescendant(parentId, child.parentId);
+    return false;
+  };
+
+  const handleDragStart = (e: React.DragEvent) => {
+    e.dataTransfer.setData("text/plain", folder.id);
+    e.dataTransfer.effectAllowed = "move";
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    const draggedId = e.dataTransfer.getData("text/plain");
+    if (draggedId !== folder.id && !isDescendant(draggedId, folder.id)) {
+      e.dataTransfer.dropEffect = "move";
+      setIsDragOver(true);
+    }
+  };
+
+  const handleDragLeave = () => {
+    setIsDragOver(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(false);
+    const draggedId = e.dataTransfer.getData("text/plain");
+    if (draggedId && draggedId !== folder.id && !isDescendant(draggedId, folder.id)) {
+      onMoveFolder(draggedId, folder.id);
+    }
+  };
 
   return (
     <div>
       <div
         className={`flex items-center gap-1 py-1.5 px-2 rounded cursor-pointer transition-colors ${
-          isSelected
+          isDragOver
+            ? "bg-amber-700/50 ring-2 ring-amber-500"
+            : isSelected
             ? "bg-amber-900/30 text-amber-400"
             : "hover:bg-stone-800/50 text-stone-300"
         }`}
         style={{ paddingLeft: `${level * 12 + 8}px` }}
         onClick={() => onSelect(folder.id)}
+        draggable
+        onDragStart={handleDragStart}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
         data-testid={`folder-item-${folder.id}`}
       >
         {hasChildren ? (
@@ -164,11 +211,11 @@ function FolderTreeItem({
             className="p-0.5 hover:bg-stone-700 rounded"
             data-testid={`folder-expand-${folder.id}`}
           >
-            <ChevronRight
-              className={`h-3 w-3 transition-transform ${
-                expanded ? "rotate-90" : ""
-              }`}
-            />
+            {expanded ? (
+              <ChevronDown className="h-3 w-3" />
+            ) : (
+              <ChevronRight className="h-3 w-3" />
+            )}
           </button>
         ) : (
           <span className="w-4" />
@@ -236,6 +283,7 @@ function FolderTreeItem({
             onEditFolder={onEditFolder}
             onAddSubfolder={onAddSubfolder}
             onDeleteFolder={onDeleteFolder}
+            onMoveFolder={onMoveFolder}
             level={level + 1}
           />
         ))}
@@ -297,6 +345,16 @@ export default function Notes() {
 
   const [notePreviewDialogOpen, setNotePreviewDialogOpen] = useState(false);
   const [previewNote, setPreviewNote] = useState<Note | null>(null);
+
+  // Note tabs state
+  const {
+    openNotes,
+    activeNoteId: tabActiveNoteId,
+    openNote: openNoteTab,
+    closeTab,
+    switchTab,
+    updateTabTitle,
+  } = useNoteTabs();
 
   // Live collaboration state
   const [remotePresence, setRemotePresence] = useState<NotePresence[]>([]);
@@ -376,9 +434,49 @@ export default function Notes() {
           setCanvasData({ nodes: [], connections: [] });
           setNoteMode("read");
         }
+        
+        // Open in tabs when navigating to a note
+        openNoteTab(currentNote.id, currentNote.title, currentNote.type as "markdown" | "canvas" | undefined);
       }
     }
-  }, [currentNote]);
+  }, [currentNote, openNoteTab]);
+
+  // Sync tab title when note title changes
+  useEffect(() => {
+    if (noteId && noteTitle) {
+      updateTabTitle(noteId, noteTitle);
+    }
+  }, [noteId, noteTitle, updateTabTitle]);
+
+  // Handle tab switching - navigate to the selected note
+  const handleTabClick = (tabNoteId: string) => {
+    if (tabNoteId !== noteId) {
+      setLocation(`/notes/${tabNoteId}`);
+    }
+  };
+
+  // Handle tab close - navigate away if closing active tab
+  const handleTabClose = (tabNoteId: string) => {
+    const remainingNotes = openNotes.filter(n => n.noteId !== tabNoteId);
+    closeTab(tabNoteId);
+    
+    if (tabNoteId === noteId) {
+      if (remainingNotes.length > 0) {
+        // Find previous or next tab
+        const currentIdx = openNotes.findIndex(n => n.noteId === tabNoteId);
+        const newActiveNote = currentIdx > 0 
+          ? openNotes[currentIdx - 1] 
+          : remainingNotes[0];
+        if (newActiveNote) {
+          setLocation(`/notes/${newActiveNote.noteId}`);
+        } else {
+          setLocation("/notes");
+        }
+      } else {
+        setLocation("/notes");
+      }
+    }
+  };
 
   // Join/leave note rooms for live collaboration
   useEffect(() => {
@@ -1230,6 +1328,12 @@ export default function Notes() {
                   setFolderToDelete(f);
                   setDeleteFolderDialogOpen(true);
                 }}
+                onMoveFolder={(folderId, newParentId) => {
+                  updateFolderMutation.mutate({
+                    id: folderId,
+                    data: { parentId: newParentId },
+                  });
+                }}
               />
             ))
           )}
@@ -1769,6 +1873,15 @@ export default function Notes() {
                 Back to Campaign
               </Button>
             </div>
+          )}
+
+          {openNotes.length > 0 && (
+            <NoteTabs
+              openNotes={openNotes}
+              activeNoteId={noteId || null}
+              onTabClick={handleTabClick}
+              onTabClose={handleTabClose}
+            />
           )}
 
           {isEditing ? (

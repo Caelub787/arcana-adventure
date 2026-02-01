@@ -45,6 +45,11 @@ import {
   X,
   ArrowLeft,
   Settings2,
+  Image,
+  Video,
+  Link,
+  Play,
+  ExternalLink,
 } from "lucide-react";
 import {
   Tooltip,
@@ -56,7 +61,7 @@ import { ReferencePicker, getEntityIcon, getEntityColor } from "./ReferencePicke
 
 export interface CanvasNode {
   id: string;
-  type: "text" | "note" | "entity";
+  type: "text" | "note" | "entity" | "image" | "video" | "link";
   x: number;
   y: number;
   width: number;
@@ -68,6 +73,11 @@ export interface CanvasNode {
   entityType?: string;
   entityId?: string;
   entityName?: string;
+  mediaUrl?: string;
+  thumbnailUrl?: string;
+  videoProvider?: "youtube" | "vimeo" | "direct";
+  linkTitle?: string;
+  linkDescription?: string;
 }
 
 export type ConnectionSide = "top" | "right" | "bottom" | "left";
@@ -167,6 +177,14 @@ export function CanvasEditor({
   const [noteSearchQuery, setNoteSearchQuery] = useState("");
   const [entityPickerOpen, setEntityPickerOpen] = useState(false);
   const [arrowSettingsOpen, setArrowSettingsOpen] = useState(false);
+  const [imageDialogOpen, setImageDialogOpen] = useState(false);
+  const [imageUrl, setImageUrl] = useState("");
+  const [videoDialogOpen, setVideoDialogOpen] = useState(false);
+  const [videoUrl, setVideoUrl] = useState("");
+  const [linkDialogOpen, setLinkDialogOpen] = useState(false);
+  const [linkUrl, setLinkUrl] = useState("");
+  const [linkTitle, setLinkTitle] = useState("");
+  const [linkDescription, setLinkDescription] = useState("");
 
   // Cleanup long-press timer on unmount or selection change
   useEffect(() => {
@@ -1043,6 +1061,9 @@ export function CanvasEditor({
     const getDefaultTitle = () => {
       if (node.type === "note") return node.noteTitle || "Note";
       if (node.type === "entity") return node.entityName || "Entity";
+      if (node.type === "image") return node.title || "Image";
+      if (node.type === "video") return node.title || "Video";
+      if (node.type === "link") return node.linkTitle || "Link";
       return "Text";
     };
     
@@ -1091,6 +1112,9 @@ export function CanvasEditor({
                   {getEntityIcon(node.entityType)}
                 </span>
               )}
+              {node.type === "image" && <Image className="h-3 w-3 text-emerald-400 flex-shrink-0" />}
+              {node.type === "video" && <Video className="h-3 w-3 text-rose-400 flex-shrink-0" />}
+              {node.type === "link" && <Link className="h-3 w-3 text-blue-400 flex-shrink-0" />}
               {!readOnly && editingNodeId === node.id ? (
                 <Input
                   value={node.title ?? getDefaultTitle()}
@@ -1197,6 +1221,127 @@ export function CanvasEditor({
                   {node.entityType}
                 </Badge>
                 <span className="text-sm text-stone-300 truncate">{node.entityName}</span>
+              </div>
+            ) : node.type === "image" ? (
+              <div className="h-full w-full flex items-center justify-center overflow-hidden">
+                {node.mediaUrl ? (
+                  <img 
+                    src={node.mediaUrl} 
+                    alt={node.title || "Image"} 
+                    className="max-w-full max-h-full object-contain rounded"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23666' stroke-width='2'%3E%3Crect x='3' y='3' width='18' height='18' rx='2'/%3E%3Ccircle cx='8.5' cy='8.5' r='1.5'/%3E%3Cpath d='m21 15-5-5L5 21'/%3E%3C/svg%3E";
+                    }}
+                  />
+                ) : (
+                  <div className="flex flex-col items-center justify-center text-stone-500 gap-2">
+                    <Image className="h-8 w-8" />
+                    <span className="text-xs">No image URL</span>
+                  </div>
+                )}
+              </div>
+            ) : node.type === "video" ? (
+              <div className="h-full w-full flex items-center justify-center overflow-hidden relative">
+                {node.mediaUrl ? (
+                  (() => {
+                    const getVideoEmbedUrl = (url: string) => {
+                      const youtubeMatch = url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+                      if (youtubeMatch) {
+                        return { 
+                          embedUrl: `https://www.youtube.com/embed/${youtubeMatch[1]}`,
+                          thumbnailUrl: `https://img.youtube.com/vi/${youtubeMatch[1]}/hqdefault.jpg`,
+                          provider: "youtube" as const
+                        };
+                      }
+                      const vimeoMatch = url.match(/vimeo\.com\/(\d+)/);
+                      if (vimeoMatch) {
+                        return {
+                          embedUrl: `https://player.vimeo.com/video/${vimeoMatch[1]}`,
+                          thumbnailUrl: null,
+                          provider: "vimeo" as const
+                        };
+                      }
+                      return { embedUrl: url, thumbnailUrl: null, provider: "direct" as const };
+                    };
+                    const videoInfo = getVideoEmbedUrl(node.mediaUrl);
+                    
+                    if (videoInfo.provider === "youtube" && videoInfo.thumbnailUrl) {
+                      return (
+                        <a 
+                          href={node.mediaUrl} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="relative w-full h-full flex items-center justify-center group/video"
+                          onClick={(e) => e.stopPropagation()}
+                          onPointerDown={(e) => e.stopPropagation()}
+                        >
+                          <img 
+                            src={videoInfo.thumbnailUrl} 
+                            alt="Video thumbnail"
+                            className="max-w-full max-h-full object-contain rounded"
+                          />
+                          <div className="absolute inset-0 flex items-center justify-center bg-black/30 group-hover/video:bg-black/50 transition-colors">
+                            <div className="w-12 h-12 rounded-full bg-red-600 flex items-center justify-center">
+                              <Play className="h-6 w-6 text-white ml-1" fill="white" />
+                            </div>
+                          </div>
+                        </a>
+                      );
+                    }
+                    
+                    return (
+                      <a 
+                        href={node.mediaUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex flex-col items-center justify-center text-rose-400 hover:text-rose-300 gap-2 w-full h-full"
+                        onClick={(e) => e.stopPropagation()}
+                        onPointerDown={(e) => e.stopPropagation()}
+                      >
+                        <div className="w-12 h-12 rounded-full bg-rose-600/20 flex items-center justify-center">
+                          <Play className="h-6 w-6 ml-1" />
+                        </div>
+                        <span className="text-xs text-center px-2 truncate max-w-full">
+                          {videoInfo.provider === "vimeo" ? "Vimeo Video" : "Watch Video"}
+                        </span>
+                      </a>
+                    );
+                  })()
+                ) : (
+                  <div className="flex flex-col items-center justify-center text-stone-500 gap-2">
+                    <Video className="h-8 w-8" />
+                    <span className="text-xs">No video URL</span>
+                  </div>
+                )}
+              </div>
+            ) : node.type === "link" ? (
+              <div className="h-full w-full">
+                {node.mediaUrl ? (
+                  <a 
+                    href={node.mediaUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex flex-col gap-1 text-blue-400 hover:text-blue-300 h-full"
+                    onClick={(e) => e.stopPropagation()}
+                    onPointerDown={(e) => e.stopPropagation()}
+                  >
+                    <div className="flex items-center gap-2">
+                      <ExternalLink className="h-4 w-4 flex-shrink-0" />
+                      <span className="text-sm font-medium truncate">
+                        {node.linkTitle || new URL(node.mediaUrl).hostname}
+                      </span>
+                    </div>
+                    {node.linkDescription && (
+                      <p className="text-xs text-stone-400 line-clamp-2">{node.linkDescription}</p>
+                    )}
+                    <span className="text-xs text-stone-500 truncate mt-auto">{node.mediaUrl}</span>
+                  </a>
+                ) : (
+                  <div className="flex flex-col items-center justify-center text-stone-500 gap-2 h-full">
+                    <Link className="h-8 w-8" />
+                    <span className="text-xs">No link URL</span>
+                  </div>
+                )}
               </div>
             ) : null}
           </div>
@@ -1373,6 +1518,57 @@ export function CanvasEditor({
                 />
                 <TooltipContent side="right">
                   <p>Add Entity</p>
+                </TooltipContent>
+              </Tooltip>
+
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setImageDialogOpen(true)}
+                    className="h-8 w-8 text-stone-400 hover:text-white"
+                    data-testid="button-add-image"
+                  >
+                    <Image className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="right">
+                  <p>Add Image</p>
+                </TooltipContent>
+              </Tooltip>
+
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setVideoDialogOpen(true)}
+                    className="h-8 w-8 text-stone-400 hover:text-white"
+                    data-testid="button-add-video"
+                  >
+                    <Video className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="right">
+                  <p>Add Video</p>
+                </TooltipContent>
+              </Tooltip>
+
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setLinkDialogOpen(true)}
+                    className="h-8 w-8 text-stone-400 hover:text-white"
+                    data-testid="button-add-link"
+                  >
+                    <Link className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="right">
+                  <p>Add Link</p>
                 </TooltipContent>
               </Tooltip>
 
@@ -1856,6 +2052,192 @@ export function CanvasEditor({
                 </div>
               );
             })()}
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={imageDialogOpen} onOpenChange={setImageDialogOpen}>
+          <DialogContent className="bg-stone-900 border-stone-700">
+            <DialogHeader>
+              <DialogTitle className="text-white">Add Image</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label className="text-sm text-stone-400">Image URL</Label>
+                <Input
+                  value={imageUrl}
+                  onChange={(e) => setImageUrl(e.target.value)}
+                  placeholder="https://example.com/image.jpg"
+                  className="bg-stone-800 border-stone-700"
+                  data-testid="input-image-url"
+                />
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    setImageDialogOpen(false);
+                    setImageUrl("");
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={() => {
+                    if (imageUrl.trim()) {
+                      addNode("image", { 
+                        mediaUrl: imageUrl.trim(),
+                        width: 200,
+                        height: 150,
+                      });
+                    }
+                    setImageDialogOpen(false);
+                    setImageUrl("");
+                  }}
+                  disabled={!imageUrl.trim()}
+                  data-testid="button-confirm-add-image"
+                >
+                  Add Image
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={videoDialogOpen} onOpenChange={setVideoDialogOpen}>
+          <DialogContent className="bg-stone-900 border-stone-700">
+            <DialogHeader>
+              <DialogTitle className="text-white">Add Video</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label className="text-sm text-stone-400">Video URL</Label>
+                <Input
+                  value={videoUrl}
+                  onChange={(e) => setVideoUrl(e.target.value)}
+                  placeholder="https://youtube.com/watch?v=... or https://vimeo.com/..."
+                  className="bg-stone-800 border-stone-700"
+                  data-testid="input-video-url"
+                />
+                <p className="text-xs text-stone-500">Supports YouTube, Vimeo, and direct video URLs</p>
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    setVideoDialogOpen(false);
+                    setVideoUrl("");
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={() => {
+                    if (videoUrl.trim()) {
+                      const youtubeMatch = videoUrl.match(/(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+                      const vimeoMatch = videoUrl.match(/vimeo\.com\/(\d+)/);
+                      let provider: "youtube" | "vimeo" | "direct" = "direct";
+                      let thumbnailUrl: string | undefined;
+                      
+                      if (youtubeMatch) {
+                        provider = "youtube";
+                        thumbnailUrl = `https://img.youtube.com/vi/${youtubeMatch[1]}/hqdefault.jpg`;
+                      } else if (vimeoMatch) {
+                        provider = "vimeo";
+                      }
+                      
+                      addNode("video", { 
+                        mediaUrl: videoUrl.trim(),
+                        videoProvider: provider,
+                        thumbnailUrl,
+                        width: 200,
+                        height: 150,
+                      });
+                    }
+                    setVideoDialogOpen(false);
+                    setVideoUrl("");
+                  }}
+                  disabled={!videoUrl.trim()}
+                  data-testid="button-confirm-add-video"
+                >
+                  Add Video
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={linkDialogOpen} onOpenChange={setLinkDialogOpen}>
+          <DialogContent className="bg-stone-900 border-stone-700">
+            <DialogHeader>
+              <DialogTitle className="text-white">Add Link</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label className="text-sm text-stone-400">URL</Label>
+                <Input
+                  value={linkUrl}
+                  onChange={(e) => setLinkUrl(e.target.value)}
+                  placeholder="https://example.com"
+                  className="bg-stone-800 border-stone-700"
+                  data-testid="input-link-url"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-sm text-stone-400">Title (optional)</Label>
+                <Input
+                  value={linkTitle}
+                  onChange={(e) => setLinkTitle(e.target.value)}
+                  placeholder="Link title"
+                  className="bg-stone-800 border-stone-700"
+                  data-testid="input-link-title"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-sm text-stone-400">Description (optional)</Label>
+                <Textarea
+                  value={linkDescription}
+                  onChange={(e) => setLinkDescription(e.target.value)}
+                  placeholder="Brief description..."
+                  className="bg-stone-800 border-stone-700 resize-none"
+                  rows={2}
+                  data-testid="input-link-description"
+                />
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    setLinkDialogOpen(false);
+                    setLinkUrl("");
+                    setLinkTitle("");
+                    setLinkDescription("");
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={() => {
+                    if (linkUrl.trim()) {
+                      addNode("link", { 
+                        mediaUrl: linkUrl.trim(),
+                        linkTitle: linkTitle.trim() || undefined,
+                        linkDescription: linkDescription.trim() || undefined,
+                        width: 200,
+                        height: 100,
+                      });
+                    }
+                    setLinkDialogOpen(false);
+                    setLinkUrl("");
+                    setLinkTitle("");
+                    setLinkDescription("");
+                  }}
+                  disabled={!linkUrl.trim()}
+                  data-testid="button-confirm-add-link"
+                >
+                  Add Link
+                </Button>
+              </div>
+            </div>
           </DialogContent>
         </Dialog>
       </div>

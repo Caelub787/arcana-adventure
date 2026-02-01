@@ -148,6 +148,7 @@ export const campaignMembers = pgTable("campaign_members", {
   favorite: boolean("favorite").default(false).notNull(),
   assignedCharacterId: varchar("assigned_character_id"), // Character auto-assigned to player on load
   gmHotbar: text("gm_hotbar").array(), // Array of character IDs for GM's character hotbar
+  beaconColor: text("beacon_color"), // RGB hex color for player's beacon clicks (e.g., "#FF5500")
   joinedAt: timestamp("joined_at").defaultNow().notNull(),
 });
 

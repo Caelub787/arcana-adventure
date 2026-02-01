@@ -50,6 +50,7 @@ import {
   Plus,
   Folder,
   FolderOpen,
+  FolderPlus,
   FileText,
   Pin,
   Archive,
@@ -57,6 +58,7 @@ import {
   Share2,
   MoreVertical,
   ChevronRight,
+  ChevronDown,
   ChevronLeft,
   Users,
   Loader2,
@@ -73,6 +75,7 @@ import {
 import { ReferencePicker, NoteOnlyPicker } from "@/components/notes/ReferencePicker";
 import { CanvasEditor, CanvasData } from "@/components/notes/CanvasEditor";
 import { NotesGraph } from "@/components/notes/NotesGraph";
+import { NoteTabs, useNoteTabs, OpenNote } from "@/components/notes/NoteTabs";
 import type { SearchableEntity } from "@/lib/api";
 
 interface CampaignNotesPanelProps {
@@ -115,7 +118,9 @@ interface FolderTreeItemProps {
   selectedFolderId: string | null;
   onSelect: (id: string | null) => void;
   onContextMenu: (folder: NoteFolder) => void;
+  onAddSubfolder: (parentId: string) => void;
   onDeleteFolder: (folder: NoteFolder) => void;
+  onMoveFolder: (folderId: string, newParentId: string | null) => void;
   level?: number;
   currentCampaignId?: string;
 }
@@ -126,11 +131,14 @@ function FolderTreeItem({
   selectedFolderId,
   onSelect,
   onContextMenu,
+  onAddSubfolder,
   onDeleteFolder,
+  onMoveFolder,
   level = 0,
   currentCampaignId,
 }: FolderTreeItemProps) {
   const [expanded, setExpanded] = useState(true);
+  const [isDragOver, setIsDragOver] = useState(false);
   const children = folders.filter((f) => f.parentId === folder.id);
   const isSelected = selectedFolderId === folder.id;
   const hasChildren = children.length > 0;
@@ -139,11 +147,48 @@ function FolderTreeItem({
   const isGlobal = !folder.campaignId;
   const isOtherCampaign = folder.campaignId && folder.campaignId !== currentCampaignId;
 
+  const isDescendant = (parentId: string, childId: string): boolean => {
+    const child = folders.find(f => f.id === childId);
+    if (!child) return false;
+    if (child.parentId === parentId) return true;
+    if (child.parentId) return isDescendant(parentId, child.parentId);
+    return false;
+  };
+
+  const handleDragStart = (e: React.DragEvent) => {
+    e.dataTransfer.setData("text/plain", folder.id);
+    e.dataTransfer.effectAllowed = "move";
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    const draggedId = e.dataTransfer.getData("text/plain");
+    if (draggedId !== folder.id && !isDescendant(draggedId, folder.id)) {
+      e.dataTransfer.dropEffect = "move";
+      setIsDragOver(true);
+    }
+  };
+
+  const handleDragLeave = () => {
+    setIsDragOver(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(false);
+    const draggedId = e.dataTransfer.getData("text/plain");
+    if (draggedId && draggedId !== folder.id && !isDescendant(draggedId, folder.id)) {
+      onMoveFolder(draggedId, folder.id);
+    }
+  };
+
   return (
     <div>
       <div
         className={`flex items-center gap-1 py-1 px-1.5 rounded cursor-pointer transition-colors text-xs ${
-          isSelected
+          isDragOver
+            ? "bg-amber-700/50 ring-2 ring-amber-500"
+            : isSelected
             ? "bg-amber-900/30 text-amber-400"
             : isOtherCampaign
             ? "hover:bg-stone-800/50 text-stone-500 opacity-60"
@@ -151,6 +196,11 @@ function FolderTreeItem({
         }`}
         style={{ paddingLeft: `${level * 8 + 4}px` }}
         onClick={() => onSelect(folder.id)}
+        draggable
+        onDragStart={handleDragStart}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
         data-testid={`panel-folder-item-${folder.id}`}
       >
         {hasChildren ? (
@@ -161,11 +211,11 @@ function FolderTreeItem({
             }}
             className="p-0.5 hover:bg-stone-700 rounded"
           >
-            <ChevronRight
-              className={`h-2.5 w-2.5 transition-transform ${
-                expanded ? "rotate-90" : ""
-              }`}
-            />
+            {expanded ? (
+              <ChevronDown className="h-2.5 w-2.5" />
+            ) : (
+              <ChevronRight className="h-2.5 w-2.5" />
+            )}
           </button>
         ) : (
           <span className="w-3" />
@@ -204,6 +254,14 @@ function FolderTreeItem({
             >
               <Edit className="h-3 w-3 mr-2" /> Rename
             </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={(e) => {
+                e.stopPropagation();
+                onAddSubfolder(folder.id);
+              }}
+            >
+              <FolderPlus className="h-3 w-3 mr-2" /> Add Subfolder
+            </DropdownMenuItem>
             <DropdownMenuSeparator className="bg-stone-700" />
             <DropdownMenuItem
               onClick={(e) => {
@@ -226,7 +284,9 @@ function FolderTreeItem({
             selectedFolderId={selectedFolderId}
             onSelect={onSelect}
             onContextMenu={onContextMenu}
+            onAddSubfolder={onAddSubfolder}
             onDeleteFolder={onDeleteFolder}
+            onMoveFolder={onMoveFolder}
             level={level + 1}
             currentCampaignId={currentCampaignId}
           />
@@ -298,6 +358,15 @@ export function CampaignNotesPanel({
   const [notePreviewDialogOpen, setNotePreviewDialogOpen] = useState(false);
   const [previewNote, setPreviewNote] = useState<Note | null>(null);
 
+  // Note tabs state
+  const {
+    openNotes,
+    openNote: openNoteTab,
+    closeTab,
+    switchTab,
+    updateTabTitle,
+  } = useNoteTabs();
+
   const lastLoadedNoteIdRef = useRef<string | null>(null);
 
   const { data: folders = [], isLoading: foldersLoading } = useQuery<NoteFolder[]>({
@@ -355,9 +424,48 @@ export function CampaignNotesPanel({
           setCanvasData({ nodes: [], connections: [] });
           setNoteMode("read");
         }
+        
+        // Open in tabs when selecting a note
+        openNoteTab(currentNote.id, currentNote.title, currentNote.type as "markdown" | "canvas" | undefined);
       }
     }
-  }, [currentNote]);
+  }, [currentNote, openNoteTab]);
+
+  // Sync tab title when note title changes
+  useEffect(() => {
+    if (selectedNoteId && noteTitle) {
+      updateTabTitle(selectedNoteId, noteTitle);
+    }
+  }, [selectedNoteId, noteTitle, updateTabTitle]);
+
+  // Handle tab switching
+  const handleTabClick = (tabNoteId: string) => {
+    if (tabNoteId !== selectedNoteId) {
+      setSelectedNoteId(tabNoteId);
+    }
+  };
+
+  // Handle tab close
+  const handleTabClose = (tabNoteId: string) => {
+    const remainingNotes = openNotes.filter(n => n.noteId !== tabNoteId);
+    closeTab(tabNoteId);
+    
+    if (tabNoteId === selectedNoteId) {
+      if (remainingNotes.length > 0) {
+        const currentIdx = openNotes.findIndex(n => n.noteId === tabNoteId);
+        const newActiveNote = currentIdx > 0 
+          ? openNotes[currentIdx - 1] 
+          : remainingNotes[0];
+        if (newActiveNote) {
+          setSelectedNoteId(newActiveNote.noteId);
+        } else {
+          setSelectedNoteId(null);
+        }
+      } else {
+        setSelectedNoteId(null);
+      }
+    }
+  };
 
   const createFolderMutation = useMutation({
     mutationFn: (data: Partial<NoteFolder>) => api.createNoteFolder(data),
@@ -957,9 +1065,23 @@ export function CampaignNotesPanel({
                   setShowSharedNotes(false);
                 }}
                 onContextMenu={(f) => openFolderDialog(f)}
+                onAddSubfolder={(parentId) => {
+                  setEditingFolder(null);
+                  setFolderName("");
+                  setFolderColor(null);
+                  setFolderParentId(parentId);
+                  setFolderCampaignAssignment(campaignId);
+                  setFolderDialogOpen(true);
+                }}
                 onDeleteFolder={(f) => {
                   setFolderToDelete(f);
                   setDeleteFolderDialogOpen(true);
+                }}
+                onMoveFolder={(folderId, newParentId) => {
+                  updateFolderMutation.mutate({
+                    id: folderId,
+                    data: { parentId: newParentId },
+                  });
                 }}
                 currentCampaignId={campaignId}
               />
@@ -1379,6 +1501,16 @@ export function CampaignNotesPanel({
           </Button>
         </div>
       </div>
+
+      {openNotes.length > 0 && (
+        <NoteTabs
+          openNotes={openNotes}
+          activeNoteId={selectedNoteId}
+          onTabClick={handleTabClick}
+          onTabClose={handleTabClose}
+          compact
+        />
+      )}
 
       <div className="flex-1 flex overflow-hidden min-h-0">
         {viewMode === "graph" ? (
