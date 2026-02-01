@@ -735,7 +735,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
           };
           
           const rollResult = createRollResult(rollRequest, authenticatedUserId, username);
-          const wsMessage = createWebSocketDiceRollMessage(rollResult);
           
           // Get character name if characterId is provided
           let characterName = "";
@@ -746,22 +745,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
             }
           }
           
-          // Format dice roll result for chat
+          // Add characterName to the websocket message for notifications
+          const wsMessage = {
+            ...createWebSocketDiceRollMessage(rollResult),
+            roll: {
+              ...rollResult,
+              characterName: characterName || undefined,
+            }
+          };
+          
+          // Format dice roll result for chat - show "Character Name (Player Name)" format
           const modifierText = rollResult.modifier !== 0 
             ? (rollResult.modifier > 0 ? ` + ${rollResult.modifier}` : ` - ${Math.abs(rollResult.modifier)}`)
             : "";
           const purposeText = purpose ? ` - ${purpose}` : "";
-          const characterText = characterName ? ` (${characterName})` : "";
+          const senderDisplay = characterName ? `${characterName} (${username})` : username;
           const advantageText = rollResult.advantage === 'advantage' ? ' [ADV]' : 
                                rollResult.advantage === 'disadvantage' ? ' [DIS]' : '';
           const rollsText = rollResult.rolls ? ` (${rollResult.rolls.join(', ')})` : '';
-          const rollText = `${dieType.toUpperCase()}${advantageText}${purposeText}${characterText}: ${rollResult.result}${rollsText}${modifierText} = ${rollResult.total}`;
+          const rollText = `${dieType.toUpperCase()}${advantageText}${purposeText}: ${rollResult.result}${rollsText}${modifierText} = ${rollResult.total}`;
           
           // Save dice roll to chat as a "roll" type message
+          // Use "Character Name (Player Name)" format for sender if character exists
           const chatMessage = await storage.createChatMessage({
             campaignId,
             userId: authenticatedUserId,
-            sender: username,
+            sender: senderDisplay,
             text: rollText,
             type: "roll"
           });

@@ -180,8 +180,8 @@ export function FloatingPanel({
   const resizeHandleBase = "absolute bg-transparent hover:bg-amber-500/30 transition-colors";
   const cornerSize = 12;
   const edgeThickness = 6;
-  const headerHeight = isMinimized ? 32 : 44;
-  const minimizedMaxWidth = 180;
+  const headerHeight = isMinimized ? 28 : 44;
+  const minimizedMaxWidth = 120;
 
   return (
     <div
@@ -203,7 +203,7 @@ export function FloatingPanel({
       <div
         className={cn(
           "flex items-center justify-between bg-stone-800 border-b border-stone-700 cursor-grab select-none shrink-0",
-          isMinimized ? "px-2 py-1 gap-1" : "px-4 py-2",
+          isMinimized ? "px-1.5 py-0.5 gap-0.5" : "px-4 py-2",
           isDragging && "cursor-grabbing"
         )}
         onPointerDown={handleDragStart}
@@ -215,7 +215,7 @@ export function FloatingPanel({
       >
         <div className={cn(
           "flex items-center text-amber-500 font-display truncate min-w-0",
-          isMinimized ? "gap-1 text-sm pr-1" : "gap-2 text-lg pr-4"
+          isMinimized ? "gap-0.5 text-xs pr-0.5" : "gap-2 text-lg pr-4"
         )}>
           {!isMinimized && <GripHorizontal className="h-4 w-4 text-stone-500 shrink-0" />}
           <span className="truncate">{title}</span>
@@ -225,13 +225,13 @@ export function FloatingPanel({
             onClick={toggleMinimize}
             className={cn(
               "rounded hover:bg-stone-700 transition-colors text-stone-400 hover:text-stone-200",
-              isMinimized ? "p-0.5" : "p-1"
+              isMinimized ? "p-0" : "p-1"
             )}
             data-no-drag
             data-testid="floating-panel-minimize"
             title={isMinimized ? "Restore" : "Minimize"}
           >
-            <Minus className={isMinimized ? "h-3.5 w-3.5" : "h-5 w-5"} />
+            <Minus className={isMinimized ? "h-3 w-3" : "h-5 w-5"} />
           </button>
           {!isMinimized && (
             <button
@@ -252,12 +252,12 @@ export function FloatingPanel({
             onClick={onClose}
             className={cn(
               "rounded hover:bg-stone-700 transition-colors text-stone-400 hover:text-stone-200",
-              isMinimized ? "p-0.5" : "p-1"
+              isMinimized ? "p-0" : "p-1"
             )}
             data-no-drag
             data-testid="floating-panel-close"
           >
-            <X className={isMinimized ? "h-3.5 w-3.5" : "h-5 w-5"} />
+            <X className={isMinimized ? "h-3 w-3" : "h-5 w-5"} />
           </button>
         </div>
       </div>

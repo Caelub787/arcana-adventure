@@ -12,13 +12,14 @@ export function BattlemapDiceOverlay({ onRollComplete }: BattlemapDiceOverlayPro
       const result = event.detail;
       
       // Don't broadcast - server already broadcast this roll to all clients
+      // Use characterName if available (from server), fallback to username
       triggerDiceRollNotification(
         result.dieType,
         result.result,
         result.modifier,
         result.total,
         result.username || 'Unknown',
-        undefined,
+        (result as any).characterName,
         false // broadcast = false, server already sent to all clients
       );
       

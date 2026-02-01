@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -7,7 +7,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Bold, Italic, Underline, Type } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogDescription,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Bold, Italic, Underline, Type, Image, Upload, Link } from "lucide-react";
 
 export type NoteFont = "inherit" | "serif" | "sans-serif" | "monospace";
 
@@ -32,7 +43,7 @@ export function getFontClass(font: NoteFont): string {
 }
 
 interface FormattingToolbarProps {
-  textareaRef: React.RefObject<HTMLTextAreaElement>;
+  textareaRef: React.RefObject<HTMLTextAreaElement | null>;
   content: string;
   onContentChange: (content: string) => void;
   font: NoteFont;
@@ -48,6 +59,12 @@ export function FormattingToolbar({
   onFontChange,
   compact = false,
 }: FormattingToolbarProps) {
+  const [imageDialogOpen, setImageDialogOpen] = useState(false);
+  const [imageUrl, setImageUrl] = useState("");
+  const [imageAlt, setImageAlt] = useState("");
+  const [imageTab, setImageTab] = useState<"url" | "upload">("url");
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const wrapSelection = (prefix: string, suffix: string) => {
     const textarea = textareaRef.current;
     if (!textarea) return;
@@ -86,6 +103,56 @@ export function FormattingToolbar({
     }
   };
 
+  const insertImage = (url: string, alt: string) => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+
+    const start = textarea.selectionStart;
+    const beforeText = content.slice(0, start);
+    const afterText = content.slice(start);
+    const imageMarkdown = `![${alt || "image"}](${url})`;
+    const newContent = beforeText + imageMarkdown + afterText;
+    onContentChange(newContent);
+
+    setTimeout(() => {
+      textarea.focus();
+      textarea.setSelectionRange(
+        start + imageMarkdown.length,
+        start + imageMarkdown.length
+      );
+    }, 0);
+  };
+
+  const handleImageInsert = () => {
+    if (imageUrl.trim()) {
+      insertImage(imageUrl.trim(), imageAlt.trim());
+      setImageDialogOpen(false);
+      setImageUrl("");
+      setImageAlt("");
+    }
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const dataUrl = event.target?.result as string;
+      if (dataUrl) {
+        insertImage(dataUrl, imageAlt.trim() || file.name.replace(/\.[^/.]+$/, ""));
+        setImageDialogOpen(false);
+        setImageUrl("");
+        setImageAlt("");
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
   const handleBold = () => wrapSelection("**", "**");
   const handleItalic = () => wrapSelection("*", "*");
   const handleUnderline = () => wrapSelection("__", "__");
@@ -95,58 +162,170 @@ export function FormattingToolbar({
   const selectHeight = compact ? "h-6" : "h-8";
 
   return (
-    <div className="flex items-center gap-1 mb-2" data-testid="formatting-toolbar">
-      <Button
-        type="button"
-        variant="outline"
-        size="icon"
-        className={`${buttonSize} border-stone-700 hover:bg-stone-800`}
-        onClick={handleBold}
-        title="Bold (Ctrl+B)"
-        data-testid="button-format-bold"
-      >
-        <Bold className={iconSize} />
-      </Button>
-      <Button
-        type="button"
-        variant="outline"
-        size="icon"
-        className={`${buttonSize} border-stone-700 hover:bg-stone-800`}
-        onClick={handleItalic}
-        title="Italic (Ctrl+I)"
-        data-testid="button-format-italic"
-      >
-        <Italic className={iconSize} />
-      </Button>
-      <Button
-        type="button"
-        variant="outline"
-        size="icon"
-        className={`${buttonSize} border-stone-700 hover:bg-stone-800`}
-        onClick={handleUnderline}
-        title="Underline (Ctrl+U)"
-        data-testid="button-format-underline"
-      >
-        <Underline className={iconSize} />
-      </Button>
-      <div className="w-px h-5 bg-stone-700 mx-1" />
-      <Select value={font} onValueChange={(v) => onFontChange(v as NoteFont)}>
-        <SelectTrigger 
-          className={`${selectHeight} w-28 border-stone-700 bg-stone-900 text-xs`}
-          data-testid="select-font"
+    <>
+      <div className="flex items-center gap-1 mb-2" data-testid="formatting-toolbar">
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          className={`${buttonSize} border-stone-700 hover:bg-stone-800`}
+          onClick={handleBold}
+          title="Bold (Ctrl+B)"
+          data-testid="button-format-bold"
         >
-          <Type className={`${iconSize} mr-1`} />
-          <SelectValue placeholder="Font" />
-        </SelectTrigger>
-        <SelectContent className="bg-stone-900 border-stone-700">
-          {FONT_OPTIONS.map((opt) => (
-            <SelectItem key={opt.value} value={opt.value} className="text-xs">
-              <span className={getFontClass(opt.value)}>{opt.label}</span>
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-    </div>
+          <Bold className={iconSize} />
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          className={`${buttonSize} border-stone-700 hover:bg-stone-800`}
+          onClick={handleItalic}
+          title="Italic (Ctrl+I)"
+          data-testid="button-format-italic"
+        >
+          <Italic className={iconSize} />
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          className={`${buttonSize} border-stone-700 hover:bg-stone-800`}
+          onClick={handleUnderline}
+          title="Underline (Ctrl+U)"
+          data-testid="button-format-underline"
+        >
+          <Underline className={iconSize} />
+        </Button>
+        <div className="w-px h-5 bg-stone-700 mx-1" />
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          className={`${buttonSize} border-stone-700 hover:bg-stone-800`}
+          onClick={() => setImageDialogOpen(true)}
+          title="Insert Image"
+          data-testid="button-insert-image"
+        >
+          <Image className={iconSize} />
+        </Button>
+        <div className="w-px h-5 bg-stone-700 mx-1" />
+        <Select value={font} onValueChange={(v) => onFontChange(v as NoteFont)}>
+          <SelectTrigger 
+            className={`${selectHeight} w-28 border-stone-700 bg-stone-900 text-xs`}
+            data-testid="select-font"
+          >
+            <Type className={`${iconSize} mr-1`} />
+            <SelectValue placeholder="Font" />
+          </SelectTrigger>
+          <SelectContent className="bg-stone-900 border-stone-700">
+            {FONT_OPTIONS.map((opt) => (
+              <SelectItem key={opt.value} value={opt.value} className="text-xs">
+                <span className={getFontClass(opt.value)}>{opt.label}</span>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <Dialog open={imageDialogOpen} onOpenChange={setImageDialogOpen}>
+        <DialogContent className="bg-stone-900 border-stone-700 sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-stone-100">Insert Image</DialogTitle>
+            <DialogDescription className="text-stone-400">
+              Add an image to your note using a URL or by uploading a file.
+            </DialogDescription>
+          </DialogHeader>
+          <Tabs value={imageTab} onValueChange={(v) => setImageTab(v as "url" | "upload")} className="w-full">
+            <TabsList className="grid w-full grid-cols-2 bg-stone-800">
+              <TabsTrigger value="url" className="data-[state=active]:bg-stone-700">
+                <Link className="h-4 w-4 mr-2" />
+                URL
+              </TabsTrigger>
+              <TabsTrigger value="upload" className="data-[state=active]:bg-stone-700">
+                <Upload className="h-4 w-4 mr-2" />
+                Upload
+              </TabsTrigger>
+            </TabsList>
+            <TabsContent value="url" className="space-y-4 mt-4">
+              <div className="space-y-2">
+                <Label htmlFor="image-url" className="text-stone-300">Image URL</Label>
+                <Input
+                  id="image-url"
+                  placeholder="https://example.com/image.png"
+                  value={imageUrl}
+                  onChange={(e) => setImageUrl(e.target.value)}
+                  className="bg-stone-800 border-stone-700"
+                  data-testid="input-image-url"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="image-alt-url" className="text-stone-300">Alt Text (optional)</Label>
+                <Input
+                  id="image-alt-url"
+                  placeholder="Description of the image"
+                  value={imageAlt}
+                  onChange={(e) => setImageAlt(e.target.value)}
+                  className="bg-stone-800 border-stone-700"
+                  data-testid="input-image-alt"
+                />
+              </div>
+            </TabsContent>
+            <TabsContent value="upload" className="space-y-4 mt-4">
+              <div className="space-y-2">
+                <Label htmlFor="image-alt-upload" className="text-stone-300">Alt Text (optional)</Label>
+                <Input
+                  id="image-alt-upload"
+                  placeholder="Description of the image"
+                  value={imageAlt}
+                  onChange={(e) => setImageAlt(e.target.value)}
+                  className="bg-stone-800 border-stone-700"
+                />
+              </div>
+              <div 
+                className="border-2 border-dashed border-stone-600 rounded-lg p-6 text-center cursor-pointer hover:border-amber-500 transition-colors"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <Upload className="h-8 w-8 mx-auto text-stone-400 mb-2" />
+                <p className="text-stone-400 text-sm">Click to upload an image</p>
+                <p className="text-stone-500 text-xs mt-1">PNG, JPG, GIF, WebP</p>
+              </div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handleFileUpload}
+                data-testid="input-image-file"
+              />
+            </TabsContent>
+          </Tabs>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setImageDialogOpen(false);
+                setImageUrl("");
+                setImageAlt("");
+              }}
+              className="border-stone-700"
+            >
+              Cancel
+            </Button>
+            {imageTab === "url" && (
+              <Button
+                onClick={handleImageInsert}
+                disabled={!imageUrl.trim()}
+                className="bg-amber-600 hover:bg-amber-700"
+                data-testid="button-confirm-image"
+              >
+                Insert
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
@@ -205,7 +384,7 @@ export function renderFormattedText(text: string, keyPrefix: string = ""): React
   const parts: React.ReactNode[] = [];
   let currentIndex = 0;
   
-  const regex = /(\*\*([^*]+)\*\*)|(\*([^*]+)\*)|(__([^_]+)__)/g;
+  const regex = /!\[([^\]]*)\]\(([^)]+)\)|(\*\*([^*]+)\*\*)|(\*([^*]+)\*)|(__([^_]+)__)/g;
   let match;
 
   while ((match = regex.exec(text)) !== null) {
@@ -217,22 +396,35 @@ export function renderFormattedText(text: string, keyPrefix: string = ""): React
       );
     }
 
-    if (match[1] && match[2]) {
+    if (match[1] !== undefined && match[2]) {
+      const altText = match[1] || "image";
+      const imageUrl = match[2];
       parts.push(
-        <strong key={`${keyPrefix}-bold-${match.index}`} className="font-bold">
-          {match[2]}
-        </strong>
+        <span key={`${keyPrefix}-image-${match.index}`} className="inline-block my-2">
+          <img 
+            src={imageUrl} 
+            alt={altText}
+            className="max-w-full h-auto rounded-md border border-stone-700"
+            style={{ maxHeight: "300px" }}
+          />
+        </span>
       );
     } else if (match[3] && match[4]) {
       parts.push(
-        <em key={`${keyPrefix}-italic-${match.index}`} className="italic">
+        <strong key={`${keyPrefix}-bold-${match.index}`} className="font-bold">
           {match[4]}
-        </em>
+        </strong>
       );
     } else if (match[5] && match[6]) {
       parts.push(
-        <span key={`${keyPrefix}-underline-${match.index}`} className="underline">
+        <em key={`${keyPrefix}-italic-${match.index}`} className="italic">
           {match[6]}
+        </em>
+      );
+    } else if (match[7] && match[8]) {
+      parts.push(
+        <span key={`${keyPrefix}-underline-${match.index}`} className="underline">
+          {match[8]}
         </span>
       );
     }

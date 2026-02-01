@@ -88,6 +88,7 @@ import {
   CloudDownload,
   CloudUpload,
   ExternalLink,
+  Home,
 } from "lucide-react";
 import { ReferencePicker, ReferenceInlineDisplay, NoteOnlyPicker } from "@/components/notes/ReferencePicker";
 import { CanvasEditor, CanvasData } from "@/components/notes/CanvasEditor";
@@ -127,8 +128,11 @@ function getFolderColorClass(color: string | null | undefined): string {
 interface FolderTreeItemProps {
   folder: NoteFolder;
   folders: NoteFolder[];
+  allNotes: Note[];
   selectedFolderId: string | null;
+  selectedNoteId: string | null;
   onSelect: (id: string | null) => void;
+  onNoteSelect: (noteId: string) => void;
   onEditFolder: (folder: NoteFolder) => void;
   onAddSubfolder: (parentId: string) => void;
   onDeleteFolder: (folder: NoteFolder) => void;
@@ -139,8 +143,11 @@ interface FolderTreeItemProps {
 function FolderTreeItem({
   folder,
   folders,
+  allNotes,
   selectedFolderId,
+  selectedNoteId,
   onSelect,
+  onNoteSelect,
   onEditFolder,
   onAddSubfolder,
   onDeleteFolder,
@@ -150,8 +157,10 @@ function FolderTreeItem({
   const [expanded, setExpanded] = useState(true);
   const [isDragOver, setIsDragOver] = useState(false);
   const children = folders.filter((f) => f.parentId === folder.id);
+  const folderNotes = allNotes.filter((n) => n.folderId === folder.id);
   const isSelected = selectedFolderId === folder.id;
   const hasChildren = children.length > 0;
+  const hasContent = hasChildren || folderNotes.length > 0;
 
   const isDescendant = (parentId: string, childId: string): boolean => {
     const child = folders.find(f => f.id === childId);
@@ -207,7 +216,7 @@ function FolderTreeItem({
         onDrop={handleDrop}
         data-testid={`folder-item-${folder.id}`}
       >
-        {hasChildren ? (
+        {hasContent ? (
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -225,7 +234,7 @@ function FolderTreeItem({
         ) : (
           <span className="w-4" />
         )}
-        {expanded && hasChildren ? (
+        {expanded && hasContent ? (
           <FolderOpen className={`h-4 w-4 ${getFolderColorClass(folder.color)}`} />
         ) : (
           <Folder className={`h-4 w-4 ${getFolderColorClass(folder.color)}`} />
@@ -277,21 +286,47 @@ function FolderTreeItem({
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
-      {expanded &&
-        children.map((child) => (
-          <FolderTreeItem
-            key={child.id}
-            folder={child}
-            folders={folders}
-            selectedFolderId={selectedFolderId}
-            onSelect={onSelect}
-            onEditFolder={onEditFolder}
-            onAddSubfolder={onAddSubfolder}
-            onDeleteFolder={onDeleteFolder}
-            onMoveFolder={onMoveFolder}
-            level={level + 1}
-          />
-        ))}
+      {expanded && (
+        <>
+          {children.map((child) => (
+            <FolderTreeItem
+              key={child.id}
+              folder={child}
+              folders={folders}
+              allNotes={allNotes}
+              selectedFolderId={selectedFolderId}
+              selectedNoteId={selectedNoteId}
+              onSelect={onSelect}
+              onNoteSelect={onNoteSelect}
+              onEditFolder={onEditFolder}
+              onAddSubfolder={onAddSubfolder}
+              onDeleteFolder={onDeleteFolder}
+              onMoveFolder={onMoveFolder}
+              level={level + 1}
+            />
+          ))}
+          {folderNotes.map((note) => (
+            <div
+              key={note.id}
+              onClick={(e) => {
+                e.stopPropagation();
+                onNoteSelect(note.id);
+              }}
+              className={`flex items-center gap-1.5 py-1 px-2 rounded cursor-pointer transition-colors ${
+                selectedNoteId === note.id
+                  ? "bg-amber-900/30 text-amber-400"
+                  : "hover:bg-stone-800/50 text-stone-400"
+              }`}
+              style={{ paddingLeft: `${(level + 1) * 12 + 8}px` }}
+              data-testid={`folder-note-item-${note.id}`}
+            >
+              <FileText className="h-3 w-3 flex-shrink-0" />
+              <span className="flex-1 truncate text-sm">{note.title || "Untitled"}</span>
+              {note.isPinned && <Pin className="h-2.5 w-2.5 text-amber-500" />}
+            </div>
+          ))}
+        </>
+      )}
     </div>
   );
 }
@@ -306,6 +341,7 @@ export default function Notes() {
 
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
   const [showSharedNotes, setShowSharedNotes] = useState(false);
+  const [showHomeView, setShowHomeView] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -400,6 +436,12 @@ export default function Notes() {
       if (showSharedNotes) return api.getSharedNotes();
       return api.getNotes(selectedFolderId ?? undefined, campaignId ?? undefined);
     },
+    enabled: !!user,
+  });
+
+  const { data: allNotesForTree = [] } = useQuery<Note[]>({
+    queryKey: ["/api/notes/all", campaignId],
+    queryFn: () => api.getNotes(undefined, campaignId ?? undefined),
     enabled: !!user,
   });
 
@@ -1380,19 +1422,20 @@ export default function Notes() {
       <ScrollArea className="flex-1 p-2">
         <div
           className={`flex items-center gap-2 py-1.5 px-2 rounded cursor-pointer transition-colors ${
-            !selectedFolderId && !showSharedNotes
+            showHomeView && !selectedFolderId && !showSharedNotes
               ? "bg-amber-900/30 text-amber-400"
               : "hover:bg-stone-800/50 text-stone-300"
           }`}
           onClick={() => {
             setSelectedFolderId(null);
             setShowSharedNotes(false);
+            setShowHomeView(true);
             if (isMobile) setSidebarOpen(false);
           }}
-          data-testid="folder-all-notes"
+          data-testid="folder-home"
         >
-          <FileText className="h-4 w-4" />
-          <span className="text-sm">All Notes</span>
+          <Home className="h-4 w-4" />
+          <span className="text-sm">Home</span>
         </div>
         <Separator className="my-2 bg-stone-800" />
         <div className="space-y-0.5 group">
@@ -1406,10 +1449,18 @@ export default function Notes() {
                 key={folder.id}
                 folder={folder}
                 folders={folders}
+                allNotes={allNotesForTree}
                 selectedFolderId={selectedFolderId}
+                selectedNoteId={noteId ?? null}
                 onSelect={(id) => {
                   setSelectedFolderId(id);
                   setShowSharedNotes(false);
+                  setShowHomeView(false);
+                  if (isMobile) setSidebarOpen(false);
+                }}
+                onNoteSelect={(id) => {
+                  setShowHomeView(false);
+                  setLocation(`/notes/${id}`);
                   if (isMobile) setSidebarOpen(false);
                 }}
                 onEditFolder={(f) => {
@@ -1446,6 +1497,7 @@ export default function Notes() {
           onClick={() => {
             setShowSharedNotes(true);
             setSelectedFolderId(null);
+            setShowHomeView(false);
             if (isMobile) setSidebarOpen(false);
           }}
           data-testid="folder-shared"
@@ -1633,6 +1685,49 @@ export default function Notes() {
         >
           <Plus className="h-6 w-6" />
         </Button>
+      </div>
+    </div>
+  );
+
+  const renderHomeView = () => (
+    <div className="flex-1 flex flex-col items-center justify-center p-6">
+      <div className="text-center max-w-md">
+        <Home className="h-16 w-16 mx-auto mb-6 text-stone-600" />
+        <h2 className="text-2xl font-display font-bold text-stone-200 mb-3">
+          Welcome to Notes
+        </h2>
+        <p className="text-stone-400 mb-8">
+          Create a new note or canvas to get started, or select a folder from the sidebar to browse your existing notes.
+        </p>
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+          <Button
+            onClick={handleCreateNote}
+            className="w-full sm:w-auto bg-amber-700 hover:bg-amber-600 text-lg px-6 py-6"
+            data-testid="button-home-create-note"
+          >
+            <Plus className="h-5 w-5 mr-2" />
+            New Note
+          </Button>
+          <Button
+            onClick={handleCreateCanvas}
+            className="w-full sm:w-auto bg-indigo-700 hover:bg-indigo-600 text-lg px-6 py-6"
+            data-testid="button-home-create-canvas"
+          >
+            <Grid3X3 className="h-5 w-5 mr-2" />
+            New Canvas
+          </Button>
+        </div>
+        <div className="mt-6">
+          <Button
+            onClick={handleOpenImportDialog}
+            variant="outline"
+            className="border-stone-700 text-stone-300 hover:bg-stone-800"
+            data-testid="button-home-import"
+          >
+            <CloudDownload className="h-4 w-4 mr-2" />
+            Import from Google Docs
+          </Button>
+        </div>
       </div>
     </div>
   );
@@ -2022,7 +2117,7 @@ export default function Notes() {
             <h1 className="font-display text-2xl font-bold text-amber-500 flex-1">
               {campaignId ? "Campaign Notes" : "My Notes"}
             </h1>
-            {!isEditing && (
+            {!isEditing && !(showHomeView && !selectedFolderId && !showSharedNotes) && (
               <div className="flex items-center gap-2">
                 <Button
                   variant={viewMode === "list" ? "default" : "ghost"}
@@ -2073,6 +2168,8 @@ export default function Notes() {
 
           {isEditing ? (
             currentNote?.type === "canvas" || noteMode === "edit" ? renderNoteEditor() : renderNoteReadView()
+          ) : showHomeView && !selectedFolderId && !showSharedNotes ? (
+            renderHomeView()
           ) : viewMode === "graph" ? (
             <div className="flex-1 relative">
               <NotesGraph
@@ -2235,7 +2332,7 @@ export default function Notes() {
             </AlertDialogTitle>
             <AlertDialogDescription className="text-stone-400">
               Are you sure you want to delete "{folderToDelete?.name}"? Notes in
-              this folder will be moved to All Notes.
+              this folder will no longer be organized.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

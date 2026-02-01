@@ -119,8 +119,11 @@ function getFolderColorClass(color: string | null | undefined): string {
 interface FolderTreeItemProps {
   folder: NoteFolder;
   folders: NoteFolder[];
+  allNotes: Note[];
   selectedFolderId: string | null;
+  selectedNoteId: string | null;
   onSelect: (id: string | null) => void;
+  onNoteSelect: (noteId: string) => void;
   onContextMenu: (folder: NoteFolder) => void;
   onAddSubfolder: (parentId: string) => void;
   onDeleteFolder: (folder: NoteFolder) => void;
@@ -132,8 +135,11 @@ interface FolderTreeItemProps {
 function FolderTreeItem({
   folder,
   folders,
+  allNotes,
   selectedFolderId,
+  selectedNoteId,
   onSelect,
+  onNoteSelect,
   onContextMenu,
   onAddSubfolder,
   onDeleteFolder,
@@ -144,8 +150,10 @@ function FolderTreeItem({
   const [expanded, setExpanded] = useState(true);
   const [isDragOver, setIsDragOver] = useState(false);
   const children = folders.filter((f) => f.parentId === folder.id);
+  const folderNotes = allNotes.filter((n) => n.folderId === folder.id);
   const isSelected = selectedFolderId === folder.id;
   const hasChildren = children.length > 0;
+  const hasContent = hasChildren || folderNotes.length > 0;
   
   // Determine visibility status
   const isGlobal = !folder.campaignId;
@@ -207,7 +215,7 @@ function FolderTreeItem({
         onDrop={handleDrop}
         data-testid={`panel-folder-item-${folder.id}`}
       >
-        {hasChildren ? (
+        {hasContent ? (
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -224,7 +232,7 @@ function FolderTreeItem({
         ) : (
           <span className="w-3" />
         )}
-        {expanded && hasChildren ? (
+        {expanded && hasContent ? (
           <FolderOpen className={`h-3 w-3 ${getFolderColorClass(folder.color)}`} />
         ) : (
           <Folder className={`h-3 w-3 ${getFolderColorClass(folder.color)}`} />
@@ -279,22 +287,48 @@ function FolderTreeItem({
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
-      {expanded &&
-        children.map((child) => (
-          <FolderTreeItem
-            key={child.id}
-            folder={child}
-            folders={folders}
-            selectedFolderId={selectedFolderId}
-            onSelect={onSelect}
-            onContextMenu={onContextMenu}
-            onAddSubfolder={onAddSubfolder}
-            onDeleteFolder={onDeleteFolder}
-            onMoveFolder={onMoveFolder}
-            level={level + 1}
-            currentCampaignId={currentCampaignId}
-          />
-        ))}
+      {expanded && (
+        <>
+          {children.map((child) => (
+            <FolderTreeItem
+              key={child.id}
+              folder={child}
+              folders={folders}
+              allNotes={allNotes}
+              selectedFolderId={selectedFolderId}
+              selectedNoteId={selectedNoteId}
+              onSelect={onSelect}
+              onNoteSelect={onNoteSelect}
+              onContextMenu={onContextMenu}
+              onAddSubfolder={onAddSubfolder}
+              onDeleteFolder={onDeleteFolder}
+              onMoveFolder={onMoveFolder}
+              level={level + 1}
+              currentCampaignId={currentCampaignId}
+            />
+          ))}
+          {folderNotes.map((note) => (
+            <div
+              key={note.id}
+              onClick={(e) => {
+                e.stopPropagation();
+                onNoteSelect(note.id);
+              }}
+              className={`flex items-center gap-1 py-0.5 px-1.5 rounded cursor-pointer transition-colors text-xs ${
+                selectedNoteId === note.id
+                  ? "bg-amber-900/30 text-amber-400"
+                  : "hover:bg-stone-800/50 text-stone-400"
+              }`}
+              style={{ paddingLeft: `${(level + 1) * 8 + 4}px` }}
+              data-testid={`panel-folder-note-item-${note.id}`}
+            >
+              <FileText className="h-2.5 w-2.5 flex-shrink-0" />
+              <span className="flex-1 truncate">{note.title || "Untitled"}</span>
+              {note.isPinned && <Pin className="h-2 w-2 text-amber-500" />}
+            </div>
+          ))}
+        </>
+      )}
     </div>
   );
 }
@@ -393,6 +427,12 @@ export function CampaignNotesPanel({
       if (showSharedNotes) return api.getSharedNotes();
       return api.getNotes(selectedFolderId ?? undefined, campaignId);
     },
+    enabled: !!user && isOpen,
+  });
+
+  const { data: allNotesForTree = [] } = useQuery<Note[]>({
+    queryKey: ["/api/notes/all", campaignId],
+    queryFn: () => api.getNotes(undefined, campaignId),
     enabled: !!user && isOpen,
   });
 
@@ -1156,10 +1196,15 @@ export function CampaignNotesPanel({
                 key={folder.id}
                 folder={folder}
                 folders={folders}
+                allNotes={allNotesForTree}
                 selectedFolderId={selectedFolderId}
+                selectedNoteId={selectedNoteId}
                 onSelect={(id) => {
                   setSelectedFolderId(id);
                   setShowSharedNotes(false);
+                }}
+                onNoteSelect={(id) => {
+                  setSelectedNoteId(id);
                 }}
                 onContextMenu={(f) => openFolderDialog(f)}
                 onAddSubfolder={(parentId) => {

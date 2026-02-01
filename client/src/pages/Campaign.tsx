@@ -3428,10 +3428,7 @@ export default function Campaign() {
 
       {/* Game View - Always visible for all campaign members */}
       <div 
-        className="flex flex-col h-full w-full transition-all duration-200"
-        style={{
-          paddingRight: notesPanelOpen && !isMobile ? `${notesPanelWidth}px` : 0
-        }}
+        className="flex flex-col h-full w-full"
       >
         
         {/* Map Area - Takes full space, but HUD overlays it */}
