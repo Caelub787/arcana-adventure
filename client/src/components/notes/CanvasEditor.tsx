@@ -13,6 +13,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -50,6 +51,7 @@ import {
   Link,
   Play,
   ExternalLink,
+  Upload,
 } from "lucide-react";
 import {
   Tooltip,
@@ -179,6 +181,8 @@ export function CanvasEditor({
   const [arrowSettingsOpen, setArrowSettingsOpen] = useState(false);
   const [imageDialogOpen, setImageDialogOpen] = useState(false);
   const [imageUrl, setImageUrl] = useState("");
+  const [imageTab, setImageTab] = useState<"url" | "upload">("url");
+  const imageFileInputRef = useRef<HTMLInputElement>(null);
   const [videoDialogOpen, setVideoDialogOpen] = useState(false);
   const [videoUrl, setVideoUrl] = useState("");
   const [linkDialogOpen, setLinkDialogOpen] = useState(false);
@@ -1119,6 +1123,36 @@ export function CanvasEditor({
     
     setConnectionDropMenu(null);
   }, [connectionDropMenu, addNodeAtPosition, addConnection]);
+
+  const handleImageFileUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const dataUrl = event.target?.result as string;
+      if (dataUrl) {
+        addNode("image", {
+          mediaUrl: dataUrl,
+          title: file.name.replace(/\.[^/.]+$/, ""),
+          width: 200,
+          height: 150,
+        });
+        setImageDialogOpen(false);
+        setImageUrl("");
+        setImageTab("url");
+      }
+    };
+    reader.readAsDataURL(file);
+    
+    if (e.target) {
+      e.target.value = "";
+    }
+  }, [addNode]);
 
   const handleEntitySelect = useCallback((entity: SearchableEntity) => {
     // Close picker first, then add node after a microtask to avoid state conflicts
@@ -2335,51 +2369,98 @@ export function CanvasEditor({
           </DialogContent>
         </Dialog>
 
-        <Dialog open={imageDialogOpen} onOpenChange={setImageDialogOpen}>
+        <Dialog open={imageDialogOpen} onOpenChange={(open) => {
+          setImageDialogOpen(open);
+          if (!open) {
+            setImageUrl("");
+            setImageTab("url");
+          }
+        }}>
           <DialogContent className="bg-stone-900 border-stone-700">
             <DialogHeader>
               <DialogTitle className="text-white">Add Image</DialogTitle>
             </DialogHeader>
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label className="text-sm text-stone-400">Image URL</Label>
-                <Input
-                  value={imageUrl}
-                  onChange={(e) => setImageUrl(e.target.value)}
-                  placeholder="https://example.com/image.jpg"
-                  className="bg-stone-800 border-stone-700"
-                  data-testid="input-image-url"
+            <Tabs value={imageTab} onValueChange={(v) => setImageTab(v as "url" | "upload")} className="w-full">
+              <TabsList className="grid w-full grid-cols-2 bg-stone-800">
+                <TabsTrigger value="url" className="data-[state=active]:bg-stone-700">
+                  <Link className="h-4 w-4 mr-2" />
+                  URL
+                </TabsTrigger>
+                <TabsTrigger value="upload" className="data-[state=active]:bg-stone-700">
+                  <Upload className="h-4 w-4 mr-2" />
+                  Upload
+                </TabsTrigger>
+              </TabsList>
+              <TabsContent value="url" className="space-y-4 mt-4">
+                <div className="space-y-2">
+                  <Label className="text-sm text-stone-400">Image URL</Label>
+                  <Input
+                    value={imageUrl}
+                    onChange={(e) => setImageUrl(e.target.value)}
+                    placeholder="https://example.com/image.jpg"
+                    className="bg-stone-800 border-stone-700"
+                    data-testid="input-image-url"
+                  />
+                </div>
+                <div className="flex justify-end gap-2">
+                  <Button
+                    variant="ghost"
+                    onClick={() => {
+                      setImageDialogOpen(false);
+                      setImageUrl("");
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      if (imageUrl.trim()) {
+                        addNode("image", { 
+                          mediaUrl: imageUrl.trim(),
+                          width: 200,
+                          height: 150,
+                        });
+                      }
+                      setImageDialogOpen(false);
+                      setImageUrl("");
+                    }}
+                    disabled={!imageUrl.trim()}
+                    data-testid="button-confirm-add-image"
+                  >
+                    Add Image
+                  </Button>
+                </div>
+              </TabsContent>
+              <TabsContent value="upload" className="space-y-4 mt-4">
+                <div 
+                  className="border-2 border-dashed border-stone-600 rounded-lg p-6 text-center cursor-pointer hover:border-amber-500 transition-colors"
+                  onClick={() => imageFileInputRef.current?.click()}
+                >
+                  <Upload className="h-8 w-8 mx-auto text-stone-400 mb-2" />
+                  <p className="text-stone-400 text-sm">Click to upload an image</p>
+                  <p className="text-stone-500 text-xs mt-1">PNG, JPG, GIF, WebP</p>
+                </div>
+                <input
+                  ref={imageFileInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handleImageFileUpload}
+                  data-testid="input-image-file"
                 />
-              </div>
-              <div className="flex justify-end gap-2">
-                <Button
-                  variant="ghost"
-                  onClick={() => {
-                    setImageDialogOpen(false);
-                    setImageUrl("");
-                  }}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  onClick={() => {
-                    if (imageUrl.trim()) {
-                      addNode("image", { 
-                        mediaUrl: imageUrl.trim(),
-                        width: 200,
-                        height: 150,
-                      });
-                    }
-                    setImageDialogOpen(false);
-                    setImageUrl("");
-                  }}
-                  disabled={!imageUrl.trim()}
-                  data-testid="button-confirm-add-image"
-                >
-                  Add Image
-                </Button>
-              </div>
-            </div>
+                <div className="flex justify-end">
+                  <Button
+                    variant="ghost"
+                    onClick={() => {
+                      setImageDialogOpen(false);
+                      setImageUrl("");
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </TabsContent>
+            </Tabs>
           </DialogContent>
         </Dialog>
 

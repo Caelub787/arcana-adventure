@@ -138,6 +138,8 @@ interface FolderTreeItemProps {
   onMoveFolder: (folderId: string, newParentId: string | null) => void;
   onCreateNote: (folderId: string) => void;
   onCreateCanvas: (folderId: string) => void;
+  onShareNote: (noteId: string) => void;
+  onDeleteNote: (note: Note) => void;
   level?: number;
   currentCampaignId?: string;
 }
@@ -156,6 +158,8 @@ function FolderTreeItem({
   onMoveFolder,
   onCreateNote,
   onCreateCanvas,
+  onShareNote,
+  onDeleteNote,
   level = 0,
   currentCampaignId,
 }: FolderTreeItemProps) {
@@ -221,7 +225,7 @@ function FolderTreeItem({
                 : "hover:bg-stone-800/50 text-stone-300"
             }`}
             style={{ paddingLeft: `${level * 8 + 4}px` }}
-            onClick={() => onSelect(folder.id)}
+            onClick={() => setExpanded(!expanded)}
             draggable
             onDragStart={handleDragStart}
             onDragOver={handleDragOver}
@@ -335,6 +339,8 @@ function FolderTreeItem({
               onMoveFolder={onMoveFolder}
               onCreateNote={onCreateNote}
               onCreateCanvas={onCreateCanvas}
+              onShareNote={onShareNote}
+              onDeleteNote={onDeleteNote}
               level={level + 1}
               currentCampaignId={currentCampaignId}
             />
@@ -354,9 +360,49 @@ function FolderTreeItem({
               style={{ paddingLeft: `${(level + 1) * 8 + 4}px` }}
               data-testid={`panel-folder-note-item-${note.id}`}
             >
-              <FileText className="h-2.5 w-2.5 flex-shrink-0" />
+              {note.type === "canvas" ? (
+                <Grid3X3 className="h-2.5 w-2.5 flex-shrink-0" />
+              ) : (
+                <FileText className="h-2.5 w-2.5 flex-shrink-0" />
+              )}
               <span className="flex-1 truncate">{note.title || "Untitled"}</span>
               {note.isPinned && <Pin className="h-2 w-2 text-amber-500" />}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    onClick={(e) => e.stopPropagation()}
+                    className="p-0.5 hover:bg-stone-700 rounded text-stone-500 hover:text-stone-300"
+                    data-testid={`panel-folder-note-menu-${note.id}`}
+                  >
+                    <MoreVertical className="h-2.5 w-2.5" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                  align="end"
+                  className="bg-stone-900 border-stone-700"
+                >
+                  <DropdownMenuItem
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onShareNote(note.id);
+                    }}
+                    data-testid={`panel-folder-note-share-${note.id}`}
+                  >
+                    <Share2 className="h-3 w-3 mr-2" /> Share
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator className="bg-stone-700" />
+                  <DropdownMenuItem
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDeleteNote(note);
+                    }}
+                    className="text-red-400 focus:text-red-400"
+                    data-testid={`panel-folder-note-delete-${note.id}`}
+                  >
+                    <Trash2 className="h-3 w-3 mr-2" /> Delete
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           ))}
         </>
@@ -1498,6 +1544,13 @@ export function CampaignNotesPanel({
                     campaignId: campaignId,
                   });
                 }}
+                onShareNote={(id) => {
+                  openShareDialog(id);
+                }}
+                onDeleteNote={(note) => {
+                  setNoteToDelete(note);
+                  setDeleteNoteDialogOpen(true);
+                }}
                 currentCampaignId={campaignId}
               />
             ))
@@ -1850,7 +1903,7 @@ export function CampaignNotesPanel({
         );
       }
       return (
-        <div className="h-full w-full flex flex-col overflow-hidden">
+        <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
           <CanvasEditor
             canvasData={canvasData}
             onChange={setCanvasData}
