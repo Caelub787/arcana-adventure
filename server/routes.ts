@@ -7158,6 +7158,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Reorder folders endpoint - batch update sortOrder for multiple folders
+  app.post("/api/notes/folders/reorder", requireAuth, async (req, res) => {
+    try {
+      const { folderOrders } = req.body as { folderOrders: { id: string; sortOrder: number }[] };
+      if (!folderOrders || !Array.isArray(folderOrders)) {
+        return res.status(400).json({ error: "folderOrders array is required" });
+      }
+      
+      // Verify all folders belong to the user
+      for (const item of folderOrders) {
+        const folder = await storage.getNoteFolder(item.id);
+        if (!folder) {
+          return res.status(404).json({ error: `Folder ${item.id} not found` });
+        }
+        if (folder.userId !== req.session.userId) {
+          return res.status(403).json({ error: "Not authorized to reorder these folders" });
+        }
+      }
+      
+      // Update all folder orders
+      await storage.reorderNoteFolders(folderOrders);
+      res.json({ success: true });
+    } catch (e) {
+      console.error("Failed to reorder note folders:", e);
+      res.status(500).json({ error: "Failed to reorder note folders" });
+    }
+  });
+
   // Note endpoints
   app.get("/api/notes", requireAuth, async (req, res) => {
     try {

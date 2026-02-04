@@ -320,6 +320,7 @@ export interface IStorage {
   getUserNoteFolders(userId: string, campaignId?: string, showHidden?: boolean): Promise<NoteFolder[]>;
   updateNoteFolder(id: string, data: Partial<NoteFolder>): Promise<NoteFolder | undefined>;
   deleteNoteFolder(id: string): Promise<void>;
+  reorderNoteFolders(folderOrders: { id: string; sortOrder: number }[]): Promise<void>;
 
   // Note operations
   createNote(note: InsertNote): Promise<Note>;
@@ -2616,6 +2617,14 @@ export class DatabaseStorage implements IStorage {
 
   async deleteNoteFolder(id: string): Promise<void> {
     await db.delete(noteFolders).where(eq(noteFolders.id, id));
+  }
+
+  async reorderNoteFolders(folderOrders: { id: string; sortOrder: number }[]): Promise<void> {
+    for (const item of folderOrders) {
+      await db.update(noteFolders)
+        .set({ sortOrder: item.sortOrder, updatedAt: new Date() })
+        .where(eq(noteFolders.id, item.id));
+    }
   }
 
   // Note operations
