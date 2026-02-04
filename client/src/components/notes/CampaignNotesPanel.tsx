@@ -82,6 +82,7 @@ import {
   CloudDownload,
   ExternalLink,
   Home,
+  ArrowUp,
 } from "lucide-react";
 import { ReferencePicker, NoteOnlyPicker } from "@/components/notes/ReferencePicker";
 import { CanvasEditor, CanvasData } from "@/components/notes/CanvasEditor";
@@ -122,6 +123,49 @@ function getFolderColorClass(color: string | null | undefined): string {
     default:
       return "text-stone-400";
   }
+}
+
+function RootDropZone({ onDropToRoot }: { onDropToRoot: (folderId: string) => void }) {
+  const [isDragOver, setIsDragOver] = useState(false);
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    const draggedId = e.dataTransfer.getData("text/plain");
+    if (draggedId) {
+      e.dataTransfer.dropEffect = "move";
+      setIsDragOver(true);
+    }
+  };
+
+  const handleDragLeave = () => {
+    setIsDragOver(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(false);
+    const draggedId = e.dataTransfer.getData("text/plain");
+    if (draggedId) {
+      onDropToRoot(draggedId);
+    }
+  };
+
+  return (
+    <div
+      className={`flex items-center gap-1 py-0.5 px-1.5 rounded text-xs transition-colors ${
+        isDragOver
+          ? "bg-amber-700/50 ring-1 ring-amber-500 text-amber-300"
+          : "text-stone-500 hover:text-stone-400"
+      }`}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+      data-testid="panel-drop-zone-root"
+    >
+      <ArrowUp className="h-2.5 w-2.5" />
+      <span>{isDragOver ? "Drop to move to root" : "Drag folder here for root"}</span>
+    </div>
+  );
 }
 
 interface FolderTreeItemProps {
@@ -1484,6 +1528,15 @@ export function CampaignNotesPanel({
           <span>Home</span>
         </div>
         <Separator className="my-1 bg-stone-800" />
+        {/* Root level drop zone - allows dragging folders out of parent folders */}
+        <RootDropZone 
+          onDropToRoot={(folderId) => {
+            updateFolderMutation.mutate({
+              id: folderId,
+              data: { parentId: null },
+            });
+          }}
+        />
         <div className="space-y-0.5 group">
           {foldersLoading ? (
             <div className="flex items-center justify-center py-2">
