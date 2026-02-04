@@ -282,6 +282,25 @@ export function CanvasEditor({
     setSelectedNodeId(newNode.id);
   }, [canvasData, onChange, getViewportCenter, readOnly]);
 
+  const addNodeAtPosition = useCallback((type: CanvasNode["type"], worldX: number, worldY: number, extra: Partial<CanvasNode> = {}) => {
+    if (readOnly) return null;
+    const newNode: CanvasNode = {
+      id: crypto.randomUUID(),
+      type,
+      x: worldX - 75,
+      y: worldY - 50,
+      width: 150,
+      height: 100,
+      ...extra,
+    };
+    onChange({
+      ...canvasData,
+      nodes: [...canvasData.nodes, newNode],
+    });
+    setSelectedNodeId(newNode.id);
+    return newNode;
+  }, [canvasData, onChange, readOnly]);
+
   const deleteNode = useCallback((nodeId: string) => {
     if (readOnly) return;
     const newNodes = canvasData.nodes.filter((n) => n.id !== nodeId);
@@ -1065,25 +1084,6 @@ export function CanvasEditor({
       setIsCreatingNote(false);
     }
   }, [addNode, addNodeAtPosition, addConnection, isCreatingNote, pendingConnection, queryClient]);
-
-  const addNodeAtPosition = useCallback((type: CanvasNode["type"], worldX: number, worldY: number, extra: Partial<CanvasNode> = {}) => {
-    if (readOnly) return null;
-    const newNode: CanvasNode = {
-      id: crypto.randomUUID(),
-      type,
-      x: worldX - 75,
-      y: worldY - 50,
-      width: 150,
-      height: 100,
-      ...extra,
-    };
-    onChange({
-      ...canvasData,
-      nodes: [...canvasData.nodes, newNode],
-    });
-    setSelectedNodeId(newNode.id);
-    return newNode;
-  }, [canvasData, onChange, readOnly]);
 
   const handleConnectionDropMenuSelect = useCallback((nodeType: "text" | "note" | "entity") => {
     if (!connectionDropMenu) return;
