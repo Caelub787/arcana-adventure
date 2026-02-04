@@ -802,7 +802,7 @@ export default function Campaign() {
   
   const handleNotesResizeMove = useCallback((e: React.PointerEvent) => {
     if (!isResizingNotes || isMobile) return;
-    const dx = notesResizeStartRef.current.x - e.clientX;
+    const dx = e.clientX - notesResizeStartRef.current.x;
     const newWidth = Math.max(300, Math.min(window.innerWidth * 0.8, notesResizeStartRef.current.width + dx));
     setNotesPanelWidth(newWidth);
   }, [isResizingNotes, isMobile]);
@@ -3519,6 +3519,8 @@ export default function Campaign() {
              onEnterSpellTargeting={enterAoeMode}
              onClearSpellTargeting={exitAoeMode}
              isSpellTargetingActive={aoeTargetState.active}
+             notesPanelOpen={notesPanelOpen}
+             notesPanelWidth={notesPanelWidth}
            />
            
            {/* AOE Width Control Panel - Shows when line or cone AOE is active */}
@@ -3534,7 +3536,10 @@ export default function Campaign() {
              
              if (aoeShape === 'line' || aoeShape === 'cone') {
                return (
-                 <div className="absolute left-2 md:left-4 top-72 z-30 pointer-events-auto bg-stone-900/95 border border-stone-700 rounded-lg p-3 shadow-xl w-48">
+                 <div 
+                   className="absolute top-72 z-30 pointer-events-auto bg-stone-900/95 border border-stone-700 rounded-lg p-3 shadow-xl w-48 transition-all duration-300 ease-in-out"
+                   style={{ left: notesPanelOpen && !isMobile ? `${notesPanelWidth + 16}px` : '8px' }}
+                 >
                    <div className="flex items-center justify-between mb-2">
                      <span className="text-xs text-amber-400 font-medium">{aoeTargetState.spell.name}</span>
                      <Button
@@ -3605,6 +3610,8 @@ export default function Campaign() {
                }}
                throwableGridTarget={throwableGridTarget}
                onClearThrowableGridTarget={() => setThrowableGridTarget(null)}
+               notesPanelOpen={notesPanelOpen}
+               notesPanelWidth={notesPanelWidth}
              />
            )}
           
@@ -3730,27 +3737,15 @@ export default function Campaign() {
         userId={user?.id}
       />
       
-      {/* Notes Panel Overlay */}
+      {/* Notes Panel Overlay - Left side */}
       {notesPanelOpen && effectiveCampaignId && (
         <div 
-          className={`fixed top-0 right-0 z-40 pointer-events-auto flex ${isMobile ? 'inset-0' : 'h-full'}`}
+          className={`fixed top-0 left-0 z-40 pointer-events-auto flex ${isMobile ? 'inset-0' : 'h-full'}`}
           style={{ 
             width: isMobile ? '100vw' : `${notesPanelWidth}px`,
             maxWidth: isMobile ? '100vw' : '90vw' 
           }}
         >
-          {/* Resize handle on left edge (desktop only) */}
-          {!isMobile && (
-            <div
-              className={`w-2 h-full cursor-ew-resize flex items-center justify-center bg-stone-700 hover:bg-amber-600 transition-colors ${isResizingNotes ? 'bg-amber-600' : ''}`}
-              onPointerDown={handleNotesResizeStart}
-              onPointerMove={handleNotesResizeMove}
-              onPointerUp={handleNotesResizeEnd}
-              onPointerCancel={handleNotesResizeEnd}
-            >
-              <div className="w-1 h-8 bg-stone-500 rounded-full" />
-            </div>
-          )}
           <div className="flex-1 h-full">
             <CampaignNotesPanel
               campaignId={effectiveCampaignId}
@@ -3767,13 +3762,29 @@ export default function Campaign() {
               }}
             />
           </div>
+          {/* Resize handle on right edge (desktop only) */}
+          {!isMobile && (
+            <div
+              className={`w-2 h-full cursor-ew-resize flex items-center justify-center bg-stone-700 hover:bg-amber-600 transition-colors ${isResizingNotes ? 'bg-amber-600' : ''}`}
+              onPointerDown={handleNotesResizeStart}
+              onPointerMove={handleNotesResizeMove}
+              onPointerUp={handleNotesResizeEnd}
+              onPointerCancel={handleNotesResizeEnd}
+            >
+              <div className="w-1 h-8 bg-stone-500 rounded-full" />
+            </div>
+          )}
         </div>
       )}
       
       {/* GM Character Hotbar - Bottom center of screen, desktop/tablet only */}
       {role === 'gm' && !isMobile && (
         <div 
-          className="fixed bottom-4 left-1/2 -translate-x-1/2 z-30 pointer-events-auto"
+          className="fixed bottom-4 z-30 pointer-events-auto transition-all duration-300 ease-in-out"
+          style={{ 
+            left: notesPanelOpen ? `calc(50% + ${notesPanelWidth / 2}px)` : '50%',
+            transform: 'translateX(-50%)'
+          }}
           data-testid="gm-character-hotbar"
         >
           <div className="flex items-center gap-2 bg-stone-900/95 border border-stone-700 rounded-xl p-2 shadow-xl backdrop-blur-sm">

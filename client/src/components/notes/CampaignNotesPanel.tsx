@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, Note, NoteFolder, NoteShare, UserProfile, SystemSpell, SystemSkill, SystemTrait, SystemSpecies, GoogleDocInfo } from "@/lib/api";
+import { api, Note, NoteFolder, NoteShare, UserProfile, SystemSpell, SystemSkill, SystemTrait, SystemSpecies, GoogleDocInfo, gameWs, noteWs, NotePresence } from "@/lib/api";
 import { useAuth } from "@/lib/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
@@ -40,6 +40,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  ContextMenu,
+  ContextMenuTrigger,
+  ContextMenuContent,
+  ContextMenuItem,
+} from "@/components/ui/context-menu";
 import {
   Select,
   SelectContent,
@@ -130,6 +136,8 @@ interface FolderTreeItemProps {
   onAddSubfolder: (parentId: string) => void;
   onDeleteFolder: (folder: NoteFolder) => void;
   onMoveFolder: (folderId: string, newParentId: string | null) => void;
+  onCreateNote: (folderId: string) => void;
+  onCreateCanvas: (folderId: string) => void;
   level?: number;
   currentCampaignId?: string;
 }
@@ -146,6 +154,8 @@ function FolderTreeItem({
   onAddSubfolder,
   onDeleteFolder,
   onMoveFolder,
+  onCreateNote,
+  onCreateCanvas,
   level = 0,
   currentCampaignId,
 }: FolderTreeItemProps) {
@@ -198,25 +208,27 @@ function FolderTreeItem({
 
   return (
     <div>
-      <div
-        className={`flex items-center gap-1 py-1 px-1.5 rounded cursor-pointer transition-colors text-xs ${
-          isDragOver
-            ? "bg-amber-700/50 ring-2 ring-amber-500"
-            : isSelected
-            ? "bg-amber-900/30 text-amber-400"
-            : isOtherCampaign
-            ? "hover:bg-stone-800/50 text-stone-500 opacity-60"
-            : "hover:bg-stone-800/50 text-stone-300"
-        }`}
-        style={{ paddingLeft: `${level * 8 + 4}px` }}
-        onClick={() => onSelect(folder.id)}
-        draggable
-        onDragStart={handleDragStart}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
-        data-testid={`panel-folder-item-${folder.id}`}
-      >
+      <ContextMenu>
+        <ContextMenuTrigger asChild>
+          <div
+            className={`flex items-center gap-1 py-1 px-1.5 rounded cursor-pointer transition-colors text-xs ${
+              isDragOver
+                ? "bg-amber-700/50 ring-2 ring-amber-500"
+                : isSelected
+                ? "bg-amber-900/30 text-amber-400"
+                : isOtherCampaign
+                ? "hover:bg-stone-800/50 text-stone-500 opacity-60"
+                : "hover:bg-stone-800/50 text-stone-300"
+            }`}
+            style={{ paddingLeft: `${level * 8 + 4}px` }}
+            onClick={() => onSelect(folder.id)}
+            draggable
+            onDragStart={handleDragStart}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+            data-testid={`panel-folder-item-${folder.id}`}
+          >
         {hasContent ? (
           <button
             onClick={(e) => {
@@ -288,7 +300,23 @@ function FolderTreeItem({
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
-      </div>
+          </div>
+        </ContextMenuTrigger>
+        <ContextMenuContent className="bg-stone-900 border-stone-700">
+          <ContextMenuItem
+            onClick={() => onCreateNote(folder.id)}
+            data-testid={`context-menu-new-note-${folder.id}`}
+          >
+            <FileText className="h-3 w-3 mr-2" /> New Note
+          </ContextMenuItem>
+          <ContextMenuItem
+            onClick={() => onCreateCanvas(folder.id)}
+            data-testid={`context-menu-new-canvas-${folder.id}`}
+          >
+            <Grid3X3 className="h-3 w-3 mr-2" /> New Canvas
+          </ContextMenuItem>
+        </ContextMenuContent>
+      </ContextMenu>
       {expanded && (
         <>
           {children.map((child) => (
@@ -305,6 +333,8 @@ function FolderTreeItem({
               onAddSubfolder={onAddSubfolder}
               onDeleteFolder={onDeleteFolder}
               onMoveFolder={onMoveFolder}
+              onCreateNote={onCreateNote}
+              onCreateCanvas={onCreateCanvas}
               level={level + 1}
               currentCampaignId={currentCampaignId}
             />
@@ -417,6 +447,14 @@ export function CampaignNotesPanel({
     updateTabTitle,
   } = useNoteTabs();
 
+  // Live collaboration state
+  const [remotePresence, setRemotePresence] = useState<NotePresence[]>([]);
+  const isReceivingRemoteUpdateRef = useRef(false);
+  const lastLocalUpdateRef = useRef<number>(0);
+  const hasInitializedCollabRef = useRef(false);
+  const lastSentContentRef = useRef<{ title: string; content: string } | null>(null);
+  const lastSentCanvasRef = useRef<string | null>(null);
+
   const lastLoadedNoteIdRef = useRef<string | null>(null);
 
   const { data: folders = [], isLoading: foldersLoading } = useQuery<NoteFolder[]>({
@@ -493,6 +531,168 @@ export function CampaignNotesPanel({
       updateTabTitle(selectedNoteId, noteTitle);
     }
   }, [selectedNoteId, noteTitle, updateTabTitle]);
+
+  // Subscribe to campaign WebSocket for real-time note updates
+  useEffect(() => {
+    if (!campaignId || !isOpen) return;
+
+    const handleMessage = (data: any) => {
+      // Handle note creation/deletion events for this campaign
+      if (data.campaignId !== campaignId) return;
+
+      if (data.type === 'note_created' || data.type === 'note_deleted') {
+        // Invalidate notes queries to refresh the list
+        queryClient.invalidateQueries({ queryKey: ["/api/notes"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/notes/all", campaignId] });
+        queryClient.invalidateQueries({ queryKey: ["/api/notes/folders"] });
+        
+        // If a note we're viewing was deleted, clear selection
+        if (data.type === 'note_deleted' && data.noteId === selectedNoteId) {
+          setSelectedNoteId(null);
+          setShowHomeView(true);
+        }
+      }
+    };
+
+    const unsubscribe = gameWs.onMessage(handleMessage);
+    return () => {
+      unsubscribe();
+    };
+  }, [campaignId, isOpen, queryClient, selectedNoteId]);
+
+  // Join/leave note rooms for live collaboration
+  useEffect(() => {
+    if (selectedNoteId && user && isOpen) {
+      // Join the note room
+      noteWs.joinNote(selectedNoteId);
+      setRemotePresence([]);
+      hasInitializedCollabRef.current = false;
+      lastSentContentRef.current = null;
+      lastSentCanvasRef.current = null;
+      
+      // Cleanup: leave note room when unmounting or changing notes
+      return () => {
+        noteWs.leaveNote(selectedNoteId);
+        setRemotePresence([]);
+      };
+    }
+  }, [selectedNoteId, user, isOpen]);
+
+  // Handle incoming WebSocket messages for note collaboration
+  useEffect(() => {
+    if (!selectedNoteId || !isOpen) return;
+
+    const handleMessage = (data: any) => {
+      // Only process messages for the current note
+      if (data.noteId !== selectedNoteId) return;
+
+      switch (data.type) {
+        case 'note_joined':
+          // Initial presence list when joining
+          setRemotePresence(data.presence?.filter((p: NotePresence) => p.userId !== user?.id) || []);
+          break;
+
+        case 'note_presence_update':
+          if (data.action === 'joined') {
+            setRemotePresence(prev => {
+              if (prev.some(p => p.userId === data.userId)) return prev;
+              return [...prev, { 
+                userId: data.userId, 
+                username: data.username, 
+                lastActive: Date.now() 
+              }];
+            });
+          } else if (data.action === 'left') {
+            setRemotePresence(prev => prev.filter(p => p.userId !== data.userId));
+          }
+          break;
+
+        case 'note_update':
+          // Ignore our own updates and updates that arrived shortly after our local change
+          if (data.userId === user?.id) return;
+          if (Date.now() - lastLocalUpdateRef.current < 500) return;
+          
+          // Apply remote changes
+          isReceivingRemoteUpdateRef.current = true;
+          if (data.title !== undefined) {
+            setNoteTitle(data.title);
+          }
+          if (data.content !== undefined) {
+            setNoteContent(data.content);
+          }
+          if (data.canvasData !== undefined) {
+            try {
+              const parsed = typeof data.canvasData === 'string' 
+                ? JSON.parse(data.canvasData) 
+                : data.canvasData;
+              setCanvasData(parsed);
+            } catch (e) {
+              console.error('Failed to parse remote canvas data:', e);
+            }
+          }
+          // Small delay to allow state to settle before re-enabling local updates
+          setTimeout(() => { isReceivingRemoteUpdateRef.current = false; }, 100);
+          break;
+
+        case 'cursor_update':
+          // Update remote user's cursor position
+          setRemotePresence(prev => 
+            prev.map(p => p.userId === data.userId 
+              ? { ...p, cursorPosition: data.cursorPosition, lastActive: Date.now() }
+              : p
+            )
+          );
+          break;
+      }
+    };
+
+    const unsubscribe = noteWs.onMessage(handleMessage);
+    return () => { unsubscribe(); };
+  }, [selectedNoteId, user?.id, isOpen]);
+
+  // Broadcast local changes via WebSocket (alongside the save)
+  useEffect(() => {
+    // Skip if no note, receiving remote update, or not initialized yet
+    if (!selectedNoteId || isReceivingRemoteUpdateRef.current || !isOpen) return;
+    
+    // Skip initial mount - only broadcast after first change
+    if (!hasInitializedCollabRef.current) {
+      hasInitializedCollabRef.current = true;
+      lastSentContentRef.current = { title: debouncedTitle, content: debouncedContent };
+      return;
+    }
+    
+    // Skip if content hasn't actually changed (prevents ping-pong)
+    const lastSent = lastSentContentRef.current;
+    if (lastSent && lastSent.title === debouncedTitle && lastSent.content === debouncedContent) {
+      return;
+    }
+    
+    // Track that we made a local update
+    lastLocalUpdateRef.current = Date.now();
+    lastSentContentRef.current = { title: debouncedTitle, content: debouncedContent };
+    
+    // Send update to other collaborators
+    noteWs.sendNoteUpdate(selectedNoteId, {
+      title: debouncedTitle,
+      content: debouncedContent,
+    });
+  }, [debouncedTitle, debouncedContent, selectedNoteId, isOpen]);
+
+  // Broadcast canvas changes separately
+  useEffect(() => {
+    if (!selectedNoteId || isReceivingRemoteUpdateRef.current || currentNote?.type !== 'canvas' || !isOpen) return;
+    
+    const canvasStr = JSON.stringify(debouncedCanvasData);
+    if (lastSentCanvasRef.current === canvasStr) return;
+    
+    lastLocalUpdateRef.current = Date.now();
+    lastSentCanvasRef.current = canvasStr;
+    
+    noteWs.sendNoteUpdate(selectedNoteId, {
+      canvasData: debouncedCanvasData,
+    });
+  }, [debouncedCanvasData, selectedNoteId, currentNote?.type, isOpen]);
 
   // Handle tab switching
   const handleTabClick = (tabNoteId: string) => {
@@ -1278,6 +1478,25 @@ export function CampaignNotesPanel({
                     data: { parentId: newParentId },
                   });
                 }}
+                onCreateNote={(folderId) => {
+                  createNoteMutation.mutate({
+                    title: "Untitled Note",
+                    content: "",
+                    folderId: folderId,
+                    type: "markdown",
+                    campaignId: campaignId,
+                  });
+                }}
+                onCreateCanvas={(folderId) => {
+                  createNoteMutation.mutate({
+                    title: "Untitled Canvas",
+                    content: "",
+                    type: "canvas",
+                    canvasData: { nodes: [], connections: [] },
+                    folderId: folderId,
+                    campaignId: campaignId,
+                  });
+                }}
                 currentCampaignId={campaignId}
               />
             ))
@@ -1531,6 +1750,33 @@ export function CampaignNotesPanel({
     <div className="flex-1 flex flex-col overflow-hidden">
       <div className="flex items-center justify-end p-2 border-b border-stone-700">
         <div className="flex items-center gap-1">
+          {remotePresence.length > 0 && (
+            <div className="flex items-center gap-0.5 mr-2" data-testid="panel-presence-indicators-read">
+              {remotePresence.slice(0, 3).map((p, i) => (
+                <div
+                  key={p.userId}
+                  className="relative group"
+                  style={{ zIndex: remotePresence.length - i }}
+                >
+                  <div
+                    className="w-5 h-5 rounded-full bg-gradient-to-br from-amber-500 to-amber-600 flex items-center justify-center text-[10px] font-bold text-stone-900 border border-stone-800 ring-1 ring-green-500/50"
+                    title={p.username}
+                  >
+                    {p.username.charAt(0).toUpperCase()}
+                  </div>
+                  <span className="absolute -bottom-0.5 -right-0.5 w-2 h-2 bg-green-500 rounded-full border border-stone-800" />
+                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-1.5 py-0.5 bg-stone-900 border border-stone-700 rounded text-[10px] text-stone-300 whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
+                    {p.username}
+                  </div>
+                </div>
+              ))}
+              {remotePresence.length > 3 && (
+                <div className="w-5 h-5 rounded-full bg-stone-700 flex items-center justify-center text-[10px] font-bold text-stone-300 border border-stone-800">
+                  +{remotePresence.length - 3}
+                </div>
+              )}
+            </div>
+          )}
           <Button
             variant="ghost"
             size="sm"
@@ -1626,6 +1872,33 @@ export function CampaignNotesPanel({
             <ChevronLeft className="h-3 w-3 mr-1" /> Done
           </Button>
           <div className="flex items-center gap-1">
+            {remotePresence.length > 0 && (
+              <div className="flex items-center gap-0.5 mr-1" data-testid="panel-presence-indicators-edit">
+                {remotePresence.slice(0, 3).map((p, i) => (
+                  <div
+                    key={p.userId}
+                    className="relative group"
+                    style={{ zIndex: remotePresence.length - i }}
+                  >
+                    <div
+                      className="w-5 h-5 rounded-full bg-gradient-to-br from-amber-500 to-amber-600 flex items-center justify-center text-[10px] font-bold text-stone-900 border border-stone-800 ring-1 ring-green-500/50"
+                      title={p.username}
+                    >
+                      {p.username.charAt(0).toUpperCase()}
+                    </div>
+                    <span className="absolute -bottom-0.5 -right-0.5 w-2 h-2 bg-green-500 rounded-full border border-stone-800" />
+                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-1.5 py-0.5 bg-stone-900 border border-stone-700 rounded text-[10px] text-stone-300 whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
+                      {p.username}
+                    </div>
+                  </div>
+                ))}
+                {remotePresence.length > 3 && (
+                  <div className="w-5 h-5 rounded-full bg-stone-700 flex items-center justify-center text-[10px] font-bold text-stone-300 border border-stone-800">
+                    +{remotePresence.length - 3}
+                  </div>
+                )}
+              </div>
+            )}
             <Button
               variant="ghost"
               size="sm"
@@ -1797,16 +2070,6 @@ export function CampaignNotesPanel({
         </div>
       </div>
 
-      {openNotes.length > 0 && (
-        <NoteTabs
-          openNotes={openNotes}
-          activeNoteId={selectedNoteId}
-          onTabClick={handleTabClick}
-          onTabClose={handleTabClose}
-          compact
-        />
-      )}
-
       <div className="flex-1 flex overflow-hidden min-h-0">
         {viewMode === "graph" ? (
           renderGraphView()
@@ -1815,24 +2078,35 @@ export function CampaignNotesPanel({
             {showSidebar && (
               <>
                 <ResizablePanel 
-                  defaultSize={20} 
+                  defaultSize={25} 
                   minSize={15} 
-                  maxSize={40}
+                  maxSize={50}
                   className="min-w-0"
                 >
                   {renderSidebar()}
                 </ResizablePanel>
-                <ResizableHandle withHandle className="bg-stone-700 hover:bg-amber-600 transition-colors" />
+                <ResizableHandle withHandle className="bg-stone-700/50 hover:bg-amber-600 transition-colors" />
               </>
             )}
-            <ResizablePanel defaultSize={showSidebar ? 80 : 100} minSize={50} className="min-w-0">
-              {selectedNoteId ? (
-                currentNote?.type === "canvas" || noteMode === "edit" ? renderNoteEditor() : renderNoteReadView()
-              ) : showHomeView ? (
-                renderHomeView()
-              ) : (
-                renderNoteList()
+            <ResizablePanel defaultSize={showSidebar ? 75 : 100} minSize={40} className="min-w-0 flex flex-col">
+              {openNotes.length > 0 && (
+                <NoteTabs
+                  openNotes={openNotes}
+                  activeNoteId={selectedNoteId}
+                  onTabClick={handleTabClick}
+                  onTabClose={handleTabClose}
+                  compact
+                />
               )}
+              <div className="flex-1 min-h-0 overflow-hidden">
+                {selectedNoteId ? (
+                  currentNote?.type === "canvas" || noteMode === "edit" ? renderNoteEditor() : renderNoteReadView()
+                ) : showHomeView ? (
+                  renderHomeView()
+                ) : (
+                  renderNoteList()
+                )}
+              </div>
             </ResizablePanel>
           </ResizablePanelGroup>
         )}

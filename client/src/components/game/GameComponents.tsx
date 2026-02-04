@@ -3258,6 +3258,8 @@ interface BattleMapHotbarsProps {
   onEnterThrowableAoeMode?: (item: any, casterToken: any) => void;
   throwableGridTarget?: { x: number; y: number } | null;
   onClearThrowableGridTarget?: () => void;
+  notesPanelOpen?: boolean;
+  notesPanelWidth?: number;
 }
 
 // Sub-component for individual hotbar slot
@@ -5621,7 +5623,7 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
   );
 }
 
-export function BattleMapHotbars({ character, tokens, targetedTokenId, characters, gridSize, onEnterAoeMode, aoeTargetState, onAoeDamageRoll, sceneId, thrownItems, onRefetchThrownItems, onEnterThrowableAoeMode, throwableGridTarget, onClearThrowableGridTarget }: BattleMapHotbarsProps) {
+export function BattleMapHotbars({ character, tokens, targetedTokenId, characters, gridSize, onEnterAoeMode, aoeTargetState, onAoeDamageRoll, sceneId, thrownItems, onRefetchThrownItems, onEnterThrowableAoeMode, throwableGridTarget, onClearThrowableGridTarget, notesPanelOpen = false, notesPanelWidth = 0 }: BattleMapHotbarsProps) {
   const [activeHotbar, setActiveHotbar] = useState<string>('weapons');
   
   const { data: hotbars = [], isLoading: hotbarsLoading } = useQuery({
@@ -5711,7 +5713,10 @@ export function BattleMapHotbars({ character, tokens, targetedTokenId, character
   return (
     <>
       {/* DC, HP and Energy Bars - Bottom LEFT, stacked vertically */}
-      <div className="absolute bottom-2 md:bottom-4 left-2 md:left-4 pointer-events-auto z-30">
+      <div 
+        className="absolute bottom-2 md:bottom-4 pointer-events-auto z-30 transition-all duration-300 ease-in-out"
+        style={{ left: notesPanelOpen ? `${notesPanelWidth + 16}px` : '8px' }}
+      >
         <div className="flex flex-col gap-1">
           {/* DC Display */}
           <div className="glass-panel p-1.5 md:p-2 rounded border-l-4 border-purple-600 relative overflow-hidden w-32 md:w-44">
@@ -5846,6 +5851,8 @@ interface SelectionModeButtonsProps {
   onEnterSpellTargeting?: (spell: any, casterTokenId: string) => void;
   onClearSpellTargeting?: () => void;
   isSpellTargetingActive?: boolean;
+  notesPanelOpen?: boolean;
+  notesPanelWidth?: number;
 }
 
 export function SelectionModeButtons({ 
@@ -5855,7 +5862,9 @@ export function SelectionModeButtons({
   tokens, 
   onEnterSpellTargeting,
   onClearSpellTargeting,
-  isSpellTargetingActive 
+  isSpellTargetingActive,
+  notesPanelOpen = false,
+  notesPanelWidth = 0
 }: SelectionModeButtonsProps) {
   const [showSpellPicker, setShowSpellPicker] = useState(false);
   
@@ -5907,7 +5916,10 @@ export function SelectionModeButtons({
 
   return (
     <>
-      <div className="absolute left-2 md:left-4 top-44 z-30 pointer-events-auto">
+      <div 
+        className="absolute top-44 z-30 pointer-events-auto transition-all duration-300 ease-in-out"
+        style={{ left: notesPanelOpen ? `${notesPanelWidth + 16}px` : '8px' }}
+      >
         <div className="flex flex-col gap-2">
           <TooltipProvider>
             <Tooltip>

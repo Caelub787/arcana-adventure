@@ -6830,8 +6830,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           userId: recipient.id,
           type: "friend_request",
           title: "New Friend Request",
-          message: `${sender.displayName || sender.username} sent you a friend request`,
-          data: { requestId: request.id, senderId: sender.id, senderUsername: sender.username },
+          message: `${sender.username} sent you a friend request`,
+          referenceId: request.id,
         });
       }
       
@@ -7199,6 +7199,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ...req.body,
         userId: req.session.userId!,
       });
+      
+      // Broadcast to campaign members if note is in a campaign
+      if (note.campaignId) {
+        broadcastToCampaign(note.campaignId, {
+          type: 'note_created',
+          noteId: note.id,
+          campaignId: note.campaignId,
+          userId: req.session.userId,
+        });
+      }
+      
       res.status(201).json(note);
     } catch (e) {
       console.error("Failed to create note:", e);
@@ -7246,7 +7257,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (note.userId !== req.session.userId) {
         return res.status(403).json({ error: "Only the owner can delete this note" });
       }
+      
+      // Store campaignId before deletion for broadcast
+      const campaignId = note.campaignId;
+      
       await storage.deleteNote(req.params.id);
+      
+      // Broadcast to campaign members if note was in a campaign
+      if (campaignId) {
+        broadcastToCampaign(campaignId, {
+          type: 'note_deleted',
+          noteId: req.params.id,
+          campaignId: campaignId,
+          userId: req.session.userId,
+        });
+      }
+      
       res.json({ success: true });
     } catch (e) {
       console.error("Failed to delete note:", e);
