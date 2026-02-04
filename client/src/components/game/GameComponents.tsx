@@ -1638,7 +1638,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
         
         {/* Active Beacons Overlay - Render pulsating ring animations */}
         {activeBeacons && activeBeacons.length > 0 && (
-          <div className="absolute inset-0 pointer-events-none">
+          <div className="absolute inset-0 pointer-events-none" style={{ zIndex: 50 }}>
             {activeBeacons.map((beacon) => {
               const effectiveGridSize = scene?.gridSize || gridSize;
               const MAP_OFFSET = 9000;
@@ -2013,7 +2013,8 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                   className="absolute -inset-2 rounded-full pointer-events-none animate-pulse"
                   style={{
                     boxShadow: '0 0 20px 8px rgba(251, 191, 36, 0.9), 0 0 40px 15px rgba(251, 191, 36, 0.6), 0 0 60px 20px rgba(251, 191, 36, 0.4)',
-                    border: '4px solid rgba(251, 191, 36, 1)'
+                    border: '4px solid rgba(251, 191, 36, 1)',
+                    zIndex: 10
                   }}
                 />
               )}
