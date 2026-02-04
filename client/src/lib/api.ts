@@ -1722,6 +1722,13 @@ class ApiClient {
     return this.request(`/notes/folders/${id}`, { method: 'DELETE' });
   }
 
+  async reorderNoteFolders(folderOrders: { id: string; sortOrder: number }[]): Promise<{ success: boolean }> {
+    return this.request('/notes/folders/reorder', {
+      method: 'POST',
+      body: JSON.stringify({ folderOrders }),
+    });
+  }
+
   // Note endpoints
   async getNotes(folderId?: string, campaignId?: string): Promise<Note[]> {
     const params = new URLSearchParams();

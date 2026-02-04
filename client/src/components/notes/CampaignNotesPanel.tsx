@@ -125,6 +125,18 @@ function getFolderColorClass(color: string | null | undefined): string {
   }
 }
 
+type FolderSortMode = "name" | "date" | "custom";
+
+function DropIndicator({ isActive }: { isActive: boolean }) {
+  return (
+    <div
+      className={`h-0.5 mx-2 rounded transition-all ${
+        isActive ? "bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.5)]" : "bg-transparent"
+      }`}
+    />
+  );
+}
+
 function RootDropZone({ onDropToRoot }: { onDropToRoot: (folderId: string) => void }) {
   const [isDragOver, setIsDragOver] = useState(false);
 
@@ -180,11 +192,18 @@ interface FolderTreeItemProps {
   onAddSubfolder: (parentId: string) => void;
   onDeleteFolder: (folder: NoteFolder) => void;
   onMoveFolder: (folderId: string, newParentId: string | null) => void;
+  onReorderFolder: (folderId: string, targetIndex: number, parentId: string | null) => void;
   onCreateNote: (folderId: string) => void;
   onCreateCanvas: (folderId: string) => void;
   onShareNote: (noteId: string) => void;
   onDeleteNote: (note: Note) => void;
   level?: number;
+  index?: number;
+  siblingCount?: number;
+  draggedFolderId: string | null;
+  setDraggedFolderId: (id: string | null) => void;
+  dropTargetIndex: number | null;
+  setDropTargetIndex: (index: number | null) => void;
   currentCampaignId?: string;
 }
 
@@ -200,16 +219,24 @@ function FolderTreeItem({
   onAddSubfolder,
   onDeleteFolder,
   onMoveFolder,
+  onReorderFolder,
   onCreateNote,
   onCreateCanvas,
   onShareNote,
   onDeleteNote,
   level = 0,
+  index = 0,
+  siblingCount = 1,
+  draggedFolderId,
+  setDraggedFolderId,
+  dropTargetIndex,
+  setDropTargetIndex,
   currentCampaignId,
 }: FolderTreeItemProps) {
   const [expanded, setExpanded] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
-  const children = folders.filter((f) => f.parentId === folder.id);
+  const [dropPosition, setDropPosition] = useState<"before" | "into" | "after" | null>(null);
+  const children = folders.filter((f) => f.parentId === folder.id).sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
   const folderNotes = allNotes.filter((n) => n.folderId === folder.id);
   const isSelected = selectedFolderId === folder.id;
   const hasChildren = children.length > 0;
@@ -230,37 +257,77 @@ function FolderTreeItem({
   const handleDragStart = (e: React.DragEvent) => {
     e.dataTransfer.setData("text/plain", folder.id);
     e.dataTransfer.effectAllowed = "move";
+    setDraggedFolderId(folder.id);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedFolderId(null);
+    setDropTargetIndex(null);
+    setDropPosition(null);
   };
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
-    const draggedId = e.dataTransfer.getData("text/plain");
-    if (draggedId !== folder.id && !isDescendant(draggedId, folder.id)) {
-      e.dataTransfer.dropEffect = "move";
+    if (!draggedFolderId || draggedFolderId === folder.id || isDescendant(draggedFolderId, folder.id)) {
+      return;
+    }
+    e.dataTransfer.dropEffect = "move";
+    
+    const rect = e.currentTarget.getBoundingClientRect();
+    const y = e.clientY - rect.top;
+    const height = rect.height;
+    
+    if (y < height * 0.25) {
+      setDropPosition("before");
+      setDropTargetIndex(index);
+    } else if (y > height * 0.75) {
+      setDropPosition("after");
+      setDropTargetIndex(index + 1);
+    } else {
+      setDropPosition("into");
       setIsDragOver(true);
     }
   };
 
   const handleDragLeave = () => {
     setIsDragOver(false);
+    setDropPosition(null);
   };
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
+    e.stopPropagation();
     setIsDragOver(false);
-    const draggedId = e.dataTransfer.getData("text/plain");
-    if (draggedId && draggedId !== folder.id && !isDescendant(draggedId, folder.id)) {
-      onMoveFolder(draggedId, folder.id);
+    setDropPosition(null);
+    
+    if (!draggedFolderId || draggedFolderId === folder.id || isDescendant(draggedFolderId, folder.id)) {
+      return;
     }
+    
+    const rect = e.currentTarget.getBoundingClientRect();
+    const y = e.clientY - rect.top;
+    const height = rect.height;
+    
+    if (y < height * 0.25) {
+      onReorderFolder(draggedFolderId, index, folder.parentId ?? null);
+    } else if (y > height * 0.75) {
+      onReorderFolder(draggedFolderId, index + 1, folder.parentId ?? null);
+    } else {
+      onMoveFolder(draggedFolderId, folder.id);
+    }
+    
+    setDraggedFolderId(null);
+    setDropTargetIndex(null);
   };
 
   return (
     <div>
+      {index === 0 && <DropIndicator isActive={dropPosition === "before" && dropTargetIndex === 0} />}
       <ContextMenu>
         <ContextMenuTrigger asChild>
           <div
             className={`flex items-center gap-1 py-1 px-1.5 rounded cursor-pointer transition-colors text-xs ${
-              isDragOver
+              isDragOver && dropPosition === "into"
                 ? "bg-amber-700/50 ring-2 ring-amber-500"
                 : isSelected
                 ? "bg-amber-900/30 text-amber-400"
@@ -272,6 +339,7 @@ function FolderTreeItem({
             onClick={() => setExpanded(!expanded)}
             draggable
             onDragStart={handleDragStart}
+            onDragEnd={handleDragEnd}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
@@ -365,9 +433,10 @@ function FolderTreeItem({
           </ContextMenuItem>
         </ContextMenuContent>
       </ContextMenu>
+      <DropIndicator isActive={dropPosition === "after" && dropTargetIndex === index + 1} />
       {expanded && (
         <>
-          {children.map((child) => (
+          {children.map((child, childIndex) => (
             <FolderTreeItem
               key={child.id}
               folder={child}
@@ -381,11 +450,18 @@ function FolderTreeItem({
               onAddSubfolder={onAddSubfolder}
               onDeleteFolder={onDeleteFolder}
               onMoveFolder={onMoveFolder}
+              onReorderFolder={onReorderFolder}
               onCreateNote={onCreateNote}
               onCreateCanvas={onCreateCanvas}
               onShareNote={onShareNote}
               onDeleteNote={onDeleteNote}
               level={level + 1}
+              index={childIndex}
+              siblingCount={children.length}
+              draggedFolderId={draggedFolderId}
+              setDraggedFolderId={setDraggedFolderId}
+              dropTargetIndex={dropTargetIndex}
+              setDropTargetIndex={setDropTargetIndex}
               currentCampaignId={currentCampaignId}
             />
           ))}
@@ -496,6 +572,13 @@ export function CampaignNotesPanel({
   const [shareSearchUsername, setShareSearchUsername] = useState("");
   const [sharePermission, setSharePermission] = useState<"view" | "edit">("view");
   const [shareTab, setShareTab] = useState<"friends" | "players">("friends");
+
+  const [draggedFolderId, setDraggedFolderId] = useState<string | null>(null);
+  const [dropTargetIndex, setDropTargetIndex] = useState<number | null>(null);
+  const [folderSortMode, setFolderSortMode] = useState<FolderSortMode>(() => {
+    const saved = localStorage.getItem("campaign-notes-folder-sort-mode");
+    return (saved as FolderSortMode) || "custom";
+  });
 
   const [noteTitle, setNoteTitle] = useState("");
   const [noteContent, setNoteContent] = useState("");
@@ -841,6 +924,58 @@ export function CampaignNotesPanel({
     onError: (err: any) =>
       toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
+
+  const reorderFoldersMutation = useMutation({
+    mutationFn: (folderOrders: { id: string; sortOrder: number }[]) =>
+      api.reorderNoteFolders(folderOrders),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/notes/folders"] });
+    },
+    onError: (err: any) =>
+      toast({
+        title: "Error reordering folders",
+        description: err.message,
+        variant: "destructive",
+      }),
+  });
+
+  const handleReorderFolder = useCallback((folderId: string, targetIndex: number, parentId: string | null) => {
+    const siblingFolders = folders
+      .filter(f => f.parentId === parentId)
+      .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+    
+    const movingFolderIndex = siblingFolders.findIndex(f => f.id === folderId);
+    const movingFolder = folders.find(f => f.id === folderId);
+    
+    if (!movingFolder) return;
+    
+    const isFromDifferentParent = movingFolder.parentId !== parentId;
+    
+    if (isFromDifferentParent) {
+      updateFolderMutation.mutate({
+        id: folderId,
+        data: { parentId: parentId },
+      });
+    }
+    
+    let newOrder: NoteFolder[];
+    if (isFromDifferentParent) {
+      newOrder = [...siblingFolders];
+      newOrder.splice(targetIndex, 0, movingFolder);
+    } else {
+      newOrder = [...siblingFolders];
+      newOrder.splice(movingFolderIndex, 1);
+      const adjustedIndex = targetIndex > movingFolderIndex ? targetIndex - 1 : targetIndex;
+      newOrder.splice(adjustedIndex, 0, movingFolder);
+    }
+    
+    const folderOrders = newOrder.map((folder, idx) => ({
+      id: folder.id,
+      sortOrder: idx,
+    }));
+    
+    reorderFoldersMutation.mutate(folderOrders);
+  }, [folders, updateFolderMutation, reorderFoldersMutation]);
 
   const deleteFolderMutation = useMutation({
     mutationFn: (id: string) => api.deleteNoteFolder(id),
@@ -1441,7 +1576,19 @@ export function CampaignNotesPanel({
     return parts.length > 0 ? parts : renderFormattedText(content, "panel-content");
   };
 
-  const rootFolders = folders.filter((f) => !f.parentId);
+  const rootFolders = folders
+    .filter((f) => !f.parentId)
+    .sort((a, b) => {
+      switch (folderSortMode) {
+        case "name":
+          return a.name.localeCompare(b.name);
+        case "date":
+          return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
+        case "custom":
+        default:
+          return (a.sortOrder ?? 0) - (b.sortOrder ?? 0);
+      }
+    });
 
   const sortedNotes = [...notes]
     .filter((n) => !n.isArchived)
@@ -1528,22 +1675,37 @@ export function CampaignNotesPanel({
           <span>Home</span>
         </div>
         <Separator className="my-1 bg-stone-800" />
-        {/* Root level drop zone - allows dragging folders out of parent folders */}
-        <RootDropZone 
-          onDropToRoot={(folderId) => {
-            updateFolderMutation.mutate({
-              id: folderId,
-              data: { parentId: null },
-            });
-          }}
-        />
+        <div className="flex items-center gap-1 px-1.5 mb-0.5">
+          <span className="text-xs text-stone-500 flex-1">Sort:</span>
+          <select
+            value={folderSortMode}
+            onChange={(e) => {
+              const mode = e.target.value as FolderSortMode;
+              setFolderSortMode(mode);
+              localStorage.setItem("campaign-notes-folder-sort-mode", mode);
+            }}
+            className="text-xs bg-stone-800 border-stone-700 text-stone-300 rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-amber-500"
+            data-testid="panel-folder-sort-dropdown"
+          >
+            <option value="custom">Custom</option>
+            <option value="name">Name</option>
+            <option value="date">Date</option>
+          </select>
+        </div>
+        {folderSortMode === "custom" && (
+          <RootDropZone 
+            onDropToRoot={(folderId) => {
+              handleReorderFolder(folderId, 0, null);
+            }}
+          />
+        )}
         <div className="space-y-0.5 group">
           {foldersLoading ? (
             <div className="flex items-center justify-center py-2">
               <Loader2 className="h-3 w-3 animate-spin text-stone-500" />
             </div>
           ) : (
-            rootFolders.map((folder) => (
+            rootFolders.map((folder, folderIndex) => (
               <FolderTreeItem
                 key={folder.id}
                 folder={folder}
@@ -1578,6 +1740,7 @@ export function CampaignNotesPanel({
                     data: { parentId: newParentId },
                   });
                 }}
+                onReorderFolder={handleReorderFolder}
                 onCreateNote={(folderId) => {
                   createNoteMutation.mutate({
                     title: "Untitled Note",
@@ -1604,6 +1767,12 @@ export function CampaignNotesPanel({
                   setNoteToDelete(note);
                   setDeleteNoteDialogOpen(true);
                 }}
+                index={folderIndex}
+                siblingCount={rootFolders.length}
+                draggedFolderId={draggedFolderId}
+                setDraggedFolderId={setDraggedFolderId}
+                dropTargetIndex={dropTargetIndex}
+                setDropTargetIndex={setDropTargetIndex}
                 currentCampaignId={campaignId}
               />
             ))
