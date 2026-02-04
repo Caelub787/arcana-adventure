@@ -445,6 +445,7 @@ export function CampaignNotesPanel({
     closeTab,
     switchTab,
     updateTabTitle,
+    reorderTabs,
   } = useNoteTabs();
 
   // Live collaboration state
@@ -2095,6 +2096,7 @@ export function CampaignNotesPanel({
                   activeNoteId={selectedNoteId}
                   onTabClick={handleTabClick}
                   onTabClose={handleTabClose}
+                  onReorder={reorderTabs}
                   compact
                 />
               )}

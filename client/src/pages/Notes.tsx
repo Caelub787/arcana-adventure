@@ -404,6 +404,7 @@ export default function Notes() {
     closeTab,
     switchTab,
     updateTabTitle,
+    reorderTabs,
   } = useNoteTabs();
 
   // Live collaboration state
@@ -2204,6 +2205,7 @@ export default function Notes() {
               activeNoteId={noteId || null}
               onTabClick={handleTabClick}
               onTabClose={handleTabClose}
+              onReorder={reorderTabs}
             />
           )}
 

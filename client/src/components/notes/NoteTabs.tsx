@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from "react";
+import React, { useRef, useEffect, useState, useCallback } from "react";
 import { X, FileText, Grid3X3 } from "lucide-react";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 
@@ -13,6 +13,7 @@ interface NoteTabsProps {
   activeNoteId: string | null;
   onTabClick: (noteId: string) => void;
   onTabClose: (noteId: string) => void;
+  onReorder?: (reorderedNotes: OpenNote[]) => void;
   compact?: boolean;
 }
 
@@ -21,9 +22,12 @@ export function NoteTabs({
   activeNoteId,
   onTabClick,
   onTabClose,
+  onReorder,
   compact = false,
 }: NoteTabsProps) {
   const activeTabRef = useRef<HTMLButtonElement>(null);
+  const [draggedId, setDraggedId] = useState<string | null>(null);
+  const [dropTargetId, setDropTargetId] = useState<string | null>(null);
 
   useEffect(() => {
     if (activeTabRef.current) {
@@ -35,6 +39,55 @@ export function NoteTabs({
     }
   }, [activeNoteId]);
 
+  const handleDragStart = useCallback((e: React.DragEvent, noteId: string) => {
+    setDraggedId(noteId);
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", noteId);
+    if (e.currentTarget instanceof HTMLElement) {
+      e.currentTarget.style.opacity = "0.5";
+    }
+  }, []);
+
+  const handleDragEnd = useCallback((e: React.DragEvent) => {
+    setDraggedId(null);
+    setDropTargetId(null);
+    if (e.currentTarget instanceof HTMLElement) {
+      e.currentTarget.style.opacity = "1";
+    }
+  }, []);
+
+  const handleDragOver = useCallback((e: React.DragEvent, noteId: string) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    if (noteId !== draggedId) {
+      setDropTargetId(noteId);
+    }
+  }, [draggedId]);
+
+  const handleDragLeave = useCallback(() => {
+    setDropTargetId(null);
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent, targetNoteId: string) => {
+    e.preventDefault();
+    const sourceNoteId = e.dataTransfer.getData("text/plain");
+    
+    if (sourceNoteId && sourceNoteId !== targetNoteId && onReorder) {
+      const sourceIndex = openNotes.findIndex(n => n.noteId === sourceNoteId);
+      const targetIndex = openNotes.findIndex(n => n.noteId === targetNoteId);
+      
+      if (sourceIndex !== -1 && targetIndex !== -1) {
+        const newNotes = [...openNotes];
+        const [removed] = newNotes.splice(sourceIndex, 1);
+        newNotes.splice(targetIndex, 0, removed);
+        onReorder(newNotes);
+      }
+    }
+    
+    setDraggedId(null);
+    setDropTargetId(null);
+  }, [openNotes, onReorder]);
+
   if (openNotes.length === 0) {
     return null;
   }
@@ -45,18 +98,31 @@ export function NoteTabs({
         <div className={`flex gap-1 px-2 ${compact ? 'max-w-full' : 'max-w-full'}`}>
           {openNotes.map((note) => {
             const isActive = note.noteId === activeNoteId;
+            const isDragging = note.noteId === draggedId;
+            const isDropTarget = note.noteId === dropTargetId;
+            
             return (
               <button
                 key={note.noteId}
                 ref={isActive ? activeTabRef : null}
                 onClick={() => onTabClick(note.noteId)}
-                className={`group flex items-center gap-1.5 px-2 rounded-t transition-all flex-shrink-0 ${
+                draggable
+                onDragStart={(e) => handleDragStart(e, note.noteId)}
+                onDragEnd={handleDragEnd}
+                onDragOver={(e) => handleDragOver(e, note.noteId)}
+                onDragLeave={handleDragLeave}
+                onDrop={(e) => handleDrop(e, note.noteId)}
+                className={`group flex items-center gap-1.5 px-2 rounded-t flex-shrink-0 cursor-grab active:cursor-grabbing ${
                   compact ? 'py-1 text-xs max-w-[120px]' : 'py-1.5 text-sm max-w-[180px]'
                 } ${
-                  isActive
+                  isDropTarget
+                    ? "bg-amber-700/50 ring-2 ring-amber-500 text-amber-300"
+                    : isActive
                     ? "bg-stone-800 text-amber-400 border-b-2 border-amber-500"
                     : "bg-stone-900/50 text-stone-400 hover:bg-stone-800/70 hover:text-stone-300 border-b-2 border-transparent"
-                }`}
+                } ${
+                  isDragging ? "opacity-50" : ""
+                } transition-all duration-150`}
                 data-testid={`note-tab-${note.noteId}`}
               >
                 {note.type === "canvas" ? (
@@ -134,6 +200,10 @@ export function useNoteTabs(initialNotes: OpenNote[] = []) {
     );
   }, []);
 
+  const reorderTabs = React.useCallback((reorderedNotes: OpenNote[]) => {
+    setOpenNotes(reorderedNotes);
+  }, []);
+
   return {
     openNotes,
     activeNoteId,
@@ -141,6 +211,7 @@ export function useNoteTabs(initialNotes: OpenNote[] = []) {
     closeTab,
     switchTab,
     updateTabTitle,
+    reorderTabs,
     setOpenNotes,
     setActiveNoteId,
   };
