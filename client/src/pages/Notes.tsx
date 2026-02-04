@@ -331,9 +331,9 @@ function FolderTreeItem({
     const height = rect.height;
     
     if (y < height * 0.25) {
-      onReorderFolder(draggedFolderId, index, folder.parentId);
+      onReorderFolder(draggedFolderId, index, folder.parentId ?? null);
     } else if (y > height * 0.75) {
-      onReorderFolder(draggedFolderId, index + 1, folder.parentId);
+      onReorderFolder(draggedFolderId, index + 1, folder.parentId ?? null);
     } else {
       onMoveFolder(draggedFolderId, folder.id);
     }
@@ -461,6 +461,8 @@ function FolderTreeItem({
               dropTargetIndex={dropTargetIndex}
               setDropTargetIndex={setDropTargetIndex}
               sortMode={sortMode}
+              expandedFolderIds={expandedFolderIds}
+              setExpandedFolderIds={setExpandedFolderIds}
             />
           ))}
           {folderNotes.map((note) => (
@@ -620,6 +622,15 @@ export default function Notes() {
     const saved = localStorage.getItem("notes-folder-sort-mode");
     return (saved as FolderSortMode) || "custom";
   });
+  const [expandedFolderIds, setExpandedFolderIds] = useState<Set<string>>(() => {
+    const saved = localStorage.getItem("notes-expanded-folders");
+    return saved ? new Set(JSON.parse(saved)) : new Set();
+  });
+  
+  // Persist expanded folders to localStorage
+  useEffect(() => {
+    localStorage.setItem("notes-expanded-folders", JSON.stringify(Array.from(expandedFolderIds)));
+  }, [expandedFolderIds]);
 
   const noteId = params.id;
   const isEditing = !!noteId;
@@ -1852,6 +1863,8 @@ export default function Notes() {
                 dropTargetIndex={dropTargetIndex}
                 setDropTargetIndex={setDropTargetIndex}
                 sortMode={folderSortMode}
+                expandedFolderIds={expandedFolderIds}
+                setExpandedFolderIds={setExpandedFolderIds}
               />
             ))
           )}

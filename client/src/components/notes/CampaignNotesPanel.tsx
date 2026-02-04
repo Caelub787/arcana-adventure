@@ -206,6 +206,8 @@ interface FolderTreeItemProps {
   setDropTargetIndex: (index: number | null) => void;
   currentCampaignId?: string;
   sortMode: FolderSortMode;
+  expandedFolderIds: Set<string>;
+  setExpandedFolderIds: (ids: Set<string>) => void;
 }
 
 function FolderTreeItem({
@@ -234,8 +236,19 @@ function FolderTreeItem({
   setDropTargetIndex,
   currentCampaignId,
   sortMode,
+  expandedFolderIds,
+  setExpandedFolderIds,
 }: FolderTreeItemProps) {
-  const [expanded, setExpanded] = useState(false);
+  const expanded = expandedFolderIds.has(folder.id);
+  const setExpanded = (isExpanded: boolean) => {
+    const newSet = new Set(expandedFolderIds);
+    if (isExpanded) {
+      newSet.add(folder.id);
+    } else {
+      newSet.delete(folder.id);
+    }
+    setExpandedFolderIds(newSet);
+  };
   const [isDragOver, setIsDragOver] = useState(false);
   const [dropPosition, setDropPosition] = useState<"before" | "into" | "after" | null>(null);
   const children = folders
@@ -478,6 +491,8 @@ function FolderTreeItem({
               setDropTargetIndex={setDropTargetIndex}
               currentCampaignId={currentCampaignId}
               sortMode={sortMode}
+              expandedFolderIds={expandedFolderIds}
+              setExpandedFolderIds={setExpandedFolderIds}
             />
           ))}
           {folderNotes.map((note) => (
@@ -594,6 +609,16 @@ export function CampaignNotesPanel({
     const saved = localStorage.getItem("campaign-notes-folder-sort-mode");
     return (saved as FolderSortMode) || "custom";
   });
+
+  const [expandedFolderIds, setExpandedFolderIds] = useState<Set<string>>(() => {
+    const saved = localStorage.getItem("campaign-notes-expanded-folders");
+    return saved ? new Set(JSON.parse(saved)) : new Set();
+  });
+
+  // Persist expanded folders to localStorage
+  useEffect(() => {
+    localStorage.setItem("campaign-notes-expanded-folders", JSON.stringify(Array.from(expandedFolderIds)));
+  }, [expandedFolderIds]);
 
   const [noteTitle, setNoteTitle] = useState("");
   const [noteContent, setNoteContent] = useState("");
@@ -1790,6 +1815,8 @@ export function CampaignNotesPanel({
                 setDropTargetIndex={setDropTargetIndex}
                 currentCampaignId={campaignId}
                 sortMode={folderSortMode}
+                expandedFolderIds={expandedFolderIds}
+                setExpandedFolderIds={setExpandedFolderIds}
               />
             ))
           )}
