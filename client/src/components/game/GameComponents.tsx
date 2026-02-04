@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from "react";
+import React, { useState, useEffect, useRef, useMemo, useCallback, memo } from "react";
 import { useLocation } from "wouter";
 import { motion, AnimatePresence, useMotionValue } from "framer-motion";
 import { useAuth } from "@/lib/AuthContext";
@@ -1686,11 +1686,11 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                         border-width: 8px;
                       }
                       70% {
-                        opacity: 0.9;
+                        opacity: 0.75;
                       }
                       100% {
                         transform: scale(2.5);
-                        opacity: 0.8;
+                        opacity: 0.65;
                         border-width: 4px;
                       }
                     }

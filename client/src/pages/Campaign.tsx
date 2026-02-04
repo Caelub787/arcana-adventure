@@ -980,9 +980,9 @@ export default function Campaign() {
       };
     }
     
-    // Debounce viewport broadcasts to every 200ms
+    // Debounce viewport broadcasts to every 500ms for better performance
     const now = Date.now();
-    if (now - lastViewportBroadcastRef.current >= 200) {
+    if (now - lastViewportBroadcastRef.current >= 500) {
       lastViewportBroadcastRef.current = now;
       
       // Calculate viewport size in world units (accounting for zoom)
@@ -2432,8 +2432,16 @@ export default function Campaign() {
     }
   };
   
+  // Throttle beacon sending to prevent spam
+  const lastBeaconRef = useRef<number>(0);
+  
   // Handler for creating a beacon at a grid cell
   const handleBeacon = (cellKey: string) => {
+    // Throttle beacons to max 1 per 300ms
+    const now = Date.now();
+    if (now - lastBeaconRef.current < 300) return;
+    lastBeaconRef.current = now;
+    
     const [gridX, gridY] = cellKey.split(',').map(Number);
     // Send beacon via WebSocket - the server will broadcast to all players including self
     gameWs.sendBeacon({ gridX, gridY });
