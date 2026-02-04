@@ -1,0 +1,24 @@
+THE NOTES PAGE AND NOTES IN CAMPAIGNS SHOULD HAVE ALL OF THE SAME FEATURES AND EVERYTHING ELSE AS THEY ARE SUPPOSTED TO BE THE SAME THING!!!!!
+THE CHARACTER SHEETS IN ADMIN AND IN CAMPAIGNS SHOULD HAVE ALL OF THE SAME FEATURES AND EVERYTHING ELSE AS THEY ARE SUPPOSTED TO BE THE SAME THING!!!!!
+THE CHARACTER CREATION IN ADMIN AND IN CAMPAIGNS SHOULD HAVE ALL OF THE SAME FEATURES AND EVERYTHING ELSE AS THEY ARE SUPPOSTED TO BE THE SAME THING!!!!!
+THE ITEM CREATION IN ADMIN AND IN CAMPAIGNS SHOULD HAVE ALL OF THE SAME FEATURES AND EVERYTHING ELSE AS THEY ARE SUPPOSTED TO BE THE SAME THING!!!!!
+1.
+When a character isnt assigned, hide the Target and Magic AOE buttons
+2.
+When notes are opened in a campaign, the buttons on the left and middle of the screen need to move to fit with what the user can see on the battlemap, that way they can play the game with notes opened.
+3.
+I want to be able to resize the folders panel as well as the entire notes page in the campaigns section.
+4.
+Folders in notes should be collapsed by default.
+5.
+The species pfp is auto assigned to the token but needs to also be assigned to the character in the same way that it would be if I uploaded it into the character sheet myself.
+6.
+When you open a character sheet on pc, i want it to be a little wider when you do, the tabs names are being cut off rn as a result of them not being wide enough.
+7.
+Notes in campaigns should work the exact same way as the notes in the main menu, right now there are some differences between the 2.
+8.
+I want the tabs in notes in both notes to be moveable between each other, and I don't want tabs to appear above the folders in campaign notes just above the notes section.
+9.
+I don't want to have to refresh to see if a note has been created or deleted in campaign notes, it should happen immediately. I also want to be able to right click on a folder to then create a note or canvas in that folder.
+10.
+Add a way for players to link their google drive in their profile settings so they can import and export notes to and from google drive.
