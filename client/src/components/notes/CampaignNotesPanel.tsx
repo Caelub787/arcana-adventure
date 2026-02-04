@@ -148,7 +148,7 @@ function FolderTreeItem({
   level = 0,
   currentCampaignId,
 }: FolderTreeItemProps) {
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
   const children = folders.filter((f) => f.parentId === folder.id);
   const folderNotes = allNotes.filter((n) => n.folderId === folder.id);

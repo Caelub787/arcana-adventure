@@ -124,6 +124,7 @@ export function CharacterCreation({ onComplete, onCancel }: CharacterCreationPro
       energy: humanSpecies.startingEnergy,
       maxEnergy: humanSpecies.startingMaxEnergy,
       featTree: humanSpecies.featTree || '',
+      portrait: humanSpecies.defaultImage || null,
     } : {
       race: 'Human',
       size: 'Medium',
@@ -6243,6 +6244,7 @@ function AddCharacterDialog({ open, onOpenChange, onAddCharacter, campaignId }: 
       speed: selectedSpecies.speed || 30,
       flySpeed: selectedSpecies.flySpeed || 0,
       featTree: selectedSpecies.featTree || "",
+      portrait: selectedSpecies.defaultImage || null,
       // HP/Energy from selected species
       hp: selectedSpecies.startingHp || 10,
       maxHp: selectedSpecies.startingMaxHp || 10,
