@@ -811,13 +811,41 @@ export default function SiteSecurity() {
                   </div>
 
                   {userActivity && (
-                    <div className="border-t border-stone-700 pt-3">
-                      <h4 className="text-xs font-medium text-stone-400 mb-2">User Activity</h4>
-                      <div className="space-y-2 text-xs">
-                        <p className="text-stone-300">
-                          <MapPin className="inline h-3 w-3 mr-1" />
-                          {userActivity.campaigns.length} campaigns
-                        </p>
+                    <div className="border-t border-stone-700 pt-3 space-y-3">
+                      <div>
+                        <div className="flex items-center gap-2 text-stone-400 mb-2">
+                          <MapPin className="h-3 w-3" />
+                          <span className="text-xs font-medium">Campaigns ({userActivity.campaigns.length})</span>
+                        </div>
+                        {userActivity.campaigns.length === 0 ? (
+                          <p className="text-xs text-stone-500">No campaigns</p>
+                        ) : (
+                          <div className="space-y-1.5 max-h-32 overflow-y-auto">
+                            {userActivity.campaigns.map((campaign) => (
+                              <div
+                                key={campaign.id}
+                                className="flex items-center justify-between p-1.5 bg-stone-700/50 rounded text-xs"
+                              >
+                                <div className="min-w-0 flex-1">
+                                  <span className="text-stone-200 truncate block">{campaign.name}</span>
+                                  <Badge className="text-[10px] bg-stone-600 mt-0.5">{campaign.role}</Badge>
+                                </div>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-6 px-2 text-amber-400 hover:text-amber-300 hover:bg-stone-600 shrink-0"
+                                  onClick={() => handleViewCampaign(campaign.id)}
+                                  data-testid={`button-enter-campaign-mobile-${campaign.id}`}
+                                >
+                                  <Eye className="h-3 w-3 mr-1" />
+                                  Enter
+                                </Button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex gap-4 text-xs">
                         <p className="text-stone-300">
                           <User className="inline h-3 w-3 mr-1" />
                           {userActivity.characters.length} characters
@@ -993,12 +1021,12 @@ export default function SiteSecurity() {
                                       <Button
                                         size="sm"
                                         variant="ghost"
-                                        className="h-6 px-2 text-amber-400 hover:text-amber-300"
+                                        className="h-6 px-2 text-amber-400 hover:text-amber-300 hover:bg-stone-600"
                                         onClick={() => handleViewCampaign(campaign.id)}
-                                        data-testid={`button-view-campaign-${campaign.id}`}
+                                        data-testid={`button-enter-campaign-${campaign.id}`}
                                       >
                                         <Eye className="h-3 w-3 mr-1" />
-                                        <ExternalLink className="h-3 w-3" />
+                                        Enter
                                       </Button>
                                     </div>
                                   ))}
