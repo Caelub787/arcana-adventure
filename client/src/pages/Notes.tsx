@@ -208,6 +208,8 @@ interface FolderTreeItemProps {
   dropTargetIndex: number | null;
   setDropTargetIndex: (index: number | null) => void;
   sortMode: FolderSortMode;
+  expandedFolderIds: Set<string>;
+  setExpandedFolderIds: (ids: Set<string>) => void;
 }
 
 function FolderTreeItem({
@@ -233,8 +235,19 @@ function FolderTreeItem({
   dropTargetIndex,
   setDropTargetIndex,
   sortMode,
+  expandedFolderIds,
+  setExpandedFolderIds,
 }: FolderTreeItemProps) {
-  const [expanded, setExpanded] = useState(false);
+  const expanded = expandedFolderIds.has(folder.id);
+  const setExpanded = (isExpanded: boolean) => {
+    const newSet = new Set(expandedFolderIds);
+    if (isExpanded) {
+      newSet.add(folder.id);
+    } else {
+      newSet.delete(folder.id);
+    }
+    setExpandedFolderIds(newSet);
+  };
   const [isDragOver, setIsDragOver] = useState(false);
   const [dropPosition, setDropPosition] = useState<"before" | "into" | "after" | null>(null);
   const children = folders
