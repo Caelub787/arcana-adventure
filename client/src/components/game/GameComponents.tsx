@@ -1686,12 +1686,12 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                         border-width: 8px;
                       }
                       70% {
-                        opacity: 1;
+                        opacity: 0.9;
                       }
                       100% {
                         transform: scale(2.5);
-                        opacity: 0;
-                        border-width: 3px;
+                        opacity: 0.8;
+                        border-width: 4px;
                       }
                     }
                   `}</style>
@@ -2010,10 +2010,10 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
               {/* Initiative Turn Glow - pulsing golden glow for current turn character */}
               {character && currentTurnCharacterId === character.id && (
                 <div 
-                  className="absolute -inset-1 rounded-full pointer-events-none animate-pulse"
+                  className="absolute -inset-2 rounded-full pointer-events-none animate-pulse"
                   style={{
-                    boxShadow: '0 0 15px 5px rgba(251, 191, 36, 0.7), 0 0 30px 10px rgba(251, 191, 36, 0.4), 0 0 45px 15px rgba(251, 191, 36, 0.2)',
-                    border: '3px solid rgba(251, 191, 36, 0.9)'
+                    boxShadow: '0 0 20px 8px rgba(251, 191, 36, 0.9), 0 0 40px 15px rgba(251, 191, 36, 0.6), 0 0 60px 20px rgba(251, 191, 36, 0.4)',
+                    border: '4px solid rgba(251, 191, 36, 1)'
                   }}
                 />
               )}
