@@ -1580,9 +1580,8 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
           transformOrigin: "0 0",
           willChange: 'transform',
           backfaceVisibility: 'hidden',
-          // Removed 'contain: layout style paint' - was causing black square rendering glitches when zooming out
-          // Using translateZ(0) to force GPU layer creation without contain restrictions
-          transform: 'translateZ(0)'
+          perspective: 1000,
+          WebkitOverflowScrolling: 'touch'
         }}
         onPointerDown={handleMapPointerDown}
         onPointerMove={handleMapPointerMove}
@@ -1993,13 +1992,16 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                   onTokenClick && onTokenClick(token);
                 }
               }}
-              className={`absolute top-0 left-0 rounded-full shadow-xl ring-2 ring-white/20 overflow-visible bg-black token-shadow touch-none select-none ${canDrag ? 'cursor-grab' : 'cursor-default'} ${isDragging ? 'z-20 scale-110 cursor-grabbing' : 'hover:scale-105'} transition-transform`}
+              className={`absolute top-0 left-0 rounded-full shadow-xl ring-2 ring-white/20 overflow-visible bg-black token-shadow touch-none select-none ${canDrag ? 'cursor-grab' : 'cursor-default'} ${isDragging ? 'z-20 cursor-grabbing' : ''}`}
               style={{ 
                 width: tokenSize, 
                 height: tokenSize,
                 left: displayX + 9000 + tokenOffset,
                 top: displayY + 9000 + tokenOffset,
-                opacity: isInvisible ? 0.4 : 1 // Invisible tokens shown at 40% opacity for GMs
+                opacity: isInvisible ? 0.4 : 1,
+                willChange: isDragging ? 'transform' : 'auto',
+                transform: isDragging ? 'scale(1.1) translateZ(0)' : 'translateZ(0)',
+                contain: 'layout style'
               }}
               aria-label={`${token.type} token`}
               role="button"
