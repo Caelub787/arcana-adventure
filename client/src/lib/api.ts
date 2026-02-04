@@ -1761,6 +1761,11 @@ class ApiClient {
     return this.request(`/notes/${id}`, { method: 'DELETE' });
   }
 
+  // Google Drive status
+  async getDriveStatus(): Promise<{ connected: boolean; email?: string; name?: string }> {
+    return this.request('/drive/status');
+  }
+
   // Google Docs sync endpoints
   async getDriveFiles(): Promise<GoogleDocInfo[]> {
     return this.request('/notes/drive-files');

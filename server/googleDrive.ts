@@ -58,6 +58,27 @@ export async function getGoogleDocsClient() {
   return google.docs({ version: 'v1', auth: oauth2Client });
 }
 
+// Get Google Drive connection status and user info
+export async function getGoogleDriveStatus(): Promise<{ connected: boolean; email?: string; name?: string }> {
+  try {
+    const accessToken = await getAccessToken();
+    
+    const oauth2Client = new google.auth.OAuth2();
+    oauth2Client.setCredentials({ access_token: accessToken });
+    
+    const oauth2 = google.oauth2({ version: 'v2', auth: oauth2Client });
+    const userInfo = await oauth2.userinfo.get();
+    
+    return {
+      connected: true,
+      email: userInfo.data.email || undefined,
+      name: userInfo.data.name || undefined,
+    };
+  } catch (error) {
+    return { connected: false };
+  }
+}
+
 // Root folder ID for the image library - restricts browsing to this folder only
 export const IMAGE_LIBRARY_ROOT_FOLDER_ID = '1MAdVTaRIO4r2ZsQU5AxEyQgb9iH_na6D';
 

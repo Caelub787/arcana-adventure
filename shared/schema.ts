@@ -243,6 +243,9 @@ export const characters = pgTable("characters", {
   skillCulture: integer("skill_culture").notNull().default(0),
   skillSurvival: integer("skill_survival").notNull().default(0),
   skillBeastHandling: integer("skill_beast_handling").notNull().default(0),
+  // Point cancellation settings (0-2 range, how many negative points are cancelled)
+  cancelledAttrPoints: integer("cancelled_attr_points").notNull().default(0),
+  cancelledSkillPoints: integer("cancelled_skill_points").notNull().default(0),
   // Exhaustion (0-7 scale)
   exhaustion: integer("exhaustion").notNull().default(0),
   // Background/notes

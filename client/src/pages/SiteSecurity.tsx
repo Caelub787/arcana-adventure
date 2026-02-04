@@ -20,7 +20,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { toast } from '@/hooks/use-toast';
-import { Search, Shield, ShieldOff, Users, Clock, User, MapPin, FileText, Eye, Ban, ShieldCheck, X, Calendar, ExternalLink, Radio, Bell, Send, ChevronDown, ChevronRight, Trash2, Mail } from 'lucide-react';
+import { Search, Shield, ShieldOff, Users, Clock, User, MapPin, FileText, Eye, Ban, ShieldCheck, X, Calendar, ExternalLink, Radio, Bell, Send, ChevronDown, ChevronRight, Trash2, Mail, ArrowLeft } from 'lucide-react';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 
 type BanDuration = 'permanent' | '1day' | '1week' | '1month' | 'custom';
@@ -402,6 +402,15 @@ export default function SiteSecurity() {
       <div className="container mx-auto px-4 py-6">
         <div className="flex items-center justify-between gap-4 mb-6">
           <div className="flex items-center gap-3">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setLocation('/')}
+              className="text-amber-400 hover:text-amber-300 hover:bg-stone-700/50"
+              data-testid="button-back-home"
+            >
+              <ArrowLeft className="h-6 w-6" />
+            </Button>
             <Shield className="h-7 w-7 text-amber-500" />
             <h1 className="text-xl sm:text-2xl font-bold text-amber-400">Site Security</h1>
           </div>

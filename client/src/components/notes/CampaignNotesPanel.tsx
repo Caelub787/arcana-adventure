@@ -691,7 +691,7 @@ export function CampaignNotesPanel({
     lastSentCanvasRef.current = canvasStr;
     
     noteWs.sendNoteUpdate(selectedNoteId, {
-      canvasData: debouncedCanvasData,
+      canvasData: JSON.stringify(debouncedCanvasData),
     });
   }, [debouncedCanvasData, selectedNoteId, currentNote?.type, isOpen]);
 
@@ -1850,14 +1850,16 @@ export function CampaignNotesPanel({
         );
       }
       return (
-        <CanvasEditor
-          canvasData={canvasData}
-          onChange={setCanvasData}
-          readOnly={false}
-          onClose={() => setSelectedNoteId(null)}
-          title={noteTitle}
-          onTitleChange={setNoteTitle}
-        />
+        <div className="h-full w-full flex flex-col overflow-hidden">
+          <CanvasEditor
+            canvasData={canvasData}
+            onChange={setCanvasData}
+            readOnly={false}
+            onClose={() => setSelectedNoteId(null)}
+            title={noteTitle}
+            onTitleChange={setNoteTitle}
+          />
+        </div>
       );
     }
     
@@ -2089,7 +2091,7 @@ export function CampaignNotesPanel({
                 <ResizableHandle withHandle className="bg-stone-700/50 hover:bg-amber-600 transition-colors" />
               </>
             )}
-            <ResizablePanel defaultSize={showSidebar ? 75 : 100} minSize={40} className="min-w-0 flex flex-col">
+            <ResizablePanel defaultSize={showSidebar ? 75 : 100} minSize={40} className="min-w-0 flex flex-col h-full">
               {openNotes.length > 0 && (
                 <NoteTabs
                   openNotes={openNotes}
@@ -2100,7 +2102,7 @@ export function CampaignNotesPanel({
                   compact
                 />
               )}
-              <div className="flex-1 min-h-0 overflow-hidden">
+              <div className="flex-1 min-h-0 overflow-hidden relative isolate">
                 {selectedNoteId ? (
                   currentNote?.type === "canvas" || noteMode === "edit" ? renderNoteEditor() : renderNoteReadView()
                 ) : showHomeView ? (

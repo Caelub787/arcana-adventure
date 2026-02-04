@@ -419,6 +419,16 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
   
   // Notification style toggle (full vs compact)
   const [notificationStyle, setNotificationStyleState] = useState<NotificationStyle>(getNotificationStyle);
+
+  // Ghost token state - shows starting position of the current turn's token during combat
+  const [ghostToken, setGhostToken] = useState<{
+    tokenId: string;
+    characterId: string;
+    startX: number;
+    startY: number;
+    image: string;
+    gridSpan: number;
+  } | null>(null);
   
   // Gesture state machine to prevent conflicts between pan/zoom/token drag
   type GestureMode = 'idle' | 'panning' | 'pinching' | 'draggingToken';
@@ -551,6 +561,42 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
       startAnimationLoop();
     }
   }, [tokens, draggingToken?.id, scene?.gridSize, gridSize]);
+  
+  // Track combat turn changes and store ghost token position
+  useEffect(() => {
+    if (!inCombat || !currentTurnCharacterId) {
+      // Clear ghost when combat ends
+      setGhostToken(null);
+      return;
+    }
+    
+    // Find the token for the current turn's character
+    const turnToken = tokens.find(t => t.characterId === currentTurnCharacterId);
+    if (!turnToken) {
+      setGhostToken(null);
+      return;
+    }
+    
+    // Check if this is a new turn (different character) 
+    if (ghostToken?.characterId === currentTurnCharacterId) {
+      // Same character's turn - don't update ghost position
+      return;
+    }
+    
+    // New turn started - store the token's starting position
+    const character = characters.find(c => c.id === currentTurnCharacterId);
+    const speciesData = character?.race ? allSpecies.find(s => s.name === character.race) : null;
+    const gridSpan = getTokenGridSpan((turnToken as any).speciesSize || speciesData?.size);
+    
+    setGhostToken({
+      tokenId: turnToken.id,
+      characterId: currentTurnCharacterId,
+      startX: turnToken.x,
+      startY: turnToken.y,
+      image: turnToken.image,
+      gridSpan,
+    });
+  }, [inCombat, currentTurnCharacterId, tokens, characters, allSpecies]);
   
   // Animation loop function - uses refs to avoid stale closure
   const startAnimationLoop = () => {
@@ -1674,6 +1720,49 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
           }}
           draggable={false}
         />
+
+        {/* Ghost Token - Shows starting position during combat turn */}
+        {ghostToken && inCombat && (() => {
+          // Find the actual token to check if it has moved
+          const actualToken = tokens.find(t => t.id === ghostToken.tokenId);
+          if (!actualToken) return null;
+          
+          // Only show ghost if token has moved from starting position
+          const hasMoved = actualToken.x !== ghostToken.startX || actualToken.y !== ghostToken.startY;
+          if (!hasMoved) return null;
+          
+          const effectiveGridSize = scene?.gridSize || gridSize;
+          const gridThickness = scene?.gridThickness ?? 1;
+          const tokenSize = effectiveGridSize * ghostToken.gridSpan * 0.9;
+          const usableCellSize = effectiveGridSize * ghostToken.gridSpan - gridThickness;
+          const tokenOffset = gridThickness + (usableCellSize - tokenSize) / 2;
+          
+          return (
+            <div
+              key={`ghost-${ghostToken.tokenId}`}
+              data-testid={`ghost-token-${ghostToken.tokenId}`}
+              className="absolute top-0 left-0 rounded-full overflow-visible pointer-events-none"
+              style={{ 
+                width: tokenSize, 
+                height: tokenSize,
+                left: ghostToken.startX + 9000 + tokenOffset,
+                top: ghostToken.startY + 9000 + tokenOffset,
+                opacity: 0.3,
+              }}
+              aria-label="Ghost token starting position"
+            >
+              <img 
+                src={ghostToken.image} 
+                alt="ghost token" 
+                className="w-full h-full object-cover pointer-events-none rounded-full grayscale"
+                style={{ filter: 'grayscale(100%) brightness(0.8)' }}
+              />
+              <div 
+                className="absolute inset-0 rounded-full border-2 border-dashed border-gray-400"
+              />
+            </div>
+          );
+        })()}
 
         {/* Tokens - Keep original coordinate system */}
         {tokens.map((token) => {
@@ -12489,16 +12578,18 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
   const [editingAttributes, setEditingAttributes] = useState(false);
   const [editingSkills, setEditingSkills] = useState(false);
   
-  // Point cancellation states (local UI only, not persisted)
-  const [cancelledAttrPoints, setCancelledAttrPoints] = useState(0);
-  const [cancelledSkillPoints, setCancelledSkillPoints] = useState(0);
+  // Point cancellation states (persisted in character data)
+  const [cancelledAttrPoints, setCancelledAttrPoints] = useState(character?.cancelledAttrPoints || 0);
+  const [cancelledSkillPoints, setCancelledSkillPoints] = useState(character?.cancelledSkillPoints || 0);
   
   // Live character data state (for real-time updates)
   const [liveCharacter, setLiveCharacter] = useState(character);
   
-  // Update live character when prop changes
+  // Update live character and cancelled points when prop changes
   useEffect(() => {
     setLiveCharacter(character);
+    setCancelledAttrPoints(character?.cancelledAttrPoints || 0);
+    setCancelledSkillPoints(character?.cancelledSkillPoints || 0);
   }, [character]);
   
   // Edit data states - includes race stats
@@ -14644,6 +14735,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                           will: liveCharacter.will || 0,
                           craft: liveCharacter.craft || 0
                         });
+                        setCancelledAttrPoints(liveCharacter.cancelledAttrPoints || 0);
                         setEditingAttributes(true);
                       }}
                       data-testid="button-edit-attributes"
@@ -14834,7 +14926,10 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                         const dataToSave = Object.fromEntries(
                           Object.entries(attributesData).map(([key, val]) => [key, val === '' ? 0 : Number(val)])
                         );
-                        updateCharacterMutation.mutate(dataToSave);
+                        updateCharacterMutation.mutate({
+                          ...dataToSave,
+                          cancelledAttrPoints
+                        });
                         setEditingAttributes(false);
                       }}
                       data-testid="button-save-attributes"
@@ -14888,6 +14983,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                           customSkillsInit[cs.id] = cs.value || 0;
                         });
                         setCustomSkillsEditData(customSkillsInit);
+                        setCancelledSkillPoints(liveCharacter.cancelledSkillPoints || 0);
                         setEditingSkills(true);
                       }}
                       data-testid="button-edit-skills"
@@ -15120,7 +15216,10 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                         const dataToSave = Object.fromEntries(
                           Object.entries(skillsData).map(([key, val]) => [key, val === '' ? 0 : Number(val)])
                         );
-                        updateCharacterMutation.mutate(dataToSave);
+                        updateCharacterMutation.mutate({
+                          ...dataToSave,
+                          cancelledSkillPoints
+                        });
                         
                         // Save custom skill changes
                         for (const [skillId, value] of Object.entries(customSkillsEditData)) {

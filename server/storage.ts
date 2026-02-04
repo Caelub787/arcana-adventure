@@ -780,6 +780,7 @@ export class DatabaseStorage implements IStorage {
       role: row.campaign_members.role,
       favorite: row.campaign_members.favorite,
       joinedAt: row.campaign_members.joinedAt,
+      beaconColor: row.campaign_members.beaconColor,
       username: row.users.username,
       avatarUrl: row.users.avatarUrl
     }));

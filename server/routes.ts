@@ -9,7 +9,7 @@ import crypto from "crypto";
 import { db } from "./db";
 import { eq } from "drizzle-orm";
 import { createRollResult, createWebSocketDiceRollMessage, type RollRequest } from "./dice/serverRollHandler";
-import { listFolders, listImages, getImageBase64, searchImages } from "./googleDrive";
+import { listFolders, listImages, getImageBase64, searchImages, getGoogleDriveStatus } from "./googleDrive";
 
 declare module "express-session" {
   interface SessionData {
@@ -30,6 +30,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Map to track campaign rooms
   const campaignRooms = new Map<string, Set<any>>();
+  
+  // Set to track ALL connected WebSocket clients (for global broadcasts like site updates)
+  const allConnectedClients = new Set<any>();
   
   // Map to track note rooms for live collaborative editing
   // Each note room tracks: { clients: Set<WebSocket>, presence: Map<userId, { username, cursorPosition, lastActive }> }
@@ -155,20 +158,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
   /**
    * broadcastToAllClients - Broadcast to ALL connected WebSocket clients
    * 
-   * This function broadcasts messages to every connected client across all campaign rooms.
+   * This function broadcasts messages to every connected client.
    * Used for admin notifications that should reach all users.
    */
   function broadcastToAllClients(message: any): void {
     const messageString = JSON.stringify(message);
-    const sentTo = new Set<WebSocket>(); // Avoid duplicates if user is in multiple campaigns
     
-    campaignRooms.forEach((room) => {
-      room.forEach((client) => {
-        if (client.readyState === 1 && !sentTo.has(client)) { // OPEN
-          client.send(messageString);
-          sentTo.add(client);
-        }
-      });
+    allConnectedClients.forEach((client) => {
+      if (client.readyState === 1) { // OPEN
+        client.send(messageString);
+      }
     });
   }
 
@@ -309,6 +308,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     
     console.log(`[WebSocket] User ${user.username} (${userId}) connected successfully`);
     
+    // Add to global connected clients set for site-wide broadcasts
+    allConnectedClients.add(ws);
+    
     // Mark setup as complete and process buffered messages
     setupComplete = true;
     if (messageBuffer.length > 0) {
@@ -433,153 +435,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
             return;
           }
           
-          const userRole = userCampaign.role;
-          
-          // Fetch the token from database to verify ownership
-          const token = await storage.getToken(tokenId);
-          
-          if (!token || token.campaignId !== campaignId) {
-            ws.send(JSON.stringify({
-              type: "error",
-              message: "Invalid token for this campaign"
-            }));
-            return;
-          }
-          
-          // Authorization: GM can move any token, players can move tokens they own or have edit access to
-          if (userRole !== "gm") {
-            // If token has a characterId, verify user owns it OR has edit permission
-            if (token.characterId) {
-              const character = await storage.getCharacter(token.characterId);
-              if (!character) {
-                ws.send(JSON.stringify({
-                  type: "error",
-                  message: "Character not found"
-                }));
-                return;
-              }
-              
-              // Check combat turn restriction - players can only move their character's token during their turn
-              // Only enforce turn restriction if combat is active AND a turn has been established
-              const tokenScene = token.sceneId ? await storage.getScene(token.sceneId) : null;
-              if (tokenScene?.inCombat && tokenScene.currentTurnCharacterId) {
-                // In combat mode with active turn - check if it's this character's turn
-                if (tokenScene.currentTurnCharacterId !== token.characterId) {
-                  ws.send(JSON.stringify({
-                    type: "error",
-                    message: "It's not your turn to move"
-                  }));
-                  return;
-                }
-              }
-              
-              // Check if user owns the character OR has edit permission
-              const isOwner = character.userId === authenticatedUserId;
-              if (!isOwner) {
-                const permission = await storage.getCharacterPermission(token.characterId, authenticatedUserId);
-                const hasEditAccess = permission?.accessLevel === 'edit';
-                
-                if (!hasEditAccess) {
-                  ws.send(JSON.stringify({
-                    type: "error",
-                    message: "Not authorized to move this token"
-                  }));
-                  return;
-                }
-              }
-            } else {
-              // Non-character tokens (enemies, NPCs) can only be moved by GM
-              ws.send(JSON.stringify({
-                type: "error",
-                message: "Only GMs can move non-player tokens"
-              }));
-              return;
-            }
-          }
-          
-          // Collision detection - check if the target position would overlap with other tokens
-          const allTokens = token.sceneId ? await storage.getSceneTokens(token.sceneId) : [];
-          const allCharacters = await storage.getCampaignCharacters(campaignId);
-          const allSpecies = await storage.getSystemSpecies(); // Get system species
-          const campaignSpecies = await storage.getCampaignSpecies(campaignId); // Get campaign species
-          const speciesList = [...allSpecies, ...campaignSpecies];
-          
-          // Get grid size from scene
-          const scene = token.sceneId ? await storage.getScene(token.sceneId) : null;
-          const gridSize = scene?.gridSize || 50;
-          
-          // Helper to get grid span based on species size
-          const getTokenGridSpan = (size?: string) => {
-            switch (size?.toLowerCase()) {
-              case 'huge': return 2;
-              case 'gargantuan': return 3;
-              default: return 1;
-            }
-          };
-          
-          // Helper to get token size - checks token's enriched speciesSize first, then character's species
-          const getTokenSize = (tok: any, chars: any[], species: any[]) => {
-            // Check token's direct speciesSize field (enriched data)
-            if (tok.speciesSize) return tok.speciesSize;
-            // Fall back to character's species lookup
-            if (tok.characterId) {
-              const char = chars.find(c => c.id === tok.characterId);
-              if (char?.race) {
-                const spec = species.find(s => s.name === char.race);
-                if (spec?.size) return spec.size;
-              }
-            }
-            return 'Medium'; // Default
-          };
-          
-          // Get the moving token's species and size
-          const movingTokenSize = getTokenSize(token, allCharacters, speciesList);
-          const movingGridSpan = getTokenGridSpan(movingTokenSize);
-          
-          // Calculate grid cells for the moving token at new position
-          // Use Math.round to match the snap-to-grid rounding used in the client
-          const movingMinGridX = Math.round(x / gridSize);
-          const movingMinGridY = Math.round(y / gridSize);
-          const movingMaxGridX = movingMinGridX + movingGridSpan - 1;
-          const movingMaxGridY = movingMinGridY + movingGridSpan - 1;
-          
-          // Check collision with other tokens
-          let hasCollision = false;
-          for (const otherToken of allTokens) {
-            if (otherToken.id === tokenId) continue; // Skip self
-            
-            // Use the same helper to get other token's size
-            const otherTokenSize = getTokenSize(otherToken, allCharacters, speciesList);
-            const otherGridSpan = getTokenGridSpan(otherTokenSize);
-            
-            // Use Math.round to match snap-to-grid rounding
-            const otherMinGridX = Math.round(otherToken.x / gridSize);
-            const otherMinGridY = Math.round(otherToken.y / gridSize);
-            const otherMaxGridX = otherMinGridX + otherGridSpan - 1;
-            const otherMaxGridY = otherMinGridY + otherGridSpan - 1;
-            
-            // Check AABB overlap
-            const overlapX = movingMinGridX <= otherMaxGridX && movingMaxGridX >= otherMinGridX;
-            const overlapY = movingMinGridY <= otherMaxGridY && movingMaxGridY >= otherMinGridY;
-            
-            if (overlapX && overlapY) {
-              hasCollision = true;
-              break;
-            }
-          }
-          
-          if (hasCollision) {
-            ws.send(JSON.stringify({
-              type: "error",
-              message: "Cannot move to an occupied space"
-            }));
-            return;
-          }
-          
-          // Update token position in database
-          await storage.updateToken(tokenId, { x, y });
-          
-          // Broadcast to all clients in the campaign
+          // BROADCAST IMMEDIATELY for real-time responsiveness
+          // Do this BEFORE any database operations to ensure instant feedback
           const room = campaignRooms.get(campaignId);
           if (room) {
             const broadcastMessage = JSON.stringify({
@@ -588,7 +445,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               x,
               y,
               snapToGrid,
-              userId: authenticatedUserId // Use server-side authenticated userId
+              userId: authenticatedUserId
             });
             
             room.forEach((client) => {
@@ -597,6 +454,224 @@ export async function registerRoutes(app: Express): Promise<Server> {
               }
             });
           }
+          
+          // Now do validation and database update asynchronously
+          // Use IIFE to run validation/save without blocking
+          (async () => {
+            const userRole = userCampaign.role;
+            
+            // Fetch the token from database to verify ownership
+            const token = await storage.getToken(tokenId);
+            
+            if (!token || token.campaignId !== campaignId) {
+              // Send rollback to revert the move
+              if (room) {
+                const rollbackMessage = JSON.stringify({
+                  type: "token_move_rollback",
+                  tokenId,
+                  message: "Invalid token for this campaign"
+                });
+                room.forEach((client) => {
+                  if (client.readyState === 1) client.send(rollbackMessage);
+                });
+              }
+              return;
+            }
+            
+            // Store original position for potential rollback
+            const originalX = token.x;
+            const originalY = token.y;
+            
+            // Authorization: GM can move any token, players can move tokens they own or have edit access to
+            if (userRole !== "gm") {
+              // If token has a characterId, verify user owns it OR has edit permission
+              if (token.characterId) {
+                const character = await storage.getCharacter(token.characterId);
+                if (!character) {
+                  // Rollback
+                  if (room) {
+                    const rollbackMessage = JSON.stringify({
+                      type: "token_move_rollback",
+                      tokenId,
+                      x: originalX,
+                      y: originalY,
+                      message: "Character not found"
+                    });
+                    room.forEach((client) => {
+                      if (client.readyState === 1) client.send(rollbackMessage);
+                    });
+                  }
+                  return;
+                }
+                
+                // Check combat turn restriction - players can only move their character's token during their turn
+                // Only enforce turn restriction if combat is active AND a turn has been established
+                const tokenScene = token.sceneId ? await storage.getScene(token.sceneId) : null;
+                if (tokenScene?.inCombat && tokenScene.currentTurnCharacterId) {
+                  // In combat mode with active turn - check if it's this character's turn
+                  if (tokenScene.currentTurnCharacterId !== token.characterId) {
+                    // Rollback
+                    if (room) {
+                      const rollbackMessage = JSON.stringify({
+                        type: "token_move_rollback",
+                        tokenId,
+                        x: originalX,
+                        y: originalY,
+                        message: "It's not your turn to move"
+                      });
+                      room.forEach((client) => {
+                        if (client.readyState === 1) client.send(rollbackMessage);
+                      });
+                    }
+                    ws.send(JSON.stringify({
+                      type: "error",
+                      message: "It's not your turn to move"
+                    }));
+                    return;
+                  }
+                }
+                
+                // Check if user owns the character OR has edit permission
+                const isOwner = character.userId === authenticatedUserId;
+                if (!isOwner) {
+                  const permission = await storage.getCharacterPermission(token.characterId, authenticatedUserId);
+                  const hasEditAccess = permission?.accessLevel === 'edit';
+                  
+                  if (!hasEditAccess) {
+                    // Rollback
+                    if (room) {
+                      const rollbackMessage = JSON.stringify({
+                        type: "token_move_rollback",
+                        tokenId,
+                        x: originalX,
+                        y: originalY,
+                        message: "Not authorized to move this token"
+                      });
+                      room.forEach((client) => {
+                        if (client.readyState === 1) client.send(rollbackMessage);
+                      });
+                    }
+                    ws.send(JSON.stringify({
+                      type: "error",
+                      message: "Not authorized to move this token"
+                    }));
+                    return;
+                  }
+                }
+              } else {
+                // Non-character tokens (enemies, NPCs) can only be moved by GM
+                // Rollback
+                if (room) {
+                  const rollbackMessage = JSON.stringify({
+                    type: "token_move_rollback",
+                    tokenId,
+                    x: originalX,
+                    y: originalY,
+                    message: "Only GMs can move non-player tokens"
+                  });
+                  room.forEach((client) => {
+                    if (client.readyState === 1) client.send(rollbackMessage);
+                  });
+                }
+                ws.send(JSON.stringify({
+                  type: "error",
+                  message: "Only GMs can move non-player tokens"
+                }));
+                return;
+              }
+            }
+            
+            // Collision detection - check if the target position would overlap with other tokens
+            const allTokens = token.sceneId ? await storage.getSceneTokens(token.sceneId) : [];
+            const allCharacters = await storage.getCampaignCharacters(campaignId);
+            const allSpecies = await storage.getSystemSpecies();
+            const campaignSpecies = await storage.getCampaignSpecies(campaignId);
+            const speciesList = [...allSpecies, ...campaignSpecies];
+            
+            // Get grid size from scene
+            const scene = token.sceneId ? await storage.getScene(token.sceneId) : null;
+            const gridSize = scene?.gridSize || 50;
+            
+            // Helper to get grid span based on species size
+            const getTokenGridSpan = (size?: string) => {
+              switch (size?.toLowerCase()) {
+                case 'huge': return 2;
+                case 'gargantuan': return 3;
+                default: return 1;
+              }
+            };
+            
+            // Helper to get token size - checks token's enriched speciesSize first, then character's species
+            const getTokenSize = (tok: any, chars: any[], species: any[]) => {
+              if (tok.speciesSize) return tok.speciesSize;
+              if (tok.characterId) {
+                const char = chars.find(c => c.id === tok.characterId);
+                if (char?.race) {
+                  const spec = species.find(s => s.name === char.race);
+                  if (spec?.size) return spec.size;
+                }
+              }
+              return 'Medium';
+            };
+            
+            // Get the moving token's species and size
+            const movingTokenSize = getTokenSize(token, allCharacters, speciesList);
+            const movingGridSpan = getTokenGridSpan(movingTokenSize);
+            
+            // Calculate grid cells for the moving token at new position
+            const movingMinGridX = Math.round(x / gridSize);
+            const movingMinGridY = Math.round(y / gridSize);
+            const movingMaxGridX = movingMinGridX + movingGridSpan - 1;
+            const movingMaxGridY = movingMinGridY + movingGridSpan - 1;
+            
+            // Check collision with other tokens
+            let hasCollision = false;
+            for (const otherToken of allTokens) {
+              if (otherToken.id === tokenId) continue;
+              
+              const otherTokenSize = getTokenSize(otherToken, allCharacters, speciesList);
+              const otherGridSpan = getTokenGridSpan(otherTokenSize);
+              
+              const otherMinGridX = Math.round(otherToken.x / gridSize);
+              const otherMinGridY = Math.round(otherToken.y / gridSize);
+              const otherMaxGridX = otherMinGridX + otherGridSpan - 1;
+              const otherMaxGridY = otherMinGridY + otherGridSpan - 1;
+              
+              const overlapX = movingMinGridX <= otherMaxGridX && movingMaxGridX >= otherMinGridX;
+              const overlapY = movingMinGridY <= otherMaxGridY && movingMaxGridY >= otherMinGridY;
+              
+              if (overlapX && overlapY) {
+                hasCollision = true;
+                break;
+              }
+            }
+            
+            if (hasCollision) {
+              // Rollback on collision
+              if (room) {
+                const rollbackMessage = JSON.stringify({
+                  type: "token_move_rollback",
+                  tokenId,
+                  x: originalX,
+                  y: originalY,
+                  message: "Cannot move to an occupied space"
+                });
+                room.forEach((client) => {
+                  if (client.readyState === 1) client.send(rollbackMessage);
+                });
+              }
+              ws.send(JSON.stringify({
+                type: "error",
+                message: "Cannot move to an occupied space"
+              }));
+              return;
+            }
+            
+            // Update token position in database (async, doesn't block the UI)
+            await storage.updateToken(tokenId, { x, y });
+          })().catch(err => {
+            console.error('[WebSocket] Token move validation/save error:', err);
+          });
         }
 
         if (message.type === "chat_message") {
@@ -1499,6 +1574,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
 
     ws.on("close", () => {
+      // Remove from global connected clients set
+      allConnectedClients.delete(ws);
+      
       // Remove from all campaign rooms
       const campaigns = (ws as any).campaigns || new Map();
       campaigns.forEach((_: any, campaignId: string) => {
@@ -6642,6 +6720,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ======== GOOGLE DRIVE IMAGE LIBRARY ROUTES ========
   
+  // Get Google Drive connection status
+  app.get("/api/drive/status", requireAuth, async (req, res) => {
+    try {
+      const status = await getGoogleDriveStatus();
+      res.json(status);
+    } catch (e) {
+      console.error("Failed to get Drive status:", e);
+      res.json({ connected: false });
+    }
+  });
+
   // List folders in Google Drive
   app.get("/api/drive/folders", requireAuth, async (req, res) => {
     try {

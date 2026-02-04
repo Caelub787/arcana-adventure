@@ -1,7 +1,7 @@
 import React, { useState, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
-import { User, LogOut, Edit2, Users, ShieldCheck } from "lucide-react";
+import { User, LogOut, Edit2, Users, ShieldCheck, Cloud, Check, AlertCircle, Loader2 } from "lucide-react";
 import { api, type UserProfile } from "@/lib/api";
 import { useAuth } from "@/lib/AuthContext";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
@@ -49,6 +49,12 @@ export default function ProfileDropdown({ onLogout }: ProfileDropdownProps) {
     queryKey: ["/api/profile"],
     queryFn: () => api.getProfile(),
     enabled: !!user,
+  });
+
+  const { data: driveStatus, isLoading: driveStatusLoading, refetch: refetchDriveStatus } = useQuery<{ connected: boolean; email?: string; name?: string }>({
+    queryKey: ["/api/drive/status"],
+    queryFn: () => api.getDriveStatus(),
+    enabled: editDialogOpen,
   });
 
   const updateProfileMutation = useMutation({
@@ -283,6 +289,59 @@ export default function ProfileDropdown({ onLogout }: ProfileDropdownProps) {
                 placeholder="Tell others about yourself..."
                 data-testid="input-profile-bio"
               />
+            </div>
+            
+            <div className="space-y-3 pt-2">
+              <Label className="text-stone-400">Connected Services</Label>
+              <div 
+                className="flex items-center justify-between p-3 rounded-lg border border-stone-700 bg-stone-900"
+                data-testid="google-drive-connection"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-stone-800">
+                    <Cloud className="h-5 w-5 text-amber-500" />
+                  </div>
+                  <div>
+                    <p className="font-medium text-stone-200">Google Drive</p>
+                    {driveStatusLoading ? (
+                      <div className="flex items-center gap-1.5 text-sm text-stone-500">
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                        <span>Checking connection...</span>
+                      </div>
+                    ) : driveStatus?.connected ? (
+                      <p className="text-sm text-stone-400" data-testid="text-drive-email">
+                        {driveStatus.email || "Connected"}
+                      </p>
+                    ) : (
+                      <p className="text-sm text-stone-500">Not connected</p>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  {driveStatusLoading ? null : driveStatus?.connected ? (
+                    <div 
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-green-900/30 text-green-400 text-sm"
+                      data-testid="status-drive-connected"
+                    >
+                      <Check className="h-3.5 w-3.5" />
+                      <span>Connected</span>
+                    </div>
+                  ) : (
+                    <div 
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-stone-800 text-stone-400 text-sm"
+                      data-testid="status-drive-disconnected"
+                    >
+                      <AlertCircle className="h-3.5 w-3.5" />
+                      <span>Not Connected</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+              {!driveStatus?.connected && !driveStatusLoading && (
+                <p className="text-xs text-stone-500">
+                  Google Drive connection is managed at the application level. Contact an administrator to enable this feature.
+                </p>
+              )}
             </div>
           </div>
           <DialogFooter>

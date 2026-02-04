@@ -1805,6 +1805,26 @@ export default function Campaign() {
             );
           }
         }
+        if (data.type === 'token_move_rollback') {
+          // Server rejected the move - revert token to original position
+          if (data.x !== undefined && data.y !== undefined) {
+            setTokens(prev => prev.map(t => 
+              t.id === data.tokenId ? { ...t, x: data.x, y: data.y } : t
+            ));
+            // Also update the React Query cache
+            const currentCampaignId = effectiveCampaignIdRef.current;
+            const currentSceneId = sceneIdForTokensRef.current;
+            if (currentCampaignId && currentSceneId) {
+              queryClientRef.current.setQueryData(
+                [`/api/campaigns/${currentCampaignId}/tokens`, currentSceneId],
+                (oldData: any[] | undefined) => {
+                  if (!oldData) return oldData;
+                  return oldData.map((t: any) => t.id === data.tokenId ? { ...t, x: data.x, y: data.y } : t);
+                }
+              );
+            }
+          }
+        }
         if (data.type === 'character_changed') {
           // Force immediate refetch for character changes
           queryClientRef.current.refetchQueries({ queryKey: [`/api/campaigns/${effectiveCampaignId}/characters`] });

@@ -36,6 +36,13 @@
       "when": 1767734667477,
       "tag": "0004_stormy_thanos",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1770168680481,
+      "tag": "0005_nebulous_bromley",
+      "breakpoints": true
     }
   ]
 }
