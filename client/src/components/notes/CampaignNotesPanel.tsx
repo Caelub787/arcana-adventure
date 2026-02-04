@@ -15,6 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
 import {
   Dialog,
   DialogContent,
@@ -1166,7 +1167,7 @@ export function CampaignNotesPanel({
   if (!isOpen) return null;
 
   const renderSidebar = () => (
-    <div className="flex flex-col h-full border-r border-stone-700 bg-stone-950/50" style={{ width: showSidebar ? '140px' : '0', minWidth: showSidebar ? '140px' : '0', overflow: 'hidden', transition: 'all 0.2s' }}>
+    <div className="flex flex-col h-full border-r border-stone-700 bg-stone-950/50 overflow-hidden">
       <div className="flex items-center justify-between p-2 border-b border-stone-700">
         <span className="text-xs font-medium text-stone-300">Folders</span>
         <Button size="icon" variant="ghost" className="h-5 w-5" onClick={() => openFolderDialog()}>
@@ -1810,16 +1811,30 @@ export function CampaignNotesPanel({
         {viewMode === "graph" ? (
           renderGraphView()
         ) : (
-          <>
-            {renderSidebar()}
-            {selectedNoteId ? (
-              currentNote?.type === "canvas" || noteMode === "edit" ? renderNoteEditor() : renderNoteReadView()
-            ) : showHomeView ? (
-              renderHomeView()
-            ) : (
-              renderNoteList()
+          <ResizablePanelGroup direction="horizontal" className="h-full">
+            {showSidebar && (
+              <>
+                <ResizablePanel 
+                  defaultSize={20} 
+                  minSize={15} 
+                  maxSize={40}
+                  className="min-w-0"
+                >
+                  {renderSidebar()}
+                </ResizablePanel>
+                <ResizableHandle withHandle className="bg-stone-700 hover:bg-amber-600 transition-colors" />
+              </>
             )}
-          </>
+            <ResizablePanel defaultSize={showSidebar ? 80 : 100} minSize={50} className="min-w-0">
+              {selectedNoteId ? (
+                currentNote?.type === "canvas" || noteMode === "edit" ? renderNoteEditor() : renderNoteReadView()
+              ) : showHomeView ? (
+                renderHomeView()
+              ) : (
+                renderNoteList()
+              )}
+            </ResizablePanel>
+          </ResizablePanelGroup>
         )}
       </div>
 
