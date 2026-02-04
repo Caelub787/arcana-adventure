@@ -207,6 +207,7 @@ interface FolderTreeItemProps {
   setDraggedFolderId: (id: string | null) => void;
   dropTargetIndex: number | null;
   setDropTargetIndex: (index: number | null) => void;
+  sortMode: FolderSortMode;
 }
 
 function FolderTreeItem({
@@ -231,11 +232,24 @@ function FolderTreeItem({
   setDraggedFolderId,
   dropTargetIndex,
   setDropTargetIndex,
+  sortMode,
 }: FolderTreeItemProps) {
   const [expanded, setExpanded] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
   const [dropPosition, setDropPosition] = useState<"before" | "into" | "after" | null>(null);
-  const children = folders.filter((f) => f.parentId === folder.id).sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+  const children = folders
+    .filter((f) => f.parentId === folder.id)
+    .sort((a, b) => {
+      switch (sortMode) {
+        case "name":
+          return a.name.localeCompare(b.name);
+        case "date":
+          return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
+        case "custom":
+        default:
+          return (a.sortOrder ?? 0) - (b.sortOrder ?? 0);
+      }
+    });
   const folderNotes = allNotes.filter((n) => n.folderId === folder.id);
   const isSelected = selectedFolderId === folder.id;
   const hasChildren = children.length > 0;
@@ -433,6 +447,7 @@ function FolderTreeItem({
               setDraggedFolderId={setDraggedFolderId}
               dropTargetIndex={dropTargetIndex}
               setDropTargetIndex={setDropTargetIndex}
+              sortMode={sortMode}
             />
           ))}
           {folderNotes.map((note) => (
@@ -1823,6 +1838,7 @@ export default function Notes() {
                 setDraggedFolderId={setDraggedFolderId}
                 dropTargetIndex={dropTargetIndex}
                 setDropTargetIndex={setDropTargetIndex}
+                sortMode={folderSortMode}
               />
             ))
           )}
