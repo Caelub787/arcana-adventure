@@ -5807,7 +5807,7 @@ export function BattleMapHotbars({ character, tokens, targetedTokenId, character
       {/* DC, HP and Energy Bars - Bottom LEFT, stacked vertically */}
       <div 
         className="absolute bottom-2 md:bottom-4 pointer-events-auto z-30 transition-all duration-300 ease-in-out"
-        style={{ left: notesPanelOpen ? `${notesPanelWidth + 16}px` : '8px' }}
+        style={{ left: '8px' }}
       >
         <div className="flex flex-col gap-1">
           {/* DC Display */}
@@ -6010,7 +6010,7 @@ export function SelectionModeButtons({
     <>
       <div 
         className="absolute top-44 z-30 pointer-events-auto transition-all duration-300 ease-in-out"
-        style={{ left: notesPanelOpen ? `${notesPanelWidth + 16}px` : '8px' }}
+        style={{ left: '8px' }}
       >
         <div className="flex flex-col gap-2">
           <TooltipProvider>

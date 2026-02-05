@@ -3566,7 +3566,7 @@ export default function Campaign() {
                return (
                  <div 
                    className="absolute top-72 z-30 pointer-events-auto bg-stone-900/95 border border-stone-700 rounded-lg p-3 shadow-xl w-48 transition-all duration-300 ease-in-out"
-                   style={{ left: notesPanelOpen && !isMobile ? `${notesPanelWidth + 16}px` : '8px' }}
+                   style={{ left: '8px' }}
                  >
                    <div className="flex items-center justify-between mb-2">
                      <span className="text-xs text-amber-400 font-medium">{aoeTargetState.spell.name}</span>
