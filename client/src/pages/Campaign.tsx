@@ -3646,7 +3646,10 @@ export default function Campaign() {
           {/* Character Sheet Tab Buttons - Right side, aligned with hotbar buttons (visible when character/inspectedChar exists) */}
           {/* For players: show ONLY when they have an assigned character */}
           {((role === 'player' && character) || (role === 'gm' && inspectedChar)) && (
-            <div className="absolute right-3 top-44 z-20 flex flex-col gap-2">
+            <div 
+              className="absolute top-44 z-20 flex flex-col gap-2 transition-all duration-300 ease-in-out"
+              style={{ right: notesPanelOpen && !isMobile ? `${notesPanelWidth + 16}px` : '12px' }}
+            >
               {[
                 { tab: 'overview', icon: User, color: 'stone' },
                 { tab: 'attributes', icon: BarChart3, color: 'blue' },

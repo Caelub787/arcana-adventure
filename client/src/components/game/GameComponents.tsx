@@ -5851,7 +5851,10 @@ export function BattleMapHotbars({ character, tokens, targetedTokenId, character
       </div>
 
       {/* Hotbar Display - Bottom CENTER/RIGHT with type buttons above */}
-      <div className="absolute bottom-2 md:bottom-4 right-2 md:right-4 pointer-events-auto z-30">
+      <div 
+        className="absolute bottom-2 md:bottom-4 pointer-events-auto z-30 transition-all duration-300 ease-in-out"
+        style={{ right: notesPanelOpen ? `${notesPanelWidth + 16}px` : '8px' }}
+      >
         <div className="glass-panel rounded p-1 md:p-2 border border-stone-700">
           {/* Hotbar Type Switcher Buttons - Horizontal above slots */}
           <div className="flex gap-1 justify-center mb-1 md:mb-2">
