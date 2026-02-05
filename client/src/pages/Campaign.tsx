@@ -3765,10 +3765,10 @@ export default function Campaign() {
         userId={user?.id}
       />
       
-      {/* Notes Panel Overlay - Left side */}
+      {/* Notes Panel Overlay - Right side */}
       {notesPanelOpen && effectiveCampaignId && (
         <div 
-          className={`fixed top-0 left-0 z-40 pointer-events-auto flex ${isMobile ? 'inset-0' : 'h-full'}`}
+          className={`fixed top-0 right-0 z-40 pointer-events-auto flex flex-row-reverse ${isMobile ? 'inset-0' : 'h-full'}`}
           style={{ 
             width: isMobile ? '100vw' : `${notesPanelWidth}px`,
             maxWidth: isMobile ? '100vw' : '90vw' 
@@ -3790,7 +3790,7 @@ export default function Campaign() {
               }}
             />
           </div>
-          {/* Resize handle on right edge (desktop only) */}
+          {/* Resize handle on left edge (desktop only) */}
           {!isMobile && (
             <div
               className={`w-2 h-full cursor-ew-resize flex items-center justify-center bg-stone-700 hover:bg-amber-600 transition-colors ${isResizingNotes ? 'bg-amber-600' : ''}`}
@@ -3810,7 +3810,7 @@ export default function Campaign() {
         <div 
           className="fixed bottom-4 z-30 pointer-events-auto transition-all duration-300 ease-in-out"
           style={{ 
-            left: notesPanelOpen ? `calc(50% + ${notesPanelWidth / 2}px)` : '50%',
+            left: notesPanelOpen ? `calc(50% - ${notesPanelWidth / 2}px)` : '50%',
             transform: 'translateX(-50%)'
           }}
           data-testid="gm-character-hotbar"
