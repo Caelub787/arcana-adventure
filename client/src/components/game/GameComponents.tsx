@@ -308,11 +308,12 @@ interface BattleMapProps {
   throwableGridTarget?: { x: number; y: number } | null;
   onGridTargetClick?: (gridX: number, gridY: number) => void;
   notesPanelOpen?: boolean;
+  notesPanelWidth?: number;
   onNotesClick?: () => void;
   inCombat?: boolean;
 }
 
-export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClick, onTokenTripleClick, onDeleteToken, role, gridSize, backgroundImage, scene, onViewChange, characters = [], allSpecies = [], selectionMode = 'select', targetedTokenId, selectedTokenId, aoeTargetState, onAoeMouseMove, onAoeClick, otherPlayersAoe, myPermissions, tokenActiveEffects, allTokenEffects, onApplyEffect, onRemoveEffect, onToggleInvisibility, currentTurnCharacterId, otherPlayersTargeting, activeBeacons, onBeacon, otherPlayersViewports, thrownItems = [], onRefetchThrownItems, onDeleteThrownItem, throwableGridTarget, onGridTargetClick, notesPanelOpen = false, onNotesClick, inCombat = false }: BattleMapProps) {
+export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClick, onTokenTripleClick, onDeleteToken, role, gridSize, backgroundImage, scene, onViewChange, characters = [], allSpecies = [], selectionMode = 'select', targetedTokenId, selectedTokenId, aoeTargetState, onAoeMouseMove, onAoeClick, otherPlayersAoe, myPermissions, tokenActiveEffects, allTokenEffects, onApplyEffect, onRemoveEffect, onToggleInvisibility, currentTurnCharacterId, otherPlayersTargeting, activeBeacons, onBeacon, otherPlayersViewports, thrownItems = [], onRefetchThrownItems, onDeleteThrownItem, throwableGridTarget, onGridTargetClick, notesPanelOpen = false, notesPanelWidth = 0, onNotesClick, inCombat = false }: BattleMapProps) {
   // Derive isGM from role prop
   const isGM = role === 'gm';
   
@@ -1444,8 +1445,14 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
   return (
     <div className="relative h-full w-full overflow-hidden bg-black rounded-lg border border-white/10 shadow-inner group" ref={containerRef}>
       
-      {/* Map Controls (Top Center) */}
-      <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 flex gap-1">
+      {/* Map Controls (Top Center) - shifts left when notes panel is open */}
+      <div 
+        className="absolute top-4 z-30 flex gap-1 transition-all duration-300 ease-in-out"
+        style={{ 
+          left: notesPanelOpen ? `calc(50% - ${notesPanelWidth / 2}px)` : '50%',
+          transform: 'translateX(-50%)'
+        }}
+      >
         <Button 
            size="sm" 
            variant="secondary" 

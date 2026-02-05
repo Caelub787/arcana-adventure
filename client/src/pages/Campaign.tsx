@@ -3529,6 +3529,7 @@ export default function Campaign() {
              throwableGridTarget={throwableGridTarget}
              onGridTargetClick={handleGridTargetClick}
              notesPanelOpen={notesPanelOpen}
+             notesPanelWidth={notesPanelWidth}
              onNotesClick={handleToggleNotesPanel}
              inCombat={initiativeData?.inCombat ?? false}
            />
