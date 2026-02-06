@@ -773,6 +773,8 @@ export default function Campaign() {
   // GM Character Hotbar state (5 slots for quick character access)
   const [gmCharacterHotbar, setGmCharacterHotbar] = useState<(string | null)[]>([null, null, null, null, null]);
   const [hotbarSelectorOpen, setHotbarSelectorOpen] = useState<number | null>(null);
+  const gmHotbarRef = useRef<HTMLDivElement>(null);
+  const [gmHotbarHidden, setGmHotbarHidden] = useState(false);
   
   // Notes panel state
   const [notesPanelOpen, setNotesPanelOpen] = useState(false);
@@ -786,6 +788,22 @@ export default function Campaign() {
   const handleToggleNotesPanel = useCallback(() => {
     setNotesPanelOpen(prev => !prev);
   }, []);
+
+  useEffect(() => {
+    if (!notesPanelOpen || isMobile) {
+      setGmHotbarHidden(false);
+      return;
+    }
+    const checkFit = () => {
+      const hotbarEl = gmHotbarRef.current;
+      if (!hotbarEl) return;
+      const hotbarWidth = hotbarEl.getBoundingClientRect().width;
+      const availableWidth = window.innerWidth - notesPanelWidth;
+      const sideMargins = 160;
+      setGmHotbarHidden(hotbarWidth + sideMargins > availableWidth);
+    };
+    requestAnimationFrame(checkFit);
+  }, [notesPanelOpen, notesPanelWidth, isMobile, inspectedChar]);
   
   // State for notes panel resize dragging
   const [isResizingNotes, setIsResizingNotes] = useState(false);
@@ -3812,7 +3830,8 @@ export default function Campaign() {
       {/* GM Character Hotbar - Bottom center of screen, desktop/tablet only */}
       {role === 'gm' && !isMobile && (
         <div 
-          className="fixed bottom-4 z-30 pointer-events-auto transition-all duration-300 ease-in-out"
+          ref={gmHotbarRef}
+          className={`fixed bottom-4 z-30 pointer-events-auto transition-all duration-300 ease-in-out ${gmHotbarHidden ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
           style={{ 
             left: notesPanelOpen ? `calc(50% - ${notesPanelWidth / 2}px)` : '50%',
             transform: 'translateX(-50%)'
