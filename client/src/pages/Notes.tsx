@@ -42,6 +42,12 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
+  ContextMenu,
+  ContextMenuTrigger,
+  ContextMenuContent,
+  ContextMenuItem,
+} from "@/components/ui/context-menu";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -200,6 +206,8 @@ interface FolderTreeItemProps {
   onReorderFolder: (folderId: string, targetIndex: number, parentId: string | null) => void;
   onShareNote: (noteId: string) => void;
   onDeleteNote: (note: Note) => void;
+  onCreateNote: (folderId: string) => void;
+  onCreateCanvas: (folderId: string) => void;
   level?: number;
   index?: number;
   siblingCount?: number;
@@ -227,6 +235,8 @@ function FolderTreeItem({
   onReorderFolder,
   onShareNote,
   onDeleteNote,
+  onCreateNote,
+  onCreateCanvas,
   level = 0,
   index = 0,
   siblingCount = 1,
@@ -345,6 +355,8 @@ function FolderTreeItem({
   return (
     <div>
       {index === 0 && <DropIndicator isActive={dropPosition === "before" && dropTargetIndex === 0} />}
+      <ContextMenu>
+        <ContextMenuTrigger asChild>
       <div
         className={`flex items-center gap-1 py-1.5 px-2 rounded cursor-pointer transition-colors ${
           isDragOver && dropPosition === "into"
@@ -433,6 +445,28 @@ function FolderTreeItem({
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
+        </ContextMenuTrigger>
+        <ContextMenuContent className="bg-stone-900 border-stone-700">
+          <ContextMenuItem
+            onClick={() => onCreateNote(folder.id)}
+            data-testid={`context-menu-new-note-${folder.id}`}
+          >
+            <FileText className="h-4 w-4 mr-2" /> New Note
+          </ContextMenuItem>
+          <ContextMenuItem
+            onClick={() => onCreateCanvas(folder.id)}
+            data-testid={`context-menu-new-canvas-${folder.id}`}
+          >
+            <Grid3X3 className="h-4 w-4 mr-2" /> New Canvas
+          </ContextMenuItem>
+          <ContextMenuItem
+            onClick={() => onAddSubfolder(folder.id)}
+            data-testid={`context-menu-new-folder-${folder.id}`}
+          >
+            <FolderPlus className="h-4 w-4 mr-2" /> New Folder
+          </ContextMenuItem>
+        </ContextMenuContent>
+      </ContextMenu>
       <DropIndicator isActive={dropPosition === "after" && dropTargetIndex === index + 1} />
       {expanded && (
         <>
@@ -453,6 +487,8 @@ function FolderTreeItem({
               onReorderFolder={onReorderFolder}
               onShareNote={onShareNote}
               onDeleteNote={onDeleteNote}
+              onCreateNote={onCreateNote}
+              onCreateCanvas={onCreateCanvas}
               level={level + 1}
               index={childIndex}
               siblingCount={children.length}
@@ -1855,6 +1891,25 @@ export default function Notes() {
                 onDeleteNote={(note) => {
                   setNoteToDelete(note);
                   setDeleteNoteDialogOpen(true);
+                }}
+                onCreateNote={(folderId) => {
+                  createNoteMutation.mutate({
+                    title: "Untitled Note",
+                    content: "",
+                    folderId,
+                    type: "markdown",
+                    campaignId: campaignId ?? undefined,
+                  });
+                }}
+                onCreateCanvas={(folderId) => {
+                  createNoteMutation.mutate({
+                    title: "Untitled Canvas",
+                    content: "",
+                    type: "canvas",
+                    canvasData: { nodes: [], connections: [] },
+                    folderId,
+                    campaignId: campaignId ?? undefined,
+                  });
                 }}
                 index={folderIndex}
                 siblingCount={rootFolders.length}
