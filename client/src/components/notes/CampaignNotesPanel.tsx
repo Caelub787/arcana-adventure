@@ -458,6 +458,12 @@ function FolderTreeItem({
           >
             <Grid3X3 className="h-3 w-3 mr-2" /> New Canvas
           </ContextMenuItem>
+          <ContextMenuItem
+            onClick={() => onAddSubfolder(folder.id)}
+            data-testid={`context-menu-new-folder-${folder.id}`}
+          >
+            <FolderPlus className="h-3 w-3 mr-2" /> New Folder
+          </ContextMenuItem>
         </ContextMenuContent>
       </ContextMenu>
       <DropIndicator isActive={dropPosition === "after" && dropTargetIndex === index + 1} />
@@ -2248,23 +2254,25 @@ export function CampaignNotesPanel({
             <Loader2 className="h-5 w-5 animate-spin text-stone-500" />
           </div>
         ) : (
-          <div className="flex-1 flex flex-col p-2 overflow-hidden">
+          <div className="flex-1 flex flex-col p-2 overflow-hidden min-h-0">
             <Input
               value={noteTitle}
               onChange={(e) => setNoteTitle(e.target.value)}
               placeholder="Note title"
-              className="text-sm font-medium border-none bg-transparent focus-visible:ring-0 px-0 mb-2 h-7"
+              className="text-sm font-medium border-none bg-transparent focus-visible:ring-0 px-0 mb-1 h-7 shrink-0"
               data-testid="panel-input-note-title"
             />
-            <FormattingToolbar
-              textareaRef={textareaRef}
-              content={noteContent}
-              onContentChange={setNoteContent}
-              font={noteFont}
-              onFontChange={setNoteFont}
-              compact={true}
-            />
-            <div className="flex items-center gap-1 mb-1">
+            <div className="shrink-0">
+              <FormattingToolbar
+                textareaRef={textareaRef}
+                content={noteContent}
+                onContentChange={setNoteContent}
+                font={noteFont}
+                onFontChange={setNoteFont}
+                compact={true}
+              />
+            </div>
+            <div className="flex items-center gap-1 mb-1 shrink-0">
               <ReferencePicker
                 open={referencePickerOpen}
                 onOpenChange={setReferencePickerOpen}
@@ -2291,7 +2299,7 @@ export function CampaignNotesPanel({
                 <kbd className="px-1 py-0.5 bg-stone-800 rounded text-stone-400 text-xs">*</kbd>italic
               </span>
             </div>
-            <div className="relative flex-1 overflow-hidden">
+            <div className="relative flex-1 overflow-hidden min-h-0">
               <Textarea
                 ref={textareaRef}
                 value={noteContent}
@@ -2396,7 +2404,7 @@ export function CampaignNotesPanel({
           renderGraphView()
         ) : (
           <ResizablePanelGroup direction="horizontal" className="h-full">
-            {showSidebar && (
+            {showSidebar && !(selectedNoteId && (currentNote?.type === "canvas" || noteMode === "edit")) && (
               <>
                 <ResizablePanel 
                   defaultSize={25} 
@@ -2409,7 +2417,7 @@ export function CampaignNotesPanel({
                 <ResizableHandle withHandle className="bg-stone-700/50 hover:bg-amber-600 transition-colors" />
               </>
             )}
-            <ResizablePanel defaultSize={showSidebar ? 75 : 100} minSize={40} className="min-w-0 flex flex-col h-full">
+            <ResizablePanel defaultSize={showSidebar && !(selectedNoteId && (currentNote?.type === "canvas" || noteMode === "edit")) ? 75 : 100} minSize={40} className="min-w-0 flex flex-col h-full">
               {openNotes.length > 0 && (
                 <NoteTabs
                   openNotes={openNotes}
