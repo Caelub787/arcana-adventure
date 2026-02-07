@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useLocation, useSearch, useRoute } from "wouter";
 import { motion } from "framer-motion";
 import { CharacterCreation, BattleMap, CampaignMenu, CharacterSheet, BattleMapHotbars, SelectionModeButtons, InitiativeTracker, type SelectionMode } from "@/components/game/GameComponents";
@@ -837,12 +837,50 @@ function SandboxSheetEditor({
   const { toast } = useToast();
   const [collapsed, setCollapsed] = useState(false);
   const [position, setPosition] = useState({ x: 100 + Math.random() * 200, y: 80 + Math.random() * 100 });
-  const [size, setSize] = useState({ width: 400, height: 450 });
+
+  const templateData = useMemo(() => {
+    try {
+      if (item.type === 'template') {
+        const liveTemplate = templates.find((t: any) => t.id === item.id);
+        return JSON.parse((liveTemplate?.data || item.data) || '{}');
+      }
+      const linkedTemplate = templates.find((t: any) => t.id === item.templateId);
+      return linkedTemplate ? JSON.parse(linkedTemplate.data || '{}') : {};
+    } catch { return {}; }
+  }, [item, templates]);
+
+  const settings = templateData.settings || {};
+  const [size, setSize] = useState({ 
+    width: settings.defaultWidth || 400, 
+    height: settings.defaultHeight || 450 
+  });
+
   const [isDragging, setIsDragging] = useState(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [isResizing, setIsResizing] = useState<string | null>(null);
   const resizeStartRef = useRef({ x: 0, y: 0, width: 0, height: 0, posX: 0, posY: 0 });
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(item.templateId || null);
+
+  const [addingProperty, setAddingProperty] = useState(false);
+  const [newPropKey, setNewPropKey] = useState('');
+  const [newPropLabel, setNewPropLabel] = useState('');
+  const [newPropType, setNewPropType] = useState<'text' | 'number' | 'checkbox' | 'textarea' | 'select'>('text');
+  const [newPropOptions, setNewPropOptions] = useState('');
+  const [newPropDefault, setNewPropDefault] = useState('');
+  const [actorValues, setActorValues] = useState<Record<string, string>>(() => {
+    try {
+      const d = JSON.parse(item.data || '{}');
+      return d.values || {};
+    } catch { return {}; }
+  });
+  const actorSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const updateTemplateMutationSheet = useMutation({
+    mutationFn: (data: any) => api.updateSandboxTemplate(campaignId, item.id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sandbox-templates', campaignId] });
+    },
+  });
 
   const MIN_WIDTH = 280;
   const MIN_HEIGHT = 200;
@@ -926,6 +964,253 @@ function SandboxSheetEditor({
     }
   };
 
+  const properties: any[] = templateData.properties || [];
+
+  const handleAddProperty = () => {
+    if (!newPropKey.trim() || !newPropLabel.trim()) return;
+    if (!/^[a-zA-Z0-9]+$/.test(newPropKey)) {
+      toast({ title: "Invalid key", description: "Key must be alphanumeric only (no spaces or special characters)", variant: "destructive" });
+      return;
+    }
+    if (properties.some((p: any) => p.key === newPropKey)) {
+      toast({ title: "Duplicate key", description: "A property with this key already exists", variant: "destructive" });
+      return;
+    }
+    const newProp = {
+      id: crypto.randomUUID(),
+      key: newPropKey.trim(),
+      label: newPropLabel.trim(),
+      type: newPropType,
+      ...(newPropType === 'select' ? { options: newPropOptions.split(',').map(o => o.trim()).filter(Boolean) } : {}),
+      defaultValue: newPropDefault,
+    };
+    const newData = { ...templateData, properties: [...properties, newProp] };
+    updateTemplateMutationSheet.mutate({ data: JSON.stringify(newData) });
+    setAddingProperty(false);
+    setNewPropKey('');
+    setNewPropLabel('');
+    setNewPropType('text');
+    setNewPropOptions('');
+    setNewPropDefault('');
+    toast({ title: "Property added" });
+  };
+
+  const handleDeleteProperty = (propId: string) => {
+    const newData = { ...templateData, properties: properties.filter((p: any) => p.id !== propId) };
+    updateTemplateMutationSheet.mutate({ data: JSON.stringify(newData) });
+    toast({ title: "Property deleted" });
+  };
+
+  const handleActorValueChange = (key: string, value: string) => {
+    const newValues = { ...actorValues, [key]: value };
+    setActorValues(newValues);
+    if (actorSaveTimeoutRef.current) clearTimeout(actorSaveTimeoutRef.current);
+    actorSaveTimeoutRef.current = setTimeout(() => {
+      updateActorMutation.mutate({ data: JSON.stringify({ values: newValues }) });
+    }, 500);
+  };
+
+  const renderSheetBody = () => {
+    if (item.type === 'template') {
+      return (
+        <div className="space-y-3" data-testid="template-properties-editor">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-medium text-purple-300">Properties</h3>
+            {!addingProperty && (
+              <Button
+                size="sm"
+                onClick={() => setAddingProperty(true)}
+                className="h-7 bg-purple-700 hover:bg-purple-600 text-white text-xs"
+                data-testid="button-add-property"
+              >
+                <Plus className="h-3 w-3 mr-1" /> Add Property
+              </Button>
+            )}
+          </div>
+
+          {properties.length > 0 && (
+            <div className="space-y-1.5">
+              {properties.map((prop: any) => (
+                <div key={prop.id} className="flex items-center justify-between bg-stone-800/50 border border-stone-700/50 rounded-md px-3 py-2" data-testid={`property-item-${prop.id}`}>
+                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                    <span className="text-xs font-mono text-purple-400 bg-purple-900/30 px-1.5 py-0.5 rounded">{prop.key}</span>
+                    <span className="text-sm text-stone-200 truncate">{prop.label}</span>
+                    <span className="text-[10px] text-stone-500 bg-stone-700/50 px-1.5 py-0.5 rounded">{prop.type}</span>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => handleDeleteProperty(prop.id)}
+                    className="h-6 w-6 text-stone-600 hover:text-red-400 hover:bg-red-900/20 shrink-0"
+                    data-testid={`button-delete-property-${prop.id}`}
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {properties.length === 0 && !addingProperty && (
+            <div className="text-stone-500 text-center italic border border-dashed border-stone-700 rounded-lg p-6 text-sm">
+              No properties defined. Add properties to customize actor sheets.
+            </div>
+          )}
+
+          {addingProperty && (
+            <div className="bg-stone-800/50 border border-purple-800/40 rounded-lg p-3 space-y-3" data-testid="add-property-form">
+              <div className="space-y-1.5">
+                <Label className="text-stone-400 text-xs">Key (alphanumeric, no spaces)</Label>
+                <Input
+                  value={newPropKey}
+                  onChange={(e) => setNewPropKey(e.target.value.replace(/[^a-zA-Z0-9]/g, ''))}
+                  placeholder="e.g. hitPoints"
+                  className="bg-stone-900 border-stone-600 text-stone-200 h-8 text-sm"
+                  data-testid="input-property-key"
+                  autoFocus
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-stone-400 text-xs">Label (display name)</Label>
+                <Input
+                  value={newPropLabel}
+                  onChange={(e) => setNewPropLabel(e.target.value)}
+                  placeholder="e.g. Hit Points"
+                  className="bg-stone-900 border-stone-600 text-stone-200 h-8 text-sm"
+                  data-testid="input-property-label"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-stone-400 text-xs">Type</Label>
+                <Select value={newPropType} onValueChange={(v: any) => setNewPropType(v)}>
+                  <SelectTrigger className="bg-stone-900 border-stone-600 text-stone-200 h-8 text-sm" data-testid="select-property-type">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-stone-800 border-stone-700">
+                    <SelectItem value="text" className="text-stone-200">Text</SelectItem>
+                    <SelectItem value="number" className="text-stone-200">Number</SelectItem>
+                    <SelectItem value="checkbox" className="text-stone-200">Checkbox</SelectItem>
+                    <SelectItem value="textarea" className="text-stone-200">Textarea</SelectItem>
+                    <SelectItem value="select" className="text-stone-200">Select</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              {newPropType === 'select' && (
+                <div className="space-y-1.5">
+                  <Label className="text-stone-400 text-xs">Options (comma-separated)</Label>
+                  <Input
+                    value={newPropOptions}
+                    onChange={(e) => setNewPropOptions(e.target.value)}
+                    placeholder="e.g. Option 1, Option 2, Option 3"
+                    className="bg-stone-900 border-stone-600 text-stone-200 h-8 text-sm"
+                    data-testid="input-property-options"
+                  />
+                </div>
+              )}
+              <div className="space-y-1.5">
+                <Label className="text-stone-400 text-xs">Default Value</Label>
+                <Input
+                  value={newPropDefault}
+                  onChange={(e) => setNewPropDefault(e.target.value)}
+                  placeholder="Default value..."
+                  className="bg-stone-900 border-stone-600 text-stone-200 h-8 text-sm"
+                  data-testid="input-property-default"
+                />
+              </div>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={() => { setAddingProperty(false); setNewPropKey(''); setNewPropLabel(''); setNewPropType('text'); setNewPropOptions(''); setNewPropDefault(''); }} className="flex-1 border-stone-600 text-stone-400 h-7 text-xs" data-testid="button-cancel-property">
+                  Cancel
+                </Button>
+                <Button size="sm" onClick={handleAddProperty} disabled={!newPropKey.trim() || !newPropLabel.trim()} className="flex-1 bg-purple-600 hover:bg-purple-700 text-white h-7 text-xs" data-testid="button-save-property">
+                  Save
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    const linkedTemplate = templates.find((t: any) => t.id === selectedTemplateId);
+    let actorProperties: any[] = [];
+    if (linkedTemplate) {
+      try {
+        const td = JSON.parse(linkedTemplate.data || '{}');
+        actorProperties = td.properties || [];
+      } catch {}
+    }
+
+    if (actorProperties.length === 0) {
+      return (
+        <div className="text-stone-500 text-center italic border border-dashed border-stone-700 rounded-lg p-8 text-sm" data-testid="actor-no-properties">
+          {selectedTemplateId ? 'No properties defined in template' : 'Assign a template to see properties'}
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-3" data-testid="actor-properties-display">
+        {actorProperties.map((prop: any) => {
+          const val = actorValues[prop.key] ?? prop.defaultValue ?? '';
+          return (
+            <div key={prop.id} className="space-y-1" data-testid={`actor-property-${prop.key}`}>
+              <Label className="text-stone-400 text-xs">{prop.label}</Label>
+              {prop.type === 'text' && (
+                <Input
+                  value={val}
+                  onChange={(e) => handleActorValueChange(prop.key, e.target.value)}
+                  className="bg-stone-800 border-stone-700 text-stone-200 h-8 text-sm"
+                  data-testid={`input-actor-${prop.key}`}
+                />
+              )}
+              {prop.type === 'number' && (
+                <Input
+                  type="number"
+                  value={val}
+                  onChange={(e) => handleActorValueChange(prop.key, e.target.value)}
+                  className="bg-stone-800 border-stone-700 text-stone-200 h-8 text-sm"
+                  data-testid={`input-actor-${prop.key}`}
+                />
+              )}
+              {prop.type === 'checkbox' && (
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={val === 'true'}
+                    onChange={(e) => handleActorValueChange(prop.key, e.target.checked ? 'true' : 'false')}
+                    className="h-4 w-4 accent-amber-600"
+                    data-testid={`checkbox-actor-${prop.key}`}
+                  />
+                </div>
+              )}
+              {prop.type === 'textarea' && (
+                <Textarea
+                  value={val}
+                  onChange={(e) => handleActorValueChange(prop.key, e.target.value)}
+                  className="bg-stone-800 border-stone-700 text-stone-200 text-sm min-h-[60px]"
+                  data-testid={`textarea-actor-${prop.key}`}
+                />
+              )}
+              {prop.type === 'select' && (
+                <Select value={val || '__empty__'} onValueChange={(v) => handleActorValueChange(prop.key, v === '__empty__' ? '' : v)}>
+                  <SelectTrigger className="bg-stone-800 border-stone-700 text-stone-200 h-8 text-sm" data-testid={`select-actor-${prop.key}`}>
+                    <SelectValue placeholder="Select..." />
+                  </SelectTrigger>
+                  <SelectContent className="bg-stone-800 border-stone-700">
+                    <SelectItem value="__empty__" className="text-stone-400">None</SelectItem>
+                    {(prop.options || []).map((opt: string) => (
+                      <SelectItem key={opt} value={opt} className="text-stone-200">{opt}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
   if (isMobile) {
     return (
       <div className="fixed inset-0 z-50 bg-stone-900 flex flex-col">
@@ -971,9 +1256,7 @@ function SandboxSheetEditor({
               </Select>
             </div>
           )}
-          <div className="text-stone-500 text-center italic border border-dashed border-stone-700 rounded-lg p-8">
-            {item.type === 'template' ? 'Template sheet — customization coming soon' : 'Actor sheet — customization coming soon'}
-          </div>
+          {renderSheetBody()}
         </div>}
       </div>
     );
@@ -1055,14 +1338,12 @@ function SandboxSheetEditor({
                 </Select>
               </div>
             )}
-            <div className="text-stone-500 text-center italic border border-dashed border-stone-700 rounded-lg p-8">
-              {item.type === 'template' ? 'Template sheet — customization coming soon' : 'Actor sheet — customization coming soon'}
-            </div>
+            {renderSheetBody()}
           </div>
         )}
       </div>
 
-      {!collapsed && (
+      {!collapsed && settings.allowResize !== false && (
         <>
           <div className={`${edgeCls} top-0 left-2 right-2 h-1 cursor-n-resize`} {...resizeHandleProps('n')} />
           <div className={`${edgeCls} bottom-0 left-2 right-2 h-1 cursor-s-resize`} {...resizeHandleProps('s')} />
@@ -1095,6 +1376,7 @@ function SandboxCharactersContent({
   const [newFolderName, setNewFolderName] = useState('');
   const [createFolderOpen, setCreateFolderOpen] = useState(false);
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
+  const [templateSettingsOpen, setTemplateSettingsOpen] = useState<string | null>(null);
 
   const { data: templates = [] } = useQuery({
     queryKey: ['sandbox-templates', campaignId],
@@ -1174,6 +1456,13 @@ function SandboxCharactersContent({
     },
   });
 
+  const updateTemplateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: any }) => api.updateSandboxTemplate(campaignId, id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sandbox-templates', campaignId] });
+    },
+  });
+
   const handleCreate = () => {
     if (!newName.trim()) return;
     if (newType === 'template') {
@@ -1196,45 +1485,133 @@ function SandboxCharactersContent({
   const rootActors = actors.filter((a: any) => !a.folderId);
   const rootTemplates = templates.filter((t: any) => !t.folderId);
 
-  const renderItem = (item: any, type: 'actor' | 'template') => (
-    <div
-      key={item.id}
-      className="flex items-center justify-between py-2 px-3 bg-stone-800/30 border border-stone-700/50 rounded-lg hover:bg-stone-800/60 transition-colors cursor-pointer group"
-      onClick={() => type === 'actor' ? onOpenActor(item) : onOpenTemplate(item)}
-      draggable={type === 'actor'}
-      onDragStart={(e) => {
-        if (type === 'actor') {
-          e.dataTransfer.setData('application/sandbox-actor', JSON.stringify({ id: item.id, name: item.name }));
-          e.dataTransfer.effectAllowed = 'copy';
-        }
-      }}
-      data-testid={`sandbox-${type}-${item.id}`}
-    >
-      <div className="flex items-center gap-2.5 min-w-0 flex-1">
-        {type === 'actor' ? (
-          <User className="h-4 w-4 text-amber-500 shrink-0" />
-        ) : (
-          <ScrollText className="h-4 w-4 text-purple-400 shrink-0" />
-        )}
-        <span className="text-stone-200 text-sm font-medium truncate">{item.name}</span>
-        {type === 'actor' && item.templateId && (
-          <span className="text-[10px] text-stone-500 bg-stone-700/50 px-1.5 py-0.5 rounded shrink-0">
-            {templates.find((t: any) => t.id === item.templateId)?.name || 'Template'}
-          </span>
-        )}
-        <span className={`text-[10px] px-1.5 py-0.5 rounded shrink-0 ${type === 'actor' ? 'text-amber-500/60 bg-amber-900/20' : 'text-purple-400/60 bg-purple-900/20'}`}>
-          {type === 'actor' ? 'Actor' : 'Template'}
-        </span>
+  const renderTemplateSettings = (template: any) => {
+    let currentData: any = {};
+    try { currentData = JSON.parse(template.data || '{}'); } catch {}
+    const currentSettings = currentData.settings || {};
+    const defaultWidth = currentSettings.defaultWidth || 400;
+    const defaultHeight = currentSettings.defaultHeight || 450;
+    const allowResize = currentSettings.allowResize !== false;
+
+    const saveSettings = (newSettings: any) => {
+      const newData = { ...currentData, settings: newSettings, properties: currentData.properties || [] };
+      updateTemplateMutation.mutate({ id: template.id, data: { data: JSON.stringify(newData) } });
+      toast({ title: "Template settings saved" });
+    };
+
+    return (
+      <div className="bg-stone-800/80 border border-purple-800/40 rounded-lg p-3 space-y-3 mt-1 mb-1" data-testid={`template-settings-${template.id}`}>
+        <div className="flex items-center justify-between">
+          <h4 className="text-xs font-medium text-purple-300">Template Settings</h4>
+          <Button variant="ghost" size="icon" onClick={() => setTemplateSettingsOpen(null)} className="h-5 w-5 text-stone-400 hover:text-white" data-testid="button-close-template-settings">
+            <X className="h-3 w-3" />
+          </Button>
+        </div>
+        <div className="space-y-1.5">
+          <Label className="text-stone-400 text-xs">Default Width ({MIN_SHEET_WIDTH}-{MAX_SHEET_WIDTH})</Label>
+          <Input
+            type="number"
+            min={MIN_SHEET_WIDTH}
+            max={MAX_SHEET_WIDTH}
+            defaultValue={defaultWidth}
+            onBlur={(e) => {
+              const v = Math.min(MAX_SHEET_WIDTH, Math.max(MIN_SHEET_WIDTH, parseInt(e.target.value) || 400));
+              saveSettings({ ...currentSettings, defaultWidth: v, defaultHeight: currentSettings.defaultHeight || 450, allowResize: currentSettings.allowResize !== false });
+            }}
+            className="bg-stone-900 border-stone-600 text-stone-200 h-7 text-xs"
+            data-testid="input-template-default-width"
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label className="text-stone-400 text-xs">Default Height ({MIN_SHEET_HEIGHT}-{MAX_SHEET_HEIGHT})</Label>
+          <Input
+            type="number"
+            min={MIN_SHEET_HEIGHT}
+            max={MAX_SHEET_HEIGHT}
+            defaultValue={defaultHeight}
+            onBlur={(e) => {
+              const v = Math.min(MAX_SHEET_HEIGHT, Math.max(MIN_SHEET_HEIGHT, parseInt(e.target.value) || 450));
+              saveSettings({ ...currentSettings, defaultWidth: currentSettings.defaultWidth || 400, defaultHeight: v, allowResize: currentSettings.allowResize !== false });
+            }}
+            className="bg-stone-900 border-stone-600 text-stone-200 h-7 text-xs"
+            data-testid="input-template-default-height"
+          />
+        </div>
+        <div className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            defaultChecked={allowResize}
+            onChange={(e) => {
+              saveSettings({ ...currentSettings, defaultWidth: currentSettings.defaultWidth || 400, defaultHeight: currentSettings.defaultHeight || 450, allowResize: e.target.checked });
+            }}
+            className="h-4 w-4 accent-purple-600"
+            data-testid="checkbox-template-allow-resize"
+          />
+          <Label className="text-stone-400 text-xs">Allow resize</Label>
+        </div>
       </div>
-      <Button
-        variant="ghost"
-        size="icon"
-        onClick={(e) => { e.stopPropagation(); type === 'actor' ? deleteActorMutation.mutate(item.id) : deleteTemplateMutation.mutate(item.id); }}
-        className="h-7 w-7 text-stone-600 hover:text-red-400 hover:bg-red-900/20 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
-        data-testid={`button-delete-${type}-${item.id}`}
+    );
+  };
+
+  const MIN_SHEET_WIDTH = 280;
+  const MAX_SHEET_WIDTH = 900;
+  const MIN_SHEET_HEIGHT = 200;
+  const MAX_SHEET_HEIGHT = 800;
+
+  const renderItem = (item: any, type: 'actor' | 'template') => (
+    <div key={item.id}>
+      <div
+        className="flex items-center justify-between py-2 px-3 bg-stone-800/30 border border-stone-700/50 rounded-lg hover:bg-stone-800/60 transition-colors cursor-pointer group"
+        onClick={() => type === 'actor' ? onOpenActor(item) : onOpenTemplate(item)}
+        draggable={type === 'actor'}
+        onDragStart={(e) => {
+          if (type === 'actor') {
+            e.dataTransfer.setData('application/sandbox-actor', JSON.stringify({ id: item.id, name: item.name }));
+            e.dataTransfer.effectAllowed = 'copy';
+          }
+        }}
+        data-testid={`sandbox-${type}-${item.id}`}
       >
-        <Trash2 className="h-3.5 w-3.5" />
-      </Button>
+        <div className="flex items-center gap-2.5 min-w-0 flex-1">
+          {type === 'actor' ? (
+            <User className="h-4 w-4 text-amber-500 shrink-0" />
+          ) : (
+            <ScrollText className="h-4 w-4 text-purple-400 shrink-0" />
+          )}
+          <span className="text-stone-200 text-sm font-medium truncate">{item.name}</span>
+          {type === 'actor' && item.templateId && (
+            <span className="text-[10px] text-stone-500 bg-stone-700/50 px-1.5 py-0.5 rounded shrink-0">
+              {templates.find((t: any) => t.id === item.templateId)?.name || 'Template'}
+            </span>
+          )}
+          <span className={`text-[10px] px-1.5 py-0.5 rounded shrink-0 ${type === 'actor' ? 'text-amber-500/60 bg-amber-900/20' : 'text-purple-400/60 bg-purple-900/20'}`}>
+            {type === 'actor' ? 'Actor' : 'Template'}
+          </span>
+        </div>
+        <div className="flex items-center gap-0.5 shrink-0">
+          {type === 'template' && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={(e) => { e.stopPropagation(); setTemplateSettingsOpen(templateSettingsOpen === item.id ? null : item.id); }}
+              className="h-7 w-7 text-stone-600 hover:text-purple-400 hover:bg-purple-900/20 opacity-0 group-hover:opacity-100 transition-opacity"
+              data-testid={`button-settings-template-${item.id}`}
+            >
+              <Settings className="h-3.5 w-3.5" />
+            </Button>
+          )}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={(e) => { e.stopPropagation(); type === 'actor' ? deleteActorMutation.mutate(item.id) : deleteTemplateMutation.mutate(item.id); }}
+            className="h-7 w-7 text-stone-600 hover:text-red-400 hover:bg-red-900/20 opacity-0 group-hover:opacity-100 transition-opacity"
+            data-testid={`button-delete-${type}-${item.id}`}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      </div>
+      {type === 'template' && templateSettingsOpen === item.id && renderTemplateSettings(item)}
     </div>
   );
 
