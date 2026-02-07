@@ -2988,96 +2988,24 @@ export default function Campaign() {
           </Button>
 
           {isSandbox ? (
-            <>
-              <CampaignMenu 
-                campaignId={effectiveCampaignId || undefined}
-                role={role} 
-                inviteCode={(campaign && typeof campaign === 'object' && 'inviteCode' in campaign ? campaign.inviteCode as string : "") || ""}
-                hotbarSlots={(campaign && typeof campaign === 'object' && 'hotbarSlots' in campaign ? (campaign as any).hotbarSlots as number : 5) || 5}
-                inspectedChar={inspectedChar}
-                onInspectChar={setInspectedChar}
-                onAddCharacterToken={handleAddCharacterToken}
-                onChangeMap={handleChangeMap}
-                characters={characters as any[]}
-                members={members as any[]}
-                onAddCharacter={handleAddCharacter}
-                onViewCharacter={handleViewCharacter}
-                onLevelUpAll={handleLevelUpAll}
-                chatOpen={chatOpen}
-                onChatOpenChange={setChatOpen}
-                onAssignCharacter={handleAssignCharacter}
-                myPermissions={myPermissions}
-                onOpenCampaignSpecies={() => setCampaignSpeciesOpen(true)}
-                isOwner={!!(campaign && typeof campaign === 'object' && 'gmUserId' in campaign && (campaign as any).gmUserId === user?.id)}
-                gmUserId={(campaign && typeof campaign === 'object' && 'gmUserId' in campaign ? (campaign as any).gmUserId as string : undefined)}
-                beaconColor={myMembership?.beaconColor || '#FBB524'}
-                onChangeBeaconColor={() => {
-                  setPendingBeaconColor(myMembership?.beaconColor || '#FBB524');
-                  setBeaconColorDialogOpen(true);
-                }}
-              />
-
-              {role === 'gm' && (
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => setScenesManagementOpen(true)}
-                        className="text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto"
-                        data-testid="button-sandbox-scene-settings"
-                      >
-                        <Layers className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent side="right" className="bg-stone-800 border-stone-700 text-stone-200">
-                      <p>Scene Settings</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              )}
-
-              {role === 'gm' && (
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => setSandboxCharactersOpen(true)}
-                        className="text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto"
-                        data-testid="button-sandbox-characters"
-                      >
-                        <Users className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent side="right" className="bg-stone-800 border-stone-700 text-stone-200">
-                      <p>Characters</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              )}
-
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => setInitiativeTrackerOpen(true)}
-                      className="text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto"
-                      data-testid="button-sandbox-initiative"
-                    >
-                      <Swords className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="right" className="bg-stone-800 border-stone-700 text-stone-200">
-                    <p>Initiative</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            </>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setChatOpen(true)}
+                    className="text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto"
+                    data-testid="button-sandbox-chat"
+                  >
+                    <MessageSquare className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="right" className="bg-stone-800 border-stone-700 text-stone-200">
+                  <p>Chat</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           ) : (
             <>
               {/* Chat Button - Left side, mirrored to settings */}
@@ -3148,80 +3076,173 @@ export default function Campaign() {
           )}
         </div>
         
-        {/* Right Side: Settings / Menu Button for ALL Roles (hidden in sandbox) */}
-        {!isSandbox && (
-          <div className="pointer-events-auto flex flex-col gap-2">
-            <CampaignMenu 
-              campaignId={effectiveCampaignId || undefined}
-              role={role} 
-              inviteCode={(campaign && typeof campaign === 'object' && 'inviteCode' in campaign ? campaign.inviteCode as string : "") || ""}
-              hotbarSlots={(campaign && typeof campaign === 'object' && 'hotbarSlots' in campaign ? (campaign as any).hotbarSlots as number : 5) || 5}
-              inspectedChar={inspectedChar}
-              onInspectChar={setInspectedChar}
-              onAddCharacterToken={handleAddCharacterToken}
-              onChangeMap={handleChangeMap}
-              characters={characters as any[]}
-              members={members as any[]}
-              onAddCharacter={handleAddCharacter}
-              onViewCharacter={handleViewCharacter}
-              onLevelUpAll={handleLevelUpAll}
-              chatOpen={chatOpen}
-              onChatOpenChange={setChatOpen}
-              onAssignCharacter={handleAssignCharacter}
-              myPermissions={myPermissions}
-              onOpenCampaignSpecies={() => setCampaignSpeciesOpen(true)}
-              isOwner={!!(campaign && typeof campaign === 'object' && 'gmUserId' in campaign && (campaign as any).gmUserId === user?.id)}
-              gmUserId={(campaign && typeof campaign === 'object' && 'gmUserId' in campaign ? (campaign as any).gmUserId as string : undefined)}
-              beaconColor={myMembership?.beaconColor || '#FBB524'}
-              onChangeBeaconColor={() => {
-                setPendingBeaconColor(myMembership?.beaconColor || '#FBB524');
-                setBeaconColorDialogOpen(true);
-              }}
-            />
-            
-            {/* Scenes Button (GM Only) - Icon only, directly under Settings */}
-            {role === 'gm' && (
+        {/* Right Side: Settings / Menu Button for ALL Roles */}
+        <div className="pointer-events-auto flex flex-col gap-2">
+          {isSandbox ? (
+            <>
+              <CampaignMenu 
+                campaignId={effectiveCampaignId || undefined}
+                role={role} 
+                inviteCode={(campaign && typeof campaign === 'object' && 'inviteCode' in campaign ? campaign.inviteCode as string : "") || ""}
+                hotbarSlots={(campaign && typeof campaign === 'object' && 'hotbarSlots' in campaign ? (campaign as any).hotbarSlots as number : 5) || 5}
+                inspectedChar={inspectedChar}
+                onInspectChar={setInspectedChar}
+                onAddCharacterToken={handleAddCharacterToken}
+                onChangeMap={handleChangeMap}
+                characters={characters as any[]}
+                members={members as any[]}
+                onAddCharacter={handleAddCharacter}
+                onViewCharacter={handleViewCharacter}
+                onLevelUpAll={handleLevelUpAll}
+                chatOpen={chatOpen}
+                onChatOpenChange={setChatOpen}
+                onAssignCharacter={handleAssignCharacter}
+                myPermissions={myPermissions}
+                onOpenCampaignSpecies={() => setCampaignSpeciesOpen(true)}
+                isOwner={!!(campaign && typeof campaign === 'object' && 'gmUserId' in campaign && (campaign as any).gmUserId === user?.id)}
+                gmUserId={(campaign && typeof campaign === 'object' && 'gmUserId' in campaign ? (campaign as any).gmUserId as string : undefined)}
+                beaconColor={myMembership?.beaconColor || '#FBB524'}
+                onChangeBeaconColor={() => {
+                  setPendingBeaconColor(myMembership?.beaconColor || '#FBB524');
+                  setBeaconColorDialogOpen(true);
+                }}
+              />
+
+              {role === 'gm' && (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => setScenesManagementOpen(true)}
+                        className="text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto"
+                        data-testid="button-sandbox-scene-settings"
+                      >
+                        <Layers className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="left" className="bg-stone-800 border-stone-700 text-stone-200">
+                      <p>Scene Settings</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              )}
+
+              {role === 'gm' && (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => setSandboxCharactersOpen(true)}
+                        className="text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto"
+                        data-testid="button-sandbox-characters"
+                      >
+                        <Users className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="left" className="bg-stone-800 border-stone-700 text-stone-200">
+                      <p>Characters</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              )}
+
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button
                       variant="ghost"
                       size="icon"
-                      onClick={() => setScenesManagementOpen(true)}
-                      className="text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto relative z-[60]"
-                      data-testid="button-scenes"
+                      onClick={() => setInitiativeTrackerOpen(true)}
+                      className="text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto"
+                      data-testid="button-sandbox-initiative"
                     >
-                      <Layers className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
+                      <Swords className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent side="left" className="bg-stone-800 border-stone-700 text-stone-200">
-                    <p>Scenes</p>
+                    <p>Initiative</p>
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
-            )}
-            
-            {/* Initiative Button - Under scenes/settings */}
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => setInitiativeTrackerOpen(true)}
-                    className="text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto"
-                    data-testid="button-initiative"
-                  >
-                    <Swords className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="left" className="bg-stone-800 border-stone-700 text-stone-200">
-                  <p>Initiative</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          </div>
-        )}
+            </>
+          ) : (
+            <>
+              <CampaignMenu 
+                campaignId={effectiveCampaignId || undefined}
+                role={role} 
+                inviteCode={(campaign && typeof campaign === 'object' && 'inviteCode' in campaign ? campaign.inviteCode as string : "") || ""}
+                hotbarSlots={(campaign && typeof campaign === 'object' && 'hotbarSlots' in campaign ? (campaign as any).hotbarSlots as number : 5) || 5}
+                inspectedChar={inspectedChar}
+                onInspectChar={setInspectedChar}
+                onAddCharacterToken={handleAddCharacterToken}
+                onChangeMap={handleChangeMap}
+                characters={characters as any[]}
+                members={members as any[]}
+                onAddCharacter={handleAddCharacter}
+                onViewCharacter={handleViewCharacter}
+                onLevelUpAll={handleLevelUpAll}
+                chatOpen={chatOpen}
+                onChatOpenChange={setChatOpen}
+                onAssignCharacter={handleAssignCharacter}
+                myPermissions={myPermissions}
+                onOpenCampaignSpecies={() => setCampaignSpeciesOpen(true)}
+                isOwner={!!(campaign && typeof campaign === 'object' && 'gmUserId' in campaign && (campaign as any).gmUserId === user?.id)}
+                gmUserId={(campaign && typeof campaign === 'object' && 'gmUserId' in campaign ? (campaign as any).gmUserId as string : undefined)}
+                beaconColor={myMembership?.beaconColor || '#FBB524'}
+                onChangeBeaconColor={() => {
+                  setPendingBeaconColor(myMembership?.beaconColor || '#FBB524');
+                  setBeaconColorDialogOpen(true);
+                }}
+              />
+              
+              {/* Scenes Button (GM Only) - Icon only, directly under Settings */}
+              {role === 'gm' && (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => setScenesManagementOpen(true)}
+                        className="text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto relative z-[60]"
+                        data-testid="button-scenes"
+                      >
+                        <Layers className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="left" className="bg-stone-800 border-stone-700 text-stone-200">
+                      <p>Scenes</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              )}
+              
+              {/* Initiative Button - Under scenes/settings */}
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => setInitiativeTrackerOpen(true)}
+                      className="text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto"
+                      data-testid="button-initiative"
+                    >
+                      <Swords className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="left" className="bg-stone-800 border-stone-700 text-stone-200">
+                    <p>Initiative</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </>
+          )}
+        </div>
       </div>
 
       {/* Show message when player has no character assigned */}
