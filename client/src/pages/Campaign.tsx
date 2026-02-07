@@ -29,7 +29,7 @@ import { useToast } from "@/hooks/use-toast";
 import { ImageBrowser } from "@/components/ImageBrowser";
 import { CampaignNotesPanel } from "@/components/notes/CampaignNotesPanel";
 import { FloatingPanel } from "@/components/ui/floating-panel";
-import { Folder, FolderPlus, Plus, GripVertical, Eye, Radio, ChevronDown, ChevronRight, Pencil } from "lucide-react";
+import { Folder, FolderOpen, FolderPlus, Plus, GripVertical, Eye, Radio, ChevronDown, ChevronRight, Pencil, Minus } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
 // Scene Settings Form Component
@@ -683,14 +683,200 @@ function CampaignSpeciesFormDialog({ open, onOpenChange, onSave, initialData, is
   );
 }
 
-function SandboxCharactersContent({ campaignId }: { campaignId: string }) {
+function SandboxSheetEditor({ 
+  item, 
+  campaignId,
+  onClose, 
+  isMobile,
+  templates,
+  role
+}: { 
+  item: { id: string; name: string; type: 'actor' | 'template'; templateId?: string | null; data?: string };
+  campaignId: string;
+  onClose: () => void;
+  isMobile: boolean;
+  templates: any[];
+  role: string;
+}) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const [activeTab, setActiveTab] = useState<'actors' | 'templates'>('actors');
+  const [collapsed, setCollapsed] = useState(false);
+  const [position, setPosition] = useState({ x: 100 + Math.random() * 200, y: 80 + Math.random() * 100 });
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(item.templateId || null);
+
+  const updateActorMutation = useMutation({
+    mutationFn: (data: any) => api.updateSandboxActor(campaignId, item.id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sandbox-actors', campaignId] });
+    },
+  });
+
+  const handleTemplateChange = (templateId: string) => {
+    setSelectedTemplateId(templateId || null);
+    updateActorMutation.mutate({ templateId: templateId || null });
+    toast({ title: templateId ? "Template assigned" : "Template removed" });
+  };
+
+  const handlePointerDown = (e: React.PointerEvent) => {
+    if (isMobile) return;
+    setIsDragging(true);
+    setDragOffset({ x: e.clientX - position.x, y: e.clientY - position.y });
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+  };
+
+  const handlePointerMove = (e: React.PointerEvent) => {
+    if (!isDragging) return;
+    setPosition({ x: e.clientX - dragOffset.x, y: e.clientY - dragOffset.y });
+  };
+
+  const handlePointerUp = () => {
+    setIsDragging(false);
+  };
+
+  if (isMobile) {
+    return (
+      <div className="fixed inset-0 z-50 bg-stone-900 flex flex-col">
+        <div className="flex items-center justify-between p-4 border-b border-stone-700">
+          <div className="flex items-center gap-2">
+            {item.type === 'actor' ? (
+              <User className="h-5 w-5 text-amber-500" />
+            ) : (
+              <ScrollText className="h-5 w-5 text-purple-400" />
+            )}
+            <h2 className={`font-bold text-lg ${item.type === 'actor' ? 'text-amber-400' : 'text-purple-400'}`}>
+              {item.name}
+            </h2>
+            <span className={`text-[10px] px-1.5 py-0.5 rounded ${item.type === 'actor' ? 'text-amber-500/60 bg-amber-900/20' : 'text-purple-400/60 bg-purple-900/20'}`}>
+              {item.type === 'actor' ? 'Actor' : 'Template'}
+            </span>
+          </div>
+          <Button variant="ghost" size="icon" onClick={onClose} className="text-stone-400 hover:text-white" data-testid="button-close-sheet-mobile">
+            <X className="h-5 w-5" />
+          </Button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
+          {item.type === 'actor' && role === 'gm' && (
+            <div className="mb-4 space-y-2">
+              <Label className="text-stone-400 text-sm">Template</Label>
+              <Select value={selectedTemplateId || ''} onValueChange={handleTemplateChange}>
+                <SelectTrigger className="bg-stone-800 border-stone-700 text-stone-200">
+                  <SelectValue placeholder="Select a template..." />
+                </SelectTrigger>
+                <SelectContent className="bg-stone-800 border-stone-700">
+                  <SelectItem value="" className="text-stone-400">No template</SelectItem>
+                  {templates.map((t: any) => (
+                    <SelectItem key={t.id} value={t.id} className="text-stone-200">
+                      {t.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+          <div className="text-stone-500 text-center italic border border-dashed border-stone-700 rounded-lg p-8">
+            {item.type === 'template' ? 'Template sheet — customization coming soon' : 'Actor sheet — customization coming soon'}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="fixed z-[45] pointer-events-auto"
+      style={{ left: `${position.x}px`, top: `${position.y}px`, width: '400px' }}
+    >
+      <div className={`bg-stone-900/95 border rounded-xl shadow-2xl backdrop-blur-sm overflow-hidden ${item.type === 'actor' ? 'border-amber-800/50' : 'border-purple-800/50'}`}>
+        <div 
+          className={`flex items-center justify-between px-3 py-2 cursor-move select-none ${item.type === 'actor' ? 'bg-amber-900/30 border-b border-amber-800/30' : 'bg-purple-900/30 border-b border-purple-800/30'}`}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+        >
+          <div className="flex items-center gap-2 min-w-0">
+            {item.type === 'actor' ? (
+              <User className="h-4 w-4 text-amber-500 shrink-0" />
+            ) : (
+              <ScrollText className="h-4 w-4 text-purple-400 shrink-0" />
+            )}
+            <span className={`font-medium text-sm truncate ${item.type === 'actor' ? 'text-amber-300' : 'text-purple-300'}`}>
+              {item.name}
+            </span>
+            <span className={`text-[10px] px-1.5 py-0.5 rounded shrink-0 ${item.type === 'actor' ? 'text-amber-500/60 bg-amber-900/20' : 'text-purple-400/60 bg-purple-900/20'}`}>
+              {item.type === 'actor' ? 'Actor' : 'Template'}
+            </span>
+          </div>
+          <div className="flex items-center gap-1 shrink-0">
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              onClick={() => setCollapsed(!collapsed)} 
+              className="h-6 w-6 text-stone-400 hover:text-white"
+              data-testid="button-collapse-sheet"
+            >
+              {collapsed ? <ChevronRight className="h-3.5 w-3.5 rotate-90" /> : <Minus className="h-3.5 w-3.5" />}
+            </Button>
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              onClick={onClose} 
+              className="h-6 w-6 text-stone-400 hover:text-white"
+              data-testid="button-close-sheet"
+            >
+              <X className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        </div>
+        
+        {!collapsed && (
+          <div className="p-4 max-h-[60vh] overflow-y-auto custom-scrollbar">
+            {item.type === 'actor' && role === 'gm' && (
+              <div className="mb-4 space-y-2">
+                <Label className="text-stone-400 text-sm">Template</Label>
+                <Select value={selectedTemplateId || ''} onValueChange={handleTemplateChange}>
+                  <SelectTrigger className="bg-stone-800 border-stone-700 text-stone-200 h-9">
+                    <SelectValue placeholder="Select a template..." />
+                  </SelectTrigger>
+                  <SelectContent className="bg-stone-800 border-stone-700">
+                    <SelectItem value="" className="text-stone-400">No template</SelectItem>
+                    {templates.map((t: any) => (
+                      <SelectItem key={t.id} value={t.id} className="text-stone-200">
+                        {t.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            <div className="text-stone-500 text-center italic border border-dashed border-stone-700 rounded-lg p-8">
+              {item.type === 'template' ? 'Template sheet — customization coming soon' : 'Actor sheet — customization coming soon'}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function SandboxCharactersContent({ 
+  campaignId, 
+  onOpenActor, 
+  onOpenTemplate 
+}: { 
+  campaignId: string; 
+  onOpenActor: (actor: any) => void; 
+  onOpenTemplate: (template: any) => void; 
+}) {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const [createOpen, setCreateOpen] = useState(false);
   const [newName, setNewName] = useState('');
-  const [createDialogOpen, setCreateDialogOpen] = useState(false);
-  const [editingTemplate, setEditingTemplate] = useState<any>(null);
-  const [editingActor, setEditingActor] = useState<any>(null);
+  const [newType, setNewType] = useState<'actor' | 'template'>('actor');
+  const [newFolderName, setNewFolderName] = useState('');
+  const [createFolderOpen, setCreateFolderOpen] = useState(false);
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
 
   const { data: templates = [] } = useQuery({
     queryKey: ['sandbox-templates', campaignId],
@@ -702,23 +888,38 @@ function SandboxCharactersContent({ campaignId }: { campaignId: string }) {
     queryFn: () => api.getSandboxActors(campaignId),
   });
 
+  const { data: folders = [] } = useQuery({
+    queryKey: ['sandbox-folders', campaignId],
+    queryFn: () => api.getSandboxFolders(campaignId),
+  });
+
   const createTemplateMutation = useMutation({
-    mutationFn: (name: string) => api.createSandboxTemplate(campaignId, { name }),
+    mutationFn: (data: { name: string; folderId?: string }) => api.createSandboxTemplate(campaignId, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sandbox-templates', campaignId] });
-      setCreateDialogOpen(false);
+      setCreateOpen(false);
       setNewName('');
       toast({ title: "Template created" });
     },
   });
 
   const createActorMutation = useMutation({
-    mutationFn: (name: string) => api.createSandboxActor(campaignId, { name }),
+    mutationFn: (data: { name: string; folderId?: string }) => api.createSandboxActor(campaignId, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sandbox-actors', campaignId] });
-      setCreateDialogOpen(false);
+      setCreateOpen(false);
       setNewName('');
       toast({ title: "Actor created" });
+    },
+  });
+
+  const createFolderMutation = useMutation({
+    mutationFn: (name: string) => api.createSandboxFolder(campaignId, { name }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sandbox-folders', campaignId] });
+      setCreateFolderOpen(false);
+      setNewFolderName('');
+      toast({ title: "Folder created" });
     },
   });
 
@@ -738,179 +939,216 @@ function SandboxCharactersContent({ campaignId }: { campaignId: string }) {
     },
   });
 
+  const deleteFolderMutation = useMutation({
+    mutationFn: (id: string) => api.deleteSandboxFolder(campaignId, id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sandbox-folders', campaignId] });
+      toast({ title: "Folder deleted" });
+    },
+  });
+
   const handleCreate = () => {
     if (!newName.trim()) return;
-    if (activeTab === 'templates') {
-      createTemplateMutation.mutate(newName.trim());
+    if (newType === 'template') {
+      createTemplateMutation.mutate({ name: newName.trim() });
     } else {
-      createActorMutation.mutate(newName.trim());
+      createActorMutation.mutate({ name: newName.trim() });
     }
   };
 
+  const toggleFolder = (folderId: string) => {
+    setExpandedFolders(prev => {
+      const next = new Set(prev);
+      if (next.has(folderId)) next.delete(folderId);
+      else next.add(folderId);
+      return next;
+    });
+  };
+
+  const rootFolders = folders.filter((f: any) => !f.parentId);
+  const rootActors = actors.filter((a: any) => !a.folderId);
+  const rootTemplates = templates.filter((t: any) => !t.folderId);
+
+  const renderItem = (item: any, type: 'actor' | 'template') => (
+    <div
+      key={item.id}
+      className="flex items-center justify-between py-2 px-3 bg-stone-800/30 border border-stone-700/50 rounded-lg hover:bg-stone-800/60 transition-colors cursor-pointer group"
+      onClick={() => type === 'actor' ? onOpenActor(item) : onOpenTemplate(item)}
+      data-testid={`sandbox-${type}-${item.id}`}
+    >
+      <div className="flex items-center gap-2.5 min-w-0 flex-1">
+        {type === 'actor' ? (
+          <User className="h-4 w-4 text-amber-500 shrink-0" />
+        ) : (
+          <ScrollText className="h-4 w-4 text-purple-400 shrink-0" />
+        )}
+        <span className="text-stone-200 text-sm font-medium truncate">{item.name}</span>
+        {type === 'actor' && item.templateId && (
+          <span className="text-[10px] text-stone-500 bg-stone-700/50 px-1.5 py-0.5 rounded shrink-0">
+            {templates.find((t: any) => t.id === item.templateId)?.name || 'Template'}
+          </span>
+        )}
+        <span className={`text-[10px] px-1.5 py-0.5 rounded shrink-0 ${type === 'actor' ? 'text-amber-500/60 bg-amber-900/20' : 'text-purple-400/60 bg-purple-900/20'}`}>
+          {type === 'actor' ? 'Actor' : 'Template'}
+        </span>
+      </div>
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={(e) => { e.stopPropagation(); type === 'actor' ? deleteActorMutation.mutate(item.id) : deleteTemplateMutation.mutate(item.id); }}
+        className="h-7 w-7 text-stone-600 hover:text-red-400 hover:bg-red-900/20 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+        data-testid={`button-delete-${type}-${item.id}`}
+      >
+        <Trash2 className="h-3.5 w-3.5" />
+      </Button>
+    </div>
+  );
+
+  const renderFolder = (folder: any, depth: number = 0) => {
+    const isExpanded = expandedFolders.has(folder.id);
+    const childFolders = folders.filter((f: any) => f.parentId === folder.id);
+    const folderActors = actors.filter((a: any) => a.folderId === folder.id);
+    const folderTemplates = templates.filter((t: any) => t.folderId === folder.id);
+    
+    return (
+      <div key={folder.id} data-testid={`sandbox-folder-${folder.id}`}>
+        <div 
+          className="flex items-center justify-between py-2 px-3 hover:bg-stone-800/40 rounded-lg cursor-pointer group transition-colors"
+          style={{ paddingLeft: `${depth * 16 + 12}px` }}
+          onClick={() => toggleFolder(folder.id)}
+        >
+          <div className="flex items-center gap-2">
+            <ChevronRight className={`h-3.5 w-3.5 text-stone-500 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+            <FolderOpen className="h-4 w-4 text-amber-600" />
+            <span className="text-stone-300 text-sm font-medium">{folder.name}</span>
+          </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={(e) => { e.stopPropagation(); deleteFolderMutation.mutate(folder.id); }}
+            className="h-7 w-7 text-stone-600 hover:text-red-400 hover:bg-red-900/20 opacity-0 group-hover:opacity-100 transition-opacity"
+            data-testid={`button-delete-folder-${folder.id}`}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+        {isExpanded && (
+          <div className="ml-4 space-y-1 mt-1">
+            {childFolders.map((f: any) => renderFolder(f, depth + 1))}
+            {folderActors.map((a: any) => renderItem(a, 'actor'))}
+            {folderTemplates.map((t: any) => renderItem(t, 'template'))}
+            {childFolders.length === 0 && folderActors.length === 0 && folderTemplates.length === 0 && (
+              <div className="text-center py-3 text-stone-600 text-xs italic">Empty folder</div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
-    <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'actors' | 'templates')} className="w-full">
-      <TabsList className="grid w-full grid-cols-2 bg-stone-800 border border-stone-700">
-        <TabsTrigger value="actors" className="data-[state=active]:bg-stone-700 data-[state=active]:text-amber-400" data-testid="tab-sandbox-actors">
-          Actors
-        </TabsTrigger>
-        <TabsTrigger value="templates" className="data-[state=active]:bg-stone-700 data-[state=active]:text-amber-400" data-testid="tab-sandbox-templates">
-          Templates
-        </TabsTrigger>
-      </TabsList>
+    <div className="flex flex-col h-full">
+      <div className="space-y-2 mb-3">
+        <div className="flex gap-2">
+          <Button
+            size="sm"
+            onClick={() => { setCreateOpen(!createOpen); setNewName(''); }}
+            className="flex-1 bg-amber-700 hover:bg-amber-600 text-white"
+            data-testid="button-create-character"
+          >
+            <Plus className="h-4 w-4 mr-1.5" /> Create
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => { setCreateFolderOpen(!createFolderOpen); setNewFolderName(''); }}
+            className="border-stone-600 text-stone-300 hover:bg-stone-800"
+            data-testid="button-create-folder"
+          >
+            <FolderOpen className="h-4 w-4 mr-1.5" /> Folder
+          </Button>
+        </div>
 
-      <TabsContent value="actors" className="mt-4 space-y-3">
-        <Button
-          size="sm"
-          onClick={() => { setCreateDialogOpen(true); setNewName(''); }}
-          className="w-full bg-amber-700 hover:bg-amber-600 text-white"
-          data-testid="button-create-actor"
-        >
-          <Plus className="h-4 w-4 mr-2" /> New Actor
-        </Button>
-        {actors.length === 0 ? (
-          <div className="text-center py-8 text-stone-500 italic border border-dashed border-stone-700 rounded">
-            No actors yet
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {actors.map((actor: any) => (
-              <div
-                key={actor.id}
-                className="flex items-center justify-between p-3 bg-stone-800/50 border border-stone-700 rounded-lg hover:bg-stone-800 transition-colors cursor-pointer"
-                onClick={() => setEditingActor(actor)}
-                data-testid={`sandbox-actor-${actor.id}`}
+        {createOpen && (
+          <div className="bg-stone-800/50 border border-stone-700 rounded-lg p-3 space-y-3">
+            <Input
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              placeholder="Name..."
+              className="bg-stone-900 border-stone-600 text-stone-200 h-9 text-sm"
+              data-testid="input-sandbox-name"
+              autoFocus
+              onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
+            />
+            <div className="flex gap-2">
+              <button
+                onClick={() => setNewType('actor')}
+                className={`flex-1 py-1.5 px-3 rounded-md text-sm font-medium transition-colors ${
+                  newType === 'actor' 
+                    ? 'bg-amber-700 text-white' 
+                    : 'bg-stone-700 text-stone-400 hover:text-stone-200'
+                }`}
+                data-testid="toggle-type-actor"
               >
-                <div className="flex items-center gap-3">
-                  <User className="h-4 w-4 text-amber-500" />
-                  <span className="text-stone-200 font-medium">{actor.name}</span>
-                  {actor.templateId && (
-                    <span className="text-xs text-stone-500 bg-stone-700/50 px-2 py-0.5 rounded">
-                      {templates.find((t: any) => t.id === actor.templateId)?.name || 'Template'}
-                    </span>
-                  )}
-                </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={(e) => { e.stopPropagation(); deleteActorMutation.mutate(actor.id); }}
-                  className="h-8 w-8 text-stone-500 hover:text-red-400 hover:bg-red-900/20"
-                  data-testid={`button-delete-actor-${actor.id}`}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </div>
-            ))}
-          </div>
-        )}
-      </TabsContent>
-
-      <TabsContent value="templates" className="mt-4 space-y-3">
-        <Button
-          size="sm"
-          onClick={() => { setCreateDialogOpen(true); setNewName(''); }}
-          className="w-full bg-purple-700 hover:bg-purple-600 text-white"
-          data-testid="button-create-template"
-        >
-          <Plus className="h-4 w-4 mr-2" /> New Template
-        </Button>
-        {templates.length === 0 ? (
-          <div className="text-center py-8 text-stone-500 italic border border-dashed border-stone-700 rounded">
-            No templates yet
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {templates.map((template: any) => (
-              <div
-                key={template.id}
-                className="flex items-center justify-between p-3 bg-stone-800/50 border border-stone-700 rounded-lg hover:bg-stone-800 transition-colors cursor-pointer"
-                onClick={() => setEditingTemplate(template)}
-                data-testid={`sandbox-template-${template.id}`}
+                Actor
+              </button>
+              <button
+                onClick={() => setNewType('template')}
+                className={`flex-1 py-1.5 px-3 rounded-md text-sm font-medium transition-colors ${
+                  newType === 'template' 
+                    ? 'bg-purple-700 text-white' 
+                    : 'bg-stone-700 text-stone-400 hover:text-stone-200'
+                }`}
+                data-testid="toggle-type-template"
               >
-                <div className="flex items-center gap-3">
-                  <ScrollText className="h-4 w-4 text-purple-400" />
-                  <span className="text-stone-200 font-medium">{template.name}</span>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={(e) => { e.stopPropagation(); deleteTemplateMutation.mutate(template.id); }}
-                  className="h-8 w-8 text-stone-500 hover:text-red-400 hover:bg-red-900/20"
-                  data-testid={`button-delete-template-${template.id}`}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </div>
-            ))}
-          </div>
-        )}
-      </TabsContent>
-
-      <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
-        <DialogContent className="bg-stone-900 border-stone-700 text-stone-200 sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle className="text-amber-500">
-              {activeTab === 'templates' ? 'New Template' : 'New Actor'}
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 pt-2">
-            <div className="space-y-2">
-              <Label className="text-stone-400">Name</Label>
-              <Input
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-                placeholder={activeTab === 'templates' ? 'Template name...' : 'Actor name...'}
-                className="bg-stone-800 border-stone-700 text-stone-200"
-                data-testid="input-sandbox-name"
-                autoFocus
-                onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
-              />
+                Template
+              </button>
             </div>
             <div className="flex gap-2">
-              <Button variant="outline" onClick={() => setCreateDialogOpen(false)} className="flex-1 border-stone-600 text-stone-300">
+              <Button variant="outline" size="sm" onClick={() => setCreateOpen(false)} className="flex-1 border-stone-600 text-stone-400 h-8">
                 Cancel
               </Button>
-              <Button onClick={handleCreate} disabled={!newName.trim()} className="flex-1 bg-amber-600 hover:bg-amber-700 text-white" data-testid="button-confirm-create">
+              <Button size="sm" onClick={handleCreate} disabled={!newName.trim()} className="flex-1 bg-amber-600 hover:bg-amber-700 text-white h-8" data-testid="button-confirm-create">
                 Create
               </Button>
             </div>
           </div>
-        </DialogContent>
-      </Dialog>
+        )}
 
-      <Dialog open={!!editingTemplate} onOpenChange={(open) => !open && setEditingTemplate(null)}>
-        <DialogContent className="bg-stone-900 border-stone-700 text-stone-200 sm:max-w-2xl max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="text-purple-400 flex items-center gap-2">
-              <ScrollText className="h-5 w-5" />
-              {editingTemplate?.name}
-            </DialogTitle>
-            <DialogDescription className="text-stone-500">
-              Template Sheet — define the base data that actors will use
-            </DialogDescription>
-          </DialogHeader>
-          <div className="py-4 text-stone-400 text-center italic border border-dashed border-stone-700 rounded-lg p-8">
-            Template editor coming soon. This will contain the fields and data that actors reference.
+        {createFolderOpen && (
+          <div className="bg-stone-800/50 border border-stone-700 rounded-lg p-3 space-y-2">
+            <Input
+              value={newFolderName}
+              onChange={(e) => setNewFolderName(e.target.value)}
+              placeholder="Folder name..."
+              className="bg-stone-900 border-stone-600 text-stone-200 h-9 text-sm"
+              data-testid="input-folder-name"
+              autoFocus
+              onKeyDown={(e) => e.key === 'Enter' && newFolderName.trim() && createFolderMutation.mutate(newFolderName.trim())}
+            />
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={() => setCreateFolderOpen(false)} className="flex-1 border-stone-600 text-stone-400 h-8">
+                Cancel
+              </Button>
+              <Button size="sm" onClick={() => newFolderName.trim() && createFolderMutation.mutate(newFolderName.trim())} disabled={!newFolderName.trim()} className="flex-1 bg-amber-600 hover:bg-amber-700 text-white h-8" data-testid="button-confirm-folder">
+                Create
+              </Button>
+            </div>
           </div>
-        </DialogContent>
-      </Dialog>
+        )}
+      </div>
 
-      <Dialog open={!!editingActor} onOpenChange={(open) => !open && setEditingActor(null)}>
-        <DialogContent className="bg-stone-900 border-stone-700 text-stone-200 sm:max-w-2xl max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="text-amber-400 flex items-center gap-2">
-              <User className="h-5 w-5" />
-              {editingActor?.name}
-            </DialogTitle>
-            <DialogDescription className="text-stone-500">
-              Actor Sheet — character data based on a template
-            </DialogDescription>
-          </DialogHeader>
-          <div className="py-4 text-stone-400 text-center italic border border-dashed border-stone-700 rounded-lg p-8">
-            Actor editor coming soon. This will show character data derived from the template.
+      <div className="flex-1 overflow-y-auto space-y-1 custom-scrollbar">
+        {rootFolders.map((f: any) => renderFolder(f))}
+        {rootActors.map((a: any) => renderItem(a, 'actor'))}
+        {rootTemplates.map((t: any) => renderItem(t, 'template'))}
+        {rootFolders.length === 0 && rootActors.length === 0 && rootTemplates.length === 0 && (
+          <div className="text-center py-12 text-stone-600 italic text-sm">
+            No characters yet. Click Create to add one.
           </div>
-        </DialogContent>
-      </Dialog>
-    </Tabs>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -1011,6 +1249,7 @@ export default function Campaign() {
   // Sandbox panel state
   const [sandboxCharactersOpen, setSandboxCharactersOpen] = useState(false);
   const [sandboxSceneSettingsOpen, setSandboxSceneSettingsOpen] = useState(false);
+  const [openSandboxSheets, setOpenSandboxSheets] = useState<Array<{ id: string; name: string; type: 'actor' | 'template'; templateId?: string | null; data?: string }>>([]);
   
   // Notes panel state
   const [notesPanelOpen, setNotesPanelOpen] = useState(false);
@@ -1302,6 +1541,12 @@ export default function Campaign() {
   // Get campaign's active scene ID (what players see)
   const campaignActiveSceneId = campaign && typeof campaign === 'object' && 'activeSceneId' in campaign ? (campaign as any).activeSceneId as string | null : null;
   const isSandbox = campaign && typeof campaign === 'object' && 'system' in campaign && (campaign as any).system === 'sandbox';
+
+  const { data: sandboxTemplatesList = [] } = useQuery({
+    queryKey: ['sandbox-templates', effectiveCampaignId],
+    queryFn: () => api.getSandboxTemplates(effectiveCampaignId!),
+    enabled: !!effectiveCampaignId && !!isSandbox,
+  });
 
   // Determine which scene ID to use for tokens
   // For GM: use gmViewingSceneId if set, otherwise use activeSceneId
@@ -3658,19 +3903,60 @@ export default function Campaign() {
         </Sheet>
       )}
 
-      {/* Sandbox Characters Panel */}
-      {isSandbox && (
-        <Sheet open={sandboxCharactersOpen} onOpenChange={setSandboxCharactersOpen}>
-          <SheetContent className="bg-stone-900 border-stone-700 text-stone-200 w-full sm:max-w-lg overflow-y-auto custom-scrollbar">
-            <SheetHeader>
-              <SheetTitle className="text-amber-500 font-display text-xl sm:text-2xl">Characters</SheetTitle>
-            </SheetHeader>
-            <div className="mt-4">
-              <SandboxCharactersContent campaignId={effectiveCampaignId!} />
+      {/* Sandbox Characters Panel - Non-blurring side panel */}
+      {isSandbox && sandboxCharactersOpen && (
+        <div 
+          className={`fixed top-0 right-0 z-40 pointer-events-auto ${isMobile ? 'inset-0' : 'h-full'}`}
+          style={{ 
+            width: isMobile ? '100vw' : '320px',
+          }}
+        >
+          <div className="h-full bg-stone-900/95 border-l border-stone-700 backdrop-blur-sm flex flex-col">
+            <div className="flex items-center justify-between p-4 pb-2 border-b border-stone-800">
+              <h2 className="text-amber-500 font-display text-lg font-bold">Characters</h2>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setSandboxCharactersOpen(false)}
+                className="h-8 w-8 text-stone-400 hover:text-white"
+                data-testid="button-close-characters"
+              >
+                <X className="h-4 w-4" />
+              </Button>
             </div>
-          </SheetContent>
-        </Sheet>
+            <div className="flex-1 overflow-hidden p-4 pt-3">
+              <SandboxCharactersContent 
+                campaignId={effectiveCampaignId!} 
+                onOpenActor={(actor) => {
+                  setOpenSandboxSheets(prev => {
+                    if (prev.find(s => s.id === actor.id)) return prev;
+                    return [...prev, { ...actor, type: 'actor' as const }];
+                  });
+                }}
+                onOpenTemplate={(template) => {
+                  setOpenSandboxSheets(prev => {
+                    if (prev.find(s => s.id === template.id)) return prev;
+                    return [...prev, { ...template, type: 'template' as const }];
+                  });
+                }}
+              />
+            </div>
+          </div>
+        </div>
       )}
+
+      {/* Sandbox Floating Sheet Editors */}
+      {isSandbox && openSandboxSheets.map((sheet) => (
+        <SandboxSheetEditor
+          key={sheet.id}
+          item={sheet}
+          campaignId={effectiveCampaignId!}
+          onClose={() => setOpenSandboxSheets(prev => prev.filter(s => s.id !== sheet.id))}
+          isMobile={isMobile}
+          templates={sandboxTemplatesList as any[]}
+          role={role}
+        />
+      ))}
 
       {/* Campaign Species Sheet (GM Only) */}
       {role === 'gm' && (
