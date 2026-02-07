@@ -30,6 +30,7 @@ import { ImageBrowser } from "@/components/ImageBrowser";
 import { CampaignNotesPanel } from "@/components/notes/CampaignNotesPanel";
 import { FloatingPanel } from "@/components/ui/floating-panel";
 import { Folder, FolderPlus, Plus, GripVertical, Eye, Radio, ChevronDown, ChevronRight, Pencil } from "lucide-react";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
 // Scene Settings Form Component
 function SceneSettingsForm({ scene, onUpdateScene }: { scene: Scene; onUpdateScene: (settings: Partial<Scene>) => void }) {
@@ -682,6 +683,237 @@ function CampaignSpeciesFormDialog({ open, onOpenChange, onSave, initialData, is
   );
 }
 
+function SandboxCharactersContent({ campaignId }: { campaignId: string }) {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const [activeTab, setActiveTab] = useState<'actors' | 'templates'>('actors');
+  const [newName, setNewName] = useState('');
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [editingTemplate, setEditingTemplate] = useState<any>(null);
+  const [editingActor, setEditingActor] = useState<any>(null);
+
+  const { data: templates = [] } = useQuery({
+    queryKey: ['sandbox-templates', campaignId],
+    queryFn: () => api.getSandboxTemplates(campaignId),
+  });
+
+  const { data: actors = [] } = useQuery({
+    queryKey: ['sandbox-actors', campaignId],
+    queryFn: () => api.getSandboxActors(campaignId),
+  });
+
+  const createTemplateMutation = useMutation({
+    mutationFn: (name: string) => api.createSandboxTemplate(campaignId, { name }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sandbox-templates', campaignId] });
+      setCreateDialogOpen(false);
+      setNewName('');
+      toast({ title: "Template created" });
+    },
+  });
+
+  const createActorMutation = useMutation({
+    mutationFn: (name: string) => api.createSandboxActor(campaignId, { name }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sandbox-actors', campaignId] });
+      setCreateDialogOpen(false);
+      setNewName('');
+      toast({ title: "Actor created" });
+    },
+  });
+
+  const deleteTemplateMutation = useMutation({
+    mutationFn: (id: string) => api.deleteSandboxTemplate(campaignId, id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sandbox-templates', campaignId] });
+      toast({ title: "Template deleted" });
+    },
+  });
+
+  const deleteActorMutation = useMutation({
+    mutationFn: (id: string) => api.deleteSandboxActor(campaignId, id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sandbox-actors', campaignId] });
+      toast({ title: "Actor deleted" });
+    },
+  });
+
+  const handleCreate = () => {
+    if (!newName.trim()) return;
+    if (activeTab === 'templates') {
+      createTemplateMutation.mutate(newName.trim());
+    } else {
+      createActorMutation.mutate(newName.trim());
+    }
+  };
+
+  return (
+    <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'actors' | 'templates')} className="w-full">
+      <TabsList className="grid w-full grid-cols-2 bg-stone-800 border border-stone-700">
+        <TabsTrigger value="actors" className="data-[state=active]:bg-stone-700 data-[state=active]:text-amber-400" data-testid="tab-sandbox-actors">
+          Actors
+        </TabsTrigger>
+        <TabsTrigger value="templates" className="data-[state=active]:bg-stone-700 data-[state=active]:text-amber-400" data-testid="tab-sandbox-templates">
+          Templates
+        </TabsTrigger>
+      </TabsList>
+
+      <TabsContent value="actors" className="mt-4 space-y-3">
+        <Button
+          size="sm"
+          onClick={() => { setCreateDialogOpen(true); setNewName(''); }}
+          className="w-full bg-amber-700 hover:bg-amber-600 text-white"
+          data-testid="button-create-actor"
+        >
+          <Plus className="h-4 w-4 mr-2" /> New Actor
+        </Button>
+        {actors.length === 0 ? (
+          <div className="text-center py-8 text-stone-500 italic border border-dashed border-stone-700 rounded">
+            No actors yet
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {actors.map((actor: any) => (
+              <div
+                key={actor.id}
+                className="flex items-center justify-between p-3 bg-stone-800/50 border border-stone-700 rounded-lg hover:bg-stone-800 transition-colors cursor-pointer"
+                onClick={() => setEditingActor(actor)}
+                data-testid={`sandbox-actor-${actor.id}`}
+              >
+                <div className="flex items-center gap-3">
+                  <User className="h-4 w-4 text-amber-500" />
+                  <span className="text-stone-200 font-medium">{actor.name}</span>
+                  {actor.templateId && (
+                    <span className="text-xs text-stone-500 bg-stone-700/50 px-2 py-0.5 rounded">
+                      {templates.find((t: any) => t.id === actor.templateId)?.name || 'Template'}
+                    </span>
+                  )}
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={(e) => { e.stopPropagation(); deleteActorMutation.mutate(actor.id); }}
+                  className="h-8 w-8 text-stone-500 hover:text-red-400 hover:bg-red-900/20"
+                  data-testid={`button-delete-actor-${actor.id}`}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+      </TabsContent>
+
+      <TabsContent value="templates" className="mt-4 space-y-3">
+        <Button
+          size="sm"
+          onClick={() => { setCreateDialogOpen(true); setNewName(''); }}
+          className="w-full bg-purple-700 hover:bg-purple-600 text-white"
+          data-testid="button-create-template"
+        >
+          <Plus className="h-4 w-4 mr-2" /> New Template
+        </Button>
+        {templates.length === 0 ? (
+          <div className="text-center py-8 text-stone-500 italic border border-dashed border-stone-700 rounded">
+            No templates yet
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {templates.map((template: any) => (
+              <div
+                key={template.id}
+                className="flex items-center justify-between p-3 bg-stone-800/50 border border-stone-700 rounded-lg hover:bg-stone-800 transition-colors cursor-pointer"
+                onClick={() => setEditingTemplate(template)}
+                data-testid={`sandbox-template-${template.id}`}
+              >
+                <div className="flex items-center gap-3">
+                  <ScrollText className="h-4 w-4 text-purple-400" />
+                  <span className="text-stone-200 font-medium">{template.name}</span>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={(e) => { e.stopPropagation(); deleteTemplateMutation.mutate(template.id); }}
+                  className="h-8 w-8 text-stone-500 hover:text-red-400 hover:bg-red-900/20"
+                  data-testid={`button-delete-template-${template.id}`}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+      </TabsContent>
+
+      <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
+        <DialogContent className="bg-stone-900 border-stone-700 text-stone-200 sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-amber-500">
+              {activeTab === 'templates' ? 'New Template' : 'New Actor'}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            <div className="space-y-2">
+              <Label className="text-stone-400">Name</Label>
+              <Input
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                placeholder={activeTab === 'templates' ? 'Template name...' : 'Actor name...'}
+                className="bg-stone-800 border-stone-700 text-stone-200"
+                data-testid="input-sandbox-name"
+                autoFocus
+                onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
+              />
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setCreateDialogOpen(false)} className="flex-1 border-stone-600 text-stone-300">
+                Cancel
+              </Button>
+              <Button onClick={handleCreate} disabled={!newName.trim()} className="flex-1 bg-amber-600 hover:bg-amber-700 text-white" data-testid="button-confirm-create">
+                Create
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!editingTemplate} onOpenChange={(open) => !open && setEditingTemplate(null)}>
+        <DialogContent className="bg-stone-900 border-stone-700 text-stone-200 sm:max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-purple-400 flex items-center gap-2">
+              <ScrollText className="h-5 w-5" />
+              {editingTemplate?.name}
+            </DialogTitle>
+            <DialogDescription className="text-stone-500">
+              Template Sheet — define the base data that actors will use
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4 text-stone-400 text-center italic border border-dashed border-stone-700 rounded-lg p-8">
+            Template editor coming soon. This will contain the fields and data that actors reference.
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!editingActor} onOpenChange={(open) => !open && setEditingActor(null)}>
+        <DialogContent className="bg-stone-900 border-stone-700 text-stone-200 sm:max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-amber-400 flex items-center gap-2">
+              <User className="h-5 w-5" />
+              {editingActor?.name}
+            </DialogTitle>
+            <DialogDescription className="text-stone-500">
+              Actor Sheet — character data based on a template
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4 text-stone-400 text-center italic border border-dashed border-stone-700 rounded-lg p-8">
+            Actor editor coming soon. This will show character data derived from the template.
+          </div>
+        </DialogContent>
+      </Dialog>
+    </Tabs>
+  );
+}
+
 export default function Campaign() {
   const [location, setLocation] = useLocation();
   const search = useSearch();
@@ -775,6 +1007,10 @@ export default function Campaign() {
   const [hotbarSelectorOpen, setHotbarSelectorOpen] = useState<number | null>(null);
   const gmHotbarRef = useRef<HTMLDivElement>(null);
   const [gmHotbarHidden, setGmHotbarHidden] = useState(false);
+  
+  // Sandbox panel state
+  const [sandboxCharactersOpen, setSandboxCharactersOpen] = useState(false);
+  const [sandboxSceneSettingsOpen, setSandboxSceneSettingsOpen] = useState(false);
   
   // Notes panel state
   const [notesPanelOpen, setNotesPanelOpen] = useState(false);
@@ -1065,6 +1301,7 @@ export default function Campaign() {
 
   // Get campaign's active scene ID (what players see)
   const campaignActiveSceneId = campaign && typeof campaign === 'object' && 'activeSceneId' in campaign ? (campaign as any).activeSceneId as string | null : null;
+  const isSandbox = campaign && typeof campaign === 'object' && 'system' in campaign && (campaign as any).system === 'sandbox';
 
   // Determine which scene ID to use for tokens
   // For GM: use gmViewingSceneId if set, otherwise use activeSceneId
@@ -2738,7 +2975,7 @@ export default function Campaign() {
       
       {/* Top Bar: Nav & Settings - Lower z-index when notes panel is open so it doesn't overlap */}
       <div className={`absolute top-0 left-0 right-0 p-4 flex justify-between items-start pointer-events-none ${notesPanelOpen ? 'z-30' : 'z-50'}`}>
-        {/* Left Side: Back button and Chat */}
+        {/* Left Side */}
         <div className="pointer-events-auto flex flex-col gap-2">
           <Button 
             variant="ghost" 
@@ -2749,149 +2986,246 @@ export default function Campaign() {
           >
             <ArrowLeft style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
           </Button>
-          
-          {/* Chat Button - Left side, mirrored to settings */}
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => setChatOpen(true)}
-                  className="text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto"
-                  data-testid="button-chat"
-                >
-                  <MessageSquare className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="right" className="bg-stone-800 border-stone-700 text-stone-200">
-                <p>Chat</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-          
-          {/* Dice Roller Button with Menu - Left side under chat */}
-          <div className="relative">
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => setDiceMenuOpen(!diceMenuOpen)}
-                    className="text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto"
-                    data-testid="button-dice-roller"
-                  >
-                    <Dices className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="right" className="bg-stone-800 border-stone-700 text-stone-200">
-                  <p>Roll Dice</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-            
-            {/* Dice Quick Menu */}
-            {diceMenuOpen && (
-              <div className="absolute left-full ml-2 top-0 bg-stone-900/95 border border-stone-700 rounded-lg p-2 pointer-events-auto shadow-xl z-50">
-                <div className="flex flex-col gap-1 min-w-[80px]">
-                  {['d4', 'd6', 'd8', 'd10', 'd12', 'd20'].map((die) => (
+
+          {isSandbox ? (
+            <>
+              <CampaignMenu 
+                campaignId={effectiveCampaignId || undefined}
+                role={role} 
+                inviteCode={(campaign && typeof campaign === 'object' && 'inviteCode' in campaign ? campaign.inviteCode as string : "") || ""}
+                hotbarSlots={(campaign && typeof campaign === 'object' && 'hotbarSlots' in campaign ? (campaign as any).hotbarSlots as number : 5) || 5}
+                inspectedChar={inspectedChar}
+                onInspectChar={setInspectedChar}
+                onAddCharacterToken={handleAddCharacterToken}
+                onChangeMap={handleChangeMap}
+                characters={characters as any[]}
+                members={members as any[]}
+                onAddCharacter={handleAddCharacter}
+                onViewCharacter={handleViewCharacter}
+                onLevelUpAll={handleLevelUpAll}
+                chatOpen={chatOpen}
+                onChatOpenChange={setChatOpen}
+                onAssignCharacter={handleAssignCharacter}
+                myPermissions={myPermissions}
+                onOpenCampaignSpecies={() => setCampaignSpeciesOpen(true)}
+                isOwner={!!(campaign && typeof campaign === 'object' && 'gmUserId' in campaign && (campaign as any).gmUserId === user?.id)}
+                gmUserId={(campaign && typeof campaign === 'object' && 'gmUserId' in campaign ? (campaign as any).gmUserId as string : undefined)}
+                beaconColor={myMembership?.beaconColor || '#FBB524'}
+                onChangeBeaconColor={() => {
+                  setPendingBeaconColor(myMembership?.beaconColor || '#FBB524');
+                  setBeaconColorDialogOpen(true);
+                }}
+              />
+
+              {role === 'gm' && (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => setScenesManagementOpen(true)}
+                        className="text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto"
+                        data-testid="button-sandbox-scene-settings"
+                      >
+                        <Layers className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="right" className="bg-stone-800 border-stone-700 text-stone-200">
+                      <p>Scene Settings</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              )}
+
+              {role === 'gm' && (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => setSandboxCharactersOpen(true)}
+                        className="text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto"
+                        data-testid="button-sandbox-characters"
+                      >
+                        <Users className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="right" className="bg-stone-800 border-stone-700 text-stone-200">
+                      <p>Characters</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              )}
+
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
                     <Button
-                      key={die}
                       variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        gameWs.sendDiceRoll(die, 0, undefined, character?.id);
-                        setDiceMenuOpen(false);
-                      }}
-                      className="text-white/80 hover:text-white hover:bg-white/10 justify-start font-mono"
-                      data-testid={`button-roll-${die}`}
+                      size="icon"
+                      onClick={() => setInitiativeTrackerOpen(true)}
+                      className="text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto"
+                      data-testid="button-sandbox-initiative"
                     >
-                      {die.toUpperCase()}
+                      <Swords className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
                     </Button>
-                  ))}
-                </div>
+                  </TooltipTrigger>
+                  <TooltipContent side="right" className="bg-stone-800 border-stone-700 text-stone-200">
+                    <p>Initiative</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </>
+          ) : (
+            <>
+              {/* Chat Button - Left side, mirrored to settings */}
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => setChatOpen(true)}
+                      className="text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto"
+                      data-testid="button-chat"
+                    >
+                      <MessageSquare className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="right" className="bg-stone-800 border-stone-700 text-stone-200">
+                    <p>Chat</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+              
+              {/* Dice Roller Button with Menu - Left side under chat */}
+              <div className="relative">
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => setDiceMenuOpen(!diceMenuOpen)}
+                        className="text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto"
+                        data-testid="button-dice-roller"
+                      >
+                        <Dices className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="right" className="bg-stone-800 border-stone-700 text-stone-200">
+                      <p>Roll Dice</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+                
+                {/* Dice Quick Menu */}
+                {diceMenuOpen && (
+                  <div className="absolute left-full ml-2 top-0 bg-stone-900/95 border border-stone-700 rounded-lg p-2 pointer-events-auto shadow-xl z-50">
+                    <div className="flex flex-col gap-1 min-w-[80px]">
+                      {['d4', 'd6', 'd8', 'd10', 'd12', 'd20'].map((die) => (
+                        <Button
+                          key={die}
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            gameWs.sendDiceRoll(die, 0, undefined, character?.id);
+                            setDiceMenuOpen(false);
+                          }}
+                          className="text-white/80 hover:text-white hover:bg-white/10 justify-start font-mono"
+                          data-testid={`button-roll-${die}`}
+                        >
+                          {die.toUpperCase()}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
+            </>
+          )}
         </div>
         
-        {/* Right Side: Settings / Menu Button for ALL Roles */}
-        <div className="pointer-events-auto flex flex-col gap-2">
-          <CampaignMenu 
-            campaignId={effectiveCampaignId || undefined}
-            role={role} 
-            inviteCode={(campaign && typeof campaign === 'object' && 'inviteCode' in campaign ? campaign.inviteCode as string : "") || ""}
-            hotbarSlots={(campaign && typeof campaign === 'object' && 'hotbarSlots' in campaign ? (campaign as any).hotbarSlots as number : 5) || 5}
-            inspectedChar={inspectedChar}
-            onInspectChar={setInspectedChar}
-            onAddCharacterToken={handleAddCharacterToken}
-            onChangeMap={handleChangeMap}
-            characters={characters as any[]}
-            members={members as any[]}
-            onAddCharacter={handleAddCharacter}
-            onViewCharacter={handleViewCharacter}
-            onLevelUpAll={handleLevelUpAll}
-            chatOpen={chatOpen}
-            onChatOpenChange={setChatOpen}
-            onAssignCharacter={handleAssignCharacter}
-            myPermissions={myPermissions}
-            onOpenCampaignSpecies={() => setCampaignSpeciesOpen(true)}
-            isOwner={!!(campaign && typeof campaign === 'object' && 'gmUserId' in campaign && (campaign as any).gmUserId === user?.id)}
-            gmUserId={(campaign && typeof campaign === 'object' && 'gmUserId' in campaign ? (campaign as any).gmUserId as string : undefined)}
-            beaconColor={myMembership?.beaconColor || '#FBB524'}
-            onChangeBeaconColor={() => {
-              setPendingBeaconColor(myMembership?.beaconColor || '#FBB524');
-              setBeaconColorDialogOpen(true);
-            }}
-          />
-          
-          {/* Scenes Button (GM Only) - Icon only, directly under Settings */}
-          {role === 'gm' && (
+        {/* Right Side: Settings / Menu Button for ALL Roles (hidden in sandbox) */}
+        {!isSandbox && (
+          <div className="pointer-events-auto flex flex-col gap-2">
+            <CampaignMenu 
+              campaignId={effectiveCampaignId || undefined}
+              role={role} 
+              inviteCode={(campaign && typeof campaign === 'object' && 'inviteCode' in campaign ? campaign.inviteCode as string : "") || ""}
+              hotbarSlots={(campaign && typeof campaign === 'object' && 'hotbarSlots' in campaign ? (campaign as any).hotbarSlots as number : 5) || 5}
+              inspectedChar={inspectedChar}
+              onInspectChar={setInspectedChar}
+              onAddCharacterToken={handleAddCharacterToken}
+              onChangeMap={handleChangeMap}
+              characters={characters as any[]}
+              members={members as any[]}
+              onAddCharacter={handleAddCharacter}
+              onViewCharacter={handleViewCharacter}
+              onLevelUpAll={handleLevelUpAll}
+              chatOpen={chatOpen}
+              onChatOpenChange={setChatOpen}
+              onAssignCharacter={handleAssignCharacter}
+              myPermissions={myPermissions}
+              onOpenCampaignSpecies={() => setCampaignSpeciesOpen(true)}
+              isOwner={!!(campaign && typeof campaign === 'object' && 'gmUserId' in campaign && (campaign as any).gmUserId === user?.id)}
+              gmUserId={(campaign && typeof campaign === 'object' && 'gmUserId' in campaign ? (campaign as any).gmUserId as string : undefined)}
+              beaconColor={myMembership?.beaconColor || '#FBB524'}
+              onChangeBeaconColor={() => {
+                setPendingBeaconColor(myMembership?.beaconColor || '#FBB524');
+                setBeaconColorDialogOpen(true);
+              }}
+            />
+            
+            {/* Scenes Button (GM Only) - Icon only, directly under Settings */}
+            {role === 'gm' && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => setScenesManagementOpen(true)}
+                      className="text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto relative z-[60]"
+                      data-testid="button-scenes"
+                    >
+                      <Layers className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="left" className="bg-stone-800 border-stone-700 text-stone-200">
+                    <p>Scenes</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
+            
+            {/* Initiative Button - Under scenes/settings */}
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
                     variant="ghost"
                     size="icon"
-                    onClick={() => setScenesManagementOpen(true)}
-                    className="text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto relative z-[60]"
-                    data-testid="button-scenes"
+                    onClick={() => setInitiativeTrackerOpen(true)}
+                    className="text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto"
+                    data-testid="button-initiative"
                   >
-                    <Layers className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
+                    <Swords className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent side="left" className="bg-stone-800 border-stone-700 text-stone-200">
-                  <p>Scenes</p>
+                  <p>Initiative</p>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
-          )}
-          
-          {/* Initiative Button - Under scenes/settings */}
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => setInitiativeTrackerOpen(true)}
-                  className="text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto"
-                  data-testid="button-initiative"
-                >
-                  <Swords className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="left" className="bg-stone-800 border-stone-700 text-stone-200">
-                <p>Initiative</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        </div>
+          </div>
+        )}
       </div>
 
       {/* Show message when player has no character assigned */}
-      {!character && role === 'player' && (
+      {!isSandbox && !character && role === 'player' && (
         <div className="fixed bottom-4 left-4 z-40 bg-stone-900/90 border border-stone-700 rounded-lg p-3 text-stone-300 text-sm">
           No character assigned
         </div>
@@ -3303,6 +3637,20 @@ export default function Campaign() {
         </Sheet>
       )}
 
+      {/* Sandbox Characters Panel */}
+      {isSandbox && (
+        <Sheet open={sandboxCharactersOpen} onOpenChange={setSandboxCharactersOpen}>
+          <SheetContent className="bg-stone-900 border-stone-700 text-stone-200 w-full sm:max-w-lg overflow-y-auto custom-scrollbar">
+            <SheetHeader>
+              <SheetTitle className="text-amber-500 font-display text-xl sm:text-2xl">Characters</SheetTitle>
+            </SheetHeader>
+            <div className="mt-4">
+              <SandboxCharactersContent campaignId={effectiveCampaignId!} />
+            </div>
+          </SheetContent>
+        </Sheet>
+      )}
+
       {/* Campaign Species Sheet (GM Only) */}
       {role === 'gm' && (
         <Sheet open={campaignSpeciesOpen} onOpenChange={setCampaignSpeciesOpen}>
@@ -3652,7 +4000,7 @@ export default function Campaign() {
            {/* Hotbars Display - only show when there's a character to display */}
            {/* For players: show ONLY their assigned character (not changed by token clicks) */}
            {/* For GMs: show inspectedChar (clicked token) */}
-           {(role === 'gm' ? inspectedChar : character) && (
+           {!isSandbox && (role === 'gm' ? inspectedChar : character) && (
              <BattleMapHotbars 
                character={role === 'gm' ? inspectedChar : character}
                tokens={tokens}
@@ -3685,7 +4033,7 @@ export default function Campaign() {
           
           {/* Character Sheet Tab Buttons - Right side, aligned with hotbar buttons (visible when character/inspectedChar exists) */}
           {/* For players: show ONLY when they have an assigned character */}
-          {((role === 'player' && character) || (role === 'gm' && inspectedChar)) && (
+          {!isSandbox && ((role === 'player' && character) || (role === 'gm' && inspectedChar)) && (
             <div 
               className="absolute top-44 z-20 flex flex-col gap-2 transition-all duration-300 ease-in-out"
               style={{ right: notesPanelOpen && !isMobile ? `${notesPanelWidth + 16}px` : '12px' }}
@@ -3730,7 +4078,7 @@ export default function Campaign() {
       </div>
 
       {/* Character Sheet - Dialog on mobile (single), FloatingPanel on desktop (multiple) */}
-      {isMobile ? (
+      {!isSandbox && (isMobile ? (
         <Dialog open={openCharacterSheets.length > 0} onOpenChange={(open) => !open && setOpenCharacterSheets([])}>
           <DialogContent className="w-full h-full max-w-full max-h-full bg-stone-900 border-stone-700 text-stone-200 p-0 rounded-none flex flex-col">
             <DialogHeader className="p-4 pb-0 shrink-0">
@@ -3795,7 +4143,7 @@ export default function Campaign() {
             />
           </FloatingPanel>
         ))
-      )}
+      ))}
       
       {/* Initiative Tracker Dialog */}
       <InitiativeTracker
@@ -3849,7 +4197,7 @@ export default function Campaign() {
       )}
       
       {/* GM Character Hotbar - Bottom center of screen, desktop/tablet only */}
-      {role === 'gm' && !isMobile && (
+      {!isSandbox && role === 'gm' && !isMobile && (
         <div 
           ref={gmHotbarRef}
           className={`fixed bottom-4 z-30 pointer-events-auto transition-all duration-300 ease-in-out ${gmHotbarHidden ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
@@ -3949,7 +4297,7 @@ export default function Campaign() {
       )}
       
       {/* GM Hotbar Remove Confirmation Dialog */}
-      <Dialog open={hotbarLongPressSlot !== null} onOpenChange={(open) => !open && setHotbarLongPressSlot(null)}>
+      {!isSandbox && (<Dialog open={hotbarLongPressSlot !== null} onOpenChange={(open) => !open && setHotbarLongPressSlot(null)}>
         <DialogContent className="bg-stone-900 border-stone-700 text-stone-200 max-w-xs">
           <DialogHeader>
             <DialogTitle className="text-amber-500">Remove from Hotbar</DialogTitle>
@@ -3979,10 +4327,10 @@ export default function Campaign() {
             </Button>
           </div>
         </DialogContent>
-      </Dialog>
+      </Dialog>)}
       
       {/* GM Character Hotbar Selector Dialog */}
-      <Dialog open={hotbarSelectorOpen !== null} onOpenChange={(open) => !open && setHotbarSelectorOpen(null)}>
+      {!isSandbox && (<Dialog open={hotbarSelectorOpen !== null} onOpenChange={(open) => !open && setHotbarSelectorOpen(null)}>
         <DialogContent className="bg-stone-900 border-stone-700 text-stone-200 max-w-md max-h-[70vh] flex flex-col">
           <DialogHeader>
             <DialogTitle className="text-amber-500">Select Character</DialogTitle>
@@ -4061,7 +4409,7 @@ export default function Campaign() {
             </div>
           </ScrollArea>
         </DialogContent>
-      </Dialog>
+      </Dialog>)}
       
       {/* Beacon Color Picker Dialog */}
       <Dialog open={beaconColorDialogOpen} onOpenChange={setBeaconColorDialogOpen}>
