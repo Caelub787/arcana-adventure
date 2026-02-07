@@ -8009,7 +8009,10 @@ export function CampaignMenu({ campaignId, role, inviteCode, hotbarSlots = 5, in
                       <SelectItem value="none">None</SelectItem>
                       <SelectItem value="characters">Characters</SelectItem>
                       <SelectItem value="chat">Chat</SelectItem>
+                      <SelectItem value="initiative">Initiative</SelectItem>
                       <SelectItem value="notes">Notes</SelectItem>
+                      <SelectItem value="scene">Scene Settings</SelectItem>
+                      <SelectItem value="settings">Settings</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -8687,7 +8690,10 @@ export function CampaignMenu({ campaignId, role, inviteCode, hotbarSlots = 5, in
                       <SelectItem value="none">None</SelectItem>
                       <SelectItem value="characters">Characters</SelectItem>
                       <SelectItem value="chat">Chat</SelectItem>
+                      <SelectItem value="initiative">Initiative</SelectItem>
                       <SelectItem value="notes">Notes</SelectItem>
+                      <SelectItem value="scene">Scene Settings</SelectItem>
+                      <SelectItem value="settings">Settings</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>

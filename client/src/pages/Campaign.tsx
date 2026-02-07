@@ -1626,7 +1626,7 @@ function SandboxSheetEditor({
               {item.name}
             </h2>
             <span className={`text-[10px] px-1.5 py-0.5 rounded ${item.type === 'actor' ? 'text-amber-500/60 bg-amber-900/20' : 'text-purple-400/60 bg-purple-900/20'}`}>
-              {item.type === 'actor' ? 'Actor' : 'Template'}
+              {item.type === 'actor' ? 'Actor' : 'Actor Template'}
             </span>
           </div>
           <div className="flex items-center gap-1">
@@ -1694,7 +1694,7 @@ function SandboxSheetEditor({
               {item.name}
             </span>
             <span className={`text-[10px] px-1.5 py-0.5 rounded shrink-0 ${item.type === 'actor' ? 'text-amber-500/60 bg-amber-900/20' : 'text-purple-400/60 bg-purple-900/20'}`}>
-              {item.type === 'actor' ? 'Actor' : 'Template'}
+              {item.type === 'actor' ? 'Actor' : 'Actor Template'}
             </span>
           </div>
           <div className="flex items-center gap-1 shrink-0">
@@ -1986,7 +1986,7 @@ function SandboxCharactersContent({
             </span>
           )}
           <span className={`text-[10px] px-1.5 py-0.5 rounded shrink-0 ${type === 'actor' ? 'text-amber-500/60 bg-amber-900/20' : 'text-purple-400/60 bg-purple-900/20'}`}>
-            {type === 'actor' ? 'Actor' : 'Template'}
+            {type === 'actor' ? 'Actor' : 'Actor Template'}
           </span>
         </div>
         <div className="flex items-center gap-0.5 shrink-0">
@@ -2113,7 +2113,7 @@ function SandboxCharactersContent({
                 }`}
                 data-testid="toggle-type-template"
               >
-                Template
+                Actor Template
               </button>
             </div>
             <div className="flex gap-2">
@@ -2878,16 +2878,21 @@ export default function Campaign() {
   useEffect(() => {
     if (campaign && !defaultPanelAppliedRef.current) {
       defaultPanelAppliedRef.current = true;
-      const dp = campaignDefaultPanel || 'characters';
-      if (dp === 'none') {
+      if (isMobile) {
         setActiveSidePanel(null);
         setSidePanelMinimized(true);
-      } else if (['characters', 'chat', 'notes', 'settings', 'scene', 'initiative'].includes(dp)) {
-        setActiveSidePanel(dp as SidePanelTab);
-        setSidePanelMinimized(false);
+      } else {
+        const dp = campaignDefaultPanel || 'characters';
+        if (dp === 'none') {
+          setActiveSidePanel(null);
+          setSidePanelMinimized(true);
+        } else if (['characters', 'chat', 'notes', 'settings', 'scene', 'initiative'].includes(dp)) {
+          setActiveSidePanel(dp as SidePanelTab);
+          setSidePanelMinimized(false);
+        }
       }
     }
-  }, [campaign, campaignDefaultPanel]);
+  }, [campaign, campaignDefaultPanel, isMobile]);
 
   const { data: sandboxTemplatesList = [] } = useQuery({
     queryKey: ['sandbox-templates', effectiveCampaignId],
