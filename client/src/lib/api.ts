@@ -42,6 +42,7 @@ export interface Campaign {
   gridSize: number;
   currentMap?: string;
   activeSceneId?: string;
+  system: string;
   createdAt: string;
   lastPlayed: string;
 }
