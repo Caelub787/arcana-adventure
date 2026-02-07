@@ -166,6 +166,50 @@ function Router() {
   );
 }
 
+class ErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { hasError: boolean; error: Error | null }
+> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error('ErrorBoundary caught:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen bg-black text-white flex items-center justify-center p-8">
+          <div className="max-w-lg text-center space-y-4">
+            <h1 className="text-2xl font-bold text-red-400">Something went wrong</h1>
+            <p className="text-stone-400">{this.state.error?.message}</p>
+            <pre className="text-xs text-stone-500 text-left overflow-auto max-h-40 bg-stone-900 p-3 rounded">
+              {this.state.error?.stack}
+            </pre>
+            <Button
+              onClick={() => {
+                this.setState({ hasError: false, error: null });
+                window.location.reload();
+              }}
+              className="bg-amber-600 hover:bg-amber-700"
+            >
+              Reload Page
+            </Button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 function AppContent() {
   const { isBanned, banDetails } = useAuth();
 
@@ -177,7 +221,9 @@ function AppContent() {
     <>
       <SiteUpdateBanner />
       <Toaster />
-      <Router />
+      <ErrorBoundary>
+        <Router />
+      </ErrorBoundary>
     </>
   );
 }

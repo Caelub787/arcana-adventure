@@ -1711,26 +1711,11 @@ export default function Campaign() {
   const [floatingNotesSize, setFloatingNotesSize] = useState({ width: 700, height: 500 });
   const [floatingNotesCollapsed, setFloatingNotesCollapsed] = useState(false);
 
-  // Unified side panel state
+  // Unified side panel state (campaignDefaultPanel and useEffect moved after campaign query declaration)
   type SidePanelTab = 'characters' | 'chat' | 'notes' | 'settings' | 'scene' | 'initiative' | null;
-  const campaignDefaultPanel = campaign && typeof campaign === 'object' && 'defaultPanel' in campaign ? (campaign as any).defaultPanel : 'characters';
   const [activeSidePanel, setActiveSidePanel] = useState<SidePanelTab>('characters');
   const [sidePanelMinimized, setSidePanelMinimized] = useState(false);
   const defaultPanelAppliedRef = useRef(false);
-  
-  useEffect(() => {
-    if (campaign && !defaultPanelAppliedRef.current) {
-      defaultPanelAppliedRef.current = true;
-      const dp = campaignDefaultPanel || 'characters';
-      if (dp === 'none') {
-        setActiveSidePanel(null);
-        setSidePanelMinimized(true);
-      } else if (['characters', 'chat', 'notes', 'settings', 'scene', 'initiative'].includes(dp)) {
-        setActiveSidePanel(dp as SidePanelTab);
-        setSidePanelMinimized(false);
-      }
-    }
-  }, [campaign, campaignDefaultPanel]);
   const sidePanelOpen = activeSidePanel !== null && !sidePanelMinimized;
   const chatOpen = activeSidePanel === 'chat' && !sidePanelMinimized;
   
@@ -2025,6 +2010,21 @@ export default function Campaign() {
   // Get campaign's active scene ID (what players see)
   const campaignActiveSceneId = campaign && typeof campaign === 'object' && 'activeSceneId' in campaign ? (campaign as any).activeSceneId as string | null : null;
   const isSandbox = campaign && typeof campaign === 'object' && 'system' in campaign && (campaign as any).system === 'sandbox';
+
+  const campaignDefaultPanel = campaign && typeof campaign === 'object' && 'defaultPanel' in campaign ? (campaign as any).defaultPanel : 'characters';
+  useEffect(() => {
+    if (campaign && !defaultPanelAppliedRef.current) {
+      defaultPanelAppliedRef.current = true;
+      const dp = campaignDefaultPanel || 'characters';
+      if (dp === 'none') {
+        setActiveSidePanel(null);
+        setSidePanelMinimized(true);
+      } else if (['characters', 'chat', 'notes', 'settings', 'scene', 'initiative'].includes(dp)) {
+        setActiveSidePanel(dp as SidePanelTab);
+        setSidePanelMinimized(false);
+      }
+    }
+  }, [campaign, campaignDefaultPanel]);
 
   const { data: sandboxTemplatesList = [] } = useQuery({
     queryKey: ['sandbox-templates', effectiveCampaignId],
