@@ -1771,7 +1771,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   const isAdminUser = async (userId: string | undefined): Promise<boolean> => {
     if (!userId) return false;
     const user = await storage.getUser(userId);
-    return user ? ADMIN_EMAILS.includes(user.email.toLowerCase()) : false;
+    return user ? (user.isAdmin || ADMIN_EMAILS.includes(user.email.toLowerCase())) : false;
   };
 
   /**
@@ -1887,7 +1887,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           email: user.email, 
           username: user.username, 
           name: user.name,
-          isAdmin: ADMIN_EMAILS.includes(user.email.toLowerCase())
+          isAdmin: user.isAdmin || ADMIN_EMAILS.includes(user.email.toLowerCase())
         } 
       });
     } catch (err) {
@@ -1922,7 +1922,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           email: user.email, 
           username: user.username, 
           name: user.name,
-          isAdmin: ADMIN_EMAILS.includes(user.email.toLowerCase())
+          isAdmin: user.isAdmin || ADMIN_EMAILS.includes(user.email.toLowerCase())
         } 
       });
     } catch (err) {
@@ -1949,7 +1949,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         email: user.email, 
         username: user.username, 
         name: user.name,
-        isAdmin: ADMIN_EMAILS.includes(user.email.toLowerCase())
+        isAdmin: user.isAdmin || ADMIN_EMAILS.includes(user.email.toLowerCase())
       } 
     });
   });
