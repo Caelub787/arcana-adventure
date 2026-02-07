@@ -3791,109 +3791,6 @@ export default function Campaign() {
                   variant="ghost"
                   size="icon"
                   onClick={() => {
-                    if (activeSidePanel === 'settings' && !sidePanelMinimized) {
-                      setSidePanelMinimized(true);
-                    } else {
-                      setActiveSidePanel('settings');
-                      setSidePanelMinimized(false);
-                    }
-                  }}
-                  className={`text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto ${activeSidePanel === 'settings' && !sidePanelMinimized ? 'text-amber-400 bg-white/10' : ''}`}
-                  data-testid="button-panel-settings"
-                >
-                  <Settings className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="left" className="bg-stone-800 border-stone-700 text-stone-200">
-                <p>Settings</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-
-          {role === 'gm' && !isSandbox && (
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => setScenesManagementOpen(true)}
-                    className="text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto"
-                    data-testid="button-scenes"
-                  >
-                    <Layers className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="left" className="bg-stone-800 border-stone-700 text-stone-200">
-                  <p>Scenes</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          )}
-
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => {
-                    if (activeSidePanel === 'initiative' && !sidePanelMinimized) {
-                      setSidePanelMinimized(true);
-                    } else {
-                      setActiveSidePanel('initiative');
-                      setSidePanelMinimized(false);
-                    }
-                  }}
-                  className={`text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto ${activeSidePanel === 'initiative' && !sidePanelMinimized ? 'text-amber-400 bg-white/10' : ''}`}
-                  data-testid="button-panel-initiative"
-                >
-                  <Swords className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="left" className="bg-stone-800 border-stone-700 text-stone-200">
-                <p>Initiative</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-
-          {role === 'gm' && (
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => {
-                      if (activeSidePanel === 'scene' && !sidePanelMinimized) {
-                        setSidePanelMinimized(true);
-                      } else {
-                        setActiveSidePanel('scene');
-                        setSidePanelMinimized(false);
-                      }
-                    }}
-                    className={`text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto ${activeSidePanel === 'scene' && !sidePanelMinimized ? 'text-amber-400 bg-white/10' : ''}`}
-                    data-testid="button-panel-scene"
-                  >
-                    <Grid3X3 className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="left" className="bg-stone-800 border-stone-700 text-stone-200">
-                  <p>Scene Settings</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          )}
-          
-          <div className="w-8 h-px bg-stone-600/50 mx-auto" />
-
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => {
                     if (activeSidePanel === 'chat' && !sidePanelMinimized) {
                       setSidePanelMinimized(true);
                     } else {
@@ -3946,6 +3843,32 @@ export default function Campaign() {
                   variant="ghost"
                   size="icon"
                   onClick={() => {
+                    if (activeSidePanel === 'initiative' && !sidePanelMinimized) {
+                      setSidePanelMinimized(true);
+                    } else {
+                      setActiveSidePanel('initiative');
+                      setSidePanelMinimized(false);
+                    }
+                  }}
+                  className={`text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto ${activeSidePanel === 'initiative' && !sidePanelMinimized ? 'text-amber-400 bg-white/10' : ''}`}
+                  data-testid="button-panel-initiative"
+                >
+                  <Swords className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="left" className="bg-stone-800 border-stone-700 text-stone-200">
+                <p>Initiative</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => {
                     if (activeSidePanel === 'notes' && !sidePanelMinimized) {
                       setSidePanelMinimized(true);
                     } else {
@@ -3964,6 +3887,81 @@ export default function Campaign() {
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
+
+          {role === 'gm' && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => {
+                      if (activeSidePanel === 'scene' && !sidePanelMinimized) {
+                        setSidePanelMinimized(true);
+                      } else {
+                        setActiveSidePanel('scene');
+                        setSidePanelMinimized(false);
+                      }
+                    }}
+                    className={`text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto ${activeSidePanel === 'scene' && !sidePanelMinimized ? 'text-amber-400 bg-white/10' : ''}`}
+                    data-testid="button-panel-scene"
+                  >
+                    <Grid3X3 className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="left" className="bg-stone-800 border-stone-700 text-stone-200">
+                  <p>Scene Settings</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => {
+                    if (activeSidePanel === 'settings' && !sidePanelMinimized) {
+                      setSidePanelMinimized(true);
+                    } else {
+                      setActiveSidePanel('settings');
+                      setSidePanelMinimized(false);
+                    }
+                  }}
+                  className={`text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto ${activeSidePanel === 'settings' && !sidePanelMinimized ? 'text-amber-400 bg-white/10' : ''}`}
+                  data-testid="button-panel-settings"
+                >
+                  <Settings className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="left" className="bg-stone-800 border-stone-700 text-stone-200">
+                <p>Settings</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
+          {role === 'gm' && !isSandbox && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setScenesManagementOpen(true)}
+                    className="text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto"
+                    data-testid="button-scenes"
+                  >
+                    <Layers className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="left" className="bg-stone-800 border-stone-700 text-stone-200">
+                  <p>Scenes</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
         </div>
       </div>
 
