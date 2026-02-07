@@ -1324,7 +1324,7 @@ export default function Campaign() {
 
   // Create campaign mutation
   const createCampaignMutation = useMutation({
-    mutationFn: (name: string) => api.createCampaign(name),
+    mutationFn: ({ name, system }: { name: string; system: string }) => api.createCampaign(name, system),
     onSuccess: (newCampaign) => {
       setCreatedCampaignId(newCampaign.id);
       queryClient.invalidateQueries({ queryKey: ['/api/campaigns'] });
@@ -1712,7 +1712,7 @@ export default function Campaign() {
       toast({ title: "Error", description: "Please enter a campaign name", variant: "destructive" });
       return;
     }
-    createCampaignMutation.mutate(newCampaignName.trim());
+    createCampaignMutation.mutate({ name: newCampaignName.trim(), system: newCampaignSystem });
     setShowCampaignDialog(false);
   };
 
@@ -2687,6 +2687,7 @@ export default function Campaign() {
                   </SelectTrigger>
                   <SelectContent className="bg-stone-800 border-stone-700">
                     <SelectItem value="arcana-adventure" className="text-stone-200">Arcana Adventure</SelectItem>
+                    <SelectItem value="sandbox" className="text-stone-200">Sandbox</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

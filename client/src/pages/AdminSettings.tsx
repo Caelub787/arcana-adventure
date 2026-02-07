@@ -607,6 +607,7 @@ export default function AdminSettings() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="Arcana Adventure">Arcana Adventure</SelectItem>
+                <SelectItem value="Sandbox">Sandbox</SelectItem>
               </SelectContent>
             </Select>
           </div>
