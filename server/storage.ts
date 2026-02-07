@@ -43,7 +43,9 @@ import {
   type UserNotification, type InsertUserNotification,
   type TermsAndConditions, type InsertTermsAndConditions,
   type UserTermsAcceptance, type InsertUserTermsAcceptance,
-  users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, items, spells, characterPermissions, initiativeEntries, systemSpecies, campaignSpecies, featTemplates, featTrees, feats, featConnections, characterFeats, systemSpells, systemSkills, characterCustomSkills, systemTraits, characterTraits, characterFolders, characterTemplateFolders, sceneFolders, friendRequests, friendships, noteFolders, notes, noteReferences, noteShares, tokenEffects, spellEffects, itemEffects, tokenActiveEffects, thrownItems, adminNotifications, userNotifications, termsAndConditions, userTermsAcceptance
+  type SandboxTemplate, type InsertSandboxTemplate,
+  type SandboxActor, type InsertSandboxActor,
+  users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, items, spells, characterPermissions, initiativeEntries, systemSpecies, campaignSpecies, featTemplates, featTrees, feats, featConnections, characterFeats, systemSpells, systemSkills, characterCustomSkills, systemTraits, characterTraits, characterFolders, characterTemplateFolders, sceneFolders, friendRequests, friendships, noteFolders, notes, noteReferences, noteShares, tokenEffects, spellEffects, itemEffects, tokenActiveEffects, thrownItems, adminNotifications, userNotifications, termsAndConditions, userTermsAcceptance, sandboxTemplates, sandboxActors
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql, inArray, or, isNull } from "drizzle-orm";
@@ -411,6 +413,16 @@ export interface IStorage {
   updateTerms(content: string, updatedBy: string): Promise<TermsAndConditions>;
   hasUserAcceptedCurrentTerms(userId: string): Promise<boolean>;
   acceptTerms(userId: string, version: number): Promise<UserTermsAcceptance>;
+
+  // Sandbox operations
+  getSandboxTemplates(campaignId: string): Promise<SandboxTemplate[]>;
+  createSandboxTemplate(data: InsertSandboxTemplate): Promise<SandboxTemplate>;
+  updateSandboxTemplate(id: string, data: Partial<SandboxTemplate>): Promise<SandboxTemplate>;
+  deleteSandboxTemplate(id: string): Promise<void>;
+  getSandboxActors(campaignId: string): Promise<SandboxActor[]>;
+  createSandboxActor(data: InsertSandboxActor): Promise<SandboxActor>;
+  updateSandboxActor(id: string, data: Partial<SandboxActor>): Promise<SandboxActor>;
+  deleteSandboxActor(id: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -3198,6 +3210,42 @@ export class DatabaseStorage implements IStorage {
       termsVersion: version,
     }).returning();
     return acceptance;
+  }
+
+  async getSandboxTemplates(campaignId: string): Promise<SandboxTemplate[]> {
+    return await db.select().from(sandboxTemplates).where(eq(sandboxTemplates.campaignId, campaignId)).orderBy(sandboxTemplates.createdAt);
+  }
+
+  async createSandboxTemplate(data: InsertSandboxTemplate): Promise<SandboxTemplate> {
+    const [template] = await db.insert(sandboxTemplates).values(data).returning();
+    return template;
+  }
+
+  async updateSandboxTemplate(id: string, data: Partial<SandboxTemplate>): Promise<SandboxTemplate> {
+    const [template] = await db.update(sandboxTemplates).set(data).where(eq(sandboxTemplates.id, id)).returning();
+    return template;
+  }
+
+  async deleteSandboxTemplate(id: string): Promise<void> {
+    await db.delete(sandboxTemplates).where(eq(sandboxTemplates.id, id));
+  }
+
+  async getSandboxActors(campaignId: string): Promise<SandboxActor[]> {
+    return await db.select().from(sandboxActors).where(eq(sandboxActors.campaignId, campaignId)).orderBy(sandboxActors.createdAt);
+  }
+
+  async createSandboxActor(data: InsertSandboxActor): Promise<SandboxActor> {
+    const [actor] = await db.insert(sandboxActors).values(data).returning();
+    return actor;
+  }
+
+  async updateSandboxActor(id: string, data: Partial<SandboxActor>): Promise<SandboxActor> {
+    const [actor] = await db.update(sandboxActors).set(data).where(eq(sandboxActors.id, id)).returning();
+    return actor;
+  }
+
+  async deleteSandboxActor(id: string): Promise<void> {
+    await db.delete(sandboxActors).where(eq(sandboxActors.id, id));
   }
 }
 

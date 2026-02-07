@@ -83,6 +83,7 @@ export const campaigns = pgTable("campaigns", {
   currentMap: text("current_map"), // deprecated, kept for backward compat
   activeSceneId: varchar("active_scene_id"),
   hotbarSlots: integer("hotbar_slots").default(5).notNull(), // Number of slots per hotbar (default 5)
+  system: text("system").notNull().default("arcana-adventure"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   lastPlayed: timestamp("last_played").defaultNow().notNull(),
 });
@@ -1130,3 +1131,36 @@ export const insertUserTermsAcceptanceSchema = createInsertSchema(userTermsAccep
 
 export type InsertUserTermsAcceptance = z.infer<typeof insertUserTermsAcceptanceSchema>;
 export type UserTermsAcceptance = typeof userTermsAcceptance.$inferSelect;
+
+// Sandbox Templates table
+export const sandboxTemplates = pgTable("sandbox_templates", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  campaignId: varchar("campaign_id").notNull().references(() => campaigns.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  data: text("data").default("{}"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertSandboxTemplateSchema = createInsertSchema(sandboxTemplates).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertSandboxTemplate = z.infer<typeof insertSandboxTemplateSchema>;
+export type SandboxTemplate = typeof sandboxTemplates.$inferSelect;
+
+// Sandbox Actors table
+export const sandboxActors = pgTable("sandbox_actors", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  campaignId: varchar("campaign_id").notNull().references(() => campaigns.id, { onDelete: "cascade" }),
+  templateId: varchar("template_id").references(() => sandboxTemplates.id, { onDelete: "set null" }),
+  name: text("name").notNull(),
+  data: text("data").default("{}"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertSandboxActorSchema = createInsertSchema(sandboxActors).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertSandboxActor = z.infer<typeof insertSandboxActorSchema>;
+export type SandboxActor = typeof sandboxActors.$inferSelect;

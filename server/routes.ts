@@ -2032,7 +2032,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Campaign routes
   app.post("/api/campaigns", requireAuth, async (req, res) => {
     try {
-      const { name, gridSize, currentMap } = req.body;
+      const { name, system, gridSize, currentMap } = req.body;
       
       const inviteCode = "ARCANA-" + Math.floor(1000 + Math.random() * 9000);
       
@@ -2041,7 +2041,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         inviteCode,
         gmUserId: req.session.userId!,
         gridSize: gridSize || 50,
-        currentMap
+        currentMap,
+        system: system || "arcana-adventure"
       });
 
       // Add GM as a member
@@ -7980,6 +7981,97 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (err) {
       console.error("Failed to accept terms:", err);
       res.status(500).json({ error: "Failed to accept terms" });
+    }
+  });
+
+  // Sandbox Template endpoints
+  app.get("/api/campaigns/:campaignId/sandbox/templates", requireAuth, async (req, res) => {
+    try {
+      const templates = await storage.getSandboxTemplates(req.params.campaignId);
+      res.json(templates);
+    } catch (e) {
+      console.error("Failed to get sandbox templates:", e);
+      res.status(500).json({ error: "Failed to get sandbox templates" });
+    }
+  });
+
+  app.post("/api/campaigns/:campaignId/sandbox/templates", requireAuth, async (req, res) => {
+    try {
+      const template = await storage.createSandboxTemplate({
+        campaignId: req.params.campaignId,
+        name: req.body.name || "Untitled Template",
+        data: "{}",
+      });
+      res.json(template);
+    } catch (e) {
+      console.error("Failed to create sandbox template:", e);
+      res.status(500).json({ error: "Failed to create sandbox template" });
+    }
+  });
+
+  app.patch("/api/campaigns/:campaignId/sandbox/templates/:templateId", requireAuth, async (req, res) => {
+    try {
+      const template = await storage.updateSandboxTemplate(req.params.templateId, req.body);
+      res.json(template);
+    } catch (e) {
+      console.error("Failed to update sandbox template:", e);
+      res.status(500).json({ error: "Failed to update sandbox template" });
+    }
+  });
+
+  app.delete("/api/campaigns/:campaignId/sandbox/templates/:templateId", requireAuth, async (req, res) => {
+    try {
+      await storage.deleteSandboxTemplate(req.params.templateId);
+      res.json({ success: true });
+    } catch (e) {
+      console.error("Failed to delete sandbox template:", e);
+      res.status(500).json({ error: "Failed to delete sandbox template" });
+    }
+  });
+
+  // Sandbox Actor endpoints
+  app.get("/api/campaigns/:campaignId/sandbox/actors", requireAuth, async (req, res) => {
+    try {
+      const actors = await storage.getSandboxActors(req.params.campaignId);
+      res.json(actors);
+    } catch (e) {
+      console.error("Failed to get sandbox actors:", e);
+      res.status(500).json({ error: "Failed to get sandbox actors" });
+    }
+  });
+
+  app.post("/api/campaigns/:campaignId/sandbox/actors", requireAuth, async (req, res) => {
+    try {
+      const actor = await storage.createSandboxActor({
+        campaignId: req.params.campaignId,
+        name: req.body.name || "Untitled Actor",
+        templateId: req.body.templateId || null,
+        data: "{}",
+      });
+      res.json(actor);
+    } catch (e) {
+      console.error("Failed to create sandbox actor:", e);
+      res.status(500).json({ error: "Failed to create sandbox actor" });
+    }
+  });
+
+  app.patch("/api/campaigns/:campaignId/sandbox/actors/:actorId", requireAuth, async (req, res) => {
+    try {
+      const actor = await storage.updateSandboxActor(req.params.actorId, req.body);
+      res.json(actor);
+    } catch (e) {
+      console.error("Failed to update sandbox actor:", e);
+      res.status(500).json({ error: "Failed to update sandbox actor" });
+    }
+  });
+
+  app.delete("/api/campaigns/:campaignId/sandbox/actors/:actorId", requireAuth, async (req, res) => {
+    try {
+      await storage.deleteSandboxActor(req.params.actorId);
+      res.json({ success: true });
+    } catch (e) {
+      console.error("Failed to delete sandbox actor:", e);
+      res.status(500).json({ error: "Failed to delete sandbox actor" });
     }
   });
 

@@ -669,10 +669,10 @@ class ApiClient {
   }
 
   // Campaigns
-  async createCampaign(name: string, gridSize?: number, currentMap?: string): Promise<Campaign> {
+  async createCampaign(name: string, system?: string, gridSize?: number, currentMap?: string): Promise<Campaign> {
     return this.request('/campaigns', {
       method: 'POST',
-      body: JSON.stringify({ name, gridSize, currentMap }),
+      body: JSON.stringify({ name, system, gridSize, currentMap }),
     });
   }
 
@@ -1939,6 +1939,71 @@ class ApiClient {
       body: JSON.stringify({ characterId, timing, isNewRound }),
     });
   }
+
+  async getSandboxTemplates(campaignId: string): Promise<SandboxTemplate[]> {
+    return this.request(`/campaigns/${campaignId}/sandbox/templates`);
+  }
+
+  async createSandboxTemplate(campaignId: string, data: { name: string }): Promise<SandboxTemplate> {
+    return this.request(`/campaigns/${campaignId}/sandbox/templates`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateSandboxTemplate(campaignId: string, templateId: string, data: Partial<SandboxTemplate>): Promise<SandboxTemplate> {
+    return this.request(`/campaigns/${campaignId}/sandbox/templates/${templateId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteSandboxTemplate(campaignId: string, templateId: string): Promise<void> {
+    return this.request(`/campaigns/${campaignId}/sandbox/templates/${templateId}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async getSandboxActors(campaignId: string): Promise<SandboxActor[]> {
+    return this.request(`/campaigns/${campaignId}/sandbox/actors`);
+  }
+
+  async createSandboxActor(campaignId: string, data: { name: string; templateId?: string }): Promise<SandboxActor> {
+    return this.request(`/campaigns/${campaignId}/sandbox/actors`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateSandboxActor(campaignId: string, actorId: string, data: Partial<SandboxActor>): Promise<SandboxActor> {
+    return this.request(`/campaigns/${campaignId}/sandbox/actors/${actorId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteSandboxActor(campaignId: string, actorId: string): Promise<void> {
+    return this.request(`/campaigns/${campaignId}/sandbox/actors/${actorId}`, {
+      method: 'DELETE',
+    });
+  }
+}
+
+export interface SandboxTemplate {
+  id: string;
+  campaignId: string;
+  name: string;
+  data: string;
+  createdAt: string;
+}
+
+export interface SandboxActor {
+  id: string;
+  campaignId: string;
+  templateId: string | null;
+  name: string;
+  data: string;
+  createdAt: string;
 }
 
 export interface SearchableEntity {
