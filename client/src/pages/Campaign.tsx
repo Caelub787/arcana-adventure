@@ -1123,6 +1123,13 @@ function SandboxCharactersContent({
       key={item.id}
       className="flex items-center justify-between py-2 px-3 bg-stone-800/30 border border-stone-700/50 rounded-lg hover:bg-stone-800/60 transition-colors cursor-pointer group"
       onClick={() => type === 'actor' ? onOpenActor(item) : onOpenTemplate(item)}
+      draggable={type === 'actor'}
+      onDragStart={(e) => {
+        if (type === 'actor') {
+          e.dataTransfer.setData('application/sandbox-actor', JSON.stringify({ id: item.id, name: item.name }));
+          e.dataTransfer.effectAllowed = 'copy';
+        }
+      }}
       data-testid={`sandbox-${type}-${item.id}`}
     >
       <div className="flex items-center gap-2.5 min-w-0 flex-1">
@@ -3795,7 +3802,7 @@ export default function Campaign() {
             </Tooltip>
           </TooltipProvider>
 
-          {role === 'gm' && (
+          {role === 'gm' && !isSandbox && (
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -4621,7 +4628,37 @@ export default function Campaign() {
       >
         
         {/* Map Area - Takes full space, but HUD overlays it */}
-        <div ref={battlemapContainerRef} className="relative flex-grow w-full bg-stone-900 z-0 overflow-hidden">
+        <div ref={battlemapContainerRef} className="relative flex-grow w-full bg-stone-900 z-0 overflow-hidden"
+          onDragOver={(e) => {
+            if (e.dataTransfer.types.includes('application/sandbox-actor')) {
+              e.preventDefault();
+              e.dataTransfer.dropEffect = 'copy';
+            }
+          }}
+          onDrop={(e) => {
+            const actorData = e.dataTransfer.getData('application/sandbox-actor');
+            if (actorData && isSandbox) {
+              e.preventDefault();
+              try {
+                const actor = JSON.parse(actorData);
+                const rect = e.currentTarget.getBoundingClientRect();
+                const screenX = e.clientX - rect.left;
+                const screenY = e.clientY - rect.top;
+                const worldX = currentView.x + (screenX - rect.width / 2) / currentView.zoom;
+                const worldY = currentView.y + (screenY - rect.height / 2) / currentView.zoom;
+                createTokenMutation.mutate({
+                  type: 'npc',
+                  x: Math.round(worldX),
+                  y: Math.round(worldY),
+                  image: goblinToken,
+                  label: actor.name,
+                });
+              } catch (err) {
+                console.error('Failed to handle actor drop:', err);
+              }
+            }
+          }}
+        >
            <BattleMap 
              tokens={tokens} 
              onMoveToken={handleMoveToken} 
@@ -4923,7 +4960,7 @@ export default function Campaign() {
                 {activeSidePanel === 'characters' && 'Characters'}
                 {activeSidePanel === 'notes' && 'Notes'}
                 {activeSidePanel === 'settings' && 'Settings'}
-                {activeSidePanel === 'scene' && 'Scene Settings'}
+                {activeSidePanel === 'scene' && 'Scenes'}
                 {activeSidePanel === 'initiative' && 'Initiative'}
               </h2>
               <Button
@@ -5034,17 +5071,228 @@ export default function Campaign() {
                 </div>
               )}
               {activeSidePanel === 'scene' && role === 'gm' && (
-                <div className="h-full overflow-y-auto p-3">
-                  {activeScene ? (
-                    <SceneSettingsForm
-                      scene={activeScene}
-                      onUpdateScene={handleUpdateScene}
-                    />
-                  ) : (
-                    <div className="text-stone-500 text-center italic text-sm pt-8">
-                      No active scene selected
+                <div className="h-full overflow-y-auto p-3 space-y-3">
+                  <div className="space-y-2">
+                    <Label className="text-stone-300 text-xs font-bold">New Scene</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        value={newSceneName}
+                        onChange={(e) => setNewSceneName(e.target.value)}
+                        placeholder="Scene name..."
+                        className="flex-1 bg-stone-800 border-stone-700 text-stone-200 h-8 text-sm"
+                        onKeyPress={(e) => e.key === 'Enter' && handleCreateScene()}
+                        data-testid="input-side-new-scene-name"
+                      />
+                      <Button
+                        size="sm"
+                        onClick={handleCreateScene}
+                        disabled={!newSceneName.trim() || createSceneMutation.isPending}
+                        className="bg-amber-700 hover:bg-amber-600 h-8 px-2"
+                        data-testid="button-side-create-scene"
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                      </Button>
                     </div>
-                  )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label className="text-stone-300 text-xs font-bold">New Folder</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        value={newSceneFolderName}
+                        onChange={(e) => setNewSceneFolderName(e.target.value)}
+                        placeholder="Folder name..."
+                        className="flex-1 bg-stone-800 border-stone-700 text-stone-200 h-8 text-sm"
+                        onKeyPress={(e) => e.key === 'Enter' && newSceneFolderName.trim() && createSceneFolderMutation.mutate(newSceneFolderName.trim())}
+                        data-testid="input-side-new-scene-folder"
+                      />
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => { if (newSceneFolderName.trim()) createSceneFolderMutation.mutate(newSceneFolderName.trim()); }}
+                        disabled={!newSceneFolderName.trim() || createSceneFolderMutation.isPending}
+                        className="bg-stone-800 hover:bg-stone-700 h-8 px-2"
+                        data-testid="button-side-create-scene-folder"
+                      >
+                        <FolderPlus className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label className="text-stone-300 text-xs font-bold">Scenes</Label>
+
+                    {sceneFolders.map((folder: SceneFolder) => {
+                      const folderScenes = getScenesInFolder(folder.id);
+                      const isExpanded = expandedSceneFolders.has(folder.id);
+
+                      return (
+                        <div
+                          key={folder.id}
+                          className={`rounded-lg border border-stone-700 p-1.5 transition-colors ${draggingSceneId ? 'border-dashed' : ''}`}
+                          onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add('border-amber-500'); }}
+                          onDragLeave={(e) => { e.currentTarget.classList.remove('border-amber-500'); }}
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            e.currentTarget.classList.remove('border-amber-500');
+                            const sceneId = e.dataTransfer.getData('text/plain');
+                            if (sceneId) {
+                              moveSceneToFolderMutation.mutate({ sceneId, folderId: folder.id });
+                              setDraggingSceneId(null);
+                            }
+                          }}
+                          data-testid={`side-scene-folder-${folder.id}`}
+                        >
+                          <div
+                            className="flex items-center justify-between p-1.5 cursor-pointer hover:bg-stone-800/50 rounded"
+                            onClick={() => toggleSceneFolder(folder.id)}
+                          >
+                            <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                              {isExpanded ? <ChevronDown className="h-3.5 w-3.5 text-stone-400 shrink-0" /> : <ChevronRight className="h-3.5 w-3.5 text-stone-400 shrink-0" />}
+                              <Folder className="h-3.5 w-3.5 text-amber-500 shrink-0" />
+                              {editingSceneFolderId === folder.id ? (
+                                <Input
+                                  value={editingSceneFolderName}
+                                  onChange={(e) => setEditingSceneFolderName(e.target.value)}
+                                  onClick={(e) => e.stopPropagation()}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') updateSceneFolderMutation.mutate({ id: folder.id, name: editingSceneFolderName });
+                                    else if (e.key === 'Escape') setEditingSceneFolderId(null);
+                                  }}
+                                  onBlur={() => {
+                                    if (editingSceneFolderName.trim() && editingSceneFolderName !== folder.name) updateSceneFolderMutation.mutate({ id: folder.id, name: editingSceneFolderName });
+                                    setEditingSceneFolderId(null);
+                                  }}
+                                  className="h-5 py-0 px-1 text-xs bg-stone-900 border-stone-600"
+                                  autoFocus
+                                />
+                              ) : (
+                                <span className="text-xs font-medium text-stone-200 truncate">{folder.name}</span>
+                              )}
+                              <span className="text-[10px] text-stone-500 shrink-0">({folderScenes.length})</span>
+                            </div>
+                            {editingSceneFolderId !== folder.id && (
+                              <div className="flex items-center gap-0.5 shrink-0" onClick={(e) => e.stopPropagation()}>
+                                <Button size="sm" variant="ghost" onClick={() => { setEditingSceneFolderId(folder.id); setEditingSceneFolderName(folder.name); }} className="h-5 w-5 p-0 text-stone-400 hover:text-stone-200">
+                                  <Pencil className="h-2.5 w-2.5" />
+                                </Button>
+                                <Button size="sm" variant="ghost" onClick={() => deleteSceneFolderMutation.mutate(folder.id)} disabled={deleteSceneFolderMutation.isPending} className="h-5 w-5 p-0 text-red-400 hover:text-red-300">
+                                  <Trash2 className="h-2.5 w-2.5" />
+                                </Button>
+                              </div>
+                            )}
+                          </div>
+
+                          {isExpanded && (
+                            <div className="mt-1 space-y-1 pl-4">
+                              {folderScenes.length > 0 ? folderScenes.map((scene: Scene) => {
+                                const isViewing = gmViewingSceneId === scene.id || (!gmViewingSceneId && scene.id === campaignActiveSceneId);
+                                const isActive = scene.id === campaignActiveSceneId;
+                                return (
+                                  <div
+                                    key={scene.id}
+                                    className={`p-2 rounded border transition-all ${isViewing ? 'bg-blue-900/30 border-blue-700' : 'bg-stone-800 border-stone-700'}`}
+                                    draggable
+                                    onDragStart={(e) => { e.dataTransfer.setData('text/plain', scene.id); setDraggingSceneId(scene.id); }}
+                                    onDragEnd={() => setDraggingSceneId(null)}
+                                    data-testid={`side-scene-item-${scene.id}`}
+                                  >
+                                    <div className="flex items-center gap-1.5 mb-1">
+                                      <GripVertical className="h-3 w-3 text-stone-500 cursor-grab shrink-0" />
+                                      <div className="flex-1 min-w-0">
+                                        <div className="text-xs font-bold text-stone-200 truncate">{scene.name}</div>
+                                        <div className="text-[10px] text-stone-400">{scene.gridEnabled ? `${scene.gridType} grid` : 'No grid'}</div>
+                                      </div>
+                                    </div>
+                                    <div className="flex items-center gap-1 flex-wrap">
+                                      {isViewing && <span className="text-[10px] text-blue-400 font-bold px-1.5 py-0.5 bg-blue-900/30 rounded flex items-center gap-0.5"><Eye className="h-2.5 w-2.5" /> Viewing</span>}
+                                      {isActive && <span className="text-[10px] text-amber-400 font-bold px-1.5 py-0.5 bg-amber-900/30 rounded flex items-center gap-0.5"><Radio className="h-2.5 w-2.5" /> Active</span>}
+                                      <div className="flex-1" />
+                                      <Button size="sm" variant="outline" onClick={() => handleViewScene(scene.id)} className="h-6 px-1.5 text-[10px] bg-blue-900/30 border-blue-700 hover:bg-blue-800/50 text-blue-200"><Eye className="h-2.5 w-2.5 mr-0.5" /> View</Button>
+                                      {!isActive && <Button size="sm" variant="outline" onClick={() => handleActivateScene(scene.id)} disabled={setActiveSceneMutation.isPending} className="h-6 px-1.5 text-[10px] bg-amber-900/30 border-amber-700 hover:bg-amber-800/50 text-amber-200"><Radio className="h-2.5 w-2.5 mr-0.5" /> Set</Button>}
+                                      {allScenes && allScenes.length > 1 && <Button size="sm" variant="ghost" onClick={() => handleDeleteScene(scene.id)} disabled={deleteSceneMutation.isPending} className="h-6 w-6 p-0 text-red-400 hover:text-red-300"><Trash2 className="h-2.5 w-2.5" /></Button>}
+                                    </div>
+                                  </div>
+                                );
+                              }) : (
+                                <div className="p-2 text-center text-stone-500 text-[10px] border border-dashed border-stone-700 rounded">Drag scenes here</div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+
+                    <div
+                      className={`rounded-lg border border-stone-700 p-1.5 transition-colors ${draggingSceneId ? 'border-dashed' : ''}`}
+                      onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add('border-amber-500'); }}
+                      onDragLeave={(e) => { e.currentTarget.classList.remove('border-amber-500'); }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        e.currentTarget.classList.remove('border-amber-500');
+                        const sceneId = e.dataTransfer.getData('text/plain');
+                        if (sceneId) {
+                          moveSceneToFolderMutation.mutate({ sceneId, folderId: null });
+                          setDraggingSceneId(null);
+                        }
+                      }}
+                      data-testid="side-scene-folder-unfiled"
+                    >
+                      <div className="flex items-center gap-1.5 p-1.5 text-stone-400">
+                        <Layers className="h-3.5 w-3.5" />
+                        <span className="text-xs font-medium">Unfiled</span>
+                        <span className="text-[10px] text-stone-500">({unfiledScenes.length})</span>
+                      </div>
+                      <div className="space-y-1 mt-1">
+                        {unfiledScenes.length > 0 ? unfiledScenes.map((scene: Scene) => {
+                          const isViewing = gmViewingSceneId === scene.id || (!gmViewingSceneId && scene.id === campaignActiveSceneId);
+                          const isActive = scene.id === campaignActiveSceneId;
+                          return (
+                            <div
+                              key={scene.id}
+                              className={`p-2 rounded border transition-all ${isViewing ? 'bg-blue-900/30 border-blue-700' : 'bg-stone-800 border-stone-700'}`}
+                              draggable
+                              onDragStart={(e) => { e.dataTransfer.setData('text/plain', scene.id); setDraggingSceneId(scene.id); }}
+                              onDragEnd={() => setDraggingSceneId(null)}
+                              data-testid={`side-scene-item-${scene.id}`}
+                            >
+                              <div className="flex items-center gap-1.5 mb-1">
+                                <GripVertical className="h-3 w-3 text-stone-500 cursor-grab shrink-0" />
+                                <div className="flex-1 min-w-0">
+                                  <div className="text-xs font-bold text-stone-200 truncate">{scene.name}</div>
+                                  <div className="text-[10px] text-stone-400">{scene.gridEnabled ? `${scene.gridType} grid` : 'No grid'}</div>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-1 flex-wrap">
+                                {isViewing && <span className="text-[10px] text-blue-400 font-bold px-1.5 py-0.5 bg-blue-900/30 rounded flex items-center gap-0.5"><Eye className="h-2.5 w-2.5" /> Viewing</span>}
+                                {isActive && <span className="text-[10px] text-amber-400 font-bold px-1.5 py-0.5 bg-amber-900/30 rounded flex items-center gap-0.5"><Radio className="h-2.5 w-2.5" /> Active</span>}
+                                <div className="flex-1" />
+                                <Button size="sm" variant="outline" onClick={() => handleViewScene(scene.id)} className="h-6 px-1.5 text-[10px] bg-blue-900/30 border-blue-700 hover:bg-blue-800/50 text-blue-200"><Eye className="h-2.5 w-2.5 mr-0.5" /> View</Button>
+                                {!isActive && <Button size="sm" variant="outline" onClick={() => handleActivateScene(scene.id)} disabled={setActiveSceneMutation.isPending} className="h-6 px-1.5 text-[10px] bg-amber-900/30 border-amber-700 hover:bg-amber-800/50 text-amber-200"><Radio className="h-2.5 w-2.5 mr-0.5" /> Set</Button>}
+                                {allScenes && allScenes.length > 1 && <Button size="sm" variant="ghost" onClick={() => handleDeleteScene(scene.id)} disabled={deleteSceneMutation.isPending} className="h-6 w-6 p-0 text-red-400 hover:text-red-300"><Trash2 className="h-2.5 w-2.5" /></Button>}
+                              </div>
+                            </div>
+                          );
+                        }) : (
+                          <div className="p-2 text-center text-stone-500 text-[10px] border border-dashed border-stone-700 rounded">No unfiled scenes</div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="border-t border-stone-700 pt-3">
+                    <Label className="text-stone-300 text-xs font-bold mb-2 block">Scene Settings</Label>
+                    {activeScene ? (
+                      <SceneSettingsForm
+                        scene={activeScene}
+                        onUpdateScene={handleUpdateScene}
+                      />
+                    ) : (
+                      <div className="text-stone-500 text-center italic text-xs pt-4">
+                        No scene selected
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
