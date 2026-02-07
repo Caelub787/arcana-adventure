@@ -6,7 +6,7 @@ import { BattlemapDiceOverlay, triggerBattlemapDiceRoll } from "@/components/gam
 import { type AoeTargetState, createInitialAoeState } from "@/lib/aoeHelpers";
 import { RollNotificationContainer, triggerInitiativeNotification, triggerEffectRollNotification, getNotificationStyle, setNotificationStyle, type NotificationStyle } from "@/components/game/RollNotification";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Loader2, Settings, Map as MapIcon, Layers, Trash2, MessageSquare, User, BarChart3, Zap, Backpack, Sparkles, Grid3X3, ScrollText, Swords, Dices, Users, Dna, Edit2, Bell, FileText, X, ChevronLeft, Network, List } from "lucide-react";
+import { ArrowLeft, Loader2, Settings, Map as MapIcon, Layers, Trash2, MessageSquare, User, BarChart3, Zap, Backpack, Sparkles, Grid3X3, ScrollText, Swords, Dices, Users, Dna, Edit2, Bell, FileText, X, ChevronLeft, Network, List, BookOpen, Send } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -683,6 +683,141 @@ function CampaignSpeciesFormDialog({ open, onOpenChange, onSave, initialData, is
   );
 }
 
+function SidePanelChat({ campaignId, role }: { campaignId: string; role: string }) {
+  const { toast } = useToast();
+  const { user } = useAuth();
+  const [message, setMessage] = useState('');
+  const [messages, setMessages] = useState<Array<{ id: string; userId?: string; sender: string; text: string; createdAt: string; type?: string }>>([]);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const scrollAreaRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!campaignId) return;
+    const fetchMessages = async () => {
+      try {
+        const data = await api.getChatMessages(campaignId);
+        setMessages(data);
+      } catch (err) {
+        console.error('Failed to fetch chat messages:', err);
+      }
+    };
+    fetchMessages();
+  }, [campaignId]);
+
+  useEffect(() => {
+    if (!campaignId) return;
+    const unsubscribe = gameWs.onMessage((data: any) => {
+      if (data.type === 'chat_message' && data.message) {
+        setMessages(prev => [...prev, data.message]);
+      }
+      if (data.type === 'chat_cleared') {
+        setMessages([]);
+      }
+    });
+    return () => { unsubscribe(); };
+  }, [campaignId]);
+
+  useEffect(() => {
+    setTimeout(() => {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
+    }, 100);
+  }, [messages]);
+
+  const handleSend = () => {
+    if (!message.trim()) return;
+    gameWs.sendChatMessage(user?.id || '', user?.username || '', message.trim(), 'chat');
+    setMessage('');
+  };
+
+  const handleClearChat = async () => {
+    try {
+      await api.clearChatMessages(campaignId);
+      setMessages([]);
+      toast({ title: "Chat cleared" });
+    } catch (err) {
+      toast({ title: "Failed to clear chat", variant: "destructive" });
+    }
+  };
+
+  const parseRollTotal = (text: string) => {
+    const allMatches = text.matchAll(/=\s*(-?\d+)/g);
+    const matches = Array.from(allMatches);
+    if (matches.length > 0) {
+      const lastMatch = matches[matches.length - 1];
+      return parseInt(lastMatch[1]);
+    }
+    return null;
+  };
+
+  return (
+    <div className="flex flex-col h-full">
+      <div className="flex items-center justify-between px-4 pt-3 pb-2">
+        <span className="text-xs text-stone-500">{messages.length} messages</span>
+        {role === 'gm' && (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={handleClearChat}
+            className="border-red-700/50 hover:bg-red-900/30 text-red-400 hover:text-red-300 h-7 text-xs"
+            data-testid="button-clear-chat"
+          >
+            <Trash2 className="h-3 w-3 mr-1" /> Clear
+          </Button>
+        )}
+      </div>
+      <ScrollArea className="flex-1 px-4 mb-2" ref={scrollAreaRef}>
+        <div className="space-y-2 py-2">
+          {messages.map((msg, i) => {
+            const isRoll = msg.type === 'roll' || msg.text?.includes('rolled');
+            const rollTotal = isRoll ? parseRollTotal(msg.text) : null;
+            const isMe = msg.userId === user?.id;
+            return (
+              <div key={msg.id || i} className={`${isRoll ? 'bg-amber-900/20 border border-amber-800/30 rounded-lg p-2' : ''}`}>
+                <div className="flex items-start gap-2">
+                  <span className={`text-xs font-bold shrink-0 ${isMe ? 'text-amber-400' : 'text-stone-400'}`}>
+                    {msg.sender}
+                  </span>
+                  <span className="text-xs text-stone-500 shrink-0">
+                    {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                </div>
+                <div className={`text-sm mt-0.5 ${isRoll ? 'text-amber-200 font-mono text-xs' : 'text-stone-300'}`}>
+                  {msg.text}
+                  {rollTotal !== null && (
+                    <span className="ml-2 text-amber-400 font-bold">({rollTotal})</span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+          <div ref={messagesEndRef} />
+        </div>
+      </ScrollArea>
+      <div className="px-4 pb-3 pt-1 border-t border-stone-800">
+        <div className="flex gap-2">
+          <Input
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            placeholder="Type a message..."
+            className="bg-stone-800 border-stone-700 text-stone-200 h-9 text-sm"
+            onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+            data-testid="input-chat-message"
+          />
+          <Button
+            size="sm"
+            onClick={handleSend}
+            disabled={!message.trim()}
+            className="bg-amber-600 hover:bg-amber-700 text-white h-9"
+            data-testid="button-send-chat"
+          >
+            <Send className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function SandboxSheetEditor({ 
   item, 
   campaignId,
@@ -1186,7 +1321,6 @@ export default function Campaign() {
   const [editingSpecies, setEditingSpecies] = useState<CampaignSpecies | null>(null);
   const [speciesFormOpen, setSpeciesFormOpen] = useState(false);
   const [deletingSpecies, setDeletingSpecies] = useState<CampaignSpecies | null>(null);
-  const [chatOpen, setChatOpen] = useState(false);
   const [openCharacterSheets, setOpenCharacterSheets] = useState<any[]>([]);
   const [characterSheetDefaultTab, setCharacterSheetDefaultTab] = useState("overview");
   
@@ -1252,22 +1386,29 @@ export default function Campaign() {
   const [gmHotbarHidden, setGmHotbarHidden] = useState(false);
   
   // Sandbox panel state
-  const [sandboxCharactersOpen, setSandboxCharactersOpen] = useState(false);
   const [sandboxSceneSettingsOpen, setSandboxSceneSettingsOpen] = useState(false);
   const [openSandboxSheets, setOpenSandboxSheets] = useState<Array<{ id: string; name: string; type: 'actor' | 'template'; templateId?: string | null; data?: string }>>([]);
   
-  // Notes panel state
-  const [notesPanelOpen, setNotesPanelOpen] = useState(false);
+  // Unified side panel state
+  type SidePanelTab = 'characters' | 'chat' | 'notes' | null;
+  const [activeSidePanel, setActiveSidePanel] = useState<SidePanelTab>('characters');
+  const [sidePanelMinimized, setSidePanelMinimized] = useState(false);
+  const sidePanelOpen = activeSidePanel !== null && !sidePanelMinimized;
+  const chatOpen = activeSidePanel === 'chat' && !sidePanelMinimized;
+  
   const [notesPanelWidth, setNotesPanelWidth] = useState(() => {
-    // Default to 40% of screen width (2/5ths), clamped between 300-800px
     const defaultWidth = typeof window !== 'undefined' ? window.innerWidth * 0.4 : 450;
     return Math.max(300, Math.min(800, defaultWidth));
   });
   
-  // Memoized callback for notes toggle to prevent infinite re-renders
   const handleToggleNotesPanel = useCallback(() => {
-    setNotesPanelOpen(prev => !prev);
-  }, []);
+    if (activeSidePanel === 'notes' && !sidePanelMinimized) {
+      setSidePanelMinimized(true);
+    } else {
+      setActiveSidePanel('notes');
+      setSidePanelMinimized(false);
+    }
+  }, [activeSidePanel, sidePanelMinimized]);
 
   const checkGmHotbarFit = useCallback(() => {
     if (isMobile) {
@@ -1290,14 +1431,14 @@ export default function Campaign() {
         overlaps = true;
       }
     });
-    if (notesPanelOpen) {
+    if (sidePanelOpen) {
       const panelLeft = window.innerWidth - notesPanelWidth;
       if (hotbarRect.right > panelLeft) {
         overlaps = true;
       }
     }
     setGmHotbarHidden(overlaps);
-  }, [isMobile, notesPanelOpen, notesPanelWidth]);
+  }, [isMobile, sidePanelOpen, notesPanelWidth]);
 
   useEffect(() => {
     requestAnimationFrame(checkGmHotbarFit);
@@ -3223,9 +3364,9 @@ export default function Campaign() {
         </div>
       )}
       
-      {/* Top Bar: Nav & Settings - Lower z-index when notes panel is open so it doesn't overlap */}
-      <div className={`absolute top-0 left-0 right-0 p-4 flex justify-between items-start pointer-events-none ${notesPanelOpen ? 'z-30' : 'z-50'}`}>
-        {/* Left Side */}
+      {/* Top Bar: Nav & Settings */}
+      <div className={`absolute top-0 left-0 right-0 p-4 flex justify-between items-start pointer-events-none ${sidePanelOpen ? 'z-30' : 'z-50'}`}>
+        {/* Left Side - Back button and dice roller only */}
         <div className="pointer-events-auto flex flex-col gap-2">
           <Button 
             variant="ghost" 
@@ -3237,261 +3378,208 @@ export default function Campaign() {
             <ArrowLeft style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
           </Button>
 
-          {isSandbox ? (
+          {!isSandbox && (
+            <div className="relative">
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => setDiceMenuOpen(!diceMenuOpen)}
+                      className="text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto"
+                      data-testid="button-dice-roller"
+                    >
+                      <Dices className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="right" className="bg-stone-800 border-stone-700 text-stone-200">
+                    <p>Roll Dice</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+              
+              {diceMenuOpen && (
+                <div className="absolute left-full ml-2 top-0 bg-stone-900/95 border border-stone-700 rounded-lg p-2 pointer-events-auto shadow-xl z-50">
+                  <div className="flex flex-col gap-1 min-w-[80px]">
+                    {['d4', 'd6', 'd8', 'd10', 'd12', 'd20'].map((die) => (
+                      <Button
+                        key={die}
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          gameWs.sendDiceRoll(die, 0, undefined, character?.id);
+                          setDiceMenuOpen(false);
+                        }}
+                        className="text-white/80 hover:text-white hover:bg-white/10 justify-start font-mono"
+                        data-testid={`button-roll-${die}`}
+                      >
+                        {die.toUpperCase()}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+        
+        {/* Right Side - Settings menu at top, then panel tab icons */}
+        <div className="pointer-events-auto flex flex-col gap-2"
+          style={{ 
+            marginRight: (sidePanelOpen && !isMobile) ? `${notesPanelWidth + 8}px` : '0px',
+            transition: 'margin-right 0.3s ease'
+          }}
+        >
+          <CampaignMenu 
+            campaignId={effectiveCampaignId || undefined}
+            role={role} 
+            inviteCode={(campaign && typeof campaign === 'object' && 'inviteCode' in campaign ? campaign.inviteCode as string : "") || ""}
+            hotbarSlots={(campaign && typeof campaign === 'object' && 'hotbarSlots' in campaign ? (campaign as any).hotbarSlots as number : 5) || 5}
+            inspectedChar={inspectedChar}
+            onInspectChar={setInspectedChar}
+            onAddCharacterToken={handleAddCharacterToken}
+            onChangeMap={handleChangeMap}
+            characters={characters as any[]}
+            members={members as any[]}
+            onAddCharacter={handleAddCharacter}
+            onViewCharacter={handleViewCharacter}
+            onLevelUpAll={handleLevelUpAll}
+            chatOpen={false}
+            onChatOpenChange={() => {}}
+            onAssignCharacter={handleAssignCharacter}
+            myPermissions={myPermissions}
+            onOpenCampaignSpecies={() => setCampaignSpeciesOpen(true)}
+            isOwner={!!(campaign && typeof campaign === 'object' && 'gmUserId' in campaign && (campaign as any).gmUserId === user?.id)}
+            gmUserId={(campaign && typeof campaign === 'object' && 'gmUserId' in campaign ? (campaign as any).gmUserId as string : undefined)}
+            beaconColor={myMembership?.beaconColor || '#FBB524'}
+            onChangeBeaconColor={() => {
+              setPendingBeaconColor(myMembership?.beaconColor || '#FBB524');
+              setBeaconColorDialogOpen(true);
+            }}
+          />
+
+          {role === 'gm' && (
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
                     variant="ghost"
                     size="icon"
-                    onClick={() => setChatOpen(true)}
+                    onClick={() => setScenesManagementOpen(true)}
                     className="text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto"
-                    data-testid="button-sandbox-chat"
+                    data-testid="button-scenes"
                   >
-                    <MessageSquare className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
+                    <Layers className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent side="right" className="bg-stone-800 border-stone-700 text-stone-200">
-                  <p>Chat</p>
+                <TooltipContent side="left" className="bg-stone-800 border-stone-700 text-stone-200">
+                  <p>Scenes</p>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
-          ) : (
-            <>
-              {/* Chat Button - Left side, mirrored to settings */}
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => setChatOpen(true)}
-                      className="text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto"
-                      data-testid="button-chat"
-                    >
-                      <MessageSquare className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="right" className="bg-stone-800 border-stone-700 text-stone-200">
-                    <p>Chat</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-              
-              {/* Dice Roller Button with Menu - Left side under chat */}
-              <div className="relative">
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => setDiceMenuOpen(!diceMenuOpen)}
-                        className="text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto"
-                        data-testid="button-dice-roller"
-                      >
-                        <Dices className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent side="right" className="bg-stone-800 border-stone-700 text-stone-200">
-                      <p>Roll Dice</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-                
-                {/* Dice Quick Menu */}
-                {diceMenuOpen && (
-                  <div className="absolute left-full ml-2 top-0 bg-stone-900/95 border border-stone-700 rounded-lg p-2 pointer-events-auto shadow-xl z-50">
-                    <div className="flex flex-col gap-1 min-w-[80px]">
-                      {['d4', 'd6', 'd8', 'd10', 'd12', 'd20'].map((die) => (
-                        <Button
-                          key={die}
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => {
-                            gameWs.sendDiceRoll(die, 0, undefined, character?.id);
-                            setDiceMenuOpen(false);
-                          }}
-                          className="text-white/80 hover:text-white hover:bg-white/10 justify-start font-mono"
-                          data-testid={`button-roll-${die}`}
-                        >
-                          {die.toUpperCase()}
-                        </Button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </>
           )}
-        </div>
-        
-        {/* Right Side: Settings / Menu Button for ALL Roles */}
-        <div className="pointer-events-auto flex flex-col gap-2">
-          {isSandbox ? (
-            <>
-              <CampaignMenu 
-                campaignId={effectiveCampaignId || undefined}
-                role={role} 
-                inviteCode={(campaign && typeof campaign === 'object' && 'inviteCode' in campaign ? campaign.inviteCode as string : "") || ""}
-                hotbarSlots={(campaign && typeof campaign === 'object' && 'hotbarSlots' in campaign ? (campaign as any).hotbarSlots as number : 5) || 5}
-                inspectedChar={inspectedChar}
-                onInspectChar={setInspectedChar}
-                onAddCharacterToken={handleAddCharacterToken}
-                onChangeMap={handleChangeMap}
-                characters={characters as any[]}
-                members={members as any[]}
-                onAddCharacter={handleAddCharacter}
-                onViewCharacter={handleViewCharacter}
-                onLevelUpAll={handleLevelUpAll}
-                chatOpen={chatOpen}
-                onChatOpenChange={setChatOpen}
-                onAssignCharacter={handleAssignCharacter}
-                myPermissions={myPermissions}
-                onOpenCampaignSpecies={() => setCampaignSpeciesOpen(true)}
-                isOwner={!!(campaign && typeof campaign === 'object' && 'gmUserId' in campaign && (campaign as any).gmUserId === user?.id)}
-                gmUserId={(campaign && typeof campaign === 'object' && 'gmUserId' in campaign ? (campaign as any).gmUserId as string : undefined)}
-                beaconColor={myMembership?.beaconColor || '#FBB524'}
-                onChangeBeaconColor={() => {
-                  setPendingBeaconColor(myMembership?.beaconColor || '#FBB524');
-                  setBeaconColorDialogOpen(true);
-                }}
-              />
 
-              {role === 'gm' && (
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => setScenesManagementOpen(true)}
-                        className="text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto"
-                        data-testid="button-sandbox-scene-settings"
-                      >
-                        <Layers className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent side="left" className="bg-stone-800 border-stone-700 text-stone-200">
-                      <p>Scene Settings</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              )}
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setInitiativeTrackerOpen(true)}
+                  className="text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto"
+                  data-testid="button-initiative"
+                >
+                  <Swords className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="left" className="bg-stone-800 border-stone-700 text-stone-200">
+                <p>Initiative</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+          
+          <div className="w-8 h-px bg-stone-600/50 mx-auto" />
 
-              {role === 'gm' && (
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => setSandboxCharactersOpen(true)}
-                        className="text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto"
-                        data-testid="button-sandbox-characters"
-                      >
-                        <Users className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent side="left" className="bg-stone-800 border-stone-700 text-stone-200">
-                      <p>Characters</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              )}
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => {
+                    if (activeSidePanel === 'chat' && !sidePanelMinimized) {
+                      setSidePanelMinimized(true);
+                    } else {
+                      setActiveSidePanel('chat');
+                      setSidePanelMinimized(false);
+                    }
+                  }}
+                  className={`text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto ${activeSidePanel === 'chat' && !sidePanelMinimized ? 'text-amber-400 bg-white/10' : ''}`}
+                  data-testid="button-panel-chat"
+                >
+                  <MessageSquare className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="left" className="bg-stone-800 border-stone-700 text-stone-200">
+                <p>Chat</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
 
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => setInitiativeTrackerOpen(true)}
-                      className="text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto"
-                      data-testid="button-sandbox-initiative"
-                    >
-                      <Swords className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="left" className="bg-stone-800 border-stone-700 text-stone-200">
-                    <p>Initiative</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            </>
-          ) : (
-            <>
-              <CampaignMenu 
-                campaignId={effectiveCampaignId || undefined}
-                role={role} 
-                inviteCode={(campaign && typeof campaign === 'object' && 'inviteCode' in campaign ? campaign.inviteCode as string : "") || ""}
-                hotbarSlots={(campaign && typeof campaign === 'object' && 'hotbarSlots' in campaign ? (campaign as any).hotbarSlots as number : 5) || 5}
-                inspectedChar={inspectedChar}
-                onInspectChar={setInspectedChar}
-                onAddCharacterToken={handleAddCharacterToken}
-                onChangeMap={handleChangeMap}
-                characters={characters as any[]}
-                members={members as any[]}
-                onAddCharacter={handleAddCharacter}
-                onViewCharacter={handleViewCharacter}
-                onLevelUpAll={handleLevelUpAll}
-                chatOpen={chatOpen}
-                onChatOpenChange={setChatOpen}
-                onAssignCharacter={handleAssignCharacter}
-                myPermissions={myPermissions}
-                onOpenCampaignSpecies={() => setCampaignSpeciesOpen(true)}
-                isOwner={!!(campaign && typeof campaign === 'object' && 'gmUserId' in campaign && (campaign as any).gmUserId === user?.id)}
-                gmUserId={(campaign && typeof campaign === 'object' && 'gmUserId' in campaign ? (campaign as any).gmUserId as string : undefined)}
-                beaconColor={myMembership?.beaconColor || '#FBB524'}
-                onChangeBeaconColor={() => {
-                  setPendingBeaconColor(myMembership?.beaconColor || '#FBB524');
-                  setBeaconColorDialogOpen(true);
-                }}
-              />
-              
-              {/* Scenes Button (GM Only) - Icon only, directly under Settings */}
-              {role === 'gm' && (
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => setScenesManagementOpen(true)}
-                        className="text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto relative z-[60]"
-                        data-testid="button-scenes"
-                      >
-                        <Layers className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent side="left" className="bg-stone-800 border-stone-700 text-stone-200">
-                      <p>Scenes</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              )}
-              
-              {/* Initiative Button - Under scenes/settings */}
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => setInitiativeTrackerOpen(true)}
-                      className="text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto"
-                      data-testid="button-initiative"
-                    >
-                      <Swords className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="left" className="bg-stone-800 border-stone-700 text-stone-200">
-                    <p>Initiative</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            </>
+          {(isSandbox ? role === 'gm' : true) && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => {
+                      if (activeSidePanel === 'characters' && !sidePanelMinimized) {
+                        setSidePanelMinimized(true);
+                      } else {
+                        setActiveSidePanel('characters');
+                        setSidePanelMinimized(false);
+                      }
+                    }}
+                    className={`text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto ${activeSidePanel === 'characters' && !sidePanelMinimized ? 'text-amber-400 bg-white/10' : ''}`}
+                    data-testid="button-panel-characters"
+                  >
+                    <Users className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="left" className="bg-stone-800 border-stone-700 text-stone-200">
+                  <p>Characters</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           )}
+
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => {
+                    if (activeSidePanel === 'notes' && !sidePanelMinimized) {
+                      setSidePanelMinimized(true);
+                    } else {
+                      setActiveSidePanel('notes');
+                      setSidePanelMinimized(false);
+                    }
+                  }}
+                  className={`text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto ${activeSidePanel === 'notes' && !sidePanelMinimized ? 'text-amber-400 bg-white/10' : ''}`}
+                  data-testid="button-panel-notes"
+                >
+                  <BookOpen className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="left" className="bg-stone-800 border-stone-700 text-stone-200">
+                <p>Notes</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         </div>
       </div>
 
@@ -3908,48 +3996,6 @@ export default function Campaign() {
         </Sheet>
       )}
 
-      {/* Sandbox Characters Panel - Non-blurring side panel */}
-      {isSandbox && sandboxCharactersOpen && (
-        <div 
-          className={`fixed top-0 right-0 z-40 pointer-events-auto ${isMobile ? 'inset-0' : 'h-full'}`}
-          style={{ 
-            width: isMobile ? '100vw' : '320px',
-          }}
-        >
-          <div className="h-full bg-stone-900/95 border-l border-stone-700 backdrop-blur-sm flex flex-col">
-            <div className="flex items-center justify-between p-4 pb-2 border-b border-stone-800">
-              <h2 className="text-amber-500 font-display text-lg font-bold">Characters</h2>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setSandboxCharactersOpen(false)}
-                className="h-8 w-8 text-stone-400 hover:text-white"
-                data-testid="button-close-characters"
-              >
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-            <div className="flex-1 overflow-hidden p-4 pt-3">
-              <SandboxCharactersContent 
-                campaignId={effectiveCampaignId!} 
-                onOpenActor={(actor) => {
-                  setOpenSandboxSheets(prev => {
-                    if (prev.find(s => s.id === actor.id)) return prev;
-                    return [...prev, { ...actor, type: 'actor' as const }];
-                  });
-                }}
-                onOpenTemplate={(template) => {
-                  setOpenSandboxSheets(prev => {
-                    if (prev.find(s => s.id === template.id)) return prev;
-                    return [...prev, { ...template, type: 'template' as const }];
-                  });
-                }}
-              />
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Sandbox Floating Sheet Editors */}
       {isSandbox && openSandboxSheets.map((sheet) => (
         <SandboxSheetEditor
@@ -4227,7 +4273,7 @@ export default function Campaign() {
              }}
              throwableGridTarget={throwableGridTarget}
              onGridTargetClick={handleGridTargetClick}
-             notesPanelOpen={notesPanelOpen}
+             notesPanelOpen={sidePanelOpen}
              notesPanelWidth={notesPanelWidth}
              onNotesClick={handleToggleNotesPanel}
              inCombat={initiativeData?.inCombat ?? false}
@@ -4247,7 +4293,7 @@ export default function Campaign() {
              onEnterSpellTargeting={enterAoeMode}
              onClearSpellTargeting={exitAoeMode}
              isSpellTargetingActive={aoeTargetState.active}
-             notesPanelOpen={notesPanelOpen}
+             notesPanelOpen={sidePanelOpen}
              notesPanelWidth={notesPanelWidth}
            />
            
@@ -4338,7 +4384,7 @@ export default function Campaign() {
                }}
                throwableGridTarget={throwableGridTarget}
                onClearThrowableGridTarget={() => setThrowableGridTarget(null)}
-               notesPanelOpen={notesPanelOpen}
+               notesPanelOpen={sidePanelOpen}
                notesPanelWidth={notesPanelWidth}
              />
            )}
@@ -4348,7 +4394,7 @@ export default function Campaign() {
           {!isSandbox && ((role === 'player' && character) || (role === 'gm' && inspectedChar)) && (
             <div 
               className="absolute top-44 z-20 flex flex-col gap-2 transition-all duration-300 ease-in-out"
-              style={{ right: notesPanelOpen && !isMobile ? `${notesPanelWidth + 16}px` : '12px' }}
+              style={{ right: sidePanelOpen && !isMobile ? `${notesPanelWidth + 16}px` : '12px' }}
             >
               {[
                 { tab: 'overview', icon: User, color: 'stone' },
@@ -4468,8 +4514,8 @@ export default function Campaign() {
         userId={user?.id}
       />
       
-      {/* Notes Panel Overlay - Right side */}
-      {notesPanelOpen && effectiveCampaignId && (
+      {/* Unified Side Panel */}
+      {activeSidePanel && !sidePanelMinimized && (
         <div 
           className={`fixed top-0 right-0 z-40 pointer-events-auto flex flex-row-reverse ${isMobile ? 'inset-0' : 'h-full'}`}
           style={{ 
@@ -4477,23 +4523,73 @@ export default function Campaign() {
             maxWidth: isMobile ? '100vw' : '90vw' 
           }}
         >
-          <div className="flex-1 h-full">
-            <CampaignNotesPanel
-              campaignId={effectiveCampaignId}
-              onClose={() => setNotesPanelOpen(false)}
-              isOpen={notesPanelOpen}
-              campaignMembers={(members as any[] || [])
-                .filter((m: any) => m.userId !== user?.id)
-                .map((m: any) => ({ id: m.id, userId: m.userId, username: m.username }))}
-              onViewCharacter={(character) => {
-                if (character) {
-                  setCharacterSheetDefaultTab("overview");
-                  openCharacterSheet(character);
-                }
-              }}
-            />
+          <div className="flex-1 h-full bg-stone-900/95 border-l border-stone-700 backdrop-blur-sm flex flex-col">
+            <div className="flex items-center justify-between p-3 border-b border-stone-800 shrink-0">
+              <h2 className="text-amber-500 font-display text-lg font-bold">
+                {activeSidePanel === 'chat' && 'Adventure Log'}
+                {activeSidePanel === 'characters' && 'Characters'}
+                {activeSidePanel === 'notes' && 'Notes'}
+              </h2>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setSidePanelMinimized(true)}
+                className="h-8 w-8 text-stone-400 hover:text-white"
+                data-testid="button-minimize-panel"
+              >
+                <Minus className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="flex-1 overflow-hidden">
+              {activeSidePanel === 'chat' && effectiveCampaignId && (
+                <SidePanelChat 
+                  campaignId={effectiveCampaignId} 
+                  role={role}
+                />
+              )}
+              {activeSidePanel === 'characters' && effectiveCampaignId && (
+                <div className="h-full p-4 pt-3 overflow-hidden">
+                  {isSandbox ? (
+                    <SandboxCharactersContent 
+                      campaignId={effectiveCampaignId} 
+                      onOpenActor={(actor) => {
+                        setOpenSandboxSheets(prev => {
+                          if (prev.find(s => s.id === actor.id)) return prev;
+                          return [...prev, { ...actor, type: 'actor' as const }];
+                        });
+                      }}
+                      onOpenTemplate={(template) => {
+                        setOpenSandboxSheets(prev => {
+                          if (prev.find(s => s.id === template.id)) return prev;
+                          return [...prev, { ...template, type: 'template' as const }];
+                        });
+                      }}
+                    />
+                  ) : (
+                    <div className="text-stone-500 text-center italic text-sm pt-8">
+                      Character management panel
+                    </div>
+                  )}
+                </div>
+              )}
+              {activeSidePanel === 'notes' && effectiveCampaignId && (
+                <CampaignNotesPanel
+                  campaignId={effectiveCampaignId}
+                  onClose={() => setSidePanelMinimized(true)}
+                  isOpen={true}
+                  campaignMembers={(members as any[] || [])
+                    .filter((m: any) => m.userId !== user?.id)
+                    .map((m: any) => ({ id: m.id, userId: m.userId, username: m.username }))}
+                  onViewCharacter={(character) => {
+                    if (character) {
+                      setCharacterSheetDefaultTab("overview");
+                      openCharacterSheet(character);
+                    }
+                  }}
+                />
+              )}
+            </div>
           </div>
-          {/* Resize handle on left edge (desktop only) */}
           {!isMobile && (
             <div
               className={`w-2 h-full cursor-ew-resize flex items-center justify-center bg-stone-700 hover:bg-amber-600 transition-colors ${isResizingNotes ? 'bg-amber-600' : ''}`}
@@ -4514,7 +4610,7 @@ export default function Campaign() {
           ref={gmHotbarRef}
           className={`fixed bottom-4 z-30 pointer-events-auto transition-all duration-300 ease-in-out ${gmHotbarHidden ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
           style={{ 
-            left: notesPanelOpen ? `calc(50% - ${notesPanelWidth / 2}px)` : '50%',
+            left: sidePanelOpen ? `calc(50% - ${notesPanelWidth / 2}px)` : '50%',
             transform: 'translateX(-50%)'
           }}
           data-testid="gm-character-hotbar"

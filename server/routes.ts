@@ -8000,8 +8000,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const campaign = await storage.getCampaign(req.params.campaignId);
       if (!campaign) return res.status(404).json({ error: "Campaign not found" });
-      const member = await storage.getCampaignMember(req.params.campaignId, (req as any).user.id);
-      const isGM = campaign.gmUserId === (req as any).user.id || member?.role === 'assistant_gm';
+      const member = await storage.getCampaignMember(req.params.campaignId, req.session.userId!);
+      const isGM = campaign.gmUserId === req.session.userId! || member?.role === 'assistant_gm';
       if (!isGM) return res.status(403).json({ error: "Only GMs can manage folders" });
       const folder = await storage.createSandboxFolder({
         campaignId: req.params.campaignId,
@@ -8020,8 +8020,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const campaign = await storage.getCampaign(req.params.campaignId);
       if (!campaign) return res.status(404).json({ error: "Campaign not found" });
-      const member = await storage.getCampaignMember(req.params.campaignId, (req as any).user.id);
-      const isGM = campaign.gmUserId === (req as any).user.id || member?.role === 'assistant_gm';
+      const member = await storage.getCampaignMember(req.params.campaignId, req.session.userId!);
+      const isGM = campaign.gmUserId === req.session.userId! || member?.role === 'assistant_gm';
       if (!isGM) return res.status(403).json({ error: "Only GMs can manage folders" });
       const allowedFields: any = {};
       if (req.body.name !== undefined) allowedFields.name = req.body.name;
@@ -8039,8 +8039,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const campaign = await storage.getCampaign(req.params.campaignId);
       if (!campaign) return res.status(404).json({ error: "Campaign not found" });
-      const member = await storage.getCampaignMember(req.params.campaignId, (req as any).user.id);
-      const isGM = campaign.gmUserId === (req as any).user.id || member?.role === 'assistant_gm';
+      const member = await storage.getCampaignMember(req.params.campaignId, req.session.userId!);
+      const isGM = campaign.gmUserId === req.session.userId! || member?.role === 'assistant_gm';
       if (!isGM) return res.status(403).json({ error: "Only GMs can manage folders" });
       await storage.deleteSandboxFolder(req.params.folderId);
       res.json({ success: true });
@@ -8065,8 +8065,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const campaign = await storage.getCampaign(req.params.campaignId);
       if (!campaign) return res.status(404).json({ error: "Campaign not found" });
-      const member = await storage.getCampaignMember(req.params.campaignId, (req as any).user.id);
-      const isGM = campaign.gmUserId === (req as any).user.id || member?.role === 'assistant_gm';
+      const member = await storage.getCampaignMember(req.params.campaignId, req.session.userId!);
+      const isGM = campaign.gmUserId === req.session.userId! || member?.role === 'assistant_gm';
       if (!isGM) return res.status(403).json({ error: "Only GMs can manage templates" });
       const template = await storage.createSandboxTemplate({
         campaignId: req.params.campaignId,
@@ -8085,8 +8085,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const campaign = await storage.getCampaign(req.params.campaignId);
       if (!campaign) return res.status(404).json({ error: "Campaign not found" });
-      const member = await storage.getCampaignMember(req.params.campaignId, (req as any).user.id);
-      const isGM = campaign.gmUserId === (req as any).user.id || member?.role === 'assistant_gm';
+      const member = await storage.getCampaignMember(req.params.campaignId, req.session.userId!);
+      const isGM = campaign.gmUserId === req.session.userId! || member?.role === 'assistant_gm';
       if (!isGM) return res.status(403).json({ error: "Only GMs can manage templates" });
       const template = await storage.updateSandboxTemplate(req.params.templateId, req.body);
       res.json(template);
@@ -8100,8 +8100,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const campaign = await storage.getCampaign(req.params.campaignId);
       if (!campaign) return res.status(404).json({ error: "Campaign not found" });
-      const member = await storage.getCampaignMember(req.params.campaignId, (req as any).user.id);
-      const isGM = campaign.gmUserId === (req as any).user.id || member?.role === 'assistant_gm';
+      const member = await storage.getCampaignMember(req.params.campaignId, req.session.userId!);
+      const isGM = campaign.gmUserId === req.session.userId! || member?.role === 'assistant_gm';
       if (!isGM) return res.status(403).json({ error: "Only GMs can manage templates" });
       await storage.deleteSandboxTemplate(req.params.templateId);
       res.json({ success: true });
@@ -8126,8 +8126,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const campaign = await storage.getCampaign(req.params.campaignId);
       if (!campaign) return res.status(404).json({ error: "Campaign not found" });
-      const member = await storage.getCampaignMember(req.params.campaignId, (req as any).user.id);
-      const isGM = campaign.gmUserId === (req as any).user.id || member?.role === 'assistant_gm';
+      const member = await storage.getCampaignMember(req.params.campaignId, req.session.userId!);
+      const isGM = campaign.gmUserId === req.session.userId! || member?.role === 'assistant_gm';
       if (!isGM) return res.status(403).json({ error: "Only GMs can manage actors" });
       const actor = await storage.createSandboxActor({
         campaignId: req.params.campaignId,
@@ -8147,8 +8147,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const campaign = await storage.getCampaign(req.params.campaignId);
       if (!campaign) return res.status(404).json({ error: "Campaign not found" });
-      const member = await storage.getCampaignMember(req.params.campaignId, (req as any).user.id);
-      const isGM = campaign.gmUserId === (req as any).user.id || member?.role === 'assistant_gm';
+      const member = await storage.getCampaignMember(req.params.campaignId, req.session.userId!);
+      const isGM = campaign.gmUserId === req.session.userId! || member?.role === 'assistant_gm';
       if (!isGM) return res.status(403).json({ error: "Only GMs can manage actors" });
       const allowedFields: any = {};
       if (req.body.name !== undefined) allowedFields.name = req.body.name;
@@ -8167,8 +8167,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const campaign = await storage.getCampaign(req.params.campaignId);
       if (!campaign) return res.status(404).json({ error: "Campaign not found" });
-      const member = await storage.getCampaignMember(req.params.campaignId, (req as any).user.id);
-      const isGM = campaign.gmUserId === (req as any).user.id || member?.role === 'assistant_gm';
+      const member = await storage.getCampaignMember(req.params.campaignId, req.session.userId!);
+      const isGM = campaign.gmUserId === req.session.userId! || member?.role === 'assistant_gm';
       if (!isGM) return res.status(403).json({ error: "Only GMs can manage actors" });
       await storage.deleteSandboxActor(req.params.actorId);
       res.json({ success: true });
