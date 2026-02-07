@@ -1941,11 +1941,35 @@ class ApiClient {
     });
   }
 
+  async getSandboxFolders(campaignId: string): Promise<any[]> {
+    return this.request(`/campaigns/${campaignId}/sandbox/folders`);
+  }
+
+  async createSandboxFolder(campaignId: string, data: { name: string; parentId?: string }): Promise<any> {
+    return this.request(`/campaigns/${campaignId}/sandbox/folders`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateSandboxFolder(campaignId: string, folderId: string, data: any): Promise<any> {
+    return this.request(`/campaigns/${campaignId}/sandbox/folders/${folderId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteSandboxFolder(campaignId: string, folderId: string): Promise<void> {
+    return this.request(`/campaigns/${campaignId}/sandbox/folders/${folderId}`, {
+      method: 'DELETE',
+    });
+  }
+
   async getSandboxTemplates(campaignId: string): Promise<SandboxTemplate[]> {
     return this.request(`/campaigns/${campaignId}/sandbox/templates`);
   }
 
-  async createSandboxTemplate(campaignId: string, data: { name: string }): Promise<SandboxTemplate> {
+  async createSandboxTemplate(campaignId: string, data: { name: string; folderId?: string }): Promise<SandboxTemplate> {
     return this.request(`/campaigns/${campaignId}/sandbox/templates`, {
       method: 'POST',
       body: JSON.stringify(data),
@@ -1969,7 +1993,7 @@ class ApiClient {
     return this.request(`/campaigns/${campaignId}/sandbox/actors`);
   }
 
-  async createSandboxActor(campaignId: string, data: { name: string; templateId?: string }): Promise<SandboxActor> {
+  async createSandboxActor(campaignId: string, data: { name: string; templateId?: string; folderId?: string }): Promise<SandboxActor> {
     return this.request(`/campaigns/${campaignId}/sandbox/actors`, {
       method: 'POST',
       body: JSON.stringify(data),
@@ -1993,6 +2017,7 @@ class ApiClient {
 export interface SandboxTemplate {
   id: string;
   campaignId: string;
+  folderId: string | null;
   name: string;
   data: string;
   createdAt: string;
@@ -2002,6 +2027,7 @@ export interface SandboxActor {
   id: string;
   campaignId: string;
   templateId: string | null;
+  folderId: string | null;
   name: string;
   data: string;
   createdAt: string;

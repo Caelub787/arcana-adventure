@@ -1132,10 +1132,28 @@ export const insertUserTermsAcceptanceSchema = createInsertSchema(userTermsAccep
 export type InsertUserTermsAcceptance = z.infer<typeof insertUserTermsAcceptanceSchema>;
 export type UserTermsAcceptance = typeof userTermsAcceptance.$inferSelect;
 
+// Sandbox Folders table
+export const sandboxFolders = pgTable("sandbox_folders", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  campaignId: varchar("campaign_id").notNull().references(() => campaigns.id, { onDelete: "cascade" }),
+  parentId: varchar("parent_id").references((): AnyPgColumn => sandboxFolders.id, { onDelete: "set null" }),
+  name: text("name").notNull(),
+  sortOrder: integer("sort_order").default(0).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertSandboxFolderSchema = createInsertSchema(sandboxFolders).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertSandboxFolder = z.infer<typeof insertSandboxFolderSchema>;
+export type SandboxFolder = typeof sandboxFolders.$inferSelect;
+
 // Sandbox Templates table
 export const sandboxTemplates = pgTable("sandbox_templates", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   campaignId: varchar("campaign_id").notNull().references(() => campaigns.id, { onDelete: "cascade" }),
+  folderId: varchar("folder_id").references(() => sandboxFolders.id, { onDelete: "set null" }),
   name: text("name").notNull(),
   data: text("data").default("{}"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -1153,6 +1171,7 @@ export const sandboxActors = pgTable("sandbox_actors", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   campaignId: varchar("campaign_id").notNull().references(() => campaigns.id, { onDelete: "cascade" }),
   templateId: varchar("template_id").references(() => sandboxTemplates.id, { onDelete: "set null" }),
+  folderId: varchar("folder_id").references(() => sandboxFolders.id, { onDelete: "set null" }),
   name: text("name").notNull(),
   data: text("data").default("{}"),
   createdAt: timestamp("created_at").defaultNow().notNull(),

@@ -7985,6 +7985,67 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Sandbox Folder endpoints
+  app.get("/api/campaigns/:campaignId/sandbox/folders", requireAuth, async (req, res) => {
+    try {
+      const folders = await storage.getSandboxFolders(req.params.campaignId);
+      res.json(folders);
+    } catch (e) {
+      console.error("Failed to get sandbox folders:", e);
+      res.status(500).json({ error: "Failed to get sandbox folders" });
+    }
+  });
+
+  app.post("/api/campaigns/:campaignId/sandbox/folders", requireAuth, async (req, res) => {
+    try {
+      const campaign = await storage.getCampaign(req.params.campaignId);
+      if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+      const member = await storage.getCampaignMember(req.params.campaignId, (req as any).user.id);
+      const isGM = campaign.gmUserId === (req as any).user.id || member?.role === 'assistant_gm';
+      if (!isGM) return res.status(403).json({ error: "Only GMs can manage folders" });
+      const folder = await storage.createSandboxFolder({
+        campaignId: req.params.campaignId,
+        name: req.body.name || "New Folder",
+        parentId: req.body.parentId || null,
+        sortOrder: req.body.sortOrder || 0,
+      });
+      res.json(folder);
+    } catch (e) {
+      console.error("Failed to create sandbox folder:", e);
+      res.status(500).json({ error: "Failed to create sandbox folder" });
+    }
+  });
+
+  app.patch("/api/campaigns/:campaignId/sandbox/folders/:folderId", requireAuth, async (req, res) => {
+    try {
+      const campaign = await storage.getCampaign(req.params.campaignId);
+      if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+      const member = await storage.getCampaignMember(req.params.campaignId, (req as any).user.id);
+      const isGM = campaign.gmUserId === (req as any).user.id || member?.role === 'assistant_gm';
+      if (!isGM) return res.status(403).json({ error: "Only GMs can manage folders" });
+      const folder = await storage.updateSandboxFolder(req.params.folderId, req.body);
+      res.json(folder);
+    } catch (e) {
+      console.error("Failed to update sandbox folder:", e);
+      res.status(500).json({ error: "Failed to update sandbox folder" });
+    }
+  });
+
+  app.delete("/api/campaigns/:campaignId/sandbox/folders/:folderId", requireAuth, async (req, res) => {
+    try {
+      const campaign = await storage.getCampaign(req.params.campaignId);
+      if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+      const member = await storage.getCampaignMember(req.params.campaignId, (req as any).user.id);
+      const isGM = campaign.gmUserId === (req as any).user.id || member?.role === 'assistant_gm';
+      if (!isGM) return res.status(403).json({ error: "Only GMs can manage folders" });
+      await storage.deleteSandboxFolder(req.params.folderId);
+      res.json({ success: true });
+    } catch (e) {
+      console.error("Failed to delete sandbox folder:", e);
+      res.status(500).json({ error: "Failed to delete sandbox folder" });
+    }
+  });
+
   // Sandbox Template endpoints
   app.get("/api/campaigns/:campaignId/sandbox/templates", requireAuth, async (req, res) => {
     try {
@@ -8006,6 +8067,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const template = await storage.createSandboxTemplate({
         campaignId: req.params.campaignId,
         name: req.body.name || "Untitled Template",
+        folderId: req.body.folderId || null,
         data: "{}",
       });
       res.json(template);
@@ -8067,6 +8129,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         campaignId: req.params.campaignId,
         name: req.body.name || "Untitled Actor",
         templateId: req.body.templateId || null,
+        folderId: req.body.folderId || null,
         data: "{}",
       });
       res.json(actor);

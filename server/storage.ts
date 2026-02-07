@@ -45,7 +45,8 @@ import {
   type UserTermsAcceptance, type InsertUserTermsAcceptance,
   type SandboxTemplate, type InsertSandboxTemplate,
   type SandboxActor, type InsertSandboxActor,
-  users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, items, spells, characterPermissions, initiativeEntries, systemSpecies, campaignSpecies, featTemplates, featTrees, feats, featConnections, characterFeats, systemSpells, systemSkills, characterCustomSkills, systemTraits, characterTraits, characterFolders, characterTemplateFolders, sceneFolders, friendRequests, friendships, noteFolders, notes, noteReferences, noteShares, tokenEffects, spellEffects, itemEffects, tokenActiveEffects, thrownItems, adminNotifications, userNotifications, termsAndConditions, userTermsAcceptance, sandboxTemplates, sandboxActors
+  type SandboxFolder, type InsertSandboxFolder,
+  users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, items, spells, characterPermissions, initiativeEntries, systemSpecies, campaignSpecies, featTemplates, featTrees, feats, featConnections, characterFeats, systemSpells, systemSkills, characterCustomSkills, systemTraits, characterTraits, characterFolders, characterTemplateFolders, sceneFolders, friendRequests, friendships, noteFolders, notes, noteReferences, noteShares, tokenEffects, spellEffects, itemEffects, tokenActiveEffects, thrownItems, adminNotifications, userNotifications, termsAndConditions, userTermsAcceptance, sandboxFolders, sandboxTemplates, sandboxActors
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql, inArray, or, isNull } from "drizzle-orm";
@@ -413,6 +414,12 @@ export interface IStorage {
   updateTerms(content: string, updatedBy: string): Promise<TermsAndConditions>;
   hasUserAcceptedCurrentTerms(userId: string): Promise<boolean>;
   acceptTerms(userId: string, version: number): Promise<UserTermsAcceptance>;
+
+  // Sandbox folder operations
+  getSandboxFolders(campaignId: string): Promise<SandboxFolder[]>;
+  createSandboxFolder(folder: InsertSandboxFolder): Promise<SandboxFolder>;
+  updateSandboxFolder(id: string, data: Partial<InsertSandboxFolder>): Promise<SandboxFolder>;
+  deleteSandboxFolder(id: string): Promise<void>;
 
   // Sandbox operations
   getSandboxTemplates(campaignId: string): Promise<SandboxTemplate[]>;
@@ -3210,6 +3217,24 @@ export class DatabaseStorage implements IStorage {
       termsVersion: version,
     }).returning();
     return acceptance;
+  }
+
+  async getSandboxFolders(campaignId: string): Promise<SandboxFolder[]> {
+    return await db.select().from(sandboxFolders).where(eq(sandboxFolders.campaignId, campaignId)).orderBy(sandboxFolders.sortOrder);
+  }
+
+  async createSandboxFolder(folder: InsertSandboxFolder): Promise<SandboxFolder> {
+    const [created] = await db.insert(sandboxFolders).values(folder).returning();
+    return created;
+  }
+
+  async updateSandboxFolder(id: string, data: Partial<InsertSandboxFolder>): Promise<SandboxFolder> {
+    const [updated] = await db.update(sandboxFolders).set(data).where(eq(sandboxFolders.id, id)).returning();
+    return updated;
+  }
+
+  async deleteSandboxFolder(id: string): Promise<void> {
+    await db.delete(sandboxFolders).where(eq(sandboxFolders.id, id));
   }
 
   async getSandboxTemplates(campaignId: string): Promise<SandboxTemplate[]> {
