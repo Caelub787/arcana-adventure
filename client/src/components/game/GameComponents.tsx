@@ -5815,6 +5815,7 @@ export function BattleMapHotbars({ character, tokens, targetedTokenId, character
       <div 
         className="absolute bottom-2 md:bottom-4 pointer-events-auto z-30 transition-all duration-300 ease-in-out"
         style={{ left: '8px' }}
+        data-collision-id="hp-dc-display"
       >
         <div className="flex flex-col gap-1">
           {/* DC Display */}
@@ -5861,6 +5862,7 @@ export function BattleMapHotbars({ character, tokens, targetedTokenId, character
       <div 
         className="absolute bottom-2 md:bottom-4 pointer-events-auto z-30 transition-all duration-300 ease-in-out"
         style={{ right: notesPanelOpen ? `${notesPanelWidth + 16}px` : '8px' }}
+        data-collision-id="character-hotbar"
       >
         <div className="glass-panel rounded p-1 md:p-2 border border-stone-700">
           {/* Hotbar Type Switcher Buttons - Horizontal above slots */}

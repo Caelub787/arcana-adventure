@@ -789,21 +789,41 @@ export default function Campaign() {
     setNotesPanelOpen(prev => !prev);
   }, []);
 
-  useEffect(() => {
-    if (!notesPanelOpen || isMobile) {
+  const checkGmHotbarFit = useCallback(() => {
+    if (isMobile) {
       setGmHotbarHidden(false);
       return;
     }
-    const checkFit = () => {
-      const hotbarEl = gmHotbarRef.current;
-      if (!hotbarEl) return;
-      const hotbarWidth = hotbarEl.getBoundingClientRect().width;
-      const availableWidth = window.innerWidth - notesPanelWidth;
-      const sideMargins = 160;
-      setGmHotbarHidden(hotbarWidth + sideMargins > availableWidth);
-    };
-    requestAnimationFrame(checkFit);
-  }, [notesPanelOpen, notesPanelWidth, isMobile, inspectedChar]);
+    const hotbarEl = gmHotbarRef.current;
+    if (!hotbarEl) return;
+    const hotbarRect = hotbarEl.getBoundingClientRect();
+    const collisionEls = document.querySelectorAll('[data-collision-id]');
+    let overlaps = false;
+    collisionEls.forEach(el => {
+      const elRect = el.getBoundingClientRect();
+      if (
+        hotbarRect.left < elRect.right &&
+        hotbarRect.right > elRect.left &&
+        hotbarRect.top < elRect.bottom &&
+        hotbarRect.bottom > elRect.top
+      ) {
+        overlaps = true;
+      }
+    });
+    if (notesPanelOpen) {
+      const panelLeft = window.innerWidth - notesPanelWidth;
+      if (hotbarRect.right > panelLeft) {
+        overlaps = true;
+      }
+    }
+    setGmHotbarHidden(overlaps);
+  }, [isMobile, notesPanelOpen, notesPanelWidth]);
+
+  useEffect(() => {
+    requestAnimationFrame(checkGmHotbarFit);
+    window.addEventListener('resize', checkGmHotbarFit);
+    return () => window.removeEventListener('resize', checkGmHotbarFit);
+  }, [checkGmHotbarFit, inspectedChar]);
   
   // State for notes panel resize dragging
   const [isResizingNotes, setIsResizingNotes] = useState(false);
@@ -821,7 +841,7 @@ export default function Campaign() {
   const handleNotesResizeMove = useCallback((e: React.PointerEvent) => {
     if (!isResizingNotes || isMobile) return;
     const dx = e.clientX - notesResizeStartRef.current.x;
-    const newWidth = Math.max(300, Math.min(window.innerWidth * 0.8, notesResizeStartRef.current.width + dx));
+    const newWidth = Math.max(300, Math.min(window.innerWidth * 0.8, notesResizeStartRef.current.width - dx));
     setNotesPanelWidth(newWidth);
   }, [isResizingNotes, isMobile]);
   
