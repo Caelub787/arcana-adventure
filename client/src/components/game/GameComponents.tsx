@@ -6736,9 +6736,10 @@ interface InitiativeTrackerProps {
   isGM: boolean;
   characters?: any[];
   userId?: string;
+  inline?: boolean;
 }
 
-export function InitiativeTracker({ open, onOpenChange, sceneId, campaignId, isGM, characters = [], userId }: InitiativeTrackerProps) {
+export function InitiativeTracker({ open, onOpenChange, sceneId, campaignId, isGM, characters = [], userId, inline = false }: InitiativeTrackerProps) {
   const queryClient = useQueryClient();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState<number>(0);
@@ -6883,25 +6884,14 @@ export function InitiativeTracker({ open, onOpenChange, sceneId, campaignId, isG
     updateMutation.mutate({ id: entry.id, data: { isHidden: !entry.isHidden } });
   };
 
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-stone-900 border-stone-700 text-stone-200 sm:max-w-lg max-h-[85vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="text-amber-500 font-display text-2xl flex items-center gap-2">
-            <Zap className="w-6 h-6" />
-            Initiative Tracker
-          </DialogTitle>
-        </DialogHeader>
-        
+  const initiativeContent = (
         <div className="space-y-4">
-          {/* Combat Status */}
           {inCombat && (
             <div className="bg-red-900/50 border border-red-700 rounded-lg p-3 text-center">
               <span className="text-red-300 font-semibold">Combat Active</span>
             </div>
           )}
 
-          {/* Initiative List */}
           {isLoading ? (
             <div className="text-center py-4 text-stone-400">Loading...</div>
           ) : sortedEntries.length === 0 ? (
@@ -7127,6 +7117,22 @@ export function InitiativeTracker({ open, onOpenChange, sceneId, campaignId, isG
             </div>
           )}
         </div>
+  );
+
+  if (inline) {
+    return initiativeContent;
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="bg-stone-900 border-stone-700 text-stone-200 sm:max-w-lg max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="text-amber-500 font-display text-2xl flex items-center gap-2">
+            <Zap className="w-6 h-6" />
+            Initiative Tracker
+          </DialogTitle>
+        </DialogHeader>
+        {initiativeContent}
       </DialogContent>
     </Dialog>
   );
@@ -7204,9 +7210,10 @@ interface CampaignMenuProps {
   system?: string;
   defaultPanel?: string;
   onDefaultPanelChange?: (panel: string) => void;
+  inline?: boolean;
 }
 
-export function CampaignMenu({ campaignId, role, inviteCode, hotbarSlots = 5, inspectedChar, onInspectChar, onAddCharacterToken, onChangeMap, characters, members, onAddCharacter, onViewCharacter, onLevelUpAll, chatOpen = false, onChatOpenChange, onAssignCharacter, myPermissions, onOpenCampaignSpecies, isOwner = false, gmUserId, beaconColor, onChangeBeaconColor, system, defaultPanel, onDefaultPanelChange }: CampaignMenuProps) {
+export function CampaignMenu({ campaignId, role, inviteCode, hotbarSlots = 5, inspectedChar, onInspectChar, onAddCharacterToken, onChangeMap, characters, members, onAddCharacter, onViewCharacter, onLevelUpAll, chatOpen = false, onChatOpenChange, onAssignCharacter, myPermissions, onOpenCampaignSpecies, isOwner = false, gmUserId, beaconColor, onChangeBeaconColor, system, defaultPanel, onDefaultPanelChange, inline = false }: CampaignMenuProps) {
   const { user } = useAuth();
   const setChatOpen = onChatOpenChange || (() => {});
   const [addCharacterOpen, setAddCharacterOpen] = useState(false);
@@ -7737,6 +7744,7 @@ export function CampaignMenu({ campaignId, role, inviteCode, hotbarSlots = 5, in
       {/* Floating Chat Button if closed (handled by parent HUD usually, but here for fallback) */}
       
       {/* Chat Sheet (Left side usually or overlay) */}
+      {!inline && (
       <Sheet open={chatOpen} onOpenChange={setChatOpen}>
         <SheetTrigger asChild>
           <div className="hidden"></div>
@@ -7862,14 +7870,15 @@ export function CampaignMenu({ campaignId, role, inviteCode, hotbarSlots = 5, in
           </form>
         </SheetContent>
       </Sheet>
+      )}
 
-
-      {/* Main Menu Sheet */}
+      {/* Main Menu Sheet - only shown when not inline */}
+      {!inline && (
       <Sheet>
         <SheetTrigger asChild>
-          <Button variant="ghost" size="icon" className="text-white/50 hover:text-white hover:bg-white/10">
-            <Settings className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
-          </Button>
+            <Button variant="ghost" size="icon" className="text-white/50 hover:text-white hover:bg-white/10">
+              <Settings className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
+            </Button>
         </SheetTrigger>
         <SheetContent className="bg-stone-950 border-l-stone-800 text-stone-200 w-full sm:max-w-md overflow-y-auto">
           <div className="mb-6">
@@ -8563,6 +8572,163 @@ export function CampaignMenu({ campaignId, role, inviteCode, hotbarSlots = 5, in
           </div>
         </SheetContent>
       </Sheet>
+      )}
+
+      {inline && (
+        <div className="space-y-4">
+          <InviteCodeSection inviteCode={inviteCode} />
+          {role === 'gm' && onOpenCampaignSpecies && (
+            <Button
+              variant="secondary"
+              className="w-full bg-purple-900/50 hover:bg-purple-800/50 border border-purple-700"
+              onClick={onOpenCampaignSpecies}
+              data-testid="button-campaign-species-settings-inline"
+            >
+              <Dna className="mr-2 h-4 w-4" /> Campaign Species
+            </Button>
+          )}
+          <div className="p-4 bg-stone-900/50 border border-stone-800 rounded-lg space-y-4">
+            <h3 className="text-xs font-bold text-stone-400 uppercase flex items-center gap-2">
+              <Bell className="h-3 w-3 text-blue-400" /> Display Settings
+            </h3>
+            <div className="flex items-center justify-between">
+              <Label htmlFor="notification-style-inline" className="text-stone-300">Compact Notifications</Label>
+              <input
+                type="checkbox"
+                id="notification-style-inline"
+                checked={getNotificationStyle() === 'compact'}
+                onChange={(e) => {
+                  const newStyle = e.target.checked ? 'compact' : 'full';
+                  setNotificationStyle(newStyle);
+                  toast({
+                    title: newStyle === 'compact' ? "Compact notifications" : "Full notifications",
+                    description: newStyle === 'compact' ? "Roll notifications will appear small on the left" : "Roll notifications will appear large at the top",
+                    duration: 2000,
+                  });
+                }}
+                className="h-5 w-5"
+                data-testid="toggle-notification-style-inline"
+              />
+            </div>
+            {onChangeBeaconColor && (
+              <div className="pt-4 border-t border-stone-700">
+                <div className="flex items-center justify-between">
+                  <Label className="text-stone-300">My Beacon Color</Label>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="border-stone-600 hover:border-amber-500 flex items-center gap-2"
+                    onClick={onChangeBeaconColor}
+                    data-testid="button-change-beacon-color-inline"
+                  >
+                    <div 
+                      className="w-4 h-4 rounded-full border border-stone-500"
+                      style={{ backgroundColor: beaconColor || '#FBB524' }}
+                    />
+                    Change
+                  </Button>
+                </div>
+                <p className="text-xs text-stone-500 mt-1">Color shown when you click on the map</p>
+              </div>
+            )}
+            {role === 'gm' && (
+              <div className="pt-4 border-t border-stone-700">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="hotbar-slots-inline" className="text-stone-300">Hotbar Slots</Label>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="h-7 w-7 border-stone-600"
+                      onClick={() => {
+                        const newValue = Math.max(1, hotbarSlots - 1);
+                        if (newValue !== hotbarSlots) {
+                          updateCampaignMutation.mutate({ hotbarSlots: newValue });
+                        }
+                      }}
+                      disabled={hotbarSlots <= 1 || updateCampaignMutation.isPending}
+                      data-testid="button-decrease-hotbar-slots-inline"
+                    >
+                      <Minus className="h-3 w-3" />
+                    </Button>
+                    <span className="text-amber-400 font-mono w-6 text-center">{hotbarSlots}</span>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="h-7 w-7 border-stone-600"
+                      onClick={() => {
+                        const newValue = Math.min(10, hotbarSlots + 1);
+                        if (newValue !== hotbarSlots) {
+                          updateCampaignMutation.mutate({ hotbarSlots: newValue });
+                        }
+                      }}
+                      disabled={hotbarSlots >= 10 || updateCampaignMutation.isPending}
+                      data-testid="button-increase-hotbar-slots-inline"
+                    >
+                      <Plus className="h-3 w-3" />
+                    </Button>
+                  </div>
+                </div>
+                <p className="text-xs text-stone-500 mt-1">Number of slots per hotbar (1-10)</p>
+              </div>
+            )}
+            {onDefaultPanelChange && (
+              <div className="pt-4 border-t border-stone-700">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="default-panel-inline" className="text-stone-300">Default Panel</Label>
+                  <Select
+                    value={defaultPanel || 'none'}
+                    onValueChange={(value: string) => onDefaultPanelChange(value)}
+                  >
+                    <SelectTrigger className="w-[140px] bg-stone-900 border-stone-700 text-stone-200" data-testid="select-default-panel-inline">
+                      <SelectValue placeholder="Select panel" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-stone-900 border-stone-700">
+                      <SelectItem value="none">None</SelectItem>
+                      <SelectItem value="characters">Characters</SelectItem>
+                      <SelectItem value="chat">Chat</SelectItem>
+                      <SelectItem value="notes">Notes</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <p className="text-xs text-stone-500 mt-1">Panel to open by default when loading the campaign</p>
+              </div>
+            )}
+          </div>
+          <Tabs defaultValue="players" className="w-full">
+            {system !== 'sandbox' && (
+              <TabsList className="w-full grid grid-cols-2 bg-stone-900">
+                <TabsTrigger value="players">Players</TabsTrigger>
+                <TabsTrigger value="characters">Characters</TabsTrigger>
+              </TabsList>
+            )}
+            <TabsContent value="players" className={system === 'sandbox' ? "mt-0 space-y-4" : "mt-4 space-y-4"}>
+              <div className="space-y-2">
+                {members && members.length > 0 ? (
+                  members.map((member: any) => (
+                    <div 
+                      key={member.id} 
+                      className="p-3 bg-stone-800/50 rounded-lg flex justify-between items-center"
+                    >
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-full bg-stone-700 flex items-center justify-center text-stone-300 text-xs">
+                          {(member.username || 'U').slice(0, 2).toUpperCase()}
+                        </div>
+                        <span className="text-amber-500 font-medium">@{member.username || 'Unknown'}</span>
+                      </div>
+                      <div className="text-xs text-stone-500">
+                        {member.role === 'gm' ? 'GM' : member.role === 'assistant_gm' ? 'Assistant GM' : 'Player'}
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="p-4 text-center text-stone-500 text-sm">No members yet</div>
+                )}
+              </div>
+            </TabsContent>
+          </Tabs>
+        </div>
+      )}
       
       {/* Add Character Dialog */}
       {onAddCharacter && (

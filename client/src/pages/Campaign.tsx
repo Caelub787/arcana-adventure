@@ -1712,7 +1712,7 @@ export default function Campaign() {
   const [floatingNotesCollapsed, setFloatingNotesCollapsed] = useState(false);
 
   // Unified side panel state
-  type SidePanelTab = 'characters' | 'chat' | 'notes' | null;
+  type SidePanelTab = 'characters' | 'chat' | 'notes' | 'settings' | 'scene' | 'initiative' | null;
   const campaignDefaultPanel = campaign && typeof campaign === 'object' && 'defaultPanel' in campaign ? (campaign as any).defaultPanel : 'characters';
   const [activeSidePanel, setActiveSidePanel] = useState<SidePanelTab>('characters');
   const [sidePanelMinimized, setSidePanelMinimized] = useState(false);
@@ -1725,7 +1725,7 @@ export default function Campaign() {
       if (dp === 'none') {
         setActiveSidePanel(null);
         setSidePanelMinimized(true);
-      } else if (['characters', 'chat', 'notes'].includes(dp)) {
+      } else if (['characters', 'chat', 'notes', 'settings', 'scene', 'initiative'].includes(dp)) {
         setActiveSidePanel(dp as SidePanelTab);
         setSidePanelMinimized(false);
       }
@@ -3769,41 +3769,31 @@ export default function Campaign() {
             transition: 'margin-right 0.3s ease'
           }}
         >
-          <CampaignMenu 
-            campaignId={effectiveCampaignId || undefined}
-            role={role} 
-            inviteCode={(campaign && typeof campaign === 'object' && 'inviteCode' in campaign ? campaign.inviteCode as string : "") || ""}
-            hotbarSlots={(campaign && typeof campaign === 'object' && 'hotbarSlots' in campaign ? (campaign as any).hotbarSlots as number : 5) || 5}
-            inspectedChar={inspectedChar}
-            onInspectChar={setInspectedChar}
-            onAddCharacterToken={handleAddCharacterToken}
-            onChangeMap={handleChangeMap}
-            characters={characters as any[]}
-            members={members as any[]}
-            onAddCharacter={handleAddCharacter}
-            onViewCharacter={handleViewCharacter}
-            onLevelUpAll={handleLevelUpAll}
-            chatOpen={false}
-            onChatOpenChange={() => {}}
-            onAssignCharacter={handleAssignCharacter}
-            myPermissions={myPermissions}
-            onOpenCampaignSpecies={() => setCampaignSpeciesOpen(true)}
-            isOwner={!!(campaign && typeof campaign === 'object' && 'gmUserId' in campaign && (campaign as any).gmUserId === user?.id)}
-            gmUserId={(campaign && typeof campaign === 'object' && 'gmUserId' in campaign ? (campaign as any).gmUserId as string : undefined)}
-            beaconColor={myMembership?.beaconColor || '#FBB524'}
-            onChangeBeaconColor={() => {
-              setPendingBeaconColor(myMembership?.beaconColor || '#FBB524');
-              setBeaconColorDialogOpen(true);
-            }}
-            system={isSandbox ? 'sandbox' : 'arcana-adventure'}
-            defaultPanel={(campaign && typeof campaign === 'object' && 'defaultPanel' in campaign ? (campaign as any).defaultPanel as string : 'characters') || 'characters'}
-            onDefaultPanelChange={(panel: string) => {
-              if (effectiveCampaignId) {
-                api.updateCampaign(effectiveCampaignId, { defaultPanel: panel } as any);
-                queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${effectiveCampaignId}`] });
-              }
-            }}
-          />
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => {
+                    if (activeSidePanel === 'settings' && !sidePanelMinimized) {
+                      setSidePanelMinimized(true);
+                    } else {
+                      setActiveSidePanel('settings');
+                      setSidePanelMinimized(false);
+                    }
+                  }}
+                  className={`text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto ${activeSidePanel === 'settings' && !sidePanelMinimized ? 'text-amber-400 bg-white/10' : ''}`}
+                  data-testid="button-panel-settings"
+                >
+                  <Settings className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="left" className="bg-stone-800 border-stone-700 text-stone-200">
+                <p>Settings</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
 
           {role === 'gm' && (
             <TooltipProvider>
@@ -3832,9 +3822,16 @@ export default function Campaign() {
                 <Button
                   variant="ghost"
                   size="icon"
-                  onClick={() => setInitiativeTrackerOpen(true)}
-                  className="text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto"
-                  data-testid="button-initiative"
+                  onClick={() => {
+                    if (activeSidePanel === 'initiative' && !sidePanelMinimized) {
+                      setSidePanelMinimized(true);
+                    } else {
+                      setActiveSidePanel('initiative');
+                      setSidePanelMinimized(false);
+                    }
+                  }}
+                  className={`text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto ${activeSidePanel === 'initiative' && !sidePanelMinimized ? 'text-amber-400 bg-white/10' : ''}`}
+                  data-testid="button-panel-initiative"
                 >
                   <Swords className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
                 </Button>
@@ -3844,6 +3841,34 @@ export default function Campaign() {
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
+
+          {role === 'gm' && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => {
+                      if (activeSidePanel === 'scene' && !sidePanelMinimized) {
+                        setSidePanelMinimized(true);
+                      } else {
+                        setActiveSidePanel('scene');
+                        setSidePanelMinimized(false);
+                      }
+                    }}
+                    className={`text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto ${activeSidePanel === 'scene' && !sidePanelMinimized ? 'text-amber-400 bg-white/10' : ''}`}
+                    data-testid="button-panel-scene"
+                  >
+                    <Grid3X3 className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="left" className="bg-stone-800 border-stone-700 text-stone-200">
+                  <p>Scene Settings</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
           
           <div className="w-8 h-px bg-stone-600/50 mx-auto" />
 
@@ -3873,33 +3898,31 @@ export default function Campaign() {
             </Tooltip>
           </TooltipProvider>
 
-          {(isSandbox ? role === 'gm' : true) && (
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => {
-                      if (activeSidePanel === 'characters' && !sidePanelMinimized) {
-                        setSidePanelMinimized(true);
-                      } else {
-                        setActiveSidePanel('characters');
-                        setSidePanelMinimized(false);
-                      }
-                    }}
-                    className={`text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto ${activeSidePanel === 'characters' && !sidePanelMinimized ? 'text-amber-400 bg-white/10' : ''}`}
-                    data-testid="button-panel-characters"
-                  >
-                    <Users className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="left" className="bg-stone-800 border-stone-700 text-stone-200">
-                  <p>Characters</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          )}
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => {
+                    if (activeSidePanel === 'characters' && !sidePanelMinimized) {
+                      setSidePanelMinimized(true);
+                    } else {
+                      setActiveSidePanel('characters');
+                      setSidePanelMinimized(false);
+                    }
+                  }}
+                  className={`text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto ${activeSidePanel === 'characters' && !sidePanelMinimized ? 'text-amber-400 bg-white/10' : ''}`}
+                  data-testid="button-panel-characters"
+                >
+                  <Users className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="left" className="bg-stone-800 border-stone-700 text-stone-200">
+                <p>Characters</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
 
           <TooltipProvider>
             <Tooltip>
@@ -4645,7 +4668,7 @@ export default function Campaign() {
              onGridTargetClick={handleGridTargetClick}
              notesPanelOpen={sidePanelOpen}
              notesPanelWidth={notesPanelWidth}
-             onNotesClick={handleToggleNotesPanel}
+             
              inCombat={initiativeData?.inCombat ?? false}
            />
            
@@ -4899,6 +4922,9 @@ export default function Campaign() {
                 {activeSidePanel === 'chat' && 'Adventure Log'}
                 {activeSidePanel === 'characters' && 'Characters'}
                 {activeSidePanel === 'notes' && 'Notes'}
+                {activeSidePanel === 'settings' && 'Settings'}
+                {activeSidePanel === 'scene' && 'Scene Settings'}
+                {activeSidePanel === 'initiative' && 'Initiative'}
               </h2>
               <Button
                 variant="ghost"
@@ -4951,6 +4977,74 @@ export default function Campaign() {
                       setFloatingNotesOpen(true);
                     }}
                   />
+                </div>
+              )}
+              {activeSidePanel === 'settings' && effectiveCampaignId && (
+                <div className="h-full overflow-y-auto p-3">
+                  <CampaignMenu 
+                    campaignId={effectiveCampaignId}
+                    role={role} 
+                    inviteCode={(campaign && typeof campaign === 'object' && 'inviteCode' in campaign ? campaign.inviteCode as string : "") || ""}
+                    hotbarSlots={(campaign && typeof campaign === 'object' && 'hotbarSlots' in campaign ? (campaign as any).hotbarSlots as number : 5) || 5}
+                    inspectedChar={inspectedChar}
+                    onInspectChar={setInspectedChar}
+                    onAddCharacterToken={handleAddCharacterToken}
+                    onChangeMap={handleChangeMap}
+                    characters={characters as any[]}
+                    members={members as any[]}
+                    onAddCharacter={handleAddCharacter}
+                    onViewCharacter={handleViewCharacter}
+                    onLevelUpAll={handleLevelUpAll}
+                    chatOpen={false}
+                    onChatOpenChange={() => {}}
+                    onAssignCharacter={handleAssignCharacter}
+                    myPermissions={myPermissions}
+                    onOpenCampaignSpecies={() => setCampaignSpeciesOpen(true)}
+                    isOwner={!!(campaign && typeof campaign === 'object' && 'gmUserId' in campaign && (campaign as any).gmUserId === user?.id)}
+                    gmUserId={(campaign && typeof campaign === 'object' && 'gmUserId' in campaign ? (campaign as any).gmUserId as string : undefined)}
+                    beaconColor={myMembership?.beaconColor || '#FBB524'}
+                    onChangeBeaconColor={() => {
+                      setPendingBeaconColor(myMembership?.beaconColor || '#FBB524');
+                      setBeaconColorDialogOpen(true);
+                    }}
+                    system={isSandbox ? 'sandbox' : 'arcana-adventure'}
+                    defaultPanel={(campaign && typeof campaign === 'object' && 'defaultPanel' in campaign ? (campaign as any).defaultPanel as string : 'characters') || 'characters'}
+                    onDefaultPanelChange={(panel: string) => {
+                      if (effectiveCampaignId) {
+                        api.updateCampaign(effectiveCampaignId, { defaultPanel: panel } as any);
+                        queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${effectiveCampaignId}`] });
+                      }
+                    }}
+                    inline={true}
+                  />
+                </div>
+              )}
+              {activeSidePanel === 'initiative' && (
+                <div className="h-full overflow-y-auto p-3">
+                  <InitiativeTracker
+                    open={true}
+                    onOpenChange={() => {}}
+                    sceneId={activeScene?.id}
+                    campaignId={effectiveCampaignId || undefined}
+                    isGM={role === 'gm'}
+                    characters={characters as any[]}
+                    userId={user?.id}
+                    inline={true}
+                  />
+                </div>
+              )}
+              {activeSidePanel === 'scene' && role === 'gm' && (
+                <div className="h-full overflow-y-auto p-3">
+                  {activeScene ? (
+                    <SceneSettingsForm
+                      scene={activeScene}
+                      onUpdateScene={handleUpdateScene}
+                    />
+                  ) : (
+                    <div className="text-stone-500 text-center italic text-sm pt-8">
+                      No active scene selected
+                    </div>
+                  )}
                 </div>
               )}
             </div>
