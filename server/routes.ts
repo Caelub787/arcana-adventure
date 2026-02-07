@@ -1932,6 +1932,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/logout", (req, res) => {
     req.session.destroy(() => {
+      res.clearCookie('connect.sid');
       res.json({ success: true });
     });
   });

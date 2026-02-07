@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { api, type User, type BanDetails } from './api';
+import { queryClient } from './queryClient';
 
 interface AuthContextType {
   user: User | null;
@@ -57,6 +58,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await api.logout();
     setUser(null);
     setBanDetails(null);
+    queryClient.clear();
   };
 
   const isBanned = banDetails?.isBanned ?? false;
