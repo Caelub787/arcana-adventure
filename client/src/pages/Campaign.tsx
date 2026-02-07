@@ -856,6 +856,8 @@ function SandboxSheetEditor({
 
   const handlePointerDown = (e: React.PointerEvent) => {
     if (isMobile) return;
+    const target = e.target as HTMLElement;
+    if (target.closest('button')) return;
     const el = e.currentTarget as HTMLElement;
     el.setPointerCapture(e.pointerId);
     setIsDragging(true);
@@ -892,20 +894,25 @@ function SandboxSheetEditor({
               {item.type === 'actor' ? 'Actor' : 'Template'}
             </span>
           </div>
-          <Button variant="ghost" size="icon" onClick={onClose} className="text-stone-400 hover:text-white" data-testid="button-close-sheet-mobile">
-            <X className="h-5 w-5" />
-          </Button>
+          <div className="flex items-center gap-1">
+            <Button variant="ghost" size="icon" onClick={() => setCollapsed(!collapsed)} className="text-stone-400 hover:text-white" data-testid="button-collapse-sheet-mobile">
+              {collapsed ? <ChevronRight className="h-5 w-5 rotate-90" /> : <Minus className="h-5 w-5" />}
+            </Button>
+            <Button variant="ghost" size="icon" onClick={onClose} className="text-stone-400 hover:text-white" data-testid="button-close-sheet-mobile">
+              <X className="h-5 w-5" />
+            </Button>
+          </div>
         </div>
-        <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
+        {!collapsed && <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
           {item.type === 'actor' && role === 'gm' && (
             <div className="mb-4 space-y-2">
               <Label className="text-stone-400 text-sm">Template</Label>
-              <Select value={selectedTemplateId || ''} onValueChange={handleTemplateChange}>
+              <Select value={selectedTemplateId || '__none__'} onValueChange={(v) => handleTemplateChange(v === '__none__' ? '' : v)}>
                 <SelectTrigger className="bg-stone-800 border-stone-700 text-stone-200">
                   <SelectValue placeholder="Select a template..." />
                 </SelectTrigger>
                 <SelectContent className="bg-stone-800 border-stone-700">
-                  <SelectItem value="" className="text-stone-400">No template</SelectItem>
+                  <SelectItem value="__none__" className="text-stone-400">No template</SelectItem>
                   {templates.map((t: any) => (
                     <SelectItem key={t.id} value={t.id} className="text-stone-200">
                       {t.name}
@@ -918,7 +925,7 @@ function SandboxSheetEditor({
           <div className="text-stone-500 text-center italic border border-dashed border-stone-700 rounded-lg p-8">
             {item.type === 'template' ? 'Template sheet — customization coming soon' : 'Actor sheet — customization coming soon'}
           </div>
-        </div>
+        </div>}
       </div>
     );
   }
@@ -934,6 +941,7 @@ function SandboxSheetEditor({
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
+          onDoubleClick={() => setCollapsed(!collapsed)}
         >
           <div className="flex items-center gap-2 min-w-0">
             {item.type === 'actor' ? (
@@ -975,12 +983,12 @@ function SandboxSheetEditor({
             {item.type === 'actor' && role === 'gm' && (
               <div className="mb-4 space-y-2">
                 <Label className="text-stone-400 text-sm">Template</Label>
-                <Select value={selectedTemplateId || ''} onValueChange={handleTemplateChange}>
+                <Select value={selectedTemplateId || '__none__'} onValueChange={(v) => handleTemplateChange(v === '__none__' ? '' : v)}>
                   <SelectTrigger className="bg-stone-800 border-stone-700 text-stone-200 h-9">
                     <SelectValue placeholder="Select a template..." />
                   </SelectTrigger>
                   <SelectContent className="bg-stone-800 border-stone-700">
-                    <SelectItem value="" className="text-stone-400">No template</SelectItem>
+                    <SelectItem value="__none__" className="text-stone-400">No template</SelectItem>
                     {templates.map((t: any) => (
                       <SelectItem key={t.id} value={t.id} className="text-stone-200">
                         {t.name}
