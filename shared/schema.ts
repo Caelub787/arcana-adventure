@@ -84,6 +84,7 @@ export const campaigns = pgTable("campaigns", {
   activeSceneId: varchar("active_scene_id"),
   hotbarSlots: integer("hotbar_slots").default(5).notNull(), // Number of slots per hotbar (default 5)
   system: text("system").notNull().default("arcana-adventure"),
+  defaultPanel: text("default_panel").default("characters"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   lastPlayed: timestamp("last_played").defaultNow().notNull(),
 });

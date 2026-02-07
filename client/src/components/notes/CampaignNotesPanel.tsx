@@ -97,6 +97,7 @@ interface CampaignNotesPanelProps {
   isOpen: boolean;
   campaignMembers?: Array<{ id: string; userId: string; username: string }>;
   onViewCharacter?: (character: any) => void;
+  initialNoteId?: string | null;
 }
 
 const FOLDER_COLORS = [
@@ -573,6 +574,7 @@ export function CampaignNotesPanel({
   isOpen,
   campaignMembers = [],
   onViewCharacter,
+  initialNoteId,
 }: CampaignNotesPanelProps) {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -587,7 +589,16 @@ export function CampaignNotesPanel({
   const [noteMode, setNoteMode] = useState<"read" | "edit">("read");
   const [showSidebar, setShowSidebar] = useState(window.innerWidth >= 768);
 
-  const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
+  const [selectedNoteId, setSelectedNoteId] = useState<string | null>(initialNoteId || null);
+  const lastInitialNoteIdRef = useRef<string | null>(initialNoteId || null);
+  
+  useEffect(() => {
+    if (initialNoteId && initialNoteId !== lastInitialNoteIdRef.current) {
+      lastInitialNoteIdRef.current = initialNoteId;
+      setSelectedNoteId(initialNoteId);
+      setShowHomeView(false);
+    }
+  }, [initialNoteId]);
 
   const [folderDialogOpen, setFolderDialogOpen] = useState(false);
   const [editingFolder, setEditingFolder] = useState<NoteFolder | null>(null);

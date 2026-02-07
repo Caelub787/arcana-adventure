@@ -6,7 +6,7 @@ import { BattlemapDiceOverlay, triggerBattlemapDiceRoll } from "@/components/gam
 import { type AoeTargetState, createInitialAoeState } from "@/lib/aoeHelpers";
 import { RollNotificationContainer, triggerInitiativeNotification, triggerEffectRollNotification, getNotificationStyle, setNotificationStyle, type NotificationStyle } from "@/components/game/RollNotification";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Loader2, Settings, Map as MapIcon, Layers, Trash2, MessageSquare, User, BarChart3, Zap, Backpack, Sparkles, Grid3X3, ScrollText, Swords, Dices, Users, Dna, Edit2, Bell, FileText, X, ChevronLeft, Network, List, BookOpen, Send } from "lucide-react";
+import { ArrowLeft, Loader2, Settings, Map as MapIcon, Layers, Trash2, MessageSquare, User, BarChart3, Zap, Backpack, Sparkles, Grid3X3, ScrollText, Swords, Dices, Users, Dna, Edit2, Bell, FileText, X, ChevronLeft, Network, List, BookOpen, Send, Pin } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -1041,6 +1041,9 @@ function SandboxCharactersContent({
       setNewName('');
       toast({ title: "Template created" });
     },
+    onError: (error: any) => {
+      toast({ title: "Failed to create template", description: error?.message || "Unknown error", variant: "destructive" });
+    },
   });
 
   const createActorMutation = useMutation({
@@ -1051,6 +1054,9 @@ function SandboxCharactersContent({
       setNewName('');
       toast({ title: "Actor created" });
     },
+    onError: (error: any) => {
+      toast({ title: "Failed to create actor", description: error?.message || "Unknown error", variant: "destructive" });
+    },
   });
 
   const createFolderMutation = useMutation({
@@ -1060,6 +1066,9 @@ function SandboxCharactersContent({
       setCreateFolderOpen(false);
       setNewFolderName('');
       toast({ title: "Folder created" });
+    },
+    onError: (error: any) => {
+      toast({ title: "Failed to create folder", description: error?.message || "Unknown error", variant: "destructive" });
     },
   });
 
@@ -1292,6 +1301,312 @@ function SandboxCharactersContent({
   );
 }
 
+function NotesFolderBrowser({ campaignId, onSelectNote }: { campaignId: string; onSelectNote: (noteId: string) => void }) {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
+  const [newFolderMode, setNewFolderMode] = useState(false);
+  const [newFolderName, setNewFolderName] = useState('');
+
+  const { data: folders = [] } = useQuery({
+    queryKey: ['note-folders', campaignId],
+    queryFn: () => api.getNoteFolders(campaignId),
+  });
+
+  const { data: allNotes = [] } = useQuery({
+    queryKey: ['notes', campaignId],
+    queryFn: () => api.getNotes(undefined, campaignId),
+  });
+
+  const createNoteMutation = useMutation({
+    mutationFn: (folderId?: string) => api.createNote({ title: 'Untitled', content: '', campaignId, folderId: folderId || undefined }),
+    onSuccess: (note) => {
+      queryClient.invalidateQueries({ queryKey: ['notes', campaignId] });
+      onSelectNote(note.id);
+    },
+  });
+
+  const createFolderMutation = useMutation({
+    mutationFn: (name: string) => api.createNoteFolder({ name, campaignId }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['note-folders', campaignId] });
+      setNewFolderMode(false);
+      setNewFolderName('');
+      toast({ title: 'Folder created' });
+    },
+  });
+
+  const toggleFolder = (folderId: string) => {
+    setExpandedFolders(prev => {
+      const next = new Set(prev);
+      if (next.has(folderId)) next.delete(folderId);
+      else next.add(folderId);
+      return next;
+    });
+  };
+
+  const rootFolders = folders.filter((f: any) => !f.parentId).sort((a: any, b: any) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+  const unfiledNotes = allNotes.filter((n: any) => !n.folderId);
+
+  const renderFolder = (folder: any, level: number = 0) => {
+    const isExpanded = expandedFolders.has(folder.id);
+    const childFolders = folders.filter((f: any) => f.parentId === folder.id).sort((a: any, b: any) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+    const folderNotes = allNotes.filter((n: any) => n.folderId === folder.id);
+    const hasContent = childFolders.length > 0 || folderNotes.length > 0;
+
+    return (
+      <div key={folder.id}>
+        <div
+          className={`flex items-center gap-1.5 py-1.5 px-2 rounded cursor-pointer hover:bg-stone-800/60 text-stone-300 text-sm transition-colors`}
+          style={{ paddingLeft: `${level * 16 + 8}px` }}
+          onClick={() => toggleFolder(folder.id)}
+          data-testid={`notes-browser-folder-${folder.id}`}
+        >
+          {hasContent ? (
+            isExpanded ? <ChevronDown className="h-3.5 w-3.5 text-stone-500 shrink-0" /> : <ChevronRight className="h-3.5 w-3.5 text-stone-500 shrink-0" />
+          ) : (
+            <span className="w-3.5 shrink-0" />
+          )}
+          {isExpanded ? (
+            <FolderOpen className={`h-4 w-4 shrink-0 ${folder.color ? `text-${folder.color}-500` : 'text-amber-500/70'}`} />
+          ) : (
+            <Folder className={`h-4 w-4 shrink-0 ${folder.color ? `text-${folder.color}-500` : 'text-stone-500'}`} />
+          )}
+          <span className="truncate">{folder.name}</span>
+          <button
+            onClick={(e) => { e.stopPropagation(); createNoteMutation.mutate(folder.id); }}
+            className="ml-auto p-0.5 rounded hover:bg-stone-700 text-stone-500 hover:text-amber-400 opacity-0 group-hover:opacity-100 transition-opacity"
+            data-testid={`notes-browser-new-note-in-folder-${folder.id}`}
+          >
+            <Plus className="h-3 w-3" />
+          </button>
+        </div>
+        {isExpanded && (
+          <div>
+            {childFolders.map((cf: any) => renderFolder(cf, level + 1))}
+            {folderNotes.map((note: any) => (
+              <div
+                key={note.id}
+                className="flex items-center gap-1.5 py-1.5 px-2 rounded cursor-pointer hover:bg-stone-800/60 text-stone-300 text-sm transition-colors"
+                style={{ paddingLeft: `${(level + 1) * 16 + 8}px` }}
+                onClick={() => onSelectNote(note.id)}
+                data-testid={`notes-browser-note-${note.id}`}
+              >
+                <FileText className="h-3.5 w-3.5 text-stone-500 shrink-0" />
+                <span className="truncate">{note.title || 'Untitled'}</span>
+                {note.isPinned && <Pin className="h-3 w-3 text-amber-500 shrink-0" />}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <div className="space-y-2" data-testid="notes-folder-browser">
+      <div className="flex items-center gap-2">
+        <Button
+          size="sm"
+          onClick={() => createNoteMutation.mutate(undefined)}
+          className="flex-1 bg-amber-700/80 hover:bg-amber-600 text-white h-7 text-xs"
+          data-testid="notes-browser-new-note"
+        >
+          <Plus className="h-3 w-3 mr-1" /> New Note
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => setNewFolderMode(true)}
+          className="border-stone-700 hover:bg-stone-800 text-stone-300 h-7 text-xs"
+          data-testid="notes-browser-new-folder"
+        >
+          <FolderPlus className="h-3 w-3 mr-1" /> Folder
+        </Button>
+      </div>
+
+      {newFolderMode && (
+        <div className="flex items-center gap-1.5">
+          <Input
+            value={newFolderName}
+            onChange={(e) => setNewFolderName(e.target.value)}
+            placeholder="Folder name..."
+            className="h-7 text-xs bg-stone-800 border-stone-700 text-stone-200"
+            autoFocus
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && newFolderName.trim()) createFolderMutation.mutate(newFolderName.trim());
+              if (e.key === 'Escape') { setNewFolderMode(false); setNewFolderName(''); }
+            }}
+            data-testid="notes-browser-folder-name-input"
+          />
+          <Button size="sm" onClick={() => newFolderName.trim() && createFolderMutation.mutate(newFolderName.trim())} className="h-7 text-xs bg-amber-600 hover:bg-amber-700" data-testid="notes-browser-confirm-folder">
+            OK
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => { setNewFolderMode(false); setNewFolderName(''); }} className="h-7 text-xs text-stone-400" data-testid="notes-browser-cancel-folder">
+            <X className="h-3 w-3" />
+          </Button>
+        </div>
+      )}
+
+      <div className="space-y-0.5">
+        {rootFolders.map((f: any) => renderFolder(f))}
+
+        {unfiledNotes.length > 0 && (
+          <div className="mt-2 pt-2 border-t border-stone-800/50">
+            <div className="text-[10px] uppercase tracking-wider text-stone-600 px-2 mb-1">Unfiled</div>
+            {unfiledNotes.map((note: any) => (
+              <div
+                key={note.id}
+                className="flex items-center gap-1.5 py-1.5 px-2 rounded cursor-pointer hover:bg-stone-800/60 text-stone-300 text-sm transition-colors"
+                onClick={() => onSelectNote(note.id)}
+                data-testid={`notes-browser-note-${note.id}`}
+              >
+                <FileText className="h-3.5 w-3.5 text-stone-500 shrink-0" />
+                <span className="truncate">{note.title || 'Untitled'}</span>
+                {note.isPinned && <Pin className="h-3 w-3 text-amber-500 shrink-0" />}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {rootFolders.length === 0 && allNotes.length === 0 && (
+          <div className="text-center py-8 text-stone-600 italic text-xs">
+            No notes yet. Create one to get started.
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function FloatingNotesEditor({
+  campaignId,
+  initialNoteId,
+  position,
+  size,
+  collapsed,
+  onPositionChange,
+  onSizeChange,
+  onCollapsedChange,
+  onClose,
+  campaignMembers,
+  onViewCharacter,
+}: {
+  campaignId: string;
+  initialNoteId: string | null;
+  position: { x: number; y: number };
+  size: { width: number; height: number };
+  collapsed: boolean;
+  onPositionChange: (pos: { x: number; y: number }) => void;
+  onSizeChange: (size: { width: number; height: number }) => void;
+  onCollapsedChange: (collapsed: boolean) => void;
+  onClose: () => void;
+  campaignMembers?: Array<{ id: string; userId: string; username: string }>;
+  onViewCharacter?: (character: any) => void;
+}) {
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  const resizeStartRef = useRef<{ x: number; y: number; width: number; height: number } | null>(null);
+
+  const handlePointerDown = (e: React.PointerEvent) => {
+    const el = e.currentTarget as HTMLElement;
+    el.setPointerCapture(e.pointerId);
+    setIsDragging(true);
+    setDragOffset({ x: e.clientX - position.x, y: e.clientY - position.y });
+  };
+
+  const handlePointerMove = (e: React.PointerEvent) => {
+    if (!isDragging) return;
+    onPositionChange({ x: e.clientX - dragOffset.x, y: e.clientY - dragOffset.y });
+  };
+
+  const handlePointerUp = (e: React.PointerEvent) => {
+    setIsDragging(false);
+    const el = e.currentTarget as HTMLElement;
+    if (el.hasPointerCapture(e.pointerId)) {
+      el.releasePointerCapture(e.pointerId);
+    }
+  };
+
+  return (
+    <div
+      className="fixed z-[45] pointer-events-auto"
+      style={{ left: `${position.x}px`, top: `${position.y}px`, width: `${size.width}px`, height: collapsed ? 'auto' : `${size.height}px` }}
+      data-testid="floating-notes-editor"
+    >
+      <div className="bg-stone-900/95 border border-amber-800/50 rounded-xl shadow-2xl backdrop-blur-sm overflow-hidden h-full flex flex-col">
+        <div
+          className="flex items-center justify-between px-3 py-2 cursor-move select-none bg-amber-900/30 border-b border-amber-800/30 shrink-0"
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+        >
+          <div className="flex items-center gap-2 min-w-0">
+            <FileText className="h-4 w-4 text-amber-500 shrink-0" />
+            <span className="text-amber-400 font-bold text-sm truncate">Notes</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => onCollapsedChange(!collapsed)}
+              className="p-1 rounded hover:bg-stone-700 text-stone-400 hover:text-white transition-colors"
+              data-testid="floating-notes-collapse"
+            >
+              <Minus className="h-3.5 w-3.5" />
+            </button>
+            <button
+              onClick={onClose}
+              className="p-1 rounded hover:bg-stone-700 text-stone-400 hover:text-white transition-colors"
+              data-testid="floating-notes-close"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </div>
+        {!collapsed && (
+          <div className="flex-1 overflow-hidden">
+            <CampaignNotesPanel
+              campaignId={campaignId}
+              onClose={onClose}
+              isOpen={true}
+              campaignMembers={campaignMembers}
+              onViewCharacter={onViewCharacter}
+              initialNoteId={initialNoteId}
+            />
+          </div>
+        )}
+      </div>
+      {!collapsed && (
+        <div
+          className="absolute bottom-0 right-0 w-4 h-4 cursor-nwse-resize z-50"
+          onPointerDown={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            resizeStartRef.current = { x: e.clientX, y: e.clientY, width: size.width, height: size.height };
+            const onMove = (e2: PointerEvent) => {
+              if (!resizeStartRef.current) return;
+              const dx = e2.clientX - resizeStartRef.current.x;
+              const dy = e2.clientY - resizeStartRef.current.y;
+              onSizeChange({
+                width: Math.max(400, resizeStartRef.current.width + dx),
+                height: Math.max(300, resizeStartRef.current.height + dy),
+              });
+            };
+            const onUp = () => {
+              resizeStartRef.current = null;
+              window.removeEventListener('pointermove', onMove);
+              window.removeEventListener('pointerup', onUp);
+            };
+            window.addEventListener('pointermove', onMove);
+            window.addEventListener('pointerup', onUp);
+          }}
+        >
+          <div className="absolute bottom-1 right-1 w-2 h-2 border-r-2 border-b-2 border-stone-500" />
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Campaign() {
   const [location, setLocation] = useLocation();
   const search = useSearch();
@@ -1388,17 +1703,40 @@ export default function Campaign() {
   // Sandbox panel state
   const [sandboxSceneSettingsOpen, setSandboxSceneSettingsOpen] = useState(false);
   const [openSandboxSheets, setOpenSandboxSheets] = useState<Array<{ id: string; name: string; type: 'actor' | 'template'; templateId?: string | null; data?: string }>>([]);
-  
+
+  // Floating notes panel state
+  const [floatingNotesOpen, setFloatingNotesOpen] = useState(false);
+  const [floatingNotesInitialNoteId, setFloatingNotesInitialNoteId] = useState<string | null>(null);
+  const [floatingNotesPosition, setFloatingNotesPosition] = useState({ x: 100, y: 80 });
+  const [floatingNotesSize, setFloatingNotesSize] = useState({ width: 700, height: 500 });
+  const [floatingNotesCollapsed, setFloatingNotesCollapsed] = useState(false);
+
   // Unified side panel state
   type SidePanelTab = 'characters' | 'chat' | 'notes' | null;
+  const campaignDefaultPanel = campaign && typeof campaign === 'object' && 'defaultPanel' in campaign ? (campaign as any).defaultPanel : 'characters';
   const [activeSidePanel, setActiveSidePanel] = useState<SidePanelTab>('characters');
   const [sidePanelMinimized, setSidePanelMinimized] = useState(false);
+  const defaultPanelAppliedRef = useRef(false);
+  
+  useEffect(() => {
+    if (campaign && !defaultPanelAppliedRef.current) {
+      defaultPanelAppliedRef.current = true;
+      const dp = campaignDefaultPanel || 'characters';
+      if (dp === 'none') {
+        setActiveSidePanel(null);
+        setSidePanelMinimized(true);
+      } else if (['characters', 'chat', 'notes'].includes(dp)) {
+        setActiveSidePanel(dp as SidePanelTab);
+        setSidePanelMinimized(false);
+      }
+    }
+  }, [campaign, campaignDefaultPanel]);
   const sidePanelOpen = activeSidePanel !== null && !sidePanelMinimized;
   const chatOpen = activeSidePanel === 'chat' && !sidePanelMinimized;
   
   const [notesPanelWidth, setNotesPanelWidth] = useState(() => {
-    const defaultWidth = typeof window !== 'undefined' ? window.innerWidth * 0.4 : 450;
-    return Math.max(300, Math.min(800, defaultWidth));
+    const defaultWidth = typeof window !== 'undefined' ? window.innerWidth * 0.28 : 320;
+    return Math.max(280, Math.min(600, defaultWidth));
   });
   
   const handleToggleNotesPanel = useCallback(() => {
@@ -3457,6 +3795,14 @@ export default function Campaign() {
               setPendingBeaconColor(myMembership?.beaconColor || '#FBB524');
               setBeaconColorDialogOpen(true);
             }}
+            system={isSandbox ? 'sandbox' : 'arcana-adventure'}
+            defaultPanel={(campaign && typeof campaign === 'object' && 'defaultPanel' in campaign ? (campaign as any).defaultPanel as string : 'characters') || 'characters'}
+            onDefaultPanelChange={(panel: string) => {
+              if (effectiveCampaignId) {
+                api.updateCampaign(effectiveCampaignId, { defaultPanel: panel } as any);
+                queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${effectiveCampaignId}`] });
+              }
+            }}
           />
 
           {role === 'gm' && (
@@ -4008,6 +4354,30 @@ export default function Campaign() {
           role={role}
         />
       ))}
+
+      {/* Floating Notes Editor */}
+      {floatingNotesOpen && effectiveCampaignId && (
+        <FloatingNotesEditor
+          campaignId={effectiveCampaignId}
+          initialNoteId={floatingNotesInitialNoteId}
+          position={floatingNotesPosition}
+          size={floatingNotesSize}
+          collapsed={floatingNotesCollapsed}
+          onPositionChange={setFloatingNotesPosition}
+          onSizeChange={setFloatingNotesSize}
+          onCollapsedChange={setFloatingNotesCollapsed}
+          onClose={() => setFloatingNotesOpen(false)}
+          campaignMembers={(members as any[] || [])
+            .filter((m: any) => m.userId !== user?.id)
+            .map((m: any) => ({ id: m.id, userId: m.userId, username: m.username }))}
+          onViewCharacter={(character) => {
+            if (character) {
+              setCharacterSheetDefaultTab("overview");
+              openCharacterSheet(character);
+            }
+          }}
+        />
+      )}
 
       {/* Campaign Species Sheet (GM Only) */}
       {role === 'gm' && (
@@ -4573,20 +4943,15 @@ export default function Campaign() {
                 </div>
               )}
               {activeSidePanel === 'notes' && effectiveCampaignId && (
-                <CampaignNotesPanel
-                  campaignId={effectiveCampaignId}
-                  onClose={() => setSidePanelMinimized(true)}
-                  isOpen={true}
-                  campaignMembers={(members as any[] || [])
-                    .filter((m: any) => m.userId !== user?.id)
-                    .map((m: any) => ({ id: m.id, userId: m.userId, username: m.username }))}
-                  onViewCharacter={(character) => {
-                    if (character) {
-                      setCharacterSheetDefaultTab("overview");
-                      openCharacterSheet(character);
-                    }
-                  }}
-                />
+                <div className="h-full overflow-y-auto p-3">
+                  <NotesFolderBrowser
+                    campaignId={effectiveCampaignId}
+                    onSelectNote={(noteId) => {
+                      setFloatingNotesInitialNoteId(noteId);
+                      setFloatingNotesOpen(true);
+                    }}
+                  />
+                </div>
               )}
             </div>
           </div>

@@ -7201,9 +7201,12 @@ interface CampaignMenuProps {
   gmUserId?: string;
   beaconColor?: string;
   onChangeBeaconColor?: () => void;
+  system?: string;
+  defaultPanel?: string;
+  onDefaultPanelChange?: (panel: string) => void;
 }
 
-export function CampaignMenu({ campaignId, role, inviteCode, hotbarSlots = 5, inspectedChar, onInspectChar, onAddCharacterToken, onChangeMap, characters, members, onAddCharacter, onViewCharacter, onLevelUpAll, chatOpen = false, onChatOpenChange, onAssignCharacter, myPermissions, onOpenCampaignSpecies, isOwner = false, gmUserId, beaconColor, onChangeBeaconColor }: CampaignMenuProps) {
+export function CampaignMenu({ campaignId, role, inviteCode, hotbarSlots = 5, inspectedChar, onInspectChar, onAddCharacterToken, onChangeMap, characters, members, onAddCharacter, onViewCharacter, onLevelUpAll, chatOpen = false, onChatOpenChange, onAssignCharacter, myPermissions, onOpenCampaignSpecies, isOwner = false, gmUserId, beaconColor, onChangeBeaconColor, system, defaultPanel, onDefaultPanelChange }: CampaignMenuProps) {
   const { user } = useAuth();
   const setChatOpen = onChatOpenChange || (() => {});
   const [addCharacterOpen, setAddCharacterOpen] = useState(false);
@@ -7980,15 +7983,41 @@ export function CampaignMenu({ campaignId, role, inviteCode, hotbarSlots = 5, in
                 <p className="text-xs text-stone-500 mt-1">Number of slots per hotbar (1-10)</p>
               </div>
             )}
+
+            {/* Default Panel Setting (All roles) */}
+            {onDefaultPanelChange && (
+              <div className="mt-4 pt-4 border-t border-stone-700">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="default-panel" className="text-stone-300">Default Panel</Label>
+                  <Select
+                    value={defaultPanel || 'none'}
+                    onValueChange={(value: string) => onDefaultPanelChange(value)}
+                  >
+                    <SelectTrigger className="w-[140px] bg-stone-900 border-stone-700 text-stone-200" data-testid="select-default-panel">
+                      <SelectValue placeholder="Select panel" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-stone-900 border-stone-700">
+                      <SelectItem value="none">None</SelectItem>
+                      <SelectItem value="characters">Characters</SelectItem>
+                      <SelectItem value="chat">Chat</SelectItem>
+                      <SelectItem value="notes">Notes</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <p className="text-xs text-stone-500 mt-1">Panel to open by default when loading the campaign</p>
+              </div>
+            )}
           </div>
 
           <Tabs defaultValue="players" className="w-full">
-            <TabsList className="w-full grid grid-cols-2 bg-stone-900">
-              <TabsTrigger value="players">Players</TabsTrigger>
-              <TabsTrigger value="characters">Characters</TabsTrigger>
-            </TabsList>
+            {system !== 'sandbox' && (
+              <TabsList className="w-full grid grid-cols-2 bg-stone-900">
+                <TabsTrigger value="players">Players</TabsTrigger>
+                <TabsTrigger value="characters">Characters</TabsTrigger>
+              </TabsList>
+            )}
             
-            <TabsContent value="players" className="mt-4 space-y-4">
+            <TabsContent value="players" className={system === 'sandbox' ? "mt-0 space-y-4" : "mt-4 space-y-4"}>
                {/* Campaign Members List */}
                <div className="space-y-2">
                   {members && members.length > 0 ? (
@@ -8083,6 +8112,7 @@ export function CampaignMenu({ campaignId, role, inviteCode, hotbarSlots = 5, in
                </div>
             </TabsContent>
             
+            {system !== 'sandbox' && (
             <TabsContent value="characters" className="mt-4 space-y-4">
                {/* Add Character Button (GM only) */}
                {role === 'gm' && onAddCharacter && (
@@ -8456,6 +8486,7 @@ export function CampaignMenu({ campaignId, role, inviteCode, hotbarSlots = 5, in
                  </div>
                </div>
             </TabsContent>
+            )}
           </Tabs>
 
           {/* GM Only Section */}
