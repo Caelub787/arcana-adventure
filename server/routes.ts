@@ -7375,8 +7375,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ error: "Only the owner can delete this note" });
       }
       
-      // Store campaignId before deletion for broadcast
+      // Store campaignId and shares before deletion for broadcast
       const campaignId = note.campaignId;
+      const shares = await storage.getNoteShares(req.params.id);
       
       await storage.deleteNote(req.params.id);
       
@@ -7387,6 +7388,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
           noteId: req.params.id,
           campaignId: campaignId,
           userId: req.session.userId,
+        });
+      }
+      
+      // Broadcast to shared users via their WebSocket connections
+      if (shares.length > 0) {
+        const sharedUserIds = new Set(shares.map(s => s.sharedWithId));
+        const deleteMessage = JSON.stringify({
+          type: 'note_deleted',
+          noteId: req.params.id,
+          userId: req.session.userId,
+        });
+        allConnectedClients.forEach((client) => {
+          if (client.readyState === 1 && sharedUserIds.has((client as any).userId)) {
+            client.send(deleteMessage);
+          }
         });
       }
       

@@ -765,7 +765,7 @@ export function CampaignNotesPanel({
       if (data.type === 'note_created' || data.type === 'note_deleted') {
         // Invalidate notes queries to refresh the list
         queryClient.invalidateQueries({ queryKey: ["/api/notes"] });
-        queryClient.invalidateQueries({ queryKey: ["/api/notes/all", campaignId] });
+        queryClient.invalidateQueries({ queryKey: ["/api/notes/all"] });
         queryClient.invalidateQueries({ queryKey: ["/api/notes/folders"] });
         
         // If a note we're viewing was deleted, clear selection
@@ -1030,6 +1030,7 @@ export function CampaignNotesPanel({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/notes/folders"] });
       queryClient.invalidateQueries({ queryKey: ["/api/notes"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/notes/all"] });
       setDeleteFolderDialogOpen(false);
       setFolderToDelete(null);
       if (selectedFolderId === folderToDelete?.id) {
@@ -1045,6 +1046,8 @@ export function CampaignNotesPanel({
     mutationFn: (data: Partial<Note>) => api.createNote(data),
     onSuccess: (newNote) => {
       queryClient.invalidateQueries({ queryKey: ["/api/notes"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/notes/all"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/notes/folders"] });
       setSelectedNoteId(newNote.id);
       toast({ title: "Note created" });
     },
@@ -1057,6 +1060,7 @@ export function CampaignNotesPanel({
       api.updateNote(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/notes"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/notes/all"] });
       queryClient.invalidateQueries({ queryKey: ["/api/notes", selectedNoteId] });
     },
     onError: (err: any) =>
@@ -1067,6 +1071,8 @@ export function CampaignNotesPanel({
     mutationFn: (id: string) => api.deleteNote(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/notes"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/notes/all"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/notes/folders"] });
       setDeleteNoteDialogOpen(false);
       setNoteToDelete(null);
       if (selectedNoteId) {
@@ -1149,6 +1155,8 @@ export function CampaignNotesPanel({
       setImportDialogOpen(false);
       setSelectedDriveFile(null);
       queryClient.invalidateQueries({ queryKey: ["/api/notes"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/notes/all"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/notes/folders"] });
       toast({ title: "Note imported from Google Docs" });
       setSelectedNoteId(note.id);
     },
@@ -1472,6 +1480,8 @@ export function CampaignNotesPanel({
           campaignId: campaignId,
         });
         queryClient.invalidateQueries({ queryKey: ["/api/notes"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/notes/all"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/notes/folders"] });
         setSelectedNoteId(newNote.id);
         toast({ title: `Note "${noteName}" created` });
       } catch (err: any) {

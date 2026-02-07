@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useLocation, useParams } from "wouter";
 import { motion } from "framer-motion";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, Note, NoteFolder, NoteShare, UserProfile, SystemSpell, SystemSkill, SystemTrait, SystemSpecies, Item, noteWs, NotePresence, GoogleDocInfo } from "@/lib/api";
+import { api, Note, NoteFolder, NoteShare, UserProfile, SystemSpell, SystemSkill, SystemTrait, SystemSpecies, Item, noteWs, gameWs, NotePresence, GoogleDocInfo } from "@/lib/api";
 import { useAuth } from "@/lib/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -805,6 +805,22 @@ export default function Notes() {
     }
   }, [noteId, user]);
 
+  // Handle note_deleted events from WebSocket (campaign WS and shared note broadcasts)
+  useEffect(() => {
+    const handleDeleteMessage = (data: any) => {
+      if (data.type === 'note_deleted') {
+        queryClient.invalidateQueries({ queryKey: ["/api/notes"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/notes/all"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/notes/folders"] });
+        if (data.noteId === noteId) {
+          setLocation("/notes");
+        }
+      }
+    };
+    const unsubscribe = gameWs.onMessage(handleDeleteMessage);
+    return () => { unsubscribe(); };
+  }, [queryClient, noteId, setLocation]);
+
   // Handle incoming WebSocket messages for note collaboration
   useEffect(() => {
     if (!noteId) return;
@@ -976,6 +992,7 @@ export default function Notes() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/notes/folders"] });
       queryClient.invalidateQueries({ queryKey: ["/api/notes"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/notes/all"] });
       setDeleteFolderDialogOpen(false);
       setFolderToDelete(null);
       if (selectedFolderId === folderToDelete?.id) {
@@ -1056,6 +1073,8 @@ export default function Notes() {
     mutationFn: (data: Partial<Note>) => api.createNote(data),
     onSuccess: (newNote) => {
       queryClient.invalidateQueries({ queryKey: ["/api/notes"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/notes/all"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/notes/folders"] });
       setLocation(`/notes/${newNote.id}`);
       toast({ title: "Note created" });
     },
@@ -1072,6 +1091,7 @@ export default function Notes() {
       api.updateNote(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/notes"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/notes/all"] });
       queryClient.invalidateQueries({ queryKey: ["/api/notes", noteId] });
     },
     onError: (err: any) =>
@@ -1086,6 +1106,8 @@ export default function Notes() {
     mutationFn: (id: string) => api.deleteNote(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/notes"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/notes/all"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/notes/folders"] });
       setDeleteNoteDialogOpen(false);
       setNoteToDelete(null);
       if (noteId) {
@@ -1204,6 +1226,8 @@ export default function Notes() {
       setImportDialogOpen(false);
       setSelectedDriveFile(null);
       queryClient.invalidateQueries({ queryKey: ["/api/notes"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/notes/all"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/notes/folders"] });
       toast({ title: "Note imported from Google Docs" });
       setLocation(`/notes/${note.id}`);
     },
@@ -1516,6 +1540,8 @@ export default function Notes() {
           campaignId: campaignId ?? undefined,
         });
         queryClient.invalidateQueries({ queryKey: ["/api/notes"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/notes/all"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/notes/folders"] });
         setLocation(`/notes/${newNote.id}`);
         toast({ title: `Note "${noteName}" created` });
       } catch (err: any) {
