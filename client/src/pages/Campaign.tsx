@@ -837,9 +837,17 @@ function SandboxSheetEditor({
   const { toast } = useToast();
   const [collapsed, setCollapsed] = useState(false);
   const [position, setPosition] = useState({ x: 100 + Math.random() * 200, y: 80 + Math.random() * 100 });
+  const [size, setSize] = useState({ width: 400, height: 450 });
   const [isDragging, setIsDragging] = useState(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  const [isResizing, setIsResizing] = useState<string | null>(null);
+  const resizeStartRef = useRef({ x: 0, y: 0, width: 0, height: 0, posX: 0, posY: 0 });
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(item.templateId || null);
+
+  const MIN_WIDTH = 280;
+  const MIN_HEIGHT = 200;
+  const MAX_WIDTH = 900;
+  const MAX_HEIGHT = 800;
 
   const updateActorMutation = useMutation({
     mutationFn: (data: any) => api.updateSandboxActor(campaignId, item.id, data),
@@ -871,6 +879,47 @@ function SandboxSheetEditor({
 
   const handlePointerUp = (e: React.PointerEvent) => {
     setIsDragging(false);
+    const el = e.currentTarget as HTMLElement;
+    if (el.hasPointerCapture(e.pointerId)) {
+      el.releasePointerCapture(e.pointerId);
+    }
+  };
+
+  const handleResizePointerDown = (e: React.PointerEvent, direction: string) => {
+    e.stopPropagation();
+    e.preventDefault();
+    const el = e.currentTarget as HTMLElement;
+    el.setPointerCapture(e.pointerId);
+    setIsResizing(direction);
+    resizeStartRef.current = { x: e.clientX, y: e.clientY, width: size.width, height: size.height, posX: position.x, posY: position.y };
+  };
+
+  const handleResizePointerMove = (e: React.PointerEvent) => {
+    if (!isResizing) return;
+    const dx = e.clientX - resizeStartRef.current.x;
+    const dy = e.clientY - resizeStartRef.current.y;
+    const s = resizeStartRef.current;
+    let newW = s.width, newH = s.height, newX = s.posX, newY = s.posY;
+
+    if (isResizing.includes('e')) newW = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, s.width + dx));
+    if (isResizing.includes('s')) newH = Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, s.height + dy));
+    if (isResizing.includes('w')) {
+      const dw = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, s.width - dx));
+      newX = s.posX + (s.width - dw);
+      newW = dw;
+    }
+    if (isResizing.includes('n')) {
+      const dh = Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, s.height - dy));
+      newY = s.posY + (s.height - dh);
+      newH = dh;
+    }
+
+    setSize({ width: newW, height: newH });
+    setPosition({ x: newX, y: newY });
+  };
+
+  const handleResizePointerUp = (e: React.PointerEvent) => {
+    setIsResizing(null);
     const el = e.currentTarget as HTMLElement;
     if (el.hasPointerCapture(e.pointerId)) {
       el.releasePointerCapture(e.pointerId);
@@ -930,14 +979,22 @@ function SandboxSheetEditor({
     );
   }
 
+  const resizeHandleProps = (direction: string) => ({
+    onPointerDown: (e: React.PointerEvent) => handleResizePointerDown(e, direction),
+    onPointerMove: handleResizePointerMove,
+    onPointerUp: handleResizePointerUp,
+  });
+
+  const edgeCls = "absolute bg-transparent hover:bg-amber-500/20 transition-colors z-10";
+
   return (
     <div
       className="fixed z-[45] pointer-events-auto"
-      style={{ left: `${position.x}px`, top: `${position.y}px`, width: '400px' }}
+      style={{ left: `${position.x}px`, top: `${position.y}px`, width: `${size.width}px`, height: collapsed ? 'auto' : `${size.height}px` }}
     >
-      <div className={`bg-stone-900/95 border rounded-xl shadow-2xl backdrop-blur-sm overflow-hidden ${item.type === 'actor' ? 'border-amber-800/50' : 'border-purple-800/50'}`}>
+      <div className={`bg-stone-900/95 border rounded-xl shadow-2xl backdrop-blur-sm overflow-hidden flex flex-col h-full ${item.type === 'actor' ? 'border-amber-800/50' : 'border-purple-800/50'}`}>
         <div 
-          className={`flex items-center justify-between px-3 py-2 cursor-move select-none ${item.type === 'actor' ? 'bg-amber-900/30 border-b border-amber-800/30' : 'bg-purple-900/30 border-b border-purple-800/30'}`}
+          className={`flex items-center justify-between px-3 py-2 cursor-move select-none shrink-0 ${item.type === 'actor' ? 'bg-amber-900/30 border-b border-amber-800/30' : 'bg-purple-900/30 border-b border-purple-800/30'}`}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
@@ -979,7 +1036,7 @@ function SandboxSheetEditor({
         </div>
         
         {!collapsed && (
-          <div className="p-4 max-h-[60vh] overflow-y-auto custom-scrollbar">
+          <div className="p-4 flex-1 overflow-y-auto custom-scrollbar">
             {item.type === 'actor' && role === 'gm' && (
               <div className="mb-4 space-y-2">
                 <Label className="text-stone-400 text-sm">Template</Label>
@@ -1004,6 +1061,19 @@ function SandboxSheetEditor({
           </div>
         )}
       </div>
+
+      {!collapsed && (
+        <>
+          <div className={`${edgeCls} top-0 left-2 right-2 h-1 cursor-n-resize`} {...resizeHandleProps('n')} />
+          <div className={`${edgeCls} bottom-0 left-2 right-2 h-1 cursor-s-resize`} {...resizeHandleProps('s')} />
+          <div className={`${edgeCls} left-0 top-2 bottom-2 w-1 cursor-w-resize`} {...resizeHandleProps('w')} />
+          <div className={`${edgeCls} right-0 top-2 bottom-2 w-1 cursor-e-resize`} {...resizeHandleProps('e')} />
+          <div className={`${edgeCls} top-0 left-0 w-3 h-3 cursor-nw-resize`} {...resizeHandleProps('nw')} />
+          <div className={`${edgeCls} top-0 right-0 w-3 h-3 cursor-ne-resize`} {...resizeHandleProps('ne')} />
+          <div className={`${edgeCls} bottom-0 left-0 w-3 h-3 cursor-sw-resize`} {...resizeHandleProps('sw')} />
+          <div className={`${edgeCls} bottom-0 right-0 w-3 h-3 cursor-se-resize`} {...resizeHandleProps('se')} data-testid="resize-handle-se" />
+        </>
+      )}
     </div>
   );
 }
