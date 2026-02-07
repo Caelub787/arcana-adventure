@@ -8023,7 +8023,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const member = await storage.getCampaignMember(req.params.campaignId, (req as any).user.id);
       const isGM = campaign.gmUserId === (req as any).user.id || member?.role === 'assistant_gm';
       if (!isGM) return res.status(403).json({ error: "Only GMs can manage folders" });
-      const folder = await storage.updateSandboxFolder(req.params.folderId, req.body);
+      const allowedFields: any = {};
+      if (req.body.name !== undefined) allowedFields.name = req.body.name;
+      if (req.body.parentId !== undefined) allowedFields.parentId = req.body.parentId;
+      if (req.body.sortOrder !== undefined) allowedFields.sortOrder = req.body.sortOrder;
+      const folder = await storage.updateSandboxFolder(req.params.folderId, allowedFields);
       res.json(folder);
     } catch (e) {
       console.error("Failed to update sandbox folder:", e);
@@ -8146,7 +8150,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const member = await storage.getCampaignMember(req.params.campaignId, (req as any).user.id);
       const isGM = campaign.gmUserId === (req as any).user.id || member?.role === 'assistant_gm';
       if (!isGM) return res.status(403).json({ error: "Only GMs can manage actors" });
-      const actor = await storage.updateSandboxActor(req.params.actorId, req.body);
+      const allowedFields: any = {};
+      if (req.body.name !== undefined) allowedFields.name = req.body.name;
+      if (req.body.templateId !== undefined) allowedFields.templateId = req.body.templateId;
+      if (req.body.data !== undefined) allowedFields.data = req.body.data;
+      if (req.body.folderId !== undefined) allowedFields.folderId = req.body.folderId;
+      const actor = await storage.updateSandboxActor(req.params.actorId, allowedFields);
       res.json(actor);
     } catch (e) {
       console.error("Failed to update sandbox actor:", e);

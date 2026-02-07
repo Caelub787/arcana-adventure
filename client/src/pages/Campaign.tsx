@@ -721,9 +721,10 @@ function SandboxSheetEditor({
 
   const handlePointerDown = (e: React.PointerEvent) => {
     if (isMobile) return;
+    const el = e.currentTarget as HTMLElement;
+    el.setPointerCapture(e.pointerId);
     setIsDragging(true);
     setDragOffset({ x: e.clientX - position.x, y: e.clientY - position.y });
-    (e.target as HTMLElement).setPointerCapture(e.pointerId);
   };
 
   const handlePointerMove = (e: React.PointerEvent) => {
@@ -731,8 +732,12 @@ function SandboxSheetEditor({
     setPosition({ x: e.clientX - dragOffset.x, y: e.clientY - dragOffset.y });
   };
 
-  const handlePointerUp = () => {
+  const handlePointerUp = (e: React.PointerEvent) => {
     setIsDragging(false);
+    const el = e.currentTarget as HTMLElement;
+    if (el.hasPointerCapture(e.pointerId)) {
+      el.releasePointerCapture(e.pointerId);
+    }
   };
 
   if (isMobile) {
