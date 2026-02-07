@@ -684,17 +684,19 @@ export function CampaignNotesPanel({
   });
 
   const { data: notes = [], isLoading: notesLoading } = useQuery<Note[]>({
-    queryKey: ["/api/notes", selectedFolderId, showSharedNotes, campaignId],
+    queryKey: ["/api/notes", selectedFolderId, showSharedNotes, campaignId, showHiddenFolders],
     queryFn: () => {
       if (showSharedNotes) return api.getSharedNotes();
-      return api.getNotes(selectedFolderId ?? undefined, campaignId);
+      const isHiddenFolder = showHiddenFolders && selectedFolderId && folders.length > 0 &&
+        folders.find(f => f.id === selectedFolderId)?.campaignId !== campaignId;
+      return api.getNotes(selectedFolderId ?? undefined, isHiddenFolder ? undefined : campaignId);
     },
     enabled: !!user && isOpen,
   });
 
   const { data: allNotesForTree = [] } = useQuery<Note[]>({
-    queryKey: ["/api/notes/all", campaignId],
-    queryFn: () => api.getNotes(undefined, campaignId),
+    queryKey: ["/api/notes/all", campaignId, showHiddenFolders],
+    queryFn: () => showHiddenFolders ? api.getNotes(undefined) : api.getNotes(undefined, campaignId),
     enabled: !!user && isOpen,
   });
 
