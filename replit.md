@@ -36,6 +36,7 @@ Preferred communication style: Simple, everyday language.
     - **Feat Points System**: Characters earn feat points based on level.
     - **Notes System**: Obsidian-like note-taking with nested folders, markdown support, auto-save, multiple tabs, rich text editing, entity references, note linking, new note creation syntax, permission-based character references, a Canvas editor for visual mind-mapping (text, note links, entities, images, videos, external links), Graph View, sharing options, campaign-specific notes/folders, real-time collaborative editing with presence indicators, and folder reordering with drag-and-drop support and sort modes (Name, Date, Custom).
     - **Social Features**: User profiles, friend system, and user search.
+    - **Sandbox System**: Simplified game system with custom templates/actors. Features a non-blurring 320px side panel for character management (fullscreen on mobile), floating/draggable actor and template editors (400px collapsible panels on desktop, fullscreen on mobile), hierarchical folder organization with expand/collapse, unified actor/template list with type badges, inline create form with type selector, and GM-only template dropdown in actor editors. All sandbox mutations enforce GM-only authorization.
 
 ### Backend
 - **Technology Stack**: Express.js with TypeScript, `express-session`.
