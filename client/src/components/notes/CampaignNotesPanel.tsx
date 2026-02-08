@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, Note, NoteFolder, NoteShare, UserProfile, SystemSpell, SystemSkill, SystemTrait, SystemSpecies, GoogleDocInfo, gameWs, noteWs, NotePresence } from "@/lib/api";
 import { useAuth } from "@/lib/AuthContext";
 import { useToast } from "@/hooks/use-toast";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { format } from "date-fns";
 
@@ -15,7 +16,6 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
 import {
   Dialog,
   DialogContent,
@@ -45,6 +45,7 @@ import {
   ContextMenuTrigger,
   ContextMenuContent,
   ContextMenuItem,
+  ContextMenuSeparator,
 } from "@/components/ui/context-menu";
 import {
   Select,
@@ -98,6 +99,7 @@ interface CampaignNotesPanelProps {
   campaignMembers?: Array<{ id: string; userId: string; username: string }>;
   onViewCharacter?: (character: any) => void;
   initialNoteId?: string | null;
+  hideCloseButton?: boolean;
 }
 
 const FOLDER_COLORS = [
@@ -406,47 +408,22 @@ function FolderTreeItem({
             <EyeOff className="h-2.5 w-2.5 text-purple-400" />
           </span>
         )}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button
-              onClick={(e) => e.stopPropagation()}
-              className="p-0.5 hover:bg-stone-700 rounded opacity-50 hover:opacity-100"
-            >
-              <MoreVertical className="h-2.5 w-2.5" />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="bg-stone-900 border-stone-700">
-            <DropdownMenuItem
-              onClick={(e) => {
-                e.stopPropagation();
-                onContextMenu(folder);
-              }}
-            >
-              <Edit className="h-3 w-3 mr-2" /> Rename
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={(e) => {
-                e.stopPropagation();
-                onAddSubfolder(folder.id);
-              }}
-            >
-              <FolderPlus className="h-3 w-3 mr-2" /> Add Subfolder
-            </DropdownMenuItem>
-            <DropdownMenuSeparator className="bg-stone-700" />
-            <DropdownMenuItem
-              onClick={(e) => {
-                e.stopPropagation();
-                onDeleteFolder(folder);
-              }}
-              className="text-red-400 focus:text-red-400"
-            >
-              <Trash2 className="h-3 w-3 mr-2" /> Delete
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
           </div>
         </ContextMenuTrigger>
         <ContextMenuContent className="bg-stone-900 border-stone-700">
+          <ContextMenuItem
+            onClick={() => onContextMenu(folder)}
+            data-testid={`context-menu-rename-${folder.id}`}
+          >
+            <Edit className="h-3 w-3 mr-2" /> Rename
+          </ContextMenuItem>
+          <ContextMenuItem
+            onClick={() => onAddSubfolder(folder.id)}
+            data-testid={`context-menu-add-subfolder-${folder.id}`}
+          >
+            <FolderPlus className="h-3 w-3 mr-2" /> Add Subfolder
+          </ContextMenuItem>
+          <ContextMenuSeparator className="bg-stone-700" />
           <ContextMenuItem
             onClick={() => onCreateNote(folder.id)}
             data-testid={`context-menu-new-note-${folder.id}`}
@@ -459,11 +436,13 @@ function FolderTreeItem({
           >
             <Grid3X3 className="h-3 w-3 mr-2" /> New Canvas
           </ContextMenuItem>
+          <ContextMenuSeparator className="bg-stone-700" />
           <ContextMenuItem
-            onClick={() => onAddSubfolder(folder.id)}
-            data-testid={`context-menu-new-folder-${folder.id}`}
+            onClick={() => onDeleteFolder(folder)}
+            className="text-red-400 focus:text-red-400"
+            data-testid={`context-menu-delete-folder-${folder.id}`}
           >
-            <FolderPlus className="h-3 w-3 mr-2" /> New Folder
+            <Trash2 className="h-3 w-3 mr-2" /> Delete
           </ContextMenuItem>
         </ContextMenuContent>
       </ContextMenu>
@@ -503,64 +482,47 @@ function FolderTreeItem({
             />
           ))}
           {folderNotes.map((note) => (
-            <div
-              key={note.id}
-              onClick={(e) => {
-                e.stopPropagation();
-                onNoteSelect(note.id);
-              }}
-              className={`flex items-center gap-1 py-0.5 px-1.5 rounded cursor-pointer transition-colors text-xs ${
-                selectedNoteId === note.id
-                  ? "bg-amber-900/30 text-amber-400"
-                  : "hover:bg-stone-800/50 text-stone-400"
-              }`}
-              style={{ paddingLeft: `${(level + 1) * 8 + 4}px` }}
-              data-testid={`panel-folder-note-item-${note.id}`}
-            >
-              {note.type === "canvas" ? (
-                <Grid3X3 className="h-2.5 w-2.5 flex-shrink-0" />
-              ) : (
-                <FileText className="h-2.5 w-2.5 flex-shrink-0" />
-              )}
-              <span className="flex-1 truncate">{note.title || "Untitled"}</span>
-              {note.isPinned && <Pin className="h-2 w-2 text-amber-500" />}
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <button
-                    onClick={(e) => e.stopPropagation()}
-                    className="p-0.5 hover:bg-stone-700 rounded text-stone-500 hover:text-stone-300"
-                    data-testid={`panel-folder-note-menu-${note.id}`}
-                  >
-                    <MoreVertical className="h-2.5 w-2.5" />
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent
-                  align="end"
-                  className="bg-stone-900 border-stone-700"
+            <ContextMenu key={note.id}>
+              <ContextMenuTrigger asChild>
+                <div
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onNoteSelect(note.id);
+                  }}
+                  className={`flex items-center gap-1 py-0.5 px-1.5 rounded cursor-pointer transition-colors text-xs ${
+                    selectedNoteId === note.id
+                      ? "bg-amber-900/30 text-amber-400"
+                      : "hover:bg-stone-800/50 text-stone-400"
+                  }`}
+                  style={{ paddingLeft: `${(level + 1) * 8 + 4}px` }}
+                  data-testid={`panel-folder-note-item-${note.id}`}
                 >
-                  <DropdownMenuItem
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onShareNote(note.id);
-                    }}
-                    data-testid={`panel-folder-note-share-${note.id}`}
-                  >
-                    <Share2 className="h-3 w-3 mr-2" /> Share
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator className="bg-stone-700" />
-                  <DropdownMenuItem
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onDeleteNote(note);
-                    }}
-                    className="text-red-400 focus:text-red-400"
-                    data-testid={`panel-folder-note-delete-${note.id}`}
-                  >
-                    <Trash2 className="h-3 w-3 mr-2" /> Delete
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
+                  {note.type === "canvas" ? (
+                    <Grid3X3 className="h-2.5 w-2.5 flex-shrink-0" />
+                  ) : (
+                    <FileText className="h-2.5 w-2.5 flex-shrink-0" />
+                  )}
+                  <span className="flex-1 truncate">{note.title || "Untitled"}</span>
+                  {note.isPinned && <Pin className="h-2 w-2 text-amber-500" />}
+                </div>
+              </ContextMenuTrigger>
+              <ContextMenuContent className="bg-stone-900 border-stone-700">
+                <ContextMenuItem
+                  onClick={() => onShareNote(note.id)}
+                  data-testid={`panel-folder-note-share-${note.id}`}
+                >
+                  <Share2 className="h-3 w-3 mr-2" /> Share
+                </ContextMenuItem>
+                <ContextMenuSeparator className="bg-stone-700" />
+                <ContextMenuItem
+                  onClick={() => onDeleteNote(note)}
+                  className="text-red-400 focus:text-red-400"
+                  data-testid={`panel-folder-note-delete-${note.id}`}
+                >
+                  <Trash2 className="h-3 w-3 mr-2" /> Delete
+                </ContextMenuItem>
+              </ContextMenuContent>
+            </ContextMenu>
           ))}
         </>
       )}
@@ -575,10 +537,12 @@ export function CampaignNotesPanel({
   campaignMembers = [],
   onViewCharacter,
   initialNoteId,
+  hideCloseButton = false,
 }: CampaignNotesPanelProps) {
   const { user } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const isMobile = useIsMobile();
 
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
   const [showSharedNotes, setShowSharedNotes] = useState(false);
@@ -588,6 +552,8 @@ export function CampaignNotesPanel({
   const [viewMode, setViewMode] = useState<"list" | "graph">("list");
   const [noteMode, setNoteMode] = useState<"read" | "edit">("read");
   const [showSidebar, setShowSidebar] = useState(window.innerWidth >= 768);
+  const [sidebarWidth, setSidebarWidth] = useState(220);
+  const sidebarResizeRef = useRef<{ startX: number; startWidth: number } | null>(null);
 
   const [selectedNoteId, setSelectedNoteId] = useState<string | null>(initialNoteId || null);
   const lastInitialNoteIdRef = useRef<string | null>(initialNoteId || null);
@@ -1949,115 +1915,91 @@ export function CampaignNotesPanel({
             {sortedNotes.map((note) => {
               const isOwner = note.userId === user?.id;
               return (
-              <div
-                key={note.id}
-                className={`group p-2 rounded cursor-pointer transition-colors ${
-                  selectedNoteId === note.id
-                    ? "bg-amber-900/40 border border-amber-700"
-                    : "hover:bg-stone-800/50 border border-transparent"
-                }`}
-                onClick={() => setSelectedNoteId(note.id)}
-                data-testid={`panel-card-note-${note.id}`}
-              >
-                <div className="flex items-start justify-between gap-1">
-                  <div className="flex items-center gap-1 flex-1 min-w-0">
-                    {note.type === "canvas" ? (
-                      <Grid3X3 className="h-3 w-3 text-indigo-400 flex-shrink-0" />
-                    ) : (
-                      <FileText className="h-3 w-3 text-stone-500 flex-shrink-0" />
-                    )}
-                    <span className="text-xs font-medium text-stone-200 truncate">
-                      {note.isPinned && <Pin className="inline h-2.5 w-2.5 mr-0.5 text-amber-500" />}
-                      {note.title}
-                    </span>
-                    {!isOwner && (
-                      <Badge variant="outline" className="text-[9px] px-1 py-0 h-4 text-cyan-400 border-cyan-600 flex-shrink-0">
-                        Shared
-                      </Badge>
-                    )}
+              <ContextMenu key={note.id}>
+                <ContextMenuTrigger asChild>
+                  <div
+                    className={`group p-2 rounded cursor-pointer transition-colors ${
+                      selectedNoteId === note.id
+                        ? "bg-amber-900/40 border border-amber-700"
+                        : "hover:bg-stone-800/50 border border-transparent"
+                    }`}
+                    onClick={() => setSelectedNoteId(note.id)}
+                    data-testid={`panel-card-note-${note.id}`}
+                  >
+                    <div className="flex items-start justify-between gap-1">
+                      <div className="flex items-center gap-1 flex-1 min-w-0">
+                        {note.type === "canvas" ? (
+                          <Grid3X3 className="h-3 w-3 text-indigo-400 flex-shrink-0" />
+                        ) : (
+                          <FileText className="h-3 w-3 text-stone-500 flex-shrink-0" />
+                        )}
+                        <span className="text-xs font-medium text-stone-200 truncate">
+                          {note.isPinned && <Pin className="inline h-2.5 w-2.5 mr-0.5 text-amber-500" />}
+                          {note.title}
+                        </span>
+                        {!isOwner && (
+                          <Badge variant="outline" className="text-[9px] px-1 py-0 h-4 text-cyan-400 border-cyan-600 flex-shrink-0">
+                            Shared
+                          </Badge>
+                        )}
+                      </div>
+                      {isMobile && isOwner && (
+                        <div className="flex items-center gap-0.5">
+                          <button
+                            onClick={(e) => { e.stopPropagation(); openShareDialog(note.id); }}
+                            className="p-0.5 hover:bg-stone-700 rounded text-stone-500 hover:text-stone-300"
+                            data-testid={`panel-card-note-share-mobile-${note.id}`}
+                          >
+                            <Share2 className="h-3 w-3" />
+                          </button>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setNoteToDelete(note); setDeleteNoteDialogOpen(true); }}
+                            className="p-0.5 hover:bg-stone-700 rounded text-red-400 hover:text-red-300"
+                            data-testid={`panel-card-note-delete-mobile-${note.id}`}
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                    <p className="text-xs text-stone-500 mt-0.5 truncate">
+                      {note.content?.slice(0, 40) || "Empty note"}
+                    </p>
                   </div>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <button
-                        onClick={(e) => e.stopPropagation()}
-                        className="p-0.5 hover:bg-stone-700 rounded"
+                </ContextMenuTrigger>
+                <ContextMenuContent className="bg-stone-900 border-stone-700">
+                  {isOwner && (
+                    <>
+                      <ContextMenuItem onClick={() => handleTogglePin(note)}>
+                        <Pin className="h-3 w-3 mr-2" />
+                        {note.isPinned ? "Unpin" : "Pin"}
+                      </ContextMenuItem>
+                      <ContextMenuItem onClick={() => handleToggleArchive(note)}>
+                        <Archive className="h-3 w-3 mr-2" />
+                        Archive
+                      </ContextMenuItem>
+                      <ContextMenuItem onClick={() => openShareDialog(note.id)}>
+                        <Share2 className="h-3 w-3 mr-2" />
+                        Share
+                      </ContextMenuItem>
+                      <ContextMenuSeparator className="bg-stone-700" />
+                      <ContextMenuItem
+                        onClick={() => { setNoteToDelete(note); setDeleteNoteDialogOpen(true); }}
+                        className="text-red-400 focus:text-red-400"
                       >
-                        <MoreVertical className="h-3 w-3 text-stone-400" />
-                      </button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="bg-stone-900 border-stone-700">
-                      {isOwner && (
-                        <>
-                          <DropdownMenuItem
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleTogglePin(note);
-                            }}
-                          >
-                            <Pin className="h-3 w-3 mr-2" />
-                            {note.isPinned ? "Unpin" : "Pin"}
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleToggleArchive(note);
-                            }}
-                          >
-                            <Archive className="h-3 w-3 mr-2" />
-                            Archive
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              openShareDialog(note.id);
-                            }}
-                          >
-                            <Share2 className="h-3 w-3 mr-2" />
-                            Share
-                          </DropdownMenuItem>
-                          {note.type !== 'canvas' && (
-                            <DropdownMenuItem
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleExportToDrive(note.id);
-                              }}
-                              disabled={exportingNoteId === note.id}
-                            >
-                              {exportingNoteId === note.id ? (
-                                <Loader2 className="h-3 w-3 mr-2 animate-spin" />
-                              ) : (
-                                <CloudUpload className="h-3 w-3 mr-2" />
-                              )}
-                              Export to Drive
-                            </DropdownMenuItem>
-                          )}
-                          <DropdownMenuSeparator className="bg-stone-700" />
-                          <DropdownMenuItem
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setNoteToDelete(note);
-                              setDeleteNoteDialogOpen(true);
-                            }}
-                            className="text-red-400"
-                          >
-                            <Trash2 className="h-3 w-3 mr-2" />
-                            Delete
-                          </DropdownMenuItem>
-                        </>
-                      )}
-                      {!isOwner && (
-                        <DropdownMenuItem disabled className="text-stone-500 text-xs">
-                          <Eye className="h-3 w-3 mr-2" />
-                          Shared with you
-                        </DropdownMenuItem>
-                      )}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-                <p className="text-xs text-stone-500 mt-0.5 truncate">
-                  {note.content?.slice(0, 40) || "Empty note"}
-                </p>
-              </div>
+                        <Trash2 className="h-3 w-3 mr-2" />
+                        Delete
+                      </ContextMenuItem>
+                    </>
+                  )}
+                  {!isOwner && (
+                    <ContextMenuItem disabled className="text-stone-500 text-xs">
+                      <Eye className="h-3 w-3 mr-2" />
+                      Shared with you
+                    </ContextMenuItem>
+                  )}
+                </ContextMenuContent>
+              </ContextMenu>
             );
             })}
           </div>
@@ -2410,15 +2352,17 @@ export function CampaignNotesPanel({
           >
             {viewMode === "list" ? <Network className="h-4 w-4" /> : <List className="h-4 w-4" />}
           </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-6 w-6 text-stone-400 hover:text-white"
-            onClick={onClose}
-            data-testid="panel-button-close"
-          >
-            <X className="h-4 w-4" />
-          </Button>
+          {!hideCloseButton && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6 text-stone-400 hover:text-white"
+              onClick={onClose}
+              data-testid="panel-button-close"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          )}
         </div>
       </div>
 
@@ -2426,21 +2370,39 @@ export function CampaignNotesPanel({
         {viewMode === "graph" ? (
           renderGraphView()
         ) : (
-          <ResizablePanelGroup direction="horizontal" className="h-full">
+          <div className="flex h-full">
             {showSidebar && !(selectedNoteId && (currentNote?.type === "canvas" || noteMode === "edit")) && (
               <>
-                <ResizablePanel 
-                  defaultSize={25} 
-                  minSize={15} 
-                  maxSize={50}
-                  className="min-w-0"
+                <div
+                  style={{ width: `${sidebarWidth}px`, minWidth: '120px', maxWidth: '50%' }}
+                  className="flex-shrink-0 min-w-0 h-full overflow-hidden"
                 >
                   {renderSidebar()}
-                </ResizablePanel>
-                <ResizableHandle withHandle className="bg-stone-700/50 hover:bg-amber-600 transition-colors" />
+                </div>
+                <div
+                  className="w-1.5 flex-shrink-0 bg-stone-700/50 hover:bg-amber-600 transition-colors cursor-col-resize flex items-center justify-center"
+                  onPointerDown={(e) => {
+                    e.preventDefault();
+                    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+                    sidebarResizeRef.current = { startX: e.clientX, startWidth: sidebarWidth };
+                  }}
+                  onPointerMove={(e) => {
+                    if (!sidebarResizeRef.current) return;
+                    const dx = e.clientX - sidebarResizeRef.current.startX;
+                    const newWidth = Math.max(120, Math.min(600, sidebarResizeRef.current.startWidth + dx));
+                    setSidebarWidth(newWidth);
+                  }}
+                  onPointerUp={(e) => {
+                    sidebarResizeRef.current = null;
+                    (e.target as HTMLElement).releasePointerCapture(e.pointerId);
+                  }}
+                  data-testid="panel-sidebar-resize-handle"
+                >
+                  <div className="w-0.5 h-6 bg-stone-500 rounded-full" />
+                </div>
               </>
             )}
-            <ResizablePanel defaultSize={showSidebar && !(selectedNoteId && (currentNote?.type === "canvas" || noteMode === "edit")) ? 75 : 100} minSize={40} className="min-w-0 flex flex-col h-full">
+            <div className="flex-1 min-w-0 flex flex-col h-full">
               {openNotes.length > 0 && (
                 <NoteTabs
                   openNotes={openNotes}
@@ -2460,8 +2422,8 @@ export function CampaignNotesPanel({
                   renderNoteList()
                 )}
               </div>
-            </ResizablePanel>
-          </ResizablePanelGroup>
+            </div>
+          </div>
         )}
       </div>
 

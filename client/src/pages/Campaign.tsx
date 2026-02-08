@@ -6276,6 +6276,7 @@ function FloatingNotesEditor({
               campaignMembers={campaignMembers}
               onViewCharacter={onViewCharacter}
               initialNoteId={initialNoteId}
+              hideCloseButton={true}
             />
           </div>
         )}

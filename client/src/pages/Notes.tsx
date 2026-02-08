@@ -46,6 +46,7 @@ import {
   ContextMenuTrigger,
   ContextMenuContent,
   ContextMenuItem,
+  ContextMenuSeparator,
 } from "@/components/ui/context-menu";
 import {
   Select,
@@ -399,54 +400,22 @@ function FolderTreeItem({
           <Folder className={`h-4 w-4 ${getFolderColorClass(folder.color)}`} />
         )}
         <span className="flex-1 truncate text-sm">{folder.name}</span>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button
-              onClick={(e) => e.stopPropagation()}
-              className="p-1 hover:bg-stone-700 rounded text-stone-500 hover:text-stone-300 opacity-50 hover:opacity-100"
-              data-testid={`folder-menu-${folder.id}`}
-            >
-              <MoreVertical className="h-3 w-3" />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent
-            align="end"
-            className="bg-stone-900 border-stone-700"
-          >
-            <DropdownMenuItem
-              onClick={(e) => {
-                e.stopPropagation();
-                onEditFolder(folder);
-              }}
-              data-testid={`folder-edit-${folder.id}`}
-            >
-              <Edit className="h-4 w-4 mr-2" /> Rename
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={(e) => {
-                e.stopPropagation();
-                onAddSubfolder(folder.id);
-              }}
-              data-testid={`folder-add-subfolder-${folder.id}`}
-            >
-              <FolderPlus className="h-4 w-4 mr-2" /> Add Subfolder
-            </DropdownMenuItem>
-            <DropdownMenuSeparator className="bg-stone-700" />
-            <DropdownMenuItem
-              onClick={(e) => {
-                e.stopPropagation();
-                onDeleteFolder(folder);
-              }}
-              className="text-red-400 focus:text-red-400"
-              data-testid={`folder-delete-${folder.id}`}
-            >
-              <Trash2 className="h-4 w-4 mr-2" /> Delete
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
       </div>
         </ContextMenuTrigger>
         <ContextMenuContent className="bg-stone-900 border-stone-700">
+          <ContextMenuItem
+            onClick={() => onEditFolder(folder)}
+            data-testid={`context-menu-rename-${folder.id}`}
+          >
+            <Edit className="h-4 w-4 mr-2" /> Rename
+          </ContextMenuItem>
+          <ContextMenuItem
+            onClick={() => onAddSubfolder(folder.id)}
+            data-testid={`context-menu-add-subfolder-${folder.id}`}
+          >
+            <FolderPlus className="h-4 w-4 mr-2" /> Add Subfolder
+          </ContextMenuItem>
+          <ContextMenuSeparator className="bg-stone-700" />
           <ContextMenuItem
             onClick={() => onCreateNote(folder.id)}
             data-testid={`context-menu-new-note-${folder.id}`}
@@ -459,11 +428,13 @@ function FolderTreeItem({
           >
             <Grid3X3 className="h-4 w-4 mr-2" /> New Canvas
           </ContextMenuItem>
+          <ContextMenuSeparator className="bg-stone-700" />
           <ContextMenuItem
-            onClick={() => onAddSubfolder(folder.id)}
-            data-testid={`context-menu-new-folder-${folder.id}`}
+            onClick={() => onDeleteFolder(folder)}
+            className="text-red-400 focus:text-red-400"
+            data-testid={`context-menu-delete-folder-${folder.id}`}
           >
-            <FolderPlus className="h-4 w-4 mr-2" /> New Folder
+            <Trash2 className="h-4 w-4 mr-2" /> Delete
           </ContextMenuItem>
         </ContextMenuContent>
       </ContextMenu>
@@ -502,64 +473,47 @@ function FolderTreeItem({
             />
           ))}
           {folderNotes.map((note) => (
-            <div
-              key={note.id}
-              onClick={(e) => {
-                e.stopPropagation();
-                onNoteSelect(note.id);
-              }}
-              className={`flex items-center gap-1.5 py-1 px-2 rounded cursor-pointer transition-colors ${
-                selectedNoteId === note.id
-                  ? "bg-amber-900/30 text-amber-400"
-                  : "hover:bg-stone-800/50 text-stone-400"
-              }`}
-              style={{ paddingLeft: `${(level + 1) * 12 + 8}px` }}
-              data-testid={`folder-note-item-${note.id}`}
-            >
-              {note.type === "canvas" ? (
-                <Grid3X3 className="h-3 w-3 flex-shrink-0" />
-              ) : (
-                <FileText className="h-3 w-3 flex-shrink-0" />
-              )}
-              <span className="flex-1 truncate text-sm">{note.title || "Untitled"}</span>
-              {note.isPinned && <Pin className="h-2.5 w-2.5 text-amber-500" />}
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <button
-                    onClick={(e) => e.stopPropagation()}
-                    className="p-1 hover:bg-stone-700 rounded text-stone-500 hover:text-stone-300"
-                    data-testid={`folder-note-menu-${note.id}`}
-                  >
-                    <MoreVertical className="h-3 w-3" />
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent
-                  align="end"
-                  className="bg-stone-900 border-stone-700"
+            <ContextMenu key={note.id}>
+              <ContextMenuTrigger asChild>
+                <div
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onNoteSelect(note.id);
+                  }}
+                  className={`flex items-center gap-1.5 py-1 px-2 rounded cursor-pointer transition-colors ${
+                    selectedNoteId === note.id
+                      ? "bg-amber-900/30 text-amber-400"
+                      : "hover:bg-stone-800/50 text-stone-400"
+                  }`}
+                  style={{ paddingLeft: `${(level + 1) * 12 + 8}px` }}
+                  data-testid={`folder-note-item-${note.id}`}
                 >
-                  <DropdownMenuItem
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onShareNote(note.id);
-                    }}
-                    data-testid={`folder-note-share-${note.id}`}
-                  >
-                    <Share2 className="h-4 w-4 mr-2" /> Share
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator className="bg-stone-700" />
-                  <DropdownMenuItem
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onDeleteNote(note);
-                    }}
-                    className="text-red-400 focus:text-red-400"
-                    data-testid={`folder-note-delete-${note.id}`}
-                  >
-                    <Trash2 className="h-4 w-4 mr-2" /> Delete
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
+                  {note.type === "canvas" ? (
+                    <Grid3X3 className="h-3 w-3 flex-shrink-0" />
+                  ) : (
+                    <FileText className="h-3 w-3 flex-shrink-0" />
+                  )}
+                  <span className="flex-1 truncate text-sm">{note.title || "Untitled"}</span>
+                  {note.isPinned && <Pin className="h-2.5 w-2.5 text-amber-500" />}
+                </div>
+              </ContextMenuTrigger>
+              <ContextMenuContent className="bg-stone-900 border-stone-700">
+                <ContextMenuItem
+                  onClick={() => onShareNote(note.id)}
+                  data-testid={`folder-note-share-${note.id}`}
+                >
+                  <Share2 className="h-4 w-4 mr-2" /> Share
+                </ContextMenuItem>
+                <ContextMenuSeparator className="bg-stone-700" />
+                <ContextMenuItem
+                  onClick={() => onDeleteNote(note)}
+                  className="text-red-400 focus:text-red-400"
+                  data-testid={`folder-note-delete-${note.id}`}
+                >
+                  <Trash2 className="h-4 w-4 mr-2" /> Delete
+                </ContextMenuItem>
+              </ContextMenuContent>
+            </ContextMenu>
           ))}
         </>
       )}
@@ -2016,112 +1970,89 @@ export default function Notes() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {sortedNotes.map((note) => (
-            <Card
-              key={note.id}
-              className="bg-stone-900/60 border-stone-800 backdrop-blur hover:border-amber-900/50 transition-all cursor-pointer group"
-              onClick={() => setLocation(`/notes/${note.id}`)}
-              data-testid={`card-note-${note.id}`}
-            >
-              <CardContent className="p-4">
-                <div className="flex items-start justify-between gap-2 mb-2">
-                  <div className="flex items-center gap-2 flex-1 min-w-0">
-                    {note.type === "canvas" ? (
-                      <Grid3X3 className="h-4 w-4 text-indigo-400 flex-shrink-0" />
-                    ) : (
-                      <FileText className="h-4 w-4 text-stone-500 flex-shrink-0" />
-                    )}
-                    <h3
-                      className="font-medium text-stone-200 flex-1 truncate"
-                      data-testid={`text-note-title-${note.id}`}
-                    >
-                      {note.isPinned && (
-                        <Pin className="inline h-3 w-3 mr-1 text-amber-500" />
-                      )}
-                      {note.title}
-                    </h3>
-                  </div>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <button
-                        onClick={(e) => e.stopPropagation()}
-                        className="p-1 hover:bg-stone-700 rounded text-stone-500 hover:text-stone-300"
-                        data-testid={`button-note-menu-${note.id}`}
-                      >
-                        <MoreVertical className="h-4 w-4" />
-                      </button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent
-                      align="end"
-                      className="bg-stone-900 border-stone-700"
-                    >
-                      <DropdownMenuItem
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleTogglePin(note);
-                        }}
-                        data-testid={`menu-pin-${note.id}`}
-                      >
-                        <Pin className="h-4 w-4 mr-2" />
-                        {note.isPinned ? "Unpin" : "Pin"}
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleToggleArchive(note);
-                        }}
-                        data-testid={`menu-archive-${note.id}`}
-                      >
-                        <Archive className="h-4 w-4 mr-2" />
-                        Archive
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          openShareDialog(note.id);
-                        }}
-                        data-testid={`menu-share-${note.id}`}
-                      >
-                        <Share2 className="h-4 w-4 mr-2" />
-                        Share
-                      </DropdownMenuItem>
-                      {note.type !== 'canvas' && (
-                        <DropdownMenuItem
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleExportToDrive(note.id);
-                          }}
-                          disabled={exportingNoteId === note.id}
-                          data-testid={`menu-export-${note.id}`}
+            <ContextMenu key={note.id}>
+              <ContextMenuTrigger asChild>
+                <Card
+                  className="bg-stone-900/60 border-stone-800 backdrop-blur hover:border-amber-900/50 transition-all cursor-pointer group"
+                  onClick={() => setLocation(`/notes/${note.id}`)}
+                  data-testid={`card-note-${note.id}`}
+                >
+                  <CardContent className="p-4">
+                    <div className="flex items-start justify-between gap-2 mb-2">
+                      <div className="flex items-center gap-2 flex-1 min-w-0">
+                        {note.type === "canvas" ? (
+                          <Grid3X3 className="h-4 w-4 text-indigo-400 flex-shrink-0" />
+                        ) : (
+                          <FileText className="h-4 w-4 text-stone-500 flex-shrink-0" />
+                        )}
+                        <h3
+                          className="font-medium text-stone-200 flex-1 truncate"
+                          data-testid={`text-note-title-${note.id}`}
                         >
-                          {exportingNoteId === note.id ? (
-                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                          ) : (
-                            <CloudUpload className="h-4 w-4 mr-2" />
+                          {note.isPinned && (
+                            <Pin className="inline h-3 w-3 mr-1 text-amber-500" />
                           )}
-                          Export to Drive
-                        </DropdownMenuItem>
+                          {note.title}
+                        </h3>
+                      </div>
+                      {isMobile && (
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={(e) => { e.stopPropagation(); openShareDialog(note.id); }}
+                            className="p-1 hover:bg-stone-700 rounded text-stone-500 hover:text-stone-300"
+                            data-testid={`button-note-share-mobile-${note.id}`}
+                          >
+                            <Share2 className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setNoteToDelete(note); setDeleteNoteDialogOpen(true); }}
+                            className="p-1 hover:bg-stone-700 rounded text-red-400 hover:text-red-300"
+                            data-testid={`button-note-delete-mobile-${note.id}`}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
                       )}
-                      <DropdownMenuSeparator className="bg-stone-700" />
-                      <DropdownMenuItem
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setNoteToDelete(note);
-                          setDeleteNoteDialogOpen(true);
-                        }}
-                        className="text-red-400"
-                        data-testid={`menu-delete-${note.id}`}
-                      >
-                        <Trash2 className="h-4 w-4 mr-2" />
-                        Delete
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-                <p className="text-xs text-stone-600">
-                  {format(new Date(note.updatedAt), "MMM d, yyyy")}
-                </p>
-              </CardContent>
-            </Card>
+                    </div>
+                    <p className="text-xs text-stone-600">
+                      {format(new Date(note.updatedAt), "MMM d, yyyy")}
+                    </p>
+                  </CardContent>
+                </Card>
+              </ContextMenuTrigger>
+              <ContextMenuContent className="bg-stone-900 border-stone-700">
+                <ContextMenuItem
+                  onClick={() => handleTogglePin(note)}
+                  data-testid={`menu-pin-${note.id}`}
+                >
+                  <Pin className="h-4 w-4 mr-2" />
+                  {note.isPinned ? "Unpin" : "Pin"}
+                </ContextMenuItem>
+                <ContextMenuItem
+                  onClick={() => handleToggleArchive(note)}
+                  data-testid={`menu-archive-${note.id}`}
+                >
+                  <Archive className="h-4 w-4 mr-2" />
+                  Archive
+                </ContextMenuItem>
+                <ContextMenuItem
+                  onClick={() => openShareDialog(note.id)}
+                  data-testid={`menu-share-${note.id}`}
+                >
+                  <Share2 className="h-4 w-4 mr-2" />
+                  Share
+                </ContextMenuItem>
+                <ContextMenuSeparator className="bg-stone-700" />
+                <ContextMenuItem
+                  onClick={() => { setNoteToDelete(note); setDeleteNoteDialogOpen(true); }}
+                  className="text-red-400 focus:text-red-400"
+                  data-testid={`menu-delete-${note.id}`}
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Delete
+                </ContextMenuItem>
+              </ContextMenuContent>
+            </ContextMenu>
           ))}
         </div>
       )}
