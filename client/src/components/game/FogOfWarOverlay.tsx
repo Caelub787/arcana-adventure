@@ -61,9 +61,10 @@ interface FogOfWarOverlayProps {
   characters?: FogCharacter[];
   currentUserId?: string | null;
   onVisionPolygonsChange?: (polygons: VisionPolygon[]) => void;
+  showDrawingTools?: boolean;
 }
 
-export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToolToggle, tokens = [], characters = [], currentUserId, onVisionPolygonsChange }: FogOfWarOverlayProps) {
+export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToolToggle, tokens = [], characters = [], currentUserId, onVisionPolygonsChange, showDrawingTools = true }: FogOfWarOverlayProps) {
   const queryClient = useQueryClient();
   const sceneId = scene?.id;
 
@@ -437,10 +438,10 @@ export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToo
     >
       {renderNightFilter}
       {renderFog}
-      {renderLights}
-      {renderWalls}
-      {renderDoors}
-      {renderWindows}
+      {showDrawingTools && renderLights}
+      {showDrawingTools && renderWalls}
+      {showDrawingTools && renderDoors}
+      {showDrawingTools && renderWindows}
     </svg>
   );
 }
@@ -539,6 +540,82 @@ export function WallDrawingOverlay({
     },
   });
 
+  const deleteWallMutation = useMutation({
+    mutationFn: async (wallId: string) => {
+      const res = await fetch(`/api/walls/${wallId}`, { method: 'DELETE', credentials: 'include' });
+      if (!res.ok) throw new Error('Failed to delete wall');
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['scene-walls', sceneId] }),
+  });
+
+  const deleteDoorMutation = useMutation({
+    mutationFn: async (doorId: string) => {
+      const res = await fetch(`/api/doors/${doorId}`, { method: 'DELETE', credentials: 'include' });
+      if (!res.ok) throw new Error('Failed to delete door');
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['scene-doors', sceneId] }),
+  });
+
+  const deleteWindowMutation = useMutation({
+    mutationFn: async (windowId: string) => {
+      const res = await fetch(`/api/windows/${windowId}`, { method: 'DELETE', credentials: 'include' });
+      if (!res.ok) throw new Error('Failed to delete window');
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['scene-windows', sceneId] }),
+  });
+
+  const deleteLightMutation = useMutation({
+    mutationFn: async (lightId: string) => {
+      const res = await fetch(`/api/lights/${lightId}`, { method: 'DELETE', credentials: 'include' });
+      if (!res.ok) throw new Error('Failed to delete light');
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['scene-lights', sceneId] }),
+  });
+
+  const { data: walls = [] } = useQuery<any[]>({
+    queryKey: ['scene-walls', sceneId],
+    queryFn: async () => {
+      if (!sceneId) return [];
+      const res = await fetch(`/api/scenes/${sceneId}/walls`);
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!sceneId,
+  });
+
+  const { data: doors = [] } = useQuery<any[]>({
+    queryKey: ['scene-doors', sceneId],
+    queryFn: async () => {
+      if (!sceneId) return [];
+      const res = await fetch(`/api/scenes/${sceneId}/doors`);
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!sceneId,
+  });
+
+  const { data: windowsList = [] } = useQuery<any[]>({
+    queryKey: ['scene-windows', sceneId],
+    queryFn: async () => {
+      if (!sceneId) return [];
+      const res = await fetch(`/api/scenes/${sceneId}/windows`);
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!sceneId,
+  });
+
+  const { data: lightsList = [] } = useQuery<any[]>({
+    queryKey: ['scene-lights', sceneId],
+    queryFn: async () => {
+      if (!sceneId) return [];
+      const res = await fetch(`/api/scenes/${sceneId}/lights`);
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!sceneId,
+  });
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -568,6 +645,48 @@ export function WallDrawingOverlay({
     const snappedX = snapToGrid(worldX, gridSize);
     const snappedY = snapToGrid(worldY, gridSize);
 
+    if (e.altKey) {
+      const clickX = snappedX;
+      const clickY = snappedY;
+      const threshold = gridSize;
+      
+      const distToSegment = (px: number, py: number, x1: number, y1: number, x2: number, y2: number) => {
+        const dx = x2 - x1, dy = y2 - y1;
+        const lenSq = dx * dx + dy * dy;
+        if (lenSq === 0) return Math.hypot(px - x1, py - y1);
+        let t = ((px - x1) * dx + (py - y1) * dy) / lenSq;
+        t = Math.max(0, Math.min(1, t));
+        return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
+      };
+      
+      let closest: { type: string; id: string; dist: number } | null = null;
+      
+      for (const w of walls) {
+        const d = distToSegment(clickX, clickY, w.x1, w.y1, w.x2, w.y2);
+        if (d < threshold && (!closest || d < closest.dist)) closest = { type: 'wall', id: w.id, dist: d };
+      }
+      for (const d of doors) {
+        const dist = distToSegment(clickX, clickY, d.x1, d.y1, d.x2, d.y2);
+        if (dist < threshold && (!closest || dist < closest.dist)) closest = { type: 'door', id: d.id, dist };
+      }
+      for (const w of windowsList) {
+        const dist = distToSegment(clickX, clickY, w.x1, w.y1, w.x2, w.y2);
+        if (dist < threshold && (!closest || dist < closest.dist)) closest = { type: 'window', id: w.id, dist };
+      }
+      for (const l of lightsList) {
+        const dist = Math.hypot(clickX - l.x, clickY - l.y);
+        if (dist < threshold && (!closest || dist < closest.dist)) closest = { type: 'light', id: l.id, dist };
+      }
+      
+      if (closest) {
+        if (closest.type === 'wall') deleteWallMutation.mutate(closest.id);
+        else if (closest.type === 'door') deleteDoorMutation.mutate(closest.id);
+        else if (closest.type === 'window') deleteWindowMutation.mutate(closest.id);
+        else if (closest.type === 'light') deleteLightMutation.mutate(closest.id);
+      }
+      return;
+    }
+
     if (wallDrawMode) {
       if (wallPoints.length > 0) {
         const lastPoint = wallPoints[wallPoints.length - 1];
@@ -578,8 +697,14 @@ export function WallDrawingOverlay({
           y2: snappedY,
           wallType: selectedWallType,
         });
+        if (e.shiftKey) {
+          setWallPoints([{ x: snappedX, y: snappedY }]);
+        } else {
+          setWallPoints([]);
+        }
+      } else {
+        setWallPoints([{ x: snappedX, y: snappedY }]);
       }
-      setWallPoints(prev => [...prev, { x: snappedX, y: snappedY }]);
     } else if (doorPlaceMode) {
       if (!doorStart) {
         setDoorStart({ x: snappedX, y: snappedY });
@@ -590,7 +715,11 @@ export function WallDrawingOverlay({
           x2: snappedX,
           y2: snappedY,
         });
-        setDoorStart(null);
+        if (e.shiftKey) {
+          setDoorStart({ x: snappedX, y: snappedY });
+        } else {
+          setDoorStart(null);
+        }
       }
     } else if (windowPlaceMode) {
       if (!windowStart) {
@@ -602,7 +731,11 @@ export function WallDrawingOverlay({
           x2: snappedX,
           y2: snappedY,
         });
-        setWindowStart(null);
+        if (e.shiftKey) {
+          setWindowStart({ x: snappedX, y: snappedY });
+        } else {
+          setWindowStart(null);
+        }
       }
     } else if (lightPlaceMode) {
       createLightMutation.mutate({
@@ -612,14 +745,7 @@ export function WallDrawingOverlay({
         color: lightColor,
       });
     }
-  }, [wallDrawMode, doorPlaceMode, windowPlaceMode, lightPlaceMode, wallPoints, doorStart, windowStart, gridSize, selectedWallType, lightRadius, lightColor, lightIntensity, createWallMutation, createDoorMutation, createWindowMutation, createLightMutation]);
-
-  const handleDoubleClick = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
-    if (wallDrawMode && wallPoints.length >= 2) {
-      setWallPoints([]);
-      toast({ title: 'Wall chain completed' });
-    }
-  }, [wallDrawMode, wallPoints]);
+  }, [wallDrawMode, doorPlaceMode, windowPlaceMode, lightPlaceMode, wallPoints, doorStart, windowStart, gridSize, selectedWallType, lightRadius, lightColor, lightIntensity, createWallMutation, createDoorMutation, createWindowMutation, createLightMutation, walls, doors, windowsList, lightsList, deleteWallMutation, deleteDoorMutation, deleteWindowMutation, deleteLightMutation]);
 
   const handleMouseMove = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
     const svg = e.currentTarget;
@@ -659,7 +785,6 @@ export function WallDrawingOverlay({
         pointerEvents: 'all',
       }}
       onClick={handleClick}
-      onDoubleClick={handleDoubleClick}
       onMouseMove={handleMouseMove}
       data-testid="wall-drawing-overlay"
     >
@@ -794,6 +919,8 @@ interface FogToolsPanelProps {
   setLightColor: (v: string) => void;
   lightIntensity: number;
   setLightIntensity: (v: number) => void;
+  showDrawingTools: boolean;
+  setShowDrawingTools: (v: boolean) => void;
 }
 
 export function FogToolsPanel({
@@ -818,6 +945,8 @@ export function FogToolsPanel({
   setLightColor,
   lightIntensity,
   setLightIntensity,
+  showDrawingTools,
+  setShowDrawingTools,
 }: FogToolsPanelProps) {
   const queryClient = useQueryClient();
   const sceneId = scene?.id;
@@ -934,6 +1063,9 @@ export function FogToolsPanel({
     <div
       className="fixed z-[80] w-64 rounded-lg border border-stone-700 bg-stone-900/95 shadow-2xl backdrop-blur-sm"
       style={{ left: panelPos.x, top: panelPos.y }}
+      onPointerDown={(e) => e.stopPropagation()}
+      onWheel={(e) => e.stopPropagation()}
+      onMouseMove={(e) => e.stopPropagation()}
       data-testid="fog-tools-panel"
     >
       <div
@@ -974,6 +1106,22 @@ export function FogToolsPanel({
           >
             {fogEnabled ? <Eye className="h-3 w-3 mr-1" /> : <EyeOff className="h-3 w-3 mr-1" />}
             {fogEnabled ? 'On' : 'Off'}
+          </Button>
+        </div>
+
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-stone-300">Show Tools</span>
+          <Button
+            variant={showDrawingTools ? 'default' : 'outline'}
+            size="sm"
+            className={showDrawingTools
+              ? 'h-7 bg-stone-600 hover:bg-stone-700 text-white text-xs'
+              : 'h-7 border-stone-600 text-stone-400 text-xs'}
+            onClick={() => setShowDrawingTools(!showDrawingTools)}
+            data-testid="toggle-show-drawing-tools"
+          >
+            {showDrawingTools ? <Eye className="h-3 w-3 mr-1" /> : <EyeOff className="h-3 w-3 mr-1" />}
+            {showDrawingTools ? 'Visible' : 'Hidden'}
           </Button>
         </div>
 
@@ -1100,7 +1248,7 @@ export function FogToolsPanel({
                 </Button>
               ))}
             </div>
-            <p className="text-[10px] text-stone-500 mt-1">Click to place points. Double-click or Esc to finish.</p>
+            <p className="text-[10px] text-stone-500 mt-1">Click twice for single wall. Hold Shift to chain walls.</p>
           </div>
         )}
 

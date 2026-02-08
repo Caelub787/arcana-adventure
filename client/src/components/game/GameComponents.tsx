@@ -378,6 +378,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
   const [lightRadius, setLightRadius] = useState(30);
   const [lightColor, setLightColor] = useState('#ffcc44');
   const [lightIntensity, setLightIntensity] = useState(1.0);
+  const [showDrawingTools, setShowDrawingTools] = useState(true);
   
   // Cleanup timers on unmount
   useEffect(() => {
@@ -3307,6 +3308,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
             characters={characters as any}
             currentUserId={currentUserId}
             onVisionPolygonsChange={setVisionPolygons}
+            showDrawingTools={showDrawingTools}
           />
         )}
         
@@ -3351,6 +3353,8 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
           setLightColor={setLightColor}
           lightIntensity={lightIntensity}
           setLightIntensity={setLightIntensity}
+          showDrawingTools={showDrawingTools}
+          setShowDrawingTools={setShowDrawingTools}
         />
       )}
 
