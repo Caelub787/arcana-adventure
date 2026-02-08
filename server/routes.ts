@@ -8033,6 +8033,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (req.body.name !== undefined) allowedFields.name = req.body.name;
       if (req.body.parentId !== undefined) allowedFields.parentId = req.body.parentId;
       if (req.body.sortOrder !== undefined) allowedFields.sortOrder = req.body.sortOrder;
+      if (req.body.color !== undefined) allowedFields.color = req.body.color;
       const folder = await storage.updateSandboxFolder(req.params.folderId, allowedFields);
       res.json(folder);
     } catch (e) {
