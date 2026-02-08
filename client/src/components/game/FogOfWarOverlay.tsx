@@ -803,7 +803,7 @@ export function FogToolsPanel({
   const queryClient = useQueryClient();
   const sceneId = scene?.id;
 
-  const [panelPos, setPanelPos] = useState({ x: window.innerWidth - 280, y: 64 });
+  const [panelPos, setPanelPos] = useState({ x: Math.max(0, (window.innerWidth - 256) / 2), y: Math.max(0, (window.innerHeight - 400) / 2) });
   const dragRef = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(null);
 
   const handleDragStart = useCallback((e: React.MouseEvent | React.TouchEvent) => {
