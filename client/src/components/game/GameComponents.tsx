@@ -14507,130 +14507,178 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="flex flex-col sm:flex-row gap-4">
-                  {/* Portrait */}
-                  {liveCharacter.portrait && (
-                    <div className="w-32 h-32 rounded-lg overflow-hidden border-2 border-stone-700 shrink-0">
+                {/* TOP ROW: PFP + HP/Energy */}
+                <div className="flex gap-4">
+                  <div className="w-28 h-28 rounded-lg overflow-hidden border-2 border-stone-700 shrink-0">
+                    {liveCharacter.portrait ? (
                       <img src={liveCharacter.portrait} alt={liveCharacter.name} className="w-full h-full object-cover" data-testid="img-portrait" />
+                    ) : (
+                      <div className="w-full h-full bg-stone-900 flex items-center justify-center" data-testid="img-portrait-fallback">
+                        <User className="h-12 w-12 text-stone-600" />
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex-1 space-y-2 min-w-0">
+                    {/* HP Bar */}
+                    <div className="space-y-1">
+                      <div className="flex justify-between items-center">
+                        <Label className="text-xs text-stone-300 flex items-center gap-1">
+                          <Heart className="h-3 w-3 text-red-500" />
+                          HP
+                        </Label>
+                        {editingOverview ? (
+                          <div className="flex gap-1 items-center">
+                            <Input
+                              type="number"
+                              min="0"
+                              value={overviewData.hp}
+                              onChange={(e) => setOverviewData({ ...overviewData, hp: e.target.value === '' ? '' : parseInt(e.target.value) })}
+                              className="w-16 h-7 text-xs bg-stone-900 border-stone-700 text-stone-200"
+                              data-testid="input-edit-hp"
+                            />
+                            <span className="text-xs">/</span>
+                            <div className="flex items-center gap-1">
+                              <Input
+                                type="number"
+                                min="1"
+                                value={overviewData.maxHp}
+                                onChange={(e) => setOverviewData({ ...overviewData, maxHp: e.target.value === '' ? '' : parseInt(e.target.value) })}
+                                className={`w-16 h-7 text-xs bg-stone-900 text-stone-200 ${isGM ? 'border-amber-700' : 'border-stone-700'}`}
+                                disabled={!isGM}
+                                data-testid="input-edit-max-hp"
+                              />
+                              {!isGM && (
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger>
+                                      <Lock className="h-3 w-3 text-amber-600" />
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      <p>Only GMs can edit Max HP</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                              )}
+                            </div>
+                          </div>
+                        ) : (
+                          <span className="text-xs font-bold" data-testid="text-hp">
+                            {Math.min(liveCharacter.hp, effectiveMaxHp)} / {effectiveMaxHp}
+                          </span>
+                        )}
+                      </div>
+                      {!editingOverview && <Progress value={Math.min(100, Math.round((liveCharacter.hp / effectiveMaxHp) * 100))} className="h-2" data-testid="progress-hp" />}
+                      {!editingOverview && (
+                        <div className="space-y-1">
+                          <div className="text-[10px] text-stone-500 flex items-center justify-between" data-testid="text-hp-breakdown">
+                            <span>
+                              Base: {currentSpecies?.startingMaxHp || 10} | +{liveCharacter.bonusHpFromLevelUps || 0}
+                              {featBonuses.hp > 0 && <span className="text-purple-400"> | Feats: +{featBonuses.hp}</span>}
+                            </span>
+                            <span className="text-stone-400">
+                              ({calculateDiceCount(liveCharacter.level || 1)}d{hpPerLevel})
+                            </span>
+                          </div>
+                          {canLevelUpHp && canEdit && (
+                            <Button
+                              size="sm"
+                              onClick={() => {
+                                setLevelUpHpResult(null);
+                                setRollingHpLevel((liveCharacter.lastLevelUpRolled || 1) + 1);
+                                setTargetHpLevel(liveCharacter.level || 1);
+                                setShowLevelUpHpDialog(true);
+                              }}
+                              className="w-full h-7 text-xs bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white"
+                              data-testid="button-level-up-hp"
+                            >
+                              <TrendingUp className="h-3 w-3 mr-1" />
+                              Roll HP{missedHpLevels > 1 ? ` (${missedHpLevels} lvls)` : ` - Lv${(liveCharacter.lastLevelUpRolled || 1) + 1}`}
+                            </Button>
+                          )}
+                        </div>
+                      )}
                     </div>
-                  )}
-                  
-                  {/* Basic Info */}
-                  <div className="flex-1 space-y-2">
-                    <div className="grid grid-cols-2 gap-2">
-                      {/* Race Dropdown */}
-                      <div>
-                        <Label className="text-xs text-stone-400">Race</Label>
+                    {/* Energy Bar */}
+                    <div className="space-y-1">
+                      <div className="flex justify-between items-center">
+                        <Label className="text-xs text-stone-300 flex items-center gap-1">
+                          <Zap className="h-3 w-3 text-blue-500" />
+                          Energy
+                        </Label>
                         {editingOverview ? (
-                          <Select value={overviewData.race} onValueChange={handleRaceChange}>
-                            <SelectTrigger className="bg-stone-900 border-stone-700">
-                              <SelectValue placeholder="Select race" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {systemSpecies.map((species: SystemSpecies) => (
-                                <SelectItem key={species.name} value={species.name}>{species.name}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                          <div className="flex gap-1 items-center">
+                            <Input
+                              type="number"
+                              min="0"
+                              value={overviewData.energy}
+                              onChange={(e) => setOverviewData({ ...overviewData, energy: e.target.value === '' ? '' : parseInt(e.target.value) })}
+                              className="w-16 h-7 text-xs bg-stone-900 border-stone-700 text-stone-200"
+                              data-testid="input-edit-energy"
+                            />
+                            <span className="text-xs">/</span>
+                            <div className="flex items-center gap-1">
+                              <Input
+                                type="number"
+                                min="0"
+                                value={overviewData.maxEnergy}
+                                onChange={(e) => setOverviewData({ ...overviewData, maxEnergy: e.target.value === '' ? '' : parseInt(e.target.value) })}
+                                className={`w-16 h-7 text-xs bg-stone-900 text-stone-200 ${isGM ? 'border-amber-700' : 'border-stone-700'}`}
+                                disabled={!isGM}
+                                data-testid="input-edit-max-energy"
+                              />
+                              {!isGM && (
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger>
+                                      <Lock className="h-3 w-3 text-amber-600" />
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      <p>Only GMs can edit Max Energy</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                              )}
+                            </div>
+                          </div>
                         ) : (
-                          <p className="text-stone-200" data-testid="text-race">{liveCharacter.race}</p>
+                          <span className="text-xs font-bold" data-testid="text-energy">
+                            {Math.min(liveCharacter.energy, effectiveMaxEnergy)} / {effectiveMaxEnergy}
+                          </span>
                         )}
                       </div>
-                      {/* Level */}
-                      <div>
-                        <Label className="text-xs text-stone-400">Level</Label>
-                        {editingOverview ? (
-                          <Input
-                            type="number"
-                            min="1"
-                            max="20"
-                            value={overviewData.level}
-                            onChange={(e) => setOverviewData({ ...overviewData, level: e.target.value === '' ? '' : parseInt(e.target.value) })}
-                            className="bg-stone-900 border-stone-700 text-stone-200"
-                            data-testid="input-edit-level"
-                          />
-                        ) : (
-                          <p className="text-stone-200">{liveCharacter.level}</p>
-                        )}
-                      </div>
-                      {/* Size (auto-filled from race) */}
-                      <div>
-                        <Label className="text-xs text-stone-400">Size</Label>
-                        <p className="text-stone-200" data-testid="text-size">
-                          {editingOverview ? overviewData.size : liveCharacter.size}
-                        </p>
-                      </div>
-                      {/* Natural Armor (auto-filled from race) */}
-                      <div>
-                        <Label className="text-xs text-stone-400">Natural Armor</Label>
-                        <p className="text-stone-200" data-testid="text-natural-armor">
-                          {editingOverview ? overviewData.naturalArmor : liveCharacter.naturalArmor}
-                        </p>
-                      </div>
-                      {/* Size Bonus (auto-filled from race) */}
-                      <div>
-                        <Label className="text-xs text-stone-400">Size Bonus</Label>
-                        <p className="text-stone-200" data-testid="text-size-bonus">
-                          {editingOverview ? (overviewData.sizeBonus >= 0 ? `+${overviewData.sizeBonus}` : overviewData.sizeBonus) : (liveCharacter.sizeBonus >= 0 ? `+${liveCharacter.sizeBonus}` : liveCharacter.sizeBonus)}
-                        </p>
-                      </div>
-                      {/* Speed (auto-filled from race) */}
-                      <div>
-                        <Label className="text-xs text-stone-400">Speed</Label>
-                        <p className="text-stone-200" data-testid="text-speed">
-                          {editingOverview ? overviewData.speed : liveCharacter.speed} ft
-                        </p>
-                      </div>
-                      {/* Fly Speed (auto-filled from race) */}
-                      <div>
-                        <Label className="text-xs text-stone-400">Fly Speed</Label>
-                        <p className="text-stone-200" data-testid="text-fly-speed">
-                          {editingOverview ? overviewData.flySpeed : liveCharacter.flySpeed} ft
-                        </p>
-                      </div>
+                      {!editingOverview && <Progress value={Math.min(100, Math.round((liveCharacter.energy / effectiveMaxEnergy) * 100))} className="h-2" data-testid="progress-energy" />}
+                      {!editingOverview && (
+                        <div className="space-y-1">
+                          <div className="text-[10px] text-stone-500 flex items-center justify-between" data-testid="text-energy-breakdown">
+                            <span>
+                              Base: {currentSpecies?.startingMaxEnergy || 10} | +{liveCharacter.bonusEnergyFromLevelUps || 0}
+                              {featBonuses.energy > 0 && <span className="text-purple-400"> | Feats: +{featBonuses.energy}</span>}
+                            </span>
+                            <span className="text-stone-400">
+                              ({calculateEnergyDiceCount(liveCharacter.level || 1)}d6)
+                            </span>
+                          </div>
+                          {canLevelUpEnergy && canEdit && (
+                            <Button
+                              size="sm"
+                              onClick={() => {
+                                setLevelUpEnergyResult(null);
+                                setRollingEnergyLevel((liveCharacter.lastEnergyLevelUpRolled || 1) + 1);
+                                setTargetEnergyLevel(liveCharacter.level || 1);
+                                setShowLevelUpEnergyDialog(true);
+                              }}
+                              className="w-full h-7 text-xs bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white"
+                              data-testid="button-level-up-energy"
+                            >
+                              <TrendingUp className="h-3 w-3 mr-1" />
+                              Roll Energy{missedEnergyLevels > 1 ? ` (${missedEnergyLevels} lvls)` : ` - Lv${(liveCharacter.lastEnergyLevelUpRolled || 1) + 1}`}
+                            </Button>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
-
-                {/* Feat Tree Section - Full width below overview grid */}
-                {featTreeId && (
-                  <div className="bg-gradient-to-r from-purple-900/30 to-indigo-900/30 rounded-lg p-3 border border-purple-700/50">
-                    <div className="flex justify-between items-center mb-2">
-                      <Label className="text-sm text-purple-300 flex items-center gap-2">
-                        <GitBranch className="h-4 w-4 text-purple-400" />
-                        Feat Tree
-                      </Label>
-                      {(() => {
-                        // Calculate feat points: 2 base + level + 2 * floor(level / 3)
-                        // Level 1: 3, Level 2: 4, Level 3: 7, Level 4: 8, Level 5: 9, Level 6: 12, etc.
-                        const level = liveCharacter.level || 1;
-                        const totalPoints = 2 + level + (2 * Math.floor(level / 3));
-                        // Calculate spent points from unlocked feats
-                        const spentPoints = characterFeats.reduce((sum, cf) => {
-                          const feat = featTreeData?.feats?.find((f: Feat) => f.id === cf.featId);
-                          return sum + (feat?.cost || 0);
-                        }, 0);
-                        const remainingPoints = totalPoints - spentPoints;
-                        
-                        return (
-                          <span className={`text-sm font-medium ${remainingPoints > 0 ? 'text-green-400' : 'text-stone-400'}`} data-testid="text-feat-points">
-                            {remainingPoints} / {totalPoints} points
-                          </span>
-                        );
-                      })()}
-                    </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="w-full text-purple-400 border-purple-600 hover:bg-purple-900/30"
-                      onClick={() => setShowFeatTreeViewer(true)}
-                      data-testid="button-view-feat-tree"
-                    >
-                      <GitBranch className="h-4 w-4 mr-2" />
-                      View {featTreeData?.tree?.name || 'Feat Tree'}
-                    </Button>
-                  </div>
-                )}
 
                 {/* Defense Class (DC) Display */}
                 <div className="bg-gradient-to-r from-cyan-900/40 to-blue-900/40 rounded-lg p-3 border border-cyan-700/50">
@@ -14651,253 +14699,141 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                   </div>
                 </div>
 
-                {/* Exhaustion Display */}
-                {(() => {
-                  const exhaustion = liveCharacter.exhaustion || 0;
-                  const exhaustionEffects: Record<number, string> = {
-                    0: 'No effect',
-                    1: '-10ft movement speed',
-                    2: '-20ft movement speed, Disadvantage on skill checks',
-                    3: '-30ft movement speed, Disadvantage on skill & attack rolls',
-                    4: '-40ft movement speed, Disadvantage on all rolls, HP halved',
-                    5: 'Death'
-                  };
-                  const exhaustionColors = [
-                    'bg-stone-700', 'bg-yellow-800', 'bg-orange-700', 'bg-red-700',
-                    'bg-red-800', 'bg-black'
-                  ];
-                  
-                  return (
-                    <div className={`rounded-lg p-3 border ${exhaustion > 0 ? 'border-red-700/50 bg-gradient-to-r from-red-900/30 to-orange-900/30' : 'border-stone-700/50 bg-stone-900/30'}`}>
-                      <div className="flex justify-between items-center">
-                        <Label className="text-sm text-stone-300 flex items-center gap-2">
-                          <AlertTriangle className={`h-4 w-4 ${exhaustion > 0 ? 'text-red-500' : 'text-stone-500'}`} />
-                          Exhaustion
-                        </Label>
-                        <div className="flex items-center gap-2">
-                          {(isOwner || isGM) && (
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="h-6 w-6 p-0"
-                              onClick={() => {
-                                if (exhaustion > 0) {
-                                  updateCharacterMutation.mutate({ exhaustion: exhaustion - 1 });
-                                }
-                              }}
-                              disabled={exhaustion === 0}
-                              data-testid="button-decrease-exhaustion"
-                            >
-                              <Minus className="h-3 w-3" />
-                            </Button>
-                          )}
-                          <span className={`text-xl font-bold ${exhaustion > 0 ? 'text-red-400' : 'text-stone-400'}`} data-testid="text-exhaustion">
-                            {exhaustion}
-                          </span>
-                          {(isOwner || isGM) && (
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="h-6 w-6 p-0"
-                              onClick={() => {
-                                if (exhaustion < 5) {
-                                  updateCharacterMutation.mutate({ exhaustion: exhaustion + 1 });
-                                }
-                              }}
-                              disabled={exhaustion === 5}
-                              data-testid="button-increase-exhaustion"
-                            >
-                              <Plus className="h-3 w-3" />
-                            </Button>
-                          )}
-                        </div>
-                      </div>
-                      <div className="flex gap-1 mt-2">
-                        {[0, 1, 2, 3, 4, 5].map(level => (
-                          <div
-                            key={level}
-                            className={`flex-1 h-2 rounded ${level <= exhaustion ? exhaustionColors[level] : 'bg-stone-800'}`}
-                            data-testid={`exhaustion-level-${level}`}
-                          />
-                        ))}
-                      </div>
-                      {exhaustion > 0 && (
-                        <p className="text-xs text-red-400/80 mt-2" data-testid="text-exhaustion-effect">
-                          {exhaustionEffects[exhaustion]}
-                        </p>
+                {/* Info Grid - Two Columns */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <div>
+                      <Label className="text-xs text-stone-400">Race</Label>
+                      {editingOverview ? (
+                        <Select value={overviewData.race} onValueChange={handleRaceChange}>
+                          <SelectTrigger className="bg-stone-900 border-stone-700">
+                            <SelectValue placeholder="Select race" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {systemSpecies.map((species: SystemSpecies) => (
+                              <SelectItem key={species.name} value={species.name}>{species.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <p className="text-stone-200" data-testid="text-race">{liveCharacter.race}</p>
                       )}
                     </div>
-                  );
-                })()}
-
-                {/* HP Bar */}
-                <div className="space-y-2">
-                  <div className="flex justify-between items-center">
-                    <Label className="text-sm text-stone-300 flex items-center gap-2">
-                      <Heart className="h-4 w-4 text-red-500" />
-                      Health Points
-                    </Label>
-                    {editingOverview ? (
-                      <div className="flex gap-2 items-center">
+                    <div>
+                      <Label className="text-xs text-stone-400">Size</Label>
+                      <p className="text-stone-200" data-testid="text-size">
+                        {editingOverview ? overviewData.size : liveCharacter.size}
+                      </p>
+                    </div>
+                    <div>
+                      <Label className="text-xs text-stone-400">Speed</Label>
+                      <p className="text-stone-200" data-testid="text-speed">
+                        {editingOverview ? overviewData.speed : liveCharacter.speed} ft
+                      </p>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <div>
+                      <Label className="text-xs text-stone-400">Level</Label>
+                      {editingOverview ? (
                         <Input
                           type="number"
-                          min="0"
-                          value={overviewData.hp}
-                          onChange={(e) => setOverviewData({ ...overviewData, hp: e.target.value === '' ? '' : parseInt(e.target.value) })}
-                          className="w-20 bg-stone-900 border-stone-700 text-stone-200"
-                          data-testid="input-edit-hp"
+                          min="1"
+                          max="20"
+                          value={overviewData.level}
+                          onChange={(e) => setOverviewData({ ...overviewData, level: e.target.value === '' ? '' : parseInt(e.target.value) })}
+                          className="bg-stone-900 border-stone-700 text-stone-200"
+                          data-testid="input-edit-level"
                         />
-                        <span className="text-sm">/</span>
-                        <div className="flex items-center gap-1">
-                          <Input
-                            type="number"
-                            min="1"
-                            value={overviewData.maxHp}
-                            onChange={(e) => setOverviewData({ ...overviewData, maxHp: e.target.value === '' ? '' : parseInt(e.target.value) })}
-                            className={`w-20 bg-stone-900 text-stone-200 ${isGM ? 'border-amber-700' : 'border-stone-700'}`}
-                            disabled={!isGM}
-                            data-testid="input-edit-max-hp"
-                          />
-                          {!isGM && (
-                            <TooltipProvider>
-                              <Tooltip>
-                                <TooltipTrigger>
-                                  <Lock className="h-3 w-3 text-amber-600" />
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  <p>Only GMs can edit Max HP</p>
-                                </TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
-                          )}
-                        </div>
-                      </div>
-                    ) : (
-                      <span className="text-sm font-bold" data-testid="text-hp">
-                        {Math.min(liveCharacter.hp, effectiveMaxHp)} / {effectiveMaxHp}
-                      </span>
-                    )}
-                  </div>
-                  {!editingOverview && <Progress value={Math.min(100, Math.round((liveCharacter.hp / effectiveMaxHp) * 100))} className="h-3" data-testid="progress-hp" />}
-                  
-                  {/* HP Breakdown and Level-Up Button */}
-                  {!editingOverview && (
-                    <div className="mt-2 space-y-2">
-                      {/* HP Breakdown */}
-                      <div className="text-xs text-stone-500 flex items-center justify-between" data-testid="text-hp-breakdown">
-                        <span>
-                          Base: {currentSpecies?.startingMaxHp || 10} | Bonus: +{liveCharacter.bonusHpFromLevelUps || 0}
-                          {featBonuses.hp > 0 && <span className="text-purple-400"> | Feats: +{featBonuses.hp}</span>}
-                        </span>
-                        <span className="text-stone-400">
-                          ({calculateDiceCount(liveCharacter.level || 1)}d{hpPerLevel} at level {liveCharacter.level || 1})
-                        </span>
-                      </div>
-                      
-                      {/* Level Up HP Button - shows when level > lastLevelUpRolled */}
-                      {canLevelUpHp && canEdit && (
-                        <Button
-                          size="sm"
-                          onClick={() => {
-                            setLevelUpHpResult(null);
-                            setRollingHpLevel((liveCharacter.lastLevelUpRolled || 1) + 1);
-                            setTargetHpLevel(liveCharacter.level || 1); // Capture target at dialog open
-                            setShowLevelUpHpDialog(true);
-                          }}
-                          className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white"
-                          data-testid="button-level-up-hp"
-                        >
-                          <TrendingUp className="h-4 w-4 mr-2" />
-                          Roll HP{missedHpLevels > 1 ? ` (${missedHpLevels} levels)` : ` - Level ${(liveCharacter.lastLevelUpRolled || 1) + 1}`}
-                        </Button>
+                      ) : (
+                        <p className="text-stone-200">{liveCharacter.level}</p>
                       )}
                     </div>
-                  )}
-                </div>
-
-                {/* Energy Bar */}
-                <div className="space-y-2">
-                  <div className="flex justify-between items-center">
-                    <Label className="text-sm text-stone-300 flex items-center gap-2">
-                      <Zap className="h-4 w-4 text-blue-500" />
-                      Energy
-                    </Label>
-                    {editingOverview ? (
-                      <div className="flex gap-2 items-center">
-                        <Input
-                          type="number"
-                          min="0"
-                          value={overviewData.energy}
-                          onChange={(e) => setOverviewData({ ...overviewData, energy: e.target.value === '' ? '' : parseInt(e.target.value) })}
-                          className="w-20 bg-stone-900 border-stone-700 text-stone-200"
-                          data-testid="input-edit-energy"
-                        />
-                        <span className="text-sm">/</span>
-                        <div className="flex items-center gap-1">
-                          <Input
-                            type="number"
-                            min="0"
-                            value={overviewData.maxEnergy}
-                            onChange={(e) => setOverviewData({ ...overviewData, maxEnergy: e.target.value === '' ? '' : parseInt(e.target.value) })}
-                            className={`w-20 bg-stone-900 text-stone-200 ${isGM ? 'border-amber-700' : 'border-stone-700'}`}
-                            disabled={!isGM}
-                            data-testid="input-edit-max-energy"
-                          />
-                          {!isGM && (
-                            <TooltipProvider>
-                              <Tooltip>
-                                <TooltipTrigger>
-                                  <Lock className="h-3 w-3 text-amber-600" />
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  <p>Only GMs can edit Max Energy</p>
-                                </TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
+                    <div>
+                      <Label className="text-xs text-stone-400">Fly Speed</Label>
+                      <p className="text-stone-200" data-testid="text-fly-speed">
+                        {editingOverview ? overviewData.flySpeed : liveCharacter.flySpeed} ft
+                      </p>
+                    </div>
+                    {/* Exhaustion - Compact */}
+                    {(() => {
+                      const exhaustion = liveCharacter.exhaustion || 0;
+                      const exhaustionEffects: Record<number, string> = {
+                        0: 'No effect',
+                        1: '-10ft speed',
+                        2: '-20ft, Disadv. skill checks',
+                        3: '-30ft, Disadv. skill & attack',
+                        4: '-40ft, Disadv. all, HP halved',
+                        5: 'Death'
+                      };
+                      const exhaustionColors = [
+                        'bg-stone-700', 'bg-yellow-800', 'bg-orange-700', 'bg-red-700',
+                        'bg-red-800', 'bg-black'
+                      ];
+                      
+                      return (
+                        <div className={`rounded-lg p-2 border ${exhaustion > 0 ? 'border-red-700/50 bg-gradient-to-r from-red-900/30 to-orange-900/30' : 'border-stone-700/50 bg-stone-900/30'}`}>
+                          <div className="flex justify-between items-center">
+                            <Label className="text-xs text-stone-300 flex items-center gap-1">
+                              <AlertTriangle className={`h-3 w-3 ${exhaustion > 0 ? 'text-red-500' : 'text-stone-500'}`} />
+                              Exhaustion
+                            </Label>
+                            <div className="flex items-center gap-1">
+                              {(isOwner || isGM) && (
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-5 w-5 p-0"
+                                  onClick={() => {
+                                    if (exhaustion > 0) {
+                                      updateCharacterMutation.mutate({ exhaustion: exhaustion - 1 });
+                                    }
+                                  }}
+                                  disabled={exhaustion === 0}
+                                  data-testid="button-decrease-exhaustion"
+                                >
+                                  <Minus className="h-2.5 w-2.5" />
+                                </Button>
+                              )}
+                              <span className={`text-sm font-bold ${exhaustion > 0 ? 'text-red-400' : 'text-stone-400'}`} data-testid="text-exhaustion">
+                                {exhaustion}
+                              </span>
+                              {(isOwner || isGM) && (
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-5 w-5 p-0"
+                                  onClick={() => {
+                                    if (exhaustion < 5) {
+                                      updateCharacterMutation.mutate({ exhaustion: exhaustion + 1 });
+                                    }
+                                  }}
+                                  disabled={exhaustion === 5}
+                                  data-testid="button-increase-exhaustion"
+                                >
+                                  <Plus className="h-2.5 w-2.5" />
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex gap-0.5 mt-1">
+                            {[0, 1, 2, 3, 4, 5].map(level => (
+                              <div
+                                key={level}
+                                className={`flex-1 h-1.5 rounded ${level <= exhaustion ? exhaustionColors[level] : 'bg-stone-800'}`}
+                                data-testid={`exhaustion-level-${level}`}
+                              />
+                            ))}
+                          </div>
+                          {exhaustion > 0 && (
+                            <p className="text-[10px] text-red-400/80 mt-1" data-testid="text-exhaustion-effect">
+                              {exhaustionEffects[exhaustion]}
+                            </p>
                           )}
                         </div>
-                      </div>
-                    ) : (
-                      <span className="text-sm font-bold" data-testid="text-energy">
-                        {Math.min(liveCharacter.energy, effectiveMaxEnergy)} / {effectiveMaxEnergy}
-                      </span>
-                    )}
+                      );
+                    })()}
                   </div>
-                  {!editingOverview && <Progress value={Math.min(100, Math.round((liveCharacter.energy / effectiveMaxEnergy) * 100))} className="h-3" data-testid="progress-energy" />}
-                  
-                  {/* Energy Breakdown and Level-Up Button */}
-                  {!editingOverview && (
-                    <div className="mt-2 space-y-2">
-                      {/* Energy Breakdown */}
-                      <div className="text-xs text-stone-500 flex items-center justify-between" data-testid="text-energy-breakdown">
-                        <span>
-                          Base: {currentSpecies?.startingMaxEnergy || 10} | Bonus: +{liveCharacter.bonusEnergyFromLevelUps || 0}
-                          {featBonuses.energy > 0 && <span className="text-purple-400"> | Feats: +{featBonuses.energy}</span>}
-                        </span>
-                        <span className="text-stone-400">
-                          ({calculateEnergyDiceCount(liveCharacter.level || 1)}d6 at level {liveCharacter.level || 1})
-                        </span>
-                      </div>
-                      
-                      {/* Level Up Energy Button - shows when level > lastEnergyLevelUpRolled */}
-                      {canLevelUpEnergy && canEdit && (
-                        <Button
-                          size="sm"
-                          onClick={() => {
-                            setLevelUpEnergyResult(null);
-                            setRollingEnergyLevel((liveCharacter.lastEnergyLevelUpRolled || 1) + 1);
-                            setTargetEnergyLevel(liveCharacter.level || 1); // Capture target at dialog open
-                            setShowLevelUpEnergyDialog(true);
-                          }}
-                          className="w-full bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white"
-                          data-testid="button-level-up-energy"
-                        >
-                          <TrendingUp className="h-4 w-4 mr-2" />
-                          Roll Energy{missedEnergyLevels > 1 ? ` (${missedEnergyLevels} levels)` : ` - Level ${(liveCharacter.lastEnergyLevelUpRolled || 1) + 1}`}
-                        </Button>
-                      )}
-                    </div>
-                  )}
                 </div>
 
                 {/* Edit Mode Buttons */}
@@ -14928,6 +14864,43 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                       data-testid="button-cancel-overview"
                     >
                       Cancel
+                    </Button>
+                  </div>
+                )}
+
+                {/* Feat Tree Section - Bottom of overview */}
+                {featTreeId && (
+                  <div className="bg-gradient-to-r from-purple-900/30 to-indigo-900/30 rounded-lg p-3 border border-purple-700/50">
+                    <div className="flex justify-between items-center mb-2">
+                      <Label className="text-sm text-purple-300 flex items-center gap-2">
+                        <GitBranch className="h-4 w-4 text-purple-400" />
+                        Feat Tree
+                      </Label>
+                      {(() => {
+                        const level = liveCharacter.level || 1;
+                        const totalPoints = 2 + level + (2 * Math.floor(level / 3));
+                        const spentPoints = characterFeats.reduce((sum, cf) => {
+                          const feat = featTreeData?.feats?.find((f: Feat) => f.id === cf.featId);
+                          return sum + (feat?.cost || 0);
+                        }, 0);
+                        const remainingPoints = totalPoints - spentPoints;
+                        
+                        return (
+                          <span className={`text-sm font-medium ${remainingPoints > 0 ? 'text-green-400' : 'text-stone-400'}`} data-testid="text-feat-points">
+                            {remainingPoints} / {totalPoints} points
+                          </span>
+                        );
+                      })()}
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full text-purple-400 border-purple-600 hover:bg-purple-900/30"
+                      onClick={() => setShowFeatTreeViewer(true)}
+                      data-testid="button-view-feat-tree"
+                    >
+                      <GitBranch className="h-4 w-4 mr-2" />
+                      View {featTreeData?.tree?.name || 'Feat Tree'}
                     </Button>
                   </div>
                 )}
