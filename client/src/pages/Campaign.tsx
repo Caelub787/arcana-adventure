@@ -8780,26 +8780,6 @@ export default function Campaign() {
             </Tooltip>
           </TooltipProvider>
 
-          {role === 'gm' && !isSandbox && (
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => setScenesManagementOpen(true)}
-                    className="text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto"
-                    data-testid="button-scenes"
-                  >
-                    <Layers className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="left" className="bg-stone-800 border-stone-700 text-stone-200">
-                  <p>Scenes</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          )}
         </div>
       </div>
 
