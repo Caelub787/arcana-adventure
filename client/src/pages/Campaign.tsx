@@ -33,7 +33,7 @@ import { FloatingPanel } from "@/components/ui/floating-panel";
 import { Folder, FolderOpen, FolderPlus, Plus, GripVertical, Eye, Radio, ChevronDown, ChevronRight, Pencil, Minus, Copy, Palette } from "lucide-react";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger, ContextMenuSub, ContextMenuSubTrigger, ContextMenuSubContent } from "@/components/ui/context-menu";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { PropertyStyleEditor, getPropertyCssStyle, type PropertyStyle, type SandboxPropertyType, type TabDefinition } from "@/components/sandbox/PropertyStyleEditor";
+import { PropertyStyleEditor, getPropertyCssStyle, type PropertyStyle } from "@/components/sandbox/PropertyStyleEditor";
 
 // Scene Settings Form Component
 function SceneSettingsForm({ scene, onUpdateScene }: { scene: Scene; onUpdateScene: (settings: Partial<Scene>) => void }) {
@@ -847,12 +847,79 @@ function SandboxSheetEditor({
 
   const templateData = useMemo(() => {
     try {
+      let raw: any = {};
       if (item.type === 'template') {
         const liveTemplate = templates.find((t: any) => t.id === item.id);
-        return JSON.parse((liveTemplate?.data || item.data) || '{}');
+        raw = JSON.parse((liveTemplate?.data || item.data) || '{}');
+      } else {
+        const linkedTemplate = templates.find((t: any) => t.id === item.templateId);
+        raw = linkedTemplate ? JSON.parse(linkedTemplate.data || '{}') : {};
       }
-      const linkedTemplate = templates.find((t: any) => t.id === item.templateId);
-      return linkedTemplate ? JSON.parse(linkedTemplate.data || '{}') : {};
+      
+      if (Array.isArray(raw.properties) && !raw.sections) {
+        const headerId = crypto.randomUUID();
+        const bodyId = crypto.randomUUID();
+        const newSections = [
+          { id: headerId, name: 'Header', location: 'header', layoutMode: 'freeform', styleConfig: { backgroundColor: '#1c1917', border: { enabled: true, color: '#44403c', width: 1, radius: 4, style: 'solid' } }, order: 0 },
+          { id: bodyId, name: 'Body', location: 'body', layoutMode: 'freeform', styleConfig: { backgroundColor: '#1c1917', border: { enabled: true, color: '#44403c', width: 1, radius: 4, style: 'solid' } }, order: 1 },
+        ];
+        
+        const newProps: Record<string, any> = {};
+        const oldProps = raw.properties as any[];
+        
+        const panels = oldProps.filter((p: any) => p.type === 'panel' || p.type === 'tab');
+        const headerPanel = panels.find((p: any) => p.key === 'header');
+        const bodyPanel = panels.find((p: any) => p.key === 'body');
+        
+        if (headerPanel?.style) newSections[0].styleConfig = headerPanel.style;
+        if (bodyPanel?.style) newSections[1].styleConfig = bodyPanel.style;
+        
+        for (const p of oldProps) {
+          if (p.type === 'panel' || p.type === 'tab') continue;
+          
+          let sectionId = bodyId;
+          if (p.parentId) {
+            const parent = oldProps.find((pp: any) => pp.id === p.parentId);
+            if (parent?.key === 'header' || parent?.location === 'header') {
+              sectionId = headerId;
+            }
+          }
+          
+          newProps[p.key] = {
+            id: p.id,
+            key: p.key,
+            type: p.type === 'checkbox' ? 'boolean' : p.type === 'select' ? 'list' : p.type === 'textarea' ? 'text' : p.type,
+            sectionId,
+            defaultValue: p.defaultValue,
+            metadata: {
+              label: p.label || p.key,
+              tooltip: p.tooltip,
+              uiConfig: {
+                x: p.x ?? 10,
+                y: p.y ?? 10,
+                width: p.width ?? 200,
+                height: p.height ?? 40,
+                labelFontSize: p.labelFontSize ?? 11,
+                valueFontSize: p.valueFontSize ?? 13,
+                labelPosition: p.labelPosition ?? 'top',
+              },
+              style: p.style,
+              options: p.options,
+            },
+          };
+        }
+        
+        raw = {
+          version: 1,
+          type: raw.type || 'character',
+          sections: newSections,
+          tabs: [],
+          properties: newProps,
+          settings: raw.settings || { defaultWidth: 450, defaultHeight: 550 },
+        };
+      }
+      
+      return raw;
     } catch { return {}; }
   }, [item, templates]);
 
@@ -873,7 +940,7 @@ function SandboxSheetEditor({
   const [addingProperty, setAddingProperty] = useState(false);
   const [newPropKey, setNewPropKey] = useState('');
   const [newPropLabel, setNewPropLabel] = useState('');
-  const [newPropType, setNewPropType] = useState<SandboxPropertyType>('text');
+  const [newPropType, setNewPropType] = useState<string>('text');
   const [newPropOptions, setNewPropOptions] = useState('');
   const [newPropDefault, setNewPropDefault] = useState('');
   const [newPropX, setNewPropX] = useState(10);
@@ -885,14 +952,14 @@ function SandboxSheetEditor({
   const [newPropLabelPosition, setNewPropLabelPosition] = useState<string>('top');
   const [newPropTooltip, setNewPropTooltip] = useState('');
   const [newPropStyle, setNewPropStyle] = useState<PropertyStyle>({});
-  const [newPropTabs, setNewPropTabs] = useState<TabDefinition[]>([{ id: crypto.randomUUID(), label: 'Tab 1' }, { id: crypto.randomUUID(), label: 'Tab 2' }]);
-  const [newPropTabLayout, setNewPropTabLayout] = useState('top');
   const [newPropCreatorPos, setNewPropCreatorPos] = useState({ x: 200, y: 100 });
   const [isNewPropDragging, setIsNewPropDragging] = useState(false);
   const newPropDragRef = useRef({ x: 0, y: 0, startX: 0, startY: 0 });
   const [selectedPropertyId, setSelectedPropertyId] = useState<string | null>(null);
   const [propSettingsOpen, setPropSettingsOpen] = useState(false);
   const [propContextMenu, setPropContextMenu] = useState<{ x: number; y: number; propId: string } | null>(null);
+  const [sectionContextMenu, setSectionContextMenu] = useState<{ x: number; y: number; sectionId: string } | null>(null);
+  const [editingSectionName, setEditingSectionName] = useState<string | null>(null);
   const [propSettingsPanelPos, setPropSettingsPanelPos] = useState({ x: 400, y: 200 });
   const [propSettingsPanelSize, setPropSettingsPanelSize] = useState({ width: 280, height: 520 });
   const [isPropSettingsDragging, setIsPropSettingsDragging] = useState(false);
@@ -900,7 +967,6 @@ function SandboxSheetEditor({
   const propSettingsDragRef = useRef({ x: 0, y: 0, startX: 0, startY: 0 });
   const propSettingsResizeRef = useRef({ x: 0, y: 0, w: 0, h: 0 });
   const [draggingPropertyId, setDraggingPropertyId] = useState<string | null>(null);
-  const [dropTargetId, setDropTargetId] = useState<string | null>(null);
   const [resizingPropertyId, setResizingPropertyId] = useState<string | null>(null);
   const [dragOverrides, setDragOverrides] = useState<Record<string, { x?: number; y?: number; width?: number; height?: number }>>({});
   const propDragStartRef = useRef({ x: 0, y: 0, propX: 0, propY: 0 });
@@ -917,7 +983,6 @@ function SandboxSheetEditor({
     } catch { return item.type === 'actor' ? { name: item.name } : {}; }
   });
   const actorSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const [activeTabIds, setActiveTabIds] = useState<Record<string, string>>({});
   const [pfpEditorOpen, setPfpEditorOpen] = useState<string | null>(null);
   const [pfpBrowseOpen, setPfpBrowseOpen] = useState(false);
   const [pfpEditorPos, setPfpEditorPos] = useState({ x: 0, y: 0 });
@@ -1023,52 +1088,63 @@ function SandboxSheetEditor({
     }
   };
 
-  const properties: any[] = (templateData.properties || []).map((p: any, i: number) => ({
-    x: 10,
-    y: 10 + i * 50,
-    width: 200,
-    height: 40,
-    labelFontSize: 11,
-    valueFontSize: 13,
-    labelPosition: 'top',
+  const properties: any[] = Object.values(templateData.properties || {}).map((p: any) => ({
     ...p,
+    label: p.metadata?.label || p.label || p.key,
+    x: p.metadata?.uiConfig?.x ?? p.x ?? 10,
+    y: p.metadata?.uiConfig?.y ?? p.y ?? 10,
+    width: p.metadata?.uiConfig?.width ?? p.width ?? 200,
+    height: p.metadata?.uiConfig?.height ?? p.height ?? 40,
+    labelFontSize: p.metadata?.uiConfig?.labelFontSize ?? p.labelFontSize ?? 11,
+    valueFontSize: p.metadata?.uiConfig?.valueFontSize ?? p.valueFontSize ?? 13,
+    labelPosition: p.metadata?.uiConfig?.labelPosition ?? p.labelPosition ?? 'top',
+    tooltip: p.metadata?.tooltip ?? p.tooltip,
+    style: p.metadata?.style ?? p.style,
+    options: p.metadata?.options ?? p.options,
   }));
+
+  const sections: any[] = templateData.sections || [];
 
   const handleAddProperty = () => {
     if (!newPropKey.trim() || !newPropLabel.trim()) return;
     if (!/^[a-zA-Z0-9]+$/.test(newPropKey)) {
-      toast({ title: "Invalid key", description: "Key must be alphanumeric only (no spaces or special characters)", variant: "destructive" });
+      toast({ title: "Invalid key", description: "Key must be alphanumeric only", variant: "destructive" });
       return;
     }
-    if (properties.some((p: any) => p.key === newPropKey)) {
+    if (templateData.properties?.[newPropKey.trim()]) {
       toast({ title: "Duplicate key", description: "A property with this key already exists", variant: "destructive" });
       return;
     }
-    const newProp: any = {
+
+    const targetSectionId = containerAddTarget?.parentId || sections.find((s: any) => s.location === 'body')?.id || sections[0]?.id;
+
+    const newProp = {
       id: crypto.randomUUID(),
       key: newPropKey.trim(),
-      label: newPropLabel.trim(),
-      type: newPropType,
-      ...(newPropType === 'select' ? { options: newPropOptions.split(',').map(o => o.trim()).filter(Boolean) } : {}),
-      ...(newPropType === 'tab' ? { tabs: newPropTabs, tabLayout: newPropTabLayout } : {}),
-      defaultValue: newPropDefault,
-      x: newPropX,
-      y: newPropY,
-      width: newPropWidth,
-      height: newPropHeight,
-      labelFontSize: newPropLabelFontSize,
-      valueFontSize: newPropValueFontSize,
-      labelPosition: newPropLabelPosition,
-      tooltip: newPropTooltip || undefined,
-      style: Object.keys(newPropStyle).length > 0 ? newPropStyle : undefined,
+      type: newPropType === 'checkbox' ? 'boolean' : newPropType === 'textarea' ? 'text' : newPropType === 'select' ? 'list' : newPropType,
+      sectionId: targetSectionId,
+      defaultValue: newPropDefault || undefined,
+      metadata: {
+        label: newPropLabel.trim(),
+        tooltip: newPropTooltip || undefined,
+        uiConfig: {
+          x: newPropX,
+          y: newPropY,
+          width: newPropWidth,
+          height: newPropHeight,
+          labelFontSize: newPropLabelFontSize,
+          valueFontSize: newPropValueFontSize,
+          labelPosition: newPropLabelPosition,
+        },
+        style: Object.keys(newPropStyle).length > 0 ? newPropStyle : undefined,
+        options: newPropType === 'select' ? newPropOptions.split(',').map((o: string) => o.trim()).filter(Boolean) : undefined,
+      },
     };
-    if (containerAddTarget) {
-      newProp.parentId = containerAddTarget.parentId;
-      if (containerAddTarget.tabId) {
-        newProp.tabId = containerAddTarget.tabId;
-      }
-    }
-    const newData = { ...templateData, properties: [...properties, newProp] };
+
+    const newData = {
+      ...templateData,
+      properties: { ...templateData.properties, [newProp.key]: newProp },
+    };
     updateTemplateMutationSheet.mutate({ data: JSON.stringify(newData) });
     setAddingProperty(false);
     resetNewPropState();
@@ -1090,60 +1166,48 @@ function SandboxSheetEditor({
     setNewPropLabelPosition('top');
     setNewPropTooltip('');
     setNewPropStyle({});
-    setNewPropTabs([{ id: crypto.randomUUID(), label: 'Tab 1' }, { id: crypto.randomUUID(), label: 'Tab 2' }]);
-    setNewPropTabLayout('top');
     setContainerAddTarget(null);
   };
 
-  const handleNewPropTypeChange = (type: SandboxPropertyType) => {
+  const handleNewPropTypeChange = (type: string) => {
     setNewPropType(type);
-    if (type === 'panel' || type === 'tab') {
-      setNewPropWidth(300);
-      setNewPropHeight(200);
-    } else if (type === 'pfp') {
+    if (type === 'pfp') {
       setNewPropWidth(100);
       setNewPropHeight(100);
       setNewPropLabelPosition('hidden');
+    } else if (type === 'resource') {
+      setNewPropWidth(200);
+      setNewPropHeight(50);
     } else {
       setNewPropWidth(200);
       setNewPropHeight(40);
     }
   };
 
-  const handleAddPropertyToContainer = (parentId: string, tabId?: string) => {
-    setContainerAddTarget({ parentId, tabId });
+  const handleAddPropertyToSection = (sectionId: string) => {
+    setContainerAddTarget({ parentId: sectionId });
     resetNewPropState();
-    setContainerAddTarget({ parentId, tabId });
-    const parentProp = properties.find((p: any) => p.id === parentId);
-    const siblings = properties.filter((p: any) => p.parentId === parentId && (!tabId || p.tabId === tabId));
-    if (siblings.length > 0) {
-      const siblingMaxY = Math.max(...siblings.map((s: any) => (s.y ?? 0) + (s.height ?? 40)));
-      setNewPropX((parentProp?.x ?? 0) + 10);
-      setNewPropY(siblingMaxY + 10);
+    setContainerAddTarget({ parentId: sectionId });
+    const sectionProps = properties.filter((p: any) => p.sectionId === sectionId);
+    if (sectionProps.length > 0) {
+      const maxY = Math.max(...sectionProps.map((p: any) => (p.y ?? 0) + (p.height ?? 40)));
+      setNewPropX(10);
+      setNewPropY(maxY + 10);
     } else {
-      const parentLabelOffset = parentProp?.type === 'panel' && parentProp?.labelPosition !== 'hidden' ? 24 : 0;
-      const tabHeaderOffset = parentProp?.type === 'tab' && parentProp?.tabLayout !== 'left' ? 24 : 0;
-      const tabSideOffset = parentProp?.type === 'tab' && parentProp?.tabLayout === 'left' ? 60 : 0;
-      setNewPropX((parentProp?.x ?? 0) + tabSideOffset + 10);
-      setNewPropY((parentProp?.y ?? 0) + parentLabelOffset + tabHeaderOffset + 10);
+      setNewPropX(10);
+      setNewPropY(10);
     }
     setAddingProperty(true);
   };
 
   const handleDeleteProperty = (propId: string) => {
-    const idsToDelete = new Set([propId]);
-    const findChildren = (parentId: string) => {
-      properties.forEach((p: any) => {
-        if (p.parentId === parentId) {
-          idsToDelete.add(p.id);
-          findChildren(p.id);
-        }
-      });
-    };
-    findChildren(propId);
-    const newData = { ...templateData, properties: properties.filter((p: any) => !idsToDelete.has(p.id)) };
+    const prop = properties.find((p: any) => p.id === propId);
+    if (!prop) return;
+    const newProps = { ...templateData.properties };
+    delete newProps[prop.key];
+    const newData = { ...templateData, properties: newProps };
     updateTemplateMutationSheet.mutate({ data: JSON.stringify(newData) });
-    if (idsToDelete.has(selectedPropertyId || '')) {
+    if (selectedPropertyId === propId) {
       setSelectedPropertyId(null);
       setPropSettingsOpen(false);
     }
@@ -1153,21 +1217,29 @@ function SandboxSheetEditor({
   const handleDuplicateProperty = (propId: string) => {
     const prop = properties.find((p: any) => p.id === propId);
     if (!prop) return;
+    const originalProp = templateData.properties[prop.key];
+    if (!originalProp) return;
     const baseKey = prop.key.replace(/Copy\d*$/, '');
     let copyKey = baseKey + 'Copy';
     let counter = 2;
-    while (properties.some((p: any) => p.key === copyKey)) {
+    while (templateData.properties[copyKey]) {
       copyKey = baseKey + 'Copy' + counter;
       counter++;
     }
     const duplicated = {
-      ...prop,
+      ...originalProp,
       id: crypto.randomUUID(),
       key: copyKey,
-      label: prop.label + ' Copy',
-      y: (prop.y ?? 10) + (prop.height ?? 40) + 10,
+      metadata: {
+        ...originalProp.metadata,
+        label: (originalProp.metadata?.label || prop.key) + ' Copy',
+        uiConfig: {
+          ...originalProp.metadata?.uiConfig,
+          y: (originalProp.metadata?.uiConfig?.y ?? 10) + (originalProp.metadata?.uiConfig?.height ?? 40) + 10,
+        },
+      },
     };
-    const newData = { ...templateData, properties: [...properties, duplicated] };
+    const newData = { ...templateData, properties: { ...templateData.properties, [copyKey]: duplicated } };
     updateTemplateMutationSheet.mutate({ data: JSON.stringify(newData) });
     toast({ title: "Property duplicated" });
   };
@@ -1185,19 +1257,47 @@ function SandboxSheetEditor({
     }, 500);
   };
 
-  const saveLayoutDebounced = (updatedProperties: any[]) => {
+  const saveLayoutDebounced = (updatedProps: Record<string, any>) => {
     if (layoutSaveTimeoutRef.current) clearTimeout(layoutSaveTimeoutRef.current);
     layoutSaveTimeoutRef.current = setTimeout(() => {
-      const newData = { ...templateData, properties: updatedProperties };
+      const newData = { ...templateData, properties: updatedProps };
       updateTemplateMutationSheet.mutate({ data: JSON.stringify(newData) });
     }, 300);
   };
 
   const updatePropertyLayout = (propId: string, updates: Record<string, any>) => {
-    const updatedProperties = properties.map((p: any) =>
-      p.id === propId ? { ...p, ...updates } : p
-    );
-    saveLayoutDebounced(updatedProperties);
+    const prop = properties.find((p: any) => p.id === propId);
+    if (!prop) return;
+    const original = templateData.properties[prop.key];
+    if (!original) return;
+    const updatedProp = {
+      ...original,
+      metadata: {
+        ...original.metadata,
+        label: updates.label !== undefined ? updates.label : original.metadata?.label,
+        tooltip: updates.tooltip !== undefined ? updates.tooltip : original.metadata?.tooltip,
+        uiConfig: {
+          ...original.metadata?.uiConfig,
+          ...(updates.x !== undefined ? { x: updates.x } : {}),
+          ...(updates.y !== undefined ? { y: updates.y } : {}),
+          ...(updates.width !== undefined ? { width: updates.width } : {}),
+          ...(updates.height !== undefined ? { height: updates.height } : {}),
+          ...(updates.labelFontSize !== undefined ? { labelFontSize: updates.labelFontSize } : {}),
+          ...(updates.valueFontSize !== undefined ? { valueFontSize: updates.valueFontSize } : {}),
+          ...(updates.labelPosition !== undefined ? { labelPosition: updates.labelPosition } : {}),
+        },
+        ...(updates.style !== undefined ? { style: updates.style } : {}),
+      },
+      ...(updates.sectionId !== undefined ? { sectionId: updates.sectionId } : {}),
+      ...(updates.key !== undefined ? { key: updates.key } : {}),
+    };
+    const newKey = updates.key !== undefined ? updates.key : prop.key;
+    const newProps = { ...templateData.properties };
+    if (updates.key !== undefined && updates.key !== prop.key) {
+      delete newProps[prop.key];
+    }
+    newProps[newKey] = updatedProp;
+    saveLayoutDebounced(newProps);
   };
 
   const handlePropPointerDown = (e: React.PointerEvent, prop: any) => {
@@ -1220,37 +1320,6 @@ function SandboxSheetEditor({
       const newX = Math.max(0, Math.round((propDragStartRef.current.propX + dx) / 10) * 10);
       const newY = Math.max(0, Math.round((propDragStartRef.current.propY + dy) / 10) * 10);
       setDragOverrides(prev => ({ ...prev, [prop.id]: { ...prev[prop.id], x: newX, y: newY } }));
-      const draggedProp = properties.find((p: any) => p.id === prop.id);
-      if (draggedProp) {
-        const dragW = draggedProp.width ?? 200;
-        const dragH = draggedProp.height ?? 40;
-        const dragCenterX = newX + dragW / 2;
-        const dragCenterY = newY + dragH / 2;
-        let foundTarget: string | null = null;
-        for (const container of properties) {
-          if (container.type !== 'panel' && container.type !== 'tab') continue;
-          if (container.id === prop.id) continue;
-          const isDescendantOf = (potentialDescendantId: string, ancestorId: string): boolean => {
-            let current = properties.find((pp: any) => pp.id === potentialDescendantId);
-            while (current) {
-              if (current.parentId === ancestorId) return true;
-              if (!current.parentId) return false;
-              current = properties.find((pp: any) => pp.id === current!.parentId);
-            }
-            return false;
-          };
-          if (isDescendantOf(container.id, prop.id)) continue;
-          const cx = container.x ?? 0;
-          const cy = container.y ?? 0;
-          const cw = container.width ?? 200;
-          const ch = container.height ?? 200;
-          if (dragCenterX >= cx && dragCenterX <= cx + cw && dragCenterY >= cy && dragCenterY <= cy + ch) {
-            foundTarget = container.id;
-            break;
-          }
-        }
-        setDropTargetId(foundTarget);
-      }
     }
     if (resizingPropertyId === prop.id) {
       e.stopPropagation();
@@ -1264,60 +1333,18 @@ function SandboxSheetEditor({
 
   const handlePropPointerUp = (e: React.PointerEvent, prop: any) => {
     const el = e.currentTarget as HTMLElement;
-    if (el.hasPointerCapture(e.pointerId)) {
-      el.releasePointerCapture(e.pointerId);
-    }
+    if (el.hasPointerCapture(e.pointerId)) el.releasePointerCapture(e.pointerId);
     if (draggingPropertyId === prop.id) {
       const overrides = dragOverrides[prop.id];
       setDraggingPropertyId(null);
       setDragOverrides(prev => { const n = { ...prev }; delete n[prop.id]; return n; });
-      if (dropTargetId && dropTargetId !== prop.parentId) {
-        const targetContainer = properties.find((p: any) => p.id === dropTargetId);
-        const updates: Record<string, any> = { 
-          parentId: dropTargetId,
-          x: overrides?.x ?? prop.x,
-          y: overrides?.y ?? prop.y,
-        };
-        if (targetContainer?.type === 'tab' && targetContainer.tabs?.length > 0) {
-          updates.tabId = activeTabIds[dropTargetId] || targetContainer.tabs[0].id;
-        } else {
-          updates.tabId = null;
-        }
-        updatePropertyLayout(prop.id, updates);
-        toast({ title: "Property moved", description: `Moved to ${targetContainer?.label || 'container'}` });
-      } else if (dropTargetId === null && prop.parentId && overrides) {
-        const parent = properties.find((p: any) => p.id === prop.parentId);
-        if (parent) {
-          const px = parent.x ?? 0;
-          const py = parent.y ?? 0;
-          const pw = parent.width ?? 200;
-          const ph = parent.height ?? 200;
-          const newX = overrides.x ?? prop.x ?? 0;
-          const newY = overrides.y ?? prop.y ?? 0;
-          const propW = prop.width ?? 200;
-          const propH = prop.height ?? 40;
-          const centerX = newX + propW / 2;
-          const centerY = newY + propH / 2;
-          if (centerX < px || centerX > px + pw || centerY < py || centerY > py + ph) {
-            updatePropertyLayout(prop.id, { parentId: null, tabId: null, x: overrides.x, y: overrides.y });
-            toast({ title: "Property moved to root" });
-          } else {
-            if (overrides) updatePropertyLayout(prop.id, { x: overrides.x, y: overrides.y });
-          }
-        } else {
-          if (overrides) updatePropertyLayout(prop.id, { x: overrides.x, y: overrides.y });
-        }
-      } else {
-        if (overrides) updatePropertyLayout(prop.id, { x: overrides.x, y: overrides.y });
-      }
-      setDropTargetId(null);
+      if (overrides) updatePropertyLayout(prop.id, { x: overrides.x, y: overrides.y });
     }
     if (resizingPropertyId === prop.id) {
       const overrides = dragOverrides[prop.id];
       setResizingPropertyId(null);
       setDragOverrides(prev => { const n = { ...prev }; delete n[prop.id]; return n; });
       if (overrides) updatePropertyLayout(prop.id, { width: overrides.width, height: overrides.height });
-      setDropTargetId(null);
     }
   };
 
@@ -1391,50 +1418,6 @@ function SandboxSheetEditor({
     const labelColor = prop.style?.labelColor || prop.style?.textColor || undefined;
     const valueColor = prop.style?.valueColor || prop.style?.textColor || undefined;
 
-    if (prop.type === 'panel') {
-      return (
-        <div className="w-full h-full overflow-hidden p-1 flex flex-col" style={propStyle}>
-          {!isHidden && (
-            <span className="text-purple-300 truncate shrink-0 border-b border-purple-700/30 pb-1 mb-1" style={{ fontSize: `${lfs}px`, ...(labelColor ? { color: labelColor } : {}) }}>
-              {prop.label}
-            </span>
-          )}
-          <div className="flex-1" />
-        </div>
-      );
-    }
-
-    if (prop.type === 'tab') {
-      const tabs = prop.tabs || [{ id: '1', label: 'Tab 1' }, { id: '2', label: 'Tab 2' }];
-      const isLeftLayout = prop.tabLayout === 'left';
-      const currentActiveTab = activeTabIds[prop.id] || (tabs[0]?.id ?? '');
-      return (
-        <div className={`w-full h-full overflow-hidden flex ${isLeftLayout ? 'flex-row' : 'flex-col'}`} style={propStyle}>
-          <div className={`flex shrink-0 ${isLeftLayout ? 'flex-col border-r border-stone-600/50 w-[60px]' : 'flex-row border-b border-stone-600/50'}`}>
-            {tabs.map((tab: TabDefinition) => (
-              <div
-                key={tab.id}
-                className={`px-2 py-1 text-[10px] truncate cursor-pointer transition-colors ${
-                  tab.id === currentActiveTab 
-                    ? `text-purple-300 bg-purple-900/20 ${isLeftLayout ? 'border-r-2 border-purple-500' : 'border-b-2 border-purple-500'}`
-                    : 'text-stone-500 hover:text-stone-300'
-                }`}
-                onClick={(e) => { e.stopPropagation(); setActiveTabIds(prev => ({ ...prev, [prop.id]: tab.id })); }}
-                data-testid={`canvas-tab-${prop.key}-${tab.id}`}
-              >
-                {tab.icon ? (
-                  <img src={tab.icon} alt={tab.label} className="h-4 w-4 object-contain mx-auto" title={tab.label} />
-                ) : (
-                  tab.label
-                )}
-              </div>
-            ))}
-          </div>
-          <div className="flex-1" />
-        </div>
-      );
-    }
-
     if (prop.type === 'pfp') {
       return (
         <div className="w-full h-full flex items-center justify-center bg-stone-800/50 overflow-hidden rounded" style={propStyle}>
@@ -1452,12 +1435,16 @@ function SandboxSheetEditor({
           <span className="text-purple-300 truncate shrink-0" style={{ fontSize: `${lfs}px`, ...(labelColor ? { color: labelColor } : {}) }}>{prop.label}</span>
         )}
         <div className="flex-1 min-w-0">
-          {prop.type === 'checkbox' ? (
+          {prop.type === 'boolean' ? (
             <div className="flex items-center"><input type="checkbox" disabled className="h-4 w-4 accent-purple-600" /></div>
-          ) : prop.type === 'select' ? (
+          ) : prop.type === 'list' ? (
             <div className="bg-stone-700/50 border border-stone-600/50 rounded px-1.5 truncate" style={{ fontSize: `${vfs}px`, color: valueColor || '#a8a29e' }}>Select ▾</div>
-          ) : prop.type === 'textarea' ? (
-            <div className="bg-stone-700/50 border border-stone-600/50 rounded px-1.5 h-full min-h-[20px]" style={{ fontSize: `${vfs}px`, color: valueColor || '#a8a29e' }}>Text area</div>
+          ) : prop.type === 'resource' ? (
+            <div className="bg-stone-700/50 border border-stone-600/50 rounded px-1.5 truncate flex items-center gap-1" style={{ fontSize: `${vfs}px`, color: valueColor || '#a8a29e' }}>
+              <span>0</span><span className="text-stone-500">/</span><span>0</span>
+            </div>
+          ) : prop.type === 'formula' ? (
+            <div className="bg-stone-700/30 border border-stone-600/50 rounded px-1.5 truncate text-amber-400 italic" style={{ fontSize: `${vfs}px` }}>f(x)</div>
           ) : (
             <div className="bg-stone-700/50 border border-stone-600/50 rounded px-1.5 truncate" style={{ fontSize: `${vfs}px`, color: valueColor || '#a8a29e' }}>
               {prop.type === 'number' ? '0' : 'abc'}
@@ -1470,45 +1457,32 @@ function SandboxSheetEditor({
 
   const renderSheetBody = () => {
     if (item.type === 'template') {
-      const rootPropsForHeight = properties.filter((p: any) => !p.parentId);
-      const canvasHeight = rootPropsForHeight.length > 0
-        ? Math.max(300, Math.max(...rootPropsForHeight.map((p: any) => (p.y ?? 0) + (p.height ?? 40))) + 60)
-        : 300;
-
-      const renderCanvasProperty = (prop: any, offsetX = 0, offsetY = 0): React.ReactNode => {
+      const renderCanvasProperty = (prop: any): React.ReactNode => {
         const overrides = dragOverrides[prop.id] || {};
-        const px = (overrides.x ?? prop.x ?? 10) - offsetX;
-        const py = (overrides.y ?? prop.y ?? 10) - offsetY;
+        const px = overrides.x ?? prop.x ?? 10;
+        const py = overrides.y ?? prop.y ?? 10;
         const pw = overrides.width ?? prop.width ?? 200;
         const ph = overrides.height ?? prop.height ?? 40;
         const isSelected = selectedPropertyId === prop.id;
         const isDraggingThis = draggingPropertyId === prop.id;
         const isResizingThis = resizingPropertyId === prop.id;
-        const children = properties.filter((c: any) => c.parentId === prop.id);
 
         return (
           <div
             key={prop.id}
             className={`absolute select-none ${isDraggingThis || isResizingThis ? 'z-20' : 'z-10'}`}
-            style={{
-              left: `${px}px`,
-              top: `${py}px`,
-              width: `${pw}px`,
-              height: `${ph}px`,
-            }}
+            style={{ left: `${px}px`, top: `${py}px`, width: `${pw}px`, height: `${ph}px` }}
             data-testid={`canvas-property-${prop.key}`}
             title={prop.tooltip || prop.label}
             onDoubleClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
+              e.preventDefault(); e.stopPropagation();
               setSelectedPropertyId(prop.id);
               setPropSettingsOpen(true);
               setPropContextMenu(null);
               setPropSettingsPanelPos({ x: e.clientX, y: e.clientY });
             }}
             onContextMenu={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
+              e.preventDefault(); e.stopPropagation();
               setPropContextMenu({ x: e.clientX, y: e.clientY, propId: prop.id });
             }}
             onPointerDown={(e) => handlePropPointerDown(e, prop)}
@@ -1517,58 +1491,12 @@ function SandboxSheetEditor({
           >
             <div
               className={`w-full h-full rounded cursor-grab active:cursor-grabbing transition-colors ${
-                dropTargetId === prop.id
-                  ? 'ring-2 ring-green-400 bg-green-900/10'
-                  : isSelected
-                  ? 'ring-2 ring-purple-400 shadow-lg shadow-purple-900/20'
-                  : ''
+                isSelected ? 'ring-2 ring-purple-400 shadow-lg shadow-purple-900/20' : ''
               } ${!prop.style?.backgroundColor && !prop.style?.backgroundGradient?.enabled ? (isSelected ? 'bg-purple-900/20 border border-purple-400' : 'border border-stone-600/50 bg-stone-800/60 hover:border-stone-500/70') : (isSelected ? 'border border-purple-400' : '')}`}
               style={getPropertyCssStyle(prop.style)}
               data-testid={`button-select-property-${prop.key}`}
             >
               {renderFieldPreview(prop)}
-              {(prop.type === 'panel' || prop.type === 'tab') && children.length > 0 && (() => {
-                const panelLabelHeight = prop.type === 'panel' && prop.labelPosition !== 'hidden' ? 24 : 0;
-                const tabHeaderHeight = prop.type === 'tab' && prop.tabLayout !== 'left' ? 24 : 0;
-                const tabSideWidth = prop.type === 'tab' && prop.tabLayout === 'left' ? 60 : 0;
-                const contentTop = panelLabelHeight + tabHeaderHeight;
-                const contentLeft = tabSideWidth;
-                const parentAbsX = (overrides.x ?? prop.x ?? 10) + contentLeft;
-                const parentAbsY = (overrides.y ?? prop.y ?? 10) + contentTop;
-                const activeTab = prop.type === 'tab' ? (activeTabIds[prop.id] || (prop.tabs?.[0]?.id ?? '')) : null;
-                const visibleChildren = prop.type === 'tab' 
-                  ? children.filter((c: any) => c.tabId === activeTab)
-                  : children;
-                return (
-                  <div className="absolute overflow-hidden" style={{ 
-                    top: `${contentTop}px`,
-                    left: `${contentLeft}px`,
-                    right: '0px',
-                    bottom: '0px',
-                  }}>
-                    <div className="relative w-full h-full">
-                      {visibleChildren.map((child: any) => renderCanvasProperty(child, parentAbsX + offsetX, parentAbsY + offsetY))}
-                    </div>
-                  </div>
-                );
-              })()}
-              {(prop.type === 'panel' || prop.type === 'tab') && (
-                <button
-                  className={`absolute w-5 h-5 rounded bg-purple-700/60 hover:bg-purple-600 text-white flex items-center justify-center transition-all opacity-60 hover:opacity-100 z-30 ${
-                    prop.key === 'header' ? 'bottom-1' : 'top-1 left-1'
-                  }`}
-                  style={prop.key === 'header' ? { left: '115px' } : undefined}
-                  onPointerDown={(e) => e.stopPropagation()}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleAddPropertyToContainer(prop.id, prop.type === 'tab' ? (activeTabIds[prop.id] || prop.tabs?.[0]?.id) : undefined);
-                  }}
-                  title="Add property to this container"
-                  data-testid={`button-add-to-container-${prop.key}`}
-                >
-                  <Plus className="h-3 w-3" />
-                </button>
-              )}
             </div>
             <div
               className="absolute bottom-0 right-0 w-3 h-3 cursor-se-resize bg-purple-500/40 hover:bg-purple-400/60 rounded-tl-sm"
@@ -1579,64 +1507,170 @@ function SandboxSheetEditor({
         );
       };
 
-      const rootProperties = properties.filter((p: any) => !p.parentId);
+      const renderSection = (section: any) => {
+        const sectionProps = properties.filter((p: any) => p.sectionId === section.id);
+        const sectionStyle = section.styleConfig ? getPropertyCssStyle(section.styleConfig) : {};
+        const sectionHeight = sectionProps.length > 0
+          ? Math.max(120, Math.max(...sectionProps.map((p: any) => (p.y ?? 0) + (p.height ?? 40))) + 20)
+          : 120;
+        
+        return (
+          <div
+            key={section.id}
+            className="relative rounded overflow-visible mb-1"
+            style={{ minHeight: `${sectionHeight}px`, ...sectionStyle }}
+            data-testid={`template-section-${section.name.toLowerCase()}`}
+            onClick={(e) => {
+              if (e.target === e.currentTarget) { setSelectedPropertyId(null); setPropSettingsOpen(false); }
+            }}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setSectionContextMenu({ x: e.clientX, y: e.clientY, sectionId: section.id });
+            }}
+          >
+            <div className="absolute top-0 left-0 z-20 px-2 py-0.5">
+              {editingSectionName === section.id ? (
+                <input
+                  autoFocus
+                  defaultValue={section.name}
+                  className="bg-stone-700 border border-stone-500 text-stone-200 text-[10px] px-1 rounded w-20"
+                  onBlur={(e) => {
+                    const newName = e.target.value.trim() || section.name;
+                    const updatedSections = sections.map((ss: any) => ss.id === section.id ? { ...ss, name: newName } : ss);
+                    updateTemplateMutationSheet.mutate({ data: JSON.stringify({ ...templateData, sections: updatedSections }) });
+                    setEditingSectionName(null);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                    if (e.key === 'Escape') setEditingSectionName(null);
+                  }}
+                  data-testid={`input-section-name-${section.name.toLowerCase()}`}
+                />
+              ) : (
+                <span className="text-[10px] text-stone-500 uppercase tracking-wider">{section.name} <span className="text-stone-600">({section.location})</span></span>
+              )}
+            </div>
+            {sectionProps.map((prop: any) => renderCanvasProperty(prop))}
+            <button
+              className={`absolute w-5 h-5 rounded bg-purple-700/60 hover:bg-purple-600 text-white flex items-center justify-center transition-all opacity-60 hover:opacity-100 z-30 ${
+                section.location === 'header' ? 'bottom-1' : 'top-1 left-1'
+              }`}
+              style={section.location === 'header' ? { left: '115px' } : undefined}
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleAddPropertyToSection(section.id);
+              }}
+              title={`Add property to ${section.name}`}
+              data-testid={`button-add-to-section-${section.name.toLowerCase()}`}
+            >
+              <Plus className="h-3 w-3" />
+            </button>
+          </div>
+        );
+      };
 
       return (
-        <div className="space-y-3" data-testid="template-properties-editor">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-medium text-purple-300">Properties</h3>
-          </div>
-
-          {/* Floating property creator panel rendered via portal below */}
-
-          {properties.length === 0 && !addingProperty && (
+        <div className="space-y-0" data-testid="template-properties-editor">
+          {sections.sort((a: any, b: any) => a.order - b.order).map((section: any) => renderSection(section))}
+          {sections.length === 0 && (
             <div className="text-stone-500 text-center italic border border-dashed border-stone-700 rounded-lg p-6 text-sm">
-              No properties defined. Add properties to customize actor sheets.
+              No sections defined. Add sections to build your template.
             </div>
           )}
-
-          {properties.length > 0 && (
-            <div
-              className="relative rounded-lg overflow-auto"
-              style={{
-                minHeight: `${canvasHeight}px`,
+          <div className="flex items-center gap-2 mt-2">
+            <button
+              className="text-xs bg-stone-700 hover:bg-stone-600 text-stone-300 px-2 py-1 rounded flex items-center gap-1"
+              onClick={() => {
+                const newSection = {
+                  id: crypto.randomUUID(),
+                  name: `Section ${sections.length + 1}`,
+                  location: 'body' as const,
+                  layoutMode: 'freeform' as const,
+                  styleConfig: { backgroundColor: '#1c1917', border: { enabled: true, color: '#44403c', width: 1, radius: 4, style: 'solid' } },
+                  order: sections.length,
+                };
+                const newData = { ...templateData, sections: [...sections, newSection] };
+                updateTemplateMutationSheet.mutate({ data: JSON.stringify(newData) });
+                toast({ title: "Section added" });
               }}
-              data-testid="template-canvas"
-              onClick={(e) => {
-                if (e.target === e.currentTarget) { setSelectedPropertyId(null); setPropSettingsOpen(false); }
-              }}
+              data-testid="button-add-section"
             >
-              {rootProperties.map((prop: any) => renderCanvasProperty(prop))}
-            </div>
+              <Plus className="h-3 w-3" /> Add Section
+            </button>
+          </div>
+          {sectionContextMenu && createPortal(
+            <div className="fixed inset-0 z-[9999]" onClick={() => setSectionContextMenu(null)}>
+              <div
+                className="fixed bg-stone-800 border border-stone-600 rounded-lg shadow-xl py-1 min-w-[160px]"
+                style={{ left: `${sectionContextMenu.x}px`, top: `${sectionContextMenu.y}px` }}
+              >
+                <button className="w-full text-left px-3 py-1.5 text-xs text-stone-200 hover:bg-stone-700" onClick={() => { setEditingSectionName(sectionContextMenu.sectionId); setSectionContextMenu(null); }} data-testid="menu-rename-section">Rename Section</button>
+                <button className="w-full text-left px-3 py-1.5 text-xs text-stone-200 hover:bg-stone-700" onClick={() => {
+                  const s = sections.find((ss: any) => ss.id === sectionContextMenu.sectionId);
+                  if (!s) return;
+                  const locations = ['header', 'body', 'footer', 'left', 'right'];
+                  const currentIdx = locations.indexOf(s.location);
+                  const nextLoc = locations[(currentIdx + 1) % locations.length];
+                  const updatedSections = sections.map((ss: any) => ss.id === s.id ? { ...ss, location: nextLoc } : ss);
+                  updateTemplateMutationSheet.mutate({ data: JSON.stringify({ ...templateData, sections: updatedSections }) });
+                  toast({ title: `Section location: ${nextLoc}` });
+                  setSectionContextMenu(null);
+                }} data-testid="menu-change-location">Change Location</button>
+                <button className="w-full text-left px-3 py-1.5 text-xs text-red-400 hover:bg-stone-700" onClick={() => {
+                  const sectionId = sectionContextMenu.sectionId;
+                  const propsInSection = Object.values(templateData.properties || {}).filter((p: any) => p.sectionId === sectionId);
+                  if (propsInSection.length > 0) {
+                    toast({ title: "Cannot delete", description: "Remove all properties first", variant: "destructive" });
+                  } else if (sections.length <= 1) {
+                    toast({ title: "Cannot delete", description: "Template must have at least one section", variant: "destructive" });
+                  } else {
+                    const updatedSections = sections.filter((ss: any) => ss.id !== sectionId);
+                    updateTemplateMutationSheet.mutate({ data: JSON.stringify({ ...templateData, sections: updatedSections }) });
+                    toast({ title: "Section deleted" });
+                  }
+                  setSectionContextMenu(null);
+                }} data-testid="menu-delete-section">Delete Section</button>
+              </div>
+            </div>,
+            document.body
           )}
-
         </div>
       );
     }
 
     const linkedTemplate = templates.find((t: any) => t.id === selectedTemplateId);
+    let actorSections: any[] = [];
     let actorProperties: any[] = [];
     if (linkedTemplate) {
       try {
         const td = JSON.parse(linkedTemplate.data || '{}');
-        actorProperties = (td.properties || []).map((p: any, i: number) => ({
-          x: 10, y: 10 + i * 50, width: 200, height: 40,
-          labelFontSize: 11, valueFontSize: 13, labelPosition: 'top',
+        actorSections = td.sections || [];
+        actorProperties = Object.values(td.properties || {}).map((p: any) => ({
           ...p,
+          label: p.metadata?.label || p.key,
+          x: p.metadata?.uiConfig?.x ?? 10,
+          y: p.metadata?.uiConfig?.y ?? 10,
+          width: p.metadata?.uiConfig?.width ?? 200,
+          height: p.metadata?.uiConfig?.height ?? 40,
+          labelFontSize: p.metadata?.uiConfig?.labelFontSize ?? 11,
+          valueFontSize: p.metadata?.uiConfig?.valueFontSize ?? 13,
+          labelPosition: p.metadata?.uiConfig?.labelPosition ?? 'top',
+          tooltip: p.metadata?.tooltip,
+          style: p.metadata?.style,
+          options: p.metadata?.options,
         }));
       } catch {}
     }
 
-    if (actorProperties.length === 0) {
+    if (actorSections.length === 0 && actorProperties.length === 0) {
       return (
         <div className="text-stone-500 text-center italic border border-dashed border-stone-700 rounded-lg p-8 text-sm" data-testid="actor-no-properties">
           {selectedTemplateId ? 'No properties defined in template' : 'Assign a template to see properties'}
         </div>
       );
     }
-
-    const rootProps = actorProperties.filter((p: any) => !p.parentId);
-    const containerHeight = Math.max(200, Math.max(...rootProps.map((p: any) => (p.y ?? 0) + (p.height ?? 40))) + 20);
 
     const renderActorProperty = (prop: any) => {
       const val = actorValues[prop.key] ?? prop.defaultValue ?? '';
@@ -1652,72 +1686,6 @@ function SandboxSheetEditor({
       const propStyle = getPropertyCssStyle(prop.style);
       const labelColor = prop.style?.labelColor || prop.style?.textColor || undefined;
       const valueColor = prop.style?.valueColor || prop.style?.textColor || undefined;
-
-      if (prop.type === 'panel') {
-        const children = actorProperties.filter((c: any) => c.parentId === prop.id);
-        const panelLabelHeight = !isHidden ? lfs + 12 : 0;
-        return (
-          <div
-            key={prop.id}
-            className="absolute rounded overflow-hidden"
-            style={{ left: `${px}px`, top: `${py}px`, width: `${pw}px`, height: `${ph}px`, ...propStyle }}
-            data-testid={`actor-property-${prop.key}`}
-            title={prop.tooltip || prop.label}
-          >
-            {!isHidden && (
-              <div className="text-stone-300 truncate shrink-0 px-2 pt-1" style={{ fontSize: `${lfs}px`, ...(labelColor ? { color: labelColor } : {}) }}>
-                {prop.label}
-              </div>
-            )}
-            <div className="relative overflow-hidden" style={{ position: 'absolute', top: `${panelLabelHeight}px`, left: 0, right: 0, bottom: 0 }}>
-              {children.map((child: any) => renderActorProperty(child))}
-            </div>
-          </div>
-        );
-      }
-
-      if (prop.type === 'tab') {
-        const tabs = prop.tabs || [];
-        const activeTabId = activeTabIds[prop.id] || (tabs[0]?.id ?? '');
-        const children = actorProperties.filter((c: any) => c.parentId === prop.id && c.tabId === activeTabId);
-        const isLeftLayout = prop.tabLayout === 'left';
-        const tabSideWidth = 80;
-        const tabHeaderHeight = 28;
-        return (
-          <div
-            key={prop.id}
-            className={`absolute rounded overflow-hidden flex ${isLeftLayout ? 'flex-row' : 'flex-col'}`}
-            style={{ left: `${px}px`, top: `${py}px`, width: `${pw}px`, height: `${ph}px`, ...propStyle }}
-            data-testid={`actor-property-${prop.key}`}
-            title={prop.tooltip || prop.label}
-          >
-            <div className={`flex shrink-0 ${isLeftLayout ? 'flex-col border-r border-stone-600/50' : 'border-b border-stone-600/50'}`} style={isLeftLayout ? { width: `${tabSideWidth}px` } : { height: `${tabHeaderHeight}px` }}>
-              {tabs.map((tab: any) => (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTabIds(prev => ({ ...prev, [prop.id]: tab.id }))}
-                  className={`px-3 py-1 text-xs truncate transition-colors flex items-center justify-center gap-1 ${
-                    tab.id === activeTabId
-                      ? `text-purple-300 bg-purple-900/20 ${isLeftLayout ? 'border-r-2 border-purple-500' : 'border-b-2 border-purple-500'}`
-                      : 'text-stone-500 hover:text-stone-300'
-                  }`}
-                  data-testid={`actor-tab-${prop.key}-${tab.id}`}
-                  title={tab.label}
-                >
-                  {tab.icon ? (
-                    <img src={tab.icon} alt={tab.label} className="h-4 w-4 object-contain" />
-                  ) : (
-                    tab.label
-                  )}
-                </button>
-              ))}
-            </div>
-            <div className="relative flex-1">
-              {children.map((child: any) => renderActorProperty(child))}
-            </div>
-          </div>
-        );
-      }
 
       if (prop.type === 'pfp') {
         const pfpImage = val;
@@ -1742,6 +1710,41 @@ function SandboxSheetEditor({
             )}
             <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded">
               <span className="text-white text-xs">Change</span>
+            </div>
+          </div>
+        );
+      }
+
+      if (prop.type === 'resource') {
+        let resourceVal: any = val;
+        try { if (typeof resourceVal === 'string') resourceVal = JSON.parse(resourceVal); } catch {}
+        if (typeof resourceVal !== 'object' || resourceVal === null) resourceVal = { current: 0, max: 0 };
+        const current = resourceVal.current ?? 0;
+        const max = resourceVal.max ?? 0;
+        return (
+          <div key={prop.id} className="absolute" style={{ left: `${px}px`, top: `${py}px`, width: `${pw}px`, height: `${ph}px`, ...propStyle }} data-testid={`actor-property-${prop.key}`} title={prop.tooltip || prop.label}>
+            <div className={`flex ${isLeft ? 'flex-row items-center gap-2' : 'flex-col'} w-full h-full`}>
+              {!isHidden && <Label className="text-stone-400 truncate shrink-0" style={{ fontSize: `${lfs}px`, ...(labelColor ? { color: labelColor } : {}) }}>{prop.label}</Label>}
+              <div className="flex items-center gap-1 flex-1 min-w-0">
+                <Input type="number" value={current} onChange={(e) => handleActorValueChange(prop.key, JSON.stringify({ current: Number(e.target.value), max }))} className="bg-stone-800 border-stone-700 text-stone-200 h-full flex-1" style={{ fontSize: `${vfs}px`, ...(valueColor ? { color: valueColor } : {}) }} data-testid={`input-actor-${prop.key}-current`} />
+                <span className="text-stone-500 text-xs">/</span>
+                <Input type="number" value={max} onChange={(e) => handleActorValueChange(prop.key, JSON.stringify({ current, max: Number(e.target.value) }))} className="bg-stone-800 border-stone-700 text-stone-200 h-full flex-1" style={{ fontSize: `${vfs}px`, ...(valueColor ? { color: valueColor } : {}) }} data-testid={`input-actor-${prop.key}-max`} />
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      if (prop.type === 'formula') {
+        return (
+          <div key={prop.id} className="absolute" style={{ left: `${px}px`, top: `${py}px`, width: `${pw}px`, height: `${ph}px`, ...propStyle }} data-testid={`actor-property-${prop.key}`} title={prop.tooltip || prop.label}>
+            <div className={`flex ${isLeft ? 'flex-row items-center gap-2' : 'flex-col'} w-full h-full`}>
+              {!isHidden && <Label className="text-stone-400 truncate shrink-0" style={{ fontSize: `${lfs}px`, ...(labelColor ? { color: labelColor } : {}) }}>{prop.label}</Label>}
+              <div className="flex-1 min-w-0">
+                <div className="bg-stone-700/30 border border-stone-600/50 rounded px-1.5 truncate text-amber-400 italic" style={{ fontSize: `${vfs}px` }} data-testid={`formula-actor-${prop.key}`}>
+                  {val || '\u2014'}
+                </div>
+              </div>
             </div>
           </div>
         );
@@ -1779,27 +1782,18 @@ function SandboxSheetEditor({
                   data-testid={`input-actor-${prop.key}`}
                 />
               )}
-              {prop.type === 'checkbox' && (
+              {prop.type === 'boolean' && (
                 <div className="flex items-center h-full">
                   <input
                     type="checkbox"
-                    checked={val === 'true'}
+                    checked={val === 'true' || val === true}
                     onChange={(e) => handleActorValueChange(prop.key, e.target.checked ? 'true' : 'false')}
                     className="h-4 w-4 accent-amber-600"
                     data-testid={`checkbox-actor-${prop.key}`}
                   />
                 </div>
               )}
-              {prop.type === 'textarea' && (
-                <Textarea
-                  value={val}
-                  onChange={(e) => handleActorValueChange(prop.key, e.target.value)}
-                  className="bg-stone-800 border-stone-700 text-stone-200 h-full w-full resize-none"
-                  style={{ fontSize: `${vfs}px`, ...(valueColor ? { color: valueColor } : {}) }}
-                  data-testid={`textarea-actor-${prop.key}`}
-                />
-              )}
-              {prop.type === 'select' && (
+              {prop.type === 'list' && (
                 <Select value={val || '__empty__'} onValueChange={(v) => handleActorValueChange(prop.key, v === '__empty__' ? '' : v)}>
                   <SelectTrigger className="bg-stone-800 border-stone-700 text-stone-200 h-full w-full" style={{ fontSize: `${vfs}px`, ...(valueColor ? { color: valueColor } : {}) }} data-testid={`select-actor-${prop.key}`}>
                     <SelectValue placeholder="Select..." />
@@ -1819,27 +1813,49 @@ function SandboxSheetEditor({
     };
 
     return (
-      <div className="relative" style={{ minHeight: `${containerHeight}px` }} data-testid="actor-properties-display">
-        {rootProps.map((prop: any) => renderActorProperty(prop))}
+      <div className="space-y-0" data-testid="actor-properties-display">
+        {actorSections.sort((a: any, b: any) => a.order - b.order).map((section: any) => {
+          const sectionProps = actorProperties.filter((p: any) => p.sectionId === section.id);
+          const sectionStyle = section.styleConfig ? getPropertyCssStyle(section.styleConfig) : {};
+          const sectionHeight = sectionProps.length > 0
+            ? Math.max(60, Math.max(...sectionProps.map((p: any) => (p.y ?? 0) + (p.height ?? 40))) + 10)
+            : 60;
+          return (
+            <div key={section.id} className="relative rounded overflow-hidden mb-1" style={{ minHeight: `${sectionHeight}px`, ...sectionStyle }}>
+              {sectionProps.map((prop: any) => renderActorProperty(prop))}
+            </div>
+          );
+        })}
       </div>
     );
   };
 
   const renderMobileActorBody = () => {
     const linkedTemplate = templates.find((t: any) => t.id === selectedTemplateId);
-    let actorProperties: any[] = [];
+    let mobileActorSections: any[] = [];
+    let mobileActorProperties: any[] = [];
     if (linkedTemplate) {
       try {
         const td = JSON.parse(linkedTemplate.data || '{}');
-        actorProperties = (td.properties || []).map((p: any, i: number) => ({
-          x: 10, y: 10 + i * 50, width: 200, height: 40,
-          labelFontSize: 11, valueFontSize: 13, labelPosition: 'top',
+        mobileActorSections = td.sections || [];
+        mobileActorProperties = Object.values(td.properties || {}).map((p: any) => ({
           ...p,
+          label: p.metadata?.label || p.key,
+          x: p.metadata?.uiConfig?.x ?? 10,
+          y: p.metadata?.uiConfig?.y ?? 10,
+          width: p.metadata?.uiConfig?.width ?? 200,
+          height: p.metadata?.uiConfig?.height ?? 40,
+          labelFontSize: p.metadata?.uiConfig?.labelFontSize ?? 11,
+          valueFontSize: p.metadata?.uiConfig?.valueFontSize ?? 13,
+          labelPosition: p.metadata?.uiConfig?.labelPosition ?? 'top',
+          tooltip: p.metadata?.tooltip,
+          style: p.metadata?.style,
+          options: p.metadata?.options,
         }));
       } catch {}
     }
 
-    if (actorProperties.length === 0) {
+    if (mobileActorSections.length === 0 && mobileActorProperties.length === 0) {
       return (
         <div className="text-stone-500 text-center italic border border-dashed border-stone-700 rounded-lg p-8 text-sm" data-testid="actor-no-properties-mobile">
           {selectedTemplateId ? 'No properties defined in template' : 'Assign a template to see properties'}
@@ -1854,51 +1870,6 @@ function SandboxSheetEditor({
       const propStyle = getPropertyCssStyle(prop.style);
       const labelColor = prop.style?.labelColor || prop.style?.textColor || undefined;
       const valueColor = prop.style?.valueColor || prop.style?.textColor || undefined;
-
-      if (prop.type === 'panel') {
-        const children = actorProperties.filter((c: any) => c.parentId === prop.id);
-        return (
-          <div key={prop.id} className="rounded-lg p-3 space-y-3" style={propStyle} data-testid={`actor-property-mobile-${prop.key}`} title={prop.tooltip || prop.label}>
-            <Label className="text-stone-300 font-medium" style={{ fontSize: `${lfs}px`, ...(labelColor ? { color: labelColor } : {}) }}>{prop.label}</Label>
-            {children.map((child: any) => renderMobileProperty(child))}
-          </div>
-        );
-      }
-
-      if (prop.type === 'tab') {
-        const tabs = prop.tabs || [];
-        const activeTabId = activeTabIds[prop.id] || (tabs[0]?.id ?? '');
-        const children = actorProperties.filter((c: any) => c.parentId === prop.id && c.tabId === activeTabId);
-        const isLeftLayout = prop.tabLayout === 'left';
-        return (
-          <div key={prop.id} className={`rounded-lg overflow-hidden flex ${isLeftLayout ? 'flex-row' : 'flex-col'}`} style={propStyle} data-testid={`actor-property-mobile-${prop.key}`} title={prop.tooltip || prop.label}>
-            <div className={`flex shrink-0 ${isLeftLayout ? 'flex-col border-r border-stone-600/50 w-[80px]' : 'border-b border-stone-600/50'}`}>
-              {tabs.map((tab: any) => (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTabIds(prev => ({ ...prev, [prop.id]: tab.id }))}
-                  className={`px-3 py-2 text-xs truncate transition-colors flex items-center justify-center gap-1 ${isLeftLayout ? 'text-left' : 'flex-1'} ${
-                    tab.id === activeTabId
-                      ? `text-purple-300 bg-purple-900/20 ${isLeftLayout ? 'border-r-2 border-purple-500' : 'border-b-2 border-purple-500'}`
-                      : 'text-stone-500 hover:text-stone-300'
-                  }`}
-                  data-testid={`actor-tab-mobile-${prop.key}-${tab.id}`}
-                  title={tab.label}
-                >
-                  {tab.icon ? (
-                    <img src={tab.icon} alt={tab.label} className="h-4 w-4 object-contain" />
-                  ) : (
-                    tab.label
-                  )}
-                </button>
-              ))}
-            </div>
-            <div className="p-3 space-y-3 flex-1">
-              {children.map((child: any) => renderMobileProperty(child))}
-            </div>
-          </div>
-        );
-      }
 
       if (prop.type === 'pfp') {
         const pfpImage = val;
@@ -1919,6 +1890,35 @@ function SandboxSheetEditor({
               <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                 <span className="text-white text-[10px]">Change</span>
               </div>
+            </div>
+          </div>
+        );
+      }
+
+      if (prop.type === 'resource') {
+        let resourceVal: any = val;
+        try { if (typeof resourceVal === 'string') resourceVal = JSON.parse(resourceVal); } catch {}
+        if (typeof resourceVal !== 'object' || resourceVal === null) resourceVal = { current: 0, max: 0 };
+        const current = resourceVal.current ?? 0;
+        const max = resourceVal.max ?? 0;
+        return (
+          <div key={prop.id} className="space-y-1" style={propStyle} data-testid={`actor-property-mobile-${prop.key}`} title={prop.tooltip || prop.label}>
+            <Label className="text-stone-400" style={{ fontSize: `${lfs}px`, ...(labelColor ? { color: labelColor } : {}) }}>{prop.label}</Label>
+            <div className="flex items-center gap-1">
+              <Input type="number" value={current} onChange={(e) => handleActorValueChange(prop.key, JSON.stringify({ current: Number(e.target.value), max }))} className="bg-stone-800 border-stone-700 text-stone-200 h-8 flex-1" style={{ fontSize: `${vfs}px`, ...(valueColor ? { color: valueColor } : {}) }} data-testid={`input-actor-${prop.key}-current`} />
+              <span className="text-stone-500 text-xs">/</span>
+              <Input type="number" value={max} onChange={(e) => handleActorValueChange(prop.key, JSON.stringify({ current, max: Number(e.target.value) }))} className="bg-stone-800 border-stone-700 text-stone-200 h-8 flex-1" style={{ fontSize: `${vfs}px`, ...(valueColor ? { color: valueColor } : {}) }} data-testid={`input-actor-${prop.key}-max`} />
+            </div>
+          </div>
+        );
+      }
+
+      if (prop.type === 'formula') {
+        return (
+          <div key={prop.id} className="space-y-1" style={propStyle} data-testid={`actor-property-mobile-${prop.key}`} title={prop.tooltip || prop.label}>
+            <Label className="text-stone-400" style={{ fontSize: `${lfs}px`, ...(labelColor ? { color: labelColor } : {}) }}>{prop.label}</Label>
+            <div className="bg-stone-700/30 border border-stone-600/50 rounded px-2 py-1 text-amber-400 italic" style={{ fontSize: `${vfs}px` }}>
+              {val || '\u2014'}
             </div>
           </div>
         );
@@ -1946,27 +1946,18 @@ function SandboxSheetEditor({
               data-testid={`input-actor-${prop.key}`}
             />
           )}
-          {prop.type === 'checkbox' && (
+          {prop.type === 'boolean' && (
             <div className="flex items-center gap-2">
               <input
                 type="checkbox"
-                checked={val === 'true'}
+                checked={val === 'true' || val === true}
                 onChange={(e) => handleActorValueChange(prop.key, e.target.checked ? 'true' : 'false')}
                 className="h-4 w-4 accent-amber-600"
                 data-testid={`checkbox-actor-${prop.key}`}
               />
             </div>
           )}
-          {prop.type === 'textarea' && (
-            <Textarea
-              value={val}
-              onChange={(e) => handleActorValueChange(prop.key, e.target.value)}
-              className="bg-stone-800 border-stone-700 text-stone-200 min-h-[60px]"
-              style={{ fontSize: `${vfs}px`, ...(valueColor ? { color: valueColor } : {}) }}
-              data-testid={`textarea-actor-${prop.key}`}
-            />
-          )}
-          {prop.type === 'select' && (
+          {prop.type === 'list' && (
             <Select value={val || '__empty__'} onValueChange={(v) => handleActorValueChange(prop.key, v === '__empty__' ? '' : v)}>
               <SelectTrigger className="bg-stone-800 border-stone-700 text-stone-200 h-8" style={{ fontSize: `${vfs}px`, ...(valueColor ? { color: valueColor } : {}) }} data-testid={`select-actor-${prop.key}`}>
                 <SelectValue placeholder="Select..." />
@@ -1983,11 +1974,16 @@ function SandboxSheetEditor({
       );
     };
 
-    const rootProps = actorProperties.filter((p: any) => !p.parentId);
-
     return (
       <div className="space-y-3" data-testid="actor-properties-display-mobile">
-        {rootProps.map((prop: any) => renderMobileProperty(prop))}
+        {mobileActorSections.sort((a: any, b: any) => a.order - b.order).map((section: any) => {
+          const sectionProps = mobileActorProperties.filter((p: any) => p.sectionId === section.id);
+          return (
+            <div key={section.id} className="space-y-3" style={section.styleConfig ? getPropertyCssStyle(section.styleConfig) : {}}>
+              {sectionProps.map((prop: any) => renderMobileProperty(prop))}
+            </div>
+          );
+        })}
       </div>
     );
   };
@@ -2399,136 +2395,24 @@ function SandboxSheetEditor({
                 />
               </div>
 
-              <div className="space-y-1">
-                <Label className="text-stone-500 text-[10px]">Parent Container</Label>
-                <Select
-                  value={selectedProperty.parentId || '__none__'}
-                  onValueChange={(v) => {
-                    const newParentId = v === '__none__' ? null : v;
-                    const updates: Record<string, any> = { parentId: newParentId };
-                    if (!newParentId) {
-                      updates.tabId = null;
-                    } else {
-                      const parentProp = properties.find((p: any) => p.id === newParentId);
-                      if (parentProp?.type === 'tab' && parentProp.tabs?.length > 0) {
-                        updates.tabId = parentProp.tabs[0].id;
-                      } else {
-                        updates.tabId = null;
-                      }
-                    }
-                    updatePropertyLayout(selectedProperty.id, updates);
-                  }}
-                >
-                  <SelectTrigger className="bg-stone-900 border-stone-600 text-stone-200 h-7 text-xs" data-testid="select-prop-parent">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="bg-stone-800 border-stone-700">
-                    <SelectItem value="__none__" className="text-stone-200">None (Root)</SelectItem>
-                    {properties.filter((p: any) => (p.type === 'panel' || p.type === 'tab') && p.id !== selectedProperty.id && p.parentId !== selectedProperty.id).map((p: any) => (
-                      <SelectItem key={p.id} value={p.id} className="text-stone-200">
-                        {p.label} ({p.type})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {selectedProperty.parentId && (() => {
-                const parentProp = properties.find((p: any) => p.id === selectedProperty.parentId);
-                if (parentProp?.type === 'tab' && parentProp.tabs?.length > 0) {
-                  return (
-                    <div className="space-y-1">
-                      <Label className="text-stone-500 text-[10px]">Tab</Label>
-                      <Select
-                        value={selectedProperty.tabId || parentProp.tabs[0]?.id || ''}
-                        onValueChange={(v) => updatePropertyLayout(selectedProperty.id, { tabId: v })}
-                      >
-                        <SelectTrigger className="bg-stone-900 border-stone-600 text-stone-200 h-7 text-xs" data-testid="select-prop-tab">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent className="bg-stone-800 border-stone-700">
-                          {parentProp.tabs.map((tab: any) => (
-                            <SelectItem key={tab.id} value={tab.id} className="text-stone-200">
-                              {tab.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  );
-                }
-                return null;
-              })()}
-
-              {selectedProperty.type === 'tab' && (
-                <div className="space-y-2">
-                  <div className="space-y-1">
-                    <Label className="text-stone-500 text-[10px]">Tab Position</Label>
-                    <Select value={selectedProperty.tabLayout || 'top'} onValueChange={(v) => updatePropertyLayout(selectedProperty.id, { tabLayout: v })}>
-                      <SelectTrigger className="bg-stone-800 border-stone-600 text-stone-200 h-7 text-xs" data-testid="select-tab-layout">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent className="bg-stone-800 border-stone-700">
-                        <SelectItem value="top" className="text-stone-200 text-xs">Top</SelectItem>
-                        <SelectItem value="left" className="text-stone-200 text-xs">Left (Side)</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <Label className="text-stone-500 text-[10px]">Tabs</Label>
-                  {(selectedProperty.tabs || []).map((tab: TabDefinition, idx: number) => (
-                    <div key={tab.id} className="space-y-1 p-2 bg-stone-800/30 rounded border border-stone-700/30">
-                      <div className="flex items-center gap-1">
-                        <Input
-                          value={tab.label}
-                          onChange={(e) => {
-                            const newTabs = [...(selectedProperty.tabs || [])];
-                            newTabs[idx] = { ...tab, label: e.target.value };
-                            updatePropertyLayout(selectedProperty.id, { tabs: newTabs });
-                          }}
-                          placeholder="Tab name"
-                          className="bg-stone-900 border-stone-600 text-stone-200 h-7 text-xs flex-1"
-                          data-testid={`input-tab-label-${idx}`}
-                        />
-                        {(selectedProperty.tabs || []).length > 1 && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => {
-                              const newTabs = (selectedProperty.tabs || []).filter((_: any, i: number) => i !== idx);
-                              updatePropertyLayout(selectedProperty.id, { tabs: newTabs });
-                            }}
-                            className="h-7 w-7 text-red-400 hover:text-red-300 hover:bg-red-900/20 shrink-0"
-                            data-testid={`button-delete-tab-${idx}`}
-                          >
-                            <X className="h-3 w-3" />
-                          </Button>
-                        )}
-                      </div>
-                      <Input
-                        value={tab.icon || ''}
-                        onChange={(e) => {
-                          const newTabs = [...(selectedProperty.tabs || [])];
-                          newTabs[idx] = { ...tab, icon: e.target.value };
-                          updatePropertyLayout(selectedProperty.id, { tabs: newTabs });
-                        }}
-                        placeholder="Icon URL (optional)"
-                        className="bg-stone-900 border-stone-600 text-stone-200 h-6 text-[10px]"
-                        data-testid={`input-tab-icon-${idx}`}
-                      />
-                    </div>
-                  ))}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      const newTabs = [...(selectedProperty.tabs || []), { id: crypto.randomUUID(), label: `Tab ${(selectedProperty.tabs || []).length + 1}` }];
-                      updatePropertyLayout(selectedProperty.id, { tabs: newTabs });
-                    }}
-                    className="w-full border-stone-600 text-stone-400 h-7 text-xs"
-                    data-testid="button-add-tab"
+              {sections.length > 0 && (
+                <div className="space-y-1">
+                  <Label className="text-stone-500 text-[10px]">Section</Label>
+                  <Select
+                    value={selectedProperty.sectionId || sections[0]?.id || ''}
+                    onValueChange={(v) => updatePropertyLayout(selectedProperty.id, { sectionId: v })}
                   >
-                    <Plus className="h-3 w-3 mr-1" /> Add Tab
-                  </Button>
+                    <SelectTrigger className="bg-stone-900 border-stone-600 text-stone-200 h-7 text-xs" data-testid="select-prop-section">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="bg-stone-800 border-stone-700">
+                      {sections.map((s: any) => (
+                        <SelectItem key={s.id} value={s.id} className="text-stone-200">
+                          {s.name} ({s.location})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               )}
 
@@ -2616,11 +2500,10 @@ function SandboxSheetEditor({
                   <SelectContent className="bg-stone-800 border-stone-700 z-[10000]">
                     <SelectItem value="text" className="text-stone-200 text-xs">Text</SelectItem>
                     <SelectItem value="number" className="text-stone-200 text-xs">Number</SelectItem>
-                    <SelectItem value="checkbox" className="text-stone-200 text-xs">Checkbox</SelectItem>
-                    <SelectItem value="textarea" className="text-stone-200 text-xs">Textarea</SelectItem>
-                    <SelectItem value="select" className="text-stone-200 text-xs">Select</SelectItem>
-                    <SelectItem value="panel" className="text-stone-200 text-xs">Panel (Container)</SelectItem>
-                    <SelectItem value="tab" className="text-stone-200 text-xs">Tabs (Switchable)</SelectItem>
+                    <SelectItem value="boolean" className="text-stone-200 text-xs">Boolean (Checkbox)</SelectItem>
+                    <SelectItem value="select" className="text-stone-200 text-xs">List (Select)</SelectItem>
+                    <SelectItem value="resource" className="text-stone-200 text-xs">Resource (Current/Max)</SelectItem>
+                    <SelectItem value="formula" className="text-stone-200 text-xs">Formula</SelectItem>
                     <SelectItem value="pfp" className="text-stone-200 text-xs">Profile Picture</SelectItem>
                   </SelectContent>
                 </Select>
@@ -2650,48 +2533,6 @@ function SandboxSheetEditor({
                   className="bg-stone-900 border-stone-600 text-stone-200 h-7 text-xs"
                   data-testid="input-property-options"
                 />
-              </div>
-            )}
-
-            {newPropType === 'tab' && (
-              <div className="space-y-1.5">
-                <Label className="text-stone-400 text-[10px]">Tab Layout</Label>
-                <Select value={newPropTabLayout} onValueChange={(v) => setNewPropTabLayout(v)}>
-                  <SelectTrigger className="bg-stone-900 border-stone-600 text-stone-200 h-7 text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="bg-stone-800 border-stone-700 z-[10000]">
-                    <SelectItem value="top" className="text-stone-200 text-xs">Top</SelectItem>
-                    <SelectItem value="left" className="text-stone-200 text-xs">Left</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Label className="text-stone-400 text-[10px] mt-1">Tabs</Label>
-                <div className="space-y-1">
-                  {newPropTabs.map((tab, idx) => (
-                    <div key={tab.id} className="flex items-center gap-1">
-                      <Input
-                        value={tab.label}
-                        onChange={(e) => {
-                          const updated = [...newPropTabs];
-                          updated[idx] = { ...tab, label: e.target.value };
-                          setNewPropTabs(updated);
-                        }}
-                        className="bg-stone-900 border-stone-600 text-stone-200 h-6 text-xs flex-1"
-                      />
-                      {newPropTabs.length > 1 && (
-                        <button onClick={() => setNewPropTabs(newPropTabs.filter((_, i) => i !== idx))} className="text-stone-500 hover:text-red-400">
-                          <X className="h-3 w-3" />
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                  <button
-                    onClick={() => setNewPropTabs([...newPropTabs, { id: crypto.randomUUID(), label: `Tab ${newPropTabs.length + 1}` }])}
-                    className="text-purple-400 hover:text-purple-300 text-[10px]"
-                  >
-                    + Add Tab
-                  </button>
-                </div>
               </div>
             )}
 

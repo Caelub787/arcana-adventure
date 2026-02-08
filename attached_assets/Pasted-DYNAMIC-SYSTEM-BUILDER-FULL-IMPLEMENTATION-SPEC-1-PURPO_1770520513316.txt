@@ -1,0 +1,263 @@
+DYNAMIC SYSTEM BUILDER FULL IMPLEMENTATION SPEC
+1. PURPOSE
+
+Create a template driven RPG system builder where sheet structure, layout, logic, and behavior are defined entirely by templates, and actors only store values. The system must support dynamic properties, sections, tabs on any side of the sheet, and both grid based and freeform property placement.
+
+No part of the UI may hardcode character fields.
+
+2. CORE ENTITIES
+2.1 Template
+
+Templates define structure and rules only.
+
+Fields:
+• id string
+• name string
+• type enum character item vehicle beast
+• sections array
+• tabs array
+• properties map keyed by property.key
+• version number
+
+Templates NEVER store actor values.
+
+2.2 Section
+
+Sections are layout containers.
+
+Fields:
+• id string
+• name string
+• location enum header body footer left right
+• layoutMode enum grid freeform
+• gridConfig optional
+• columns number
+• rows number
+• gap number
+• styleConfig optional
+• tabId optional
+
+Sections control all layout logic.
+
+2.3 Tab
+
+Tabs group sections and define navigation.
+
+Fields:
+• id string
+• name string
+• position enum top bottom left right
+• sectionIds array
+• visible boolean
+
+Tabs must be renderable on outer edges of the sheet.
+
+2.4 Property Definition
+
+Properties are data definitions, not UI widgets.
+
+Fields:
+• id immutable
+• key string unique per template
+• type enum number text boolean resource list formula object
+• sectionId reference
+• defaultValue
+• metadata object
+
+Metadata includes:
+• label
+• description
+• uiConfig
+• permissions
+• formulaExpression if type formula
+
+2.5 Actor
+
+Actors store values only.
+
+Fields:
+• id
+• templateId
+• values map keyed by property.key
+• overrides optional
+
+Actors never define structure.
+
+3. PROPERTY TYPES
+
+Minimum supported types:
+• number
+• text
+• boolean
+• resource current max
+• list
+• formula computed
+
+Formula properties are read only by default.
+
+4. LAYOUT MODES
+4.1 Grid Layout
+
+• Properties snap to grid cells
+• No overlap allowed
+• Each property may optionally define row and column
+• Grid auto flows if no cell defined
+
+Grid rules live on the section.
+
+4.2 Freeform Layout
+
+• Properties have x y width height
+• Stored in property.metadata.uiConfig
+• Drag and resize enabled
+• Overlap allowed
+
+Freeform positions are relative to section bounds.
+
+5. BUILDER UI BEHAVIOR
+5.1 Template Editor
+
+Must support:
+• Create edit delete templates
+• Live preview of sheet
+• Undo redo
+
+5.2 Section Editor
+
+Must support:
+• Add remove sections
+• Choose location
+• Choose layoutMode
+• Configure grid
+• Assign to tab
+
+5.3 Tab Editor
+
+Must support:
+• Add remove tabs
+• Choose side of sheet
+• Assign sections
+• Toggle visibility
+
+Tabs exist independently of sections.
+
+5.4 Property Editor
+
+When adding a property:
+
+Select property type
+
+Define key label default
+
+Assign section automatically
+
+Initialize metadata
+
+Property keys must be validated for uniqueness.
+
+6. PROPERTY PLACEMENT RULES
+
+• Properties belong to exactly one section
+• Sections control layout and positioning
+• Properties never calculate layout
+• + button adds property to current section
+
+7. RENDERING ENGINE
+
+Rendering must be fully data driven.
+
+Pipeline:
+
+Load template
+
+Load actor
+
+Build tabs
+
+Render sections by location
+
+Render layout mode
+
+Inject properties
+
+Bind actor values
+
+Resolve formulas
+
+Renderer must not mutate data.
+
+8. EXPRESSION ENGINE
+8.1 Context
+
+Formulas resolve using a scoped context.
+
+Available:
+• self.key
+• target.key
+• item.key
+• parent.key
+
+8.2 Evaluation Rules
+
+• No direct object access
+• Safe math only
+• Reevaluate on dependency change
+• Cycles must be detected
+
+9. STATE MANAGEMENT
+
+• Templates are immutable at runtime
+• Actor values update independently
+• Template edits propagate to all actors
+• Version mismatch must warn
+
+10. PERMISSIONS AND OVERRIDES
+
+Properties may define:
+• editable boolean
+• visible boolean
+• gmOnly boolean
+
+Actors may override metadata but not structure.
+
+11. VALIDATION
+
+System must enforce:
+• Unique property keys per template
+• Valid section references
+• Valid tab references
+• No orphaned properties
+• No layout conflicts in grid mode
+
+12. DATA STORAGE
+
+Recommended structure:
+• templates collection
+• actors collection
+
+Templates and actors must be separable.
+
+13. REQUIRED UX FEATURES
+
+• Drag drop in freeform
+• Snap grid toggle
+• Live recalculation
+• Template preview
+• Error surfacing for formulas
+
+14. NON NEGOTIABLE RULES
+
+• UI never defines schema
+• Templates define everything
+• Actors store values only
+• Layout is section driven
+• Expressions use context only
+
+15. SUCCESS CRITERIA
+
+The system is correct when:
+• A template edit updates all actors
+• New properties appear instantly
+• Tabs render on any sheet edge
+• Grid and freeform both work
+• No hardcoded stats exist

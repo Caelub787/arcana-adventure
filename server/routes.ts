@@ -8074,64 +8074,53 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const isGM = await hasGmAccess(req.session.userId!, req.params.campaignId, campaign.gmUserId);
       if (!isGM) return res.status(403).json({ error: "Only GMs can manage templates" });
       const headerId = crypto.randomUUID();
-      const pfpId = crypto.randomUUID();
-      const nameId = crypto.randomUUID();
       const bodyId = crypto.randomUUID();
       const defaultData = {
-        properties: [
+        version: 1,
+        type: req.body.templateType || "character",
+        sections: [
           {
             id: headerId,
-            key: "header",
-            label: "Header",
-            type: "panel",
-            x: 0,
-            y: 0,
-            width: 480,
-            height: 120,
-            labelPosition: "hidden",
-            style: { backgroundColor: "#1c1917", border: { enabled: true, color: "#44403c", width: 1, radius: 4, style: "solid" } },
-          },
-          {
-            id: pfpId,
-            key: "pfp",
-            label: "Profile Picture",
-            type: "pfp",
-            x: 10,
-            y: 10,
-            width: 100,
-            height: 100,
-            parentId: headerId,
-            labelPosition: "hidden",
-            style: { border: { enabled: true, color: "#44403c", width: 2, radius: 8, style: "solid" }, backgroundColor: "#292524" },
-          },
-          {
-            id: nameId,
-            key: "name",
-            label: "Name",
-            type: "text",
-            x: 120,
-            y: 10,
-            width: 350,
-            height: 40,
-            parentId: headerId,
-            labelPosition: "top",
-            labelFontSize: 10,
-            valueFontSize: 18,
-            style: { labelColor: "#a8a29e", valueColor: "#e7e5e4" },
+            name: "Header",
+            location: "header",
+            layoutMode: "freeform",
+            styleConfig: { backgroundColor: "#1c1917", border: { enabled: true, color: "#44403c", width: 1, radius: 4, style: "solid" } },
+            order: 0,
           },
           {
             id: bodyId,
-            key: "body",
-            label: "Body",
-            type: "panel",
-            x: 0,
-            y: 130,
-            width: 480,
-            height: 290,
-            labelPosition: "hidden",
-            style: { backgroundColor: "#1c1917", border: { enabled: true, color: "#44403c", width: 1, radius: 4, style: "solid" } },
+            name: "Body",
+            location: "body",
+            layoutMode: "freeform",
+            styleConfig: { backgroundColor: "#1c1917", border: { enabled: true, color: "#44403c", width: 1, radius: 4, style: "solid" } },
+            order: 1,
           },
         ],
+        tabs: [],
+        properties: {
+          pfp: {
+            id: crypto.randomUUID(),
+            key: "pfp",
+            type: "pfp",
+            sectionId: headerId,
+            metadata: {
+              label: "Profile Picture",
+              uiConfig: { x: 10, y: 10, width: 100, height: 100, labelPosition: "hidden" },
+              style: { border: { enabled: true, color: "#44403c", width: 2, radius: 8, style: "solid" }, backgroundColor: "#292524" },
+            },
+          },
+          name: {
+            id: crypto.randomUUID(),
+            key: "name",
+            type: "text",
+            sectionId: headerId,
+            metadata: {
+              label: "Name",
+              uiConfig: { x: 120, y: 10, width: 310, height: 40, labelFontSize: 10, valueFontSize: 18, labelPosition: "top" },
+              style: { labelColor: "#a8a29e", valueColor: "#e7e5e4" },
+            },
+          },
+        },
         settings: { defaultWidth: 450, defaultHeight: 550 },
       };
       const template = await storage.createSandboxTemplate({
