@@ -1597,12 +1597,9 @@ function SandboxSheetEditor({
 
           {properties.length > 0 && (
             <div
-              className="relative rounded-lg border border-stone-700/50 overflow-auto"
+              className="relative rounded-lg overflow-auto"
               style={{
                 minHeight: `${canvasHeight}px`,
-                backgroundImage: 'linear-gradient(to right, rgba(120,113,108,0.15) 1px, transparent 1px), linear-gradient(to bottom, rgba(120,113,108,0.15) 1px, transparent 1px)',
-                backgroundSize: '20px 20px',
-                backgroundColor: 'rgba(28, 25, 23, 0.6)',
               }}
               data-testid="template-canvas"
               onClick={(e) => {
