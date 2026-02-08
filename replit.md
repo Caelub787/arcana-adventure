@@ -52,3 +52,9 @@ Preferred communication style: Simple, everyday language.
 -   **Real-time**: `ws` library.
 -   **3D Graphics**: `three`, `@react-three/fiber`, `@react-three/drei`, `cannon-es`.
 -   **Utilities**: `date-fns`, `nanoid`, `bcryptjs`.
+
+## Recent Changes (Feb 2026)
+- **Embedded Items/Spells**: Character actor sheets can embed items/spells from other templates. Each embedded item stores its own values, has collapsible UI, roll buttons that merge parent actor context with item values.
+- **AOE Targeting**: Button properties have `targetingConfig` (type: none/self/single/aoe, shape, range, hitFormula, damageFormula). AOE buttons enter battlemap targeting mode, auto-resolve hits against tokens in area.
+- **Player Hotbar**: 8-slot customizable bottom bar (localStorage-persisted per campaign/user). Slots: roll buttons or sheet shortcuts. Right-click to clear, toggle visibility.
+- **Dice Engine Fixes**: Corrected keep/drop lowest, per-die explosion totaling for keep/drop, proper error reporting.

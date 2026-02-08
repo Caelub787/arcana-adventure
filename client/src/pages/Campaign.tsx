@@ -4,10 +4,10 @@ import { useLocation, useSearch, useRoute } from "wouter";
 import { motion } from "framer-motion";
 import { CharacterCreation, BattleMap, CampaignMenu, CharacterSheet, BattleMapHotbars, SelectionModeButtons, InitiativeTracker, type SelectionMode } from "@/components/game/GameComponents";
 import { BattlemapDiceOverlay, triggerBattlemapDiceRoll } from "@/components/game/BattlemapDiceOverlay";
-import { type AoeTargetState, createInitialAoeState } from "@/lib/aoeHelpers";
+import { type AoeTargetState, createInitialAoeState, getTokensInAoe } from "@/lib/aoeHelpers";
 import { RollNotificationContainer, triggerInitiativeNotification, triggerEffectRollNotification, getNotificationStyle, setNotificationStyle, type NotificationStyle } from "@/components/game/RollNotification";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Loader2, Settings, Map as MapIcon, Layers, Trash2, MessageSquare, User, BarChart3, Zap, Backpack, Sparkles, Grid3X3, ScrollText, Swords, Dices, Users, Dna, Edit2, Bell, FileText, X, ChevronLeft, Network, List, BookOpen, Send, Pin, Upload, Search } from "lucide-react";
+import { ArrowLeft, Loader2, Settings, Map as MapIcon, Layers, Trash2, MessageSquare, User, BarChart3, Zap, Backpack, Sparkles, Grid3X3, ScrollText, Swords, Dices, Users, Dna, Edit2, Bell, FileText, X, ChevronLeft, Network, List, BookOpen, Send, Pin, Upload, Search, Package } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -832,7 +832,11 @@ function SandboxSheetEditor({
   templates,
   role,
   zIndex = 45,
-  onBringToFront
+  onBringToFront,
+  enterAoeMode,
+  tokens,
+  activeScene,
+  setPendingSandboxAoe
 }: { 
   item: { id: string; name: string; type: 'actor' | 'template'; templateId?: string | null; data?: string };
   campaignId: string;
@@ -842,6 +846,10 @@ function SandboxSheetEditor({
   role: string;
   zIndex?: number;
   onBringToFront?: () => void;
+  enterAoeMode?: (spell: any, casterTokenId: string) => void;
+  tokens?: any[];
+  activeScene?: any;
+  setPendingSandboxAoe?: (pending: { rollFormula: string; hitFormula?: string; damageFormula?: string; context: Record<string, any>; actorName: string; buttonLabel: string; } | null) => void;
 }) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -972,6 +980,22 @@ function SandboxSheetEditor({
     } catch { return item.type === 'actor' ? { name: item.name } : {}; }
   });
   const actorSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const [embeddedItems, setEmbeddedItems] = useState<Array<{
+    id: string;
+    templateId: string;
+    name: string;
+    values: Record<string, string>;
+    quantity?: number;
+  }>>(() => {
+    try {
+      const d = JSON.parse(item.data || '{}');
+      return d.embeddedItems || [];
+    } catch { return []; }
+  });
+  const [showEmbeddedItems, setShowEmbeddedItems] = useState(true);
+  const [expandedEmbeddedItems, setExpandedEmbeddedItems] = useState<Set<string>>(new Set());
+  const [addEmbeddedItemOpen, setAddEmbeddedItemOpen] = useState(false);
 
   const getExpressionContext = useCallback((): ExpressionContext => {
     const propDefs: Record<string, { type: string; defaultValue?: any }> = {};
@@ -1121,6 +1145,7 @@ function SandboxSheetEditor({
     resourceCost: p.metadata?.buttonConfig?.resourceCost,
     maxUses: p.metadata?.buttonConfig?.maxUses,
     usesPerRest: p.metadata?.buttonConfig?.usesPerRest,
+    targetingConfig: p.metadata?.buttonConfig?.targetingConfig,
   }));
 
   const layoutNodes: Record<string, any> = templateData.layoutNodes || {};
@@ -1195,6 +1220,65 @@ function SandboxSheetEditor({
       return;
     }
 
+    const targetingConfig = prop.targetingConfig || prop.metadata?.buttonConfig?.targetingConfig;
+    if (targetingConfig?.type === 'aoe' && enterAoeMode && tokens) {
+      const actorName = actorValues['name'] || actorValues['Name'] || item.name || 'Actor';
+      const casterToken = tokens.find((t: any) =>
+        t.name === actorName || t.characterId === item.id
+      );
+
+      if (!casterToken) {
+        toast({ title: 'No token found on map for this actor', variant: 'destructive' });
+        return;
+      }
+
+      const context: Record<string, any> = {};
+      if (templateData) {
+        for (const [key, p] of Object.entries(templateData.properties)) {
+          let val = actorValues[key];
+          if (p.metadata?.calculationExpression) {
+            const calcCtx = getExpressionContext();
+            const calcResult = evaluateExpression(p.metadata.calculationExpression, calcCtx);
+            if (!calcResult.error) {
+              val = String(calcResult.value);
+            }
+          }
+          if (p.type === 'resource') {
+            try {
+              const parsed = JSON.parse(val as string || '{}');
+              context[key] = parsed;
+            } catch { context[key] = 0; }
+          } else if (p.type === 'number') {
+            context[key] = Number(val) || 0;
+          } else if (p.type === 'boolean') {
+            context[key] = val === 'true';
+          } else {
+            context[key] = val || '';
+          }
+        }
+      }
+
+      const syntheticSpell = {
+        name: prop.buttonLabel || prop.label || prop.key,
+        aoe: `${targetingConfig.aoeShape || 'circle'}:${targetingConfig.aoeRange || 20}`,
+        rangeNum: targetingConfig.spellRange || 60,
+      };
+
+      enterAoeMode(syntheticSpell, casterToken.id);
+
+      if (setPendingSandboxAoe) {
+        setPendingSandboxAoe({
+          rollFormula: prop.rollFormula,
+          hitFormula: targetingConfig.hitFormula,
+          damageFormula: targetingConfig.damageFormula,
+          context,
+          actorName: actorName as string,
+          buttonLabel: prop.buttonLabel || prop.label || prop.key,
+        });
+      }
+      return;
+    }
+
     if (prop.resourceCost?.propertyKey && prop.resourceCost?.amount > 0) {
       const resKey = prop.resourceCost.propertyKey;
       const resVal = actorValues[resKey];
@@ -1262,7 +1346,102 @@ function SandboxSheetEditor({
     const actorName = actorValues['name'] || actorValues['Name'] || item.name || 'Actor';
     const label = prop.buttonLabel || prop.label || prop.key;
     gameWs.sendChatMessage('', actorName as string, `🎲 ${label}: ${rollText}`, 'roll');
-  }, [templateData, actorValues, item.name, toast, getExpressionContext]);
+  }, [templateData, actorValues, item.name, toast, getExpressionContext, enterAoeMode, tokens, setPendingSandboxAoe]);
+
+  const handleEmbeddedItemButtonRoll = useCallback((embItem: any, prop: any, itemTemplateData: any) => {
+    if (!prop.rollFormula) {
+      toast({ title: 'No roll formula configured', variant: 'destructive' });
+      return;
+    }
+
+    if (prop.resourceCost?.propertyKey && prop.resourceCost?.amount > 0) {
+      const resKey = prop.resourceCost.propertyKey;
+      const resVal = embItem.values[resKey] || actorValues[resKey];
+      try {
+        const parsed = JSON.parse(resVal as string || '{"current":0,"max":0}');
+        const current = Number(parsed.current) || 0;
+        if (current < prop.resourceCost.amount) {
+          toast({ title: `Not enough ${resKey}!`, variant: 'destructive' });
+          return;
+        }
+        if (embItem.values[resKey]) {
+          const newCurrent = current - prop.resourceCost.amount;
+          const updatedItems = embeddedItems.map((ei: any) =>
+            ei.id === embItem.id
+              ? { ...ei, values: { ...ei.values, [resKey]: JSON.stringify({ current: newCurrent, max: parsed.max }) } }
+              : ei
+          );
+          saveEmbeddedItems(updatedItems);
+        } else {
+          handleActorValueChange(resKey, JSON.stringify({ current: current - prop.resourceCost.amount, max: parsed.max }));
+        }
+      } catch {
+        toast({ title: `Invalid resource: ${resKey}`, variant: 'destructive' });
+        return;
+      }
+    }
+
+    if (prop.maxUses && prop.maxUses > 0) {
+      const usesKey = `__uses_${prop.key}`;
+      const currentUses = Number(embItem.values[usesKey] || '0');
+      if (currentUses >= prop.maxUses) {
+        toast({ title: `No uses remaining!`, variant: 'destructive' });
+        return;
+      }
+      const updatedItems = embeddedItems.map((ei: any) =>
+        ei.id === embItem.id
+          ? { ...ei, values: { ...ei.values, [usesKey]: String(currentUses + 1) } }
+          : ei
+      );
+      saveEmbeddedItems(updatedItems);
+    }
+
+    const context: Record<string, any> = {};
+
+    if (templateData) {
+      for (const [key, p] of Object.entries(templateData.properties)) {
+        let val = actorValues[key];
+        if (p.metadata?.calculationExpression) {
+          const calcCtx = getExpressionContext();
+          const calcResult = evaluateExpression(p.metadata.calculationExpression, calcCtx);
+          if (!calcResult.error) val = String(calcResult.value);
+        }
+        if (p.type === 'resource') {
+          try { context[key] = JSON.parse(val as string || '{}'); } catch { context[key] = 0; }
+        } else if (p.type === 'number') {
+          context[key] = Number(val) || 0;
+        } else {
+          context[key] = val || '';
+        }
+      }
+    }
+
+    if (itemTemplateData) {
+      for (const [key, p] of Object.entries(itemTemplateData.properties as Record<string, any>)) {
+        let val = embItem.values[key];
+        if (val === undefined) val = p.defaultValue;
+        if (val === undefined) continue;
+        if (p.type === 'resource') {
+          try { context[key] = JSON.parse(val as string || '{}'); } catch { context[key] = 0; }
+        } else if (p.type === 'number') {
+          context[key] = Number(val) || 0;
+        } else {
+          context[key] = val || '';
+        }
+      }
+    }
+
+    const result = rollDice(prop.rollFormula, context);
+    setLastRollResult(result);
+    setRollResultVisible(true);
+    if (rollResultTimeoutRef.current) clearTimeout(rollResultTimeoutRef.current);
+    rollResultTimeoutRef.current = setTimeout(() => setRollResultVisible(false), 8000);
+
+    const rollText = formatRollResult(result);
+    const actorName = actorValues['name'] || item.name || 'Actor';
+    const label = `${embItem.name}: ${prop.buttonLabel || prop.label || prop.key}`;
+    gameWs.sendChatMessage('', actorName as string, `🎲 ${label}: ${rollText}`, 'roll');
+  }, [templateData, actorValues, embeddedItems, item.name, toast, getExpressionContext, saveEmbeddedItems]);
 
   const handleRest = useCallback((restType: 'short' | 'long') => {
     if (!templateData) return;
@@ -1379,12 +1558,49 @@ function SandboxSheetEditor({
     setActorValues(newValues);
     if (actorSaveTimeoutRef.current) clearTimeout(actorSaveTimeoutRef.current);
     actorSaveTimeoutRef.current = setTimeout(() => {
-      const payload: any = { data: JSON.stringify({ values: newValues }) };
+      const payload: any = { data: JSON.stringify({ values: newValues, embeddedItems }) };
       if (key === 'name') {
         payload.name = value;
       }
       updateActorMutation.mutate(payload);
     }, 500);
+  };
+
+  const saveEmbeddedItems = useCallback((items: typeof embeddedItems) => {
+    setEmbeddedItems(items);
+    if (actorSaveTimeoutRef.current) clearTimeout(actorSaveTimeoutRef.current);
+    actorSaveTimeoutRef.current = setTimeout(() => {
+      updateActorMutation.mutate({
+        data: JSON.stringify({ values: actorValues, embeddedItems: items })
+      });
+    }, 500);
+  }, [actorValues, updateActorMutation]);
+
+  const toggleEmbeddedItem = (id: string) => {
+    setExpandedEmbeddedItems(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const addEmbeddedItem = (template: any) => {
+    const newItem = {
+      id: crypto.randomUUID(),
+      templateId: template.id,
+      name: template.name,
+      values: {} as Record<string, string>,
+      quantity: 1,
+    };
+    const updated = [...embeddedItems, newItem];
+    saveEmbeddedItems(updated);
+    setAddEmbeddedItemOpen(false);
+    toast({ title: `Added ${template.name}` });
+  };
+
+  const removeEmbeddedItem = (id: string) => {
+    saveEmbeddedItems(embeddedItems.filter(ei => ei.id !== id));
+    toast({ title: 'Item removed' });
   };
 
   const saveLayoutDebounced = (updatedProps: Record<string, any>) => {
@@ -1443,6 +1659,9 @@ function SandboxSheetEditor({
           if (updates.resourceCost !== undefined) buttonUpdates.resourceCost = updates.resourceCost;
           if (updates.maxUses !== undefined) buttonUpdates.maxUses = updates.maxUses;
           if (updates.usesPerRest !== undefined) buttonUpdates.usesPerRest = updates.usesPerRest;
+          if (updates.buttonConfig !== undefined) {
+            return { buttonConfig: updates.buttonConfig };
+          }
           if (Object.keys(buttonUpdates).length > 0) {
             return { buttonConfig: { ...(original.metadata?.buttonConfig || {}), ...buttonUpdates } };
           }
@@ -2558,6 +2777,7 @@ function SandboxSheetEditor({
           resourceCost: p.metadata?.buttonConfig?.resourceCost,
           maxUses: p.metadata?.buttonConfig?.maxUses,
           usesPerRest: p.metadata?.buttonConfig?.usesPerRest,
+          targetingConfig: p.metadata?.buttonConfig?.targetingConfig,
         }));
       } catch {}
     }
@@ -3009,6 +3229,142 @@ function SandboxSheetEditor({
           </div>
         )}
         {actorRootNodes.map((node: any) => renderActorLayoutNode(node))}
+
+        {item.type === 'actor' && (
+          <div className="mt-2 border-t border-stone-700/50">
+            <div
+              className="flex items-center justify-between px-3 py-2 cursor-pointer hover:bg-stone-800/30"
+              onClick={() => setShowEmbeddedItems(!showEmbeddedItems)}
+            >
+              <div className="flex items-center gap-2 text-amber-400 text-xs font-medium">
+                <Package className="h-3.5 w-3.5" />
+                Items & Spells ({embeddedItems.length})
+              </div>
+              {showEmbeddedItems ? <ChevronDown className="h-3.5 w-3.5 text-stone-400" /> : <ChevronRight className="h-3.5 w-3.5 text-stone-400" />}
+            </div>
+
+            {showEmbeddedItems && (
+              <div className="px-2 pb-2 space-y-1">
+                {embeddedItems.map(embItem => {
+                  const embTemplate = templates.find((t: any) => t.id === embItem.templateId);
+                  const embTemplateData = embTemplate ? (() => { try { return migrateTemplateData(JSON.parse(embTemplate.data || '{}')); } catch { return null; } })() : null;
+                  if (!embTemplateData) return null;
+
+                  const embProps = Object.values(embTemplateData.properties || {}).map((p: any) => ({
+                    ...p,
+                    label: p.metadata?.label || p.key,
+                    rollFormula: p.metadata?.buttonConfig?.rollFormula,
+                    buttonLabel: p.metadata?.buttonConfig?.label,
+                    buttonColor: p.metadata?.buttonConfig?.color,
+                    resourceCost: p.metadata?.buttonConfig?.resourceCost,
+                    maxUses: p.metadata?.buttonConfig?.maxUses,
+                    usesPerRest: p.metadata?.buttonConfig?.usesPerRest,
+                    targetingConfig: p.metadata?.buttonConfig?.targetingConfig,
+                  }));
+
+                  const buttonProps = embProps.filter((p: any) => p.type === 'button');
+                  const dataProps = embProps.filter((p: any) => p.type !== 'button' && p.type !== 'divider');
+                  const isExpanded = expandedEmbeddedItems.has(embItem.id);
+
+                  return (
+                    <div key={embItem.id} className="bg-stone-800/40 border border-stone-700/40 rounded-lg overflow-hidden" data-testid={`embedded-item-${embItem.id}`}>
+                      <div className="flex items-center gap-2 px-2.5 py-1.5 hover:bg-stone-800/60 cursor-pointer"
+                        onClick={() => toggleEmbeddedItem(embItem.id)}>
+                        {isExpanded ? <ChevronDown className="h-3 w-3 text-stone-400" /> : <ChevronRight className="h-3 w-3 text-stone-400" />}
+                        <span className="text-xs text-stone-200 flex-1 font-medium">{embItem.name}</span>
+                        {embItem.quantity && embItem.quantity > 1 && (
+                          <span className="text-xs text-stone-400">x{embItem.quantity}</span>
+                        )}
+                        {buttonProps.slice(0, 2).map((bp: any) => (
+                          <button key={bp.key}
+                            className="px-2 py-0.5 rounded text-xs font-medium hover:brightness-110 transition-all"
+                            style={{ backgroundColor: bp.buttonColor || '#d97706', color: '#fff' }}
+                            onClick={(e) => { e.stopPropagation(); handleEmbeddedItemButtonRoll(embItem, bp, embTemplateData); }}
+                            data-testid={`embedded-roll-${embItem.id}-${bp.key}`}
+                          >
+                            {bp.buttonLabel || bp.label || 'Roll'}
+                          </button>
+                        ))}
+                        <button className="p-0.5 text-stone-500 hover:text-red-400"
+                          onClick={(e) => { e.stopPropagation(); removeEmbeddedItem(embItem.id); }}
+                          data-testid={`remove-embedded-${embItem.id}`}>
+                          <X className="h-3 w-3" />
+                        </button>
+                      </div>
+
+                      {isExpanded && (
+                        <div className="px-2.5 pb-2 space-y-1 border-t border-stone-700/30">
+                          {buttonProps.length > 2 && (
+                            <div className="flex flex-wrap gap-1 pt-1.5">
+                              {buttonProps.slice(2).map((bp: any) => {
+                                const usesKey = `__uses_${bp.key}`;
+                                const currentUses = Number(embItem.values[usesKey] || '0');
+                                const maxUses = bp.maxUses || 0;
+                                const isDisabled = maxUses > 0 && currentUses >= maxUses;
+                                return (
+                                  <button key={bp.key}
+                                    className={`px-2 py-1 rounded text-xs font-medium transition-all ${isDisabled ? 'opacity-40 cursor-not-allowed' : 'hover:brightness-110'}`}
+                                    style={{ backgroundColor: bp.buttonColor || '#d97706', color: '#fff' }}
+                                    disabled={isDisabled}
+                                    onClick={() => handleEmbeddedItemButtonRoll(embItem, bp, embTemplateData)}
+                                    data-testid={`embedded-roll-${embItem.id}-${bp.key}`}
+                                  >
+                                    {bp.buttonLabel || bp.label || 'Roll'}
+                                    {maxUses > 0 && <span className="ml-1 opacity-70">({maxUses - currentUses}/{maxUses})</span>}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+
+                          {dataProps.length > 0 && (
+                            <div className="space-y-0.5 pt-1">
+                              {dataProps.map((dp: any) => {
+                                const val = embItem.values[dp.key] ?? dp.defaultValue ?? '';
+                                return (
+                                  <div key={dp.key} className="flex items-center justify-between text-xs px-1">
+                                    <span className="text-stone-400">{dp.label}</span>
+                                    <span className="text-stone-200">{String(val)}</span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+
+                <button className="w-full py-1.5 rounded-lg border border-dashed border-stone-600 text-stone-400 text-xs hover:border-amber-500/50 hover:text-amber-400 transition-colors flex items-center justify-center gap-1.5"
+                  onClick={() => setAddEmbeddedItemOpen(true)}
+                  data-testid="add-embedded-item-button">
+                  <Plus className="h-3 w-3" /> Add Item / Spell
+                </button>
+              </div>
+            )}
+
+            {addEmbeddedItemOpen && (
+              <div className="px-2 pb-2">
+                <div className="bg-stone-900 border border-stone-600 rounded-lg p-3 space-y-2">
+                  <div className="text-xs font-medium text-stone-300">Select Template</div>
+                  <div className="max-h-40 overflow-y-auto space-y-1">
+                    {templates.map((t: any) => (
+                      <button key={t.id}
+                        className="w-full text-left px-2 py-1.5 rounded text-xs hover:bg-stone-800 text-stone-300 hover:text-stone-100 transition-colors"
+                        onClick={() => addEmbeddedItem(t)}
+                        data-testid={`add-template-${t.id}`}
+                      >
+                        <div className="font-medium">{t.name}</div>
+                      </button>
+                    ))}
+                  </div>
+                  <button className="text-xs text-stone-500 hover:text-stone-300" onClick={() => setAddEmbeddedItemOpen(false)}>Cancel</button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     );
   };
@@ -3046,6 +3402,7 @@ function SandboxSheetEditor({
           resourceCost: p.metadata?.buttonConfig?.resourceCost,
           maxUses: p.metadata?.buttonConfig?.maxUses,
           usesPerRest: p.metadata?.buttonConfig?.usesPerRest,
+          targetingConfig: p.metadata?.buttonConfig?.targetingConfig,
         }));
       } catch {}
     }
@@ -3436,6 +3793,132 @@ function SandboxSheetEditor({
       <div className="space-y-3" data-testid="actor-properties-display-mobile">
         {mobileCanvasRootProps.map((prop: any) => renderMobileProperty(prop))}
         {mobileRootNodes.map((node: any) => renderMobileLayoutNode(node))}
+
+        {item.type === 'actor' && (
+          <div className="mt-3 border-t border-stone-700/50 pt-2">
+            <div
+              className="flex items-center justify-between px-2 py-2 cursor-pointer"
+              onClick={() => setShowEmbeddedItems(!showEmbeddedItems)}
+            >
+              <div className="flex items-center gap-2 text-amber-400 text-sm font-medium">
+                <Package className="h-4 w-4" />
+                Items & Spells ({embeddedItems.length})
+              </div>
+              {showEmbeddedItems ? <ChevronDown className="h-4 w-4 text-stone-400" /> : <ChevronRight className="h-4 w-4 text-stone-400" />}
+            </div>
+
+            {showEmbeddedItems && (
+              <div className="space-y-2 px-1">
+                {embeddedItems.map(embItem => {
+                  const embTemplate = templates.find((t: any) => t.id === embItem.templateId);
+                  const embTemplateData = embTemplate ? (() => { try { return migrateTemplateData(JSON.parse(embTemplate.data || '{}')); } catch { return null; } })() : null;
+                  if (!embTemplateData) return null;
+
+                  const embProps = Object.values(embTemplateData.properties || {}).map((p: any) => ({
+                    ...p,
+                    label: p.metadata?.label || p.key,
+                    rollFormula: p.metadata?.buttonConfig?.rollFormula,
+                    buttonLabel: p.metadata?.buttonConfig?.label,
+                    buttonColor: p.metadata?.buttonConfig?.color,
+                    resourceCost: p.metadata?.buttonConfig?.resourceCost,
+                    maxUses: p.metadata?.buttonConfig?.maxUses,
+                    usesPerRest: p.metadata?.buttonConfig?.usesPerRest,
+                    targetingConfig: p.metadata?.buttonConfig?.targetingConfig,
+                  }));
+
+                  const buttonProps = embProps.filter((p: any) => p.type === 'button');
+                  const dataProps = embProps.filter((p: any) => p.type !== 'button' && p.type !== 'divider');
+                  const isExpanded = expandedEmbeddedItems.has(embItem.id);
+
+                  return (
+                    <div key={embItem.id} className="bg-stone-800/40 border border-stone-700/40 rounded-lg overflow-hidden" data-testid={`mobile-embedded-item-${embItem.id}`}>
+                      <div className="flex items-center gap-2 px-3 py-2 cursor-pointer"
+                        onClick={() => toggleEmbeddedItem(embItem.id)}>
+                        {isExpanded ? <ChevronDown className="h-4 w-4 text-stone-400" /> : <ChevronRight className="h-4 w-4 text-stone-400" />}
+                        <span className="text-sm text-stone-200 flex-1 font-medium">{embItem.name}</span>
+                        {embItem.quantity && embItem.quantity > 1 && (
+                          <span className="text-xs text-stone-400">x{embItem.quantity}</span>
+                        )}
+                        <button className="p-1 text-stone-500 hover:text-red-400"
+                          onClick={(e) => { e.stopPropagation(); removeEmbeddedItem(embItem.id); }}
+                          data-testid={`mobile-remove-embedded-${embItem.id}`}>
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+
+                      {isExpanded && (
+                        <div className="px-3 pb-3 space-y-2 border-t border-stone-700/30">
+                          {buttonProps.length > 0 && (
+                            <div className="flex flex-wrap gap-1.5 pt-2">
+                              {buttonProps.map((bp: any) => {
+                                const usesKey = `__uses_${bp.key}`;
+                                const currentUses = Number(embItem.values[usesKey] || '0');
+                                const maxUses = bp.maxUses || 0;
+                                const isDisabled = maxUses > 0 && currentUses >= maxUses;
+                                return (
+                                  <button key={bp.key}
+                                    className={`px-3 py-1.5 rounded text-sm font-medium transition-all ${isDisabled ? 'opacity-40 cursor-not-allowed' : 'hover:brightness-110'}`}
+                                    style={{ backgroundColor: bp.buttonColor || '#d97706', color: '#fff' }}
+                                    disabled={isDisabled}
+                                    onClick={() => handleEmbeddedItemButtonRoll(embItem, bp, embTemplateData)}
+                                    data-testid={`mobile-embedded-roll-${embItem.id}-${bp.key}`}
+                                  >
+                                    {bp.buttonLabel || bp.label || 'Roll'}
+                                    {maxUses > 0 && <span className="ml-1 opacity-70">({maxUses - currentUses}/{maxUses})</span>}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+
+                          {dataProps.length > 0 && (
+                            <div className="space-y-1 pt-1">
+                              {dataProps.map((dp: any) => {
+                                const val = embItem.values[dp.key] ?? dp.defaultValue ?? '';
+                                return (
+                                  <div key={dp.key} className="flex items-center justify-between text-sm px-1">
+                                    <span className="text-stone-400">{dp.label}</span>
+                                    <span className="text-stone-200">{String(val)}</span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+
+                <button className="w-full py-2 rounded-lg border border-dashed border-stone-600 text-stone-400 text-sm hover:border-amber-500/50 hover:text-amber-400 transition-colors flex items-center justify-center gap-2"
+                  onClick={() => setAddEmbeddedItemOpen(true)}
+                  data-testid="mobile-add-embedded-item-button">
+                  <Plus className="h-4 w-4" /> Add Item / Spell
+                </button>
+              </div>
+            )}
+
+            {addEmbeddedItemOpen && (
+              <div className="px-1 pb-2 mt-2">
+                <div className="bg-stone-900 border border-stone-600 rounded-lg p-3 space-y-2">
+                  <div className="text-sm font-medium text-stone-300">Select Template</div>
+                  <div className="max-h-48 overflow-y-auto space-y-1">
+                    {templates.map((t: any) => (
+                      <button key={t.id}
+                        className="w-full text-left px-3 py-2 rounded text-sm hover:bg-stone-800 text-stone-300 hover:text-stone-100 transition-colors"
+                        onClick={() => addEmbeddedItem(t)}
+                        data-testid={`mobile-add-template-${t.id}`}
+                      >
+                        <div className="font-medium">{t.name}</div>
+                      </button>
+                    ))}
+                  </div>
+                  <button className="text-sm text-stone-500 hover:text-stone-300" onClick={() => setAddEmbeddedItemOpen(false)}>Cancel</button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     );
   };
@@ -4252,6 +4735,117 @@ function SandboxSheetEditor({
                       </Select>
                     </div>
                     <span className="text-stone-600 text-[9px]">Limit uses, optionally reset on rest</span>
+                  </div>
+                  <div className="space-y-2 pt-2 border-t border-stone-700/50">
+                    <div className="text-xs text-stone-400 font-medium">Targeting</div>
+                    <select
+                      className="w-full bg-stone-800 border border-stone-700 rounded text-xs p-1.5 text-stone-200"
+                      value={selectedProperty?.metadata?.buttonConfig?.targetingConfig?.type || 'none'}
+                      onChange={(e) => {
+                        const currentConfig = selectedProperty?.metadata?.buttonConfig || {};
+                        const currentTargeting = currentConfig.targetingConfig || {};
+                        updatePropertyLayout(selectedPropertyId!, {
+                          buttonConfig: {
+                            ...currentConfig,
+                            targetingConfig: { ...currentTargeting, type: e.target.value },
+                          },
+                        });
+                      }}
+                      data-testid="targeting-type-select"
+                    >
+                      <option value="none">No Targeting</option>
+                      <option value="self">Self</option>
+                      <option value="single">Single Target</option>
+                      <option value="aoe">Area of Effect</option>
+                    </select>
+                    {(selectedProperty?.metadata?.buttonConfig?.targetingConfig?.type === 'aoe') && (
+                      <div className="space-y-2">
+                        <div className="flex gap-2">
+                          <div className="flex-1">
+                            <label className="text-xs text-stone-500 block mb-0.5">Shape</label>
+                            <select className="w-full bg-stone-800 border border-stone-700 rounded text-xs p-1.5 text-stone-200"
+                              value={selectedProperty?.metadata?.buttonConfig?.targetingConfig?.aoeShape || 'circle'}
+                              onChange={(e) => {
+                                const cc = selectedProperty?.metadata?.buttonConfig || {};
+                                const ct = cc.targetingConfig || {};
+                                updatePropertyLayout(selectedPropertyId!, { buttonConfig: { ...cc, targetingConfig: { ...ct, aoeShape: e.target.value } } });
+                              }}
+                              data-testid="aoe-shape-select"
+                            >
+                              <option value="circle">Circle</option>
+                              <option value="square">Square</option>
+                              <option value="cone">Cone</option>
+                              <option value="line">Line</option>
+                            </select>
+                          </div>
+                          <div className="flex-1">
+                            <label className="text-xs text-stone-500 block mb-0.5">AOE Size (ft)</label>
+                            <input type="number" className="w-full bg-stone-800 border border-stone-700 rounded text-xs p-1.5 text-stone-200"
+                              value={selectedProperty?.metadata?.buttonConfig?.targetingConfig?.aoeRange || 20}
+                              onChange={(e) => {
+                                const cc = selectedProperty?.metadata?.buttonConfig || {};
+                                const ct = cc.targetingConfig || {};
+                                updatePropertyLayout(selectedPropertyId!, { buttonConfig: { ...cc, targetingConfig: { ...ct, aoeRange: Number(e.target.value) } } });
+                              }}
+                              data-testid="aoe-range-input"
+                            />
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <div className="flex-1">
+                            <label className="text-xs text-stone-500 block mb-0.5">Cast Range (ft)</label>
+                            <input type="number" className="w-full bg-stone-800 border border-stone-700 rounded text-xs p-1.5 text-stone-200"
+                              value={selectedProperty?.metadata?.buttonConfig?.targetingConfig?.spellRange || 60}
+                              onChange={(e) => {
+                                const cc = selectedProperty?.metadata?.buttonConfig || {};
+                                const ct = cc.targetingConfig || {};
+                                updatePropertyLayout(selectedPropertyId!, { buttonConfig: { ...cc, targetingConfig: { ...ct, spellRange: Number(e.target.value) } } });
+                              }}
+                              data-testid="spell-range-input"
+                            />
+                          </div>
+                          {(selectedProperty?.metadata?.buttonConfig?.targetingConfig?.aoeShape === 'line' || selectedProperty?.metadata?.buttonConfig?.targetingConfig?.aoeShape === 'cone') && (
+                            <div className="flex-1">
+                              <label className="text-xs text-stone-500 block mb-0.5">Width (ft)</label>
+                              <input type="number" className="w-full bg-stone-800 border border-stone-700 rounded text-xs p-1.5 text-stone-200"
+                                value={selectedProperty?.metadata?.buttonConfig?.targetingConfig?.aoeWidth || 5}
+                                onChange={(e) => {
+                                  const cc = selectedProperty?.metadata?.buttonConfig || {};
+                                  const ct = cc.targetingConfig || {};
+                                  updatePropertyLayout(selectedPropertyId!, { buttonConfig: { ...cc, targetingConfig: { ...ct, aoeWidth: Number(e.target.value) } } });
+                                }}
+                              />
+                            </div>
+                          )}
+                        </div>
+                        <div>
+                          <label className="text-xs text-stone-500 block mb-0.5">Hit Formula (optional)</label>
+                          <input className="w-full bg-stone-800 border border-stone-700 rounded text-xs p-1.5 text-stone-200"
+                            placeholder="e.g., 1d20+{{spellmod}}"
+                            value={selectedProperty?.metadata?.buttonConfig?.targetingConfig?.hitFormula || ''}
+                            onChange={(e) => {
+                              const cc = selectedProperty?.metadata?.buttonConfig || {};
+                              const ct = cc.targetingConfig || {};
+                              updatePropertyLayout(selectedPropertyId!, { buttonConfig: { ...cc, targetingConfig: { ...ct, hitFormula: e.target.value } } });
+                            }}
+                            data-testid="hit-formula-input"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs text-stone-500 block mb-0.5">Damage Formula (optional)</label>
+                          <input className="w-full bg-stone-800 border border-stone-700 rounded text-xs p-1.5 text-stone-200"
+                            placeholder="e.g., 8d6"
+                            value={selectedProperty?.metadata?.buttonConfig?.targetingConfig?.damageFormula || ''}
+                            onChange={(e) => {
+                              const cc = selectedProperty?.metadata?.buttonConfig || {};
+                              const ct = cc.targetingConfig || {};
+                              updatePropertyLayout(selectedPropertyId!, { buttonConfig: { ...cc, targetingConfig: { ...ct, damageFormula: e.target.value } } });
+                            }}
+                            data-testid="damage-formula-input"
+                          />
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </>
               )}
@@ -5682,6 +6276,33 @@ export default function Campaign() {
   const [sandboxSceneSettingsOpen, setSandboxSceneSettingsOpen] = useState(false);
   const [openSandboxSheets, setOpenSandboxSheets] = useState<Array<{ id: string; name: string; type: 'actor' | 'template'; templateId?: string | null; data?: string }>>([]);
 
+  interface SandboxHotbarSlot {
+    type: 'roll' | 'sheet' | 'empty';
+    actorId?: string;
+    actorName?: string;
+    propertyKey?: string;
+    rollFormula?: string;
+    buttonLabel?: string;
+    buttonColor?: string;
+    embeddedItemId?: string;
+    embeddedItemName?: string;
+    templateId?: string;
+  }
+
+  const SANDBOX_HOTBAR_SIZE = 8;
+
+  const [sandboxHotbar, setSandboxHotbar] = useState<SandboxHotbarSlot[]>(() => {
+    try {
+      const key = `sandbox-hotbar-${campaignId}-${user?.id}`;
+      const saved = localStorage.getItem(key);
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return Array.from({ length: SANDBOX_HOTBAR_SIZE }, () => ({ type: 'empty' as const }));
+  });
+
+  const [sandboxHotbarVisible, setSandboxHotbarVisible] = useState(true);
+  const [hotbarConfigSlot, setHotbarConfigSlot] = useState<number | null>(null);
+
   // Floating panel z-index management (bring to front on click)
   const floatingZCounterRef = useRef(50);
   const [floatingZIndices, setFloatingZIndices] = useState<Record<string, number>>({});
@@ -5783,6 +6404,14 @@ export default function Campaign() {
   
   // AoE targeting state
   const [aoeTargetState, setAoeTargetState] = useState<AoeTargetState>(createInitialAoeState());
+  const [pendingSandboxAoe, setPendingSandboxAoe] = useState<{
+    rollFormula: string;
+    hitFormula?: string;
+    damageFormula?: string;
+    context: Record<string, any>;
+    actorName: string;
+    buttonLabel: string;
+  } | null>(null);
   
   // Other players' AoE targeting states (keyed by userId)
   const [otherPlayersAoe, setOtherPlayersAoe] = useState<Map<string, {
@@ -5891,6 +6520,43 @@ export default function Campaign() {
         center: { x, y },
         locked: isLocked,
       });
+    }
+
+    if (isLocked && pendingSandboxAoe) {
+      const gridSize = activeScene?.gridSize || 50;
+      const tokensInAoe = getTokensInAoe(tokens, {
+        ...aoeTargetState,
+        center: { x, y },
+        locked: true,
+      }, gridSize, tokens.find((t: any) => t.id === aoeTargetState.casterTokenId));
+
+      let damageText = '';
+      if (pendingSandboxAoe.damageFormula) {
+        const dmgResult = rollDice(pendingSandboxAoe.damageFormula, pendingSandboxAoe.context);
+        damageText = ` | Damage: ${formatRollResult(dmgResult)}`;
+      }
+
+      const mainResult = rollDice(pendingSandboxAoe.rollFormula, pendingSandboxAoe.context);
+
+      let resultMsg = `🎯 ${pendingSandboxAoe.buttonLabel}: ${formatRollResult(mainResult)}${damageText}`;
+
+      if (tokensInAoe.length > 0) {
+        resultMsg += `\n📍 Targets hit (${tokensInAoe.length}): ${tokensInAoe.map((t: any) => t.name || 'Token').join(', ')}`;
+
+        if (pendingSandboxAoe.hitFormula) {
+          const hitResults = tokensInAoe.map((t: any) => {
+            const hitResult = rollDice(pendingSandboxAoe.hitFormula!, pendingSandboxAoe.context);
+            return `${t.name || 'Token'}: ${formatRollResult(hitResult)}`;
+          });
+          resultMsg += `\n⚔️ Hit rolls: ${hitResults.join(' | ')}`;
+        }
+      } else {
+        resultMsg += '\n📍 No targets in area';
+      }
+
+      gameWs.sendChatMessage('', pendingSandboxAoe.actorName, resultMsg, 'roll');
+      setPendingSandboxAoe(null);
+      exitAoeMode();
     }
   };
   
@@ -6025,6 +6691,101 @@ export default function Campaign() {
     queryFn: () => api.getSandboxTemplates(effectiveCampaignId!),
     enabled: !!effectiveCampaignId && !!isSandbox,
   });
+
+  const { data: sandboxActorsForHotbar = [] } = useQuery({
+    queryKey: ['sandbox-actors', effectiveCampaignId],
+    queryFn: () => api.getSandboxActors(effectiveCampaignId!),
+    enabled: !!effectiveCampaignId && !!isSandbox,
+  });
+
+  const sandboxTemplatesForHotbar = sandboxTemplatesList;
+
+  const saveSandboxHotbar = useCallback((slots: SandboxHotbarSlot[]) => {
+    setSandboxHotbar(slots);
+    try {
+      const key = `sandbox-hotbar-${effectiveCampaignId}-${user?.id}`;
+      localStorage.setItem(key, JSON.stringify(slots));
+    } catch {}
+  }, [effectiveCampaignId, user?.id]);
+
+  const handleSandboxHotbarAction = useCallback((slot: SandboxHotbarSlot) => {
+    if (slot.type === 'sheet' && slot.actorId) {
+      const actor = sandboxActorsForHotbar?.find((a: any) => a.id === slot.actorId);
+      if (actor) {
+        setOpenSandboxSheets(prev => {
+          if (prev.find(s => s.id === actor.id)) return prev;
+          return [...prev, { ...actor, type: 'actor' as const }];
+        });
+      }
+      return;
+    }
+
+    if (slot.type === 'roll' && slot.rollFormula) {
+      const actor = sandboxActorsForHotbar?.find((a: any) => a.id === slot.actorId);
+      if (!actor) {
+        toast({ title: 'Actor not found', variant: 'destructive' });
+        return;
+      }
+
+      let actorData: any = {};
+      try { actorData = JSON.parse(actor.data || '{}'); } catch {}
+      const values = actorData.values || {};
+
+      const template = sandboxTemplatesForHotbar?.find((t: any) => t.id === (slot.templateId || actor.templateId));
+      let templateData: any = null;
+      if (template) {
+        try { templateData = migrateTemplateData(JSON.parse(template.data || '{}')); } catch {}
+      }
+
+      const context: Record<string, any> = {};
+      if (templateData) {
+        for (const [key, p] of Object.entries(templateData.properties as Record<string, any>)) {
+          let val = values[key];
+          if (p.metadata?.calculationExpression) {
+            const propDefs: Record<string, { type: string; defaultValue?: any }> = {};
+            for (const [k, pd] of Object.entries(templateData.properties as Record<string, any>)) {
+              propDefs[k] = { type: pd.type, defaultValue: pd.defaultValue };
+            }
+            const calcResult = evaluateExpression(p.metadata.calculationExpression, { values, properties: propDefs });
+            if (!calcResult.error) val = String(calcResult.value);
+          }
+          if (p.type === 'resource') {
+            try { context[key] = JSON.parse(val as string || '{}'); } catch { context[key] = 0; }
+          } else if (p.type === 'number') {
+            context[key] = Number(val) || 0;
+          } else {
+            context[key] = val || '';
+          }
+        }
+      }
+
+      if (slot.embeddedItemId && actorData.embeddedItems) {
+        const embItem = actorData.embeddedItems.find((ei: any) => ei.id === slot.embeddedItemId);
+        if (embItem) {
+          const embTemplate = sandboxTemplatesForHotbar?.find((t: any) => t.id === embItem.templateId);
+          if (embTemplate) {
+            try {
+              const embTemplateData = migrateTemplateData(JSON.parse(embTemplate.data || '{}'));
+              for (const [key, p] of Object.entries(embTemplateData.properties as Record<string, any>)) {
+                let val = embItem.values[key] ?? p.defaultValue;
+                if (val === undefined) continue;
+                if (p.type === 'number') context[key] = Number(val) || 0;
+                else context[key] = val;
+              }
+            } catch {}
+          }
+        }
+      }
+
+      const result = rollDice(slot.rollFormula, context);
+      const rollText = formatRollResult(result);
+      const label = slot.embeddedItemName
+        ? `${slot.embeddedItemName}: ${slot.buttonLabel || 'Roll'}`
+        : (slot.buttonLabel || 'Roll');
+      gameWs.sendChatMessage('', slot.actorName || 'Actor', `🎲 ${label}: ${rollText}`, 'roll');
+      toast({ title: `${label}: ${result.total}`, description: rollText });
+    }
+  }, [sandboxActorsForHotbar, sandboxTemplatesForHotbar, toast]);
 
   // Determine which scene ID to use for tokens
   // For GM: use gmViewingSceneId if set, otherwise use activeSceneId
@@ -8401,6 +9162,10 @@ export default function Campaign() {
           role={role}
           zIndex={floatingZIndices[`sandbox-${sheet.id}`] || 45}
           onBringToFront={() => bringToFront(`sandbox-${sheet.id}`)}
+          enterAoeMode={enterAoeMode}
+          tokens={tokens}
+          activeScene={activeScene}
+          setPendingSandboxAoe={setPendingSandboxAoe}
         />
       ))}
 
@@ -9560,6 +10325,177 @@ export default function Campaign() {
         </DialogContent>
       </Dialog>)}
       
+      {/* Sandbox Player Hotbar */}
+      {isSandbox && sandboxHotbarVisible && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[60] flex items-center gap-1 bg-stone-900/95 border border-stone-700/60 rounded-xl px-2 py-1.5 backdrop-blur-sm shadow-xl"
+          data-testid="sandbox-hotbar">
+          {sandboxHotbar.map((slot, idx) => (
+            <div key={idx} className="relative">
+              {slot.type === 'empty' ? (
+                <button
+                  className="w-12 h-12 rounded-lg bg-stone-800/60 border border-stone-700/40 border-dashed flex items-center justify-center text-stone-600 hover:text-stone-400 hover:border-stone-500 transition-colors"
+                  onClick={() => setHotbarConfigSlot(idx)}
+                  data-testid={`hotbar-slot-empty-${idx}`}
+                >
+                  <Plus className="h-4 w-4" />
+                </button>
+              ) : slot.type === 'roll' ? (
+                <button
+                  className="w-12 h-12 rounded-lg border border-stone-600/50 flex flex-col items-center justify-center gap-0.5 hover:brightness-110 transition-all active:scale-95"
+                  style={{ backgroundColor: slot.buttonColor || '#d97706' }}
+                  onClick={() => handleSandboxHotbarAction(slot)}
+                  onContextMenu={(e) => { e.preventDefault(); const newSlots = [...sandboxHotbar]; newSlots[idx] = { type: 'empty' }; saveSandboxHotbar(newSlots); }}
+                  title={`${slot.actorName}: ${slot.buttonLabel || 'Roll'}`}
+                  data-testid={`hotbar-slot-roll-${idx}`}
+                >
+                  <Dices className="h-4 w-4 text-white/90" />
+                  <span className="text-[9px] text-white/80 font-medium leading-none truncate max-w-[40px]">{slot.buttonLabel || 'Roll'}</span>
+                </button>
+              ) : slot.type === 'sheet' ? (
+                <button
+                  className="w-12 h-12 rounded-lg bg-stone-800 border border-stone-600/50 flex flex-col items-center justify-center gap-0.5 hover:bg-stone-700 transition-colors active:scale-95"
+                  onClick={() => handleSandboxHotbarAction(slot)}
+                  onContextMenu={(e) => { e.preventDefault(); const newSlots = [...sandboxHotbar]; newSlots[idx] = { type: 'empty' }; saveSandboxHotbar(newSlots); }}
+                  title={slot.actorName || 'Sheet'}
+                  data-testid={`hotbar-slot-sheet-${idx}`}
+                >
+                  <User className="h-4 w-4 text-amber-400" />
+                  <span className="text-[9px] text-stone-300 font-medium leading-none truncate max-w-[40px]">{slot.actorName || 'Sheet'}</span>
+                </button>
+              ) : null}
+            </div>
+          ))}
+          <button
+            className="ml-1 w-6 h-12 rounded-lg bg-stone-800/60 border border-stone-700/40 flex items-center justify-center text-stone-500 hover:text-stone-300 transition-colors"
+            onClick={() => setSandboxHotbarVisible(false)}
+            data-testid="hotbar-hide-button"
+          >
+            <ChevronDown className="h-3 w-3" />
+          </button>
+        </div>
+      )}
+
+      {isSandbox && !sandboxHotbarVisible && (
+        <button
+          className="fixed bottom-2 left-1/2 -translate-x-1/2 z-[60] px-3 py-1 bg-stone-900/80 border border-stone-700/40 rounded-full text-stone-400 text-xs hover:text-stone-200 transition-colors backdrop-blur-sm"
+          onClick={() => setSandboxHotbarVisible(true)}
+          data-testid="hotbar-show-button"
+        >
+          Hotbar
+        </button>
+      )}
+
+      {/* Hotbar Configuration Dialog */}
+      {hotbarConfigSlot !== null && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50" onClick={() => setHotbarConfigSlot(null)}>
+          <div className="bg-stone-900 border border-stone-700 rounded-xl p-4 w-80 max-h-96 overflow-y-auto shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-sm font-medium text-stone-200 mb-3">Configure Hotbar Slot</h3>
+            <div className="space-y-3">
+              <div className="text-xs text-stone-400 font-medium">Actor Sheets</div>
+              {(sandboxActorsForHotbar || []).map((actor: any) => (
+                <button key={actor.id}
+                  className="w-full text-left px-3 py-2 rounded-lg bg-stone-800/60 hover:bg-stone-800 border border-stone-700/40 transition-colors"
+                  onClick={() => {
+                    const newSlots = [...sandboxHotbar];
+                    newSlots[hotbarConfigSlot] = { type: 'sheet', actorId: actor.id, actorName: actor.name };
+                    saveSandboxHotbar(newSlots);
+                    setHotbarConfigSlot(null);
+                  }}
+                  data-testid={`hotbar-add-sheet-${actor.id}`}
+                >
+                  <div className="flex items-center gap-2">
+                    <User className="h-4 w-4 text-amber-400" />
+                    <span className="text-xs text-stone-200">{actor.name}</span>
+                  </div>
+                </button>
+              ))}
+              <div className="text-xs text-stone-400 font-medium mt-3">Roll Buttons</div>
+              {(sandboxActorsForHotbar || []).map((actor: any) => {
+                let actorData: any = {};
+                try { actorData = JSON.parse(actor.data || '{}'); } catch {}
+                const template = (sandboxTemplatesForHotbar || []).find((t: any) => t.id === actor.templateId);
+                if (!template) return null;
+                let tData: any = null;
+                try { tData = migrateTemplateData(JSON.parse(template.data || '{}')); } catch {}
+                if (!tData) return null;
+                const buttonProps = Object.values(tData.properties || {}).filter((p: any) => p.type === 'button' && p.metadata?.buttonConfig?.rollFormula);
+                const embeddedButtons: any[] = [];
+                if (actorData.embeddedItems) {
+                  for (const embItem of actorData.embeddedItems) {
+                    const embTemplate = (sandboxTemplatesForHotbar || []).find((t: any) => t.id === embItem.templateId);
+                    if (!embTemplate) continue;
+                    let embTData: any = null;
+                    try { embTData = migrateTemplateData(JSON.parse(embTemplate.data || '{}')); } catch {}
+                    if (!embTData) continue;
+                    const embBtns = Object.values(embTData.properties || {}).filter((p: any) => p.type === 'button' && p.metadata?.buttonConfig?.rollFormula);
+                    for (const btn of embBtns) {
+                      embeddedButtons.push({ ...btn as any, embeddedItemId: embItem.id, embeddedItemName: embItem.name, embItemTemplateId: embItem.templateId });
+                    }
+                  }
+                }
+                if (buttonProps.length === 0 && embeddedButtons.length === 0) return null;
+                return (
+                  <div key={actor.id} className="space-y-1">
+                    <div className="text-xs text-stone-500 pl-1">{actor.name}</div>
+                    {buttonProps.map((bp: any) => (
+                      <button key={bp.key}
+                        className="w-full text-left px-3 py-1.5 rounded-lg hover:bg-stone-800 border border-stone-700/30 transition-colors flex items-center gap-2"
+                        onClick={() => {
+                          const newSlots = [...sandboxHotbar];
+                          newSlots[hotbarConfigSlot!] = {
+                            type: 'roll',
+                            actorId: actor.id,
+                            actorName: actor.name,
+                            propertyKey: bp.key,
+                            rollFormula: bp.metadata?.buttonConfig?.rollFormula || '',
+                            buttonLabel: bp.metadata?.buttonConfig?.label || bp.metadata?.label || bp.key,
+                            buttonColor: bp.metadata?.buttonConfig?.color || '#d97706',
+                            templateId: actor.templateId,
+                          };
+                          saveSandboxHotbar(newSlots);
+                          setHotbarConfigSlot(null);
+                        }}
+                        data-testid={`hotbar-add-roll-${actor.id}-${bp.key}`}
+                      >
+                        <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: bp.metadata?.buttonConfig?.color || '#d97706' }} />
+                        <span className="text-xs text-stone-300">{bp.metadata?.buttonConfig?.label || bp.metadata?.label || bp.key}</span>
+                      </button>
+                    ))}
+                    {embeddedButtons.map((eb: any) => (
+                      <button key={`${eb.embeddedItemId}-${eb.key}`}
+                        className="w-full text-left px-3 py-1.5 rounded-lg hover:bg-stone-800 border border-stone-700/30 transition-colors flex items-center gap-2"
+                        onClick={() => {
+                          const newSlots = [...sandboxHotbar];
+                          newSlots[hotbarConfigSlot!] = {
+                            type: 'roll',
+                            actorId: actor.id,
+                            actorName: actor.name,
+                            propertyKey: eb.key,
+                            rollFormula: eb.metadata?.buttonConfig?.rollFormula || '',
+                            buttonLabel: eb.metadata?.buttonConfig?.label || eb.metadata?.label || eb.key,
+                            buttonColor: eb.metadata?.buttonConfig?.color || '#d97706',
+                            embeddedItemId: eb.embeddedItemId,
+                            embeddedItemName: eb.embeddedItemName,
+                            templateId: actor.templateId,
+                          };
+                          saveSandboxHotbar(newSlots);
+                          setHotbarConfigSlot(null);
+                        }}
+                        data-testid={`hotbar-add-embroll-${eb.embeddedItemId}-${eb.key}`}
+                      >
+                        <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: eb.metadata?.buttonConfig?.color || '#d97706' }} />
+                        <span className="text-xs text-stone-300">{eb.embeddedItemName}: {eb.metadata?.buttonConfig?.label || eb.key}</span>
+                      </button>
+                    ))}
+                  </div>
+                );
+              })}
+            </div>
+            <button className="mt-3 w-full py-1.5 text-xs text-stone-500 hover:text-stone-300 transition-colors" onClick={() => setHotbarConfigSlot(null)} data-testid="hotbar-config-cancel">Cancel</button>
+          </div>
+        </div>
+      )}
+
       {/* Beacon Color Picker Dialog */}
       <Dialog open={beaconColorDialogOpen} onOpenChange={setBeaconColorDialogOpen}>
         <DialogContent className="bg-stone-900 border-stone-700 text-stone-200 max-w-sm">

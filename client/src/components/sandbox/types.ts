@@ -149,6 +149,16 @@ export interface PropertyMetadata {
     };
     maxUses?: number;
     usesPerRest?: 'none' | 'short' | 'long';
+    targetingConfig?: {
+      type: 'none' | 'self' | 'single' | 'aoe';
+      aoeShape?: 'circle' | 'square' | 'cone' | 'line';
+      aoeRange?: number;
+      aoeWidth?: number;
+      spellRange?: number;
+      hitFormula?: string;
+      saveDC?: string;
+      damageFormula?: string;
+    };
   };
 }
 
