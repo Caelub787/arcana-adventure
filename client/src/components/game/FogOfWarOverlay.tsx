@@ -60,9 +60,10 @@ interface FogOfWarOverlayProps {
   tokens?: FogToken[];
   characters?: FogCharacter[];
   currentUserId?: string | null;
+  onVisionPolygonsChange?: (polygons: VisionPolygon[]) => void;
 }
 
-export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToolToggle, tokens = [], characters = [], currentUserId }: FogOfWarOverlayProps) {
+export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToolToggle, tokens = [], characters = [], currentUserId, onVisionPolygonsChange }: FogOfWarOverlayProps) {
   const queryClient = useQueryClient();
   const sceneId = scene?.id;
 
@@ -132,7 +133,7 @@ export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToo
   const fogOpacity = scene?.fogOpacity ?? 0.85;
 
   const renderWalls = useMemo(() => {
-    if (!isGM && !fogEnabled) return null;
+    if (!isGM) return null;
     return walls.map((wall) => {
       const color = WALL_COLORS[(wall.wallType as WallType) || 'solid'];
       const isDashed = wall.wallType === 'transparent' || wall.wallType === 'invisible';
@@ -157,6 +158,7 @@ export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToo
   }, [walls, isGM, fogEnabled]);
 
   const renderDoors = useMemo(() => {
+    if (!isGM && fogEnabled) return null;
     return doors.map((door) => {
       const color = door.isOpen ? '#22c55e' : '#ef4444';
       const dashArray = door.isOpen ? '6 4' : undefined;
@@ -220,6 +222,7 @@ export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToo
   }, [doors, isGM, toggleDoorMutation]);
 
   const renderWindows = useMemo(() => {
+    if (!isGM && fogEnabled) return null;
     return windows.map((win) => {
       const color = '#3b82f6';
       const dashArray = win.shutterClosed ? undefined : '6 3';
@@ -258,6 +261,7 @@ export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToo
   }, [windows]);
 
   const renderLights = useMemo(() => {
+    if (!isGM && fogEnabled) return null;
     return lights.filter(l => l.enabled).map((light) => {
       const radiusPixels = (light.radius / 5) * gridSize;
       const cx = light.x + MAP_OFFSET;
@@ -343,6 +347,10 @@ export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToo
     return polys;
   }, [fogEnabled, isGM, walls, doors, windows, tokens, characters, gridSize, scene?.isDayTime, currentUserId]);
 
+  useEffect(() => {
+    onVisionPolygonsChange?.(visionPolygons);
+  }, [visionPolygons, onVisionPolygonsChange]);
+
   const renderNightFilter = useMemo(() => {
     const isDayTime = scene?.isDayTime ?? true;
     if (isDayTime) return null;
@@ -387,7 +395,7 @@ export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToo
           width={20000}
           height={20000}
           fill="black"
-          fillOpacity={fogOpacity}
+          fillOpacity={1}
           mask="url(#fog-vision-mask)"
         />
       </g>

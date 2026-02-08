@@ -43,7 +43,19 @@ import { BattlemapAoeOverlay } from './BattlemapAoeOverlay';
 import { FogOfWarOverlay, WallDrawingOverlay, FogToolsPanel } from './FogOfWarOverlay';
 import { type AoeTargetState, getTokensInAoe, getTokenGridSpan, getDistanceToTokenEdge, getDistanceBetweenTokensFeet, isTokenInRangeOfToken } from '@/lib/aoeHelpers';
 import { rollDice } from '../sandbox/diceEngine';
+import type { VisionPolygon } from '@/lib/visionEngine';
 
+function isPointInPolygon(px: number, py: number, polygon: { x: number; y: number }[]): boolean {
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const xi = polygon[i].x, yi = polygon[i].y;
+    const xj = polygon[j].x, yj = polygon[j].y;
+    if ((yi > py) !== (yj > py) && px < (xj - xi) * (py - yi) / (yj - yi) + xi) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
 
 // --- Types & Mock Data ---
 
@@ -353,6 +365,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
   // Fog of War state
   const [fogToolActiveInternal, setFogToolActiveInternal] = useState(false);
   const fogToolActive = fogToolActiveProp ?? fogToolActiveInternal;
+  const [visionPolygons, setVisionPolygons] = useState<VisionPolygon[]>([]);
   const setFogToolActive = useCallback((v: boolean) => {
     setFogToolActiveInternal(v);
     onFogToolActiveChange?.(v);
@@ -1836,7 +1849,16 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
         })()}
 
         {/* Tokens - Keep original coordinate system */}
-        {tokens.map((token) => {
+        {((!isGM && scene?.fogEnabled)
+          ? (visionPolygons && visionPolygons.length > 0 ? tokens.filter(token => {
+              const tokenCenterX = token.x + (scene?.gridSize || gridSize) / 2;
+              const tokenCenterY = token.y + (scene?.gridSize || gridSize) / 2;
+              return visionPolygons.some(poly => 
+                isPointInPolygon(tokenCenterX, tokenCenterY, poly.points)
+              );
+            }) : [])
+          : tokens
+        ).map((token) => {
           // Invisible tokens: GMs see at 40% opacity, non-GMs can't see at all
           const isInvisible = (token as any).isInvisible === true;
           if (isInvisible && role !== 'gm') {
@@ -3274,6 +3296,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
             tokens={tokens as any}
             characters={characters as any}
             currentUserId={currentUserId}
+            onVisionPolygonsChange={setVisionPolygons}
           />
         )}
         

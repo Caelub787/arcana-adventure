@@ -69,7 +69,8 @@ Preferred communication style: Simple, everyday language.
   - **Day/Night**: Scene-level toggle affects vision distances. Global light level (0.0-1.0).
   - **GM Tools Panel** (`FogOfWarOverlay.tsx`): Wall drawing (snap-to-grid, wall types), door/window/light placement, fog toggle, day/night toggle, opacity/dimness sliders, clear walls.
   - **WebSocket Sync**: Real-time fog updates via `wall_created`, `door_toggled`, `fog_state_updated`, etc. GM-authoritative fog state.
-  - **Player View**: Players see fog with vision polygon cutouts based on their token positions and character vision settings. Vision filtered to only show the current player's assigned token's view.
+  - **Player View**: Players see fog with vision polygon cutouts based on their token positions and character vision settings. Vision filtered to only show the current player's assigned token's view. Fog is fully opaque (fillOpacity=1) for players. Tokens outside vision polygons are completely hidden (not rendered). Walls, doors, windows, and lights are hidden from players when fog is enabled. Players with no assigned token see no tokens when fog is enabled.
+  - **Vision Polygon Export**: FogOfWarOverlay exports computed vision polygons via `onVisionPolygonsChange` callback. BattleMap uses point-in-polygon ray casting to filter visible tokens.
   - **Nighttime Filter**: Dark blue tint overlay (`#0a1628` at 35% opacity) applied when scene is set to nighttime.
   - **Token Vision Settings**: Long-press on token shows Layers icon in bottom-left. Clicking it opens vision settings panel (vision type, day/night distance).
   - **Click-to-Place Tokens**: GM clicks "+" on character in panel, then clicks map to place token at that location.
