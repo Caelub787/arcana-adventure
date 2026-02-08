@@ -347,9 +347,14 @@ export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToo
     return polys;
   }, [fogEnabled, isGM, walls, doors, windows, tokens, characters, gridSize, scene?.isDayTime, currentUserId]);
 
+  const prevVisionPolygonsRef = useRef<string>('');
   useEffect(() => {
-    onVisionPolygonsChange?.(visionPolygons);
-  }, [visionPolygons, onVisionPolygonsChange]);
+    const key = JSON.stringify(visionPolygons.map(p => ({ tx: p.tokenX, ty: p.tokenY, r: p.radius, n: p.points.length })));
+    if (key !== prevVisionPolygonsRef.current) {
+      prevVisionPolygonsRef.current = key;
+      onVisionPolygonsChange?.(visionPolygons);
+    }
+  }, [visionPolygons]);
 
   const renderNightFilter = useMemo(() => {
     const isDayTime = scene?.isDayTime ?? true;
