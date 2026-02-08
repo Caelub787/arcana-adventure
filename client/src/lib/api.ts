@@ -1976,6 +1976,12 @@ class ApiClient {
     });
   }
 
+  async seedArcanaTemplates(campaignId: string): Promise<{ templates: SandboxTemplate[] }> {
+    return this.request(`/campaigns/${campaignId}/sandbox/seed-arcana`, {
+      method: 'POST',
+    });
+  }
+
   async updateSandboxTemplate(campaignId: string, templateId: string, data: Partial<SandboxTemplate>): Promise<SandboxTemplate> {
     return this.request(`/campaigns/${campaignId}/sandbox/templates/${templateId}`, {
       method: 'PATCH',

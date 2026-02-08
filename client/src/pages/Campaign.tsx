@@ -5469,6 +5469,17 @@ function SandboxCharactersContent({
     },
   });
 
+  const seedArcanaMutation = useMutation({
+    mutationFn: () => api.seedArcanaTemplates(campaignId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sandbox-templates', campaignId] });
+      toast({ title: "Arcana Adventure templates loaded", description: "Character, Weapon, and Spell templates have been created." });
+    },
+    onError: (error: any) => {
+      toast({ title: "Failed to load templates", description: error?.message || "Unknown error", variant: "destructive" });
+    },
+  });
+
   const createActorMutation = useMutation({
     mutationFn: (data: { name: string; folderId?: string }) => api.createSandboxActor(campaignId, data),
     onSuccess: () => {
@@ -5770,6 +5781,20 @@ function SandboxCharactersContent({
             <FolderOpen className="h-4 w-4 mr-1.5" /> Folder
           </Button>
         </div>
+        <Button
+          size="sm"
+          onClick={() => seedArcanaMutation.mutate()}
+          disabled={seedArcanaMutation.isPending}
+          className="w-full bg-amber-800 hover:bg-amber-700 text-amber-100 border border-amber-600/50"
+          data-testid="button-seed-arcana"
+        >
+          {seedArcanaMutation.isPending ? (
+            <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+          ) : (
+            <Sparkles className="h-4 w-4 mr-1.5" />
+          )}
+          Load Arcana Adventure System
+        </Button>
 
         {createOpen && (
           <div className="bg-stone-800/50 border border-stone-700 rounded-lg p-3 space-y-3">

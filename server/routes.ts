@@ -8123,6 +8123,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.post("/api/campaigns/:campaignId/sandbox/seed-arcana", requireAuth, async (req, res) => {
+    try {
+      const campaign = await storage.getCampaign(req.params.campaignId);
+      if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+      const isGM = await hasGmAccess(req.session.userId!, req.params.campaignId, campaign.gmUserId);
+      if (!isGM) return res.status(403).json({ error: "Only GMs can seed templates" });
+
+      const { buildCharacterTemplateData, buildWeaponTemplateData, buildSpellTemplateData } = await import("./arcanaTemplates");
+
+      const characterTemplate = await storage.createSandboxTemplate({
+        campaignId: req.params.campaignId,
+        name: "AA Character",
+        folderId: null,
+        data: JSON.stringify(buildCharacterTemplateData()),
+      });
+
+      const weaponTemplate = await storage.createSandboxTemplate({
+        campaignId: req.params.campaignId,
+        name: "AA Weapon",
+        folderId: null,
+        data: JSON.stringify(buildWeaponTemplateData()),
+      });
+
+      const spellTemplate = await storage.createSandboxTemplate({
+        campaignId: req.params.campaignId,
+        name: "AA Spell",
+        folderId: null,
+        data: JSON.stringify(buildSpellTemplateData()),
+      });
+
+      res.json({ templates: [characterTemplate, weaponTemplate, spellTemplate] });
+    } catch (e) {
+      console.error("Failed to seed arcana templates:", e);
+      res.status(500).json({ error: "Failed to seed arcana templates" });
+    }
+  });
+
   app.patch("/api/campaigns/:campaignId/sandbox/templates/:templateId", requireAuth, async (req, res) => {
     try {
       const campaign = await storage.getCampaign(req.params.campaignId);
