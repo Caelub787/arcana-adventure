@@ -3028,7 +3028,7 @@ function SandboxCharactersContent({
             variant="ghost"
             size="icon"
             onClick={(e) => { e.stopPropagation(); type === 'actor' ? deleteActorMutation.mutate(item.id) : deleteTemplateMutation.mutate(item.id); }}
-            className="h-7 w-7 text-stone-600 hover:text-red-400 hover:bg-red-900/20 opacity-0 group-hover:opacity-100 transition-opacity"
+            className="h-7 w-7 text-stone-500 hover:text-red-400 hover:bg-red-900/20"
             data-testid={`button-delete-${type}-${item.id}`}
           >
             <Trash2 className="h-3.5 w-3.5" />
@@ -3077,7 +3077,7 @@ function SandboxCharactersContent({
                 variant="ghost"
                 size="icon"
                 onClick={(e) => { e.stopPropagation(); deleteFolderMutation.mutate(folder.id); }}
-                className="h-7 w-7 text-stone-600 hover:text-red-400 hover:bg-red-900/20 opacity-0 group-hover:opacity-100 transition-opacity"
+                className="h-7 w-7 text-stone-500 hover:text-red-400 hover:bg-red-900/20"
                 data-testid={`button-delete-folder-${folder.id}`}
               >
                 <Trash2 className="h-3.5 w-3.5" />
