@@ -1639,6 +1639,7 @@ function SandboxSheetEditor({
                 </div>
               )}
             </div>
+            </div>
           );
         }
 
@@ -1944,16 +1945,16 @@ function SandboxSheetEditor({
                               },
                             };
                             if (!newIcon) {
-                              const icons = { ...updatedNodes[parentNode!.id].behaviorConfig.tabConfig.tabIcons };
+                              const icons = { ...(updatedNodes as any)[parentNode!.id].behaviorConfig.tabConfig.tabIcons };
                               delete icons[ctxNode.id];
-                              updatedNodes[parentNode!.id].behaviorConfig.tabConfig.tabIcons = icons;
+                              (updatedNodes as any)[parentNode!.id].behaviorConfig.tabConfig.tabIcons = icons;
                             }
                             updateTemplateMutationSheet.mutate({ data: JSON.stringify({ ...templateData, layoutNodes: updatedNodes }) });
                             toast({ title: newIcon ? `Tab icon set: ${newIcon}` : 'Tab icon removed' });
                             setSectionContextMenu(null);
                           }
                         }} data-testid="menu-set-tab-icon">Set Tab Icon/Emoji</button>
-                      )
+                      )}
 
                       {isPanelNode && (
                         <button className="w-full text-left px-3 py-1.5 text-xs text-stone-200 hover:bg-stone-700" onClick={() => {
