@@ -47,6 +47,8 @@ function SceneSettingsForm({ scene, onUpdateScene }: { scene: Scene; onUpdateSce
     gridColor: scene.gridColor || '#ffffff',
     gridThickness: scene.gridThickness ?? 1,
     gridOpacity: scene.gridOpacity ?? 0.4,
+    gridOffsetX: (scene as any).gridOffsetX ?? 0,
+    gridOffsetY: (scene as any).gridOffsetY ?? 0,
     backgroundImage: scene.backgroundImage || '',
   });
   const [showImageBrowser, setShowImageBrowser] = useState(false);
@@ -67,7 +69,7 @@ function SceneSettingsForm({ scene, onUpdateScene }: { scene: Scene; onUpdateSce
     setLocalSettings(newSettings);
     
     // Debounce slider updates to avoid spamming the server during slider drag
-    if (key === 'gridSize' || key === 'gridThickness' || key === 'gridOpacity') {
+    if (key === 'gridSize' || key === 'gridThickness' || key === 'gridOpacity' || key === 'gridOffsetX' || key === 'gridOffsetY') {
       if (debounceTimeoutRef.current) {
         clearTimeout(debounceTimeoutRef.current);
       }
@@ -132,16 +134,29 @@ function SceneSettingsForm({ scene, onUpdateScene }: { scene: Scene; onUpdateSce
             <Label htmlFor="grid-size" className="text-stone-300">Grid Size</Label>
             <span className="text-xs text-amber-500">{localSettings.gridSize}px</span>
           </div>
-          <input
-            type="range"
-            id="grid-size"
-            min="30"
-            max="100"
-            value={localSettings.gridSize}
-            onChange={(e) => updateSetting('gridSize', parseInt(e.target.value))}
-            className="w-full accent-amber-600"
-            data-testid="slider-grid-size"
-          />
+          <div className="flex items-center gap-2">
+            <input
+              type="range"
+              id="grid-size"
+              min="10"
+              max="200"
+              value={Math.min(200, Math.max(10, localSettings.gridSize))}
+              onChange={(e) => updateSetting('gridSize', parseInt(e.target.value))}
+              className="flex-1 accent-amber-600"
+              data-testid="slider-grid-size"
+            />
+            <input
+              type="number"
+              min="1"
+              value={localSettings.gridSize}
+              onChange={(e) => {
+                const val = parseInt(e.target.value);
+                if (!isNaN(val) && val > 0) updateSetting('gridSize', val);
+              }}
+              className="w-16 bg-stone-800 border border-stone-700 text-stone-200 rounded px-2 py-1 text-sm text-center"
+              data-testid="input-grid-size"
+            />
+          </div>
         </div>
       )}
 
@@ -184,6 +199,45 @@ function SceneSettingsForm({ scene, onUpdateScene }: { scene: Scene; onUpdateSce
             className="w-full accent-amber-600"
             data-testid="slider-grid-opacity"
           />
+        </div>
+      )}
+
+      {/* Grid Offset */}
+      {localSettings.gridEnabled && (
+        <div className="space-y-2">
+          <Label className="text-stone-300">Grid Offset</Label>
+          <div className="flex gap-3">
+            <div className="flex-1">
+              <div className="flex justify-between mb-1">
+                <span className="text-xs text-stone-400">X</span>
+                <span className="text-xs text-amber-500">{localSettings.gridOffsetX}px</span>
+              </div>
+              <input
+                type="range"
+                min={-Math.max(localSettings.gridSize, 50)}
+                max={Math.max(localSettings.gridSize, 50)}
+                value={localSettings.gridOffsetX}
+                onChange={(e) => updateSetting('gridOffsetX', parseInt(e.target.value))}
+                className="w-full accent-amber-600"
+                data-testid="slider-grid-offset-x"
+              />
+            </div>
+            <div className="flex-1">
+              <div className="flex justify-between mb-1">
+                <span className="text-xs text-stone-400">Y</span>
+                <span className="text-xs text-amber-500">{localSettings.gridOffsetY}px</span>
+              </div>
+              <input
+                type="range"
+                min={-Math.max(localSettings.gridSize, 50)}
+                max={Math.max(localSettings.gridSize, 50)}
+                value={localSettings.gridOffsetY}
+                onChange={(e) => updateSetting('gridOffsetY', parseInt(e.target.value))}
+                className="w-full accent-amber-600"
+                data-testid="slider-grid-offset-y"
+              />
+            </div>
+          </div>
         </div>
       )}
 
@@ -6144,17 +6198,28 @@ function FloatingNotesEditor({
   const [isDragging, setIsDragging] = useState(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const resizeStartRef = useRef<{ x: number; y: number; width: number; height: number } | null>(null);
+  const posRef = useRef(position);
+  const divRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    posRef.current = position;
+  }, [position]);
 
   const handlePointerDown = (e: React.PointerEvent) => {
     const el = e.currentTarget as HTMLElement;
     el.setPointerCapture(e.pointerId);
     setIsDragging(true);
-    setDragOffset({ x: e.clientX - position.x, y: e.clientY - position.y });
+    setDragOffset({ x: e.clientX - posRef.current.x, y: e.clientY - posRef.current.y });
   };
 
   const handlePointerMove = (e: React.PointerEvent) => {
     if (!isDragging) return;
-    onPositionChange({ x: e.clientX - dragOffset.x, y: e.clientY - dragOffset.y });
+    const newX = e.clientX - dragOffset.x;
+    const newY = e.clientY - dragOffset.y;
+    posRef.current = { x: newX, y: newY };
+    if (divRef.current) {
+      divRef.current.style.transform = `translate(${newX}px, ${newY}px)`;
+    }
   };
 
   const handlePointerUp = (e: React.PointerEvent) => {
@@ -6163,12 +6228,14 @@ function FloatingNotesEditor({
     if (el.hasPointerCapture(e.pointerId)) {
       el.releasePointerCapture(e.pointerId);
     }
+    onPositionChange(posRef.current);
   };
 
   return (
     <div
+      ref={divRef}
       className="fixed pointer-events-auto"
-      style={{ left: `${position.x}px`, top: `${position.y}px`, width: `${size.width}px`, height: collapsed ? 'auto' : `${size.height}px`, zIndex }}
+      style={{ left: 0, top: 0, transform: `translate(${position.x}px, ${position.y}px)`, width: `${size.width}px`, height: collapsed ? 'auto' : `${size.height}px`, zIndex, willChange: isDragging ? 'transform' : 'auto' }}
       data-testid="floating-notes-editor"
       onMouseDown={onBringToFront}
     >

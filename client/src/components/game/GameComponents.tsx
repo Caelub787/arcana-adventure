@@ -1691,33 +1691,39 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
             {(() => {
               const effectiveGridSize = scene?.gridSize || gridSize;
               const MAP_OFFSET = 9000;
-              // Offset grid to align with token snapping (tokens snap to multiples of gridSize)
-              const gridOffset = MAP_OFFSET % effectiveGridSize;
+              const gridOffsetBase = MAP_OFFSET % effectiveGridSize;
+              const userOffsetX = (scene as any)?.gridOffsetX || 0;
+              const userOffsetY = (scene as any)?.gridOffsetY || 0;
+              const zoomLevel = zoomRef.current || 1;
+              let displayGridSize = effectiveGridSize;
+              while (displayGridSize * zoomLevel < 12) {
+                displayGridSize *= 2;
+              }
+              const displayOffsetX = ((gridOffsetBase + userOffsetX) % displayGridSize + displayGridSize) % displayGridSize;
+              const displayOffsetY = ((gridOffsetBase + userOffsetY) % displayGridSize + displayGridSize) % displayGridSize;
               
               return (scene?.gridType || 'square') === 'square' ? (
-                /* Square Grid - Infinite repeating pattern */
                 <div className="absolute inset-0 pointer-events-none" 
                      style={{ 
                        opacity: scene?.gridOpacity ?? 0.4,
                        backgroundImage: `linear-gradient(${scene?.gridColor || '#ffffff'} ${scene?.gridThickness ?? 1}px, transparent ${scene?.gridThickness ?? 1}px), linear-gradient(90deg, ${scene?.gridColor || '#ffffff'} ${scene?.gridThickness ?? 1}px, transparent ${scene?.gridThickness ?? 1}px)`,
-                       backgroundSize: `${effectiveGridSize}px ${effectiveGridSize}px`,
-                       backgroundPosition: `${gridOffset}px ${gridOffset}px`
+                       backgroundSize: `${displayGridSize}px ${displayGridSize}px`,
+                       backgroundPosition: `${displayOffsetX}px ${displayOffsetY}px`
                      }} 
                 />
               ) : (
-                /* Hex Grid - Infinite repeating pattern */
                 <svg className="absolute inset-0 pointer-events-none" width="100%" height="100%" style={{ opacity: scene?.gridOpacity ?? 0.4 }}>
                   <defs>
                     <pattern 
                       id="hexgrid" 
                       patternUnits="userSpaceOnUse" 
-                      width={effectiveGridSize} 
-                      height={effectiveGridSize * 0.866}
-                      x={gridOffset}
-                      y={gridOffset * 0.866}
+                      width={displayGridSize} 
+                      height={displayGridSize * 0.866}
+                      x={displayOffsetX}
+                      y={displayOffsetY * 0.866}
                     >
                       <polygon 
-                        points={`${(effectiveGridSize / 4)},0 ${(effectiveGridSize * 3 / 4)},0 ${effectiveGridSize},${(effectiveGridSize * 0.433)} ${(effectiveGridSize * 3 / 4)},${(effectiveGridSize * 0.866)} ${(effectiveGridSize / 4)},${(effectiveGridSize * 0.866)} 0,${(effectiveGridSize * 0.433)}`}
+                        points={`${(displayGridSize / 4)},0 ${(displayGridSize * 3 / 4)},0 ${displayGridSize},${(displayGridSize * 0.433)} ${(displayGridSize * 3 / 4)},${(displayGridSize * 0.866)} ${(displayGridSize / 4)},${(displayGridSize * 0.866)} 0,${(displayGridSize * 0.433)}`}
                         fill="none" 
                         stroke={scene?.gridColor || '#ffffff'} 
                         strokeWidth={scene?.gridThickness ?? 1}
@@ -6084,7 +6090,7 @@ export function BattleMapHotbars({ character, tokens, targetedTokenId, character
                       tokens={tokens}
                       targetedTokenId={targetedTokenId}
                       allCharacters={characters}
-                      gridSize={gridSize}
+                      gridSize={scene?.gridSize || gridSize}
                       onEnterAoeMode={onEnterAoeMode}
                       aoeTargetState={aoeTargetState}
                       onAoeDamageRoll={onAoeDamageRoll}
@@ -20180,7 +20186,7 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-stone-900 border-stone-700 max-w-3xl max-h-[90vh] flex flex-col">
+      <DialogContent className="bg-stone-900 border-stone-700 max-w-3xl max-h-[90vh] flex flex-col z-[200]">
         <DialogHeader>
           <DialogTitle className="text-amber-500">Add Item</DialogTitle>
         </DialogHeader>

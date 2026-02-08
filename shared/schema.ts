@@ -128,6 +128,8 @@ export const scenes = pgTable("scenes", {
   gridColor: text("grid_color").default("#ffffff").notNull(), // Hex color for grid lines
   gridThickness: real("grid_thickness").default(1).notNull(), // Line thickness in pixels
   gridOpacity: real("grid_opacity").default(0.4).notNull(), // 0.0 to 1.0
+  gridOffsetX: integer("grid_offset_x").default(0).notNull(),
+  gridOffsetY: integer("grid_offset_y").default(0).notNull(),
   defaultViewX: integer("default_view_x").default(0).notNull(),
   defaultViewY: integer("default_view_y").default(0).notNull(),
   defaultViewZoom: real("default_view_zoom").default(1).notNull(),
