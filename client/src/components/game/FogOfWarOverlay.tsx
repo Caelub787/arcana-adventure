@@ -45,6 +45,7 @@ interface FogToken {
 
 interface FogCharacter {
   id: string;
+  userId?: string | null;
   visionType?: string;
   dayVisionDistance?: number;
   nightVisionDistance?: number;
@@ -58,9 +59,10 @@ interface FogOfWarOverlayProps {
   onFogToolToggle: (active: boolean) => void;
   tokens?: FogToken[];
   characters?: FogCharacter[];
+  currentUserId?: string | null;
 }
 
-export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToolToggle, tokens = [], characters = [] }: FogOfWarOverlayProps) {
+export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToolToggle, tokens = [], characters = [], currentUserId }: FogOfWarOverlayProps) {
   const queryClient = useQueryClient();
   const sceneId = scene?.id;
 
@@ -304,7 +306,15 @@ export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToo
     const isDayTime = scene?.isDayTime ?? true;
     const polys: VisionPolygon[] = [];
     
-    for (const token of tokens) {
+    const playerTokens = currentUserId
+      ? tokens.filter(t => {
+          if (!t.characterId) return false;
+          const char = characters.find(c => c.id === t.characterId);
+          return char && char.userId === currentUserId;
+        })
+      : tokens;
+    
+    for (const token of playerTokens) {
       if ((token as any).isBlind) continue;
       
       const character = token.characterId 
@@ -331,7 +341,7 @@ export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToo
     }
     
     return polys;
-  }, [fogEnabled, isGM, walls, doors, windows, tokens, characters, gridSize, scene?.isDayTime]);
+  }, [fogEnabled, isGM, walls, doors, windows, tokens, characters, gridSize, scene?.isDayTime, currentUserId]);
 
   const renderFog = useMemo(() => {
     if (!fogEnabled) return null;

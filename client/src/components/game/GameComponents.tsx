@@ -316,9 +316,10 @@ interface BattleMapProps {
   fogToolActive?: boolean;
   onFogToolActiveChange?: (active: boolean) => void;
   onDropCharacterOnMap?: (characterId: string, gridX: number, gridY: number) => void;
+  currentUserId?: string | null;
 }
 
-export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClick, onTokenTripleClick, onDeleteToken, role, gridSize, backgroundImage, scene, onViewChange, characters = [], allSpecies = [], selectionMode = 'select', targetedTokenId, selectedTokenId, aoeTargetState, onAoeMouseMove, onAoeClick, otherPlayersAoe, myPermissions, tokenActiveEffects, allTokenEffects, onApplyEffect, onRemoveEffect, onToggleInvisibility, currentTurnCharacterId, otherPlayersTargeting, activeBeacons, onBeacon, otherPlayersViewports, thrownItems = [], onRefetchThrownItems, onDeleteThrownItem, throwableGridTarget, onGridTargetClick, notesPanelOpen = false, notesPanelWidth = 0, onNotesClick, inCombat = false, fogToolActive: fogToolActiveProp, onFogToolActiveChange, onDropCharacterOnMap }: BattleMapProps) {
+export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClick, onTokenTripleClick, onDeleteToken, role, gridSize, backgroundImage, scene, onViewChange, characters = [], allSpecies = [], selectionMode = 'select', targetedTokenId, selectedTokenId, aoeTargetState, onAoeMouseMove, onAoeClick, otherPlayersAoe, myPermissions, tokenActiveEffects, allTokenEffects, onApplyEffect, onRemoveEffect, onToggleInvisibility, currentTurnCharacterId, otherPlayersTargeting, activeBeacons, onBeacon, otherPlayersViewports, thrownItems = [], onRefetchThrownItems, onDeleteThrownItem, throwableGridTarget, onGridTargetClick, notesPanelOpen = false, notesPanelWidth = 0, onNotesClick, inCombat = false, fogToolActive: fogToolActiveProp, onFogToolActiveChange, onDropCharacterOnMap, currentUserId }: BattleMapProps) {
   // Derive isGM from role prop
   const isGM = role === 'gm';
   
@@ -3252,13 +3253,14 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
             onFogToolToggle={setFogToolActive}
             tokens={tokens as any}
             characters={characters as any}
+            currentUserId={currentUserId}
           />
         )}
         
         {/* Wall/Door/Window/Light Drawing Overlay - interactive drawing on map */}
         {scene?.id && fogToolActive && isGM && (wallDrawMode || doorPlaceMode || windowPlaceMode || lightPlaceMode) && (
           <WallDrawingOverlay
-            sceneId={scene.id}
+            scene={scene}
             gridSize={scene?.gridSize || gridSize}
             wallDrawMode={wallDrawMode}
             selectedWallType={selectedWallType}
@@ -15563,7 +15565,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                           </div>
                           <div className="grid grid-cols-2 gap-2">
                             <div>
-                              <Label className="text-[10px] text-stone-500">Day (ft)</Label>
+                              <Label className="text-[10px] text-stone-500">Day Vision (ft)</Label>
                               <Input
                                 type="number"
                                 value={overviewData.dayVisionDistance}
@@ -15573,7 +15575,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                               />
                             </div>
                             <div>
-                              <Label className="text-[10px] text-stone-500">Night (ft)</Label>
+                              <Label className="text-[10px] text-stone-500">Night Vision (ft)</Label>
                               <Input
                                 type="number"
                                 value={overviewData.nightVisionDistance}
@@ -15583,10 +15585,11 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                               />
                             </div>
                           </div>
+                          <span className="text-[10px] text-stone-500 italic">Each grid square = 5ft</span>
                         </div>
                       ) : (
                         <p className="text-stone-200 text-xs" data-testid="text-vision">
-                          {(liveCharacter as any).visionType || 'normal'} ({(liveCharacter as any).dayVisionDistance || 120}/{(liveCharacter as any).nightVisionDistance || 60}ft)
+                          {(liveCharacter as any).visionType || 'normal'} • Day: {(liveCharacter as any).dayVisionDistance || 120}ft • Night: {(liveCharacter as any).nightVisionDistance || 60}ft
                         </p>
                       )}
                     </div>

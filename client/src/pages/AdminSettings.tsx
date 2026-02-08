@@ -2938,6 +2938,9 @@ function CharacterFormDialog({ open, onOpenChange, onSave, initialData, isLoadin
   const [name, setName] = useState(initialData?.name || "");
   const [selectedRace, setSelectedRace] = useState(initialData?.race || "Human");
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(initialData?.folderId || null);
+  const [visionType, setVisionType] = useState((initialData as any)?.visionType || "normal");
+  const [dayVisionDistance, setDayVisionDistance] = useState((initialData as any)?.dayVisionDistance ?? 120);
+  const [nightVisionDistance, setNightVisionDistance] = useState((initialData as any)?.nightVisionDistance ?? 60);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const { data: systemSpeciesList = [] } = useQuery({
@@ -2965,6 +2968,9 @@ function CharacterFormDialog({ open, onOpenChange, onSave, initialData, isLoadin
       setName(initialData?.name || "");
       setSelectedRace(initialData?.race || "Human");
       setSelectedFolderId(initialData?.folderId || null);
+      setVisionType((initialData as any)?.visionType || "normal");
+      setDayVisionDistance((initialData as any)?.dayVisionDistance ?? 120);
+      setNightVisionDistance((initialData as any)?.nightVisionDistance ?? 60);
     }
   }, [initialData, open]);
 
@@ -2984,6 +2990,9 @@ function CharacterFormDialog({ open, onOpenChange, onSave, initialData, isLoadin
       sizeBonus: selectedSpecies.sizeBonus || 0,
       speed: selectedSpecies.speed || 30,
       flySpeed: selectedSpecies.flySpeed || 0,
+      visionType,
+      dayVisionDistance: Number(dayVisionDistance) || 120,
+      nightVisionDistance: Number(nightVisionDistance) || 60,
       featTree: selectedSpecies.featTree || "",
       hp: selectedSpecies.startingHp || 10,
       maxHp: selectedSpecies.startingMaxHp || 10,
@@ -3018,6 +3027,9 @@ function CharacterFormDialog({ open, onOpenChange, onSave, initialData, isLoadin
     setName("");
     setSelectedRace("Human");
     setSelectedFolderId(null);
+    setVisionType("normal");
+    setDayVisionDistance(120);
+    setNightVisionDistance(60);
     setIsSubmitting(false);
     onOpenChange(false);
   };
@@ -3028,6 +3040,9 @@ function CharacterFormDialog({ open, onOpenChange, onSave, initialData, isLoadin
         setName("");
         setSelectedRace("Human");
         setSelectedFolderId(null);
+        setVisionType("normal");
+        setDayVisionDistance(120);
+        setNightVisionDistance(60);
       }
       onOpenChange(open);
     }}>
@@ -3077,6 +3092,45 @@ function CharacterFormDialog({ open, onOpenChange, onSave, initialData, isLoadin
                 HP: {selectedSpecies.startingMaxHp || 10} | Energy: {selectedSpecies.startingMaxEnergy || 10} | Speed: {selectedSpecies.speed || 30}ft
               </p>
             )}
+          </div>
+
+          <div className="space-y-2">
+            <Label className="text-stone-300">Vision</Label>
+            <Select value={visionType} onValueChange={setVisionType}>
+              <SelectTrigger className="bg-stone-800 border-stone-700 text-stone-200" data-testid="select-character-vision-type">
+                <SelectValue placeholder="Vision type" />
+              </SelectTrigger>
+              <SelectContent className="bg-stone-800 border-stone-700">
+                <SelectItem value="normal" className="text-stone-200">Normal</SelectItem>
+                <SelectItem value="darkvision" className="text-stone-200">Darkvision</SelectItem>
+                <SelectItem value="blindsight" className="text-stone-200">Blindsight</SelectItem>
+                <SelectItem value="truesight" className="text-stone-200">Truesight</SelectItem>
+                <SelectItem value="tremorsense" className="text-stone-200">Tremorsense</SelectItem>
+              </SelectContent>
+            </Select>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <Label className="text-[10px] text-stone-500">Day Vision (ft)</Label>
+                <Input
+                  type="number"
+                  value={dayVisionDistance}
+                  onChange={(e) => setDayVisionDistance(parseInt(e.target.value) || 0)}
+                  className="bg-stone-800 border-stone-700 text-stone-200"
+                  data-testid="input-character-day-vision"
+                />
+              </div>
+              <div>
+                <Label className="text-[10px] text-stone-500">Night Vision (ft)</Label>
+                <Input
+                  type="number"
+                  value={nightVisionDistance}
+                  onChange={(e) => setNightVisionDistance(parseInt(e.target.value) || 0)}
+                  className="bg-stone-800 border-stone-700 text-stone-200"
+                  data-testid="input-character-night-vision"
+                />
+              </div>
+            </div>
+            <span className="text-[10px] text-stone-500 italic">Each grid square = 5ft</span>
           </div>
 
           {folders.length > 0 && (
