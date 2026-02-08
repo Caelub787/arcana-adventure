@@ -1229,9 +1229,7 @@ function SandboxSheetEditor({
               {prop.label}
             </span>
           )}
-          <div className="flex-1 flex items-center justify-center text-stone-600 text-[10px] italic">
-            Panel Container
-          </div>
+          <div className="flex-1" />
         </div>
       );
     }
@@ -1239,25 +1237,30 @@ function SandboxSheetEditor({
     if (prop.type === 'tab') {
       const tabs = prop.tabs || [{ id: '1', label: 'Tab 1' }, { id: '2', label: 'Tab 2' }];
       const isLeftLayout = prop.tabLayout === 'left';
+      const currentActiveTab = activeTabIds[prop.id] || (tabs[0]?.id ?? '');
       return (
         <div className={`w-full h-full overflow-hidden flex ${isLeftLayout ? 'flex-row' : 'flex-col'}`} style={propStyle}>
           <div className={`flex shrink-0 ${isLeftLayout ? 'flex-col border-r border-stone-600/50 w-[60px]' : 'flex-row border-b border-stone-600/50'}`}>
-            {tabs.map((tab: TabDefinition, idx: number) => (
+            {tabs.map((tab: TabDefinition) => (
               <div
                 key={tab.id}
-                className={`px-2 py-1 text-[10px] truncate ${
-                  idx === 0 
+                className={`px-2 py-1 text-[10px] truncate cursor-pointer transition-colors ${
+                  tab.id === currentActiveTab 
                     ? `text-purple-300 bg-purple-900/20 ${isLeftLayout ? 'border-r-2 border-purple-500' : 'border-b-2 border-purple-500'}`
-                    : 'text-stone-500'
+                    : 'text-stone-500 hover:text-stone-300'
                 }`}
+                onClick={(e) => { e.stopPropagation(); setActiveTabIds(prev => ({ ...prev, [prop.id]: tab.id })); }}
+                data-testid={`canvas-tab-${prop.key}-${tab.id}`}
               >
-                {tab.label}
+                {tab.icon ? (
+                  <img src={tab.icon} alt={tab.label} className="h-4 w-4 object-contain mx-auto" title={tab.label} />
+                ) : (
+                  tab.label
+                )}
               </div>
             ))}
           </div>
-          <div className="flex-1 flex items-center justify-center text-stone-600 text-[10px] italic">
-            Tab Container
-          </div>
+          <div className="flex-1" />
         </div>
       );
     }
@@ -1313,6 +1316,7 @@ function SandboxSheetEditor({
               height: `${ph}px`,
             }}
             data-testid={`canvas-property-${prop.key}`}
+            title={prop.tooltip || prop.label}
             onDoubleClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
@@ -1340,22 +1344,31 @@ function SandboxSheetEditor({
               data-testid={`button-select-property-${prop.key}`}
             >
               {renderFieldPreview(prop)}
-              {(prop.type === 'panel' || prop.type === 'tab') && children.length > 0 && (
-                <div className="absolute inset-0 overflow-hidden pointer-events-none" style={{ 
-                  top: prop.type === 'tab' && prop.tabLayout !== 'left' ? '24px' : '0px',
-                  left: prop.type === 'tab' && prop.tabLayout === 'left' ? '60px' : '0px',
-                }}>
-                  <div className="relative w-full h-full pointer-events-auto">
-                    {children
-                      .filter((c: any) => prop.type !== 'tab' || !prop.tabs || c.tabId === (prop.tabs[0]?.id ?? ''))
-                      .map((child: any) => renderCanvasProperty(
-                        child, 
-                        (overrides.x ?? prop.x ?? 10) + (prop.type === 'tab' && prop.tabLayout === 'left' ? 60 : 0), 
-                        (overrides.y ?? prop.y ?? 10) + (prop.type === 'tab' && prop.tabLayout !== 'left' ? 24 : 0)
-                      ))}
+              {(prop.type === 'panel' || prop.type === 'tab') && children.length > 0 && (() => {
+                const panelLabelHeight = prop.type === 'panel' && prop.labelPosition !== 'hidden' ? 24 : 0;
+                const tabHeaderHeight = prop.type === 'tab' && prop.tabLayout !== 'left' ? 24 : 0;
+                const tabSideWidth = prop.type === 'tab' && prop.tabLayout === 'left' ? 60 : 0;
+                const contentTop = panelLabelHeight + tabHeaderHeight;
+                const contentLeft = tabSideWidth;
+                const parentAbsX = (overrides.x ?? prop.x ?? 10) + contentLeft;
+                const parentAbsY = (overrides.y ?? prop.y ?? 10) + contentTop;
+                const activeTab = prop.type === 'tab' ? (activeTabIds[prop.id] || (prop.tabs?.[0]?.id ?? '')) : null;
+                const visibleChildren = prop.type === 'tab' 
+                  ? children.filter((c: any) => c.tabId === activeTab)
+                  : children;
+                return (
+                  <div className="absolute overflow-hidden" style={{ 
+                    top: `${contentTop}px`,
+                    left: `${contentLeft}px`,
+                    right: '0px',
+                    bottom: '0px',
+                  }}>
+                    <div className="relative w-full h-full">
+                      {visibleChildren.map((child: any) => renderCanvasProperty(child, parentAbsX + offsetX, parentAbsY + offsetY))}
+                    </div>
                   </div>
-                </div>
-              )}
+                );
+              })()}
             </div>
             <div
               className="absolute bottom-0 right-0 w-3 h-3 cursor-se-resize bg-purple-500/40 hover:bg-purple-400/60 rounded-tl-sm"
@@ -1526,19 +1539,21 @@ function SandboxSheetEditor({
 
       if (prop.type === 'panel') {
         const children = actorProperties.filter((c: any) => c.parentId === prop.id);
+        const panelLabelHeight = !isHidden ? lfs + 12 : 0;
         return (
           <div
             key={prop.id}
             className="absolute rounded overflow-hidden"
             style={{ left: `${px}px`, top: `${py}px`, width: `${pw}px`, height: `${ph}px`, ...propStyle }}
             data-testid={`actor-property-${prop.key}`}
+            title={prop.tooltip || prop.label}
           >
             {!isHidden && (
               <div className="text-stone-300 truncate shrink-0 px-2 pt-1" style={{ fontSize: `${lfs}px`, ...(labelColor ? { color: labelColor } : {}) }}>
                 {prop.label}
               </div>
             )}
-            <div className="relative w-full h-full">
+            <div className="relative overflow-hidden" style={{ position: 'absolute', top: `${panelLabelHeight}px`, left: 0, right: 0, bottom: 0 }}>
               {children.map((child: any) => renderActorProperty(child))}
             </div>
           </div>
@@ -1558,20 +1573,26 @@ function SandboxSheetEditor({
             className={`absolute rounded overflow-hidden flex ${isLeftLayout ? 'flex-row' : 'flex-col'}`}
             style={{ left: `${px}px`, top: `${py}px`, width: `${pw}px`, height: `${ph}px`, ...propStyle }}
             data-testid={`actor-property-${prop.key}`}
+            title={prop.tooltip || prop.label}
           >
             <div className={`flex shrink-0 ${isLeftLayout ? 'flex-col border-r border-stone-600/50' : 'border-b border-stone-600/50'}`} style={isLeftLayout ? { width: `${tabSideWidth}px` } : { height: `${tabHeaderHeight}px` }}>
               {tabs.map((tab: any) => (
                 <button
                   key={tab.id}
                   onClick={() => setActiveTabIds(prev => ({ ...prev, [prop.id]: tab.id }))}
-                  className={`px-3 py-1 text-xs truncate transition-colors ${
+                  className={`px-3 py-1 text-xs truncate transition-colors flex items-center justify-center gap-1 ${
                     tab.id === activeTabId
                       ? `text-purple-300 bg-purple-900/20 ${isLeftLayout ? 'border-r-2 border-purple-500' : 'border-b-2 border-purple-500'}`
                       : 'text-stone-500 hover:text-stone-300'
                   }`}
                   data-testid={`actor-tab-${prop.key}-${tab.id}`}
+                  title={tab.label}
                 >
-                  {tab.label}
+                  {tab.icon ? (
+                    <img src={tab.icon} alt={tab.label} className="h-4 w-4 object-contain" />
+                  ) : (
+                    tab.label
+                  )}
                 </button>
               ))}
             </div>
@@ -1588,6 +1609,7 @@ function SandboxSheetEditor({
           className="absolute"
           style={{ left: `${px}px`, top: `${py}px`, width: `${pw}px`, height: `${ph}px`, ...propStyle }}
           data-testid={`actor-property-${prop.key}`}
+          title={prop.tooltip || prop.label}
         >
           <div className={`flex ${isLeft ? 'flex-row items-center gap-2' : 'flex-col'} w-full h-full`}>
             {!isHidden && (
@@ -1692,7 +1714,7 @@ function SandboxSheetEditor({
       if (prop.type === 'panel') {
         const children = actorProperties.filter((c: any) => c.parentId === prop.id);
         return (
-          <div key={prop.id} className="rounded-lg p-3 space-y-3" style={propStyle} data-testid={`actor-property-mobile-${prop.key}`}>
+          <div key={prop.id} className="rounded-lg p-3 space-y-3" style={propStyle} data-testid={`actor-property-mobile-${prop.key}`} title={prop.tooltip || prop.label}>
             <Label className="text-stone-300 font-medium" style={{ fontSize: `${lfs}px`, ...(labelColor ? { color: labelColor } : {}) }}>{prop.label}</Label>
             {children.map((child: any) => renderMobileProperty(child))}
           </div>
@@ -1705,20 +1727,25 @@ function SandboxSheetEditor({
         const children = actorProperties.filter((c: any) => c.parentId === prop.id && c.tabId === activeTabId);
         const isLeftLayout = prop.tabLayout === 'left';
         return (
-          <div key={prop.id} className={`rounded-lg overflow-hidden flex ${isLeftLayout ? 'flex-row' : 'flex-col'}`} style={propStyle} data-testid={`actor-property-mobile-${prop.key}`}>
+          <div key={prop.id} className={`rounded-lg overflow-hidden flex ${isLeftLayout ? 'flex-row' : 'flex-col'}`} style={propStyle} data-testid={`actor-property-mobile-${prop.key}`} title={prop.tooltip || prop.label}>
             <div className={`flex shrink-0 ${isLeftLayout ? 'flex-col border-r border-stone-600/50 w-[80px]' : 'border-b border-stone-600/50'}`}>
               {tabs.map((tab: any) => (
                 <button
                   key={tab.id}
                   onClick={() => setActiveTabIds(prev => ({ ...prev, [prop.id]: tab.id }))}
-                  className={`px-3 py-2 text-xs truncate transition-colors ${isLeftLayout ? 'text-left' : 'flex-1'} ${
+                  className={`px-3 py-2 text-xs truncate transition-colors flex items-center justify-center gap-1 ${isLeftLayout ? 'text-left' : 'flex-1'} ${
                     tab.id === activeTabId
                       ? `text-purple-300 bg-purple-900/20 ${isLeftLayout ? 'border-r-2 border-purple-500' : 'border-b-2 border-purple-500'}`
                       : 'text-stone-500 hover:text-stone-300'
                   }`}
                   data-testid={`actor-tab-mobile-${prop.key}-${tab.id}`}
+                  title={tab.label}
                 >
-                  {tab.label}
+                  {tab.icon ? (
+                    <img src={tab.icon} alt={tab.label} className="h-4 w-4 object-contain" />
+                  ) : (
+                    tab.label
+                  )}
                 </button>
               ))}
             </div>
@@ -1730,7 +1757,7 @@ function SandboxSheetEditor({
       }
 
       return (
-        <div key={prop.id} className="space-y-1" style={propStyle} data-testid={`actor-property-mobile-${prop.key}`}>
+        <div key={prop.id} className="space-y-1" style={propStyle} data-testid={`actor-property-mobile-${prop.key}`} title={prop.tooltip || prop.label}>
           <Label className="text-stone-400" style={{ fontSize: `${lfs}px`, ...(labelColor ? { color: labelColor } : {}) }}>{prop.label}</Label>
           {prop.type === 'text' && (
             <Input
@@ -2127,6 +2154,17 @@ function SandboxSheetEditor({
               </div>
 
               <div className="space-y-1">
+                <Label className="text-stone-500 text-[10px]">Tooltip</Label>
+                <Input
+                  value={selectedProperty.tooltip || ''}
+                  onChange={(e) => updatePropertyLayout(selectedProperty.id, { tooltip: e.target.value })}
+                  placeholder="Hover description..."
+                  className="bg-stone-800 border-stone-600 text-stone-200 h-7 text-xs"
+                  data-testid="input-prop-tooltip"
+                />
+              </div>
+
+              <div className="space-y-1">
                 <Label className="text-stone-500 text-[10px]">Parent Container</Label>
                 <Select
                   value={selectedProperty.parentId || '__none__'}
@@ -2203,31 +2241,45 @@ function SandboxSheetEditor({
                   </div>
                   <Label className="text-stone-500 text-[10px]">Tabs</Label>
                   {(selectedProperty.tabs || []).map((tab: TabDefinition, idx: number) => (
-                    <div key={tab.id} className="flex items-center gap-1">
-                      <Input
-                        value={tab.label}
-                        onChange={(e) => {
-                          const newTabs = [...(selectedProperty.tabs || [])];
-                          newTabs[idx] = { ...tab, label: e.target.value };
-                          updatePropertyLayout(selectedProperty.id, { tabs: newTabs });
-                        }}
-                        className="bg-stone-900 border-stone-600 text-stone-200 h-7 text-xs flex-1"
-                        data-testid={`input-tab-label-${idx}`}
-                      />
-                      {(selectedProperty.tabs || []).length > 1 && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => {
-                            const newTabs = (selectedProperty.tabs || []).filter((_: any, i: number) => i !== idx);
+                    <div key={tab.id} className="space-y-1 p-2 bg-stone-800/30 rounded border border-stone-700/30">
+                      <div className="flex items-center gap-1">
+                        <Input
+                          value={tab.label}
+                          onChange={(e) => {
+                            const newTabs = [...(selectedProperty.tabs || [])];
+                            newTabs[idx] = { ...tab, label: e.target.value };
                             updatePropertyLayout(selectedProperty.id, { tabs: newTabs });
                           }}
-                          className="h-7 w-7 text-red-400 hover:text-red-300 hover:bg-red-900/20 shrink-0"
-                          data-testid={`button-delete-tab-${idx}`}
-                        >
-                          <X className="h-3 w-3" />
-                        </Button>
-                      )}
+                          placeholder="Tab name"
+                          className="bg-stone-900 border-stone-600 text-stone-200 h-7 text-xs flex-1"
+                          data-testid={`input-tab-label-${idx}`}
+                        />
+                        {(selectedProperty.tabs || []).length > 1 && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => {
+                              const newTabs = (selectedProperty.tabs || []).filter((_: any, i: number) => i !== idx);
+                              updatePropertyLayout(selectedProperty.id, { tabs: newTabs });
+                            }}
+                            className="h-7 w-7 text-red-400 hover:text-red-300 hover:bg-red-900/20 shrink-0"
+                            data-testid={`button-delete-tab-${idx}`}
+                          >
+                            <X className="h-3 w-3" />
+                          </Button>
+                        )}
+                      </div>
+                      <Input
+                        value={tab.icon || ''}
+                        onChange={(e) => {
+                          const newTabs = [...(selectedProperty.tabs || [])];
+                          newTabs[idx] = { ...tab, icon: e.target.value };
+                          updatePropertyLayout(selectedProperty.id, { tabs: newTabs });
+                        }}
+                        placeholder="Icon URL (optional)"
+                        className="bg-stone-900 border-stone-600 text-stone-200 h-6 text-[10px]"
+                        data-testid={`input-tab-icon-${idx}`}
+                      />
                     </div>
                   ))}
                   <Button
