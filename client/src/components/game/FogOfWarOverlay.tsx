@@ -62,9 +62,10 @@ interface FogOfWarOverlayProps {
   currentUserId?: string | null;
   onVisionPolygonsChange?: (polygons: VisionPolygon[]) => void;
   showDrawingTools?: boolean;
+  gmSeeAsPlayer?: boolean;
 }
 
-export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToolToggle, tokens = [], characters = [], currentUserId, onVisionPolygonsChange, showDrawingTools = true }: FogOfWarOverlayProps) {
+export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToolToggle, tokens = [], characters = [], currentUserId, onVisionPolygonsChange, showDrawingTools = true, gmSeeAsPlayer = false }: FogOfWarOverlayProps) {
   const queryClient = useQueryClient();
   const sceneId = scene?.id;
 
@@ -300,7 +301,8 @@ export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToo
   }, [lights, gridSize, isGM]);
 
   const visionPolygons = useMemo(() => {
-    if (!fogEnabled || isGM) return [];
+    if (!fogEnabled) return [];
+    if (isGM && !gmSeeAsPlayer) return [];
     
     const blockingSegs = getBlockingSegments(
       walls.map(w => ({ x1: w.x1, y1: w.y1, x2: w.x2, y2: w.y2, wallType: w.wallType, oneWayDirection: w.oneWayDirection })),
@@ -346,7 +348,7 @@ export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToo
     }
     
     return polys;
-  }, [fogEnabled, isGM, walls, doors, windows, tokens, characters, gridSize, scene?.isDayTime, currentUserId]);
+  }, [fogEnabled, isGM, gmSeeAsPlayer, walls, doors, windows, tokens, characters, gridSize, scene?.isDayTime, currentUserId]);
 
   const prevVisionPolygonsRef = useRef<string>('');
   useEffect(() => {
@@ -376,7 +378,7 @@ export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToo
   const renderFog = useMemo(() => {
     if (!fogEnabled) return null;
 
-    if (isGM) {
+    if (isGM && !gmSeeAsPlayer) {
       return (
         <rect
           x={0}
@@ -390,7 +392,7 @@ export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToo
       );
     }
 
-    const visionPathData = visionPolygons.map((poly, i) => {
+    const visionPathData = visionPolygons.map((poly) => {
       if (poly.points.length < 3) return '';
       const pts = poly.points.map((p, j) => 
         `${j === 0 ? 'M' : 'L'} ${p.x + MAP_OFFSET} ${p.y + MAP_OFFSET}`
@@ -419,7 +421,7 @@ export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToo
         />
       </g>
     );
-  }, [fogEnabled, fogOpacity, isGM, visionPolygons]);
+  }, [fogEnabled, isGM, gmSeeAsPlayer, visionPolygons]);
 
   if (!sceneId) return null;
 
@@ -921,6 +923,8 @@ interface FogToolsPanelProps {
   setLightIntensity: (v: number) => void;
   showDrawingTools: boolean;
   setShowDrawingTools: (v: boolean) => void;
+  gmSeeAsPlayer?: boolean;
+  onGmSeeAsPlayerChange?: (val: boolean) => void;
 }
 
 export function FogToolsPanel({
@@ -947,6 +951,8 @@ export function FogToolsPanel({
   setLightIntensity,
   showDrawingTools,
   setShowDrawingTools,
+  gmSeeAsPlayer,
+  onGmSeeAsPlayerChange,
 }: FogToolsPanelProps) {
   const queryClient = useQueryClient();
   const sceneId = scene?.id;
@@ -1150,6 +1156,19 @@ export function FogToolsPanel({
             {fogEnabled ? 'On' : 'Off'}
           </Button>
         </div>
+
+        {fogEnabled && (
+          <Button
+            variant="outline"
+            size="sm"
+            className={`h-7 w-full text-xs ${gmSeeAsPlayer ? 'bg-cyan-900/50 border-cyan-600 text-cyan-300' : 'border-stone-600 text-stone-400'}`}
+            onClick={() => onGmSeeAsPlayerChange?.(!gmSeeAsPlayer)}
+            data-testid="toggle-gm-see-as-player"
+          >
+            <Eye className="h-3 w-3 mr-1" />
+            {gmSeeAsPlayer ? 'Seeing as Player' : 'See as Player'}
+          </Button>
+        )}
 
         <div className="flex items-center justify-between">
           <span className="text-xs text-stone-300">Show Tools</span>

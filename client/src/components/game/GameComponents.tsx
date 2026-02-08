@@ -379,6 +379,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
   const [lightColor, setLightColor] = useState('#ffcc44');
   const [lightIntensity, setLightIntensity] = useState(1.0);
   const [showDrawingTools, setShowDrawingTools] = useState(true);
+  const [gmSeeAsPlayer, setGmSeeAsPlayer] = useState(false);
   
   // Cleanup timers on unmount
   useEffect(() => {
@@ -1866,7 +1867,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
         })()}
 
         {/* Tokens - Keep original coordinate system */}
-        {((!isGM && scene?.fogEnabled)
+        {(((!isGM || gmSeeAsPlayer) && scene?.fogEnabled)
           ? (visionPolygons && visionPolygons.length > 0 ? tokens.filter(token => {
               const tokenCenterX = token.x + (scene?.gridSize || gridSize) / 2;
               const tokenCenterY = token.y + (scene?.gridSize || gridSize) / 2;
@@ -2205,6 +2206,21 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                   title={isInvisible ? 'Make visible' : 'Make invisible'}
                 >
                   {isInvisible ? <Eye className="w-4 h-4 text-white" /> : <EyeOff className="w-4 h-4 text-white" />}
+                </button>
+              )}
+              
+              {showDeleteButton === token.id && role === 'gm' && token.characterId && (
+                <button
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onTokenLongPress?.(token);
+                  }}
+                  className="absolute -bottom-3 -left-3 w-7 h-7 bg-cyan-600 hover:bg-cyan-700 rounded-full flex items-center justify-center shadow-lg border-2 border-cyan-400 z-30 pointer-events-auto touch-auto"
+                  data-testid={`button-vision-${token.id}`}
+                  title="Vision Settings"
+                >
+                  <Layers className="w-4 h-4 text-white" />
                 </button>
               )}
               
@@ -3315,6 +3331,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
             currentUserId={currentUserId}
             onVisionPolygonsChange={setVisionPolygons}
             showDrawingTools={showDrawingTools}
+            gmSeeAsPlayer={gmSeeAsPlayer}
           />
         )}
         
@@ -3361,6 +3378,8 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
           setLightIntensity={setLightIntensity}
           showDrawingTools={showDrawingTools}
           setShowDrawingTools={setShowDrawingTools}
+          gmSeeAsPlayer={gmSeeAsPlayer}
+          onGmSeeAsPlayerChange={setGmSeeAsPlayer}
         />
       )}
 

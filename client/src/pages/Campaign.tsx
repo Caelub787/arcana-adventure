@@ -9762,6 +9762,22 @@ export default function Campaign() {
            {/* Hotbars Display - only show when there's a character to display */}
            {/* For players: show ONLY their assigned character (not changed by token clicks) */}
            {/* For GMs: show inspectedChar (clicked token) */}
+           {!isSandbox && character && (
+             <button
+               onClick={() => {
+                 if (character) {
+                   setCharacterSheetDefaultTab('overview');
+                   openCharacterSheet(character);
+                 }
+               }}
+               className="absolute bottom-[72px] right-16 w-8 h-8 rounded-lg bg-stone-800/90 border border-stone-600 text-stone-300 flex items-center justify-center shadow-lg hover:bg-stone-700 hover:text-amber-400 transition-all z-10"
+               data-testid="button-open-character-sheet"
+               title={`Open ${character.name || 'Character'} Sheet`}
+             >
+               <User className="h-4 w-4" />
+             </button>
+           )}
+
            {!isSandbox && (role === 'gm' ? inspectedChar : character) && (
              <BattleMapHotbars 
                character={role === 'gm' ? inspectedChar : character}
@@ -10750,19 +10766,6 @@ export default function Campaign() {
         const tokenChar = characters?.find((c: any) => c.id === longPressedToken.characterId);
         if (!tokenChar) return null;
         
-        if (!showTokenVisionPanel) {
-          return (
-            <button
-              onClick={() => setShowTokenVisionPanel(true)}
-              className="fixed bottom-20 left-4 z-[70] w-10 h-10 rounded-lg bg-cyan-900/90 border border-cyan-600 text-cyan-300 flex items-center justify-center shadow-xl backdrop-blur-sm hover:bg-cyan-800 hover:scale-105 transition-all"
-              data-testid="button-token-vision"
-              title={`${tokenChar.name} Vision Settings`}
-            >
-              <Layers className="h-5 w-5" />
-            </button>
-          );
-        }
-        
         return (
           <div className="fixed bottom-20 left-4 z-[70] bg-stone-900/95 border border-stone-700 rounded-lg p-3 w-64 shadow-xl backdrop-blur-sm" data-testid="token-fog-settings">
             <div className="flex items-center justify-between mb-3">
@@ -10770,7 +10773,7 @@ export default function Campaign() {
                 <Layers className="h-4 w-4 text-cyan-400" />
                 <span className="text-sm font-bold text-stone-200">{tokenChar.name} Vision</span>
               </div>
-              <button onClick={() => { setShowTokenVisionPanel(false); setLongPressedToken(null); }} className="text-stone-500 hover:text-stone-300">
+              <button onClick={() => { setLongPressedToken(null); }} className="text-stone-500 hover:text-stone-300">
                 <X className="h-4 w-4" />
               </button>
             </div>
