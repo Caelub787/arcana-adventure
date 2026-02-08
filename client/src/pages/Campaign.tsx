@@ -876,6 +876,20 @@ function SandboxSheetEditor({
   const [newPropType, setNewPropType] = useState<SandboxPropertyType>('text');
   const [newPropOptions, setNewPropOptions] = useState('');
   const [newPropDefault, setNewPropDefault] = useState('');
+  const [newPropX, setNewPropX] = useState(10);
+  const [newPropY, setNewPropY] = useState(10);
+  const [newPropWidth, setNewPropWidth] = useState(200);
+  const [newPropHeight, setNewPropHeight] = useState(40);
+  const [newPropLabelFontSize, setNewPropLabelFontSize] = useState(11);
+  const [newPropValueFontSize, setNewPropValueFontSize] = useState(13);
+  const [newPropLabelPosition, setNewPropLabelPosition] = useState<string>('top');
+  const [newPropTooltip, setNewPropTooltip] = useState('');
+  const [newPropStyle, setNewPropStyle] = useState<PropertyStyle>({});
+  const [newPropTabs, setNewPropTabs] = useState<TabDefinition[]>([{ id: crypto.randomUUID(), label: 'Tab 1' }, { id: crypto.randomUUID(), label: 'Tab 2' }]);
+  const [newPropTabLayout, setNewPropTabLayout] = useState('top');
+  const [newPropCreatorPos, setNewPropCreatorPos] = useState({ x: 200, y: 100 });
+  const [isNewPropDragging, setIsNewPropDragging] = useState(false);
+  const newPropDragRef = useRef({ x: 0, y: 0, startX: 0, startY: 0 });
   const [selectedPropertyId, setSelectedPropertyId] = useState<string | null>(null);
   const [propSettingsOpen, setPropSettingsOpen] = useState(false);
   const [propContextMenu, setPropContextMenu] = useState<{ x: number; y: number; propId: string } | null>(null);
@@ -1018,58 +1032,89 @@ function SandboxSheetEditor({
       toast({ title: "Duplicate key", description: "A property with this key already exists", variant: "destructive" });
       return;
     }
-    const maxY = properties.length > 0
-      ? Math.max(...properties.map((p: any) => (p.y ?? 0) + (p.height ?? 40)))
-      : 0;
     const newProp: any = {
       id: crypto.randomUUID(),
       key: newPropKey.trim(),
       label: newPropLabel.trim(),
       type: newPropType,
       ...(newPropType === 'select' ? { options: newPropOptions.split(',').map(o => o.trim()).filter(Boolean) } : {}),
-      ...(newPropType === 'tab' ? { tabs: [{ id: crypto.randomUUID(), label: 'Tab 1' }, { id: crypto.randomUUID(), label: 'Tab 2' }] } : {}),
+      ...(newPropType === 'tab' ? { tabs: newPropTabs, tabLayout: newPropTabLayout } : {}),
       defaultValue: newPropDefault,
-      x: 10,
-      y: maxY + 10,
-      width: newPropType === 'panel' || newPropType === 'tab' ? 300 : (newPropType === 'pfp' ? 100 : 200),
-      height: newPropType === 'panel' || newPropType === 'tab' ? 200 : (newPropType === 'pfp' ? 100 : 40),
-      labelFontSize: 11,
-      valueFontSize: 13,
-      labelPosition: newPropType === 'pfp' ? 'hidden' as const : 'top' as const,
+      x: newPropX,
+      y: newPropY,
+      width: newPropWidth,
+      height: newPropHeight,
+      labelFontSize: newPropLabelFontSize,
+      valueFontSize: newPropValueFontSize,
+      labelPosition: newPropLabelPosition,
+      tooltip: newPropTooltip || undefined,
+      style: Object.keys(newPropStyle).length > 0 ? newPropStyle : undefined,
     };
     if (containerAddTarget) {
       newProp.parentId = containerAddTarget.parentId;
       if (containerAddTarget.tabId) {
         newProp.tabId = containerAddTarget.tabId;
       }
-      const parentProp = properties.find((p: any) => p.id === containerAddTarget.parentId);
-      const siblings = properties.filter((p: any) => p.parentId === containerAddTarget.parentId && (!containerAddTarget.tabId || p.tabId === containerAddTarget.tabId));
-      if (siblings.length > 0) {
-        const siblingMaxY = Math.max(...siblings.map((s: any) => (s.y ?? 0) + (s.height ?? 40)));
-        newProp.x = (parentProp?.x ?? 0) + 10;
-        newProp.y = siblingMaxY + 10;
-      } else {
-        const parentLabelOffset = parentProp?.type === 'panel' && parentProp?.labelPosition !== 'hidden' ? 24 : 0;
-        const tabHeaderOffset = parentProp?.type === 'tab' && parentProp?.tabLayout !== 'left' ? 24 : 0;
-        const tabSideOffset = parentProp?.type === 'tab' && parentProp?.tabLayout === 'left' ? 60 : 0;
-        newProp.x = (parentProp?.x ?? 0) + tabSideOffset + 10;
-        newProp.y = (parentProp?.y ?? 0) + parentLabelOffset + tabHeaderOffset + 10;
-      }
     }
     const newData = { ...templateData, properties: [...properties, newProp] };
     updateTemplateMutationSheet.mutate({ data: JSON.stringify(newData) });
     setAddingProperty(false);
+    resetNewPropState();
+    toast({ title: "Property added" });
+  };
+
+  const resetNewPropState = () => {
     setNewPropKey('');
     setNewPropLabel('');
     setNewPropType('text');
     setNewPropOptions('');
     setNewPropDefault('');
+    setNewPropX(10);
+    setNewPropY(10);
+    setNewPropWidth(200);
+    setNewPropHeight(40);
+    setNewPropLabelFontSize(11);
+    setNewPropValueFontSize(13);
+    setNewPropLabelPosition('top');
+    setNewPropTooltip('');
+    setNewPropStyle({});
+    setNewPropTabs([{ id: crypto.randomUUID(), label: 'Tab 1' }, { id: crypto.randomUUID(), label: 'Tab 2' }]);
+    setNewPropTabLayout('top');
     setContainerAddTarget(null);
-    toast({ title: "Property added" });
+  };
+
+  const handleNewPropTypeChange = (type: SandboxPropertyType) => {
+    setNewPropType(type);
+    if (type === 'panel' || type === 'tab') {
+      setNewPropWidth(300);
+      setNewPropHeight(200);
+    } else if (type === 'pfp') {
+      setNewPropWidth(100);
+      setNewPropHeight(100);
+      setNewPropLabelPosition('hidden');
+    } else {
+      setNewPropWidth(200);
+      setNewPropHeight(40);
+    }
   };
 
   const handleAddPropertyToContainer = (parentId: string, tabId?: string) => {
     setContainerAddTarget({ parentId, tabId });
+    resetNewPropState();
+    setContainerAddTarget({ parentId, tabId });
+    const parentProp = properties.find((p: any) => p.id === parentId);
+    const siblings = properties.filter((p: any) => p.parentId === parentId && (!tabId || p.tabId === tabId));
+    if (siblings.length > 0) {
+      const siblingMaxY = Math.max(...siblings.map((s: any) => (s.y ?? 0) + (s.height ?? 40)));
+      setNewPropX((parentProp?.x ?? 0) + 10);
+      setNewPropY(siblingMaxY + 10);
+    } else {
+      const parentLabelOffset = parentProp?.type === 'panel' && parentProp?.labelPosition !== 'hidden' ? 24 : 0;
+      const tabHeaderOffset = parentProp?.type === 'tab' && parentProp?.tabLayout !== 'left' ? 24 : 0;
+      const tabSideOffset = parentProp?.type === 'tab' && parentProp?.tabLayout === 'left' ? 60 : 0;
+      setNewPropX((parentProp?.x ?? 0) + tabSideOffset + 10);
+      setNewPropY((parentProp?.y ?? 0) + parentLabelOffset + tabHeaderOffset + 10);
+    }
     setAddingProperty(true);
   };
 
@@ -1530,79 +1575,7 @@ function SandboxSheetEditor({
             <h3 className="text-sm font-medium text-purple-300">Properties</h3>
           </div>
 
-          {addingProperty && (
-            <div className="bg-stone-800/50 border border-purple-800/40 rounded-lg p-3 space-y-3" data-testid="add-property-form">
-              <div className="space-y-1.5">
-                <Label className="text-stone-400 text-xs">Key (alphanumeric, no spaces)</Label>
-                <Input
-                  value={newPropKey}
-                  onChange={(e) => setNewPropKey(e.target.value.replace(/[^a-zA-Z0-9]/g, ''))}
-                  placeholder="e.g. hitPoints"
-                  className="bg-stone-900 border-stone-600 text-stone-200 h-8 text-sm"
-                  data-testid="input-property-key"
-                  autoFocus
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-stone-400 text-xs">Label (display name)</Label>
-                <Input
-                  value={newPropLabel}
-                  onChange={(e) => setNewPropLabel(e.target.value)}
-                  placeholder="e.g. Hit Points"
-                  className="bg-stone-900 border-stone-600 text-stone-200 h-8 text-sm"
-                  data-testid="input-property-label"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-stone-400 text-xs">Type</Label>
-                <Select value={newPropType} onValueChange={(v: any) => setNewPropType(v)}>
-                  <SelectTrigger className="bg-stone-900 border-stone-600 text-stone-200 h-8 text-sm" data-testid="select-property-type">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="bg-stone-800 border-stone-700">
-                    <SelectItem value="text" className="text-stone-200">Text</SelectItem>
-                    <SelectItem value="number" className="text-stone-200">Number</SelectItem>
-                    <SelectItem value="checkbox" className="text-stone-200">Checkbox</SelectItem>
-                    <SelectItem value="textarea" className="text-stone-200">Textarea</SelectItem>
-                    <SelectItem value="select" className="text-stone-200">Select</SelectItem>
-                    <SelectItem value="panel" className="text-stone-200">Panel (Container)</SelectItem>
-                    <SelectItem value="tab" className="text-stone-200">Tabs (Switchable)</SelectItem>
-                    <SelectItem value="pfp" className="text-stone-200">Profile Picture</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              {newPropType === 'select' && (
-                <div className="space-y-1.5">
-                  <Label className="text-stone-400 text-xs">Options (comma-separated)</Label>
-                  <Input
-                    value={newPropOptions}
-                    onChange={(e) => setNewPropOptions(e.target.value)}
-                    placeholder="e.g. Option 1, Option 2, Option 3"
-                    className="bg-stone-900 border-stone-600 text-stone-200 h-8 text-sm"
-                    data-testid="input-property-options"
-                  />
-                </div>
-              )}
-              <div className="space-y-1.5">
-                <Label className="text-stone-400 text-xs">Default Value</Label>
-                <Input
-                  value={newPropDefault}
-                  onChange={(e) => setNewPropDefault(e.target.value)}
-                  placeholder="Default value..."
-                  className="bg-stone-900 border-stone-600 text-stone-200 h-8 text-sm"
-                  data-testid="input-property-default"
-                />
-              </div>
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={() => { setAddingProperty(false); setNewPropKey(''); setNewPropLabel(''); setNewPropType('text'); setNewPropOptions(''); setNewPropDefault(''); setContainerAddTarget(null); }} className="flex-1 border-stone-600 text-stone-400 h-7 text-xs" data-testid="button-cancel-property">
-                  Cancel
-                </Button>
-                <Button size="sm" onClick={handleAddProperty} disabled={!newPropKey.trim() || !newPropLabel.trim()} className="flex-1 bg-purple-600 hover:bg-purple-700 text-white h-7 text-xs" data-testid="button-save-property">
-                  Save
-                </Button>
-              </div>
-            </div>
-          )}
+          {/* Floating property creator panel rendered via portal below */}
 
           {properties.length === 0 && !addingProperty && (
             <div className="text-stone-500 text-center italic border border-dashed border-stone-700 rounded-lg p-6 text-sm">
@@ -2578,6 +2551,209 @@ function SandboxSheetEditor({
               <svg width="16" height="16" viewBox="0 0 16 16" className="text-stone-600">
                 <path d="M14 14L8 14M14 14L14 8M14 14L6 6" stroke="currentColor" strokeWidth="1.5" fill="none" />
               </svg>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {addingProperty && createPortal(
+        <div
+          className="fixed bg-stone-900 border border-purple-700/50 rounded-lg shadow-2xl shadow-purple-900/30 overflow-hidden"
+          style={{ left: '50%', top: '50%', transform: 'translate(-50%, -50%)', width: '380px', maxHeight: '85vh', zIndex: 9999 }}
+          onMouseDown={(e) => e.stopPropagation()}
+          data-testid="add-property-form"
+        >
+          <div className="flex items-center justify-between px-3 py-2 border-b border-stone-700 bg-stone-800/50 rounded-t-lg">
+            <span className="text-xs font-semibold text-purple-300">
+              {containerAddTarget ? 'Add Property to Container' : 'Add New Property'}
+            </span>
+            <button onClick={() => { setAddingProperty(false); resetNewPropState(); }} className="text-stone-400 hover:text-stone-200">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          <div className="overflow-y-auto p-3 space-y-3" style={{ maxHeight: 'calc(85vh - 44px)' }}>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1">
+                <Label className="text-stone-400 text-[10px]">Key</Label>
+                <Input
+                  value={newPropKey}
+                  onChange={(e) => setNewPropKey(e.target.value.replace(/[^a-zA-Z0-9]/g, ''))}
+                  placeholder="hitPoints"
+                  className="bg-stone-900 border-stone-600 text-stone-200 h-7 text-xs"
+                  data-testid="input-property-key"
+                  autoFocus
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-stone-400 text-[10px]">Label</Label>
+                <Input
+                  value={newPropLabel}
+                  onChange={(e) => setNewPropLabel(e.target.value)}
+                  placeholder="Hit Points"
+                  className="bg-stone-900 border-stone-600 text-stone-200 h-7 text-xs"
+                  data-testid="input-property-label"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1">
+                <Label className="text-stone-400 text-[10px]">Type</Label>
+                <Select value={newPropType} onValueChange={(v: any) => handleNewPropTypeChange(v)}>
+                  <SelectTrigger className="bg-stone-900 border-stone-600 text-stone-200 h-7 text-xs" data-testid="select-property-type">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-stone-800 border-stone-700 z-[10000]">
+                    <SelectItem value="text" className="text-stone-200 text-xs">Text</SelectItem>
+                    <SelectItem value="number" className="text-stone-200 text-xs">Number</SelectItem>
+                    <SelectItem value="checkbox" className="text-stone-200 text-xs">Checkbox</SelectItem>
+                    <SelectItem value="textarea" className="text-stone-200 text-xs">Textarea</SelectItem>
+                    <SelectItem value="select" className="text-stone-200 text-xs">Select</SelectItem>
+                    <SelectItem value="panel" className="text-stone-200 text-xs">Panel (Container)</SelectItem>
+                    <SelectItem value="tab" className="text-stone-200 text-xs">Tabs (Switchable)</SelectItem>
+                    <SelectItem value="pfp" className="text-stone-200 text-xs">Profile Picture</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-stone-400 text-[10px]">Label Position</Label>
+                <Select value={newPropLabelPosition} onValueChange={(v) => setNewPropLabelPosition(v)}>
+                  <SelectTrigger className="bg-stone-900 border-stone-600 text-stone-200 h-7 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-stone-800 border-stone-700 z-[10000]">
+                    <SelectItem value="top" className="text-stone-200 text-xs">Top</SelectItem>
+                    <SelectItem value="left" className="text-stone-200 text-xs">Left</SelectItem>
+                    <SelectItem value="hidden" className="text-stone-200 text-xs">Hidden</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {newPropType === 'select' && (
+              <div className="space-y-1">
+                <Label className="text-stone-400 text-[10px]">Options (comma-separated)</Label>
+                <Input
+                  value={newPropOptions}
+                  onChange={(e) => setNewPropOptions(e.target.value)}
+                  placeholder="Option 1, Option 2, Option 3"
+                  className="bg-stone-900 border-stone-600 text-stone-200 h-7 text-xs"
+                  data-testid="input-property-options"
+                />
+              </div>
+            )}
+
+            {newPropType === 'tab' && (
+              <div className="space-y-1.5">
+                <Label className="text-stone-400 text-[10px]">Tab Layout</Label>
+                <Select value={newPropTabLayout} onValueChange={(v) => setNewPropTabLayout(v)}>
+                  <SelectTrigger className="bg-stone-900 border-stone-600 text-stone-200 h-7 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-stone-800 border-stone-700 z-[10000]">
+                    <SelectItem value="top" className="text-stone-200 text-xs">Top</SelectItem>
+                    <SelectItem value="left" className="text-stone-200 text-xs">Left</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Label className="text-stone-400 text-[10px] mt-1">Tabs</Label>
+                <div className="space-y-1">
+                  {newPropTabs.map((tab, idx) => (
+                    <div key={tab.id} className="flex items-center gap-1">
+                      <Input
+                        value={tab.label}
+                        onChange={(e) => {
+                          const updated = [...newPropTabs];
+                          updated[idx] = { ...tab, label: e.target.value };
+                          setNewPropTabs(updated);
+                        }}
+                        className="bg-stone-900 border-stone-600 text-stone-200 h-6 text-xs flex-1"
+                      />
+                      {newPropTabs.length > 1 && (
+                        <button onClick={() => setNewPropTabs(newPropTabs.filter((_, i) => i !== idx))} className="text-stone-500 hover:text-red-400">
+                          <X className="h-3 w-3" />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                  <button
+                    onClick={() => setNewPropTabs([...newPropTabs, { id: crypto.randomUUID(), label: `Tab ${newPropTabs.length + 1}` }])}
+                    className="text-purple-400 hover:text-purple-300 text-[10px]"
+                  >
+                    + Add Tab
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <div className="space-y-1">
+              <Label className="text-stone-400 text-[10px]">Default Value</Label>
+              <Input
+                value={newPropDefault}
+                onChange={(e) => setNewPropDefault(e.target.value)}
+                placeholder="Default value..."
+                className="bg-stone-900 border-stone-600 text-stone-200 h-7 text-xs"
+                data-testid="input-property-default"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-stone-400 text-[10px]">Tooltip</Label>
+              <Input
+                value={newPropTooltip}
+                onChange={(e) => setNewPropTooltip(e.target.value)}
+                placeholder="Hover description..."
+                className="bg-stone-900 border-stone-600 text-stone-200 h-7 text-xs"
+              />
+            </div>
+
+            <div className="border-t border-stone-700 pt-2">
+              <Label className="text-stone-400 text-[10px] font-medium">Position & Size</Label>
+              <div className="grid grid-cols-4 gap-1.5 mt-1">
+                <div className="space-y-0.5">
+                  <Label className="text-stone-500 text-[9px]">X</Label>
+                  <Input type="number" value={newPropX} onChange={(e) => setNewPropX(Number(e.target.value))} className="bg-stone-900 border-stone-600 text-stone-200 h-6 text-[10px] px-1" />
+                </div>
+                <div className="space-y-0.5">
+                  <Label className="text-stone-500 text-[9px]">Y</Label>
+                  <Input type="number" value={newPropY} onChange={(e) => setNewPropY(Number(e.target.value))} className="bg-stone-900 border-stone-600 text-stone-200 h-6 text-[10px] px-1" />
+                </div>
+                <div className="space-y-0.5">
+                  <Label className="text-stone-500 text-[9px]">Width</Label>
+                  <Input type="number" value={newPropWidth} onChange={(e) => setNewPropWidth(Number(e.target.value))} className="bg-stone-900 border-stone-600 text-stone-200 h-6 text-[10px] px-1" />
+                </div>
+                <div className="space-y-0.5">
+                  <Label className="text-stone-500 text-[9px]">Height</Label>
+                  <Input type="number" value={newPropHeight} onChange={(e) => setNewPropHeight(Number(e.target.value))} className="bg-stone-900 border-stone-600 text-stone-200 h-6 text-[10px] px-1" />
+                </div>
+              </div>
+            </div>
+
+            <div className="border-t border-stone-700 pt-2">
+              <Label className="text-stone-400 text-[10px] font-medium">Font Sizes</Label>
+              <div className="grid grid-cols-2 gap-2 mt-1">
+                <div className="space-y-0.5">
+                  <Label className="text-stone-500 text-[9px]">Label Font</Label>
+                  <Input type="number" value={newPropLabelFontSize} onChange={(e) => setNewPropLabelFontSize(Number(e.target.value))} min={8} max={24} className="bg-stone-900 border-stone-600 text-stone-200 h-6 text-[10px] px-1" />
+                </div>
+                <div className="space-y-0.5">
+                  <Label className="text-stone-500 text-[9px]">Value Font</Label>
+                  <Input type="number" value={newPropValueFontSize} onChange={(e) => setNewPropValueFontSize(Number(e.target.value))} min={8} max={24} className="bg-stone-900 border-stone-600 text-stone-200 h-6 text-[10px] px-1" />
+                </div>
+              </div>
+            </div>
+
+            <div className="border-t border-stone-700 pt-2">
+              <PropertyStyleEditor style={newPropStyle} onChange={setNewPropStyle} />
+            </div>
+
+            <div className="flex gap-2 pt-1 border-t border-stone-700">
+              <Button variant="outline" size="sm" onClick={() => { setAddingProperty(false); resetNewPropState(); }} className="flex-1 border-stone-600 text-stone-400 h-7 text-xs" data-testid="button-cancel-property">
+                Cancel
+              </Button>
+              <Button size="sm" onClick={handleAddProperty} disabled={!newPropKey.trim() || !newPropLabel.trim()} className="flex-1 bg-purple-600 hover:bg-purple-700 text-white h-7 text-xs" data-testid="button-save-property">
+                Create Property
+              </Button>
             </div>
           </div>
         </div>,
