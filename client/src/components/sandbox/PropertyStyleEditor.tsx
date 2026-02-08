@@ -47,6 +47,7 @@ export interface PropertyStyle {
 export interface TabDefinition {
   id: string;
   label: string;
+  icon?: string;
 }
 
 export type SandboxPropertyType =
@@ -77,6 +78,7 @@ export interface SandboxProperty {
   tabId?: string | null;
   tabs?: TabDefinition[];
   tabLayout?: 'top' | 'left';
+  tooltip?: string;
 }
 
 function buildGradientString(gradient: PropertyGradient): string {
