@@ -2829,16 +2829,13 @@ function SandboxSheetEditor({
           displayVal = result.value;
         }
       }
-      const px = prop.x ?? 10;
-      const py = prop.y ?? 0;
-      const pw = prop.width ?? 200;
-      const ph = prop.height ?? 40;
       const lfs = prop.labelFontSize ?? 11;
       const vfs = prop.valueFontSize ?? 13;
       const labelPos = prop.labelPosition || 'top';
       const isLeft = labelPos === 'left';
       const isHidden = labelPos === 'hidden';
       const propStyle = getPropertyCssStyle(prop.style);
+      const { position, left, top, right, bottom, ...safePropStyle } = propStyle as any;
       const labelColor = prop.style?.labelColor || prop.style?.textColor || undefined;
       const valueColor = prop.style?.valueColor || prop.style?.textColor || undefined;
 
@@ -2855,13 +2852,13 @@ function SandboxSheetEditor({
         return (
           <div
             key={prop.id}
-            className="absolute overflow-hidden"
-            style={{ left: `${px}px`, top: `${py}px`, width: `${pw}px`, height: `${ph}px`, ...propStyle }}
+            className="overflow-hidden"
+            style={{ ...safePropStyle }}
             data-testid={`actor-property-${prop.key}`}
             title={prop.tooltip}
           >
             <div
-              className="w-full h-full"
+              className="w-full"
               style={{ fontSize: `${vfs}px`, color: valueColor || '#e7e5e4' }}
               dangerouslySetInnerHTML={{ __html: content }}
             />
@@ -2879,15 +2876,15 @@ function SandboxSheetEditor({
         return (
           <div
             key={prop.id}
-            className="absolute"
-            style={{ left: `${px}px`, top: `${py}px`, width: `${pw}px`, height: `${ph}px`, ...propStyle }}
+            className="mb-1"
+            style={{ ...safePropStyle }}
             data-testid={`actor-property-${prop.key}`}
             title={prop.tooltip}
           >
             <button
               onClick={() => !isDisabled && handleButtonRoll(prop)}
               disabled={isDisabled}
-              className={`w-full h-full rounded font-medium text-white transition-all ${isDisabled ? 'opacity-40 cursor-not-allowed' : 'hover:brightness-110 active:scale-95 cursor-pointer'}`}
+              className={`w-full py-2 rounded font-medium text-white transition-all ${isDisabled ? 'opacity-40 cursor-not-allowed' : 'hover:brightness-110 active:scale-95 cursor-pointer'}`}
               style={{ 
                 backgroundColor: prop.buttonColor || '#d97706', 
                 fontSize: `${vfs}px`,
@@ -2908,8 +2905,8 @@ function SandboxSheetEditor({
         return (
           <div
             key={prop.id}
-            className="absolute flex items-center"
-            style={{ left: `${px}px`, top: `${py}px`, width: `${pw}px`, height: `${ph}px`, ...propStyle }}
+            className="my-2 w-full"
+            style={{ ...safePropStyle }}
             data-testid={`actor-property-${prop.key}`}
           >
             <div className="w-full border-t-2" style={{ borderColor: prop.style?.textColor || '#57534e' }} />
@@ -2918,17 +2915,18 @@ function SandboxSheetEditor({
       }
 
       if (prop.type === 'textarea') {
+        const textareaHeight = Math.max(60, prop.height ?? 80);
         return (
-          <div key={prop.id} className="absolute" style={{ left: `${px}px`, top: `${py}px`, width: `${pw}px`, height: `${ph}px`, ...propStyle }} data-testid={`actor-property-${prop.key}`} title={prop.tooltip || prop.label}>
-            <div className={`flex ${isLeft ? 'flex-row items-start gap-2' : 'flex-col'} w-full h-full`}>
+          <div key={prop.id} className="mb-1" style={{ ...safePropStyle }} data-testid={`actor-property-${prop.key}`} title={prop.tooltip || prop.label}>
+            <div className={`flex ${isLeft ? 'flex-row items-start gap-2' : 'flex-col gap-1'} w-full`}>
               {!isHidden && <Label className="text-stone-400 truncate shrink-0" style={{ fontSize: `${lfs}px`, ...(labelColor ? { color: labelColor } : {}) }}>{prop.label}</Label>}
-              <div className="flex-1 min-w-0 h-full">
+              <div className="flex-1 min-w-0">
                 <textarea
                   value={hasFormula ? String(displayVal) : val}
                   onChange={(e) => handleActorValueChange(prop.key, e.target.value)}
                   readOnly={hasFormula}
-                  className={`bg-stone-800 border border-stone-700 text-stone-200 w-full h-full resize-none rounded px-2 py-1 ${hasFormula ? 'cursor-default opacity-80' : ''}`}
-                  style={{ fontSize: `${vfs}px`, ...(valueColor ? { color: valueColor } : {}), ...formulaBorder }}
+                  className={`bg-stone-800 border border-stone-700 text-stone-200 w-full resize-none rounded px-2 py-1 ${hasFormula ? 'cursor-default opacity-80' : ''}`}
+                  style={{ fontSize: `${vfs}px`, minHeight: `${textareaHeight}px`, ...(valueColor ? { color: valueColor } : {}), ...formulaBorder }}
                   data-testid={`textarea-actor-${prop.key}`}
                 />
               </div>
@@ -2939,27 +2937,34 @@ function SandboxSheetEditor({
 
       if (prop.type === 'pfp') {
         const pfpImage = val;
+        const pfpWidth = Math.max(80, prop.width ?? 120);
+        const pfpHeight = Math.max(80, prop.height ?? 120);
         return (
           <div
             key={prop.id}
-            className="absolute overflow-hidden cursor-pointer group"
-            style={{ left: `${px}px`, top: `${py}px`, width: `${pw}px`, height: `${ph}px`, ...propStyle }}
+            className="mb-1 flex justify-center cursor-pointer"
+            style={{ ...safePropStyle }}
             data-testid={`actor-property-${prop.key}`}
             title={prop.tooltip || "Double-click to change picture"}
             onDoubleClick={() => setPfpEditorOpen(prop.key)}
           >
-            {pfpImage ? (
-              <img src={pfpImage as string} alt="Profile" className="w-full h-full object-cover rounded" />
-            ) : (
-              <div className="w-full h-full flex items-center justify-center bg-stone-800 rounded">
-                <div className="flex flex-col items-center text-stone-500 gap-1">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-                  <span className="text-xs">Click to set</span>
+            <div
+              className="overflow-hidden group relative rounded"
+              style={{ width: `${pfpWidth}px`, height: `${pfpHeight}px` }}
+            >
+              {pfpImage ? (
+                <img src={pfpImage as string} alt="Profile" className="w-full h-full object-cover rounded" />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center bg-stone-800 rounded">
+                  <div className="flex flex-col items-center text-stone-500 gap-1">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                    <span className="text-xs">Click to set</span>
+                  </div>
                 </div>
+              )}
+              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded">
+                <span className="text-white text-xs">Change</span>
               </div>
-            )}
-            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded">
-              <span className="text-white text-xs">Change</span>
             </div>
           </div>
         );
@@ -2974,8 +2979,8 @@ function SandboxSheetEditor({
         const barFillPercent = max > 0 ? Math.min(100, Math.max(0, (current / max) * 100)) : 0;
         const dynamicBarColor = getBarColor(current, max, prop);
         return (
-          <div key={prop.id} className="absolute" style={{ left: `${px}px`, top: `${py}px`, width: `${pw}px`, height: `${ph}px`, ...propStyle }} data-testid={`actor-property-${prop.key}`} title={prop.tooltip || prop.label}>
-            <div className={`flex ${isLeft ? 'flex-row items-center gap-2' : 'flex-col'} w-full h-full`}>
+          <div key={prop.id} className="bg-gradient-to-r from-red-900/30 to-orange-900/20 rounded-lg p-2.5 border border-red-700/30 mb-1" style={{ ...safePropStyle }} data-testid={`actor-property-${prop.key}`} title={prop.tooltip || prop.label}>
+            <div className={`flex ${isLeft ? 'flex-row items-center gap-2' : 'flex-col gap-1'} w-full`}>
               {!isHidden && (
                 <Label className="text-stone-400 truncate shrink-0" style={{ fontSize: `${lfs}px`, ...(labelColor ? { color: labelColor } : {}) }}>
                   {prop.label}
@@ -2983,12 +2988,12 @@ function SandboxSheetEditor({
                 </Label>
               )}
               <div className="flex items-center gap-1 flex-1 min-w-0">
-                <Input type="number" value={current} onChange={(e) => { let newCurrent = Number(e.target.value); if (!prop.allowOverMax && newCurrent > max) newCurrent = max; handleActorValueChange(prop.key, JSON.stringify({ current: newCurrent, max })); }} readOnly={hasFormula} className={`bg-stone-800 border-stone-700 text-stone-200 h-full flex-1 ${hasFormula ? 'cursor-default opacity-80' : ''}`} style={{ fontSize: `${vfs}px`, ...(valueColor ? { color: valueColor } : {}), ...formulaBorder }} data-testid={`input-actor-${prop.key}-current`} />
+                <Input type="number" value={current} onChange={(e) => { let newCurrent = Number(e.target.value); if (!prop.allowOverMax && newCurrent > max) newCurrent = max; handleActorValueChange(prop.key, JSON.stringify({ current: newCurrent, max })); }} readOnly={hasFormula} className={`bg-stone-900/60 border-stone-700 text-stone-200 h-8 flex-1 ${hasFormula ? 'cursor-default opacity-80' : ''}`} style={{ fontSize: `${vfs}px`, ...(valueColor ? { color: valueColor } : {}), ...formulaBorder }} data-testid={`input-actor-${prop.key}-current`} />
                 <span className="text-stone-500 text-xs">/</span>
-                <Input type="number" value={max} onChange={(e) => handleActorValueChange(prop.key, JSON.stringify({ current, max: Number(e.target.value) }))} className="bg-stone-800 border-stone-700 text-stone-200 h-full flex-1" style={{ fontSize: `${vfs}px`, ...(valueColor ? { color: valueColor } : {}) }} data-testid={`input-actor-${prop.key}-max`} />
+                <Input type="number" value={max} onChange={(e) => handleActorValueChange(prop.key, JSON.stringify({ current, max: Number(e.target.value) }))} className="bg-stone-900/60 border-stone-700 text-stone-200 h-8 flex-1" style={{ fontSize: `${vfs}px`, ...(valueColor ? { color: valueColor } : {}) }} data-testid={`input-actor-${prop.key}-max`} />
               </div>
               {prop.showBar && (
-                <div className="w-full h-1.5 bg-stone-700 rounded-full overflow-hidden mt-0.5" data-testid={`bar-actor-${prop.key}`}>
+                <div className="w-full h-2 bg-stone-900/60 rounded-full overflow-hidden mt-1" data-testid={`bar-actor-${prop.key}`}>
                   <div className="h-full rounded-full transition-all duration-300" style={{ width: `${barFillPercent}%`, backgroundColor: dynamicBarColor }} />
                 </div>
               )}
@@ -2997,15 +3002,72 @@ function SandboxSheetEditor({
         );
       }
 
+      if (prop.type === 'boolean') {
+        return (
+          <div
+            key={prop.id}
+            className="flex items-center justify-between bg-stone-800/40 rounded px-2 py-1.5 mb-1"
+            style={{ ...safePropStyle }}
+            data-testid={`actor-property-${prop.key}`}
+            title={prop.tooltip || prop.label}
+          >
+            {!isHidden && (
+              <Label className="text-stone-400 truncate shrink-0" style={{ fontSize: `${lfs}px`, ...(labelColor ? { color: labelColor } : {}) }}>
+                {prop.label}
+                {hasFormula && <span className="ml-1 text-amber-500 text-[8px] font-mono">fx</span>}
+              </Label>
+            )}
+            <input
+              type="checkbox"
+              checked={val === true || val === 'true' || val === '1' || val === 1}
+              onChange={(e) => handleActorValueChange(prop.key, e.target.checked ? 'true' : 'false')}
+              className="h-4 w-4 accent-amber-600"
+              data-testid={`checkbox-actor-${prop.key}`}
+            />
+          </div>
+        );
+      }
+
+      if (prop.type === 'list') {
+        return (
+          <div
+            key={prop.id}
+            className="mb-1"
+            style={{ ...safePropStyle }}
+            data-testid={`actor-property-${prop.key}`}
+            title={prop.tooltip || prop.label}
+          >
+            <div className={`flex ${isLeft ? 'flex-row items-center gap-2' : 'flex-col gap-1'}`}>
+              {!isHidden && (
+                <Label className="text-stone-400 truncate shrink-0" style={{ fontSize: `${lfs}px`, ...(labelColor ? { color: labelColor } : {}) }}>
+                  {prop.label}
+                </Label>
+              )}
+              <Select value={String(val) || '__empty__'} onValueChange={(v) => handleActorValueChange(prop.key, v === '__empty__' ? '' : v)}>
+                <SelectTrigger className="bg-stone-800 border-stone-700 text-stone-200 h-8 w-full" style={{ fontSize: `${vfs}px`, ...(valueColor ? { color: valueColor } : {}) }} data-testid={`select-actor-${prop.key}`}>
+                  <SelectValue placeholder="Select..." />
+                </SelectTrigger>
+                <SelectContent className="bg-stone-800 border-stone-700">
+                  <SelectItem value="__empty__" className="text-stone-400">None</SelectItem>
+                  {((prop.defaultValue || '').split(',').map((o: string) => o.trim()).filter(Boolean)).map((opt: string) => (
+                    <SelectItem key={opt} value={opt} className="text-stone-200">{opt}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        );
+      }
+
       return (
         <div
           key={prop.id}
-          className="absolute"
-          style={{ left: `${px}px`, top: `${py}px`, width: `${pw}px`, height: `${ph}px`, ...propStyle }}
+          className="mb-1"
+          style={{ ...safePropStyle }}
           data-testid={`actor-property-${prop.key}`}
           title={prop.tooltip || prop.label}
         >
-          <div className={`flex ${isLeft ? 'flex-row items-center gap-2' : 'flex-col'} w-full h-full`}>
+          <div className={`flex ${isLeft ? 'flex-row items-center gap-2' : 'flex-col gap-1'}`}>
             {!isHidden && (
               <Label className="text-stone-400 truncate shrink-0" style={{ fontSize: `${lfs}px`, ...(labelColor ? { color: labelColor } : {}) }}>
                 {prop.label}
@@ -3018,7 +3080,7 @@ function SandboxSheetEditor({
                   value={hasFormula ? String(displayVal) : val}
                   onChange={(e) => handleActorValueChange(prop.key, e.target.value)}
                   readOnly={hasFormula}
-                  className={`bg-stone-800 border-stone-700 text-stone-200 h-full w-full ${hasFormula ? 'cursor-default opacity-80' : ''}`}
+                  className={`bg-stone-800 border-stone-700 text-stone-200 h-8 w-full ${hasFormula ? 'cursor-default opacity-80' : ''}`}
                   style={{ fontSize: `${vfs}px`, ...(valueColor ? { color: valueColor } : {}), ...formulaBorder }}
                   data-testid={`input-actor-${prop.key}`}
                 />
@@ -3032,34 +3094,10 @@ function SandboxSheetEditor({
                   step={prop.step || 1}
                   onChange={(e) => handleActorValueChange(prop.key, e.target.value)}
                   readOnly={hasFormula}
-                  className={`bg-stone-800 border-stone-700 text-stone-200 h-full w-full ${hasFormula ? 'cursor-default opacity-80' : ''}`}
+                  className={`bg-stone-800 border-stone-700 text-stone-200 h-8 w-full ${hasFormula ? 'cursor-default opacity-80' : ''}`}
                   style={{ fontSize: `${vfs}px`, ...(valueColor ? { color: valueColor } : {}), ...formulaBorder }}
                   data-testid={`input-actor-${prop.key}`}
                 />
-              )}
-              {prop.type === 'boolean' && (
-                <div className="flex items-center h-full">
-                  <input
-                    type="checkbox"
-                    checked={String(val) === 'true'}
-                    onChange={(e) => handleActorValueChange(prop.key, e.target.checked ? 'true' : 'false')}
-                    className="h-4 w-4 accent-amber-600"
-                    data-testid={`checkbox-actor-${prop.key}`}
-                  />
-                </div>
-              )}
-              {prop.type === 'list' && (
-                <Select value={String(val) || '__empty__'} onValueChange={(v) => handleActorValueChange(prop.key, v === '__empty__' ? '' : v)}>
-                  <SelectTrigger className="bg-stone-800 border-stone-700 text-stone-200 h-full w-full" style={{ fontSize: `${vfs}px`, ...(valueColor ? { color: valueColor } : {}) }} data-testid={`select-actor-${prop.key}`}>
-                    <SelectValue placeholder="Select..." />
-                  </SelectTrigger>
-                  <SelectContent className="bg-stone-800 border-stone-700">
-                    <SelectItem value="__empty__" className="text-stone-400">None</SelectItem>
-                    {((prop.defaultValue || '').split(',').map((o: string) => o.trim()).filter(Boolean)).map((opt: string) => (
-                      <SelectItem key={opt} value={opt} className="text-stone-200">{opt}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
               )}
             </div>
           </div>
@@ -3069,27 +3107,31 @@ function SandboxSheetEditor({
 
     const renderActorLayoutNode = (node: any): React.ReactNode => {
       if (!isActorNodeVisible(node.id)) return null;
-      const nodeStyle = node.styleConfig ? getPropertyCssStyle(node.styleConfig) : {};
+      const rawNodeStyle = node.styleConfig ? getPropertyCssStyle(node.styleConfig) : {};
+      const { position: _np, left: _nl, top: _nt, right: _nr, bottom: _nb, ...nodeStyle } = rawNodeStyle as any;
       const childNodes = actorLayoutNodesList.filter((n: any) => n.parentId === node.id).sort((a: any, b: any) => a.order - b.order);
       const nodeProps = actorProperties.filter((p: any) => p.parentId === node.id);
 
+      const hasCompactProps = nodeProps.length > 0 && nodeProps.every((p: any) => p.type === 'number' || p.type === 'text' || p.type === 'boolean');
+      const propsLayoutClass = hasCompactProps ? 'grid grid-cols-2 gap-2' : 'space-y-1';
+
       if (node.type === 'section') {
-        const sectionHeight = nodeProps.length > 0
-          ? Math.max(60, Math.max(...nodeProps.map((p: any) => (p.y ?? 0) + (p.height ?? 40))) + 10)
-          : 60;
         return (
-          <div key={node.id} className="relative rounded overflow-hidden mb-1" style={{ minHeight: `${sectionHeight}px`, ...nodeStyle }}>
-            {nodeProps.map((prop: any) => renderActorProperty(prop))}
-            {childNodes.map((child: any) => renderActorLayoutNode(child))}
+          <div key={node.id} className="bg-stone-800/50 border border-stone-700/60 rounded-lg p-3 mb-3 overflow-hidden" style={{ ...nodeStyle }}>
+            {node.name && <div className="text-xs text-stone-500 uppercase tracking-wider mb-2 font-medium">{node.name}</div>}
+            <div className={propsLayoutClass}>
+              {nodeProps.map((prop: any) => renderActorProperty(prop))}
+            </div>
+            {childNodes.length > 0 && <div className="space-y-2 mt-2">{childNodes.map((child: any) => renderActorLayoutNode(child))}</div>}
           </div>
         );
       }
 
       if (node.type === 'stat_block') {
         return (
-          <div key={node.id} className="relative rounded overflow-hidden mb-1 border border-amber-900/50" style={{ background: '#1a1412', ...nodeStyle }} data-testid={`actor-stat-block-${node.id}`}>
-            {node.name && <div className="px-2 py-1 border-b border-amber-900/30"><span className="text-[10px] text-amber-600 uppercase tracking-wider font-semibold">{node.name}</span></div>}
-            <div className="grid grid-cols-2 gap-1 p-2">
+          <div key={node.id} className="rounded-lg overflow-hidden mb-3 border border-amber-900/50 bg-gradient-to-r from-cyan-900/30 to-blue-900/20" style={{ ...nodeStyle }} data-testid={`actor-stat-block-${node.id}`}>
+            {node.name && <div className="px-3 py-1.5 border-b border-amber-900/30"><span className="text-[10px] text-amber-600 uppercase tracking-wider font-semibold">{node.name}</span></div>}
+            <div className="grid grid-cols-2 gap-1.5 p-2.5">
               {nodeProps.map((prop: any) => {
                 const val = actorValues[prop.key] ?? prop.defaultValue ?? '';
                 let displayVal = val;
@@ -3109,7 +3151,7 @@ function SandboxSheetEditor({
                 if (prop.type === 'resource') {
                   const rv = typeof displayVal === 'object' && displayVal !== null ? displayVal : { current: 0, max: 0 };
                   return (
-                    <div key={prop.id} className="flex items-center justify-between px-2 py-1 bg-stone-800/50 rounded" data-testid={`actor-property-${prop.key}`}>
+                    <div key={prop.id} className="flex items-center justify-between px-2 py-1.5 bg-stone-800/50 rounded-md border border-stone-700/40" data-testid={`actor-property-${prop.key}`}>
                       <span className="text-stone-400 text-xs truncate">{prop.label || prop.key}</span>
                       <span className="text-stone-200 text-sm font-medium">{rv.current}/{rv.max}</span>
                     </div>
@@ -3117,21 +3159,21 @@ function SandboxSheetEditor({
                 }
                 if (prop.type === 'boolean') {
                   return (
-                    <div key={prop.id} className="flex items-center justify-between px-2 py-1 bg-stone-800/50 rounded" data-testid={`actor-property-${prop.key}`}>
+                    <div key={prop.id} className="flex items-center justify-between px-2 py-1.5 bg-stone-800/50 rounded-md border border-stone-700/40" data-testid={`actor-property-${prop.key}`}>
                       <span className="text-stone-400 text-xs truncate">{prop.label || prop.key}</span>
                       <input type="checkbox" checked={!!displayVal} onChange={(e) => handleActorValueChange(prop.key, String(e.target.checked))} className="h-3 w-3 accent-amber-600" />
                     </div>
                   );
                 }
                 return (
-                  <div key={prop.id} className="flex items-center justify-between px-2 py-1 bg-stone-800/50 rounded" data-testid={`actor-property-${prop.key}`}>
+                  <div key={prop.id} className="flex items-center justify-between px-2 py-1.5 bg-stone-800/50 rounded-md border border-stone-700/40" data-testid={`actor-property-${prop.key}`}>
                     <span className="text-stone-400 text-xs truncate">{prop.label || prop.key}</span>
                     <span className="text-stone-200 text-sm font-medium">{String(displayVal)}</span>
                   </div>
                 );
               })}
             </div>
-            {childNodes.map((child: any) => renderActorLayoutNode(child))}
+            {childNodes.length > 0 && <div className="space-y-2 px-2.5 pb-2.5">{childNodes.map((child: any) => renderActorLayoutNode(child))}</div>}
           </div>
         );
       }
@@ -3144,13 +3186,13 @@ function SandboxSheetEditor({
         const tabButtonSize = node.behaviorConfig?.tabConfig?.tabButtonSize || 'medium';
         const tabSizeClass = tabButtonSize === 'small' ? 'px-2 py-0.5 text-[9px]' : tabButtonSize === 'large' ? 'px-4 py-2 text-xs' : 'px-2 py-1 text-[10px]';
         return (
-          <div key={node.id} className="relative rounded overflow-visible mb-1" style={nodeStyle}>
+          <div key={node.id} className="rounded-lg overflow-visible mb-3 border border-stone-700/60 bg-stone-800/30" style={nodeStyle}>
             <div className={`flex ${tabLayout === 'right' ? 'flex-row-reverse' : tabLayout === 'left' ? 'flex-row' : 'flex-col'}`}>
-              <div className={`flex ${isVerticalTabs ? 'flex-col min-w-[80px]' : 'flex-row'} gap-1 ${isVerticalTabs ? '' : 'mb-1'} px-1`} data-testid={`actor-tab-buttons-${node.id}`}>
+              <div className={`flex ${isVerticalTabs ? 'flex-col min-w-[80px]' : 'flex-row flex-wrap'} gap-1 ${isVerticalTabs ? 'p-1' : 'p-1.5 border-b border-stone-700/40'}`} data-testid={`actor-tab-buttons-${node.id}`}>
                 {childNodes.map((child: any) => (
                   <button
                     key={child.id}
-                    className={`${tabSizeClass} rounded transition-colors ${isVerticalTabs ? 'text-left' : ''} ${activeChildId === child.id ? 'bg-amber-700 text-white' : 'bg-stone-700 text-stone-400 hover:bg-stone-600'}`}
+                    className={`${tabSizeClass} rounded transition-colors ${isVerticalTabs ? 'text-left' : ''} ${activeChildId === child.id ? 'bg-amber-700 text-white' : 'bg-stone-700/60 text-stone-400 hover:bg-stone-600'}`}
                     onClick={() => setActiveTabState(prev => ({ ...prev, [node.id]: child.id }))}
                     data-testid={`actor-tab-button-${child.id}`}
                   >
@@ -3169,7 +3211,7 @@ function SandboxSheetEditor({
                   </button>
                 ))}
               </div>
-              <div className="flex-1">
+              <div className="flex-1 p-2">
                 {childNodes.filter((c: any) => c.id === activeChildId).map((child: any) => renderActorLayoutNode(child))}
               </div>
             </div>
@@ -3180,27 +3222,27 @@ function SandboxSheetEditor({
       if (node.type === 'panel') {
         const isCollapsible = node.behaviorConfig?.panelConfig?.collapsible;
         const isPanelCollapsed = collapsedPanels[node.id] ?? node.behaviorConfig?.panelConfig?.defaultCollapsed ?? false;
-        const panelHeight = nodeProps.length > 0
-          ? Math.max(60, Math.max(...nodeProps.map((p: any) => (p.y ?? 0) + (p.height ?? 40))) + 10)
-          : 60;
         return (
-          <div key={node.id} className="relative rounded overflow-visible mb-1" style={{ minHeight: isPanelCollapsed ? '24px' : `${panelHeight}px`, ...nodeStyle }}>
+          <div key={node.id} className="rounded-lg overflow-visible mb-3 border border-stone-700/60 bg-stone-800/40" style={{ ...nodeStyle }}>
             {isCollapsible && (
-              <div className="absolute top-0 left-0 z-20 px-2 py-0.5 flex items-center gap-1">
+              <div className="px-3 py-2 flex items-center gap-1.5 cursor-pointer hover:bg-stone-700/30 transition-colors rounded-t-lg"
+                onClick={() => setCollapsedPanels(prev => ({ ...prev, [node.id]: !isPanelCollapsed }))}
+              >
                 <button
                   className="text-stone-500 hover:text-stone-300 transition-colors"
-                  onClick={() => setCollapsedPanels(prev => ({ ...prev, [node.id]: !isPanelCollapsed }))}
                   data-testid={`actor-toggle-panel-${node.id}`}
                 >
-                  {isPanelCollapsed ? <ChevronRight className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                  {isPanelCollapsed ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
                 </button>
-                <span className="text-[10px] text-stone-500 uppercase tracking-wider">{node.name}</span>
+                <span className="text-xs text-stone-400 uppercase tracking-wider font-medium">{node.name}</span>
               </div>
             )}
             {!isPanelCollapsed && (
-              <div className={isCollapsible ? "mt-4" : ""}>
-                {nodeProps.map((prop: any) => renderActorProperty(prop))}
-                {childNodes.map((child: any) => renderActorLayoutNode(child))}
+              <div className={`p-3 ${isCollapsible ? 'border-t border-stone-700/40' : ''}`}>
+                <div className={propsLayoutClass}>
+                  {nodeProps.map((prop: any) => renderActorProperty(prop))}
+                </div>
+                {childNodes.length > 0 && <div className="space-y-2 mt-2">{childNodes.map((child: any) => renderActorLayoutNode(child))}</div>}
               </div>
             )}
           </div>
@@ -3208,23 +3250,22 @@ function SandboxSheetEditor({
       }
 
       return (
-        <div key={node.id} className="relative overflow-visible mb-1" style={nodeStyle}>
-          {nodeProps.map((prop: any) => renderActorProperty(prop))}
-          {childNodes.map((child: any) => renderActorLayoutNode(child))}
+        <div key={node.id} className="overflow-visible mb-2" style={nodeStyle}>
+          <div className={propsLayoutClass}>
+            {nodeProps.map((prop: any) => renderActorProperty(prop))}
+          </div>
+          {childNodes.length > 0 && <div className="space-y-2">{childNodes.map((child: any) => renderActorLayoutNode(child))}</div>}
         </div>
       );
     };
 
     const actorRootNodes = actorLayoutNodesList.filter((n: any) => n.parentId === null);
     const actorCanvasRootProps = actorProperties.filter((p: any) => p.parentId === null);
-    const actorCanvasRootHeight = actorCanvasRootProps.length > 0
-      ? Math.max(60, Math.max(...actorCanvasRootProps.map((p: any) => (p.y ?? 0) + (p.height ?? 40))) + 10)
-      : 0;
 
     return (
-      <div className="space-y-0" data-testid="actor-properties-display">
+      <div className="space-y-3" data-testid="actor-properties-display">
         {actorCanvasRootProps.length > 0 && (
-          <div className="relative rounded overflow-hidden mb-1" style={{ minHeight: `${actorCanvasRootHeight}px` }}>
+          <div className="space-y-1">
             {actorCanvasRootProps.map((prop: any) => renderActorProperty(prop))}
           </div>
         )}
