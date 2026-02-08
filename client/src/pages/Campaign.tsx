@@ -1498,8 +1498,10 @@ function SandboxSheetEditor({
               {(prop.type === 'panel' || prop.type === 'tab') && (
                 <button
                   className={`absolute w-5 h-5 rounded bg-purple-700/60 hover:bg-purple-600 text-white flex items-center justify-center transition-all opacity-60 hover:opacity-100 z-30 ${
-                    prop.key === 'header' ? 'bottom-1 left-1' : 'top-1 left-1'
+                    prop.key === 'header' ? 'bottom-1' : 'top-1 left-1'
                   }`}
+                  style={prop.key === 'header' ? { left: '115px' } : undefined}
+                  onPointerDown={(e) => e.stopPropagation()}
                   onClick={(e) => {
                     e.stopPropagation();
                     handleAddPropertyToContainer(prop.id, prop.type === 'tab' ? (activeTabIds[prop.id] || prop.tabs?.[0]?.id) : undefined);
