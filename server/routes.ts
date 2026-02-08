@@ -8073,11 +8073,72 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!campaign) return res.status(404).json({ error: "Campaign not found" });
       const isGM = await hasGmAccess(req.session.userId!, req.params.campaignId, campaign.gmUserId);
       if (!isGM) return res.status(403).json({ error: "Only GMs can manage templates" });
+      const headerId = crypto.randomUUID();
+      const pfpId = crypto.randomUUID();
+      const nameId = crypto.randomUUID();
+      const bodyId = crypto.randomUUID();
+      const defaultData = {
+        properties: [
+          {
+            id: headerId,
+            key: "header",
+            label: "Header",
+            type: "panel",
+            x: 0,
+            y: 0,
+            width: 600,
+            height: 120,
+            labelPosition: "hidden",
+            style: { backgroundColor: "#1c1917", border: { enabled: true, color: "#44403c", width: 1, radius: 4, style: "solid" } },
+          },
+          {
+            id: pfpId,
+            key: "pfp",
+            label: "Profile Picture",
+            type: "pfp",
+            x: 10,
+            y: 10,
+            width: 100,
+            height: 100,
+            parentId: headerId,
+            labelPosition: "hidden",
+            style: { border: { enabled: true, color: "#44403c", width: 2, radius: 8, style: "solid" }, backgroundColor: "#292524" },
+          },
+          {
+            id: nameId,
+            key: "name",
+            label: "Name",
+            type: "text",
+            x: 120,
+            y: 10,
+            width: 460,
+            height: 40,
+            parentId: headerId,
+            labelPosition: "top",
+            labelFontSize: 10,
+            valueFontSize: 18,
+            style: { labelColor: "#a8a29e", valueColor: "#e7e5e4" },
+          },
+          {
+            id: bodyId,
+            key: "body",
+            label: "Body",
+            type: "panel",
+            x: 0,
+            y: 130,
+            width: 600,
+            height: 400,
+            labelPosition: "hidden",
+            style: { backgroundColor: "#1c1917", border: { enabled: true, color: "#44403c", width: 1, radius: 4, style: "solid" } },
+          },
+        ],
+        settings: { defaultWidth: 620, defaultHeight: 560 },
+      };
       const template = await storage.createSandboxTemplate({
         campaignId: req.params.campaignId,
         name: req.body.name || "Untitled Template",
         folderId: req.body.folderId || null,
-        data: "{}",
+        data: JSON.stringify(defaultData),
       });
       res.json(template);
     } catch (e) {

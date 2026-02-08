@@ -7,7 +7,7 @@ import { BattlemapDiceOverlay, triggerBattlemapDiceRoll } from "@/components/gam
 import { type AoeTargetState, createInitialAoeState } from "@/lib/aoeHelpers";
 import { RollNotificationContainer, triggerInitiativeNotification, triggerEffectRollNotification, getNotificationStyle, setNotificationStyle, type NotificationStyle } from "@/components/game/RollNotification";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Loader2, Settings, Map as MapIcon, Layers, Trash2, MessageSquare, User, BarChart3, Zap, Backpack, Sparkles, Grid3X3, ScrollText, Swords, Dices, Users, Dna, Edit2, Bell, FileText, X, ChevronLeft, Network, List, BookOpen, Send, Pin } from "lucide-react";
+import { ArrowLeft, Loader2, Settings, Map as MapIcon, Layers, Trash2, MessageSquare, User, BarChart3, Zap, Backpack, Sparkles, Grid3X3, ScrollText, Swords, Dices, Users, Dna, Edit2, Bell, FileText, X, ChevronLeft, Network, List, BookOpen, Send, Pin, Upload, Search } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -882,6 +882,7 @@ function SandboxSheetEditor({
   const propSettingsDragRef = useRef({ x: 0, y: 0, startX: 0, startY: 0 });
   const propSettingsResizeRef = useRef({ x: 0, y: 0, w: 0, h: 0 });
   const [draggingPropertyId, setDraggingPropertyId] = useState<string | null>(null);
+  const [dropTargetId, setDropTargetId] = useState<string | null>(null);
   const [resizingPropertyId, setResizingPropertyId] = useState<string | null>(null);
   const [dragOverrides, setDragOverrides] = useState<Record<string, { x?: number; y?: number; width?: number; height?: number }>>({});
   const propDragStartRef = useRef({ x: 0, y: 0, propX: 0, propY: 0 });
@@ -895,6 +896,9 @@ function SandboxSheetEditor({
   });
   const actorSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [activeTabIds, setActiveTabIds] = useState<Record<string, string>>({});
+  const [pfpEditorOpen, setPfpEditorOpen] = useState<string | null>(null);
+  const [pfpBrowseOpen, setPfpBrowseOpen] = useState(false);
+  const [containerAddTarget, setContainerAddTarget] = useState<{ parentId: string; tabId?: string } | null>(null);
 
   const updateTemplateMutationSheet = useMutation({
     mutationFn: (data: any) => api.updateSandboxTemplate(campaignId, item.id, data),
@@ -1009,7 +1013,7 @@ function SandboxSheetEditor({
     const maxY = properties.length > 0
       ? Math.max(...properties.map((p: any) => (p.y ?? 0) + (p.height ?? 40)))
       : 0;
-    const newProp = {
+    const newProp: any = {
       id: crypto.randomUUID(),
       key: newPropKey.trim(),
       label: newPropLabel.trim(),
@@ -1019,12 +1023,31 @@ function SandboxSheetEditor({
       defaultValue: newPropDefault,
       x: 10,
       y: maxY + 10,
-      width: newPropType === 'panel' || newPropType === 'tab' ? 300 : 200,
-      height: newPropType === 'panel' || newPropType === 'tab' ? 200 : 40,
+      width: newPropType === 'panel' || newPropType === 'tab' ? 300 : (newPropType === 'pfp' ? 100 : 200),
+      height: newPropType === 'panel' || newPropType === 'tab' ? 200 : (newPropType === 'pfp' ? 100 : 40),
       labelFontSize: 11,
       valueFontSize: 13,
-      labelPosition: 'top' as const,
+      labelPosition: newPropType === 'pfp' ? 'hidden' as const : 'top' as const,
     };
+    if (containerAddTarget) {
+      newProp.parentId = containerAddTarget.parentId;
+      if (containerAddTarget.tabId) {
+        newProp.tabId = containerAddTarget.tabId;
+      }
+      const parentProp = properties.find((p: any) => p.id === containerAddTarget.parentId);
+      const siblings = properties.filter((p: any) => p.parentId === containerAddTarget.parentId && (!containerAddTarget.tabId || p.tabId === containerAddTarget.tabId));
+      if (siblings.length > 0) {
+        const siblingMaxY = Math.max(...siblings.map((s: any) => (s.y ?? 0) + (s.height ?? 40)));
+        newProp.x = (parentProp?.x ?? 0) + 10;
+        newProp.y = siblingMaxY + 10;
+      } else {
+        const parentLabelOffset = parentProp?.type === 'panel' && parentProp?.labelPosition !== 'hidden' ? 24 : 0;
+        const tabHeaderOffset = parentProp?.type === 'tab' && parentProp?.tabLayout !== 'left' ? 24 : 0;
+        const tabSideOffset = parentProp?.type === 'tab' && parentProp?.tabLayout === 'left' ? 60 : 0;
+        newProp.x = (parentProp?.x ?? 0) + tabSideOffset + 10;
+        newProp.y = (parentProp?.y ?? 0) + parentLabelOffset + tabHeaderOffset + 10;
+      }
+    }
     const newData = { ...templateData, properties: [...properties, newProp] };
     updateTemplateMutationSheet.mutate({ data: JSON.stringify(newData) });
     setAddingProperty(false);
@@ -1033,7 +1056,13 @@ function SandboxSheetEditor({
     setNewPropType('text');
     setNewPropOptions('');
     setNewPropDefault('');
+    setContainerAddTarget(null);
     toast({ title: "Property added" });
+  };
+
+  const handleAddPropertyToContainer = (parentId: string, tabId?: string) => {
+    setContainerAddTarget({ parentId, tabId });
+    setAddingProperty(true);
   };
 
   const handleDeleteProperty = (propId: string) => {
@@ -1122,6 +1151,37 @@ function SandboxSheetEditor({
       const newX = Math.max(0, Math.round((propDragStartRef.current.propX + dx) / 10) * 10);
       const newY = Math.max(0, Math.round((propDragStartRef.current.propY + dy) / 10) * 10);
       setDragOverrides(prev => ({ ...prev, [prop.id]: { ...prev[prop.id], x: newX, y: newY } }));
+      const draggedProp = properties.find((p: any) => p.id === prop.id);
+      if (draggedProp) {
+        const dragW = draggedProp.width ?? 200;
+        const dragH = draggedProp.height ?? 40;
+        const dragCenterX = newX + dragW / 2;
+        const dragCenterY = newY + dragH / 2;
+        let foundTarget: string | null = null;
+        for (const container of properties) {
+          if (container.type !== 'panel' && container.type !== 'tab') continue;
+          if (container.id === prop.id) continue;
+          const isDescendantOf = (potentialDescendantId: string, ancestorId: string): boolean => {
+            let current = properties.find((pp: any) => pp.id === potentialDescendantId);
+            while (current) {
+              if (current.parentId === ancestorId) return true;
+              if (!current.parentId) return false;
+              current = properties.find((pp: any) => pp.id === current!.parentId);
+            }
+            return false;
+          };
+          if (isDescendantOf(container.id, prop.id)) continue;
+          const cx = container.x ?? 0;
+          const cy = container.y ?? 0;
+          const cw = container.width ?? 200;
+          const ch = container.height ?? 200;
+          if (dragCenterX >= cx && dragCenterX <= cx + cw && dragCenterY >= cy && dragCenterY <= cy + ch) {
+            foundTarget = container.id;
+            break;
+          }
+        }
+        setDropTargetId(foundTarget);
+      }
     }
     if (resizingPropertyId === prop.id) {
       e.stopPropagation();
@@ -1142,13 +1202,53 @@ function SandboxSheetEditor({
       const overrides = dragOverrides[prop.id];
       setDraggingPropertyId(null);
       setDragOverrides(prev => { const n = { ...prev }; delete n[prop.id]; return n; });
-      if (overrides) updatePropertyLayout(prop.id, { x: overrides.x, y: overrides.y });
+      if (dropTargetId && dropTargetId !== prop.parentId) {
+        const targetContainer = properties.find((p: any) => p.id === dropTargetId);
+        const updates: Record<string, any> = { 
+          parentId: dropTargetId,
+          x: overrides?.x ?? prop.x,
+          y: overrides?.y ?? prop.y,
+        };
+        if (targetContainer?.type === 'tab' && targetContainer.tabs?.length > 0) {
+          updates.tabId = activeTabIds[dropTargetId] || targetContainer.tabs[0].id;
+        } else {
+          updates.tabId = null;
+        }
+        updatePropertyLayout(prop.id, updates);
+        toast({ title: "Property moved", description: `Moved to ${targetContainer?.label || 'container'}` });
+      } else if (dropTargetId === null && prop.parentId && overrides) {
+        const parent = properties.find((p: any) => p.id === prop.parentId);
+        if (parent) {
+          const px = parent.x ?? 0;
+          const py = parent.y ?? 0;
+          const pw = parent.width ?? 200;
+          const ph = parent.height ?? 200;
+          const newX = overrides.x ?? prop.x ?? 0;
+          const newY = overrides.y ?? prop.y ?? 0;
+          const propW = prop.width ?? 200;
+          const propH = prop.height ?? 40;
+          const centerX = newX + propW / 2;
+          const centerY = newY + propH / 2;
+          if (centerX < px || centerX > px + pw || centerY < py || centerY > py + ph) {
+            updatePropertyLayout(prop.id, { parentId: null, tabId: null, x: overrides.x, y: overrides.y });
+            toast({ title: "Property moved to root" });
+          } else {
+            if (overrides) updatePropertyLayout(prop.id, { x: overrides.x, y: overrides.y });
+          }
+        } else {
+          if (overrides) updatePropertyLayout(prop.id, { x: overrides.x, y: overrides.y });
+        }
+      } else {
+        if (overrides) updatePropertyLayout(prop.id, { x: overrides.x, y: overrides.y });
+      }
+      setDropTargetId(null);
     }
     if (resizingPropertyId === prop.id) {
       const overrides = dragOverrides[prop.id];
       setResizingPropertyId(null);
       setDragOverrides(prev => { const n = { ...prev }; delete n[prop.id]; return n; });
       if (overrides) updatePropertyLayout(prop.id, { width: overrides.width, height: overrides.height });
+      setDropTargetId(null);
     }
   };
 
@@ -1266,6 +1366,17 @@ function SandboxSheetEditor({
       );
     }
 
+    if (prop.type === 'pfp') {
+      return (
+        <div className="w-full h-full flex items-center justify-center bg-stone-800/50 overflow-hidden rounded" style={propStyle}>
+          <div className="flex flex-col items-center justify-center text-stone-500 gap-1">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            <span className="text-[9px]">Profile Picture</span>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className={`flex ${isLeft ? 'flex-row items-center gap-2' : 'flex-col'} w-full h-full overflow-hidden p-1`} style={propStyle}>
         {!isHidden && (
@@ -1337,7 +1448,9 @@ function SandboxSheetEditor({
           >
             <div
               className={`w-full h-full rounded cursor-grab active:cursor-grabbing transition-colors ${
-                isSelected
+                dropTargetId === prop.id
+                  ? 'ring-2 ring-green-400 bg-green-900/10'
+                  : isSelected
                   ? 'ring-2 ring-purple-400 shadow-lg shadow-purple-900/20'
                   : ''
               } ${!prop.style?.backgroundColor && !prop.style?.backgroundGradient?.enabled ? (isSelected ? 'bg-purple-900/20 border border-purple-400' : 'border border-stone-600/50 bg-stone-800/60 hover:border-stone-500/70') : (isSelected ? 'border border-purple-400' : '')}`}
@@ -1370,6 +1483,19 @@ function SandboxSheetEditor({
                   </div>
                 );
               })()}
+              {(prop.type === 'panel' || prop.type === 'tab') && (
+                <button
+                  className="absolute bottom-1 right-4 w-5 h-5 rounded bg-purple-700/60 hover:bg-purple-600 text-white flex items-center justify-center transition-all opacity-60 hover:opacity-100 z-30"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleAddPropertyToContainer(prop.id, prop.type === 'tab' ? (activeTabIds[prop.id] || prop.tabs?.[0]?.id) : undefined);
+                  }}
+                  title="Add property to this container"
+                  data-testid={`button-add-to-container-${prop.key}`}
+                >
+                  <Plus className="h-3 w-3" />
+                </button>
+              )}
             </div>
             <div
               className="absolute bottom-0 right-0 w-3 h-3 cursor-se-resize bg-purple-500/40 hover:bg-purple-400/60 rounded-tl-sm"
@@ -1435,6 +1561,7 @@ function SandboxSheetEditor({
                     <SelectItem value="select" className="text-stone-200">Select</SelectItem>
                     <SelectItem value="panel" className="text-stone-200">Panel (Container)</SelectItem>
                     <SelectItem value="tab" className="text-stone-200">Tabs (Switchable)</SelectItem>
+                    <SelectItem value="pfp" className="text-stone-200">Profile Picture</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -1461,7 +1588,7 @@ function SandboxSheetEditor({
                 />
               </div>
               <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={() => { setAddingProperty(false); setNewPropKey(''); setNewPropLabel(''); setNewPropType('text'); setNewPropOptions(''); setNewPropDefault(''); }} className="flex-1 border-stone-600 text-stone-400 h-7 text-xs" data-testid="button-cancel-property">
+                <Button variant="outline" size="sm" onClick={() => { setAddingProperty(false); setNewPropKey(''); setNewPropLabel(''); setNewPropType('text'); setNewPropOptions(''); setNewPropDefault(''); setContainerAddTarget(null); }} className="flex-1 border-stone-600 text-stone-400 h-7 text-xs" data-testid="button-cancel-property">
                   Cancel
                 </Button>
                 <Button size="sm" onClick={handleAddProperty} disabled={!newPropKey.trim() || !newPropLabel.trim()} className="flex-1 bg-purple-600 hover:bg-purple-700 text-white h-7 text-xs" data-testid="button-save-property">
@@ -1599,6 +1726,34 @@ function SandboxSheetEditor({
             </div>
             <div className="relative flex-1">
               {children.map((child: any) => renderActorProperty(child))}
+            </div>
+          </div>
+        );
+      }
+
+      if (prop.type === 'pfp') {
+        const pfpImage = val;
+        return (
+          <div
+            key={prop.id}
+            className="absolute overflow-hidden cursor-pointer group"
+            style={{ left: `${px}px`, top: `${py}px`, width: `${pw}px`, height: `${ph}px`, ...propStyle }}
+            data-testid={`actor-property-${prop.key}`}
+            title={prop.tooltip || "Double-click to change picture"}
+            onDoubleClick={() => setPfpEditorOpen(prop.key)}
+          >
+            {pfpImage ? (
+              <img src={pfpImage} alt="Profile" className="w-full h-full object-cover rounded" />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center bg-stone-800 rounded">
+                <div className="flex flex-col items-center text-stone-500 gap-1">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                  <span className="text-xs">Click to set</span>
+                </div>
+              </div>
+            )}
+            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded">
+              <span className="text-white text-xs">Change</span>
             </div>
           </div>
         );
@@ -1752,6 +1907,30 @@ function SandboxSheetEditor({
             </div>
             <div className="p-3 space-y-3 flex-1">
               {children.map((child: any) => renderMobileProperty(child))}
+            </div>
+          </div>
+        );
+      }
+
+      if (prop.type === 'pfp') {
+        const pfpImage = val;
+        return (
+          <div key={prop.id} className="flex items-center gap-3" data-testid={`actor-property-mobile-${prop.key}`}>
+            <div
+              className="w-20 h-20 rounded-lg overflow-hidden cursor-pointer shrink-0 group relative"
+              style={propStyle}
+              onDoubleClick={() => setPfpEditorOpen(prop.key)}
+            >
+              {pfpImage ? (
+                <img src={pfpImage} alt="Profile" className="w-full h-full object-cover" />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center bg-stone-800">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-stone-500"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                </div>
+              )}
+              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                <span className="text-white text-[10px]">Change</span>
+              </div>
             </div>
           </div>
         );
@@ -2396,6 +2575,77 @@ function SandboxSheetEditor({
           </div>
         </div>,
         document.body
+      )}
+
+      {pfpEditorOpen && (
+        <div className="fixed z-[60] bg-stone-900 border border-purple-700/50 rounded-lg shadow-2xl shadow-purple-900/30" style={{ left: '50%', top: '50%', transform: 'translate(-50%, -50%)', width: '340px' }}>
+          <div className="flex items-center justify-between px-3 py-2 border-b border-stone-700 bg-stone-800/50 rounded-t-lg">
+            <span className="text-xs font-semibold text-purple-300">Profile Picture Editor</span>
+            <button onClick={() => { setPfpEditorOpen(null); setPfpBrowseOpen(false); }} className="text-stone-400 hover:text-stone-200"><X className="h-4 w-4" /></button>
+          </div>
+          <div className="p-4 space-y-4">
+            <div className="w-32 h-32 mx-auto rounded-lg overflow-hidden border-2 border-stone-600 bg-stone-800">
+              {actorValues[pfpEditorOpen] ? (
+                <img src={actorValues[pfpEditorOpen]} alt="Current PFP" className="w-full h-full object-cover" />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-stone-500">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                </div>
+              )}
+            </div>
+            <div className="space-y-2">
+              <Button
+                onClick={() => setPfpBrowseOpen(true)}
+                className="w-full bg-purple-700 hover:bg-purple-600 text-white text-xs h-9"
+                data-testid="button-pfp-browse"
+              >
+                <Search className="h-3.5 w-3.5 mr-2" /> Browse Image Library
+              </Button>
+              <label className="flex items-center justify-center w-full h-9 rounded-md border border-stone-600 bg-stone-800 hover:bg-stone-700 cursor-pointer text-xs text-stone-300 transition-colors">
+                <Upload className="h-3.5 w-3.5 mr-2" /> Upload from Device
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    if (file.size > 5 * 1024 * 1024) {
+                      toast({ title: "File too large", description: "Maximum size is 5MB", variant: "destructive" });
+                      return;
+                    }
+                    const reader = new FileReader();
+                    reader.onload = (ev) => {
+                      const base64 = ev.target?.result as string;
+                      handleActorValueChange(pfpEditorOpen, base64);
+                    };
+                    reader.readAsDataURL(file);
+                  }}
+                  data-testid="input-pfp-upload"
+                />
+              </label>
+              {actorValues[pfpEditorOpen] && (
+                <Button
+                  variant="outline"
+                  onClick={() => handleActorValueChange(pfpEditorOpen, '')}
+                  className="w-full border-red-800 text-red-400 hover:bg-red-900/20 text-xs h-9"
+                  data-testid="button-pfp-remove"
+                >
+                  <Trash2 className="h-3.5 w-3.5 mr-2" /> Remove Picture
+                </Button>
+              )}
+            </div>
+          </div>
+          <ImageBrowser
+            open={pfpBrowseOpen}
+            onOpenChange={setPfpBrowseOpen}
+            onSelect={(imageBase64) => {
+              handleActorValueChange(pfpEditorOpen, imageBase64);
+              setPfpBrowseOpen(false);
+            }}
+            title="Select Profile Picture"
+          />
+        </div>
       )}
     </div>
   );
