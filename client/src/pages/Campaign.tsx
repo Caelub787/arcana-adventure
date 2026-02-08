@@ -32,6 +32,7 @@ import { CampaignNotesPanel } from "@/components/notes/CampaignNotesPanel";
 import { FloatingPanel } from "@/components/ui/floating-panel";
 import { Folder, FolderOpen, FolderPlus, Plus, GripVertical, Eye, Radio, ChevronDown, ChevronRight, Pencil, Minus, Copy } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { PropertyStyleEditor, getPropertyCssStyle, type PropertyStyle, type SandboxPropertyType, type TabDefinition } from "@/components/sandbox/PropertyStyleEditor";
 
 // Scene Settings Form Component
 function SceneSettingsForm({ scene, onUpdateScene }: { scene: Scene; onUpdateScene: (settings: Partial<Scene>) => void }) {
@@ -865,14 +866,14 @@ function SandboxSheetEditor({
   const [addingProperty, setAddingProperty] = useState(false);
   const [newPropKey, setNewPropKey] = useState('');
   const [newPropLabel, setNewPropLabel] = useState('');
-  const [newPropType, setNewPropType] = useState<'text' | 'number' | 'checkbox' | 'textarea' | 'select'>('text');
+  const [newPropType, setNewPropType] = useState<SandboxPropertyType>('text');
   const [newPropOptions, setNewPropOptions] = useState('');
   const [newPropDefault, setNewPropDefault] = useState('');
   const [selectedPropertyId, setSelectedPropertyId] = useState<string | null>(null);
   const [propSettingsOpen, setPropSettingsOpen] = useState(false);
   const [propContextMenu, setPropContextMenu] = useState<{ x: number; y: number; propId: string } | null>(null);
   const [propSettingsPanelPos, setPropSettingsPanelPos] = useState({ x: 400, y: 200 });
-  const [propSettingsPanelSize, setPropSettingsPanelSize] = useState({ width: 280, height: 420 });
+  const [propSettingsPanelSize, setPropSettingsPanelSize] = useState({ width: 280, height: 520 });
   const [isPropSettingsDragging, setIsPropSettingsDragging] = useState(false);
   const [isPropSettingsResizing, setIsPropSettingsResizing] = useState(false);
   const propSettingsDragRef = useRef({ x: 0, y: 0, startX: 0, startY: 0 });
@@ -890,6 +891,7 @@ function SandboxSheetEditor({
     } catch { return {}; }
   });
   const actorSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [activeTabIds, setActiveTabIds] = useState<Record<string, string>>({});
 
   const updateTemplateMutationSheet = useMutation({
     mutationFn: (data: any) => api.updateSandboxTemplate(campaignId, item.id, data),
@@ -1010,11 +1012,12 @@ function SandboxSheetEditor({
       label: newPropLabel.trim(),
       type: newPropType,
       ...(newPropType === 'select' ? { options: newPropOptions.split(',').map(o => o.trim()).filter(Boolean) } : {}),
+      ...(newPropType === 'tab' ? { tabs: [{ id: crypto.randomUUID(), label: 'Tab 1' }, { id: crypto.randomUUID(), label: 'Tab 2' }] } : {}),
       defaultValue: newPropDefault,
       x: 10,
       y: maxY + 10,
-      width: 200,
-      height: 40,
+      width: newPropType === 'panel' || newPropType === 'tab' ? 300 : 200,
+      height: newPropType === 'panel' || newPropType === 'tab' ? 200 : 40,
       labelFontSize: 11,
       valueFontSize: 13,
       labelPosition: 'top' as const,
@@ -1031,9 +1034,19 @@ function SandboxSheetEditor({
   };
 
   const handleDeleteProperty = (propId: string) => {
-    const newData = { ...templateData, properties: properties.filter((p: any) => p.id !== propId) };
+    const idsToDelete = new Set([propId]);
+    const findChildren = (parentId: string) => {
+      properties.forEach((p: any) => {
+        if (p.parentId === parentId) {
+          idsToDelete.add(p.id);
+          findChildren(p.id);
+        }
+      });
+    };
+    findChildren(propId);
+    const newData = { ...templateData, properties: properties.filter((p: any) => !idsToDelete.has(p.id)) };
     updateTemplateMutationSheet.mutate({ data: JSON.stringify(newData) });
-    if (selectedPropertyId === propId) {
+    if (idsToDelete.has(selectedPropertyId || '')) {
       setSelectedPropertyId(null);
       setPropSettingsOpen(false);
     }
@@ -1202,11 +1215,48 @@ function SandboxSheetEditor({
     const vfs = prop.valueFontSize || 13;
     const isLeft = labelPos === 'left';
     const isHidden = labelPos === 'hidden';
+    const propStyle = getPropertyCssStyle(prop.style);
+
+    if (prop.type === 'panel') {
+      return (
+        <div className="w-full h-full overflow-hidden p-1 flex flex-col" style={propStyle}>
+          {!isHidden && (
+            <span className="text-purple-300 truncate shrink-0 border-b border-purple-700/30 pb-1 mb-1" style={{ fontSize: `${lfs}px`, ...(propStyle.color ? { color: propStyle.color } : {}) }}>
+              {prop.label}
+            </span>
+          )}
+          <div className="flex-1 flex items-center justify-center text-stone-600 text-[10px] italic">
+            Panel Container
+          </div>
+        </div>
+      );
+    }
+
+    if (prop.type === 'tab') {
+      const tabs = prop.tabs || [{ id: '1', label: 'Tab 1' }, { id: '2', label: 'Tab 2' }];
+      return (
+        <div className="w-full h-full overflow-hidden flex flex-col" style={propStyle}>
+          <div className="flex border-b border-stone-600/50 shrink-0">
+            {tabs.map((tab: TabDefinition, idx: number) => (
+              <div
+                key={tab.id}
+                className={`px-2 py-1 text-[10px] truncate ${idx === 0 ? 'text-purple-300 border-b-2 border-purple-500 bg-purple-900/20' : 'text-stone-500'}`}
+              >
+                {tab.label}
+              </div>
+            ))}
+          </div>
+          <div className="flex-1 flex items-center justify-center text-stone-600 text-[10px] italic">
+            Tab Container
+          </div>
+        </div>
+      );
+    }
 
     return (
-      <div className={`flex ${isLeft ? 'flex-row items-center gap-2' : 'flex-col'} w-full h-full overflow-hidden p-1`}>
+      <div className={`flex ${isLeft ? 'flex-row items-center gap-2' : 'flex-col'} w-full h-full overflow-hidden p-1`} style={propStyle}>
         {!isHidden && (
-          <span className="text-purple-300 truncate shrink-0" style={{ fontSize: `${lfs}px` }}>{prop.label}</span>
+          <span className="text-purple-300 truncate shrink-0" style={{ fontSize: `${lfs}px`, ...(propStyle.color ? { color: propStyle.color } : {}) }}>{prop.label}</span>
         )}
         <div className="flex-1 min-w-0">
           {prop.type === 'checkbox' ? (
@@ -1227,9 +1277,80 @@ function SandboxSheetEditor({
 
   const renderSheetBody = () => {
     if (item.type === 'template') {
-      const canvasHeight = properties.length > 0
-        ? Math.max(300, Math.max(...properties.map((p: any) => (p.y ?? 0) + (p.height ?? 40))) + 60)
+      const rootPropsForHeight = properties.filter((p: any) => !p.parentId);
+      const canvasHeight = rootPropsForHeight.length > 0
+        ? Math.max(300, Math.max(...rootPropsForHeight.map((p: any) => (p.y ?? 0) + (p.height ?? 40))) + 60)
         : 300;
+
+      const renderCanvasProperty = (prop: any, offsetX = 0, offsetY = 0): React.ReactNode => {
+        const overrides = dragOverrides[prop.id] || {};
+        const px = (overrides.x ?? prop.x ?? 10) - offsetX;
+        const py = (overrides.y ?? prop.y ?? 10) - offsetY;
+        const pw = overrides.width ?? prop.width ?? 200;
+        const ph = overrides.height ?? prop.height ?? 40;
+        const isSelected = selectedPropertyId === prop.id;
+        const isDraggingThis = draggingPropertyId === prop.id;
+        const isResizingThis = resizingPropertyId === prop.id;
+        const children = properties.filter((c: any) => c.parentId === prop.id);
+
+        return (
+          <div
+            key={prop.id}
+            className={`absolute select-none ${isDraggingThis || isResizingThis ? 'z-20' : 'z-10'}`}
+            style={{
+              left: `${px}px`,
+              top: `${py}px`,
+              width: `${pw}px`,
+              height: `${ph}px`,
+            }}
+            data-testid={`canvas-property-${prop.key}`}
+            onDoubleClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setSelectedPropertyId(prop.id);
+              setPropSettingsOpen(true);
+              setPropContextMenu(null);
+              setPropSettingsPanelPos({ x: e.clientX, y: e.clientY });
+            }}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setPropContextMenu({ x: e.clientX, y: e.clientY, propId: prop.id });
+            }}
+            onPointerDown={(e) => handlePropPointerDown(e, prop)}
+            onPointerMove={(e) => handlePropPointerMove(e, prop)}
+            onPointerUp={(e) => handlePropPointerUp(e, prop)}
+          >
+            <div
+              className={`w-full h-full rounded cursor-grab active:cursor-grabbing transition-colors ${
+                isSelected
+                  ? 'ring-2 ring-purple-400 shadow-lg shadow-purple-900/20'
+                  : ''
+              } ${!prop.style?.backgroundColor && !prop.style?.backgroundGradient?.enabled ? (isSelected ? 'bg-purple-900/20 border border-purple-400' : 'border border-stone-600/50 bg-stone-800/60 hover:border-stone-500/70') : (isSelected ? 'border border-purple-400' : '')}`}
+              style={getPropertyCssStyle(prop.style)}
+              data-testid={`button-select-property-${prop.key}`}
+            >
+              {renderFieldPreview(prop)}
+              {(prop.type === 'panel' || prop.type === 'tab') && children.length > 0 && (
+                <div className="absolute inset-0 overflow-hidden pointer-events-none" style={{ top: prop.type === 'tab' ? '24px' : '0px' }}>
+                  <div className="relative w-full h-full pointer-events-auto">
+                    {children
+                      .filter((c: any) => prop.type !== 'tab' || !prop.tabs || c.tabId === (prop.tabs[0]?.id ?? ''))
+                      .map((child: any) => renderCanvasProperty(child, overrides.x ?? prop.x ?? 10, (overrides.y ?? prop.y ?? 10) + (prop.type === 'tab' ? 24 : 0)))}
+                  </div>
+                </div>
+              )}
+            </div>
+            <div
+              className="absolute bottom-0 right-0 w-3 h-3 cursor-se-resize bg-purple-500/40 hover:bg-purple-400/60 rounded-tl-sm"
+              onPointerDown={(e) => handlePropResizeDown(e, prop)}
+              data-testid={`resize-property-${prop.key}`}
+            />
+          </div>
+        );
+      };
+
+      const rootProperties = properties.filter((p: any) => !p.parentId);
 
       return (
         <div className="space-y-3" data-testid="template-properties-editor">
@@ -1282,6 +1403,8 @@ function SandboxSheetEditor({
                     <SelectItem value="checkbox" className="text-stone-200">Checkbox</SelectItem>
                     <SelectItem value="textarea" className="text-stone-200">Textarea</SelectItem>
                     <SelectItem value="select" className="text-stone-200">Select</SelectItem>
+                    <SelectItem value="panel" className="text-stone-200">Panel (Container)</SelectItem>
+                    <SelectItem value="tab" className="text-stone-200">Tabs (Switchable)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -1338,62 +1461,7 @@ function SandboxSheetEditor({
                 if (e.target === e.currentTarget) { setSelectedPropertyId(null); setPropSettingsOpen(false); }
               }}
             >
-              {properties.map((prop: any) => {
-                const overrides = dragOverrides[prop.id] || {};
-                const px = overrides.x ?? prop.x ?? 10;
-                const py = overrides.y ?? prop.y ?? 10;
-                const pw = overrides.width ?? prop.width ?? 200;
-                const ph = overrides.height ?? prop.height ?? 40;
-                const isSelected = selectedPropertyId === prop.id;
-                const isDraggingThis = draggingPropertyId === prop.id;
-                const isResizingThis = resizingPropertyId === prop.id;
-
-                return (
-                  <div
-                    key={prop.id}
-                    className={`absolute select-none ${isDraggingThis || isResizingThis ? 'z-20' : 'z-10'}`}
-                    style={{
-                      left: `${px}px`,
-                      top: `${py}px`,
-                      width: `${pw}px`,
-                      height: `${ph}px`,
-                    }}
-                    data-testid={`canvas-property-${prop.key}`}
-                    onDoubleClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      setSelectedPropertyId(prop.id);
-                      setPropSettingsOpen(true);
-                      setPropContextMenu(null);
-                      setPropSettingsPanelPos({ x: e.clientX, y: e.clientY });
-                    }}
-                    onContextMenu={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      setPropContextMenu({ x: e.clientX, y: e.clientY, propId: prop.id });
-                    }}
-                    onPointerDown={(e) => handlePropPointerDown(e, prop)}
-                    onPointerMove={(e) => handlePropPointerMove(e, prop)}
-                    onPointerUp={(e) => handlePropPointerUp(e, prop)}
-                  >
-                    <div
-                      className={`w-full h-full rounded border cursor-grab active:cursor-grabbing transition-colors ${
-                        isSelected
-                          ? 'border-purple-400 bg-purple-900/20 shadow-lg shadow-purple-900/20'
-                          : 'border-stone-600/50 bg-stone-800/60 hover:border-stone-500/70'
-                      }`}
-                      data-testid={`button-select-property-${prop.key}`}
-                    >
-                      {renderFieldPreview(prop)}
-                    </div>
-                    <div
-                      className="absolute bottom-0 right-0 w-3 h-3 cursor-se-resize bg-purple-500/40 hover:bg-purple-400/60 rounded-tl-sm"
-                      onPointerDown={(e) => handlePropResizeDown(e, prop)}
-                      data-testid={`resize-property-${prop.key}`}
-                    />
-                  </div>
-                );
-              })}
+              {rootProperties.map((prop: any) => renderCanvasProperty(prop))}
             </div>
           )}
 
@@ -1422,91 +1490,151 @@ function SandboxSheetEditor({
       );
     }
 
-    const containerHeight = Math.max(200, Math.max(...actorProperties.map((p: any) => (p.y ?? 0) + (p.height ?? 40))) + 20);
+    const rootProps = actorProperties.filter((p: any) => !p.parentId);
+    const containerHeight = Math.max(200, Math.max(...rootProps.map((p: any) => (p.y ?? 0) + (p.height ?? 40))) + 20);
+
+    const renderActorProperty = (prop: any) => {
+      const val = actorValues[prop.key] ?? prop.defaultValue ?? '';
+      const px = prop.x ?? 10;
+      const py = prop.y ?? 0;
+      const pw = prop.width ?? 200;
+      const ph = prop.height ?? 40;
+      const lfs = prop.labelFontSize ?? 11;
+      const vfs = prop.valueFontSize ?? 13;
+      const labelPos = prop.labelPosition || 'top';
+      const isLeft = labelPos === 'left';
+      const isHidden = labelPos === 'hidden';
+      const propStyle = getPropertyCssStyle(prop.style);
+
+      if (prop.type === 'panel') {
+        const children = actorProperties.filter((c: any) => c.parentId === prop.id);
+        return (
+          <div
+            key={prop.id}
+            className="absolute rounded overflow-hidden"
+            style={{ left: `${px}px`, top: `${py}px`, width: `${pw}px`, height: `${ph}px`, ...propStyle }}
+            data-testid={`actor-property-${prop.key}`}
+          >
+            {!isHidden && (
+              <div className="text-stone-300 truncate shrink-0 px-2 pt-1" style={{ fontSize: `${lfs}px`, ...(propStyle.color ? { color: propStyle.color } : {}) }}>
+                {prop.label}
+              </div>
+            )}
+            <div className="relative w-full h-full">
+              {children.map((child: any) => renderActorProperty(child))}
+            </div>
+          </div>
+        );
+      }
+
+      if (prop.type === 'tab') {
+        const tabs = prop.tabs || [];
+        const activeTabId = activeTabIds[prop.id] || (tabs[0]?.id ?? '');
+        const children = actorProperties.filter((c: any) => c.parentId === prop.id && c.tabId === activeTabId);
+        const tabHeaderHeight = 28;
+        return (
+          <div
+            key={prop.id}
+            className="absolute rounded overflow-hidden flex flex-col"
+            style={{ left: `${px}px`, top: `${py}px`, width: `${pw}px`, height: `${ph}px`, ...propStyle }}
+            data-testid={`actor-property-${prop.key}`}
+          >
+            <div className="flex border-b border-stone-600/50 shrink-0" style={{ height: `${tabHeaderHeight}px` }}>
+              {tabs.map((tab: any) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTabIds(prev => ({ ...prev, [prop.id]: tab.id }))}
+                  className={`px-3 py-1 text-xs truncate transition-colors ${
+                    tab.id === activeTabId
+                      ? 'text-purple-300 border-b-2 border-purple-500 bg-purple-900/20'
+                      : 'text-stone-500 hover:text-stone-300'
+                  }`}
+                  data-testid={`actor-tab-${prop.key}-${tab.id}`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+            <div className="relative flex-1">
+              {children.map((child: any) => renderActorProperty(child))}
+            </div>
+          </div>
+        );
+      }
+
+      return (
+        <div
+          key={prop.id}
+          className="absolute"
+          style={{ left: `${px}px`, top: `${py}px`, width: `${pw}px`, height: `${ph}px`, ...propStyle }}
+          data-testid={`actor-property-${prop.key}`}
+        >
+          <div className={`flex ${isLeft ? 'flex-row items-center gap-2' : 'flex-col'} w-full h-full`}>
+            {!isHidden && (
+              <Label className="text-stone-400 truncate shrink-0" style={{ fontSize: `${lfs}px`, ...(propStyle.color ? { color: propStyle.color } : {}) }}>{prop.label}</Label>
+            )}
+            <div className="flex-1 min-w-0">
+              {prop.type === 'text' && (
+                <Input
+                  value={val}
+                  onChange={(e) => handleActorValueChange(prop.key, e.target.value)}
+                  className="bg-stone-800 border-stone-700 text-stone-200 h-full w-full"
+                  style={{ fontSize: `${vfs}px` }}
+                  data-testid={`input-actor-${prop.key}`}
+                />
+              )}
+              {prop.type === 'number' && (
+                <Input
+                  type="number"
+                  value={val}
+                  onChange={(e) => handleActorValueChange(prop.key, e.target.value)}
+                  className="bg-stone-800 border-stone-700 text-stone-200 h-full w-full"
+                  style={{ fontSize: `${vfs}px` }}
+                  data-testid={`input-actor-${prop.key}`}
+                />
+              )}
+              {prop.type === 'checkbox' && (
+                <div className="flex items-center h-full">
+                  <input
+                    type="checkbox"
+                    checked={val === 'true'}
+                    onChange={(e) => handleActorValueChange(prop.key, e.target.checked ? 'true' : 'false')}
+                    className="h-4 w-4 accent-amber-600"
+                    data-testid={`checkbox-actor-${prop.key}`}
+                  />
+                </div>
+              )}
+              {prop.type === 'textarea' && (
+                <Textarea
+                  value={val}
+                  onChange={(e) => handleActorValueChange(prop.key, e.target.value)}
+                  className="bg-stone-800 border-stone-700 text-stone-200 h-full w-full resize-none"
+                  style={{ fontSize: `${vfs}px` }}
+                  data-testid={`textarea-actor-${prop.key}`}
+                />
+              )}
+              {prop.type === 'select' && (
+                <Select value={val || '__empty__'} onValueChange={(v) => handleActorValueChange(prop.key, v === '__empty__' ? '' : v)}>
+                  <SelectTrigger className="bg-stone-800 border-stone-700 text-stone-200 h-full w-full" style={{ fontSize: `${vfs}px` }} data-testid={`select-actor-${prop.key}`}>
+                    <SelectValue placeholder="Select..." />
+                  </SelectTrigger>
+                  <SelectContent className="bg-stone-800 border-stone-700">
+                    <SelectItem value="__empty__" className="text-stone-400">None</SelectItem>
+                    {(prop.options || []).map((opt: string) => (
+                      <SelectItem key={opt} value={opt} className="text-stone-200">{opt}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
+          </div>
+        </div>
+      );
+    };
 
     return (
       <div className="relative" style={{ minHeight: `${containerHeight}px` }} data-testid="actor-properties-display">
-        {actorProperties.map((prop: any) => {
-          const val = actorValues[prop.key] ?? prop.defaultValue ?? '';
-          const px = prop.x ?? 10;
-          const py = prop.y ?? 0;
-          const pw = prop.width ?? 200;
-          const ph = prop.height ?? 40;
-          const lfs = prop.labelFontSize ?? 11;
-          const vfs = prop.valueFontSize ?? 13;
-          const labelPos = prop.labelPosition || 'top';
-          const isLeft = labelPos === 'left';
-          const isHidden = labelPos === 'hidden';
-
-          return (
-            <div
-              key={prop.id}
-              className="absolute"
-              style={{ left: `${px}px`, top: `${py}px`, width: `${pw}px`, height: `${ph}px` }}
-              data-testid={`actor-property-${prop.key}`}
-            >
-              <div className={`flex ${isLeft ? 'flex-row items-center gap-2' : 'flex-col'} w-full h-full`}>
-                {!isHidden && (
-                  <Label className="text-stone-400 truncate shrink-0" style={{ fontSize: `${lfs}px` }}>{prop.label}</Label>
-                )}
-                <div className="flex-1 min-w-0">
-                  {prop.type === 'text' && (
-                    <Input
-                      value={val}
-                      onChange={(e) => handleActorValueChange(prop.key, e.target.value)}
-                      className="bg-stone-800 border-stone-700 text-stone-200 h-full w-full"
-                      style={{ fontSize: `${vfs}px` }}
-                      data-testid={`input-actor-${prop.key}`}
-                    />
-                  )}
-                  {prop.type === 'number' && (
-                    <Input
-                      type="number"
-                      value={val}
-                      onChange={(e) => handleActorValueChange(prop.key, e.target.value)}
-                      className="bg-stone-800 border-stone-700 text-stone-200 h-full w-full"
-                      style={{ fontSize: `${vfs}px` }}
-                      data-testid={`input-actor-${prop.key}`}
-                    />
-                  )}
-                  {prop.type === 'checkbox' && (
-                    <div className="flex items-center h-full">
-                      <input
-                        type="checkbox"
-                        checked={val === 'true'}
-                        onChange={(e) => handleActorValueChange(prop.key, e.target.checked ? 'true' : 'false')}
-                        className="h-4 w-4 accent-amber-600"
-                        data-testid={`checkbox-actor-${prop.key}`}
-                      />
-                    </div>
-                  )}
-                  {prop.type === 'textarea' && (
-                    <Textarea
-                      value={val}
-                      onChange={(e) => handleActorValueChange(prop.key, e.target.value)}
-                      className="bg-stone-800 border-stone-700 text-stone-200 h-full w-full resize-none"
-                      style={{ fontSize: `${vfs}px` }}
-                      data-testid={`textarea-actor-${prop.key}`}
-                    />
-                  )}
-                  {prop.type === 'select' && (
-                    <Select value={val || '__empty__'} onValueChange={(v) => handleActorValueChange(prop.key, v === '__empty__' ? '' : v)}>
-                      <SelectTrigger className="bg-stone-800 border-stone-700 text-stone-200 h-full w-full" style={{ fontSize: `${vfs}px` }} data-testid={`select-actor-${prop.key}`}>
-                        <SelectValue placeholder="Select..." />
-                      </SelectTrigger>
-                      <SelectContent className="bg-stone-800 border-stone-700">
-                        <SelectItem value="__empty__" className="text-stone-400">None</SelectItem>
-                        {(prop.options || []).map((opt: string) => (
-                          <SelectItem key={opt} value={opt} className="text-stone-200">{opt}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
-                </div>
-              </div>
-            </div>
-          );
-        })}
+        {rootProps.map((prop: any) => renderActorProperty(prop))}
       </div>
     );
   };
@@ -1533,71 +1661,115 @@ function SandboxSheetEditor({
       );
     }
 
+    const renderMobileProperty = (prop: any): React.ReactNode => {
+      const val = actorValues[prop.key] ?? prop.defaultValue ?? '';
+      const lfs = prop.labelFontSize ?? 11;
+      const vfs = prop.valueFontSize ?? 13;
+      const propStyle = getPropertyCssStyle(prop.style);
+
+      if (prop.type === 'panel') {
+        const children = actorProperties.filter((c: any) => c.parentId === prop.id);
+        return (
+          <div key={prop.id} className="rounded-lg p-3 space-y-3" style={propStyle} data-testid={`actor-property-mobile-${prop.key}`}>
+            <Label className="text-stone-300 font-medium" style={{ fontSize: `${lfs}px`, ...(propStyle.color ? { color: propStyle.color } : {}) }}>{prop.label}</Label>
+            {children.map((child: any) => renderMobileProperty(child))}
+          </div>
+        );
+      }
+
+      if (prop.type === 'tab') {
+        const tabs = prop.tabs || [];
+        const activeTabId = activeTabIds[prop.id] || (tabs[0]?.id ?? '');
+        const children = actorProperties.filter((c: any) => c.parentId === prop.id && c.tabId === activeTabId);
+        return (
+          <div key={prop.id} className="rounded-lg overflow-hidden" style={propStyle} data-testid={`actor-property-mobile-${prop.key}`}>
+            <div className="flex border-b border-stone-600/50">
+              {tabs.map((tab: any) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTabIds(prev => ({ ...prev, [prop.id]: tab.id }))}
+                  className={`px-3 py-2 text-xs truncate flex-1 transition-colors ${
+                    tab.id === activeTabId
+                      ? 'text-purple-300 border-b-2 border-purple-500 bg-purple-900/20'
+                      : 'text-stone-500 hover:text-stone-300'
+                  }`}
+                  data-testid={`actor-tab-mobile-${prop.key}-${tab.id}`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+            <div className="p-3 space-y-3">
+              {children.map((child: any) => renderMobileProperty(child))}
+            </div>
+          </div>
+        );
+      }
+
+      return (
+        <div key={prop.id} className="space-y-1" style={propStyle} data-testid={`actor-property-mobile-${prop.key}`}>
+          <Label className="text-stone-400" style={{ fontSize: `${lfs}px`, ...(propStyle.color ? { color: propStyle.color } : {}) }}>{prop.label}</Label>
+          {prop.type === 'text' && (
+            <Input
+              value={val}
+              onChange={(e) => handleActorValueChange(prop.key, e.target.value)}
+              className="bg-stone-800 border-stone-700 text-stone-200 h-8"
+              style={{ fontSize: `${vfs}px` }}
+              data-testid={`input-actor-${prop.key}`}
+            />
+          )}
+          {prop.type === 'number' && (
+            <Input
+              type="number"
+              value={val}
+              onChange={(e) => handleActorValueChange(prop.key, e.target.value)}
+              className="bg-stone-800 border-stone-700 text-stone-200 h-8"
+              style={{ fontSize: `${vfs}px` }}
+              data-testid={`input-actor-${prop.key}`}
+            />
+          )}
+          {prop.type === 'checkbox' && (
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={val === 'true'}
+                onChange={(e) => handleActorValueChange(prop.key, e.target.checked ? 'true' : 'false')}
+                className="h-4 w-4 accent-amber-600"
+                data-testid={`checkbox-actor-${prop.key}`}
+              />
+            </div>
+          )}
+          {prop.type === 'textarea' && (
+            <Textarea
+              value={val}
+              onChange={(e) => handleActorValueChange(prop.key, e.target.value)}
+              className="bg-stone-800 border-stone-700 text-stone-200 min-h-[60px]"
+              style={{ fontSize: `${vfs}px` }}
+              data-testid={`textarea-actor-${prop.key}`}
+            />
+          )}
+          {prop.type === 'select' && (
+            <Select value={val || '__empty__'} onValueChange={(v) => handleActorValueChange(prop.key, v === '__empty__' ? '' : v)}>
+              <SelectTrigger className="bg-stone-800 border-stone-700 text-stone-200 h-8" style={{ fontSize: `${vfs}px` }} data-testid={`select-actor-${prop.key}`}>
+                <SelectValue placeholder="Select..." />
+              </SelectTrigger>
+              <SelectContent className="bg-stone-800 border-stone-700">
+                <SelectItem value="__empty__" className="text-stone-400">None</SelectItem>
+                {(prop.options || []).map((opt: string) => (
+                  <SelectItem key={opt} value={opt} className="text-stone-200">{opt}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+        </div>
+      );
+    };
+
+    const rootProps = actorProperties.filter((p: any) => !p.parentId);
+
     return (
       <div className="space-y-3" data-testid="actor-properties-display-mobile">
-        {actorProperties.map((prop: any) => {
-          const val = actorValues[prop.key] ?? prop.defaultValue ?? '';
-          const lfs = prop.labelFontSize ?? 11;
-          const vfs = prop.valueFontSize ?? 13;
-
-          return (
-            <div key={prop.id} className="space-y-1" data-testid={`actor-property-mobile-${prop.key}`}>
-              <Label className="text-stone-400" style={{ fontSize: `${lfs}px` }}>{prop.label}</Label>
-              {prop.type === 'text' && (
-                <Input
-                  value={val}
-                  onChange={(e) => handleActorValueChange(prop.key, e.target.value)}
-                  className="bg-stone-800 border-stone-700 text-stone-200 h-8"
-                  style={{ fontSize: `${vfs}px` }}
-                  data-testid={`input-actor-${prop.key}`}
-                />
-              )}
-              {prop.type === 'number' && (
-                <Input
-                  type="number"
-                  value={val}
-                  onChange={(e) => handleActorValueChange(prop.key, e.target.value)}
-                  className="bg-stone-800 border-stone-700 text-stone-200 h-8"
-                  style={{ fontSize: `${vfs}px` }}
-                  data-testid={`input-actor-${prop.key}`}
-                />
-              )}
-              {prop.type === 'checkbox' && (
-                <div className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={val === 'true'}
-                    onChange={(e) => handleActorValueChange(prop.key, e.target.checked ? 'true' : 'false')}
-                    className="h-4 w-4 accent-amber-600"
-                    data-testid={`checkbox-actor-${prop.key}`}
-                  />
-                </div>
-              )}
-              {prop.type === 'textarea' && (
-                <Textarea
-                  value={val}
-                  onChange={(e) => handleActorValueChange(prop.key, e.target.value)}
-                  className="bg-stone-800 border-stone-700 text-stone-200 min-h-[60px]"
-                  style={{ fontSize: `${vfs}px` }}
-                  data-testid={`textarea-actor-${prop.key}`}
-                />
-              )}
-              {prop.type === 'select' && (
-                <Select value={val || '__empty__'} onValueChange={(v) => handleActorValueChange(prop.key, v === '__empty__' ? '' : v)}>
-                  <SelectTrigger className="bg-stone-800 border-stone-700 text-stone-200 h-8" style={{ fontSize: `${vfs}px` }} data-testid={`select-actor-${prop.key}`}>
-                    <SelectValue placeholder="Select..." />
-                  </SelectTrigger>
-                  <SelectContent className="bg-stone-800 border-stone-700">
-                    <SelectItem value="__empty__" className="text-stone-400">None</SelectItem>
-                    {(prop.options || []).map((opt: string) => (
-                      <SelectItem key={opt} value={opt} className="text-stone-200">{opt}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
-            </div>
-          );
-        })}
+        {rootProps.map((prop: any) => renderMobileProperty(prop))}
       </div>
     );
   };
@@ -1912,6 +2084,121 @@ function SandboxSheetEditor({
                     <SelectItem value="hidden" className="text-stone-200">Hidden</SelectItem>
                   </SelectContent>
                 </Select>
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-stone-500 text-[10px]">Parent Container</Label>
+                <Select
+                  value={selectedProperty.parentId || '__none__'}
+                  onValueChange={(v) => {
+                    const newParentId = v === '__none__' ? null : v;
+                    const updates: Record<string, any> = { parentId: newParentId };
+                    if (!newParentId) {
+                      updates.tabId = null;
+                    } else {
+                      const parentProp = properties.find((p: any) => p.id === newParentId);
+                      if (parentProp?.type === 'tab' && parentProp.tabs?.length > 0) {
+                        updates.tabId = parentProp.tabs[0].id;
+                      } else {
+                        updates.tabId = null;
+                      }
+                    }
+                    updatePropertyLayout(selectedProperty.id, updates);
+                  }}
+                >
+                  <SelectTrigger className="bg-stone-900 border-stone-600 text-stone-200 h-7 text-xs" data-testid="select-prop-parent">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-stone-800 border-stone-700">
+                    <SelectItem value="__none__" className="text-stone-200">None (Root)</SelectItem>
+                    {properties.filter((p: any) => (p.type === 'panel' || p.type === 'tab') && p.id !== selectedProperty.id && p.parentId !== selectedProperty.id).map((p: any) => (
+                      <SelectItem key={p.id} value={p.id} className="text-stone-200">
+                        {p.label} ({p.type})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {selectedProperty.parentId && (() => {
+                const parentProp = properties.find((p: any) => p.id === selectedProperty.parentId);
+                if (parentProp?.type === 'tab' && parentProp.tabs?.length > 0) {
+                  return (
+                    <div className="space-y-1">
+                      <Label className="text-stone-500 text-[10px]">Tab</Label>
+                      <Select
+                        value={selectedProperty.tabId || parentProp.tabs[0]?.id || ''}
+                        onValueChange={(v) => updatePropertyLayout(selectedProperty.id, { tabId: v })}
+                      >
+                        <SelectTrigger className="bg-stone-900 border-stone-600 text-stone-200 h-7 text-xs" data-testid="select-prop-tab">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent className="bg-stone-800 border-stone-700">
+                          {parentProp.tabs.map((tab: any) => (
+                            <SelectItem key={tab.id} value={tab.id} className="text-stone-200">
+                              {tab.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  );
+                }
+                return null;
+              })()}
+
+              {selectedProperty.type === 'tab' && (
+                <div className="space-y-2">
+                  <Label className="text-stone-500 text-[10px]">Tabs</Label>
+                  {(selectedProperty.tabs || []).map((tab: TabDefinition, idx: number) => (
+                    <div key={tab.id} className="flex items-center gap-1">
+                      <Input
+                        value={tab.label}
+                        onChange={(e) => {
+                          const newTabs = [...(selectedProperty.tabs || [])];
+                          newTabs[idx] = { ...tab, label: e.target.value };
+                          updatePropertyLayout(selectedProperty.id, { tabs: newTabs });
+                        }}
+                        className="bg-stone-900 border-stone-600 text-stone-200 h-7 text-xs flex-1"
+                        data-testid={`input-tab-label-${idx}`}
+                      />
+                      {(selectedProperty.tabs || []).length > 1 && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => {
+                            const newTabs = (selectedProperty.tabs || []).filter((_: any, i: number) => i !== idx);
+                            updatePropertyLayout(selectedProperty.id, { tabs: newTabs });
+                          }}
+                          className="h-7 w-7 text-red-400 hover:text-red-300 hover:bg-red-900/20 shrink-0"
+                          data-testid={`button-delete-tab-${idx}`}
+                        >
+                          <X className="h-3 w-3" />
+                        </Button>
+                      )}
+                    </div>
+                  ))}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const newTabs = [...(selectedProperty.tabs || []), { id: crypto.randomUUID(), label: `Tab ${(selectedProperty.tabs || []).length + 1}` }];
+                      updatePropertyLayout(selectedProperty.id, { tabs: newTabs });
+                    }}
+                    className="w-full border-stone-600 text-stone-400 h-7 text-xs"
+                    data-testid="button-add-tab"
+                  >
+                    <Plus className="h-3 w-3 mr-1" /> Add Tab
+                  </Button>
+                </div>
+              )}
+
+              <div className="border-t border-stone-700/50 pt-3">
+                <PropertyStyleEditor
+                  style={selectedProperty.style || {}}
+                  onChange={(newStyle: PropertyStyle) => updatePropertyLayout(selectedProperty.id, { style: newStyle })}
+                  propertyType={selectedProperty.type}
+                />
               </div>
 
               <Button
