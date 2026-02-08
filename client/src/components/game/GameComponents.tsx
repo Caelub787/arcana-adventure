@@ -313,9 +313,12 @@ interface BattleMapProps {
   notesPanelWidth?: number;
   onNotesClick?: () => void;
   inCombat?: boolean;
+  fogToolActive?: boolean;
+  onFogToolActiveChange?: (active: boolean) => void;
+  onDropCharacterOnMap?: (characterId: string, gridX: number, gridY: number) => void;
 }
 
-export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClick, onTokenTripleClick, onDeleteToken, role, gridSize, backgroundImage, scene, onViewChange, characters = [], allSpecies = [], selectionMode = 'select', targetedTokenId, selectedTokenId, aoeTargetState, onAoeMouseMove, onAoeClick, otherPlayersAoe, myPermissions, tokenActiveEffects, allTokenEffects, onApplyEffect, onRemoveEffect, onToggleInvisibility, currentTurnCharacterId, otherPlayersTargeting, activeBeacons, onBeacon, otherPlayersViewports, thrownItems = [], onRefetchThrownItems, onDeleteThrownItem, throwableGridTarget, onGridTargetClick, notesPanelOpen = false, notesPanelWidth = 0, onNotesClick, inCombat = false }: BattleMapProps) {
+export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClick, onTokenTripleClick, onDeleteToken, role, gridSize, backgroundImage, scene, onViewChange, characters = [], allSpecies = [], selectionMode = 'select', targetedTokenId, selectedTokenId, aoeTargetState, onAoeMouseMove, onAoeClick, otherPlayersAoe, myPermissions, tokenActiveEffects, allTokenEffects, onApplyEffect, onRemoveEffect, onToggleInvisibility, currentTurnCharacterId, otherPlayersTargeting, activeBeacons, onBeacon, otherPlayersViewports, thrownItems = [], onRefetchThrownItems, onDeleteThrownItem, throwableGridTarget, onGridTargetClick, notesPanelOpen = false, notesPanelWidth = 0, onNotesClick, inCombat = false, fogToolActive: fogToolActiveProp, onFogToolActiveChange, onDropCharacterOnMap }: BattleMapProps) {
   // Derive isGM from role prop
   const isGM = role === 'gm';
   
@@ -344,7 +347,12 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
   const thrownItemHoldTimerRef = useRef<NodeJS.Timeout | null>(null);
   
   // Fog of War state
-  const [fogToolActive, setFogToolActive] = useState(false);
+  const [fogToolActiveInternal, setFogToolActiveInternal] = useState(false);
+  const fogToolActive = fogToolActiveProp ?? fogToolActiveInternal;
+  const setFogToolActive = useCallback((v: boolean) => {
+    setFogToolActiveInternal(v);
+    onFogToolActiveChange?.(v);
+  }, [onFogToolActiveChange]);
   const [wallDrawMode, setWallDrawMode] = useState(false);
   const [selectedWallType, setSelectedWallType] = useState<string>('solid');
   const [doorPlaceMode, setDoorPlaceMode] = useState(false);
@@ -1455,7 +1463,32 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
   }, []);
 
   return (
-    <div className="relative h-full w-full overflow-hidden bg-black rounded-lg border border-white/10 shadow-inner group" ref={containerRef}>
+    <div className="relative h-full w-full overflow-hidden bg-black rounded-lg border border-white/10 shadow-inner group" ref={containerRef}
+      onDragOver={(e) => {
+        if (e.dataTransfer.types.includes('application/character-id')) {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'copy';
+        }
+      }}
+      onDrop={(e) => {
+        const characterId = e.dataTransfer.getData('application/character-id');
+        if (characterId && onDropCharacterOnMap) {
+          e.preventDefault();
+          const rect = e.currentTarget.getBoundingClientRect();
+          const screenX = e.clientX - rect.left;
+          const screenY = e.clientY - rect.top;
+          const currentZoom = zoomRef.current;
+          const currentPan = panRef.current;
+          const worldX = (screenX - currentPan.x) / currentZoom;
+          const worldY = (screenY - currentPan.y) / currentZoom;
+          const effectiveGridSize = scene?.gridSize || gridSize;
+          const gridEnabled = scene?.gridEnabled !== undefined ? scene.gridEnabled : true;
+          const snappedX = gridEnabled ? Math.round(worldX / effectiveGridSize) * effectiveGridSize : worldX;
+          const snappedY = gridEnabled ? Math.round(worldY / effectiveGridSize) * effectiveGridSize : worldY;
+          onDropCharacterOnMap(characterId, snappedX, snappedY);
+        }
+      }}
+    >
       
       {/* Map Controls (Top Center) - shifts left when notes panel is open */}
       <div 
@@ -7380,7 +7413,7 @@ function CharacterListItem({ char, role, onViewCharacter, onAssignCharacter, onD
   return (
     <div className="p-2 bg-stone-900 rounded border border-stone-800 flex justify-between items-center gap-2"
       draggable={role === 'gm'}
-      onDragStart={(e) => { e.dataTransfer.setData('text/plain', char.id.toString()); onSetDraggingCharacterId(char.id); }}
+      onDragStart={(e) => { e.dataTransfer.setData('text/plain', char.id.toString()); e.dataTransfer.setData('application/character-id', char.id.toString()); onSetDraggingCharacterId(char.id); }}
       onDragEnd={() => onSetDraggingCharacterId(null)}
     >
       <div className="flex items-center gap-2 flex-1 min-w-0">
@@ -8525,6 +8558,7 @@ export function CampaignMenu({ campaignId, role, inviteCode, hotbarSlots = 5, in
                                  draggable={role === 'gm'}
                                  onDragStart={(e) => {
                                    e.dataTransfer.setData('text/plain', char.id.toString());
+                                   e.dataTransfer.setData('application/character-id', char.id.toString());
                                    setDraggingCharacterId(char.id);
                                  }}
                                  onDragEnd={() => setDraggingCharacterId(null)}
@@ -8644,6 +8678,7 @@ export function CampaignMenu({ campaignId, role, inviteCode, hotbarSlots = 5, in
                            draggable={role === 'gm'}
                            onDragStart={(e) => {
                              e.dataTransfer.setData('text/plain', char.id.toString());
+                             e.dataTransfer.setData('application/character-id', char.id.toString());
                              setDraggingCharacterId(char.id);
                            }}
                            onDragEnd={() => setDraggingCharacterId(null)}
@@ -9166,6 +9201,7 @@ export function CampaignMenu({ campaignId, role, inviteCode, hotbarSlots = 5, in
                                  draggable={role === 'gm'}
                                  onDragStart={(e) => {
                                    e.dataTransfer.setData('text/plain', char.id.toString());
+                                   e.dataTransfer.setData('application/character-id', char.id.toString());
                                    setDraggingCharacterId(char.id);
                                  }}
                                  onDragEnd={() => setDraggingCharacterId(null)}
@@ -9285,6 +9321,7 @@ export function CampaignMenu({ campaignId, role, inviteCode, hotbarSlots = 5, in
                            draggable={role === 'gm'}
                            onDragStart={(e) => {
                              e.dataTransfer.setData('text/plain', char.id.toString());
+                             e.dataTransfer.setData('application/character-id', char.id.toString());
                              setDraggingCharacterId(char.id);
                            }}
                            onDragEnd={() => setDraggingCharacterId(null)}
@@ -13466,6 +13503,9 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
     featTree: string;
     speed: number;
     flySpeed: number;
+    visionType: string;
+    dayVisionDistance: number;
+    nightVisionDistance: number;
   }>({
     name: character?.name || "",
     level: character?.level || 1,
@@ -13479,7 +13519,10 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
     sizeBonus: character?.sizeBonus || 0,
     featTree: character?.featTree || "",
     speed: character?.speed || 30,
-    flySpeed: character?.flySpeed || 0
+    flySpeed: character?.flySpeed || 0,
+    visionType: character?.visionType || 'normal',
+    dayVisionDistance: character?.dayVisionDistance || 120,
+    nightVisionDistance: character?.nightVisionDistance || 60
   });
   
   // New attributes: Might, Finesse, Wit, Presence, Will, Craft (range -2 to 5)
@@ -15235,7 +15278,10 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                               sizeBonus: liveCharacter.sizeBonus || 0,
                               featTree: liveCharacter.featTree || "",
                               speed: liveCharacter.speed || 30,
-                              flySpeed: liveCharacter.flySpeed || 0
+                              flySpeed: liveCharacter.flySpeed || 0,
+                              visionType: (liveCharacter as any).visionType || 'normal',
+                              dayVisionDistance: (liveCharacter as any).dayVisionDistance || 120,
+                              nightVisionDistance: (liveCharacter as any).nightVisionDistance || 60
                             });
                             setEditingOverview(true);
                           }}
@@ -15497,11 +15543,52 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                         {editingOverview ? overviewData.flySpeed : liveCharacter.flySpeed} ft
                       </p>
                     </div>
-                    <div>
+                    <div className="col-span-2">
                       <Label className="text-xs text-stone-400">Vision</Label>
-                      <p className="text-stone-200 text-xs" data-testid="text-vision">
-                        {(liveCharacter as any).visionType || 'normal'} ({(liveCharacter as any).dayVisionDistance || 120}/{(liveCharacter as any).nightVisionDistance || 60}ft)
-                      </p>
+                      {editingOverview ? (
+                        <div className="space-y-2 mt-1">
+                          <div className="flex items-center gap-2">
+                            <select
+                              value={overviewData.visionType}
+                              onChange={(e) => setOverviewData({ ...overviewData, visionType: e.target.value })}
+                              className="flex-1 h-8 px-2 text-xs rounded-md border border-stone-700 bg-stone-900 text-stone-200"
+                              data-testid="select-vision-type"
+                            >
+                              <option value="normal">Normal</option>
+                              <option value="darkvision">Darkvision</option>
+                              <option value="blindsight">Blindsight</option>
+                              <option value="truesight">Truesight</option>
+                              <option value="tremorsense">Tremorsense</option>
+                            </select>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <Label className="text-[10px] text-stone-500">Day (ft)</Label>
+                              <Input
+                                type="number"
+                                value={overviewData.dayVisionDistance}
+                                onChange={(e) => setOverviewData({ ...overviewData, dayVisionDistance: parseInt(e.target.value) || 0 })}
+                                className="h-7 text-xs bg-stone-900 border-stone-700 text-stone-200"
+                                data-testid="input-day-vision"
+                              />
+                            </div>
+                            <div>
+                              <Label className="text-[10px] text-stone-500">Night (ft)</Label>
+                              <Input
+                                type="number"
+                                value={overviewData.nightVisionDistance}
+                                onChange={(e) => setOverviewData({ ...overviewData, nightVisionDistance: parseInt(e.target.value) || 0 })}
+                                className="h-7 text-xs bg-stone-900 border-stone-700 text-stone-200"
+                                data-testid="input-night-vision"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-stone-200 text-xs" data-testid="text-vision">
+                          {(liveCharacter as any).visionType || 'normal'} ({(liveCharacter as any).dayVisionDistance || 120}/{(liveCharacter as any).nightVisionDistance || 60}ft)
+                        </p>
+                      )}
                     </div>
                     {/* Exhaustion - Compact */}
                     {(() => {
