@@ -1786,7 +1786,7 @@ function SandboxSheetEditor({
                 <div className="flex items-center h-full">
                   <input
                     type="checkbox"
-                    checked={val === 'true' || val === true}
+                    checked={String(val) === 'true'}
                     onChange={(e) => handleActorValueChange(prop.key, e.target.checked ? 'true' : 'false')}
                     className="h-4 w-4 accent-amber-600"
                     data-testid={`checkbox-actor-${prop.key}`}
@@ -1794,7 +1794,7 @@ function SandboxSheetEditor({
                 </div>
               )}
               {prop.type === 'list' && (
-                <Select value={val || '__empty__'} onValueChange={(v) => handleActorValueChange(prop.key, v === '__empty__' ? '' : v)}>
+                <Select value={String(val) || '__empty__'} onValueChange={(v) => handleActorValueChange(prop.key, v === '__empty__' ? '' : v)}>
                   <SelectTrigger className="bg-stone-800 border-stone-700 text-stone-200 h-full w-full" style={{ fontSize: `${vfs}px`, ...(valueColor ? { color: valueColor } : {}) }} data-testid={`select-actor-${prop.key}`}>
                     <SelectValue placeholder="Select..." />
                   </SelectTrigger>
@@ -1950,7 +1950,7 @@ function SandboxSheetEditor({
             <div className="flex items-center gap-2">
               <input
                 type="checkbox"
-                checked={val === 'true' || val === true}
+                checked={String(val) === 'true'}
                 onChange={(e) => handleActorValueChange(prop.key, e.target.checked ? 'true' : 'false')}
                 className="h-4 w-4 accent-amber-600"
                 data-testid={`checkbox-actor-${prop.key}`}
@@ -2594,7 +2594,7 @@ function SandboxSheetEditor({
             </div>
 
             <div className="border-t border-stone-700 pt-2">
-              <PropertyStyleEditor style={newPropStyle} onChange={setNewPropStyle} />
+              <PropertyStyleEditor style={newPropStyle} onChange={setNewPropStyle} propertyType={newPropType as any} />
             </div>
 
             <div className="flex gap-2 pt-1 border-t border-stone-700">
@@ -2971,7 +2971,7 @@ function SandboxCharactersContent({
               onDragLeave={(e) => { e.stopPropagation(); setDragOverFolderId(prev => prev === folder.id ? null : prev); }}
               onDrop={(e) => {
                 handleItemDrop(folder.id, e);
-                setExpandedFolders(prev => new Set([...prev, folder.id]));
+                setExpandedFolders(prev => { const n = new Set(prev); n.add(folder.id); return n; });
               }}
             >
               <div className="flex items-center gap-2">
