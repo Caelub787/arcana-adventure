@@ -1,0 +1,195 @@
+export interface BlockingSegment {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  type: 'wall' | 'door' | 'window';
+}
+
+export interface VisionPolygon {
+  tokenX: number;
+  tokenY: number;
+  radius: number;
+  points: { x: number; y: number }[];
+}
+
+interface RayIntersection {
+  x: number;
+  y: number;
+  dist: number;
+  angle: number;
+}
+
+export function getBlockingSegments(
+  walls: Array<{ x1: number; y1: number; x2: number; y2: number; wallType: string; oneWayDirection?: string | null }>,
+  doors: Array<{ x1: number; y1: number; x2: number; y2: number; isOpen: boolean; blocksVisionWhenClosed: boolean }>,
+  windows: Array<{ x1: number; y1: number; x2: number; y2: number; shutterClosed: boolean }>
+): BlockingSegment[] {
+  const segments: BlockingSegment[] = [];
+
+  for (const wall of walls) {
+    if (wall.wallType === 'transparent' || wall.wallType === 'invisible') continue;
+    segments.push({
+      x1: wall.x1,
+      y1: wall.y1,
+      x2: wall.x2,
+      y2: wall.y2,
+      type: 'wall',
+    });
+  }
+
+  for (const door of doors) {
+    if (!door.isOpen && door.blocksVisionWhenClosed) {
+      segments.push({
+        x1: door.x1,
+        y1: door.y1,
+        x2: door.x2,
+        y2: door.y2,
+        type: 'door',
+      });
+    }
+  }
+
+  for (const win of windows) {
+    if (win.shutterClosed) {
+      segments.push({
+        x1: win.x1,
+        y1: win.y1,
+        x2: win.x2,
+        y2: win.y2,
+        type: 'window',
+      });
+    }
+  }
+
+  return segments;
+}
+
+function lineSegmentIntersection(
+  rx1: number, ry1: number, rx2: number, ry2: number,
+  sx1: number, sy1: number, sx2: number, sy2: number
+): { x: number; y: number; t: number } | null {
+  const dx = rx2 - rx1;
+  const dy = ry2 - ry1;
+  const ex = sx2 - sx1;
+  const ey = sy2 - sy1;
+
+  const denom = dx * ey - dy * ex;
+  if (Math.abs(denom) < 1e-10) return null;
+
+  const t = ((sx1 - rx1) * ey - (sy1 - ry1) * ex) / denom;
+  const u = ((sx1 - rx1) * dy - (sy1 - ry1) * dx) / denom;
+
+  if (t < 0 || u < 0 || u > 1) return null;
+
+  return {
+    x: rx1 + t * dx,
+    y: ry1 + t * dy,
+    t,
+  };
+}
+
+function castRay(
+  originX: number,
+  originY: number,
+  angle: number,
+  visionRadius: number,
+  segments: BlockingSegment[]
+): RayIntersection {
+  const farX = originX + Math.cos(angle) * visionRadius;
+  const farY = originY + Math.sin(angle) * visionRadius;
+
+  let closestDist = visionRadius;
+  let closestX = farX;
+  let closestY = farY;
+
+  for (const seg of segments) {
+    const hit = lineSegmentIntersection(
+      originX, originY, farX, farY,
+      seg.x1, seg.y1, seg.x2, seg.y2
+    );
+
+    if (hit && hit.t > 0) {
+      const dist = hit.t * visionRadius;
+      if (dist < closestDist) {
+        closestDist = dist;
+        closestX = hit.x;
+        closestY = hit.y;
+      }
+    }
+  }
+
+  return { x: closestX, y: closestY, dist: closestDist, angle };
+}
+
+export function calculateVisionPolygon(
+  tokenX: number,
+  tokenY: number,
+  visionRadius: number,
+  blockingSegments: BlockingSegment[]
+): VisionPolygon {
+  if (visionRadius <= 0) {
+    return { tokenX, tokenY, radius: visionRadius, points: [] };
+  }
+
+  const angles: number[] = [];
+  const EPSILON = 0.001;
+
+  for (const seg of blockingSegments) {
+    const a1 = Math.atan2(seg.y1 - tokenY, seg.x1 - tokenX);
+    const a2 = Math.atan2(seg.y2 - tokenY, seg.x2 - tokenX);
+
+    angles.push(a1 - EPSILON, a1, a1 + EPSILON);
+    angles.push(a2 - EPSILON, a2, a2 + EPSILON);
+  }
+
+  const STEP = Math.PI / 180;
+  for (let a = -Math.PI; a < Math.PI; a += STEP) {
+    angles.push(a);
+  }
+
+  const rayResults: RayIntersection[] = [];
+  for (const angle of angles) {
+    rayResults.push(castRay(tokenX, tokenY, angle, visionRadius, blockingSegments));
+  }
+
+  rayResults.sort((a, b) => a.angle - b.angle);
+
+  const seen = new Set<string>();
+  const uniqueResults: RayIntersection[] = [];
+  for (const r of rayResults) {
+    const key = `${r.x.toFixed(1)},${r.y.toFixed(1)}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      uniqueResults.push(r);
+    }
+  }
+
+  return {
+    tokenX,
+    tokenY,
+    radius: visionRadius,
+    points: uniqueResults.map(r => ({ x: r.x, y: r.y })),
+  };
+}
+
+export function isPointVisible(
+  fromX: number,
+  fromY: number,
+  toX: number,
+  toY: number,
+  blockingSegments: BlockingSegment[]
+): boolean {
+  for (const seg of blockingSegments) {
+    const hit = lineSegmentIntersection(
+      fromX, fromY, toX, toY,
+      seg.x1, seg.y1, seg.x2, seg.y2
+    );
+
+    if (hit && hit.t > 0 && hit.t < 1) {
+      return false;
+    }
+  }
+
+  return true;
+}

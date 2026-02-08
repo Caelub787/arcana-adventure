@@ -6777,6 +6777,254 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ======== FOG OF WAR ROUTES ========
+
+  // Scene Walls CRUD
+  app.get("/api/scenes/:sceneId/walls", requireAuth, async (req, res) => {
+    try {
+      const walls = await storage.getSceneWalls(req.params.sceneId);
+      res.json(walls);
+    } catch (e) {
+      res.status(500).json({ error: "Failed to fetch walls" });
+    }
+  });
+
+  app.post("/api/scenes/:sceneId/walls", requireAuth, async (req, res) => {
+    try {
+      const scene = await storage.getScene(req.params.sceneId);
+      if (!scene) return res.status(404).json({ error: "Scene not found" });
+      const campaign = await storage.getCampaign(scene.campaignId);
+      if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+      const isGm = await storage.isGM(req.session.userId!, scene.campaignId);
+      if (!isGm) return res.status(403).json({ error: "Only GMs can manage walls" });
+      
+      const wall = await storage.createSceneWall({ ...req.body, sceneId: req.params.sceneId });
+      broadcastToCampaign(scene.campaignId, { type: "wall_created", wall });
+      res.json(wall);
+    } catch (e) {
+      res.status(500).json({ error: "Failed to create wall" });
+    }
+  });
+
+  app.post("/api/scenes/:sceneId/walls/batch", requireAuth, async (req, res) => {
+    try {
+      const scene = await storage.getScene(req.params.sceneId);
+      if (!scene) return res.status(404).json({ error: "Scene not found" });
+      const isGm = await storage.isGM(req.session.userId!, scene.campaignId);
+      if (!isGm) return res.status(403).json({ error: "Only GMs can manage walls" });
+      
+      const walls = [];
+      for (const wallData of req.body.walls) {
+        const wall = await storage.createSceneWall({ ...wallData, sceneId: req.params.sceneId });
+        walls.push(wall);
+      }
+      broadcastToCampaign(scene.campaignId, { type: "walls_batch_created", walls });
+      res.json(walls);
+    } catch (e) {
+      res.status(500).json({ error: "Failed to create walls batch" });
+    }
+  });
+
+  app.put("/api/walls/:id", requireAuth, async (req, res) => {
+    try {
+      const wall = await storage.updateSceneWall(req.params.id, req.body);
+      if (!wall) return res.status(404).json({ error: "Wall not found" });
+      res.json(wall);
+    } catch (e) {
+      res.status(500).json({ error: "Failed to update wall" });
+    }
+  });
+
+  app.delete("/api/walls/:id", requireAuth, async (req, res) => {
+    try {
+      await storage.deleteSceneWall(req.params.id);
+      res.json({ success: true });
+    } catch (e) {
+      res.status(500).json({ error: "Failed to delete wall" });
+    }
+  });
+
+  app.delete("/api/scenes/:sceneId/walls", requireAuth, async (req, res) => {
+    try {
+      const scene = await storage.getScene(req.params.sceneId);
+      if (!scene) return res.status(404).json({ error: "Scene not found" });
+      const isGm = await storage.isGM(req.session.userId!, scene.campaignId);
+      if (!isGm) return res.status(403).json({ error: "Only GMs can manage walls" });
+      
+      await storage.deleteSceneWalls(req.params.sceneId);
+      broadcastToCampaign(scene.campaignId, { type: "walls_cleared", sceneId: req.params.sceneId });
+      res.json({ success: true });
+    } catch (e) {
+      res.status(500).json({ error: "Failed to clear walls" });
+    }
+  });
+
+  // Scene Doors CRUD
+  app.get("/api/scenes/:sceneId/doors", requireAuth, async (req, res) => {
+    try {
+      const doors = await storage.getSceneDoors(req.params.sceneId);
+      res.json(doors);
+    } catch (e) {
+      res.status(500).json({ error: "Failed to fetch doors" });
+    }
+  });
+
+  app.post("/api/scenes/:sceneId/doors", requireAuth, async (req, res) => {
+    try {
+      const scene = await storage.getScene(req.params.sceneId);
+      if (!scene) return res.status(404).json({ error: "Scene not found" });
+      const isGm = await storage.isGM(req.session.userId!, scene.campaignId);
+      if (!isGm) return res.status(403).json({ error: "Only GMs can manage doors" });
+      
+      const door = await storage.createSceneDoor({ ...req.body, sceneId: req.params.sceneId });
+      broadcastToCampaign(scene.campaignId, { type: "door_created", door });
+      res.json(door);
+    } catch (e) {
+      res.status(500).json({ error: "Failed to create door" });
+    }
+  });
+
+  app.put("/api/doors/:id", requireAuth, async (req, res) => {
+    try {
+      const door = await storage.updateSceneDoor(req.params.id, req.body);
+      if (!door) return res.status(404).json({ error: "Door not found" });
+      res.json(door);
+    } catch (e) {
+      res.status(500).json({ error: "Failed to update door" });
+    }
+  });
+
+  app.delete("/api/doors/:id", requireAuth, async (req, res) => {
+    try {
+      await storage.deleteSceneDoor(req.params.id);
+      res.json({ success: true });
+    } catch (e) {
+      res.status(500).json({ error: "Failed to delete door" });
+    }
+  });
+
+  // Scene Windows CRUD
+  app.get("/api/scenes/:sceneId/windows", requireAuth, async (req, res) => {
+    try {
+      const windows = await storage.getSceneWindows(req.params.sceneId);
+      res.json(windows);
+    } catch (e) {
+      res.status(500).json({ error: "Failed to fetch windows" });
+    }
+  });
+
+  app.post("/api/scenes/:sceneId/windows", requireAuth, async (req, res) => {
+    try {
+      const scene = await storage.getScene(req.params.sceneId);
+      if (!scene) return res.status(404).json({ error: "Scene not found" });
+      const isGm = await storage.isGM(req.session.userId!, scene.campaignId);
+      if (!isGm) return res.status(403).json({ error: "Only GMs can manage windows" });
+      
+      const win = await storage.createSceneWindow({ ...req.body, sceneId: req.params.sceneId });
+      broadcastToCampaign(scene.campaignId, { type: "window_created", window: win });
+      res.json(win);
+    } catch (e) {
+      res.status(500).json({ error: "Failed to create window" });
+    }
+  });
+
+  app.put("/api/windows/:id", requireAuth, async (req, res) => {
+    try {
+      const win = await storage.updateSceneWindow(req.params.id, req.body);
+      if (!win) return res.status(404).json({ error: "Window not found" });
+      res.json(win);
+    } catch (e) {
+      res.status(500).json({ error: "Failed to update window" });
+    }
+  });
+
+  app.delete("/api/windows/:id", requireAuth, async (req, res) => {
+    try {
+      await storage.deleteSceneWindow(req.params.id);
+      res.json({ success: true });
+    } catch (e) {
+      res.status(500).json({ error: "Failed to delete window" });
+    }
+  });
+
+  // Scene Lights CRUD
+  app.get("/api/scenes/:sceneId/lights", requireAuth, async (req, res) => {
+    try {
+      const lights = await storage.getSceneLights(req.params.sceneId);
+      res.json(lights);
+    } catch (e) {
+      res.status(500).json({ error: "Failed to fetch lights" });
+    }
+  });
+
+  app.post("/api/scenes/:sceneId/lights", requireAuth, async (req, res) => {
+    try {
+      const scene = await storage.getScene(req.params.sceneId);
+      if (!scene) return res.status(404).json({ error: "Scene not found" });
+      const isGm = await storage.isGM(req.session.userId!, scene.campaignId);
+      if (!isGm) return res.status(403).json({ error: "Only GMs can manage lights" });
+      
+      const light = await storage.createSceneLight({ ...req.body, sceneId: req.params.sceneId });
+      broadcastToCampaign(scene.campaignId, { type: "light_created", light });
+      res.json(light);
+    } catch (e) {
+      res.status(500).json({ error: "Failed to create light" });
+    }
+  });
+
+  app.put("/api/lights/:id", requireAuth, async (req, res) => {
+    try {
+      const light = await storage.updateSceneLight(req.params.id, req.body);
+      if (!light) return res.status(404).json({ error: "Light not found" });
+      res.json(light);
+    } catch (e) {
+      res.status(500).json({ error: "Failed to update light" });
+    }
+  });
+
+  app.delete("/api/lights/:id", requireAuth, async (req, res) => {
+    try {
+      await storage.deleteSceneLight(req.params.id);
+      res.json({ success: true });
+    } catch (e) {
+      res.status(500).json({ error: "Failed to delete light" });
+    }
+  });
+
+  // Fog of War state management
+  app.put("/api/scenes/:sceneId/fog-state", requireAuth, async (req, res) => {
+    try {
+      const scene = await storage.getScene(req.params.sceneId);
+      if (!scene) return res.status(404).json({ error: "Scene not found" });
+      const isGm = await storage.isGM(req.session.userId!, scene.campaignId);
+      if (!isGm) return res.status(403).json({ error: "Only GMs can manage fog" });
+      
+      const updated = await storage.updateScene(req.params.sceneId, { fogState: req.body.fogState });
+      broadcastToCampaign(scene.campaignId, { type: "fog_state_updated", sceneId: req.params.sceneId, fogState: req.body.fogState });
+      res.json(updated);
+    } catch (e) {
+      res.status(500).json({ error: "Failed to update fog state" });
+    }
+  });
+
+  // Door toggle (open/close) - available to players too
+  app.post("/api/doors/:id/toggle", requireAuth, async (req, res) => {
+    try {
+      const existingDoor = await storage.getSceneDoor(req.params.id);
+      if (!existingDoor) return res.status(404).json({ error: "Door not found" });
+      const door = await storage.updateSceneDoor(req.params.id, { isOpen: req.body.isOpen });
+      if (!door) return res.status(404).json({ error: "Door not found" });
+      
+      const scene = await storage.getScene(door.sceneId);
+      if (scene) {
+        broadcastToCampaign(scene.campaignId, { type: "door_toggled", door });
+      }
+      res.json(door);
+    } catch (e) {
+      res.status(500).json({ error: "Failed to toggle door" });
+    }
+  });
+
   // ======== GOOGLE DRIVE IMAGE LIBRARY ROUTES ========
   
   // Get Google Drive connection status

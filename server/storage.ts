@@ -47,7 +47,11 @@ import {
   type SandboxActor, type InsertSandboxActor,
   type SandboxFolder, type InsertSandboxFolder,
   type RollEntry, type InsertRollEntry,
-  users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, items, spells, characterPermissions, initiativeEntries, systemSpecies, campaignSpecies, featTemplates, featTrees, feats, featConnections, characterFeats, systemSpells, systemSkills, characterCustomSkills, systemTraits, characterTraits, characterFolders, characterTemplateFolders, sceneFolders, friendRequests, friendships, noteFolders, notes, noteReferences, noteShares, tokenEffects, spellEffects, itemEffects, tokenActiveEffects, thrownItems, adminNotifications, userNotifications, termsAndConditions, userTermsAcceptance, sandboxFolders, sandboxTemplates, sandboxActors, rollEntries
+  type SceneWall, type InsertSceneWall,
+  type SceneDoor, type InsertSceneDoor,
+  type SceneWindow, type InsertSceneWindow,
+  type SceneLight, type InsertSceneLight,
+  users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, items, spells, characterPermissions, initiativeEntries, systemSpecies, campaignSpecies, featTemplates, featTrees, feats, featConnections, characterFeats, systemSpells, systemSkills, characterCustomSkills, systemTraits, characterTraits, characterFolders, characterTemplateFolders, sceneFolders, friendRequests, friendships, noteFolders, notes, noteReferences, noteShares, tokenEffects, spellEffects, itemEffects, tokenActiveEffects, thrownItems, adminNotifications, userNotifications, termsAndConditions, userTermsAcceptance, sandboxFolders, sandboxTemplates, sandboxActors, rollEntries, sceneWalls, sceneDoors, sceneWindows, sceneLights
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql, inArray, or, isNull } from "drizzle-orm";
@@ -182,6 +186,32 @@ export interface IStorage {
   updateRollEntry(id: string, data: Partial<InsertRollEntry>): Promise<RollEntry | undefined>;
   deleteRollEntry(id: string): Promise<void>;
   deleteRollEntriesByOwner(ownerType: string, ownerId: string): Promise<void>;
+
+  // Scene Wall operations
+  getSceneWalls(sceneId: string): Promise<SceneWall[]>;
+  createSceneWall(wall: InsertSceneWall): Promise<SceneWall>;
+  updateSceneWall(id: string, data: Partial<InsertSceneWall>): Promise<SceneWall | undefined>;
+  deleteSceneWall(id: string): Promise<void>;
+  deleteSceneWalls(sceneId: string): Promise<void>;
+
+  // Scene Door operations
+  getSceneDoor(doorId: string): Promise<SceneDoor | undefined>;
+  getSceneDoors(sceneId: string): Promise<SceneDoor[]>;
+  createSceneDoor(door: InsertSceneDoor): Promise<SceneDoor>;
+  updateSceneDoor(id: string, data: Partial<InsertSceneDoor>): Promise<SceneDoor | undefined>;
+  deleteSceneDoor(id: string): Promise<void>;
+
+  // Scene Window operations
+  getSceneWindows(sceneId: string): Promise<SceneWindow[]>;
+  createSceneWindow(win: InsertSceneWindow): Promise<SceneWindow>;
+  updateSceneWindow(id: string, data: Partial<InsertSceneWindow>): Promise<SceneWindow | undefined>;
+  deleteSceneWindow(id: string): Promise<void>;
+
+  // Scene Light operations
+  getSceneLights(sceneId: string): Promise<SceneLight[]>;
+  createSceneLight(light: InsertSceneLight): Promise<SceneLight>;
+  updateSceneLight(id: string, data: Partial<InsertSceneLight>): Promise<SceneLight | undefined>;
+  deleteSceneLight(id: string): Promise<void>;
 
   // Character Permission operations
   getCharacterPermissions(characterId: string): Promise<CharacterPermission[]>;
@@ -1786,6 +1816,91 @@ export class DatabaseStorage implements IStorage {
       eq(rollEntries.ownerType, ownerType),
       eq(rollEntries.ownerId, ownerId)
     ));
+  }
+
+  // Scene Wall operations
+  async getSceneWalls(sceneId: string): Promise<SceneWall[]> {
+    return await db.select().from(sceneWalls).where(eq(sceneWalls.sceneId, sceneId));
+  }
+
+  async createSceneWall(wall: InsertSceneWall): Promise<SceneWall> {
+    const [newWall] = await db.insert(sceneWalls).values(wall).returning();
+    return newWall;
+  }
+
+  async updateSceneWall(id: string, data: Partial<InsertSceneWall>): Promise<SceneWall | undefined> {
+    const [wall] = await db.update(sceneWalls).set(data).where(eq(sceneWalls.id, id)).returning();
+    return wall;
+  }
+
+  async deleteSceneWall(id: string): Promise<void> {
+    await db.delete(sceneWalls).where(eq(sceneWalls.id, id));
+  }
+
+  async deleteSceneWalls(sceneId: string): Promise<void> {
+    await db.delete(sceneWalls).where(eq(sceneWalls.sceneId, sceneId));
+  }
+
+  // Scene Door operations
+  async getSceneDoor(doorId: string): Promise<SceneDoor | undefined> {
+    const [door] = await db.select().from(sceneDoors).where(eq(sceneDoors.id, doorId));
+    return door;
+  }
+
+  async getSceneDoors(sceneId: string): Promise<SceneDoor[]> {
+    return await db.select().from(sceneDoors).where(eq(sceneDoors.sceneId, sceneId));
+  }
+
+  async createSceneDoor(door: InsertSceneDoor): Promise<SceneDoor> {
+    const [newDoor] = await db.insert(sceneDoors).values(door).returning();
+    return newDoor;
+  }
+
+  async updateSceneDoor(id: string, data: Partial<InsertSceneDoor>): Promise<SceneDoor | undefined> {
+    const [door] = await db.update(sceneDoors).set(data).where(eq(sceneDoors.id, id)).returning();
+    return door;
+  }
+
+  async deleteSceneDoor(id: string): Promise<void> {
+    await db.delete(sceneDoors).where(eq(sceneDoors.id, id));
+  }
+
+  // Scene Window operations
+  async getSceneWindows(sceneId: string): Promise<SceneWindow[]> {
+    return await db.select().from(sceneWindows).where(eq(sceneWindows.sceneId, sceneId));
+  }
+
+  async createSceneWindow(win: InsertSceneWindow): Promise<SceneWindow> {
+    const [newWindow] = await db.insert(sceneWindows).values(win).returning();
+    return newWindow;
+  }
+
+  async updateSceneWindow(id: string, data: Partial<InsertSceneWindow>): Promise<SceneWindow | undefined> {
+    const [win] = await db.update(sceneWindows).set(data).where(eq(sceneWindows.id, id)).returning();
+    return win;
+  }
+
+  async deleteSceneWindow(id: string): Promise<void> {
+    await db.delete(sceneWindows).where(eq(sceneWindows.id, id));
+  }
+
+  // Scene Light operations
+  async getSceneLights(sceneId: string): Promise<SceneLight[]> {
+    return await db.select().from(sceneLights).where(eq(sceneLights.sceneId, sceneId));
+  }
+
+  async createSceneLight(light: InsertSceneLight): Promise<SceneLight> {
+    const [newLight] = await db.insert(sceneLights).values(light).returning();
+    return newLight;
+  }
+
+  async updateSceneLight(id: string, data: Partial<InsertSceneLight>): Promise<SceneLight | undefined> {
+    const [light] = await db.update(sceneLights).set(data).where(eq(sceneLights.id, id)).returning();
+    return light;
+  }
+
+  async deleteSceneLight(id: string): Promise<void> {
+    await db.delete(sceneLights).where(eq(sceneLights.id, id));
   }
 
   // Character Permission operations

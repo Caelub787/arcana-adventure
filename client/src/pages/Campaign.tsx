@@ -7883,6 +7883,21 @@ export default function Campaign() {
             }
           );
         }
+        if (data.type === 'wall_created' || data.type === 'walls_batch_created' || data.type === 'walls_cleared') {
+          queryClientRef.current.invalidateQueries({ queryKey: ['scene-walls'] });
+        }
+        if (data.type === 'door_created' || data.type === 'door_toggled') {
+          queryClientRef.current.invalidateQueries({ queryKey: ['scene-doors'] });
+        }
+        if (data.type === 'window_created') {
+          queryClientRef.current.invalidateQueries({ queryKey: ['scene-windows'] });
+        }
+        if (data.type === 'light_created') {
+          queryClientRef.current.invalidateQueries({ queryKey: ['scene-lights'] });
+        }
+        if (data.type === 'fog_state_updated' && data.sceneId) {
+          queryClientRef.current.invalidateQueries({ queryKey: [`/api/scenes/${data.sceneId}`] });
+        }
         if (data.type === 'scene_deleted' && data.sceneId) {
           queryClientRef.current.setQueryData(
             [`/api/campaigns/${effectiveCampaignId}/scenes`],

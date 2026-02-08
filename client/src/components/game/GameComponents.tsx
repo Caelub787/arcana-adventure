@@ -40,6 +40,7 @@ import goblinToken from "@assets/generated_images/top_down_goblin_token.png";
 import { triggerSkillRollNotification, triggerRollNotification, triggerEffectRollNotification, getNotificationStyle, setNotificationStyle, type NotificationStyle } from './RollNotification';
 import { ImageBrowser } from '@/components/ImageBrowser';
 import { BattlemapAoeOverlay } from './BattlemapAoeOverlay';
+import { FogOfWarOverlay, WallDrawingOverlay, FogToolsPanel } from './FogOfWarOverlay';
 import { type AoeTargetState, getTokensInAoe, getTokenGridSpan, getDistanceToTokenEdge, getDistanceBetweenTokensFeet, isTokenInRangeOfToken } from '@/lib/aoeHelpers';
 import { rollDice } from '../sandbox/diceEngine';
 
@@ -341,6 +342,16 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
   // Long-press delete mode for thrown items (mobile-friendly)
   const [thrownItemDeleteMode, setThrownItemDeleteMode] = useState<string | null>(null);
   const thrownItemHoldTimerRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // Fog of War state
+  const [fogToolActive, setFogToolActive] = useState(false);
+  const [wallDrawMode, setWallDrawMode] = useState(false);
+  const [selectedWallType, setSelectedWallType] = useState<string>('solid');
+  const [doorPlaceMode, setDoorPlaceMode] = useState(false);
+  const [windowPlaceMode, setWindowPlaceMode] = useState(false);
+  const [lightPlaceMode, setLightPlaceMode] = useState(false);
+  const [lightRadius, setLightRadius] = useState(30);
+  const [lightColor, setLightColor] = useState('#ffcc44');
   
   // Cleanup timers on unmount
   useEffect(() => {
@@ -3197,7 +3208,60 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
             })}
           </svg>
         )}
+        
+        {/* Fog of War Overlay - walls, doors, windows, lights, fog */}
+        {scene?.id && (
+          <FogOfWarOverlay
+            scene={scene}
+            isGM={isGM}
+            gridSize={scene?.gridSize || gridSize}
+            fogToolActive={fogToolActive}
+            onFogToolToggle={setFogToolActive}
+            tokens={tokens as any}
+            characters={characters as any}
+          />
+        )}
+        
+        {/* Wall/Door/Window/Light Drawing Overlay - interactive drawing on map */}
+        {scene?.id && fogToolActive && isGM && (wallDrawMode || doorPlaceMode || windowPlaceMode || lightPlaceMode) && (
+          <WallDrawingOverlay
+            sceneId={scene.id}
+            gridSize={scene?.gridSize || gridSize}
+            wallDrawMode={wallDrawMode}
+            selectedWallType={selectedWallType}
+            doorPlaceMode={doorPlaceMode}
+            windowPlaceMode={windowPlaceMode}
+            lightPlaceMode={lightPlaceMode}
+            lightRadius={lightRadius}
+            lightColor={lightColor}
+          />
+        )}
       </motion.div>
+
+      {/* Fog of War GM Tools Panel */}
+      {scene?.id && isGM && (
+        <FogToolsPanel
+          scene={scene}
+          isGM={isGM}
+          gridSize={scene?.gridSize || gridSize}
+          fogToolActive={fogToolActive}
+          onFogToolToggle={setFogToolActive}
+          wallDrawMode={wallDrawMode}
+          setWallDrawMode={setWallDrawMode}
+          selectedWallType={selectedWallType}
+          setSelectedWallType={setSelectedWallType}
+          doorPlaceMode={doorPlaceMode}
+          setDoorPlaceMode={setDoorPlaceMode}
+          windowPlaceMode={windowPlaceMode}
+          setWindowPlaceMode={setWindowPlaceMode}
+          lightPlaceMode={lightPlaceMode}
+          setLightPlaceMode={setLightPlaceMode}
+          lightRadius={lightRadius}
+          setLightRadius={setLightRadius}
+          lightColor={lightColor}
+          setLightColor={setLightColor}
+        />
+      )}
 
       {/* Token Delete Confirmation Dialog */}
       <AlertDialog open={!!tokenToDelete} onOpenChange={(open) => !open && setTokenToDelete(null)}>
@@ -14856,6 +14920,12 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                       <Label className="text-xs text-stone-400">Fly Speed</Label>
                       <p className="text-stone-200" data-testid="text-fly-speed">
                         {editingOverview ? overviewData.flySpeed : liveCharacter.flySpeed} ft
+                      </p>
+                    </div>
+                    <div>
+                      <Label className="text-xs text-stone-400">Vision</Label>
+                      <p className="text-stone-200 text-xs" data-testid="text-vision">
+                        {(liveCharacter as any).visionType || 'normal'} ({(liveCharacter as any).dayVisionDistance || 120}/{(liveCharacter as any).nightVisionDistance || 60}ft)
                       </p>
                     </div>
                     {/* Exhaustion - Compact */}
