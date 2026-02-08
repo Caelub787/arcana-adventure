@@ -1,4 +1,4 @@
-export type PropertyType = 'number' | 'text' | 'boolean' | 'resource' | 'list' | 'formula' | 'textarea';
+export type PropertyType = 'number' | 'text' | 'boolean' | 'resource' | 'list' | 'textarea' | 'pfp';
 
 export type SandboxPropertyType = PropertyType;
 
@@ -62,7 +62,8 @@ export interface TabBehaviorConfig {
   tabButtonStyle?: StyleConfig;
   activeTabButtonStyle?: StyleConfig;
   tabLayout?: 'top' | 'left' | 'right';
-  tabIcons?: Record<string, { type: 'icon' | 'image'; value: string }>;
+  tabIcons?: Record<string, { type: 'icon' | 'image'; value: string; showName?: boolean }>;
+  tabButtonSize?: 'small' | 'medium' | 'large';
 }
 
 export interface PanelBehaviorConfig {
@@ -126,12 +127,12 @@ export interface PropertyMetadata {
   renderComponent?: string;
   labelVisibility?: boolean;
   conditionalVisibilityExpression?: string;
-  formulaExpression?: string;
   options?: string[];
   resourceConfig?: {
     showMax?: boolean;
     showBar?: boolean;
     barColor?: string;
+    allowOverMax?: boolean;
   };
 }
 
@@ -246,7 +247,7 @@ export function resolveValue(property: PropertyDefinition, actorValues: ActorVal
     case 'list': return [];
     case 'text': return '';
     case 'textarea': return '';
-    case 'formula': return 0;
+    case 'pfp': return '';
   }
 }
 

@@ -925,6 +925,13 @@ function SandboxSheetEditor({
   const [activeTabState, setActiveTabState] = useState<Record<string, string>>({});
   const [collapsedPanels, setCollapsedPanels] = useState<Record<string, boolean>>({});
   const [addNodeDialogOpen, setAddNodeDialogOpen] = useState(false);
+  const [pfpEditorOpen, setPfpEditorOpen] = useState<string | null>(null);
+  const [pfpEditorPos, setPfpEditorPos] = useState({ x: 200, y: 200 });
+  const pfpDragRef = useRef({ startX: 0, startY: 0, posX: 0, posY: 0 });
+  const [pfpDragging, setPfpDragging] = useState(false);
+  const tabImageInputRef = useRef<HTMLInputElement>(null);
+  const [tabImageTarget, setTabImageTarget] = useState<{tabNodeId: string; childId: string} | null>(null);
+  const pfpFileInputRef = useRef<HTMLInputElement>(null);
 
   const updateTemplateMutationSheet = useMutation({
     mutationFn: (data: any) => api.updateSandboxTemplate(campaignId, item.id, data),
@@ -1033,9 +1040,9 @@ function SandboxSheetEditor({
     min: p.metadata?.min,
     max: p.metadata?.max,
     step: p.metadata?.step,
-    formulaExpression: p.metadata?.formulaExpression,
     showBar: p.metadata?.resourceConfig?.showBar,
     barColor: p.metadata?.resourceConfig?.barColor,
+    allowOverMax: p.metadata?.resourceConfig?.allowOverMax,
   }));
 
   const layoutNodes: Record<string, any> = templateData.layoutNodes || {};
@@ -1072,7 +1079,7 @@ function SandboxSheetEditor({
           labelPosition: newPropLabelPosition,
         },
         style: Object.keys(newPropStyle).length > 0 ? newPropStyle : undefined,
-        options: newPropType === 'select' ? newPropOptions.split(',').map((o: string) => o.trim()).filter(Boolean) : undefined,
+        options: undefined,
       },
     };
 
@@ -1112,6 +1119,10 @@ function SandboxSheetEditor({
     } else if (type === 'textarea') {
       setNewPropWidth(300);
       setNewPropHeight(120);
+    } else if (type === 'pfp') {
+      setNewPropWidth(100);
+      setNewPropHeight(100);
+      setNewPropLabelPosition('hidden');
     } else {
       setNewPropWidth(200);
       setNewPropHeight(40);
@@ -1225,19 +1236,20 @@ function SandboxSheetEditor({
         ...(updates.min !== undefined ? { min: updates.min } : {}),
         ...(updates.max !== undefined ? { max: updates.max } : {}),
         ...(updates.step !== undefined ? { step: updates.step } : {}),
-        ...(updates.formulaExpression !== undefined ? { formulaExpression: updates.formulaExpression } : {}),
         ...(updates.options !== undefined ? { options: updates.options } : {}),
-        ...(updates.showBar !== undefined || updates.barColor !== undefined ? {
+        ...(updates.showBar !== undefined || updates.barColor !== undefined || updates.allowOverMax !== undefined ? {
           resourceConfig: {
             ...original.metadata?.resourceConfig,
             ...(updates.showBar !== undefined ? { showBar: updates.showBar } : {}),
             ...(updates.barColor !== undefined ? { barColor: updates.barColor } : {}),
+            ...(updates.allowOverMax !== undefined ? { allowOverMax: updates.allowOverMax } : {}),
           },
         } : {}),
       },
       ...(updates.parentId !== undefined ? { parentId: updates.parentId } : {}),
       ...(updates.key !== undefined ? { key: updates.key } : {}),
       ...(updates.type !== undefined ? { type: updates.type } : {}),
+      ...(updates.defaultValue !== undefined ? { defaultValue: updates.defaultValue } : {}),
     };
     const newKey = updates.key !== undefined ? updates.key : prop.key;
     const newProps = { ...templateData.properties };
@@ -1380,8 +1392,10 @@ function SandboxSheetEditor({
             <div className="bg-stone-700/50 border border-stone-600/50 rounded px-1.5 truncate flex items-center gap-1" style={{ fontSize: `${vfs}px`, color: valueColor || '#a8a29e' }}>
               <span>0</span><span className="text-stone-500">/</span><span>0</span>
             </div>
-          ) : prop.type === 'formula' ? (
-            <div className="bg-stone-700/30 border border-stone-600/50 rounded px-1.5 truncate text-amber-400 italic" style={{ fontSize: `${vfs}px` }}>f(x)</div>
+          ) : prop.type === 'pfp' ? (
+            <div className="bg-stone-700/50 border border-stone-600/50 rounded flex items-center justify-center" style={{ fontSize: `${vfs}px` }}>
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#a8a29e" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            </div>
           ) : prop.type === 'textarea' ? (
             <div className="bg-stone-700/50 border border-stone-600/50 rounded px-1.5 h-full" style={{ fontSize: `${vfs}px`, color: valueColor || '#a8a29e' }}>
               <span className="text-stone-500 text-[9px]">Multi-line text...</span>
@@ -1524,6 +1538,8 @@ function SandboxSheetEditor({
           const tabLayout = node.behaviorConfig?.tabConfig?.tabLayout || 'top';
           const tabIcons = node.behaviorConfig?.tabConfig?.tabIcons || {};
           const isVerticalTabs = tabLayout === 'left' || tabLayout === 'right';
+          const tabButtonSize = node.behaviorConfig?.tabConfig?.tabButtonSize || 'medium';
+          const tabSizeClass = tabButtonSize === 'small' ? 'px-2 py-0.5 text-[9px]' : tabButtonSize === 'large' ? 'px-4 py-2 text-xs' : 'px-3 py-1.5 text-[10px]';
 
           const handleAddTabPage = () => {
             const newChildId = crypto.randomUUID();
@@ -1572,7 +1588,7 @@ function SandboxSheetEditor({
                     />
                   ) : (
                     <button
-                      className={`px-3 py-1.5 text-[10px] ${isVerticalTabs ? 'rounded-l w-full text-left' : 'rounded-t'} transition-colors ${isVerticalTabs ? 'border-r-2' : 'border-b-2'} ${activeChildId === child.id ? 'bg-purple-700/30 text-purple-300 border-purple-500' : 'bg-transparent text-stone-400 hover:bg-stone-700 hover:text-stone-300 border-transparent'}`}
+                      className={`${tabSizeClass} ${isVerticalTabs ? 'rounded-l w-full text-left' : 'rounded-t'} transition-colors ${isVerticalTabs ? 'border-r-2' : 'border-b-2'} ${activeChildId === child.id ? 'bg-purple-700/30 text-purple-300 border-purple-500' : 'bg-transparent text-stone-400 hover:bg-stone-700 hover:text-stone-300 border-transparent'}`}
                       onClick={() => setActiveTabState(prev => ({ ...prev, [node.id]: child.id }))}
                       onDoubleClick={() => setEditingSectionName(child.id)}
                       onContextMenu={(e) => {
@@ -1582,8 +1598,18 @@ function SandboxSheetEditor({
                       }}
                       data-testid={`tab-button-${child.id}`}
                     >
-                      {tabIcons[child.id] && <span className="mr-1">{tabIcons[child.id].value}</span>}
-                      {child.name}
+                      {tabIcons[child.id] ? (
+                        <>
+                          {tabIcons[child.id].type === 'image' ? (
+                            <img src={tabIcons[child.id].value} alt={child.name} className="w-4 h-4 object-cover rounded" />
+                          ) : (
+                            <span>{tabIcons[child.id].value}</span>
+                          )}
+                          {tabIcons[child.id].showName && <span>{child.name}</span>}
+                        </>
+                      ) : (
+                        child.name
+                      )}
                     </button>
                   )}
                 </div>
@@ -1920,40 +1946,111 @@ function SandboxSheetEditor({
                             toast({ title: `Tab layout: ${nextLayout}` });
                             setSectionContextMenu(null);
                           }} data-testid="menu-tab-layout">Tab Position ({(ctxNode.behaviorConfig?.tabConfig?.tabLayout || 'top')})</button>
+                          <button className="w-full text-left px-3 py-1.5 text-xs text-stone-200 hover:bg-stone-700" onClick={() => {
+                            const currentSize = ctxNode.behaviorConfig?.tabConfig?.tabButtonSize || 'medium';
+                            const sizes = ['small', 'medium', 'large'] as const;
+                            const nextSize = sizes[(sizes.indexOf(currentSize as any) + 1) % sizes.length];
+                            const updatedNodes = {
+                              ...layoutNodes,
+                              [ctxNode.id]: {
+                                ...ctxNode,
+                                behaviorConfig: {
+                                  ...ctxNode.behaviorConfig,
+                                  tabConfig: { ...ctxNode.behaviorConfig?.tabConfig, tabButtonSize: nextSize },
+                                },
+                              },
+                            };
+                            updateTemplateMutationSheet.mutate({ data: JSON.stringify({ ...templateData, layoutNodes: updatedNodes }) });
+                            toast({ title: `Tab button size: ${nextSize}` });
+                            setSectionContextMenu(null);
+                          }} data-testid="menu-tab-size">Tab Button Size ({(ctxNode.behaviorConfig?.tabConfig?.tabButtonSize || 'medium')})</button>
                         </>
                       )}
 
                       {isTabPage && (
-                        <button className="w-full text-left px-3 py-1.5 text-xs text-stone-200 hover:bg-stone-700" onClick={() => {
-                          const currentIcon = parentNode?.behaviorConfig?.tabConfig?.tabIcons?.[ctxNode.id]?.value || '';
-                          const newIcon = prompt('Enter an emoji or icon for this tab:', currentIcon);
-                          if (newIcon !== null) {
-                            const updatedNodes = {
-                              ...layoutNodes,
-                              [parentNode!.id]: {
-                                ...parentNode,
-                                behaviorConfig: {
-                                  ...parentNode?.behaviorConfig,
-                                  tabConfig: {
-                                    ...parentNode?.behaviorConfig?.tabConfig,
-                                    tabIcons: {
-                                      ...parentNode?.behaviorConfig?.tabConfig?.tabIcons,
-                                      [ctxNode.id]: newIcon ? { type: 'icon' as const, value: newIcon } : undefined,
+                        <>
+                          <button className="w-full text-left px-3 py-1.5 text-xs text-stone-200 hover:bg-stone-700" onClick={() => {
+                            const currentIcon = parentNode?.behaviorConfig?.tabConfig?.tabIcons?.[ctxNode.id]?.value || '';
+                            const newIcon = prompt('Enter an emoji or icon for this tab:', currentIcon);
+                            if (newIcon !== null) {
+                              const updatedNodes = {
+                                ...layoutNodes,
+                                [parentNode!.id]: {
+                                  ...parentNode,
+                                  behaviorConfig: {
+                                    ...parentNode?.behaviorConfig,
+                                    tabConfig: {
+                                      ...parentNode?.behaviorConfig?.tabConfig,
+                                      tabIcons: {
+                                        ...parentNode?.behaviorConfig?.tabConfig?.tabIcons,
+                                        [ctxNode.id]: newIcon ? { type: 'icon' as const, value: newIcon, showName: parentNode?.behaviorConfig?.tabConfig?.tabIcons?.[ctxNode.id]?.showName } : undefined,
+                                      },
                                     },
                                   },
                                 },
-                              },
-                            };
-                            if (!newIcon) {
-                              const icons = { ...(updatedNodes as any)[parentNode!.id].behaviorConfig.tabConfig.tabIcons };
-                              delete icons[ctxNode.id];
-                              (updatedNodes as any)[parentNode!.id].behaviorConfig.tabConfig.tabIcons = icons;
+                              };
+                              if (!newIcon) {
+                                const icons = { ...(updatedNodes as any)[parentNode!.id].behaviorConfig.tabConfig.tabIcons };
+                                delete icons[ctxNode.id];
+                                (updatedNodes as any)[parentNode!.id].behaviorConfig.tabConfig.tabIcons = icons;
+                              }
+                              updateTemplateMutationSheet.mutate({ data: JSON.stringify({ ...templateData, layoutNodes: updatedNodes }) });
+                              toast({ title: newIcon ? `Tab icon set: ${newIcon}` : 'Tab icon removed' });
+                              setSectionContextMenu(null);
                             }
-                            updateTemplateMutationSheet.mutate({ data: JSON.stringify({ ...templateData, layoutNodes: updatedNodes }) });
-                            toast({ title: newIcon ? `Tab icon set: ${newIcon}` : 'Tab icon removed' });
+                          }} data-testid="menu-set-tab-icon">Set Tab Icon/Emoji</button>
+                          <button className="w-full text-left px-3 py-1.5 text-xs text-stone-200 hover:bg-stone-700" onClick={() => {
+                            setTabImageTarget({ tabNodeId: parentNode!.id, childId: ctxNode.id });
                             setSectionContextMenu(null);
-                          }
-                        }} data-testid="menu-set-tab-icon">Set Tab Icon/Emoji</button>
+                            setTimeout(() => tabImageInputRef.current?.click(), 100);
+                          }} data-testid="menu-upload-tab-image">Upload Tab Image</button>
+                          {parentNode?.behaviorConfig?.tabConfig?.tabIcons?.[ctxNode.id] && (
+                            <>
+                              <button className="w-full text-left px-3 py-1.5 text-xs text-stone-200 hover:bg-stone-700" onClick={() => {
+                                const currentShowName = parentNode?.behaviorConfig?.tabConfig?.tabIcons?.[ctxNode.id]?.showName ?? false;
+                                const updatedNodes = {
+                                  ...layoutNodes,
+                                  [parentNode!.id]: {
+                                    ...parentNode,
+                                    behaviorConfig: {
+                                      ...parentNode?.behaviorConfig,
+                                      tabConfig: {
+                                        ...parentNode?.behaviorConfig?.tabConfig,
+                                        tabIcons: {
+                                          ...parentNode?.behaviorConfig?.tabConfig?.tabIcons,
+                                          [ctxNode.id]: { ...parentNode?.behaviorConfig?.tabConfig?.tabIcons?.[ctxNode.id], showName: !currentShowName },
+                                        },
+                                      },
+                                    },
+                                  },
+                                };
+                                updateTemplateMutationSheet.mutate({ data: JSON.stringify({ ...templateData, layoutNodes: updatedNodes }) });
+                                toast({ title: currentShowName ? 'Name hidden' : 'Name shown with icon' });
+                                setSectionContextMenu(null);
+                              }} data-testid="menu-toggle-tab-name">Toggle Name with Icon</button>
+                              <button className="w-full text-left px-3 py-1.5 text-xs text-red-400 hover:bg-stone-700" onClick={() => {
+                                const updatedIcons = { ...parentNode?.behaviorConfig?.tabConfig?.tabIcons };
+                                delete updatedIcons[ctxNode.id];
+                                const updatedNodes = {
+                                  ...layoutNodes,
+                                  [parentNode!.id]: {
+                                    ...parentNode,
+                                    behaviorConfig: {
+                                      ...parentNode?.behaviorConfig,
+                                      tabConfig: {
+                                        ...parentNode?.behaviorConfig?.tabConfig,
+                                        tabIcons: updatedIcons,
+                                      },
+                                    },
+                                  },
+                                };
+                                updateTemplateMutationSheet.mutate({ data: JSON.stringify({ ...templateData, layoutNodes: updatedNodes }) });
+                                toast({ title: 'Tab icon removed' });
+                                setSectionContextMenu(null);
+                              }} data-testid="menu-remove-tab-icon">Remove Tab Icon</button>
+                            </>
+                          )}
+                        </>
                       )}
 
                       {isPanelNode && (
@@ -2215,6 +2312,34 @@ function SandboxSheetEditor({
         );
       }
 
+      if (prop.type === 'pfp') {
+        const pfpImage = val;
+        return (
+          <div
+            key={prop.id}
+            className="absolute overflow-hidden cursor-pointer group"
+            style={{ left: `${px}px`, top: `${py}px`, width: `${pw}px`, height: `${ph}px`, ...propStyle }}
+            data-testid={`actor-property-${prop.key}`}
+            title={prop.tooltip || "Double-click to change picture"}
+            onDoubleClick={() => setPfpEditorOpen(prop.key)}
+          >
+            {pfpImage ? (
+              <img src={pfpImage as string} alt="Profile" className="w-full h-full object-cover rounded" />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center bg-stone-800 rounded">
+                <div className="flex flex-col items-center text-stone-500 gap-1">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                  <span className="text-xs">Click to set</span>
+                </div>
+              </div>
+            )}
+            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded">
+              <span className="text-white text-xs">Change</span>
+            </div>
+          </div>
+        );
+      }
+
       if (prop.type === 'resource') {
         let resourceVal: any = val;
         try { if (typeof resourceVal === 'string') resourceVal = JSON.parse(resourceVal); } catch {}
@@ -2226,24 +2351,9 @@ function SandboxSheetEditor({
             <div className={`flex ${isLeft ? 'flex-row items-center gap-2' : 'flex-col'} w-full h-full`}>
               {!isHidden && <Label className="text-stone-400 truncate shrink-0" style={{ fontSize: `${lfs}px`, ...(labelColor ? { color: labelColor } : {}) }}>{prop.label}</Label>}
               <div className="flex items-center gap-1 flex-1 min-w-0">
-                <Input type="number" value={current} onChange={(e) => handleActorValueChange(prop.key, JSON.stringify({ current: Number(e.target.value), max }))} className="bg-stone-800 border-stone-700 text-stone-200 h-full flex-1" style={{ fontSize: `${vfs}px`, ...(valueColor ? { color: valueColor } : {}) }} data-testid={`input-actor-${prop.key}-current`} />
+                <Input type="number" value={current} onChange={(e) => { let newCurrent = Number(e.target.value); if (!prop.allowOverMax && newCurrent > max) newCurrent = max; handleActorValueChange(prop.key, JSON.stringify({ current: newCurrent, max })); }} className="bg-stone-800 border-stone-700 text-stone-200 h-full flex-1" style={{ fontSize: `${vfs}px`, ...(valueColor ? { color: valueColor } : {}) }} data-testid={`input-actor-${prop.key}-current`} />
                 <span className="text-stone-500 text-xs">/</span>
                 <Input type="number" value={max} onChange={(e) => handleActorValueChange(prop.key, JSON.stringify({ current, max: Number(e.target.value) }))} className="bg-stone-800 border-stone-700 text-stone-200 h-full flex-1" style={{ fontSize: `${vfs}px`, ...(valueColor ? { color: valueColor } : {}) }} data-testid={`input-actor-${prop.key}-max`} />
-              </div>
-            </div>
-          </div>
-        );
-      }
-
-      if (prop.type === 'formula') {
-        return (
-          <div key={prop.id} className="absolute" style={{ left: `${px}px`, top: `${py}px`, width: `${pw}px`, height: `${ph}px`, ...propStyle }} data-testid={`actor-property-${prop.key}`} title={prop.tooltip || prop.label}>
-            <div className={`flex ${isLeft ? 'flex-row items-center gap-2' : 'flex-col'} w-full h-full`}>
-              {!isHidden && <Label className="text-stone-400 truncate shrink-0" style={{ fontSize: `${lfs}px`, ...(labelColor ? { color: labelColor } : {}) }}>{prop.label}</Label>}
-              <div className="flex-1 min-w-0">
-                <div className="bg-stone-700/30 border border-stone-600/50 rounded px-1.5 truncate text-amber-400 italic" style={{ fontSize: `${vfs}px` }} data-testid={`formula-actor-${prop.key}`}>
-                  {val || '\u2014'}
-                </div>
               </div>
             </div>
           </div>
@@ -2276,6 +2386,9 @@ function SandboxSheetEditor({
                 <Input
                   type="number"
                   value={val}
+                  min={prop.min}
+                  max={prop.max}
+                  step={prop.step || 1}
                   onChange={(e) => handleActorValueChange(prop.key, e.target.value)}
                   className="bg-stone-800 border-stone-700 text-stone-200 h-full w-full"
                   style={{ fontSize: `${vfs}px`, ...(valueColor ? { color: valueColor } : {}) }}
@@ -2300,7 +2413,7 @@ function SandboxSheetEditor({
                   </SelectTrigger>
                   <SelectContent className="bg-stone-800 border-stone-700">
                     <SelectItem value="__empty__" className="text-stone-400">None</SelectItem>
-                    {(prop.options || []).map((opt: string) => (
+                    {((prop.defaultValue || '').split(',').map((o: string) => o.trim()).filter(Boolean)).map((opt: string) => (
                       <SelectItem key={opt} value={opt} className="text-stone-200">{opt}</SelectItem>
                     ))}
                   </SelectContent>
@@ -2335,6 +2448,8 @@ function SandboxSheetEditor({
         const tabLayout = node.behaviorConfig?.tabConfig?.tabLayout || 'top';
         const tabIcons = node.behaviorConfig?.tabConfig?.tabIcons || {};
         const isVerticalTabs = tabLayout === 'left' || tabLayout === 'right';
+        const tabButtonSize = node.behaviorConfig?.tabConfig?.tabButtonSize || 'medium';
+        const tabSizeClass = tabButtonSize === 'small' ? 'px-2 py-0.5 text-[9px]' : tabButtonSize === 'large' ? 'px-4 py-2 text-xs' : 'px-2 py-1 text-[10px]';
         return (
           <div key={node.id} className="relative rounded overflow-visible mb-1" style={nodeStyle}>
             <div className={`flex ${tabLayout === 'right' ? 'flex-row-reverse' : tabLayout === 'left' ? 'flex-row' : 'flex-col'}`}>
@@ -2342,12 +2457,22 @@ function SandboxSheetEditor({
                 {childNodes.map((child: any) => (
                   <button
                     key={child.id}
-                    className={`px-2 py-1 text-[10px] rounded transition-colors ${isVerticalTabs ? 'text-left' : ''} ${activeChildId === child.id ? 'bg-amber-700 text-white' : 'bg-stone-700 text-stone-400 hover:bg-stone-600'}`}
+                    className={`${tabSizeClass} rounded transition-colors ${isVerticalTabs ? 'text-left' : ''} ${activeChildId === child.id ? 'bg-amber-700 text-white' : 'bg-stone-700 text-stone-400 hover:bg-stone-600'}`}
                     onClick={() => setActiveTabState(prev => ({ ...prev, [node.id]: child.id }))}
                     data-testid={`actor-tab-button-${child.id}`}
                   >
-                    {tabIcons[child.id] && <span className="mr-1">{tabIcons[child.id].value}</span>}
-                    {child.name}
+                    {tabIcons[child.id] ? (
+                      <>
+                        {tabIcons[child.id].type === 'image' ? (
+                          <img src={tabIcons[child.id].value} alt={child.name} className="w-4 h-4 object-cover rounded" />
+                        ) : (
+                          <span>{tabIcons[child.id].value}</span>
+                        )}
+                        {tabIcons[child.id].showName && <span>{child.name}</span>}
+                      </>
+                    ) : (
+                      child.name
+                    )}
                   </button>
                 ))}
               </div>
@@ -2474,6 +2599,27 @@ function SandboxSheetEditor({
         );
       }
 
+      if (prop.type === 'pfp') {
+        const pfpImage = val;
+        return (
+          <div key={prop.id} className="space-y-1" style={propStyle} data-testid={`actor-property-mobile-${prop.key}`} title={prop.tooltip || "Tap to change picture"}>
+            <Label className="text-stone-400" style={{ fontSize: `${lfs}px`, ...(labelColor ? { color: labelColor } : {}) }}>{prop.label}</Label>
+            <div className="relative w-20 h-20 overflow-hidden cursor-pointer group" onClick={() => setPfpEditorOpen(prop.key)}>
+              {pfpImage ? (
+                <img src={pfpImage as string} alt="Profile" className="w-full h-full object-cover rounded" />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center bg-stone-800 rounded">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-stone-500"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                </div>
+              )}
+              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded">
+                <span className="text-white text-xs">Change</span>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
       if (prop.type === 'resource') {
         let resourceVal: any = val;
         try { if (typeof resourceVal === 'string') resourceVal = JSON.parse(resourceVal); } catch {}
@@ -2484,20 +2630,9 @@ function SandboxSheetEditor({
           <div key={prop.id} className="space-y-1" style={propStyle} data-testid={`actor-property-mobile-${prop.key}`} title={prop.tooltip || prop.label}>
             <Label className="text-stone-400" style={{ fontSize: `${lfs}px`, ...(labelColor ? { color: labelColor } : {}) }}>{prop.label}</Label>
             <div className="flex items-center gap-1">
-              <Input type="number" value={current} onChange={(e) => handleActorValueChange(prop.key, JSON.stringify({ current: Number(e.target.value), max }))} className="bg-stone-800 border-stone-700 text-stone-200 h-8 flex-1" style={{ fontSize: `${vfs}px`, ...(valueColor ? { color: valueColor } : {}) }} data-testid={`input-actor-${prop.key}-current`} />
+              <Input type="number" value={current} onChange={(e) => { let newCurrent = Number(e.target.value); if (!prop.allowOverMax && newCurrent > max) newCurrent = max; handleActorValueChange(prop.key, JSON.stringify({ current: newCurrent, max })); }} className="bg-stone-800 border-stone-700 text-stone-200 h-8 flex-1" style={{ fontSize: `${vfs}px`, ...(valueColor ? { color: valueColor } : {}) }} data-testid={`input-actor-${prop.key}-current`} />
               <span className="text-stone-500 text-xs">/</span>
               <Input type="number" value={max} onChange={(e) => handleActorValueChange(prop.key, JSON.stringify({ current, max: Number(e.target.value) }))} className="bg-stone-800 border-stone-700 text-stone-200 h-8 flex-1" style={{ fontSize: `${vfs}px`, ...(valueColor ? { color: valueColor } : {}) }} data-testid={`input-actor-${prop.key}-max`} />
-            </div>
-          </div>
-        );
-      }
-
-      if (prop.type === 'formula') {
-        return (
-          <div key={prop.id} className="space-y-1" style={propStyle} data-testid={`actor-property-mobile-${prop.key}`} title={prop.tooltip || prop.label}>
-            <Label className="text-stone-400" style={{ fontSize: `${lfs}px`, ...(labelColor ? { color: labelColor } : {}) }}>{prop.label}</Label>
-            <div className="bg-stone-700/30 border border-stone-600/50 rounded px-2 py-1 text-amber-400 italic" style={{ fontSize: `${vfs}px` }}>
-              {val || '\u2014'}
             </div>
           </div>
         );
@@ -2519,6 +2654,9 @@ function SandboxSheetEditor({
             <Input
               type="number"
               value={val}
+              min={prop.min}
+              max={prop.max}
+              step={prop.step || 1}
               onChange={(e) => handleActorValueChange(prop.key, e.target.value)}
               className="bg-stone-800 border-stone-700 text-stone-200 h-8"
               style={{ fontSize: `${vfs}px`, ...(valueColor ? { color: valueColor } : {}) }}
@@ -2543,7 +2681,7 @@ function SandboxSheetEditor({
               </SelectTrigger>
               <SelectContent className="bg-stone-800 border-stone-700">
                 <SelectItem value="__empty__" className="text-stone-400">None</SelectItem>
-                {(prop.options || []).map((opt: string) => (
+                {((prop.defaultValue || '').split(',').map((o: string) => o.trim()).filter(Boolean)).map((opt: string) => (
                   <SelectItem key={opt} value={opt} className="text-stone-200">{opt}</SelectItem>
                 ))}
               </SelectContent>
@@ -2593,6 +2731,8 @@ function SandboxSheetEditor({
         const tabLayout = node.behaviorConfig?.tabConfig?.tabLayout || 'top';
         const tabIcons = node.behaviorConfig?.tabConfig?.tabIcons || {};
         const isVerticalTabs = tabLayout === 'left' || tabLayout === 'right';
+        const tabButtonSize = node.behaviorConfig?.tabConfig?.tabButtonSize || 'medium';
+        const tabSizeClass = tabButtonSize === 'small' ? 'px-2 py-0.5 text-[9px]' : tabButtonSize === 'large' ? 'px-4 py-2 text-xs' : 'px-3 py-1.5 text-xs';
         return (
           <div key={node.id} className="space-y-2" style={nodeStyle}>
             <div className={`flex ${tabLayout === 'right' ? 'flex-row-reverse' : tabLayout === 'left' ? 'flex-row' : 'flex-col'} gap-2`}>
@@ -2600,12 +2740,22 @@ function SandboxSheetEditor({
                 {childNodes.map((child: any) => (
                   <button
                     key={child.id}
-                    className={`px-3 py-1.5 text-xs rounded transition-colors ${isVerticalTabs ? 'text-left' : ''} ${activeChildId === child.id ? 'bg-amber-700 text-white' : 'bg-stone-700 text-stone-400 hover:bg-stone-600'}`}
+                    className={`${tabSizeClass} rounded transition-colors ${isVerticalTabs ? 'text-left' : ''} ${activeChildId === child.id ? 'bg-amber-700 text-white' : 'bg-stone-700 text-stone-400 hover:bg-stone-600'}`}
                     onClick={() => setActiveTabState(prev => ({ ...prev, [node.id]: child.id }))}
                     data-testid={`mobile-tab-button-${child.id}`}
                   >
-                    {tabIcons[child.id] && <span className="mr-1">{tabIcons[child.id].value}</span>}
-                    {child.name}
+                    {tabIcons[child.id] ? (
+                      <>
+                        {tabIcons[child.id].type === 'image' ? (
+                          <img src={tabIcons[child.id].value} alt={child.name} className="w-4 h-4 object-cover rounded" />
+                        ) : (
+                          <span>{tabIcons[child.id].value}</span>
+                        )}
+                        {tabIcons[child.id].showName && <span>{child.name}</span>}
+                      </>
+                    ) : (
+                      child.name
+                    )}
                   </button>
                 ))}
               </div>
@@ -2988,8 +3138,8 @@ function SandboxSheetEditor({
                     <SelectItem value="boolean">Boolean (Checkbox)</SelectItem>
                     <SelectItem value="list">List (Select)</SelectItem>
                     <SelectItem value="resource">Resource (Current/Max)</SelectItem>
-                    <SelectItem value="formula">Formula</SelectItem>
                     <SelectItem value="textarea">Text Field (Multi-line)</SelectItem>
+                    <SelectItem value="pfp">Profile Picture</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -3094,6 +3244,17 @@ function SandboxSheetEditor({
               </div>
 
               <div className="space-y-1">
+                <Label className="text-stone-500 text-[10px]">Default Value{selectedProperty.type === 'list' ? ' (comma-separated options)' : ''}</Label>
+                <Input
+                  value={selectedProperty.defaultValue || ''}
+                  onChange={(e) => updatePropertyLayout(selectedProperty.id, { defaultValue: e.target.value })}
+                  placeholder={selectedProperty.type === 'list' ? 'Option 1, Option 2, Option 3' : 'Default value...'}
+                  className="bg-stone-800 border-stone-600 text-stone-200 h-7 text-xs"
+                  data-testid="input-prop-default"
+                />
+              </div>
+
+              <div className="space-y-1">
                 <Label className="text-stone-500 text-[10px]">Parent</Label>
                 <Select
                   value={selectedProperty.parentId || '__canvas_root__'}
@@ -3188,6 +3349,16 @@ function SandboxSheetEditor({
                     />
                     <Label className="text-stone-500 text-[10px]">Show Progress Bar</Label>
                   </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={selectedProperty.allowOverMax ?? false}
+                      onChange={(e) => updatePropertyLayout(selectedProperty.id, { allowOverMax: e.target.checked })}
+                      className="h-3 w-3 accent-purple-600"
+                      data-testid="checkbox-prop-allowovermax"
+                    />
+                    <Label className="text-stone-500 text-[10px]">Allow Current to Exceed Max</Label>
+                  </div>
                   {selectedProperty.showBar && (
                     <div className="space-y-1">
                       <Label className="text-stone-500 text-[10px]">Bar Color</Label>
@@ -3205,31 +3376,7 @@ function SandboxSheetEditor({
 
               {selectedProperty.type === 'list' && (
                 <div className="space-y-1">
-                  <Label className="text-stone-500 text-[10px]">Options (comma-separated)</Label>
-                  <Input
-                    value={(selectedProperty.options || []).join(', ')}
-                    onChange={(e) => {
-                      const options = e.target.value.split(',').map((o: string) => o.trim()).filter(Boolean);
-                      updatePropertyLayout(selectedProperty.id, { options });
-                    }}
-                    placeholder="Option 1, Option 2, Option 3"
-                    className="bg-stone-800 border-stone-600 text-stone-200 h-7 text-xs"
-                    data-testid="input-prop-options"
-                  />
-                </div>
-              )}
-
-              {selectedProperty.type === 'formula' && (
-                <div className="space-y-1">
-                  <Label className="text-stone-500 text-[10px]">Formula Expression</Label>
-                  <Input
-                    value={selectedProperty.formulaExpression || ''}
-                    onChange={(e) => updatePropertyLayout(selectedProperty.id, { formulaExpression: e.target.value })}
-                    placeholder="e.g. {strength} + {dexterity}"
-                    className="bg-stone-800 border-stone-600 text-stone-200 h-7 text-xs font-mono"
-                    data-testid="input-prop-formula"
-                  />
-                  <p className="text-stone-600 text-[9px]">Use {'{propertyKey}'} to reference other properties</p>
+                  <p className="text-stone-600 text-[9px]">Use the Default Value field to define options (separate with commas)</p>
                 </div>
               )}
 
@@ -3261,6 +3408,137 @@ function SandboxSheetEditor({
               <svg width="16" height="16" viewBox="0 0 16 16" className="text-stone-600">
                 <path d="M14 14L8 14M14 14L14 8M14 14L6 6" stroke="currentColor" strokeWidth="1.5" fill="none" />
               </svg>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      <input
+        ref={tabImageInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file && tabImageTarget) {
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+              const base64 = ev.target?.result as string;
+              const parentNode = layoutNodes[tabImageTarget.tabNodeId];
+              if (parentNode) {
+                const updatedNodes = {
+                  ...layoutNodes,
+                  [tabImageTarget.tabNodeId]: {
+                    ...parentNode,
+                    behaviorConfig: {
+                      ...parentNode.behaviorConfig,
+                      tabConfig: {
+                        ...parentNode.behaviorConfig?.tabConfig,
+                        tabIcons: {
+                          ...parentNode.behaviorConfig?.tabConfig?.tabIcons,
+                          [tabImageTarget.childId]: { type: 'image' as const, value: base64, showName: parentNode.behaviorConfig?.tabConfig?.tabIcons?.[tabImageTarget.childId]?.showName },
+                        },
+                      },
+                    },
+                  },
+                };
+                updateTemplateMutationSheet.mutate({ data: JSON.stringify({ ...templateData, layoutNodes: updatedNodes }) });
+                toast({ title: 'Tab image set' });
+              }
+              setTabImageTarget(null);
+            };
+            reader.readAsDataURL(file);
+          }
+          e.target.value = '';
+        }}
+      />
+      <input
+        ref={pfpFileInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file && pfpEditorOpen) {
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+              const base64 = ev.target?.result as string;
+              handleActorValueChange(pfpEditorOpen, base64);
+            };
+            reader.readAsDataURL(file);
+          }
+          e.target.value = '';
+        }}
+      />
+
+      {pfpEditorOpen && item.type === 'actor' && createPortal(
+        <div
+          className="fixed z-[9999]"
+          style={{ left: pfpEditorPos.x, top: pfpEditorPos.y, width: 260 }}
+          data-testid="pfp-editor-panel"
+        >
+          <div className="bg-stone-900 border border-purple-700/60 rounded-lg shadow-2xl shadow-black/50 overflow-hidden">
+            <div
+              className="flex items-center justify-between px-3 py-2 bg-stone-800 border-b border-purple-800/40 cursor-grab active:cursor-grabbing"
+              onPointerDown={(e) => {
+                e.preventDefault();
+                const el = e.currentTarget as HTMLElement;
+                el.setPointerCapture(e.pointerId);
+                setPfpDragging(true);
+                pfpDragRef.current = { startX: e.clientX, startY: e.clientY, posX: pfpEditorPos.x, posY: pfpEditorPos.y };
+              }}
+              onPointerMove={(e) => {
+                if (!pfpDragging) return;
+                setPfpEditorPos({
+                  x: pfpDragRef.current.posX + (e.clientX - pfpDragRef.current.startX),
+                  y: pfpDragRef.current.posY + (e.clientY - pfpDragRef.current.startY),
+                });
+              }}
+              onPointerUp={(e) => {
+                setPfpDragging(false);
+                const el = e.currentTarget as HTMLElement;
+                if (el.hasPointerCapture(e.pointerId)) el.releasePointerCapture(e.pointerId);
+              }}
+            >
+              <span className="text-xs font-medium text-purple-300">Profile Picture</span>
+              <Button variant="ghost" size="icon" onClick={() => setPfpEditorOpen(null)} className="h-5 w-5 text-stone-500 hover:text-white" data-testid="button-close-pfp-editor">
+                <X className="h-3 w-3" />
+              </Button>
+            </div>
+            <div className="p-3 space-y-3">
+              {actorValues[pfpEditorOpen] ? (
+                <div className="flex justify-center">
+                  <img src={actorValues[pfpEditorOpen] as string} alt="Current PFP" className="w-24 h-24 object-cover rounded border border-stone-600" />
+                </div>
+              ) : (
+                <div className="flex justify-center">
+                  <div className="w-24 h-24 bg-stone-800 rounded border border-stone-600 flex items-center justify-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-stone-500"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                  </div>
+                </div>
+              )}
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  onClick={() => pfpFileInputRef.current?.click()}
+                  className="flex-1 bg-purple-600 hover:bg-purple-700 text-white h-7 text-xs"
+                  data-testid="button-pfp-upload"
+                >
+                  <Upload className="h-3 w-3 mr-1" /> Upload
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    handleActorValueChange(pfpEditorOpen, '');
+                  }}
+                  className="flex-1 border-red-800/50 text-red-400 hover:bg-red-900/20 h-7 text-xs"
+                  data-testid="button-pfp-remove"
+                >
+                  <Trash2 className="h-3 w-3 mr-1" /> Remove
+                </Button>
+              </div>
             </div>
           </div>
         </div>,
@@ -3320,8 +3598,8 @@ function SandboxSheetEditor({
                     <SelectItem value="boolean" className="text-stone-200 text-xs">Boolean (Checkbox)</SelectItem>
                     <SelectItem value="select" className="text-stone-200 text-xs">List (Select)</SelectItem>
                     <SelectItem value="resource" className="text-stone-200 text-xs">Resource (Current/Max)</SelectItem>
-                    <SelectItem value="formula" className="text-stone-200 text-xs">Formula</SelectItem>
                     <SelectItem value="textarea" className="text-stone-200 text-xs">Text Field (Multi-line)</SelectItem>
+                    <SelectItem value="pfp" className="text-stone-200 text-xs">Profile Picture</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -3340,21 +3618,8 @@ function SandboxSheetEditor({
               </div>
             </div>
 
-            {newPropType === 'select' && (
-              <div className="space-y-1">
-                <Label className="text-stone-400 text-[10px]">Options (comma-separated)</Label>
-                <Input
-                  value={newPropOptions}
-                  onChange={(e) => setNewPropOptions(e.target.value)}
-                  placeholder="Option 1, Option 2, Option 3"
-                  className="bg-stone-900 border-stone-600 text-stone-200 h-7 text-xs"
-                  data-testid="input-property-options"
-                />
-              </div>
-            )}
-
             <div className="space-y-1">
-              <Label className="text-stone-400 text-[10px]">Default Value</Label>
+              <Label className="text-stone-400 text-[10px]">Default Value{newPropType === 'select' ? ' (comma-separated options)' : ''}</Label>
               <Input
                 value={newPropDefault}
                 onChange={(e) => setNewPropDefault(e.target.value)}
