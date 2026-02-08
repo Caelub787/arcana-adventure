@@ -6322,6 +6322,11 @@ export default function Campaign() {
   // Add Token dialog state
   const [addTokenDialogOpen, setAddTokenDialogOpen] = useState(false);
   
+  // Click-to-place token state
+  const [placingCharacterId, setPlacingCharacterId] = useState<string | null>(null);
+  const [longPressedToken, setLongPressedToken] = useState<any>(null);
+  const [showTokenVisionPanel, setShowTokenVisionPanel] = useState(false);
+  
   // GM viewing scene state (separate from active scene for players)
   const [gmViewingSceneId, setGmViewingSceneId] = useState<string | null>(null);
   
@@ -8341,6 +8346,12 @@ export default function Campaign() {
     createTokenMutation.mutate(newToken);
   }, [characters, systemSpecies, createTokenMutation]);
 
+  const handleMapClickToPlace = useCallback((gridX: number, gridY: number) => {
+    if (!placingCharacterId) return;
+    handleDropCharacterOnMap(placingCharacterId, gridX, gridY);
+    setPlacingCharacterId(null);
+  }, [placingCharacterId, handleDropCharacterOnMap]);
+
   const handleChangeMap = () => {
     const newMap = currentMap === battleMapImage1 ? battleMapImage2 : battleMapImage1;
     setCurrentMap(newMap);
@@ -9515,6 +9526,15 @@ export default function Campaign() {
         </Dialog>
       )}
 
+      {placingCharacterId && (
+        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-[60] bg-amber-900/90 border border-amber-600 rounded-lg px-4 py-2 text-amber-200 text-sm flex items-center gap-3 shadow-xl backdrop-blur-sm">
+          <span>Click on the map to place token</span>
+          <button onClick={() => setPlacingCharacterId(null)} className="text-amber-400 hover:text-amber-200">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
       {/* Game View - Always visible for all campaign members */}
       <div 
         className="flex flex-col h-full w-full"
@@ -9603,7 +9623,10 @@ export default function Campaign() {
              fogToolActive={fogToolActive}
              onFogToolActiveChange={setFogToolActive}
              onDropCharacterOnMap={handleDropCharacterOnMap}
+             onMapClickToPlace={handleMapClickToPlace}
+             placingCharacterId={placingCharacterId}
              currentUserId={user?.id || null}
+             onTokenLongPress={setLongPressedToken}
            />
            
            {/* Battlemap Dice Overlay for 3D dice rolling */}
@@ -9703,48 +9726,6 @@ export default function Campaign() {
              />
            )}
           
-          {/* Character Sheet Tab Buttons - Right side, aligned with left-side selection buttons */}
-          {/* For players: show ONLY when they have an assigned character */}
-          {!isSandbox && ((role === 'player' && character) || (role === 'gm' && inspectedChar)) && (
-            <div 
-              className="absolute top-48 z-20 flex flex-col gap-2 transition-all duration-300 ease-in-out"
-              style={{ right: sidePanelOpen && !isMobile ? `${notesPanelWidth + 16}px` : '12px' }}
-            >
-              {[
-                { tab: 'overview', icon: User, color: 'stone' },
-                { tab: 'attributes', icon: BarChart3, color: 'blue' },
-                { tab: 'skills', icon: Zap, color: 'green' },
-                { tab: 'inventory', icon: Backpack, color: 'amber' },
-                { tab: 'magic', icon: Sparkles, color: 'purple' },
-                { tab: 'hotbars', icon: Grid3X3, color: 'red' },
-                { tab: 'background', icon: ScrollText, color: 'cyan' },
-              ].map(({ tab, icon: Icon, color }) => {
-                const colorClasses: Record<string, string> = {
-                  stone: 'bg-stone-900/90 border-stone-600 text-stone-300 hover:bg-stone-800 hover:border-stone-500',
-                  blue: 'bg-blue-900/90 border-blue-600 text-blue-300 hover:bg-blue-800 hover:border-blue-500',
-                  green: 'bg-green-900/90 border-green-600 text-green-300 hover:bg-green-800 hover:border-green-500',
-                  amber: 'bg-amber-900/90 border-amber-600 text-amber-300 hover:bg-amber-800 hover:border-amber-500',
-                  purple: 'bg-purple-900/90 border-purple-600 text-purple-300 hover:bg-purple-800 hover:border-purple-500',
-                  red: 'bg-red-900/90 border-red-600 text-red-300 hover:bg-red-800 hover:border-red-500',
-                  cyan: 'bg-cyan-900/90 border-cyan-600 text-cyan-300 hover:bg-cyan-800 hover:border-cyan-500',
-                };
-                return (
-                  <button
-                    key={tab}
-                    onClick={() => openCharacterSheetToTab(tab)}
-                    className={`
-                      w-9 h-9 md:w-10 md:h-10 rounded-lg border-2 flex items-center justify-center
-                      transition-all duration-200 shadow-lg backdrop-blur-sm hover:scale-105
-                      ${colorClasses[color]}
-                    `}
-                    data-testid={`button-sheet-${tab}`}
-                  >
-                    <Icon className="h-4 w-4 md:h-5 md:w-5" />
-                  </button>
-                );
-              })}
-            </div>
-          )}
 
         </div>
       </div>
@@ -9893,6 +9874,7 @@ export default function Campaign() {
                         inspectedChar={inspectedChar}
                         onInspectChar={setInspectedChar}
                         onAddCharacterToken={handleAddCharacterToken}
+                        onPlaceCharacterToken={(charId: string) => setPlacingCharacterId(charId)}
                         onChangeMap={handleChangeMap}
                         characters={characters as any[]}
                         members={members as any[]}
@@ -9951,6 +9933,7 @@ export default function Campaign() {
                     inspectedChar={inspectedChar}
                     onInspectChar={setInspectedChar}
                     onAddCharacterToken={handleAddCharacterToken}
+                    onPlaceCharacterToken={(charId: string) => setPlacingCharacterId(charId)}
                     onChangeMap={handleChangeMap}
                     characters={characters as any[]}
                     members={members as any[]}
@@ -10695,6 +10678,85 @@ export default function Campaign() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {longPressedToken && (() => {
+        const tokenChar = characters?.find((c: any) => c.id === longPressedToken.characterId);
+        if (!tokenChar) return null;
+        
+        if (!showTokenVisionPanel) {
+          return (
+            <button
+              onClick={() => setShowTokenVisionPanel(true)}
+              className="fixed bottom-20 left-4 z-[70] w-10 h-10 rounded-lg bg-cyan-900/90 border border-cyan-600 text-cyan-300 flex items-center justify-center shadow-xl backdrop-blur-sm hover:bg-cyan-800 hover:scale-105 transition-all"
+              data-testid="button-token-vision"
+              title={`${tokenChar.name} Vision Settings`}
+            >
+              <Layers className="h-5 w-5" />
+            </button>
+          );
+        }
+        
+        return (
+          <div className="fixed bottom-20 left-4 z-[70] bg-stone-900/95 border border-stone-700 rounded-lg p-3 w-64 shadow-xl backdrop-blur-sm" data-testid="token-fog-settings">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Layers className="h-4 w-4 text-cyan-400" />
+                <span className="text-sm font-bold text-stone-200">{tokenChar.name} Vision</span>
+              </div>
+              <button onClick={() => { setShowTokenVisionPanel(false); setLongPressedToken(null); }} className="text-stone-500 hover:text-stone-300">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            
+            <div className="space-y-2">
+              <div>
+                <Label className="text-[10px] text-stone-500">Vision Type</Label>
+                <select
+                  defaultValue={tokenChar.visionType || 'normal'}
+                  onChange={(e) => {
+                    handleUpdateCharacterById(tokenChar.id, { visionType: e.target.value });
+                  }}
+                  className="w-full h-7 px-2 text-xs rounded-md border border-stone-700 bg-stone-800 text-stone-200"
+                  data-testid="select-token-vision-type"
+                >
+                  <option value="normal">Normal</option>
+                  <option value="darkvision">Darkvision</option>
+                  <option value="blindsight">Blindsight</option>
+                  <option value="truesight">Truesight</option>
+                  <option value="tremorsense">Tremorsense</option>
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <Label className="text-[10px] text-stone-500">Day Vision (ft)</Label>
+                  <Input
+                    type="number"
+                    defaultValue={tokenChar.dayVisionDistance || 120}
+                    onBlur={(e) => {
+                      handleUpdateCharacterById(tokenChar.id, { dayVisionDistance: parseInt(e.target.value) || 120 });
+                    }}
+                    className="h-7 text-xs bg-stone-800 border-stone-700 text-stone-200"
+                    data-testid="input-token-day-vision"
+                  />
+                </div>
+                <div>
+                  <Label className="text-[10px] text-stone-500">Night Vision (ft)</Label>
+                  <Input
+                    type="number"
+                    defaultValue={tokenChar.nightVisionDistance || 60}
+                    onBlur={(e) => {
+                      handleUpdateCharacterById(tokenChar.id, { nightVisionDistance: parseInt(e.target.value) || 60 });
+                    }}
+                    className="h-7 text-xs bg-stone-800 border-stone-700 text-stone-200"
+                    data-testid="input-token-night-vision"
+                  />
+                </div>
+              </div>
+              <span className="text-[10px] text-stone-500 italic">Each grid square = 5ft</span>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

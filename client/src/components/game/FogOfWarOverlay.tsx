@@ -343,6 +343,22 @@ export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToo
     return polys;
   }, [fogEnabled, isGM, walls, doors, windows, tokens, characters, gridSize, scene?.isDayTime, currentUserId]);
 
+  const renderNightFilter = useMemo(() => {
+    const isDayTime = scene?.isDayTime ?? true;
+    if (isDayTime) return null;
+
+    return (
+      <rect
+        x={0}
+        y={0}
+        width={20000}
+        height={20000}
+        fill="#0a1628"
+        fillOpacity={0.35}
+      />
+    );
+  }, [scene?.isDayTime]);
+
   const renderFog = useMemo(() => {
     if (!fogEnabled) return null;
     if (isGM) return null;
@@ -393,6 +409,7 @@ export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToo
       }}
       data-testid="fog-of-war-overlay"
     >
+      {renderNightFilter}
       {renderFog}
       {renderLights}
       {renderWalls}

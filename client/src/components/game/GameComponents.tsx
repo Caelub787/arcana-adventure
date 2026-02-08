@@ -316,10 +316,13 @@ interface BattleMapProps {
   fogToolActive?: boolean;
   onFogToolActiveChange?: (active: boolean) => void;
   onDropCharacterOnMap?: (characterId: string, gridX: number, gridY: number) => void;
+  onMapClickToPlace?: (gridX: number, gridY: number) => void;
+  placingCharacterId?: string | null;
   currentUserId?: string | null;
+  onTokenLongPress?: (token: any) => void;
 }
 
-export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClick, onTokenTripleClick, onDeleteToken, role, gridSize, backgroundImage, scene, onViewChange, characters = [], allSpecies = [], selectionMode = 'select', targetedTokenId, selectedTokenId, aoeTargetState, onAoeMouseMove, onAoeClick, otherPlayersAoe, myPermissions, tokenActiveEffects, allTokenEffects, onApplyEffect, onRemoveEffect, onToggleInvisibility, currentTurnCharacterId, otherPlayersTargeting, activeBeacons, onBeacon, otherPlayersViewports, thrownItems = [], onRefetchThrownItems, onDeleteThrownItem, throwableGridTarget, onGridTargetClick, notesPanelOpen = false, notesPanelWidth = 0, onNotesClick, inCombat = false, fogToolActive: fogToolActiveProp, onFogToolActiveChange, onDropCharacterOnMap, currentUserId }: BattleMapProps) {
+export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClick, onTokenTripleClick, onDeleteToken, role, gridSize, backgroundImage, scene, onViewChange, characters = [], allSpecies = [], selectionMode = 'select', targetedTokenId, selectedTokenId, aoeTargetState, onAoeMouseMove, onAoeClick, otherPlayersAoe, myPermissions, tokenActiveEffects, allTokenEffects, onApplyEffect, onRemoveEffect, onToggleInvisibility, currentTurnCharacterId, otherPlayersTargeting, activeBeacons, onBeacon, otherPlayersViewports, thrownItems = [], onRefetchThrownItems, onDeleteThrownItem, throwableGridTarget, onGridTargetClick, notesPanelOpen = false, notesPanelWidth = 0, onNotesClick, inCombat = false, fogToolActive: fogToolActiveProp, onFogToolActiveChange, onDropCharacterOnMap, onMapClickToPlace, placingCharacterId, currentUserId, onTokenLongPress }: BattleMapProps) {
   // Derive isGM from role prop
   const isGM = role === 'gm';
   
@@ -1640,7 +1643,23 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
         onPointerMove={handleMapPointerMove}
         onPointerUp={handleMapPointerUp}
         onPointerCancel={handleMapPointerCancel}
-        onClick={() => setShowDeleteButton(null)}
+        onClick={(e) => {
+          setShowDeleteButton(null);
+          if (placingCharacterId && onMapClickToPlace) {
+            const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+            const screenX = e.clientX - rect.left;
+            const screenY = e.clientY - rect.top;
+            const currentZoom = zoomRef.current;
+            const currentPan = panRef.current;
+            const worldX = (screenX - currentPan.x) / currentZoom;
+            const worldY = (screenY - currentPan.y) / currentZoom;
+            const effectiveGridSize = scene?.gridSize || gridSize;
+            const gridEnabled = scene?.gridEnabled !== undefined ? scene.gridEnabled : true;
+            const snappedX = gridEnabled ? Math.round(worldX / effectiveGridSize) * effectiveGridSize : worldX;
+            const snappedY = gridEnabled ? Math.round(worldY / effectiveGridSize) * effectiveGridSize : worldY;
+            onMapClickToPlace(snappedX, snappedY);
+          }
+        }}
       >
         {/* Conditional Grid Overlay - Extends infinitely across the large space */}
         {(scene?.gridEnabled !== undefined ? scene.gridEnabled : true) && (
@@ -1906,6 +1925,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
             if (role === 'gm') {
               holdTimerRef.current = setTimeout(() => {
                 setShowDeleteButton(token.id);
+                onTokenLongPress?.(token);
               }, 500);
             }
           };
@@ -7284,7 +7304,7 @@ function InviteCodeSection({ inviteCode }: { inviteCode?: string }) {
 }
 
 // Character Management Content - extracted for reuse in characters-only mode
-function CharacterManagementContent({ role, characters, folders, unfiledCharacters, expandedFolders, editingFolderId, editingFolderName, draggingCharacterId, newFolderName, onSetNewFolderName, onCreateFolder, createFolderPending, onToggleFolder, onSetEditingFolderId, onSetEditingFolderName, onUpdateFolder, onDeleteFolder, deleteFolderPending, onMoveCharacter, onSetDraggingCharacterId, getCharactersInFolder, onAddCharacter, onShowTemplateLibrary, onShowImportDialog, onViewCharacter, onAssignCharacter, onDeleteCharacter, deleteCharacterPending, onManageAccess, myPermissions }: {
+function CharacterManagementContent({ role, characters, folders, unfiledCharacters, expandedFolders, editingFolderId, editingFolderName, draggingCharacterId, newFolderName, onSetNewFolderName, onCreateFolder, createFolderPending, onToggleFolder, onSetEditingFolderId, onSetEditingFolderName, onUpdateFolder, onDeleteFolder, deleteFolderPending, onMoveCharacter, onSetDraggingCharacterId, getCharactersInFolder, onAddCharacter, onShowTemplateLibrary, onShowImportDialog, onViewCharacter, onAssignCharacter, onDeleteCharacter, deleteCharacterPending, onManageAccess, myPermissions, onPlaceCharacterToken }: {
   role: Role;
   characters?: any[];
   folders: any[];
@@ -7315,6 +7335,7 @@ function CharacterManagementContent({ role, characters, folders, unfiledCharacte
   deleteCharacterPending: boolean;
   onManageAccess: (char: any) => void;
   myPermissions?: { permissions: Record<string, string> };
+  onPlaceCharacterToken?: (characterId: string) => void;
 }) {
   return (
     <div className="space-y-3">
@@ -7375,7 +7396,7 @@ function CharacterManagementContent({ role, characters, folders, unfiledCharacte
               {isExpanded && (
                 <div className="mt-2 space-y-2 pl-6">
                   {folderChars.length > 0 ? folderChars.map((char: any) => (
-                    <CharacterListItem key={char.id} char={char} role={role} onViewCharacter={onViewCharacter} onAssignCharacter={onAssignCharacter} onDeleteCharacter={onDeleteCharacter} deleteCharacterPending={deleteCharacterPending} onManageAccess={onManageAccess} myPermissions={myPermissions} onSetDraggingCharacterId={onSetDraggingCharacterId} />
+                    <CharacterListItem key={char.id} char={char} role={role} onViewCharacter={onViewCharacter} onAssignCharacter={onAssignCharacter} onDeleteCharacter={onDeleteCharacter} deleteCharacterPending={deleteCharacterPending} onManageAccess={onManageAccess} myPermissions={myPermissions} onSetDraggingCharacterId={onSetDraggingCharacterId} onPlaceCharacterToken={onPlaceCharacterToken} />
                   )) : (
                     <div className="p-3 text-center text-stone-500 text-sm border border-dashed border-stone-700 rounded">Drag characters here</div>
                   )}
@@ -7396,7 +7417,7 @@ function CharacterManagementContent({ role, characters, folders, unfiledCharacte
           </div>
           <div className="mt-2 space-y-2">
             {unfiledCharacters.length > 0 ? unfiledCharacters.map((char: any) => (
-              <CharacterListItem key={char.id} char={char} role={role} onViewCharacter={onViewCharacter} onAssignCharacter={onAssignCharacter} onDeleteCharacter={onDeleteCharacter} deleteCharacterPending={deleteCharacterPending} onManageAccess={onManageAccess} myPermissions={myPermissions} onSetDraggingCharacterId={onSetDraggingCharacterId} />
+              <CharacterListItem key={char.id} char={char} role={role} onViewCharacter={onViewCharacter} onAssignCharacter={onAssignCharacter} onDeleteCharacter={onDeleteCharacter} deleteCharacterPending={deleteCharacterPending} onManageAccess={onManageAccess} myPermissions={myPermissions} onSetDraggingCharacterId={onSetDraggingCharacterId} onPlaceCharacterToken={onPlaceCharacterToken} />
             )) : (
               <div className="p-4 text-center text-stone-500 text-sm">
                 {characters && characters.length > 0 ? 'All characters are in folders' : 'No characters yet'}
@@ -7409,8 +7430,8 @@ function CharacterManagementContent({ role, characters, folders, unfiledCharacte
   );
 }
 
-function CharacterListItem({ char, role, onViewCharacter, onAssignCharacter, onDeleteCharacter, deleteCharacterPending, onManageAccess, myPermissions, onSetDraggingCharacterId }: {
-  char: any; role: Role; onViewCharacter?: (char: any) => void; onAssignCharacter?: (char: any) => void; onDeleteCharacter: (char: any) => void; deleteCharacterPending: boolean; onManageAccess: (char: any) => void; myPermissions?: { permissions: Record<string, string> }; onSetDraggingCharacterId: (id: string | null) => void;
+function CharacterListItem({ char, role, onViewCharacter, onAssignCharacter, onDeleteCharacter, deleteCharacterPending, onManageAccess, myPermissions, onSetDraggingCharacterId, onPlaceCharacterToken }: {
+  char: any; role: Role; onViewCharacter?: (char: any) => void; onAssignCharacter?: (char: any) => void; onDeleteCharacter: (char: any) => void; deleteCharacterPending: boolean; onManageAccess: (char: any) => void; myPermissions?: { permissions: Record<string, string> }; onSetDraggingCharacterId: (id: string | null) => void; onPlaceCharacterToken?: (characterId: string) => void;
 }) {
   return (
     <div className="p-2 bg-stone-900 rounded border border-stone-800 flex justify-between items-center gap-2"
@@ -7422,6 +7443,11 @@ function CharacterListItem({ char, role, onViewCharacter, onAssignCharacter, onD
         {role === 'gm' && <GripVertical className="h-4 w-4 text-stone-500 cursor-grab shrink-0" />}
         <div className="min-w-0 flex-1"><div className="font-medium text-stone-200 truncate text-sm">{char.name}</div></div>
       </div>
+      {role === 'gm' && onPlaceCharacterToken && (
+        <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); onPlaceCharacterToken(char.id.toString()); }} className="h-7 w-7 p-0 text-amber-500 hover:text-amber-300 hover:bg-amber-900/30" data-testid={`button-place-token-${char.id}`}>
+          <Plus className="h-4 w-4" />
+        </Button>
+      )}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-stone-400 hover:text-stone-200"><MoreVertical className="h-4 w-4" /></Button>
@@ -7457,6 +7483,7 @@ interface CampaignMenuProps {
   inspectedChar?: Character;
   onInspectChar?: (char: Character | null) => void;
   onAddCharacterToken?: (character: any) => void;
+  onPlaceCharacterToken?: (characterId: string) => void;
   onChangeMap?: () => void;
   characters?: any[];
   members?: any[];
@@ -7479,7 +7506,7 @@ interface CampaignMenuProps {
   charactersOnly?: boolean;
 }
 
-export function CampaignMenu({ campaignId, role, inviteCode, hotbarSlots = 5, inspectedChar, onInspectChar, onAddCharacterToken, onChangeMap, characters, members, onAddCharacter, onViewCharacter, onLevelUpAll, chatOpen = false, onChatOpenChange, onAssignCharacter, myPermissions, onOpenCampaignSpecies, isOwner = false, gmUserId, beaconColor, onChangeBeaconColor, system, defaultPanel, onDefaultPanelChange, inline = false, charactersOnly = false }: CampaignMenuProps) {
+export function CampaignMenu({ campaignId, role, inviteCode, hotbarSlots = 5, inspectedChar, onInspectChar, onAddCharacterToken, onPlaceCharacterToken, onChangeMap, characters, members, onAddCharacter, onViewCharacter, onLevelUpAll, chatOpen = false, onChatOpenChange, onAssignCharacter, myPermissions, onOpenCampaignSpecies, isOwner = false, gmUserId, beaconColor, onChangeBeaconColor, system, defaultPanel, onDefaultPanelChange, inline = false, charactersOnly = false }: CampaignMenuProps) {
   const { user } = useAuth();
   const setChatOpen = onChatOpenChange || (() => {});
   const [addCharacterOpen, setAddCharacterOpen] = useState(false);
@@ -9001,6 +9028,7 @@ export function CampaignMenu({ campaignId, role, inviteCode, hotbarSlots = 5, in
               deleteCharacterPending={deleteCharacterMutation.isPending}
               onManageAccess={(char) => { setSelectedCharForAccess(char); setShowAccessDialog(true); }}
               myPermissions={myPermissions}
+              onPlaceCharacterToken={onPlaceCharacterToken}
             />
           ) : (
           <Tabs defaultValue="players" className="w-full">
