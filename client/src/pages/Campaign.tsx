@@ -9651,11 +9651,11 @@ export default function Campaign() {
              />
            )}
           
-          {/* Character Sheet Tab Buttons - Right side, aligned with hotbar buttons (visible when character/inspectedChar exists) */}
+          {/* Character Sheet Tab Buttons - Right side, aligned with left-side selection buttons */}
           {/* For players: show ONLY when they have an assigned character */}
           {!isSandbox && ((role === 'player' && character) || (role === 'gm' && inspectedChar)) && (
             <div 
-              className="absolute top-80 z-20 flex flex-col gap-2 transition-all duration-300 ease-in-out"
+              className="absolute top-44 z-20 flex flex-col gap-2 transition-all duration-300 ease-in-out"
               style={{ right: sidePanelOpen && !isMobile ? `${notesPanelWidth + 16}px` : '12px' }}
             >
               {[
@@ -9843,8 +9843,12 @@ export default function Campaign() {
                   <NotesFolderBrowser
                     campaignId={effectiveCampaignId}
                     onSelectNote={(noteId) => {
-                      setFloatingNotesInitialNoteId(noteId);
-                      setFloatingNotesOpen(true);
+                      if (isMobile) {
+                        setLocation(`/notes/${noteId}`);
+                      } else {
+                        setFloatingNotesInitialNoteId(noteId);
+                        setFloatingNotesOpen(true);
+                      }
                     }}
                   />
                 </div>
