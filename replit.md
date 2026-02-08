@@ -60,3 +60,13 @@ Preferred communication style: Simple, everyday language.
 - **AOE Targeting**: Button properties have `targetingConfig` (type: none/self/single/aoe, shape, range, hitFormula, damageFormula). AOE buttons enter battlemap targeting mode, auto-resolve hits against tokens in area.
 - **Player Hotbar**: 8-slot customizable bottom bar (localStorage-persisted per campaign/user). Slots: roll buttons or sheet shortcuts. Right-click to clear, toggle visibility.
 - **Dice Engine Fixes**: Corrected keep/drop lowest, per-die explosion totaling for keep/drop, proper error reporting.
+- **Fog of War System**: Complete dynamic fog of war with walls, doors, windows, lighting, and vision calculation.
+  - **Schema**: `scene_walls`, `scene_doors`, `scene_windows`, `scene_lights` tables. Fog settings on scenes (`fogEnabled`, `fogOpacity`, `fogExploredDimness`, `isDayTime`, `globalLightLevel`, `fogState`). Vision fields on characters (`visionType`, `visionDistanceFeet`, `darkvisionDistanceFeet`, `blindsightDistanceFeet`, `truesightDistanceFeet`, `tremorsenseDistanceFeet`, `visionDayDistanceFeet`, `visionNightDistanceFeet`). Vision overrides on tokens (`isBlind`, `visionOverrideDistance`, `visionOverrideType`). Vision modifiers on traits.
+  - **Wall Types**: solid (blocks all), transparent (movement only), one_way (vision from one side), invisible (movement only, faint rendering)
+  - **Door/Window States**: Doors can be open/closed/locked with click-to-toggle. Windows always allow partial vision.
+  - **Vision Engine** (`client/src/lib/visionEngine.ts`): Raycasting at 1-degree intervals with shadow casting for visibility polygon calculation. Blocking segments from walls, closed doors, windows. Vision types: normal, darkvision, blindsight, truesight, tremorsense with day/night distance fields.
+  - **Lighting**: Static lights with radius, color, intensity, flicker. Placed on map via GM tool.
+  - **Day/Night**: Scene-level toggle affects vision distances. Global light level (0.0-1.0).
+  - **GM Tools Panel** (`FogOfWarOverlay.tsx`): Wall drawing (snap-to-grid, wall types), door/window/light placement, fog toggle, day/night toggle, opacity/dimness sliders, clear walls.
+  - **WebSocket Sync**: Real-time fog updates via `wall_created`, `door_toggled`, `fog_state_updated`, etc. GM-authoritative fog state.
+  - **Player View**: Players see fog with vision polygon cutouts based on their token positions and character vision settings.
