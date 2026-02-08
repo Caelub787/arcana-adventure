@@ -1,4 +1,4 @@
-export type PropertyType = 'number' | 'text' | 'boolean' | 'resource' | 'list' | 'textarea' | 'pfp';
+export type PropertyType = 'number' | 'text' | 'boolean' | 'resource' | 'list' | 'textarea' | 'pfp' | 'label';
 
 export type SandboxPropertyType = PropertyType;
 
@@ -127,12 +127,16 @@ export interface PropertyMetadata {
   renderComponent?: string;
   labelVisibility?: boolean;
   conditionalVisibilityExpression?: string;
+  calculationExpression?: string;
+  visibilityExpression?: string;
   options?: string[];
   resourceConfig?: {
     showMax?: boolean;
     showBar?: boolean;
     barColor?: string;
     allowOverMax?: boolean;
+    colorThresholds?: Array<{ percent: number; color: string }>;
+    useGradient?: boolean;
   };
 }
 
@@ -248,6 +252,7 @@ export function resolveValue(property: PropertyDefinition, actorValues: ActorVal
     case 'text': return '';
     case 'textarea': return '';
     case 'pfp': return '';
+    case 'label': return '';
   }
 }
 

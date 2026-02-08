@@ -35,6 +35,7 @@ import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger, C
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { PropertyStyleEditor, getPropertyCssStyle, type PropertyStyle } from "@/components/sandbox/PropertyStyleEditor";
 import { migrateTemplateData } from "@/components/sandbox/types";
+import { evaluateExpression, ExpressionContext } from '@/components/sandbox/expressionEngine';
 
 // Scene Settings Form Component
 function SceneSettingsForm({ scene, onUpdateScene }: { scene: Scene; onUpdateScene: (settings: Partial<Scene>) => void }) {
@@ -846,6 +847,51 @@ function SandboxSheetEditor({
   const [collapsed, setCollapsed] = useState(false);
   const [position, setPosition] = useState({ x: 100 + Math.random() * 200, y: 80 + Math.random() * 100 });
 
+  const interpolateColor = (color1: string, color2: string, t: number): string => {
+    const hex = (c: string) => {
+      const h = c.replace('#', '');
+      return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
+    };
+    const [r1, g1, b1] = hex(color1);
+    const [r2, g2, b2] = hex(color2);
+    const r = Math.round(r1 + (r2 - r1) * t);
+    const g = Math.round(g1 + (g2 - g1) * t);
+    const b = Math.round(b1 + (b2 - b1) * t);
+    return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+  };
+
+  const getBarColor = (current: number, max: number, prop: any) => {
+    if (max <= 0) return prop.barColor || '#d97706';
+    const percent = (current / max) * 100;
+
+    if (prop.useGradient && prop.colorThresholds?.length >= 2) {
+      const sorted = [...prop.colorThresholds].sort((a: any, b: any) => a.percent - b.percent);
+      let lower = sorted[0];
+      let upper = sorted[sorted.length - 1];
+      for (let i = 0; i < sorted.length - 1; i++) {
+        if (percent >= sorted[i].percent && percent <= sorted[i + 1].percent) {
+          lower = sorted[i];
+          upper = sorted[i + 1];
+          break;
+        }
+      }
+      const t = upper.percent === lower.percent ? 0 : (percent - lower.percent) / (upper.percent - lower.percent);
+      return interpolateColor(lower.color, upper.color, Math.max(0, Math.min(1, t)));
+    }
+
+    if (prop.colorThresholds?.length) {
+      const sorted = [...prop.colorThresholds].sort((a: any, b: any) => b.percent - a.percent);
+      for (const threshold of sorted) {
+        if (percent <= threshold.percent) {
+          return threshold.color;
+        }
+      }
+      return prop.barColor || '#22c55e';
+    }
+
+    return prop.barColor || '#d97706';
+  };
+
   const templateData = useMemo(() => {
     try {
       let raw: any = {};
@@ -921,6 +967,17 @@ function SandboxSheetEditor({
     } catch { return item.type === 'actor' ? { name: item.name } : {}; }
   });
   const actorSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const getExpressionContext = useCallback((): ExpressionContext => {
+    const propDefs: Record<string, { type: string; defaultValue?: any }> = {};
+    if (templateData) {
+      for (const [key, prop] of Object.entries(templateData.properties)) {
+        propDefs[key] = { type: prop.type, defaultValue: prop.defaultValue };
+      }
+    }
+    return { values: actorValues, properties: propDefs };
+  }, [actorValues, templateData]);
+
   const [containerAddTarget, setContainerAddTarget] = useState<{ parentId: string; tabId?: string } | null>(null);
   const [activeTabState, setActiveTabState] = useState<Record<string, string>>({});
   const [collapsedPanels, setCollapsedPanels] = useState<Record<string, boolean>>({});
@@ -1048,6 +1105,10 @@ function SandboxSheetEditor({
     showBar: p.metadata?.resourceConfig?.showBar,
     barColor: p.metadata?.resourceConfig?.barColor,
     allowOverMax: p.metadata?.resourceConfig?.allowOverMax,
+    colorThresholds: p.metadata?.resourceConfig?.colorThresholds,
+    useGradient: p.metadata?.resourceConfig?.useGradient,
+    calculationExpression: p.metadata?.calculationExpression,
+    visibilityExpression: p.metadata?.visibilityExpression,
   }));
 
   const layoutNodes: Record<string, any> = templateData.layoutNodes || {};
@@ -1127,6 +1188,10 @@ function SandboxSheetEditor({
     } else if (type === 'pfp') {
       setNewPropWidth(100);
       setNewPropHeight(100);
+      setNewPropLabelPosition('hidden');
+    } else if (type === 'label') {
+      setNewPropWidth(200);
+      setNewPropHeight(40);
       setNewPropLabelPosition('hidden');
     } else {
       setNewPropWidth(200);
@@ -1242,14 +1307,18 @@ function SandboxSheetEditor({
         ...(updates.max !== undefined ? { max: updates.max } : {}),
         ...(updates.step !== undefined ? { step: updates.step } : {}),
         ...(updates.options !== undefined ? { options: updates.options } : {}),
-        ...(updates.showBar !== undefined || updates.barColor !== undefined || updates.allowOverMax !== undefined ? {
+        ...(updates.showBar !== undefined || updates.barColor !== undefined || updates.allowOverMax !== undefined || updates.colorThresholds !== undefined || updates.useGradient !== undefined ? {
           resourceConfig: {
             ...original.metadata?.resourceConfig,
             ...(updates.showBar !== undefined ? { showBar: updates.showBar } : {}),
             ...(updates.barColor !== undefined ? { barColor: updates.barColor } : {}),
             ...(updates.allowOverMax !== undefined ? { allowOverMax: updates.allowOverMax } : {}),
+            ...(updates.colorThresholds !== undefined ? { colorThresholds: updates.colorThresholds } : {}),
+            ...(updates.useGradient !== undefined ? { useGradient: updates.useGradient } : {}),
           },
         } : {}),
+        ...(updates.calculationExpression !== undefined ? { calculationExpression: updates.calculationExpression } : {}),
+        ...(updates.visibilityExpression !== undefined ? { visibilityExpression: updates.visibilityExpression } : {}),
       },
       ...(updates.parentId !== undefined ? { parentId: updates.parentId } : {}),
       ...(updates.key !== undefined ? { key: updates.key } : {}),
@@ -1386,7 +1455,10 @@ function SandboxSheetEditor({
     return (
       <div className={`flex ${isLeft ? 'flex-row items-center gap-2' : 'flex-col'} w-full h-full overflow-hidden p-1`} style={propStyle}>
         {!isHidden && (
-          <span className="text-purple-300 truncate shrink-0" style={{ fontSize: `${lfs}px`, ...(labelColor ? { color: labelColor } : {}) }}>{prop.label}</span>
+          <span className="text-purple-300 truncate shrink-0" style={{ fontSize: `${lfs}px`, ...(labelColor ? { color: labelColor } : {}) }}>
+            {prop.label}
+            {prop.calculationExpression && <span className="ml-1 text-amber-500 text-[8px] font-mono bg-amber-900/30 px-0.5 rounded">fx</span>}
+          </span>
         )}
         <div className="flex-1 min-w-0">
           {prop.type === 'boolean' ? (
@@ -1404,6 +1476,10 @@ function SandboxSheetEditor({
           ) : prop.type === 'textarea' ? (
             <div className="bg-stone-700/50 border border-stone-600/50 rounded px-1.5 h-full" style={{ fontSize: `${vfs}px`, color: valueColor || '#a8a29e' }}>
               <span className="text-stone-500 text-[9px]">Multi-line text...</span>
+            </div>
+          ) : prop.type === 'label' ? (
+            <div className="text-stone-400 italic truncate" style={{ fontSize: `${vfs}px` }}>
+              {prop.defaultValue || 'Label text...'}
             </div>
           ) : (
             <div className="bg-stone-700/50 border border-stone-600/50 rounded px-1.5 truncate" style={{ fontSize: `${vfs}px`, color: valueColor || '#a8a29e' }}>
@@ -2251,6 +2327,8 @@ function SandboxSheetEditor({
           tooltip: p.metadata?.tooltip,
           style: p.metadata?.style,
           options: p.metadata?.options,
+          calculationExpression: p.metadata?.calculationExpression,
+          visibilityExpression: p.metadata?.visibilityExpression,
         }));
       } catch {}
     }
@@ -2284,7 +2362,24 @@ function SandboxSheetEditor({
     };
 
     const renderActorProperty = (prop: any) => {
+      if (prop.visibilityExpression && item.type === 'actor') {
+        const ctx = getExpressionContext();
+        const result = evaluateExpression(prop.visibilityExpression, ctx);
+        if (!result.error && !result.value) {
+          return null;
+        }
+      }
+
       const val = actorValues[prop.key] ?? prop.defaultValue ?? '';
+      let displayVal = val;
+      const hasFormula = !!(prop.calculationExpression && item.type === 'actor');
+      if (hasFormula) {
+        const ctx = getExpressionContext();
+        const result = evaluateExpression(prop.calculationExpression, ctx);
+        if (!result.error) {
+          displayVal = result.value;
+        }
+      }
       const px = prop.x ?? 10;
       const py = prop.y ?? 0;
       const pw = prop.width ?? 200;
@@ -2298,6 +2393,33 @@ function SandboxSheetEditor({
       const labelColor = prop.style?.labelColor || prop.style?.textColor || undefined;
       const valueColor = prop.style?.valueColor || prop.style?.textColor || undefined;
 
+      const formulaBorder = hasFormula ? { borderColor: '#d97706', borderWidth: '1px', borderStyle: 'solid' } : {};
+
+      if (prop.type === 'label') {
+        let content = String(prop.defaultValue || val || '');
+        content = content.replace(/\{\{(\w+(?:\.\w+)?)\}\}/g, (match: string, key: string) => {
+          const ctx = getExpressionContext();
+          const result = evaluateExpression(key, ctx);
+          return result.error ? match : String(result.value);
+        });
+
+        return (
+          <div
+            key={prop.id}
+            className="absolute overflow-hidden"
+            style={{ left: `${px}px`, top: `${py}px`, width: `${pw}px`, height: `${ph}px`, ...propStyle }}
+            data-testid={`actor-property-${prop.key}`}
+            title={prop.tooltip}
+          >
+            <div
+              className="w-full h-full"
+              style={{ fontSize: `${vfs}px`, color: valueColor || '#e7e5e4' }}
+              dangerouslySetInnerHTML={{ __html: content }}
+            />
+          </div>
+        );
+      }
+
       if (prop.type === 'textarea') {
         return (
           <div key={prop.id} className="absolute" style={{ left: `${px}px`, top: `${py}px`, width: `${pw}px`, height: `${ph}px`, ...propStyle }} data-testid={`actor-property-${prop.key}`} title={prop.tooltip || prop.label}>
@@ -2305,10 +2427,11 @@ function SandboxSheetEditor({
               {!isHidden && <Label className="text-stone-400 truncate shrink-0" style={{ fontSize: `${lfs}px`, ...(labelColor ? { color: labelColor } : {}) }}>{prop.label}</Label>}
               <div className="flex-1 min-w-0 h-full">
                 <textarea
-                  value={val}
+                  value={hasFormula ? String(displayVal) : val}
                   onChange={(e) => handleActorValueChange(prop.key, e.target.value)}
-                  className="bg-stone-800 border border-stone-700 text-stone-200 w-full h-full resize-none rounded px-2 py-1"
-                  style={{ fontSize: `${vfs}px`, ...(valueColor ? { color: valueColor } : {}) }}
+                  readOnly={hasFormula}
+                  className={`bg-stone-800 border border-stone-700 text-stone-200 w-full h-full resize-none rounded px-2 py-1 ${hasFormula ? 'cursor-default opacity-80' : ''}`}
+                  style={{ fontSize: `${vfs}px`, ...(valueColor ? { color: valueColor } : {}), ...formulaBorder }}
                   data-testid={`textarea-actor-${prop.key}`}
                 />
               </div>
@@ -2349,17 +2472,29 @@ function SandboxSheetEditor({
         let resourceVal: any = val;
         try { if (typeof resourceVal === 'string') resourceVal = JSON.parse(resourceVal); } catch {}
         if (typeof resourceVal !== 'object' || resourceVal === null) resourceVal = { current: 0, max: 0 };
-        const current = resourceVal.current ?? 0;
+        const current = hasFormula ? Number(displayVal) : (resourceVal.current ?? 0);
         const max = resourceVal.max ?? 0;
+        const barFillPercent = max > 0 ? Math.min(100, Math.max(0, (current / max) * 100)) : 0;
+        const dynamicBarColor = getBarColor(current, max, prop);
         return (
           <div key={prop.id} className="absolute" style={{ left: `${px}px`, top: `${py}px`, width: `${pw}px`, height: `${ph}px`, ...propStyle }} data-testid={`actor-property-${prop.key}`} title={prop.tooltip || prop.label}>
             <div className={`flex ${isLeft ? 'flex-row items-center gap-2' : 'flex-col'} w-full h-full`}>
-              {!isHidden && <Label className="text-stone-400 truncate shrink-0" style={{ fontSize: `${lfs}px`, ...(labelColor ? { color: labelColor } : {}) }}>{prop.label}</Label>}
+              {!isHidden && (
+                <Label className="text-stone-400 truncate shrink-0" style={{ fontSize: `${lfs}px`, ...(labelColor ? { color: labelColor } : {}) }}>
+                  {prop.label}
+                  {hasFormula && <span className="ml-1 text-amber-500 text-[8px] font-mono">fx</span>}
+                </Label>
+              )}
               <div className="flex items-center gap-1 flex-1 min-w-0">
-                <Input type="number" value={current} onChange={(e) => { let newCurrent = Number(e.target.value); if (!prop.allowOverMax && newCurrent > max) newCurrent = max; handleActorValueChange(prop.key, JSON.stringify({ current: newCurrent, max })); }} className="bg-stone-800 border-stone-700 text-stone-200 h-full flex-1" style={{ fontSize: `${vfs}px`, ...(valueColor ? { color: valueColor } : {}) }} data-testid={`input-actor-${prop.key}-current`} />
+                <Input type="number" value={current} onChange={(e) => { let newCurrent = Number(e.target.value); if (!prop.allowOverMax && newCurrent > max) newCurrent = max; handleActorValueChange(prop.key, JSON.stringify({ current: newCurrent, max })); }} readOnly={hasFormula} className={`bg-stone-800 border-stone-700 text-stone-200 h-full flex-1 ${hasFormula ? 'cursor-default opacity-80' : ''}`} style={{ fontSize: `${vfs}px`, ...(valueColor ? { color: valueColor } : {}), ...formulaBorder }} data-testid={`input-actor-${prop.key}-current`} />
                 <span className="text-stone-500 text-xs">/</span>
                 <Input type="number" value={max} onChange={(e) => handleActorValueChange(prop.key, JSON.stringify({ current, max: Number(e.target.value) }))} className="bg-stone-800 border-stone-700 text-stone-200 h-full flex-1" style={{ fontSize: `${vfs}px`, ...(valueColor ? { color: valueColor } : {}) }} data-testid={`input-actor-${prop.key}-max`} />
               </div>
+              {prop.showBar && (
+                <div className="w-full h-1.5 bg-stone-700 rounded-full overflow-hidden mt-0.5" data-testid={`bar-actor-${prop.key}`}>
+                  <div className="h-full rounded-full transition-all duration-300" style={{ width: `${barFillPercent}%`, backgroundColor: dynamicBarColor }} />
+                </div>
+              )}
             </div>
           </div>
         );
@@ -2375,28 +2510,33 @@ function SandboxSheetEditor({
         >
           <div className={`flex ${isLeft ? 'flex-row items-center gap-2' : 'flex-col'} w-full h-full`}>
             {!isHidden && (
-              <Label className="text-stone-400 truncate shrink-0" style={{ fontSize: `${lfs}px`, ...(labelColor ? { color: labelColor } : {}) }}>{prop.label}</Label>
+              <Label className="text-stone-400 truncate shrink-0" style={{ fontSize: `${lfs}px`, ...(labelColor ? { color: labelColor } : {}) }}>
+                {prop.label}
+                {hasFormula && <span className="ml-1 text-amber-500 text-[8px] font-mono">fx</span>}
+              </Label>
             )}
             <div className="flex-1 min-w-0">
               {prop.type === 'text' && (
                 <Input
-                  value={val}
+                  value={hasFormula ? String(displayVal) : val}
                   onChange={(e) => handleActorValueChange(prop.key, e.target.value)}
-                  className="bg-stone-800 border-stone-700 text-stone-200 h-full w-full"
-                  style={{ fontSize: `${vfs}px`, ...(valueColor ? { color: valueColor } : {}) }}
+                  readOnly={hasFormula}
+                  className={`bg-stone-800 border-stone-700 text-stone-200 h-full w-full ${hasFormula ? 'cursor-default opacity-80' : ''}`}
+                  style={{ fontSize: `${vfs}px`, ...(valueColor ? { color: valueColor } : {}), ...formulaBorder }}
                   data-testid={`input-actor-${prop.key}`}
                 />
               )}
               {prop.type === 'number' && (
                 <Input
                   type="number"
-                  value={val}
+                  value={hasFormula ? displayVal : val}
                   min={prop.min}
                   max={prop.max}
                   step={prop.step || 1}
                   onChange={(e) => handleActorValueChange(prop.key, e.target.value)}
-                  className="bg-stone-800 border-stone-700 text-stone-200 h-full w-full"
-                  style={{ fontSize: `${vfs}px`, ...(valueColor ? { color: valueColor } : {}) }}
+                  readOnly={hasFormula}
+                  className={`bg-stone-800 border-stone-700 text-stone-200 h-full w-full ${hasFormula ? 'cursor-default opacity-80' : ''}`}
+                  style={{ fontSize: `${vfs}px`, ...(valueColor ? { color: valueColor } : {}), ...formulaBorder }}
                   data-testid={`input-actor-${prop.key}`}
                 />
               )}
@@ -2569,6 +2709,8 @@ function SandboxSheetEditor({
           tooltip: p.metadata?.tooltip,
           style: p.metadata?.style,
           options: p.metadata?.options,
+          calculationExpression: p.metadata?.calculationExpression,
+          visibilityExpression: p.metadata?.visibilityExpression,
         }));
       } catch {}
     }
@@ -2582,22 +2724,66 @@ function SandboxSheetEditor({
     }
 
     const renderMobileProperty = (prop: any): React.ReactNode => {
+      if (prop.visibilityExpression && item.type === 'actor') {
+        const ctx = getExpressionContext();
+        const result = evaluateExpression(prop.visibilityExpression, ctx);
+        if (!result.error && !result.value) {
+          return null;
+        }
+      }
+
       const val = actorValues[prop.key] ?? prop.defaultValue ?? '';
+      let displayVal = val;
+      const hasFormula = !!(prop.calculationExpression && item.type === 'actor');
+      if (hasFormula) {
+        const ctx = getExpressionContext();
+        const result = evaluateExpression(prop.calculationExpression, ctx);
+        if (!result.error) {
+          displayVal = result.value;
+        }
+      }
       const lfs = prop.labelFontSize ?? 11;
       const vfs = prop.valueFontSize ?? 13;
       const propStyle = getPropertyCssStyle(prop.style);
       const labelColor = prop.style?.labelColor || prop.style?.textColor || undefined;
       const valueColor = prop.style?.valueColor || prop.style?.textColor || undefined;
+      const formulaBorder = hasFormula ? { borderColor: '#d97706', borderWidth: '1px', borderStyle: 'solid' } : {};
+
+      if (prop.type === 'label') {
+        let content = String(prop.defaultValue || val || '');
+        content = content.replace(/\{\{(\w+(?:\.\w+)?)\}\}/g, (match: string, key: string) => {
+          const ctx = getExpressionContext();
+          const result = evaluateExpression(key, ctx);
+          return result.error ? match : String(result.value);
+        });
+
+        return (
+          <div
+            key={prop.id}
+            className="overflow-hidden"
+            style={{ ...propStyle }}
+            data-testid={`actor-property-mobile-${prop.key}`}
+            title={prop.tooltip}
+          >
+            <div
+              className="w-full"
+              style={{ fontSize: `${vfs}px`, color: valueColor || '#e7e5e4' }}
+              dangerouslySetInnerHTML={{ __html: content }}
+            />
+          </div>
+        );
+      }
 
       if (prop.type === 'textarea') {
         return (
           <div key={prop.id} className="space-y-1" style={propStyle} data-testid={`actor-property-mobile-${prop.key}`} title={prop.tooltip || prop.label}>
             <Label className="text-stone-400" style={{ fontSize: `${lfs}px`, ...(labelColor ? { color: labelColor } : {}) }}>{prop.label}</Label>
             <textarea
-              value={val}
+              value={hasFormula ? String(displayVal) : val}
               onChange={(e) => handleActorValueChange(prop.key, e.target.value)}
-              className="bg-stone-800 border border-stone-700 text-stone-200 w-full resize-none rounded px-2 py-1"
-              style={{ fontSize: `${vfs}px`, height: `${(prop.height ?? 80) - 20}px`, ...(valueColor ? { color: valueColor } : {}) }}
+              readOnly={hasFormula}
+              className={`bg-stone-800 border border-stone-700 text-stone-200 w-full resize-none rounded px-2 py-1 ${hasFormula ? 'cursor-default opacity-80' : ''}`}
+              style={{ fontSize: `${vfs}px`, height: `${(prop.height ?? 80) - 20}px`, ...(valueColor ? { color: valueColor } : {}), ...formulaBorder }}
               data-testid={`textarea-actor-${prop.key}`}
             />
           </div>
@@ -2629,42 +2815,57 @@ function SandboxSheetEditor({
         let resourceVal: any = val;
         try { if (typeof resourceVal === 'string') resourceVal = JSON.parse(resourceVal); } catch {}
         if (typeof resourceVal !== 'object' || resourceVal === null) resourceVal = { current: 0, max: 0 };
-        const current = resourceVal.current ?? 0;
+        const current = hasFormula ? Number(displayVal) : (resourceVal.current ?? 0);
         const max = resourceVal.max ?? 0;
+        const barFillPercent = max > 0 ? Math.min(100, Math.max(0, (current / max) * 100)) : 0;
+        const dynamicBarColor = getBarColor(current, max, prop);
         return (
           <div key={prop.id} className="space-y-1" style={propStyle} data-testid={`actor-property-mobile-${prop.key}`} title={prop.tooltip || prop.label}>
-            <Label className="text-stone-400" style={{ fontSize: `${lfs}px`, ...(labelColor ? { color: labelColor } : {}) }}>{prop.label}</Label>
+            <Label className="text-stone-400" style={{ fontSize: `${lfs}px`, ...(labelColor ? { color: labelColor } : {}) }}>
+              {prop.label}
+              {hasFormula && <span className="ml-1 text-amber-500 text-[8px] font-mono">fx</span>}
+            </Label>
             <div className="flex items-center gap-1">
-              <Input type="number" value={current} onChange={(e) => { let newCurrent = Number(e.target.value); if (!prop.allowOverMax && newCurrent > max) newCurrent = max; handleActorValueChange(prop.key, JSON.stringify({ current: newCurrent, max })); }} className="bg-stone-800 border-stone-700 text-stone-200 h-8 flex-1" style={{ fontSize: `${vfs}px`, ...(valueColor ? { color: valueColor } : {}) }} data-testid={`input-actor-${prop.key}-current`} />
+              <Input type="number" value={current} onChange={(e) => { let newCurrent = Number(e.target.value); if (!prop.allowOverMax && newCurrent > max) newCurrent = max; handleActorValueChange(prop.key, JSON.stringify({ current: newCurrent, max })); }} readOnly={hasFormula} className={`bg-stone-800 border-stone-700 text-stone-200 h-8 flex-1 ${hasFormula ? 'cursor-default opacity-80' : ''}`} style={{ fontSize: `${vfs}px`, ...(valueColor ? { color: valueColor } : {}), ...formulaBorder }} data-testid={`input-actor-${prop.key}-current`} />
               <span className="text-stone-500 text-xs">/</span>
               <Input type="number" value={max} onChange={(e) => handleActorValueChange(prop.key, JSON.stringify({ current, max: Number(e.target.value) }))} className="bg-stone-800 border-stone-700 text-stone-200 h-8 flex-1" style={{ fontSize: `${vfs}px`, ...(valueColor ? { color: valueColor } : {}) }} data-testid={`input-actor-${prop.key}-max`} />
             </div>
+            {prop.showBar && (
+              <div className="w-full h-1.5 bg-stone-700 rounded-full overflow-hidden" data-testid={`bar-actor-mobile-${prop.key}`}>
+                <div className="h-full rounded-full transition-all duration-300" style={{ width: `${barFillPercent}%`, backgroundColor: dynamicBarColor }} />
+              </div>
+            )}
           </div>
         );
       }
 
       return (
         <div key={prop.id} className="space-y-1" style={propStyle} data-testid={`actor-property-mobile-${prop.key}`} title={prop.tooltip || prop.label}>
-          <Label className="text-stone-400" style={{ fontSize: `${lfs}px`, ...(labelColor ? { color: labelColor } : {}) }}>{prop.label}</Label>
+          <Label className="text-stone-400" style={{ fontSize: `${lfs}px`, ...(labelColor ? { color: labelColor } : {}) }}>
+            {prop.label}
+            {hasFormula && <span className="ml-1 text-amber-500 text-[8px] font-mono">fx</span>}
+          </Label>
           {prop.type === 'text' && (
             <Input
-              value={val}
+              value={hasFormula ? String(displayVal) : val}
               onChange={(e) => handleActorValueChange(prop.key, e.target.value)}
-              className="bg-stone-800 border-stone-700 text-stone-200 h-8"
-              style={{ fontSize: `${vfs}px`, ...(valueColor ? { color: valueColor } : {}) }}
+              readOnly={hasFormula}
+              className={`bg-stone-800 border-stone-700 text-stone-200 h-8 ${hasFormula ? 'cursor-default opacity-80' : ''}`}
+              style={{ fontSize: `${vfs}px`, ...(valueColor ? { color: valueColor } : {}), ...formulaBorder }}
               data-testid={`input-actor-${prop.key}`}
             />
           )}
           {prop.type === 'number' && (
             <Input
               type="number"
-              value={val}
+              value={hasFormula ? displayVal : val}
               min={prop.min}
               max={prop.max}
               step={prop.step || 1}
               onChange={(e) => handleActorValueChange(prop.key, e.target.value)}
-              className="bg-stone-800 border-stone-700 text-stone-200 h-8"
-              style={{ fontSize: `${vfs}px`, ...(valueColor ? { color: valueColor } : {}) }}
+              readOnly={hasFormula}
+              className={`bg-stone-800 border-stone-700 text-stone-200 h-8 ${hasFormula ? 'cursor-default opacity-80' : ''}`}
+              style={{ fontSize: `${vfs}px`, ...(valueColor ? { color: valueColor } : {}), ...formulaBorder }}
               data-testid={`input-actor-${prop.key}`}
             />
           )}
@@ -3145,6 +3346,7 @@ function SandboxSheetEditor({
                     <SelectItem value="resource">Resource (Current/Max)</SelectItem>
                     <SelectItem value="textarea">Text Field (Multi-line)</SelectItem>
                     <SelectItem value="pfp">Profile Picture</SelectItem>
+                    <SelectItem value="label">Label (Rich Text)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -3190,7 +3392,7 @@ function SandboxSheetEditor({
                     data-testid={`input-prop-height-${selectedProperty.key}`}
                   />
                 </div>
-                {selectedProperty.type !== 'boolean' && (
+                {selectedProperty.type !== 'boolean' && selectedProperty.type !== 'label' && (
                   <div className="space-y-1">
                     <Label className="text-stone-500 text-[10px]">Label Font</Label>
                     <Input
@@ -3250,13 +3452,26 @@ function SandboxSheetEditor({
 
               <div className="space-y-1">
                 <Label className="text-stone-500 text-[10px]">Default Value{selectedProperty.type === 'list' ? ' (comma-separated options)' : ''}</Label>
-                <Input
-                  value={selectedProperty.defaultValue || ''}
-                  onChange={(e) => updatePropertyLayout(selectedProperty.id, { defaultValue: e.target.value })}
-                  placeholder={selectedProperty.type === 'list' ? 'Option 1, Option 2, Option 3' : 'Default value...'}
-                  className="bg-stone-800 border-stone-600 text-stone-200 h-7 text-xs"
-                  data-testid="input-prop-default"
-                />
+                {selectedProperty.type === 'label' ? (
+                  <>
+                    <Textarea
+                      value={selectedProperty.defaultValue || ''}
+                      onChange={(e) => updatePropertyLayout(selectedProperty.id, { defaultValue: e.target.value })}
+                      placeholder="Enter rich text content. Use {{key}} for property references"
+                      className="bg-stone-800 border-stone-600 text-stone-200 text-xs min-h-[60px]"
+                      data-testid="input-prop-default"
+                    />
+                    <p className="text-stone-600 text-[9px]">Supports HTML and {"{{propertyKey}}"} references</p>
+                  </>
+                ) : (
+                  <Input
+                    value={selectedProperty.defaultValue || ''}
+                    onChange={(e) => updatePropertyLayout(selectedProperty.id, { defaultValue: e.target.value })}
+                    placeholder={selectedProperty.type === 'list' ? 'Option 1, Option 2, Option 3' : 'Default value...'}
+                    className="bg-stone-800 border-stone-600 text-stone-200 h-7 text-xs"
+                    data-testid="input-prop-default"
+                  />
+                )}
               </div>
 
               <div className="space-y-1">
@@ -3376,6 +3591,86 @@ function SandboxSheetEditor({
                       />
                     </div>
                   )}
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={selectedProperty.useGradient ?? false}
+                      onChange={(e) => updatePropertyLayout(selectedProperty.id, { useGradient: e.target.checked })}
+                      className="h-3 w-3 accent-purple-600"
+                      data-testid="checkbox-prop-usegradient"
+                    />
+                    <Label className="text-stone-500 text-[10px]">Gradient Color (Low → High)</Label>
+                  </div>
+                  {selectedProperty.showBar && (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-stone-500 text-[10px]">Color Thresholds</Label>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const current = selectedProperty.colorThresholds || [];
+                            updatePropertyLayout(selectedProperty.id, { colorThresholds: [...current, { percent: 50, color: '#f59e0b' }] });
+                          }}
+                          className="text-[9px] text-purple-400 hover:text-purple-300 px-1"
+                          data-testid="button-add-threshold"
+                        >
+                          + Add Threshold
+                        </button>
+                      </div>
+                      {!(selectedProperty.colorThresholds?.length) && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            updatePropertyLayout(selectedProperty.id, { colorThresholds: [{ percent: 25, color: '#ef4444' }, { percent: 50, color: '#f59e0b' }, { percent: 75, color: '#22c55e' }] });
+                          }}
+                          className="text-[9px] text-stone-500 hover:text-stone-400 underline"
+                          data-testid="button-default-thresholds"
+                        >
+                          Use defaults (25% red, 50% yellow, 75% green)
+                        </button>
+                      )}
+                      {(selectedProperty.colorThresholds || []).map((th: any, idx: number) => (
+                        <div key={idx} className="flex items-center gap-1">
+                          <input
+                            type="number"
+                            min={0}
+                            max={100}
+                            value={th.percent}
+                            onChange={(e) => {
+                              const updated = [...(selectedProperty.colorThresholds || [])];
+                              updated[idx] = { ...updated[idx], percent: Math.max(0, Math.min(100, Number(e.target.value) || 0)) };
+                              updatePropertyLayout(selectedProperty.id, { colorThresholds: updated });
+                            }}
+                            className="bg-stone-900 border border-stone-600 text-stone-200 h-6 w-14 text-[10px] rounded px-1"
+                            data-testid={`input-threshold-percent-${idx}`}
+                          />
+                          <span className="text-stone-500 text-[9px]">%</span>
+                          <input
+                            type="color"
+                            value={th.color}
+                            onChange={(e) => {
+                              const updated = [...(selectedProperty.colorThresholds || [])];
+                              updated[idx] = { ...updated[idx], color: e.target.value };
+                              updatePropertyLayout(selectedProperty.id, { colorThresholds: updated });
+                            }}
+                            className="w-6 h-6 rounded border border-stone-700 bg-stone-800 cursor-pointer p-0"
+                            data-testid={`input-threshold-color-${idx}`}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const updated = (selectedProperty.colorThresholds || []).filter((_: any, i: number) => i !== idx);
+                              updatePropertyLayout(selectedProperty.id, { colorThresholds: updated });
+                            }}
+                            className="text-red-400 hover:text-red-300 text-xs ml-1"
+                            data-testid={`button-delete-threshold-${idx}`}
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -3384,6 +3679,32 @@ function SandboxSheetEditor({
                   <p className="text-stone-600 text-[9px]">Use the Default Value field to define options (separate with commas)</p>
                 </div>
               )}
+
+              {(selectedProperty.type === 'number' || selectedProperty.type === 'resource' || selectedProperty.type === 'text') && (
+                <div className="space-y-1">
+                  <Label className="text-stone-500 text-[10px]">Calculation Formula</Label>
+                  <Input
+                    value={selectedProperty.calculationExpression || ''}
+                    onChange={(e) => updatePropertyLayout(selectedProperty.id, { calculationExpression: e.target.value })}
+                    placeholder="e.g. strength + level * 2"
+                    className="bg-stone-900 border-stone-600 text-stone-200 h-7 text-xs font-mono"
+                    data-testid="input-prop-calculation"
+                  />
+                  <span className="text-stone-600 text-[9px]">Reference other properties by key</span>
+                </div>
+              )}
+
+              <div className="space-y-1">
+                <Label className="text-stone-500 text-[10px]">Visibility Condition</Label>
+                <Input
+                  value={selectedProperty.visibilityExpression || ''}
+                  onChange={(e) => updatePropertyLayout(selectedProperty.id, { visibilityExpression: e.target.value })}
+                  placeholder="e.g. level >= 5"
+                  className="bg-stone-900 border-stone-600 text-stone-200 h-7 text-xs font-mono"
+                  data-testid="input-prop-visibility"
+                />
+                <span className="text-stone-600 text-[9px]">Show only when condition is true</span>
+              </div>
 
               <div className="border-t border-stone-700/50 pt-3">
                 <PropertyStyleEditor
@@ -3800,6 +4121,7 @@ function SandboxSheetEditor({
                     <SelectItem value="resource" className="text-stone-200 text-xs">Resource (Current/Max)</SelectItem>
                     <SelectItem value="textarea" className="text-stone-200 text-xs">Text Field (Multi-line)</SelectItem>
                     <SelectItem value="pfp" className="text-stone-200 text-xs">Profile Picture</SelectItem>
+                    <SelectItem value="label" className="text-stone-200 text-xs">Label (Rich Text)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -3820,6 +4142,18 @@ function SandboxSheetEditor({
 
             <div className="space-y-1">
               <Label className="text-stone-400 text-[10px]">Default Value{newPropType === 'select' ? ' (comma-separated options)' : ''}</Label>
+              {newPropType === 'label' ? (
+                <>
+                  <Textarea
+                    value={newPropDefault}
+                    onChange={(e) => setNewPropDefault(e.target.value)}
+                    placeholder="Enter rich text content. Use {{key}} for property references"
+                    className="bg-stone-900 border-stone-600 text-stone-200 text-xs min-h-[60px]"
+                    data-testid="input-property-default"
+                  />
+                  <p className="text-stone-600 text-[9px]">Supports HTML and {"{{propertyKey}}"} references</p>
+                </>
+              ) : (
               <Input
                 value={newPropDefault}
                 onChange={(e) => setNewPropDefault(e.target.value)}
@@ -3827,6 +4161,7 @@ function SandboxSheetEditor({
                 className="bg-stone-900 border-stone-600 text-stone-200 h-7 text-xs"
                 data-testid="input-property-default"
               />
+              )}
             </div>
 
             <div className="space-y-1">
