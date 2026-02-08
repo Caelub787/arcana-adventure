@@ -5408,7 +5408,10 @@ export default function Campaign() {
         setActiveSidePanel(null);
         setSidePanelMinimized(true);
       } else {
-        const dp = campaignDefaultPanel || 'characters';
+        let dp = campaignDefaultPanel || 'characters';
+        if (!isSandbox && dp === 'characters') {
+          dp = 'chat';
+        }
         if (dp === 'none') {
           setActiveSidePanel(null);
           setSidePanelMinimized(true);
@@ -7154,6 +7157,34 @@ export default function Campaign() {
               )}
             </div>
           )}
+
+          {!isSandbox && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => {
+                      if (activeSidePanel === 'chat' && !sidePanelMinimized) {
+                        setSidePanelMinimized(true);
+                      } else {
+                        setActiveSidePanel('chat');
+                        setSidePanelMinimized(false);
+                      }
+                    }}
+                    className={`text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto ${activeSidePanel === 'chat' && !sidePanelMinimized ? 'text-amber-400 bg-white/10' : ''}`}
+                    data-testid="button-panel-chat"
+                  >
+                    <MessageSquare className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="right" className="bg-stone-800 border-stone-700 text-stone-200">
+                  <p>Chat</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
         </div>
         
         {/* Right Side - Settings menu at top, then panel tab icons */}
@@ -7163,57 +7194,61 @@ export default function Campaign() {
             transition: 'margin-right 0.3s ease'
           }}
         >
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => {
-                    if (activeSidePanel === 'chat' && !sidePanelMinimized) {
-                      setSidePanelMinimized(true);
-                    } else {
-                      setActiveSidePanel('chat');
-                      setSidePanelMinimized(false);
-                    }
-                  }}
-                  className={`text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto ${activeSidePanel === 'chat' && !sidePanelMinimized ? 'text-amber-400 bg-white/10' : ''}`}
-                  data-testid="button-panel-chat"
-                >
-                  <MessageSquare className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="left" className="bg-stone-800 border-stone-700 text-stone-200">
-                <p>Chat</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+          {isSandbox && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => {
+                      if (activeSidePanel === 'chat' && !sidePanelMinimized) {
+                        setSidePanelMinimized(true);
+                      } else {
+                        setActiveSidePanel('chat');
+                        setSidePanelMinimized(false);
+                      }
+                    }}
+                    className={`text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto ${activeSidePanel === 'chat' && !sidePanelMinimized ? 'text-amber-400 bg-white/10' : ''}`}
+                    data-testid="button-panel-chat"
+                  >
+                    <MessageSquare className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="left" className="bg-stone-800 border-stone-700 text-stone-200">
+                  <p>Chat</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
 
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => {
-                    if (activeSidePanel === 'characters' && !sidePanelMinimized) {
-                      setSidePanelMinimized(true);
-                    } else {
-                      setActiveSidePanel('characters');
-                      setSidePanelMinimized(false);
-                    }
-                  }}
-                  className={`text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto ${activeSidePanel === 'characters' && !sidePanelMinimized ? 'text-amber-400 bg-white/10' : ''}`}
-                  data-testid="button-panel-characters"
-                >
-                  <Users className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
+          {isSandbox && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => {
+                      if (activeSidePanel === 'characters' && !sidePanelMinimized) {
+                        setSidePanelMinimized(true);
+                      } else {
+                        setActiveSidePanel('characters');
+                        setSidePanelMinimized(false);
+                      }
+                    }}
+                    className={`text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto ${activeSidePanel === 'characters' && !sidePanelMinimized ? 'text-amber-400 bg-white/10' : ''}`}
+                    data-testid="button-panel-characters"
+                  >
+                    <Users className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
                 </Button>
-              </TooltipTrigger>
-              <TooltipContent side="left" className="bg-stone-800 border-stone-700 text-stone-200">
-                <p>Actors</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+                </TooltipTrigger>
+                <TooltipContent side="left" className="bg-stone-800 border-stone-700 text-stone-200">
+                  <p>Actors</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
 
           <TooltipProvider>
             <Tooltip>
