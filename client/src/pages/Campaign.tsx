@@ -862,6 +862,7 @@ function SandboxSheetEditor({
   const [isResizing, setIsResizing] = useState<string | null>(null);
   const resizeStartRef = useRef({ x: 0, y: 0, width: 0, height: 0, posX: 0, posY: 0 });
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(item.templateId || null);
+  const [showActorSettings, setShowActorSettings] = useState(false);
 
   const [addingProperty, setAddingProperty] = useState(false);
   const [newPropKey, setNewPropKey] = useState('');
@@ -1792,6 +1793,11 @@ function SandboxSheetEditor({
             </span>
           </div>
           <div className="flex items-center gap-1">
+            {item.type === 'actor' && role === 'gm' && (
+              <Button variant="ghost" size="icon" onClick={() => setShowActorSettings(!showActorSettings)} className={`text-stone-400 hover:text-white ${showActorSettings ? 'text-amber-400' : ''}`} data-testid="button-actor-settings-mobile">
+                <Settings className="h-5 w-5" />
+              </Button>
+            )}
             <Button variant="ghost" size="icon" onClick={() => setCollapsed(!collapsed)} className="text-stone-400 hover:text-white" data-testid="button-collapse-sheet-mobile">
               {collapsed ? <ChevronRight className="h-5 w-5 rotate-90" /> : <Minus className="h-5 w-5" />}
             </Button>
@@ -1800,25 +1806,25 @@ function SandboxSheetEditor({
             </Button>
           </div>
         </div>
+        {!collapsed && showActorSettings && item.type === 'actor' && role === 'gm' && (
+          <div className="px-4 py-3 border-b border-amber-800/30 bg-amber-900/10 space-y-2">
+            <Label className="text-stone-400 text-sm">Template</Label>
+            <Select value={selectedTemplateId || '__none__'} onValueChange={(v) => handleTemplateChange(v === '__none__' ? '' : v)}>
+              <SelectTrigger className="bg-stone-800 border-stone-700 text-stone-200">
+                <SelectValue placeholder="Select a template..." />
+              </SelectTrigger>
+              <SelectContent className="bg-stone-800 border-stone-700">
+                <SelectItem value="__none__" className="text-stone-400">No template</SelectItem>
+                {templates.map((t: any) => (
+                  <SelectItem key={t.id} value={t.id} className="text-stone-200">
+                    {t.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
         {!collapsed && <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
-          {item.type === 'actor' && role === 'gm' && (
-            <div className="mb-4 space-y-2">
-              <Label className="text-stone-400 text-sm">Template</Label>
-              <Select value={selectedTemplateId || '__none__'} onValueChange={(v) => handleTemplateChange(v === '__none__' ? '' : v)}>
-                <SelectTrigger className="bg-stone-800 border-stone-700 text-stone-200">
-                  <SelectValue placeholder="Select a template..." />
-                </SelectTrigger>
-                <SelectContent className="bg-stone-800 border-stone-700">
-                  <SelectItem value="__none__" className="text-stone-400">No template</SelectItem>
-                  {templates.map((t: any) => (
-                    <SelectItem key={t.id} value={t.id} className="text-stone-200">
-                      {t.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
           {item.type === 'actor' ? renderMobileActorBody() : renderSheetBody()}
         </div>}
       </div>
@@ -1860,6 +1866,17 @@ function SandboxSheetEditor({
             </span>
           </div>
           <div className="flex items-center gap-1 shrink-0">
+            {item.type === 'actor' && role === 'gm' && (
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                onClick={() => setShowActorSettings(!showActorSettings)} 
+                className={`h-6 w-6 text-stone-400 hover:text-white ${showActorSettings ? 'text-amber-400' : ''}`}
+                data-testid="button-actor-settings"
+              >
+                <Settings className="h-3.5 w-3.5" />
+              </Button>
+            )}
             <Button 
               variant="ghost" 
               size="icon" 
@@ -1880,27 +1897,28 @@ function SandboxSheetEditor({
             </Button>
           </div>
         </div>
+
+        {!collapsed && showActorSettings && item.type === 'actor' && role === 'gm' && (
+          <div className="px-4 py-3 border-b border-amber-800/30 bg-amber-900/10 space-y-2">
+            <Label className="text-stone-400 text-sm">Template</Label>
+            <Select value={selectedTemplateId || '__none__'} onValueChange={(v) => handleTemplateChange(v === '__none__' ? '' : v)}>
+              <SelectTrigger className="bg-stone-800 border-stone-700 text-stone-200 h-9">
+                <SelectValue placeholder="Select a template..." />
+              </SelectTrigger>
+              <SelectContent className="bg-stone-800 border-stone-700">
+                <SelectItem value="__none__" className="text-stone-400">No template</SelectItem>
+                {templates.map((t: any) => (
+                  <SelectItem key={t.id} value={t.id} className="text-stone-200">
+                    {t.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
         
         {!collapsed && (
           <div className="p-4 flex-1 overflow-y-auto custom-scrollbar">
-            {item.type === 'actor' && role === 'gm' && (
-              <div className="mb-4 space-y-2">
-                <Label className="text-stone-400 text-sm">Template</Label>
-                <Select value={selectedTemplateId || '__none__'} onValueChange={(v) => handleTemplateChange(v === '__none__' ? '' : v)}>
-                  <SelectTrigger className="bg-stone-800 border-stone-700 text-stone-200 h-9">
-                    <SelectValue placeholder="Select a template..." />
-                  </SelectTrigger>
-                  <SelectContent className="bg-stone-800 border-stone-700">
-                    <SelectItem value="__none__" className="text-stone-400">No template</SelectItem>
-                    {templates.map((t: any) => (
-                      <SelectItem key={t.id} value={t.id} className="text-stone-200">
-                        {t.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
             {renderSheetBody()}
           </div>
         )}
