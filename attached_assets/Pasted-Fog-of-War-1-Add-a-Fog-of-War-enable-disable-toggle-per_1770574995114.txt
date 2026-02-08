@@ -1,0 +1,177 @@
+Fog of War
+1.
+Add a Fog of War enable disable toggle per scene
+2.
+Add persistent fog state storage per scene
+3.
+Add three fog states hidden explored visible
+4.
+Add explored memory that does not reset unless manually cleared
+5.
+Add GM tools to reveal fog areas
+6.
+Add GM tools to hide fog areas
+7.
+Add GM tool to clear all fog
+8.
+Add GM tool to reset explored areas
+9.
+Add vision calculation system tied to tokens
+10.
+Add circular vision radius rendering
+11.
+Add line of sight checking against walls doors and terrain
+12.
+Add per token fog update on movement
+13.
+Add per token fog update on vision change
+14.
+Add per token fog update on door or wall interaction
+15.
+Add Vision Type field to character sheets
+16.
+Add Day Vision Distance field to character sheets
+17.
+Add Night Vision Distance field to character sheets
+18.
+Add Special Vision Notes field to character sheets
+19.
+Ensure character vision fields exist in admin sheets
+20.
+Ensure character vision fields exist in campaign sheets
+21.
+Add vision override support in traits
+22.
+Add vision distance modifiers in traits
+23.
+Add day only night only or both vision modifiers in traits
+24.
+Add trait based vision stacking rules
+25.
+Add trait based vision override toggle
+26.
+Add token level temporary vision overrides
+27.
+Add blind or vision disabled toggle on tokens
+28.
+Add automatic vision override removal when effects expire
+29.
+Add scene wall drawing tool
+30.
+Add solid wall type blocking movement and vision
+31.
+Add transparent wall type blocking movement only
+32.
+Add one way wall type blocking vision from one side
+33.
+Add invisible wall type blocking movement only
+34.
+Add wall endpoint editing
+35.
+Add wall snap to grid toggle
+36.
+Add wall visibility toggle for players
+37.
+Add door object type
+38.
+Add door open closed state
+39.
+Add door locked unlocked state
+40.
+Add door vision blocking when closed
+41.
+Add door movement blocking when closed
+42.
+Add click to open close doors
+43.
+Add alt click to lock unlock doors
+44.
+Add GM override for all door states
+45.
+Add visual door state indicators
+46.
+Add window object type
+47.
+Add windows that allow vision but block movement
+48.
+Add optional shutter toggle on windows
+49.
+Add shutter open close behavior affecting vision only
+50.
+Add light placement tool in scene editor
+51.
+Add light radius field
+52.
+Add light color picker
+53.
+Add light intensity field
+54.
+Add soft edge hard edge toggle
+55.
+Add flicker toggle
+56.
+Add flicker speed field
+57.
+Add static lights
+58.
+Add token attached lights
+59.
+Add item attached lights
+60.
+Add light based fog reveal
+61.
+Add scene day night toggle
+62.
+Add global scene light level slider
+63.
+Add day vision rules using day vision distance
+64.
+Add night vision rules using night vision distance
+65.
+Add darkness penalties when no light exists
+66.
+Add live updating when day night changes
+67.
+Add fog recalculation on door open close
+68.
+Add fog recalculation on wall add remove
+69.
+Add fog recalculation on light add remove toggle
+70.
+Add fog recalculation on token movement
+71.
+Add fog of war settings panel
+72.
+Add enable fog of war toggle
+73.
+Add enable explored memory toggle
+74.
+Add enable token vision toggle
+75.
+Add enable light vision toggle
+76.
+Add enable wall vision blocking toggle
+77.
+Add enable door vision blocking toggle
+78.
+Add fog opacity slider
+79.
+Add explored area dimness slider
+80.
+Add fog texture selector
+81.
+Add live preview for fog visuals
+82.
+Add fog calculation caching per token
+83.
+Add optimized recalculation only on state change
+84.
+Add fast loading vision data for spells items traits
+85.
+Ensure fog data syncs correctly for all players
+86.
+Ensure fog data is authoritative to GM
+87.
+Ensure players only see what their tokens can see
+88.
+Ensure all of the above exists and behaves the same in admin and campaigns

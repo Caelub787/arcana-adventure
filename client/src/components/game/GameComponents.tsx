@@ -20377,115 +20377,131 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="bg-stone-900 border-stone-700 max-w-2xl">
         <DialogHeader>
-          <DialogTitle className="text-amber-500">Item Details</DialogTitle>
+          <div className="flex items-center justify-between">
+            {isEditing ? (
+              <Input 
+                value={currentData.name} 
+                onChange={(e) => setEditData({ ...editData, name: e.target.value })}
+                className="bg-stone-800 border-stone-700 text-lg font-bold text-amber-500"
+                data-testid="input-edit-name"
+              />
+            ) : (
+              <DialogTitle className="text-amber-500 text-xl">{currentData.name}</DialogTitle>
+            )}
+            {canEditItem && !isEditing && (
+              <Button size="sm" variant="outline" onClick={handleEditToggle} data-testid="button-edit-item">
+                Edit
+              </Button>
+            )}
+          </div>
         </DialogHeader>
         <ScrollArea className="max-h-[500px] pr-4">
           <div className="space-y-4">
-            {canEditItem && !isEditing && (
-              <div className="flex justify-end">
-                <Button size="sm" variant="outline" onClick={handleEditToggle} data-testid="button-edit-item">
-                  Edit
-                </Button>
-              </div>
-            )}
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label className="text-xs text-stone-400">Name</Label>
-                {isEditing ? (
-                  <Input 
-                    value={currentData.name} 
-                    onChange={(e) => setEditData({ ...editData, name: e.target.value })}
-                    className="bg-stone-800 border-stone-700"
-                    data-testid="input-edit-name"
+            <div className="flex gap-4">
+              <div className="flex-shrink-0">
+                {currentData.image ? (
+                  <img 
+                    src={currentData.image} 
+                    alt={currentData.name} 
+                    className="h-24 w-24 rounded object-cover border border-stone-600" 
                   />
                 ) : (
-                  <p className="text-stone-200 font-bold">{currentData.name}</p>
+                  <div className="h-24 w-24 rounded bg-stone-700 flex items-center justify-center border border-stone-600">
+                    <Package className="h-10 w-10 text-stone-500" />
+                  </div>
                 )}
               </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <Label className="text-xs text-stone-400">Type</Label>
-                  {!canEditAllFields && (
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger>
-                          <Lock className="h-3 w-3 text-amber-600" />
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>Only GMs can edit this field</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
+              <div className="flex flex-col gap-2 flex-1">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <Label className="text-xs text-stone-400">Type</Label>
+                    {!canEditAllFields && (
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger>
+                            <Lock className="h-3 w-3 text-amber-600" />
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Only GMs can edit this field</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    )}
+                  </div>
+                  {isEditing && canEditAllFields ? (
+                    <Select value={currentData.itemType} onValueChange={(v) => {
+                      const clearedFields: Record<string, any> = {
+                        damage: null, damageType: null, mod: 0, range: null, aoe: null, attribute: null, isHeavy: false, weaponCategory: null, canApplyEffects: false,
+                        armorSlot: null, armorBonus: 0, damageReduction: 0, damageReductionType: null,
+                        ammunitionType: null, breakChance: 10,
+                        rationServings: 0, isDamaging: false,
+                        isContainer: v === 'container', carryCapacity: v === 'container' ? 10 : 0,
+                        isThrowable: false, throwableAoe: false, throwableAoeShape: null, throwableAoeRange: 10, throwablePickup: false, throwableAoeDamage: null, throwableAoeDamageType: null, throwableBreakChance: 10,
+                      };
+                      setEditData({ ...editData, ...clearedFields, itemType: v });
+                    }}>
+                      <SelectTrigger className="bg-stone-800 border-amber-700">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="weapon">Weapon</SelectItem>
+                        <SelectItem value="ammunition">Ammunition</SelectItem>
+                        <SelectItem value="armor">Armor</SelectItem>
+                        <SelectItem value="consumable">Consumable</SelectItem>
+                        <SelectItem value="utility">Utility</SelectItem>
+                        <SelectItem value="container">Container</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <p className="text-stone-200 capitalize">{currentData.itemType}</p>
                   )}
                 </div>
-                {isEditing && canEditAllFields ? (
-                  <Select value={currentData.itemType} onValueChange={(v) => {
-                    const clearedFields: Record<string, any> = {
-                      damage: null, damageType: null, mod: 0, range: null, aoe: null, attribute: null, isHeavy: false, weaponCategory: null, canApplyEffects: false,
-                      armorSlot: null, armorBonus: 0, damageReduction: 0, damageReductionType: null,
-                      ammunitionType: null, breakChance: 10,
-                      rationServings: 0, isDamaging: false,
-                      isContainer: v === 'container', carryCapacity: v === 'container' ? 10 : 0,
-                      isThrowable: false, throwableAoe: false, throwableAoeShape: null, throwableAoeRange: 10, throwablePickup: false, throwableAoeDamage: null, throwableAoeDamageType: null, throwableBreakChance: 10,
-                    };
-                    setEditData({ ...editData, ...clearedFields, itemType: v });
-                  }}>
-                    <SelectTrigger className="bg-stone-800 border-amber-700">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="weapon">Weapon</SelectItem>
-                      <SelectItem value="ammunition">Ammunition</SelectItem>
-                      <SelectItem value="armor">Armor</SelectItem>
-                      <SelectItem value="consumable">Consumable</SelectItem>
-                      <SelectItem value="utility">Utility</SelectItem>
-                      <SelectItem value="container">Container</SelectItem>
-                    </SelectContent>
-                  </Select>
-                ) : (
-                  <p className="text-stone-200 capitalize">{currentData.itemType}</p>
-                )}
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <Label className="text-xs text-stone-400">Rarity</Label>
-                  {!canEditAllFields && (
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger>
-                          <Lock className="h-3 w-3 text-amber-600" />
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>Only GMs can edit this field</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <Label className="text-xs text-stone-400">Rarity</Label>
+                    {!canEditAllFields && (
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger>
+                            <Lock className="h-3 w-3 text-amber-600" />
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Only GMs can edit this field</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    )}
+                  </div>
+                  {isEditing && canEditAllFields ? (
+                    <Select value={currentData.rarity} onValueChange={(v) => setEditData({ ...editData, rarity: v })}>
+                      <SelectTrigger className="bg-stone-800 border-amber-700">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="common">Common</SelectItem>
+                        <SelectItem value="uncommon">Uncommon</SelectItem>
+                        <SelectItem value="rare">Rare</SelectItem>
+                        <SelectItem value="epic">Epic</SelectItem>
+                        <SelectItem value="legendary">Legendary</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <p className={`capitalize font-medium ${
+                      currentData.rarity === 'legendary' ? 'text-amber-400' :
+                      currentData.rarity === 'epic' ? 'text-purple-400' :
+                      currentData.rarity === 'rare' ? 'text-blue-400' :
+                      currentData.rarity === 'uncommon' ? 'text-green-400' :
+                      'text-stone-300'
+                    }`}>{currentData.rarity}</p>
                   )}
                 </div>
-                {isEditing && canEditAllFields ? (
-                  <Select value={currentData.rarity} onValueChange={(v) => setEditData({ ...editData, rarity: v })}>
-                    <SelectTrigger className="bg-stone-800 border-amber-700">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="common">Common</SelectItem>
-                      <SelectItem value="uncommon">Uncommon</SelectItem>
-                      <SelectItem value="rare">Rare</SelectItem>
-                      <SelectItem value="epic">Epic</SelectItem>
-                      <SelectItem value="legendary">Legendary</SelectItem>
-                    </SelectContent>
-                  </Select>
-                ) : (
-                  <p className="text-stone-200 capitalize">{currentData.rarity}</p>
-                )}
-              </div>
-              <div>
-                <Label className="text-xs text-stone-400">Quantity</Label>
-                <p className="text-stone-200">{currentData.totalQuantity || currentData.quantity}</p>
+                <div>
+                  <Label className="text-xs text-stone-400">Quantity</Label>
+                  <p className="text-stone-200">{currentData.totalQuantity || currentData.quantity}</p>
+                </div>
               </div>
             </div>
 
-            {/* Description */}
             <div>
               <Label className="text-xs text-stone-400">Description</Label>
               {isEditing ? (
@@ -20500,26 +20516,6 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
                 <p className="text-stone-200 text-sm">{currentData.description || 'No description'}</p>
               )}
             </div>
-
-            {/* Item Image */}
-            {(currentData.image || isEditing) && (
-              <div>
-                <Label className="text-xs text-stone-400">Image</Label>
-                {currentData.image ? (
-                  <div className="mt-1">
-                    <img 
-                      src={currentData.image} 
-                      alt={currentData.name} 
-                      className="h-20 w-20 rounded object-cover border border-stone-600" 
-                    />
-                  </div>
-                ) : (
-                  <div className="h-20 w-20 rounded bg-stone-700 flex items-center justify-center border border-stone-600 mt-1">
-                    <Package className="h-8 w-8 text-stone-500" />
-                  </div>
-                )}
-              </div>
-            )}
 
             {(currentData.damage || currentData.damageType || currentData.mod !== undefined || currentData.range || currentData.attribute || currentData.aoe || isEditing) && (
               <div className="pt-4 border-t border-stone-700">
@@ -21224,16 +21220,9 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
                   </Button>
                 </>
               ) : (
-                <>
-                  {(isOwner || isGM) && (
-                    <Button size="sm" variant="outline" onClick={onDelete} data-testid="button-delete-item">
-                      <Trash2 className="h-4 w-4 mr-1" /> Delete
-                    </Button>
-                  )}
-                  <Button size="sm" onClick={() => onOpenChange(false)} data-testid="button-close-item-detail">
-                    Close
-                  </Button>
-                </>
+                <Button size="sm" onClick={() => onOpenChange(false)} data-testid="button-close-item-detail">
+                  Close
+                </Button>
               )}
             </div>
           </div>
