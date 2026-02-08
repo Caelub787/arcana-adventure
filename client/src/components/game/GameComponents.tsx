@@ -6090,7 +6090,7 @@ export function BattleMapHotbars({ character, tokens, targetedTokenId, character
                       tokens={tokens}
                       targetedTokenId={targetedTokenId}
                       allCharacters={characters}
-                      gridSize={scene?.gridSize || gridSize}
+                      gridSize={gridSize}
                       onEnterAoeMode={onEnterAoeMode}
                       aoeTargetState={aoeTargetState}
                       onAoeDamageRoll={onAoeDamageRoll}
