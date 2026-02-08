@@ -827,7 +827,9 @@ function SandboxSheetEditor({
   onClose, 
   isMobile,
   templates,
-  role
+  role,
+  zIndex = 45,
+  onBringToFront
 }: { 
   item: { id: string; name: string; type: 'actor' | 'template'; templateId?: string | null; data?: string };
   campaignId: string;
@@ -835,6 +837,8 @@ function SandboxSheetEditor({
   isMobile: boolean;
   templates: any[];
   role: string;
+  zIndex?: number;
+  onBringToFront?: () => void;
 }) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -2070,8 +2074,9 @@ function SandboxSheetEditor({
 
   return (
     <div
-      className="fixed z-[45] pointer-events-auto"
-      style={{ left: `${position.x}px`, top: `${position.y}px`, width: `${size.width}px`, height: collapsed ? 'auto' : `${size.height}px` }}
+      className="fixed pointer-events-auto"
+      style={{ left: `${position.x}px`, top: `${position.y}px`, width: `${size.width}px`, height: collapsed ? 'auto' : `${size.height}px`, zIndex }}
+      onMouseDown={onBringToFront}
     >
       <div className={`bg-stone-900/95 border rounded-xl shadow-2xl backdrop-blur-sm overflow-hidden flex flex-col h-full ${item.type === 'actor' ? 'border-amber-800/50' : 'border-purple-800/50'}`}>
         <div 
@@ -3287,6 +3292,8 @@ function FloatingNotesEditor({
   onClose,
   campaignMembers,
   onViewCharacter,
+  zIndex = 45,
+  onBringToFront,
 }: {
   campaignId: string;
   initialNoteId: string | null;
@@ -3299,6 +3306,8 @@ function FloatingNotesEditor({
   onClose: () => void;
   campaignMembers?: Array<{ id: string; userId: string; username: string }>;
   onViewCharacter?: (character: any) => void;
+  zIndex?: number;
+  onBringToFront?: () => void;
 }) {
   const [isDragging, setIsDragging] = useState(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
@@ -3326,9 +3335,10 @@ function FloatingNotesEditor({
 
   return (
     <div
-      className="fixed z-[45] pointer-events-auto"
-      style={{ left: `${position.x}px`, top: `${position.y}px`, width: `${size.width}px`, height: collapsed ? 'auto' : `${size.height}px` }}
+      className="fixed pointer-events-auto"
+      style={{ left: `${position.x}px`, top: `${position.y}px`, width: `${size.width}px`, height: collapsed ? 'auto' : `${size.height}px`, zIndex }}
       data-testid="floating-notes-editor"
+      onMouseDown={onBringToFront}
     >
       <div className="bg-stone-900/95 border border-amber-800/50 rounded-xl shadow-2xl backdrop-blur-sm overflow-hidden h-full flex flex-col">
         <div
@@ -3499,6 +3509,14 @@ export default function Campaign() {
   // Sandbox panel state
   const [sandboxSceneSettingsOpen, setSandboxSceneSettingsOpen] = useState(false);
   const [openSandboxSheets, setOpenSandboxSheets] = useState<Array<{ id: string; name: string; type: 'actor' | 'template'; templateId?: string | null; data?: string }>>([]);
+
+  // Floating panel z-index management (bring to front on click)
+  const floatingZCounterRef = useRef(50);
+  const [floatingZIndices, setFloatingZIndices] = useState<Record<string, number>>({});
+  const bringToFront = useCallback((panelKey: string) => {
+    floatingZCounterRef.current += 1;
+    setFloatingZIndices(prev => ({ ...prev, [panelKey]: floatingZCounterRef.current }));
+  }, []);
 
   // Floating notes panel state
   const [floatingNotesOpen, setFloatingNotesOpen] = useState(false);
@@ -6174,6 +6192,8 @@ export default function Campaign() {
           isMobile={isMobile}
           templates={sandboxTemplatesList as any[]}
           role={role}
+          zIndex={floatingZIndices[`sandbox-${sheet.id}`] || 45}
+          onBringToFront={() => bringToFront(`sandbox-${sheet.id}`)}
         />
       ))}
 
@@ -6198,6 +6218,8 @@ export default function Campaign() {
               openCharacterSheet(character);
             }
           }}
+          zIndex={floatingZIndices['notes'] || 45}
+          onBringToFront={() => bringToFront('notes')}
         />
       )}
 
@@ -6700,7 +6722,8 @@ export default function Campaign() {
             defaultPosition={{ x: 100 + (index * 30), y: 50 + (index * 30) }}
             minWidth={400}
             minHeight={400}
-            zIndex={40 + index}
+            zIndex={floatingZIndices[`char-${sheet.id}`] || (40 + index)}
+            onBringToFront={() => bringToFront(`char-${sheet.id}`)}
           >
             <CharacterSheet
               character={sheet}

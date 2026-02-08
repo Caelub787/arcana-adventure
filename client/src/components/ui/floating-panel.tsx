@@ -13,6 +13,7 @@ interface FloatingPanelProps {
   minHeight?: number;
   className?: string;
   zIndex?: number;
+  onBringToFront?: () => void;
 }
 
 export function FloatingPanel({
@@ -26,6 +27,7 @@ export function FloatingPanel({
   minHeight = 400,
   className,
   zIndex = 40,
+  onBringToFront,
 }: FloatingPanelProps) {
   const panelRef = React.useRef<HTMLDivElement>(null);
   
@@ -199,6 +201,7 @@ export function FloatingPanel({
         zIndex: isFullscreen ? 100 : zIndex,
       }}
       data-testid="floating-panel"
+      onMouseDown={onBringToFront}
     >
       <div
         className={cn(
