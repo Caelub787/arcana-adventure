@@ -790,6 +790,39 @@ export function FogToolsPanel({
   const queryClient = useQueryClient();
   const sceneId = scene?.id;
 
+  const [panelPos, setPanelPos] = useState({ x: window.innerWidth - 280, y: 64 });
+  const dragRef = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(null);
+
+  const handleDragStart = useCallback((e: React.MouseEvent | React.TouchEvent) => {
+    e.preventDefault();
+    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+    dragRef.current = { startX: clientX, startY: clientY, origX: panelPos.x, origY: panelPos.y };
+
+    const handleMove = (ev: MouseEvent | TouchEvent) => {
+      if (!dragRef.current) return;
+      const cx = 'touches' in ev ? (ev as TouchEvent).touches[0].clientX : (ev as MouseEvent).clientX;
+      const cy = 'touches' in ev ? (ev as TouchEvent).touches[0].clientY : (ev as MouseEvent).clientY;
+      const dx = cx - dragRef.current.startX;
+      const dy = cy - dragRef.current.startY;
+      setPanelPos({
+        x: Math.max(0, Math.min(window.innerWidth - 260, dragRef.current.origX + dx)),
+        y: Math.max(0, Math.min(window.innerHeight - 100, dragRef.current.origY + dy)),
+      });
+    };
+    const handleEnd = () => {
+      dragRef.current = null;
+      window.removeEventListener('mousemove', handleMove);
+      window.removeEventListener('mouseup', handleEnd);
+      window.removeEventListener('touchmove', handleMove);
+      window.removeEventListener('touchend', handleEnd);
+    };
+    window.addEventListener('mousemove', handleMove);
+    window.addEventListener('mouseup', handleEnd);
+    window.addEventListener('touchmove', handleMove);
+    window.addEventListener('touchend', handleEnd);
+  }, [panelPos]);
+
   const fogEnabled = scene?.fogEnabled ?? false;
   const fogOpacity = scene?.fogOpacity ?? 0.85;
   const fogExploredDimness = scene?.fogExploredDimness ?? 0.5;
@@ -861,10 +894,15 @@ export function FogToolsPanel({
 
   return (
     <div
-      className="absolute top-16 right-4 z-50 w-64 rounded-lg border border-stone-700 bg-stone-900/95 shadow-xl backdrop-blur-sm"
+      className="fixed z-[80] w-64 rounded-lg border border-stone-700 bg-stone-900/95 shadow-2xl backdrop-blur-sm"
+      style={{ left: panelPos.x, top: panelPos.y }}
       data-testid="fog-tools-panel"
     >
-      <div className="flex items-center justify-between border-b border-stone-700 px-3 py-2">
+      <div
+        className="flex items-center justify-between border-b border-stone-700 px-3 py-2 cursor-grab active:cursor-grabbing select-none"
+        onMouseDown={handleDragStart}
+        onTouchStart={handleDragStart}
+      >
         <div className="flex items-center gap-2">
           <Layers className="h-4 w-4 text-amber-400" />
           <span className="text-sm font-semibold text-amber-200">Fog of War</span>
@@ -877,6 +915,7 @@ export function FogToolsPanel({
             clearMode();
             onFogToolToggle(false);
           }}
+          onMouseDown={(e) => e.stopPropagation()}
           data-testid="close-fog-panel"
         >
           <X className="h-4 w-4" />
