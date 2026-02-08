@@ -864,6 +864,7 @@ function SandboxSheetEditor({
   const resizeStartRef = useRef({ x: 0, y: 0, width: 0, height: 0, posX: 0, posY: 0 });
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(item.templateId || null);
   const [showActorSettings, setShowActorSettings] = useState(false);
+  const [showTemplateSettings, setShowTemplateSettings] = useState(false);
 
   const [addingProperty, setAddingProperty] = useState(false);
   const [newPropKey, setNewPropKey] = useState('');
@@ -1926,6 +1927,17 @@ function SandboxSheetEditor({
                 <Settings className="h-3.5 w-3.5" />
               </Button>
             )}
+            {item.type === 'template' && role === 'gm' && (
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                onClick={() => setShowTemplateSettings(!showTemplateSettings)} 
+                className={`h-6 w-6 text-stone-400 hover:text-white ${showTemplateSettings ? 'text-purple-400' : ''}`}
+                data-testid="button-template-settings"
+              >
+                <Settings className="h-3.5 w-3.5" />
+              </Button>
+            )}
             <Button 
               variant="ghost" 
               size="icon" 
@@ -1965,6 +1977,61 @@ function SandboxSheetEditor({
             </Select>
           </div>
         )}
+
+        {!collapsed && showTemplateSettings && item.type === 'template' && role === 'gm' && (() => {
+          const currentSettings = settings;
+          const saveTemplateSettings = (newSettings: any) => {
+            const currentData = { ...templateData, settings: newSettings, properties: templateData.properties || [] };
+            updateTemplateMutationSheet.mutate({ data: JSON.stringify(currentData) });
+            toast({ title: "Template settings saved" });
+          };
+          return (
+            <div className="px-4 py-3 border-b border-purple-800/30 bg-purple-900/10 space-y-2" data-testid="template-settings-panel">
+              <div className="space-y-1.5">
+                <Label className="text-stone-400 text-xs">Default Width (280-900)</Label>
+                <Input
+                  type="number"
+                  min={280}
+                  max={900}
+                  defaultValue={currentSettings.defaultWidth || 400}
+                  onBlur={(e) => {
+                    const v = Math.min(900, Math.max(280, parseInt(e.target.value) || 400));
+                    saveTemplateSettings({ ...currentSettings, defaultWidth: v, defaultHeight: currentSettings.defaultHeight || 450, allowResize: currentSettings.allowResize !== false });
+                  }}
+                  className="bg-stone-900 border-stone-600 text-stone-200 h-7 text-xs"
+                  data-testid="input-template-default-width"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-stone-400 text-xs">Default Height (200-800)</Label>
+                <Input
+                  type="number"
+                  min={200}
+                  max={800}
+                  defaultValue={currentSettings.defaultHeight || 450}
+                  onBlur={(e) => {
+                    const v = Math.min(800, Math.max(200, parseInt(e.target.value) || 450));
+                    saveTemplateSettings({ ...currentSettings, defaultWidth: currentSettings.defaultWidth || 400, defaultHeight: v, allowResize: currentSettings.allowResize !== false });
+                  }}
+                  className="bg-stone-900 border-stone-600 text-stone-200 h-7 text-xs"
+                  data-testid="input-template-default-height"
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  defaultChecked={currentSettings.allowResize !== false}
+                  onChange={(e) => {
+                    saveTemplateSettings({ ...currentSettings, defaultWidth: currentSettings.defaultWidth || 400, defaultHeight: currentSettings.defaultHeight || 450, allowResize: e.target.checked });
+                  }}
+                  className="h-4 w-4 accent-purple-600"
+                  data-testid="checkbox-template-allow-resize"
+                />
+                <Label className="text-stone-400 text-xs">Allow resize</Label>
+              </div>
+            </div>
+          );
+        })()}
         
         {!collapsed && (
           <div className="p-4 flex-1 overflow-y-auto custom-scrollbar">
@@ -2351,7 +2418,6 @@ function SandboxCharactersContent({
   const [newFolderName, setNewFolderName] = useState('');
   const [createFolderOpen, setCreateFolderOpen] = useState(false);
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
-  const [templateSettingsOpen, setTemplateSettingsOpen] = useState<string | null>(null);
   const [dragOverFolderId, setDragOverFolderId] = useState<string | null>(null);
 
   const { data: templates = [] } = useQuery({
@@ -2515,74 +2581,6 @@ function SandboxCharactersContent({
   const rootActors = actors.filter((a: any) => !a.folderId);
   const rootTemplates = templates.filter((t: any) => !t.folderId);
 
-  const renderTemplateSettings = (template: any) => {
-    let currentData: any = {};
-    try { currentData = JSON.parse(template.data || '{}'); } catch {}
-    const currentSettings = currentData.settings || {};
-    const defaultWidth = currentSettings.defaultWidth || 400;
-    const defaultHeight = currentSettings.defaultHeight || 450;
-    const allowResize = currentSettings.allowResize !== false;
-
-    const saveSettings = (newSettings: any) => {
-      const newData = { ...currentData, settings: newSettings, properties: currentData.properties || [] };
-      updateTemplateMutation.mutate({ id: template.id, data: { data: JSON.stringify(newData) } });
-      toast({ title: "Template settings saved" });
-    };
-
-    return (
-      <div className="bg-stone-800/80 border border-purple-800/40 rounded-lg p-3 space-y-3 mt-1 mb-1" data-testid={`template-settings-${template.id}`}>
-        <div className="flex items-center justify-between">
-          <h4 className="text-xs font-medium text-purple-300">Template Settings</h4>
-          <Button variant="ghost" size="icon" onClick={() => setTemplateSettingsOpen(null)} className="h-5 w-5 text-stone-400 hover:text-white" data-testid="button-close-template-settings">
-            <X className="h-3 w-3" />
-          </Button>
-        </div>
-        <div className="space-y-1.5">
-          <Label className="text-stone-400 text-xs">Default Width ({MIN_SHEET_WIDTH}-{MAX_SHEET_WIDTH})</Label>
-          <Input
-            type="number"
-            min={MIN_SHEET_WIDTH}
-            max={MAX_SHEET_WIDTH}
-            defaultValue={defaultWidth}
-            onBlur={(e) => {
-              const v = Math.min(MAX_SHEET_WIDTH, Math.max(MIN_SHEET_WIDTH, parseInt(e.target.value) || 400));
-              saveSettings({ ...currentSettings, defaultWidth: v, defaultHeight: currentSettings.defaultHeight || 450, allowResize: currentSettings.allowResize !== false });
-            }}
-            className="bg-stone-900 border-stone-600 text-stone-200 h-7 text-xs"
-            data-testid="input-template-default-width"
-          />
-        </div>
-        <div className="space-y-1.5">
-          <Label className="text-stone-400 text-xs">Default Height ({MIN_SHEET_HEIGHT}-{MAX_SHEET_HEIGHT})</Label>
-          <Input
-            type="number"
-            min={MIN_SHEET_HEIGHT}
-            max={MAX_SHEET_HEIGHT}
-            defaultValue={defaultHeight}
-            onBlur={(e) => {
-              const v = Math.min(MAX_SHEET_HEIGHT, Math.max(MIN_SHEET_HEIGHT, parseInt(e.target.value) || 450));
-              saveSettings({ ...currentSettings, defaultWidth: currentSettings.defaultWidth || 400, defaultHeight: v, allowResize: currentSettings.allowResize !== false });
-            }}
-            className="bg-stone-900 border-stone-600 text-stone-200 h-7 text-xs"
-            data-testid="input-template-default-height"
-          />
-        </div>
-        <div className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            defaultChecked={allowResize}
-            onChange={(e) => {
-              saveSettings({ ...currentSettings, defaultWidth: currentSettings.defaultWidth || 400, defaultHeight: currentSettings.defaultHeight || 450, allowResize: e.target.checked });
-            }}
-            className="h-4 w-4 accent-purple-600"
-            data-testid="checkbox-template-allow-resize"
-          />
-          <Label className="text-stone-400 text-xs">Allow resize</Label>
-        </div>
-      </div>
-    );
-  };
-
   const MIN_SHEET_WIDTH = 280;
   const MAX_SHEET_WIDTH = 900;
   const MIN_SHEET_HEIGHT = 200;
@@ -2623,17 +2621,6 @@ function SandboxCharactersContent({
           </span>
         </div>
         <div className="flex items-center gap-0.5 shrink-0">
-          {type === 'template' && (
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={(e) => { e.stopPropagation(); setTemplateSettingsOpen(templateSettingsOpen === item.id ? null : item.id); }}
-              className="h-7 w-7 text-stone-600 hover:text-purple-400 hover:bg-purple-900/20 opacity-0 group-hover:opacity-100 transition-opacity"
-              data-testid={`button-settings-template-${item.id}`}
-            >
-              <Settings className="h-3.5 w-3.5" />
-            </Button>
-          )}
           <Button
             variant="ghost"
             size="icon"
@@ -2645,7 +2632,6 @@ function SandboxCharactersContent({
           </Button>
         </div>
       </div>
-      {type === 'template' && templateSettingsOpen === item.id && renderTemplateSettings(item)}
     </div>
   );
 
