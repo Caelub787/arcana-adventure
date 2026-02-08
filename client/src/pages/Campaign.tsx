@@ -895,8 +895,12 @@ function SandboxSheetEditor({
   const [actorValues, setActorValues] = useState<Record<string, string>>(() => {
     try {
       const d = JSON.parse(item.data || '{}');
-      return d.values || {};
-    } catch { return {}; }
+      const values = d.values || {};
+      if (item.type === 'actor' && !values.name) {
+        values.name = item.name;
+      }
+      return values;
+    } catch { return item.type === 'actor' ? { name: item.name } : {}; }
   });
   const actorSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [activeTabIds, setActiveTabIds] = useState<Record<string, string>>({});
@@ -1116,7 +1120,11 @@ function SandboxSheetEditor({
     setActorValues(newValues);
     if (actorSaveTimeoutRef.current) clearTimeout(actorSaveTimeoutRef.current);
     actorSaveTimeoutRef.current = setTimeout(() => {
-      updateActorMutation.mutate({ data: JSON.stringify({ values: newValues }) });
+      const payload: any = { data: JSON.stringify({ values: newValues }) };
+      if (key === 'name') {
+        payload.name = value;
+      }
+      updateActorMutation.mutate(payload);
     }, 500);
   };
 
@@ -1489,7 +1497,9 @@ function SandboxSheetEditor({
               })()}
               {(prop.type === 'panel' || prop.type === 'tab') && (
                 <button
-                  className="absolute bottom-1 right-4 w-5 h-5 rounded bg-purple-700/60 hover:bg-purple-600 text-white flex items-center justify-center transition-all opacity-60 hover:opacity-100 z-30"
+                  className={`absolute w-5 h-5 rounded bg-purple-700/60 hover:bg-purple-600 text-white flex items-center justify-center transition-all opacity-60 hover:opacity-100 z-30 ${
+                    prop.key === 'header' ? 'bottom-1 left-1' : 'top-1 left-1'
+                  }`}
                   onClick={(e) => {
                     e.stopPropagation();
                     handleAddPropertyToContainer(prop.id, prop.type === 'tab' ? (activeTabIds[prop.id] || prop.tabs?.[0]?.id) : undefined);
@@ -1516,16 +1526,6 @@ function SandboxSheetEditor({
         <div className="space-y-3" data-testid="template-properties-editor">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-medium text-purple-300">Properties</h3>
-            {!addingProperty && (
-              <Button
-                size="sm"
-                onClick={() => setAddingProperty(true)}
-                className="h-7 bg-purple-700 hover:bg-purple-600 text-white text-xs"
-                data-testid="button-add-property"
-              >
-                <Plus className="h-3 w-3 mr-1" /> Add Property
-              </Button>
-            )}
           </div>
 
           {addingProperty && (
@@ -2093,7 +2093,7 @@ function SandboxSheetEditor({
               <ScrollText className="h-4 w-4 text-purple-400 shrink-0" />
             )}
             <span className={`font-medium text-sm truncate ${item.type === 'actor' ? 'text-amber-300' : 'text-purple-300'}`}>
-              {item.name}
+              {item.type === 'actor' ? (actorValues.name || item.name) : item.name}
             </span>
             <span className={`text-[10px] px-1.5 py-0.5 rounded shrink-0 ${item.type === 'actor' ? 'text-amber-500/60 bg-amber-900/20' : 'text-purple-400/60 bg-purple-900/20'}`}>
               {item.type === 'actor' ? 'Actor' : 'Actor Template'}
