@@ -1348,6 +1348,16 @@ function SandboxSheetEditor({
     gameWs.sendChatMessage('', actorName as string, `🎲 ${label}: ${rollText}`, 'roll');
   }, [templateData, actorValues, item.name, toast, getExpressionContext, enterAoeMode, tokens, setPendingSandboxAoe]);
 
+  const saveEmbeddedItems = useCallback((items: typeof embeddedItems) => {
+    setEmbeddedItems(items);
+    if (actorSaveTimeoutRef.current) clearTimeout(actorSaveTimeoutRef.current);
+    actorSaveTimeoutRef.current = setTimeout(() => {
+      updateActorMutation.mutate({
+        data: JSON.stringify({ values: actorValues, embeddedItems: items })
+      });
+    }, 500);
+  }, [actorValues, updateActorMutation]);
+
   const handleEmbeddedItemButtonRoll = useCallback((embItem: any, prop: any, itemTemplateData: any) => {
     if (!prop.rollFormula) {
       toast({ title: 'No roll formula configured', variant: 'destructive' });
@@ -1565,16 +1575,6 @@ function SandboxSheetEditor({
       updateActorMutation.mutate(payload);
     }, 500);
   };
-
-  const saveEmbeddedItems = useCallback((items: typeof embeddedItems) => {
-    setEmbeddedItems(items);
-    if (actorSaveTimeoutRef.current) clearTimeout(actorSaveTimeoutRef.current);
-    actorSaveTimeoutRef.current = setTimeout(() => {
-      updateActorMutation.mutate({
-        data: JSON.stringify({ values: actorValues, embeddedItems: items })
-      });
-    }, 500);
-  }, [actorValues, updateActorMutation]);
 
   const toggleEmbeddedItem = (id: string) => {
     setExpandedEmbeddedItems(prev => {
@@ -3119,7 +3119,7 @@ function SandboxSheetEditor({
                   return (
                     <div key={prop.id} className="flex items-center justify-between px-2 py-1 bg-stone-800/50 rounded" data-testid={`actor-property-${prop.key}`}>
                       <span className="text-stone-400 text-xs truncate">{prop.label || prop.key}</span>
-                      <input type="checkbox" checked={!!displayVal} onChange={(e) => handleActorValueChange(prop.key, e.target.checked)} className="h-3 w-3 accent-amber-600" />
+                      <input type="checkbox" checked={!!displayVal} onChange={(e) => handleActorValueChange(prop.key, String(e.target.checked))} className="h-3 w-3 accent-amber-600" />
                     </div>
                   );
                 }
@@ -3695,7 +3695,7 @@ function SandboxSheetEditor({
                   return (
                     <div key={prop.id} className="flex items-center justify-between px-2 py-1 bg-stone-800/50 rounded" data-testid={`actor-property-${prop.key}`}>
                       <span className="text-stone-400 text-xs truncate">{prop.label || prop.key}</span>
-                      <input type="checkbox" checked={!!displayVal} onChange={(e) => handleActorValueChange(prop.key, e.target.checked)} className="h-3 w-3 accent-amber-600" />
+                      <input type="checkbox" checked={!!displayVal} onChange={(e) => handleActorValueChange(prop.key, String(e.target.checked))} className="h-3 w-3 accent-amber-600" />
                     </div>
                   );
                 }
