@@ -30,7 +30,7 @@ import { useToast } from "@/hooks/use-toast";
 import { ImageBrowser } from "@/components/ImageBrowser";
 import { CampaignNotesPanel } from "@/components/notes/CampaignNotesPanel";
 import { FloatingPanel } from "@/components/ui/floating-panel";
-import { Folder, FolderOpen, FolderPlus, Plus, GripVertical, Eye, Radio, ChevronDown, ChevronRight, Pencil, Minus } from "lucide-react";
+import { Folder, FolderOpen, FolderPlus, Plus, GripVertical, Eye, Radio, ChevronDown, ChevronRight, Pencil, Minus, Copy } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
 // Scene Settings Form Component
@@ -870,6 +870,7 @@ function SandboxSheetEditor({
   const [newPropDefault, setNewPropDefault] = useState('');
   const [selectedPropertyId, setSelectedPropertyId] = useState<string | null>(null);
   const [propSettingsOpen, setPropSettingsOpen] = useState(false);
+  const [propContextMenu, setPropContextMenu] = useState<{ x: number; y: number; propId: string } | null>(null);
   const [propSettingsPanelPos, setPropSettingsPanelPos] = useState({ x: 400, y: 200 });
   const [propSettingsPanelSize, setPropSettingsPanelSize] = useState({ width: 280, height: 420 });
   const [isPropSettingsDragging, setIsPropSettingsDragging] = useState(false);
@@ -1032,7 +1033,33 @@ function SandboxSheetEditor({
   const handleDeleteProperty = (propId: string) => {
     const newData = { ...templateData, properties: properties.filter((p: any) => p.id !== propId) };
     updateTemplateMutationSheet.mutate({ data: JSON.stringify(newData) });
+    if (selectedPropertyId === propId) {
+      setSelectedPropertyId(null);
+      setPropSettingsOpen(false);
+    }
     toast({ title: "Property deleted" });
+  };
+
+  const handleDuplicateProperty = (propId: string) => {
+    const prop = properties.find((p: any) => p.id === propId);
+    if (!prop) return;
+    const baseKey = prop.key.replace(/Copy\d*$/, '');
+    let copyKey = baseKey + 'Copy';
+    let counter = 2;
+    while (properties.some((p: any) => p.key === copyKey)) {
+      copyKey = baseKey + 'Copy' + counter;
+      counter++;
+    }
+    const duplicated = {
+      ...prop,
+      id: crypto.randomUUID(),
+      key: copyKey,
+      label: prop.label + ' Copy',
+      y: (prop.y ?? 10) + (prop.height ?? 40) + 10,
+    };
+    const newData = { ...templateData, properties: [...properties, duplicated] };
+    updateTemplateMutationSheet.mutate({ data: JSON.stringify(newData) });
+    toast({ title: "Property duplicated" });
   };
 
   const handleActorValueChange = (key: string, value: string) => {
@@ -1332,12 +1359,18 @@ function SandboxSheetEditor({
                       height: `${ph}px`,
                     }}
                     data-testid={`canvas-property-${prop.key}`}
-                    onContextMenu={(e) => {
+                    onDoubleClick={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
                       setSelectedPropertyId(prop.id);
                       setPropSettingsOpen(true);
+                      setPropContextMenu(null);
                       setPropSettingsPanelPos({ x: e.clientX, y: e.clientY });
+                    }}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setPropContextMenu({ x: e.clientX, y: e.clientY, propId: prop.id });
                     }}
                     onPointerDown={(e) => handlePropPointerDown(e, prop)}
                     onPointerMove={(e) => handlePropPointerMove(e, prop)}
@@ -1712,6 +1745,43 @@ function SandboxSheetEditor({
           <div className={`${edgeCls} bottom-0 left-0 w-3 h-3 cursor-sw-resize`} {...resizeHandleProps('sw')} />
           <div className={`${edgeCls} bottom-0 right-0 w-3 h-3 cursor-se-resize`} {...resizeHandleProps('se')} data-testid="resize-handle-se" />
         </>
+      )}
+
+      {propContextMenu && item.type === 'template' && createPortal(
+        <div
+          className="fixed inset-0 z-[9998]"
+          onClick={() => setPropContextMenu(null)}
+          onContextMenu={(e) => { e.preventDefault(); setPropContextMenu(null); }}
+        >
+          <div
+            className="fixed bg-stone-900 border border-purple-700/60 rounded-lg shadow-2xl shadow-black/50 py-1 min-w-[160px]"
+            style={{ left: propContextMenu.x, top: propContextMenu.y }}
+            onClick={(e) => e.stopPropagation()}
+            data-testid="property-context-menu"
+          >
+            <button
+              className="w-full px-3 py-1.5 text-left text-xs text-stone-200 hover:bg-purple-800/30 flex items-center gap-2"
+              onClick={() => {
+                handleDuplicateProperty(propContextMenu.propId);
+                setPropContextMenu(null);
+              }}
+              data-testid="context-menu-duplicate"
+            >
+              <Copy className="h-3 w-3 text-purple-400" /> Duplicate Property
+            </button>
+            <button
+              className="w-full px-3 py-1.5 text-left text-xs text-red-400 hover:bg-red-900/20 flex items-center gap-2"
+              onClick={() => {
+                handleDeleteProperty(propContextMenu.propId);
+                setPropContextMenu(null);
+              }}
+              data-testid="context-menu-delete"
+            >
+              <Trash2 className="h-3 w-3" /> Delete Property
+            </button>
+          </div>
+        </div>,
+        document.body
       )}
 
       {propSettingsOpen && selectedProperty && item.type === 'template' && createPortal(

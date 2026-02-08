@@ -1774,6 +1774,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     return user ? (user.isAdmin || ADMIN_EMAILS.includes(user.email.toLowerCase())) : false;
   };
 
+  const hasGmAccess = async (userId: string, campaignId: string, gmUserId: string): Promise<boolean> => {
+    if (gmUserId === userId) return true;
+    if (await isAdminUser(userId)) return true;
+    const membership = await storage.getCampaignMembership(userId, campaignId);
+    return membership?.role === 'assistant_gm';
+  };
+
   /**
    * checkCharacterAccess - Helper function to check character permissions
    * 
@@ -1815,10 +1822,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
     
     const isOwner = character.userId === userId;
-    const isGM = campaign.gmUserId === userId;
+    const isGM = await hasGmAccess(userId, campaign.id, campaign.gmUserId);
     console.log(`[checkCharacterAccess] Character userId: ${character.userId}, Request userId: ${userId}, isOwner: ${isOwner}, isGM: ${isGM}`);
     
-    // Verify user is still a member of the campaign (skip for GM)
+    // Verify user is still a member of the campaign (skip for GM/admin)
     if (!isGM) {
       const isMember = await storage.isCampaignMember(campaign.id, userId);
       console.log(`[checkCharacterAccess] isCampaignMember: ${isMember}`);
@@ -2347,10 +2354,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Campaign not found" });
       }
       
-      const isGM = campaign.gmUserId === req.session.userId;
+      const isGM = await hasGmAccess(req.session.userId, req.params.campaignId, campaign.gmUserId);
       const allCharacters = await storage.getCampaignCharacters(req.params.campaignId);
       
-      // If GM, return all characters
+      // If GM (or admin), return all characters
       if (isGM) {
         return res.json(allCharacters);
       }
@@ -3551,8 +3558,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const scenes = await storage.getCampaignScenes(req.params.campaignId);
       
-      // GMs can see all scenes, players only see active scene
-      if (campaign.gmUserId !== req.session.userId) {
+      // GMs (and admins) can see all scenes, players only see active scene
+      const isGmForScenes = await hasGmAccess(req.session.userId!, req.params.campaignId, campaign.gmUserId);
+      if (!isGmForScenes) {
         const activeScenes = scenes.filter(s => s.id === campaign.activeSceneId);
         return res.json(activeScenes);
       }
@@ -3577,7 +3585,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // Players can only view the active scene
-      const isGM = campaign.gmUserId === req.session.userId;
+      const isGM = await hasGmAccess(req.session.userId!, scene.campaignId, campaign.gmUserId);
       const isActiveScene = campaign.activeSceneId === scene.id;
       
       if (!isGM && !isActiveScene) {
@@ -5625,7 +5633,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Get lightweight summaries for both campaign and system items
       // Pass userId to include GM's library items across all their campaigns
-      const isGM = campaign.gmUserId === req.session.userId;
+      const isGM = await hasGmAccess(req.session.userId!, req.params.campaignId, campaign.gmUserId);
       const [campaignItems, systemItems] = await Promise.all([
         storage.getCampaignItemSummaries(req.params.campaignId, isGM ? req.session.userId : undefined),
         storage.getSystemItemSummaries()
@@ -5649,7 +5657,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Get campaign template items and system items
       // Pass userId to include GM's library items across all their campaigns
-      const isGM = campaign.gmUserId === req.session.userId;
+      const isGM = await hasGmAccess(req.session.userId!, req.params.campaignId, campaign.gmUserId);
       const [campaignItems, systemItems] = await Promise.all([
         storage.getCampaignTemplateItems(req.params.campaignId, isGM ? req.session.userId : undefined),
         storage.getSystemItems()
@@ -5968,7 +5976,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // Check if user is GM
-      const isGM = campaign.gmUserId === req.session.userId;
+      const isGM = await hasGmAccess(req.session.userId!, req.params.campaignId, campaign.gmUserId);
       
       res.json({ permissions: permissionMap, isGM });
     } catch (e) {
@@ -6111,7 +6119,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Campaign not found" });
       }
       
-      const isGM = campaign.gmUserId === req.session.userId;
+      const isGM = await hasGmAccess(req.session.userId!, scene.campaignId, campaign.gmUserId);
       const entries = await storage.getSceneInitiative(req.params.sceneId);
       
       // If not GM, filter out hidden entries
@@ -7750,8 +7758,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Campaign not found" });
       }
 
-      const isGM = campaign.gmUserId === req.session.userId;
-      const isMember = await storage.isCampaignMember(token.campaignId, req.session.userId!);
+      const isGM = await hasGmAccess(req.session.userId!, token.campaignId, campaign.gmUserId);
+      const isMember = isGM || await storage.isCampaignMember(token.campaignId, req.session.userId!);
       
       if (!isGM && !isMember) {
         return res.status(403).json({ error: "Not authorized to view this token" });
@@ -7777,7 +7785,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Campaign not found" });
       }
 
-      const isGM = campaign.gmUserId === req.session.userId;
+      const isGM = await hasGmAccess(req.session.userId!, token.campaignId, campaign.gmUserId);
       
       if (!isGM) {
         return res.status(403).json({ error: "Only the GM can apply effects to tokens" });
@@ -7829,7 +7837,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Campaign not found" });
       }
       
-      const isGM = campaign.gmUserId === req.session.userId;
+      const isGM = await hasGmAccess(req.session.userId!, token.campaignId, campaign.gmUserId);
       if (!isGM) {
         return res.status(403).json({ error: "Only the GM can remove effects from tokens" });
       }
@@ -7854,7 +7862,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Campaign not found" });
       }
 
-      const isGM = campaign.gmUserId === req.session.userId;
+      const isGM = await hasGmAccess(req.session.userId!, token.campaignId, campaign.gmUserId);
       
       if (!isGM) {
         return res.status(403).json({ error: "Only the GM can clear effects from tokens" });
@@ -8000,8 +8008,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const campaign = await storage.getCampaign(req.params.campaignId);
       if (!campaign) return res.status(404).json({ error: "Campaign not found" });
-      const member = await storage.getCampaignMembership(req.session.userId!, req.params.campaignId);
-      const isGM = campaign.gmUserId === req.session.userId! || member?.role === 'assistant_gm';
+      const isGM = await hasGmAccess(req.session.userId!, req.params.campaignId, campaign.gmUserId);
       if (!isGM) return res.status(403).json({ error: "Only GMs can manage folders" });
       const folder = await storage.createSandboxFolder({
         campaignId: req.params.campaignId,
@@ -8020,8 +8027,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const campaign = await storage.getCampaign(req.params.campaignId);
       if (!campaign) return res.status(404).json({ error: "Campaign not found" });
-      const member = await storage.getCampaignMembership(req.session.userId!, req.params.campaignId);
-      const isGM = campaign.gmUserId === req.session.userId! || member?.role === 'assistant_gm';
+      const isGM = await hasGmAccess(req.session.userId!, req.params.campaignId, campaign.gmUserId);
       if (!isGM) return res.status(403).json({ error: "Only GMs can manage folders" });
       const allowedFields: any = {};
       if (req.body.name !== undefined) allowedFields.name = req.body.name;
@@ -8039,8 +8045,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const campaign = await storage.getCampaign(req.params.campaignId);
       if (!campaign) return res.status(404).json({ error: "Campaign not found" });
-      const member = await storage.getCampaignMembership(req.session.userId!, req.params.campaignId);
-      const isGM = campaign.gmUserId === req.session.userId! || member?.role === 'assistant_gm';
+      const isGM = await hasGmAccess(req.session.userId!, req.params.campaignId, campaign.gmUserId);
       if (!isGM) return res.status(403).json({ error: "Only GMs can manage folders" });
       await storage.deleteSandboxFolder(req.params.folderId);
       res.json({ success: true });
@@ -8065,8 +8070,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const campaign = await storage.getCampaign(req.params.campaignId);
       if (!campaign) return res.status(404).json({ error: "Campaign not found" });
-      const member = await storage.getCampaignMembership(req.session.userId!, req.params.campaignId);
-      const isGM = campaign.gmUserId === req.session.userId! || member?.role === 'assistant_gm';
+      const isGM = await hasGmAccess(req.session.userId!, req.params.campaignId, campaign.gmUserId);
       if (!isGM) return res.status(403).json({ error: "Only GMs can manage templates" });
       const template = await storage.createSandboxTemplate({
         campaignId: req.params.campaignId,
@@ -8085,8 +8089,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const campaign = await storage.getCampaign(req.params.campaignId);
       if (!campaign) return res.status(404).json({ error: "Campaign not found" });
-      const member = await storage.getCampaignMembership(req.session.userId!, req.params.campaignId);
-      const isGM = campaign.gmUserId === req.session.userId! || member?.role === 'assistant_gm';
+      const isGM = await hasGmAccess(req.session.userId!, req.params.campaignId, campaign.gmUserId);
       if (!isGM) return res.status(403).json({ error: "Only GMs can manage templates" });
       const template = await storage.updateSandboxTemplate(req.params.templateId, req.body);
       res.json(template);
@@ -8100,8 +8103,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const campaign = await storage.getCampaign(req.params.campaignId);
       if (!campaign) return res.status(404).json({ error: "Campaign not found" });
-      const member = await storage.getCampaignMembership(req.session.userId!, req.params.campaignId);
-      const isGM = campaign.gmUserId === req.session.userId! || member?.role === 'assistant_gm';
+      const isGM = await hasGmAccess(req.session.userId!, req.params.campaignId, campaign.gmUserId);
       if (!isGM) return res.status(403).json({ error: "Only GMs can manage templates" });
       await storage.deleteSandboxTemplate(req.params.templateId);
       res.json({ success: true });
@@ -8126,8 +8128,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const campaign = await storage.getCampaign(req.params.campaignId);
       if (!campaign) return res.status(404).json({ error: "Campaign not found" });
-      const member = await storage.getCampaignMembership(req.session.userId!, req.params.campaignId);
-      const isGM = campaign.gmUserId === req.session.userId! || member?.role === 'assistant_gm';
+      const isGM = await hasGmAccess(req.session.userId!, req.params.campaignId, campaign.gmUserId);
       if (!isGM) return res.status(403).json({ error: "Only GMs can manage actors" });
       const actor = await storage.createSandboxActor({
         campaignId: req.params.campaignId,
@@ -8147,8 +8148,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const campaign = await storage.getCampaign(req.params.campaignId);
       if (!campaign) return res.status(404).json({ error: "Campaign not found" });
-      const member = await storage.getCampaignMembership(req.session.userId!, req.params.campaignId);
-      const isGM = campaign.gmUserId === req.session.userId! || member?.role === 'assistant_gm';
+      const isGM = await hasGmAccess(req.session.userId!, req.params.campaignId, campaign.gmUserId);
       if (!isGM) return res.status(403).json({ error: "Only GMs can manage actors" });
       const allowedFields: any = {};
       if (req.body.name !== undefined) allowedFields.name = req.body.name;
@@ -8167,8 +8167,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const campaign = await storage.getCampaign(req.params.campaignId);
       if (!campaign) return res.status(404).json({ error: "Campaign not found" });
-      const member = await storage.getCampaignMembership(req.session.userId!, req.params.campaignId);
-      const isGM = campaign.gmUserId === req.session.userId! || member?.role === 'assistant_gm';
+      const isGM = await hasGmAccess(req.session.userId!, req.params.campaignId, campaign.gmUserId);
       if (!isGM) return res.status(403).json({ error: "Only GMs can manage actors" });
       await storage.deleteSandboxActor(req.params.actorId);
       res.json({ success: true });
