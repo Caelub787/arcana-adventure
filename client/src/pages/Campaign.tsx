@@ -929,6 +929,11 @@ function SandboxSheetEditor({
   const [pfpEditorPos, setPfpEditorPos] = useState({ x: 200, y: 200 });
   const pfpDragRef = useRef({ startX: 0, startY: 0, posX: 0, posY: 0 });
   const [pfpDragging, setPfpDragging] = useState(false);
+  const [pfpImageBrowserOpen, setPfpImageBrowserOpen] = useState(false);
+  const [pfpCropImage, setPfpCropImage] = useState<string | null>(null);
+  const [pfpCropArea, setPfpCropArea] = useState({ x: 0, y: 0, size: 100 });
+  const pfpCropCanvasRef = useRef<HTMLCanvasElement>(null);
+  const pfpCropImgRef = useRef<HTMLImageElement>(null);
   const tabImageInputRef = useRef<HTMLInputElement>(null);
   const [tabImageTarget, setTabImageTarget] = useState<{tabNodeId: string; childId: string} | null>(null);
   const pfpFileInputRef = useRef<HTMLInputElement>(null);
@@ -3464,7 +3469,7 @@ function SandboxSheetEditor({
             const reader = new FileReader();
             reader.onload = (ev) => {
               const base64 = ev.target?.result as string;
-              handleActorValueChange(pfpEditorOpen, base64);
+              setPfpCropImage(base64);
             };
             reader.readAsDataURL(file);
           }
@@ -3475,8 +3480,9 @@ function SandboxSheetEditor({
       {pfpEditorOpen && item.type === 'actor' && createPortal(
         <div
           className="fixed z-[9999]"
-          style={{ left: pfpEditorPos.x, top: pfpEditorPos.y, width: 260 }}
+          style={{ left: pfpEditorPos.x, top: pfpEditorPos.y, width: pfpCropImage ? 400 : 260 }}
           data-testid="pfp-editor-panel"
+          onMouseDown={(e) => e.stopPropagation()}
         >
           <div className="bg-stone-900 border border-purple-700/60 rounded-lg shadow-2xl shadow-black/50 overflow-hidden">
             <div
@@ -3502,47 +3508,241 @@ function SandboxSheetEditor({
               }}
             >
               <span className="text-xs font-medium text-purple-300">Profile Picture</span>
-              <Button variant="ghost" size="icon" onClick={() => setPfpEditorOpen(null)} className="h-5 w-5 text-stone-500 hover:text-white" data-testid="button-close-pfp-editor">
-                <X className="h-3 w-3" />
-              </Button>
+              <button
+                onClick={(e) => { e.stopPropagation(); setPfpEditorOpen(null); setPfpCropImage(null); }}
+                className="relative z-10 h-6 w-6 flex items-center justify-center rounded text-stone-400 hover:text-white hover:bg-stone-700 transition-colors"
+                data-testid="button-close-pfp-editor"
+              >
+                <X className="h-4 w-4" />
+              </button>
             </div>
             <div className="p-3 space-y-3">
-              {actorValues[pfpEditorOpen] ? (
-                <div className="flex justify-center">
-                  <img src={actorValues[pfpEditorOpen] as string} alt="Current PFP" className="w-24 h-24 object-cover rounded border border-stone-600" />
-                </div>
-              ) : (
-                <div className="flex justify-center">
-                  <div className="w-24 h-24 bg-stone-800 rounded border border-stone-600 flex items-center justify-center">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-stone-500"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+              {pfpCropImage ? (
+                <div className="space-y-3">
+                  <div
+                    className="relative overflow-hidden bg-stone-950 rounded border border-stone-700 select-none"
+                    style={{ height: 300 }}
+                  >
+                    <img
+                      ref={pfpCropImgRef}
+                      src={pfpCropImage}
+                      alt="Crop preview"
+                      className="absolute top-0 left-0 w-full h-full object-contain pointer-events-none"
+                      onLoad={(e) => {
+                        const img = e.currentTarget;
+                        const container = img.parentElement!;
+                        const cw = container.clientWidth;
+                        const ch = container.clientHeight;
+                        const scale = Math.min(cw / img.naturalWidth, ch / img.naturalHeight);
+                        const displayW = img.naturalWidth * scale;
+                        const displayH = img.naturalHeight * scale;
+                        const initSize = Math.min(displayW, displayH, 150);
+                        const offsetX = (cw - displayW) / 2;
+                        const offsetY = (ch - displayH) / 2;
+                        setPfpCropArea({
+                          x: offsetX + (displayW - initSize) / 2,
+                          y: offsetY + (displayH - initSize) / 2,
+                          size: initSize,
+                        });
+                      }}
+                    />
+                    <div className="absolute inset-0 pointer-events-none" style={{ boxShadow: 'inset 0 0 0 9999px rgba(0,0,0,0.5)' }} />
+                    <div
+                      className="absolute border-2 border-amber-400 bg-transparent cursor-move"
+                      style={{
+                        left: pfpCropArea.x,
+                        top: pfpCropArea.y,
+                        width: pfpCropArea.size,
+                        height: pfpCropArea.size,
+                        boxShadow: '0 0 0 9999px rgba(0,0,0,0.5)',
+                      }}
+                      onPointerDown={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        const el = e.currentTarget;
+                        el.setPointerCapture(e.pointerId);
+                        const startX = e.clientX;
+                        const startY = e.clientY;
+                        const startArea = { ...pfpCropArea };
+                        const container = el.parentElement!;
+                        const cw = container.clientWidth;
+                        const ch = container.clientHeight;
+                        const onMove = (ev: PointerEvent) => {
+                          const dx = ev.clientX - startX;
+                          const dy = ev.clientY - startY;
+                          setPfpCropArea({
+                            ...startArea,
+                            x: Math.max(0, Math.min(cw - startArea.size, startArea.x + dx)),
+                            y: Math.max(0, Math.min(ch - startArea.size, startArea.y + dy)),
+                          });
+                        };
+                        const onUp = () => {
+                          el.removeEventListener('pointermove', onMove);
+                          el.removeEventListener('pointerup', onUp);
+                        };
+                        el.addEventListener('pointermove', onMove);
+                        el.addEventListener('pointerup', onUp);
+                      }}
+                    >
+                      {[
+                        { pos: 'top-0 left-0', cursor: 'nw-resize', corner: 'tl' },
+                        { pos: 'top-0 right-0', cursor: 'ne-resize', corner: 'tr' },
+                        { pos: 'bottom-0 left-0', cursor: 'sw-resize', corner: 'bl' },
+                        { pos: 'bottom-0 right-0', cursor: 'se-resize', corner: 'br' },
+                      ].map(({ pos, cursor, corner }) => (
+                        <div
+                          key={corner}
+                          className={`absolute ${pos} w-3 h-3 bg-amber-400 border border-amber-600`}
+                          style={{ cursor, transform: 'translate(-50%, -50%)', ...(corner.includes('r') ? { left: 'auto', right: 0, transform: 'translate(50%, -50%)' } : {}), ...(corner.includes('b') ? { top: 'auto', bottom: 0, transform: corner.includes('r') ? 'translate(50%, 50%)' : 'translate(-50%, 50%)' } : {}) }}
+                          onPointerDown={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            const handle = e.currentTarget;
+                            handle.setPointerCapture(e.pointerId);
+                            const startX = e.clientX;
+                            const startY = e.clientY;
+                            const startArea = { ...pfpCropArea };
+                            const container = handle.parentElement!.parentElement!;
+                            const cw = container.clientWidth;
+                            const ch = container.clientHeight;
+                            const onMove = (ev: PointerEvent) => {
+                              const dx = ev.clientX - startX;
+                              const dy = ev.clientY - startY;
+                              let delta = 0;
+                              if (corner === 'br') delta = Math.max(dx, dy);
+                              else if (corner === 'bl') delta = Math.max(-dx, dy);
+                              else if (corner === 'tr') delta = Math.max(dx, -dy);
+                              else delta = Math.max(-dx, -dy);
+                              const newSize = Math.max(40, Math.min(Math.min(cw, ch), startArea.size + delta));
+                              let newX = startArea.x;
+                              let newY = startArea.y;
+                              if (corner.includes('l')) newX = startArea.x + startArea.size - newSize;
+                              if (corner.includes('t')) newY = startArea.y + startArea.size - newSize;
+                              newX = Math.max(0, Math.min(cw - newSize, newX));
+                              newY = Math.max(0, Math.min(ch - newSize, newY));
+                              setPfpCropArea({ x: newX, y: newY, size: newSize });
+                            };
+                            const onUp = () => {
+                              handle.removeEventListener('pointermove', onMove);
+                              handle.removeEventListener('pointerup', onUp);
+                            };
+                            handle.addEventListener('pointermove', onMove);
+                            handle.addEventListener('pointerup', onUp);
+                          }}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                  <canvas ref={pfpCropCanvasRef} className="hidden" />
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        const img = pfpCropImgRef.current;
+                        const canvas = pfpCropCanvasRef.current;
+                        if (!img || !canvas || !pfpEditorOpen) return;
+                        const container = img.parentElement!;
+                        const cw = container.clientWidth;
+                        const ch = container.clientHeight;
+                        const scale = Math.min(cw / img.naturalWidth, ch / img.naturalHeight);
+                        const displayW = img.naturalWidth * scale;
+                        const displayH = img.naturalHeight * scale;
+                        const offsetX = (cw - displayW) / 2;
+                        const offsetY = (ch - displayH) / 2;
+                        const srcX = ((pfpCropArea.x - offsetX) / scale) * (img.naturalWidth / img.naturalWidth);
+                        const srcY = ((pfpCropArea.y - offsetY) / scale) * (img.naturalHeight / img.naturalHeight);
+                        const srcSize = pfpCropArea.size / scale;
+                        const cropX = Math.max(0, (pfpCropArea.x - offsetX) / scale);
+                        const cropY = Math.max(0, (pfpCropArea.y - offsetY) / scale);
+                        const cropSize = Math.min(pfpCropArea.size / scale, img.naturalWidth - cropX, img.naturalHeight - cropY);
+                        const outSize = 256;
+                        canvas.width = outSize;
+                        canvas.height = outSize;
+                        const ctx = canvas.getContext('2d')!;
+                        ctx.clearRect(0, 0, outSize, outSize);
+                        ctx.drawImage(img, cropX, cropY, cropSize, cropSize, 0, 0, outSize, outSize);
+                        const croppedBase64 = canvas.toDataURL('image/png');
+                        handleActorValueChange(pfpEditorOpen, croppedBase64);
+                        setPfpCropImage(null);
+                      }}
+                      className="flex-1 bg-amber-600 hover:bg-amber-700 text-white h-7 text-xs"
+                      data-testid="button-pfp-save-crop"
+                    >
+                      Save Crop
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setPfpCropImage(null)}
+                      className="flex-1 border-stone-600 text-stone-400 hover:bg-stone-800 h-7 text-xs"
+                      data-testid="button-pfp-cancel-crop"
+                    >
+                      Cancel
+                    </Button>
                   </div>
                 </div>
+              ) : (
+                <>
+                  {actorValues[pfpEditorOpen] ? (
+                    <div className="flex justify-center">
+                      <img src={actorValues[pfpEditorOpen] as string} alt="Current PFP" className="w-24 h-24 object-cover rounded border border-stone-600" />
+                    </div>
+                  ) : (
+                    <div className="flex justify-center">
+                      <div className="w-24 h-24 bg-stone-800 rounded border border-stone-600 flex items-center justify-center">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-stone-500"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                      </div>
+                    </div>
+                  )}
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      onClick={(e) => { e.stopPropagation(); pfpFileInputRef.current?.click(); }}
+                      className="flex-1 bg-purple-600 hover:bg-purple-700 text-white h-7 text-xs"
+                      data-testid="button-pfp-upload"
+                    >
+                      <Upload className="h-3 w-3 mr-1" /> Upload
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={(e) => { e.stopPropagation(); setPfpImageBrowserOpen(true); }}
+                      className="flex-1 border-purple-700/50 text-purple-300 hover:bg-purple-900/20 h-7 text-xs"
+                      data-testid="button-pfp-library"
+                    >
+                      <Folder className="h-3 w-3 mr-1" /> Library
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleActorValueChange(pfpEditorOpen, '');
+                      }}
+                      className="flex-1 border-red-800/50 text-red-400 hover:bg-red-900/20 h-7 text-xs"
+                      data-testid="button-pfp-remove"
+                    >
+                      <Trash2 className="h-3 w-3 mr-1" /> Remove
+                    </Button>
+                  </div>
+                </>
               )}
-              <div className="flex gap-2">
-                <Button
-                  size="sm"
-                  onClick={() => pfpFileInputRef.current?.click()}
-                  className="flex-1 bg-purple-600 hover:bg-purple-700 text-white h-7 text-xs"
-                  data-testid="button-pfp-upload"
-                >
-                  <Upload className="h-3 w-3 mr-1" /> Upload
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => {
-                    handleActorValueChange(pfpEditorOpen, '');
-                  }}
-                  className="flex-1 border-red-800/50 text-red-400 hover:bg-red-900/20 h-7 text-xs"
-                  data-testid="button-pfp-remove"
-                >
-                  <Trash2 className="h-3 w-3 mr-1" /> Remove
-                </Button>
-              </div>
             </div>
           </div>
         </div>,
         document.body
+      )}
+
+      {pfpImageBrowserOpen && (
+        <ImageBrowser
+          open={pfpImageBrowserOpen}
+          onOpenChange={setPfpImageBrowserOpen}
+          onSelect={(base64: string) => {
+            setPfpCropImage(base64);
+            setPfpImageBrowserOpen(false);
+          }}
+          title="Choose Profile Picture"
+        />
       )}
 
       {addingProperty && createPortal(
