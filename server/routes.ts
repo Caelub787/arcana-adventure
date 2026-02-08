@@ -8073,36 +8073,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!campaign) return res.status(404).json({ error: "Campaign not found" });
       const isGM = await hasGmAccess(req.session.userId!, req.params.campaignId, campaign.gmUserId);
       if (!isGM) return res.status(403).json({ error: "Only GMs can manage templates" });
-      const headerId = crypto.randomUUID();
-      const bodyId = crypto.randomUUID();
+      const canvasId = crypto.randomUUID();
+      const sectionId = crypto.randomUUID();
       const defaultData = {
-        version: 1,
+        version: 2,
         type: req.body.templateType || "character",
-        sections: [
-          {
-            id: headerId,
-            name: "Header",
-            location: "header",
+        canvas: {
+          id: canvasId,
+          width: 450,
+          height: 550,
+          backgroundConfig: { backgroundColor: "#1c1917" },
+        },
+        layoutNodes: {
+          [sectionId]: {
+            id: sectionId,
+            type: "section",
+            name: "Main",
+            parentId: null,
+            childrenIds: [],
+            positionConfig: { x: 0, y: 0 },
+            sizeConfig: { width: 450, height: 550 },
             layoutMode: "freeform",
-            styleConfig: { backgroundColor: "#1c1917", border: { enabled: true, color: "#44403c", width: 1, radius: 4, style: "solid" } },
+            styleConfig: { backgroundColor: "#1c1917", border: { enabled: false, color: "#44403c", width: 0, radius: 0, style: "solid" } },
             order: 0,
           },
-          {
-            id: bodyId,
-            name: "Body",
-            location: "body",
-            layoutMode: "freeform",
-            styleConfig: { backgroundColor: "#1c1917", border: { enabled: true, color: "#44403c", width: 1, radius: 4, style: "solid" } },
-            order: 1,
-          },
-        ],
-        tabs: [],
+        },
         properties: {
           pfp: {
             id: crypto.randomUUID(),
             key: "pfp",
             type: "pfp",
-            sectionId: headerId,
+            sectionNodeId: sectionId,
             metadata: {
               label: "Profile Picture",
               uiConfig: { x: 10, y: 10, width: 100, height: 100, labelPosition: "hidden" },
@@ -8113,7 +8114,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             id: crypto.randomUUID(),
             key: "name",
             type: "text",
-            sectionId: headerId,
+            sectionNodeId: sectionId,
             metadata: {
               label: "Name",
               uiConfig: { x: 120, y: 10, width: 310, height: 40, labelFontSize: 10, valueFontSize: 18, labelPosition: "top" },

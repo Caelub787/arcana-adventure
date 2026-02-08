@@ -34,6 +34,7 @@ import { Folder, FolderOpen, FolderPlus, Plus, GripVertical, Eye, Radio, Chevron
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger, ContextMenuSub, ContextMenuSubTrigger, ContextMenuSubContent } from "@/components/ui/context-menu";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { PropertyStyleEditor, getPropertyCssStyle, type PropertyStyle } from "@/components/sandbox/PropertyStyleEditor";
+import { migrateTemplateData } from "@/components/sandbox/types";
 
 // Scene Settings Form Component
 function SceneSettingsForm({ scene, onUpdateScene }: { scene: Scene; onUpdateScene: (settings: Partial<Scene>) => void }) {
@@ -856,71 +857,8 @@ function SandboxSheetEditor({
         raw = linkedTemplate ? JSON.parse(linkedTemplate.data || '{}') : {};
       }
       
-      if (Array.isArray(raw.properties) && !raw.sections) {
-        const headerId = crypto.randomUUID();
-        const bodyId = crypto.randomUUID();
-        const newSections = [
-          { id: headerId, name: 'Header', location: 'header', layoutMode: 'freeform', styleConfig: { backgroundColor: '#1c1917', border: { enabled: true, color: '#44403c', width: 1, radius: 4, style: 'solid' } }, order: 0 },
-          { id: bodyId, name: 'Body', location: 'body', layoutMode: 'freeform', styleConfig: { backgroundColor: '#1c1917', border: { enabled: true, color: '#44403c', width: 1, radius: 4, style: 'solid' } }, order: 1 },
-        ];
-        
-        const newProps: Record<string, any> = {};
-        const oldProps = raw.properties as any[];
-        
-        const panels = oldProps.filter((p: any) => p.type === 'panel' || p.type === 'tab');
-        const headerPanel = panels.find((p: any) => p.key === 'header');
-        const bodyPanel = panels.find((p: any) => p.key === 'body');
-        
-        if (headerPanel?.style) newSections[0].styleConfig = headerPanel.style;
-        if (bodyPanel?.style) newSections[1].styleConfig = bodyPanel.style;
-        
-        for (const p of oldProps) {
-          if (p.type === 'panel' || p.type === 'tab') continue;
-          
-          let sectionId = bodyId;
-          if (p.parentId) {
-            const parent = oldProps.find((pp: any) => pp.id === p.parentId);
-            if (parent?.key === 'header' || parent?.location === 'header') {
-              sectionId = headerId;
-            }
-          }
-          
-          newProps[p.key] = {
-            id: p.id,
-            key: p.key,
-            type: p.type === 'checkbox' ? 'boolean' : p.type === 'select' ? 'list' : p.type === 'textarea' ? 'text' : p.type,
-            sectionId,
-            defaultValue: p.defaultValue,
-            metadata: {
-              label: p.label || p.key,
-              tooltip: p.tooltip,
-              uiConfig: {
-                x: p.x ?? 10,
-                y: p.y ?? 10,
-                width: p.width ?? 200,
-                height: p.height ?? 40,
-                labelFontSize: p.labelFontSize ?? 11,
-                valueFontSize: p.valueFontSize ?? 13,
-                labelPosition: p.labelPosition ?? 'top',
-              },
-              style: p.style,
-              options: p.options,
-            },
-          };
-        }
-        
-        raw = {
-          version: 1,
-          type: raw.type || 'character',
-          sections: newSections,
-          tabs: [],
-          properties: newProps,
-          settings: raw.settings || { defaultWidth: 450, defaultHeight: 550 },
-        };
-      }
-      
-      return raw;
-    } catch { return {}; }
+      return migrateTemplateData(raw);
+    } catch { return migrateTemplateData({}); }
   }, [item, templates]);
 
   const settings = templateData.settings || {};
@@ -989,6 +927,8 @@ function SandboxSheetEditor({
   const pfpDragRef = useRef({ startX: 0, startY: 0, posX: 0, posY: 0 });
   const [pfpDragging, setPfpDragging] = useState(false);
   const [containerAddTarget, setContainerAddTarget] = useState<{ parentId: string; tabId?: string } | null>(null);
+  const [activeTabState, setActiveTabState] = useState<Record<string, string>>({});
+  const [addNodeDialogOpen, setAddNodeDialogOpen] = useState(false);
 
   useEffect(() => {
     if (pfpEditorOpen) {
@@ -1090,6 +1030,7 @@ function SandboxSheetEditor({
 
   const properties: any[] = Object.values(templateData.properties || {}).map((p: any) => ({
     ...p,
+    sectionNodeId: p.sectionNodeId,
     label: p.metadata?.label || p.label || p.key,
     x: p.metadata?.uiConfig?.x ?? p.x ?? 10,
     y: p.metadata?.uiConfig?.y ?? p.y ?? 10,
@@ -1103,7 +1044,9 @@ function SandboxSheetEditor({
     options: p.metadata?.options ?? p.options,
   }));
 
-  const sections: any[] = templateData.sections || [];
+  const layoutNodes: Record<string, any> = templateData.layoutNodes || {};
+  const layoutNodesList = Object.values(layoutNodes).sort((a: any, b: any) => a.order - b.order);
+  const sectionNodes = layoutNodesList.filter((n: any) => n.type === 'section');
 
   const handleAddProperty = () => {
     if (!newPropKey.trim() || !newPropLabel.trim()) return;
@@ -1116,13 +1059,13 @@ function SandboxSheetEditor({
       return;
     }
 
-    const targetSectionId = containerAddTarget?.parentId || sections.find((s: any) => s.location === 'body')?.id || sections[0]?.id;
+    const targetSectionId = containerAddTarget?.parentId || sectionNodes.find((s: any) => s.type === 'section')?.id || Object.keys(layoutNodes)[0];
 
     const newProp = {
       id: crypto.randomUUID(),
       key: newPropKey.trim(),
       type: newPropType === 'checkbox' ? 'boolean' : newPropType === 'textarea' ? 'text' : newPropType === 'select' ? 'list' : newPropType,
-      sectionId: targetSectionId,
+      sectionNodeId: targetSectionId,
       defaultValue: newPropDefault || undefined,
       metadata: {
         label: newPropLabel.trim(),
@@ -1188,7 +1131,7 @@ function SandboxSheetEditor({
     setContainerAddTarget({ parentId: sectionId });
     resetNewPropState();
     setContainerAddTarget({ parentId: sectionId });
-    const sectionProps = properties.filter((p: any) => p.sectionId === sectionId);
+    const sectionProps = properties.filter((p: any) => p.sectionNodeId === sectionId);
     if (sectionProps.length > 0) {
       const maxY = Math.max(...sectionProps.map((p: any) => (p.y ?? 0) + (p.height ?? 40)));
       setNewPropX(10);
@@ -1288,7 +1231,7 @@ function SandboxSheetEditor({
         },
         ...(updates.style !== undefined ? { style: updates.style } : {}),
       },
-      ...(updates.sectionId !== undefined ? { sectionId: updates.sectionId } : {}),
+      ...(updates.sectionNodeId !== undefined ? { sectionNodeId: updates.sectionNodeId } : {}),
       ...(updates.key !== undefined ? { key: updates.key } : {}),
     };
     const newKey = updates.key !== undefined ? updates.key : prop.key;
@@ -1507,98 +1450,220 @@ function SandboxSheetEditor({
         );
       };
 
-      const renderSection = (section: any) => {
-        const sectionProps = properties.filter((p: any) => p.sectionId === section.id);
-        const sectionStyle = section.styleConfig ? getPropertyCssStyle(section.styleConfig) : {};
-        const sectionHeight = sectionProps.length > 0
-          ? Math.max(120, Math.max(...sectionProps.map((p: any) => (p.y ?? 0) + (p.height ?? 40))) + 20)
-          : 120;
-        
+      const renderLayoutNode = (node: any): React.ReactNode => {
+        const nodeStyle = node.styleConfig ? getPropertyCssStyle(node.styleConfig) : {};
+        const childNodes = layoutNodesList.filter((n: any) => n.parentId === node.id).sort((a: any, b: any) => a.order - b.order);
+
+        if (node.type === 'section') {
+          const sectionProps = properties.filter((p: any) => p.sectionNodeId === node.id);
+          const sectionHeight = sectionProps.length > 0
+            ? Math.max(120, Math.max(...sectionProps.map((p: any) => (p.y ?? 0) + (p.height ?? 40))) + 20)
+            : 120;
+          
+          return (
+            <div
+              key={node.id}
+              className="relative rounded overflow-visible mb-1"
+              style={{ minHeight: `${sectionHeight}px`, ...nodeStyle }}
+              data-testid={`template-section-${node.name.toLowerCase()}`}
+              onClick={(e) => {
+                if (e.target === e.currentTarget) { setSelectedPropertyId(null); setPropSettingsOpen(false); }
+              }}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setSectionContextMenu({ x: e.clientX, y: e.clientY, sectionId: node.id });
+              }}
+            >
+              <div className="absolute top-0 left-0 z-20 px-2 py-0.5">
+                {editingSectionName === node.id ? (
+                  <input
+                    autoFocus
+                    defaultValue={node.name}
+                    className="bg-stone-700 border border-stone-500 text-stone-200 text-[10px] px-1 rounded w-20"
+                    onBlur={(e) => {
+                      const newName = e.target.value.trim() || node.name;
+                      const updatedNodes = { ...layoutNodes, [node.id]: { ...node, name: newName } };
+                      updateTemplateMutationSheet.mutate({ data: JSON.stringify({ ...templateData, layoutNodes: updatedNodes }) });
+                      setEditingSectionName(null);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                      if (e.key === 'Escape') setEditingSectionName(null);
+                    }}
+                    data-testid={`input-section-name-${node.name.toLowerCase()}`}
+                  />
+                ) : (
+                  <span className="text-[10px] text-stone-500 uppercase tracking-wider">{node.name}</span>
+                )}
+              </div>
+              {sectionProps.map((prop: any) => renderCanvasProperty(prop))}
+              <button
+                className="absolute w-5 h-5 rounded bg-purple-700/60 hover:bg-purple-600 text-white flex items-center justify-center transition-all opacity-60 hover:opacity-100 z-30 top-1 right-1"
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleAddPropertyToSection(node.id);
+                }}
+                title={`Add property to ${node.name}`}
+                data-testid={`button-add-to-section-${node.name.toLowerCase()}`}
+              >
+                <Plus className="h-3 w-3" />
+              </button>
+            </div>
+          );
+        }
+
+        if (node.type === 'tab') {
+          const activeChildId = activeTabState[node.id] || childNodes[0]?.id;
+          return (
+            <div key={node.id} className="relative rounded overflow-visible mb-1" style={nodeStyle}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setSectionContextMenu({ x: e.clientX, y: e.clientY, sectionId: node.id });
+              }}
+            >
+              <div className="absolute top-0 left-0 z-20 px-2 py-0.5">
+                <span className="text-[10px] text-stone-500 uppercase tracking-wider">{node.name} <span className="text-stone-600">(tab)</span></span>
+              </div>
+              <div className="flex gap-1 mt-5 mb-1 px-1" data-testid={`tab-buttons-${node.id}`}>
+                {childNodes.map((child: any) => (
+                  <button
+                    key={child.id}
+                    className={`px-2 py-1 text-[10px] rounded transition-colors ${activeChildId === child.id ? 'bg-purple-700 text-white' : 'bg-stone-700 text-stone-400 hover:bg-stone-600'}`}
+                    onClick={() => setActiveTabState(prev => ({ ...prev, [node.id]: child.id }))}
+                    data-testid={`tab-button-${child.id}`}
+                  >
+                    {child.name}
+                  </button>
+                ))}
+              </div>
+              {childNodes.filter((c: any) => c.id === activeChildId).map((child: any) => renderLayoutNode(child))}
+            </div>
+          );
+        }
+
+        if (node.type === 'panel') {
+          return (
+            <div key={node.id} className="relative rounded overflow-visible mb-1" style={{ minHeight: '60px', ...nodeStyle }}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setSectionContextMenu({ x: e.clientX, y: e.clientY, sectionId: node.id });
+              }}
+            >
+              <div className="absolute top-0 left-0 z-20 px-2 py-0.5">
+                {editingSectionName === node.id ? (
+                  <input
+                    autoFocus
+                    defaultValue={node.name}
+                    className="bg-stone-700 border border-stone-500 text-stone-200 text-[10px] px-1 rounded w-20"
+                    onBlur={(e) => {
+                      const newName = e.target.value.trim() || node.name;
+                      const updatedNodes = { ...layoutNodes, [node.id]: { ...node, name: newName } };
+                      updateTemplateMutationSheet.mutate({ data: JSON.stringify({ ...templateData, layoutNodes: updatedNodes }) });
+                      setEditingSectionName(null);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                      if (e.key === 'Escape') setEditingSectionName(null);
+                    }}
+                    data-testid={`input-section-name-${node.name.toLowerCase()}`}
+                  />
+                ) : (
+                  <span className="text-[10px] text-stone-500 uppercase tracking-wider">{node.name} <span className="text-stone-600">(panel)</span></span>
+                )}
+              </div>
+              <div className="mt-4">
+                {childNodes.map((child: any) => renderLayoutNode(child))}
+              </div>
+            </div>
+          );
+        }
+
         return (
-          <div
-            key={section.id}
-            className="relative rounded overflow-visible mb-1"
-            style={{ minHeight: `${sectionHeight}px`, ...sectionStyle }}
-            data-testid={`template-section-${section.name.toLowerCase()}`}
-            onClick={(e) => {
-              if (e.target === e.currentTarget) { setSelectedPropertyId(null); setPropSettingsOpen(false); }
-            }}
+          <div key={node.id} className="relative overflow-visible mb-1"
             onContextMenu={(e) => {
               e.preventDefault();
               e.stopPropagation();
-              setSectionContextMenu({ x: e.clientX, y: e.clientY, sectionId: section.id });
+              setSectionContextMenu({ x: e.clientX, y: e.clientY, sectionId: node.id });
             }}
           >
-            <div className="absolute top-0 left-0 z-20 px-2 py-0.5">
-              {editingSectionName === section.id ? (
-                <input
-                  autoFocus
-                  defaultValue={section.name}
-                  className="bg-stone-700 border border-stone-500 text-stone-200 text-[10px] px-1 rounded w-20"
-                  onBlur={(e) => {
-                    const newName = e.target.value.trim() || section.name;
-                    const updatedSections = sections.map((ss: any) => ss.id === section.id ? { ...ss, name: newName } : ss);
-                    updateTemplateMutationSheet.mutate({ data: JSON.stringify({ ...templateData, sections: updatedSections }) });
-                    setEditingSectionName(null);
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-                    if (e.key === 'Escape') setEditingSectionName(null);
-                  }}
-                  data-testid={`input-section-name-${section.name.toLowerCase()}`}
-                />
-              ) : (
-                <span className="text-[10px] text-stone-500 uppercase tracking-wider">{section.name} <span className="text-stone-600">({section.location})</span></span>
-              )}
-            </div>
-            {sectionProps.map((prop: any) => renderCanvasProperty(prop))}
-            <button
-              className={`absolute w-5 h-5 rounded bg-purple-700/60 hover:bg-purple-600 text-white flex items-center justify-center transition-all opacity-60 hover:opacity-100 z-30 ${
-                section.location === 'header' ? 'bottom-1' : 'top-1 left-1'
-              }`}
-              style={section.location === 'header' ? { left: '115px' } : undefined}
-              onPointerDown={(e) => e.stopPropagation()}
-              onClick={(e) => {
-                e.stopPropagation();
-                handleAddPropertyToSection(section.id);
-              }}
-              title={`Add property to ${section.name}`}
-              data-testid={`button-add-to-section-${section.name.toLowerCase()}`}
-            >
-              <Plus className="h-3 w-3" />
-            </button>
+            {childNodes.map((child: any) => renderLayoutNode(child))}
           </div>
         );
       };
 
+      const canvas = templateData.canvas;
+      const canvasBgStyle = canvas?.backgroundConfig ? getPropertyCssStyle(canvas.backgroundConfig) : {};
+      const rootNodes = layoutNodesList.filter((n: any) => n.parentId === null);
+
       return (
-        <div className="space-y-0" data-testid="template-properties-editor">
-          {sections.sort((a: any, b: any) => a.order - b.order).map((section: any) => renderSection(section))}
-          {sections.length === 0 && (
+        <div className="space-y-0" data-testid="template-properties-editor" style={canvasBgStyle}>
+          {rootNodes.map((node: any) => renderLayoutNode(node))}
+          {rootNodes.length === 0 && (
             <div className="text-stone-500 text-center italic border border-dashed border-stone-700 rounded-lg p-6 text-sm">
-              No sections defined. Add sections to build your template.
+              No layout nodes defined. Add nodes to build your template.
             </div>
           )}
-          <div className="flex items-center gap-2 mt-2">
+          <div className="flex items-center gap-2 mt-2 relative">
             <button
               className="text-xs bg-stone-700 hover:bg-stone-600 text-stone-300 px-2 py-1 rounded flex items-center gap-1"
-              onClick={() => {
-                const newSection = {
-                  id: crypto.randomUUID(),
-                  name: `Section ${sections.length + 1}`,
-                  location: 'body' as const,
-                  layoutMode: 'freeform' as const,
-                  styleConfig: { backgroundColor: '#1c1917', border: { enabled: true, color: '#44403c', width: 1, radius: 4, style: 'solid' } },
-                  order: sections.length,
-                };
-                const newData = { ...templateData, sections: [...sections, newSection] };
-                updateTemplateMutationSheet.mutate({ data: JSON.stringify(newData) });
-                toast({ title: "Section added" });
-              }}
+              onClick={() => setAddNodeDialogOpen(!addNodeDialogOpen)}
               data-testid="button-add-section"
             >
-              <Plus className="h-3 w-3" /> Add Section
+              <Plus className="h-3 w-3" /> Add Layout Node
             </button>
+            {addNodeDialogOpen && (
+              <div className="absolute bottom-full left-0 mb-1 bg-stone-800 border border-stone-600 rounded-lg shadow-xl py-1 min-w-[160px] z-30" data-testid="add-node-dialog">
+                {(['section', 'panel', 'tab', 'group'] as const).map((nodeType) => (
+                  <button
+                    key={nodeType}
+                    className="w-full text-left px-3 py-1.5 text-xs text-stone-200 hover:bg-stone-700 capitalize"
+                    onClick={() => {
+                      const newNodeId = crypto.randomUUID();
+                      const newNode: any = {
+                        id: newNodeId,
+                        type: nodeType,
+                        name: `${nodeType} ${Object.keys(layoutNodes).length + 1}`,
+                        parentId: null,
+                        childrenIds: [],
+                        positionConfig: { x: 0, y: 0 },
+                        sizeConfig: { width: canvas?.width || 450, height: 200 },
+                        layoutMode: 'freeform',
+                        styleConfig: { backgroundColor: '#1c1917', border: { enabled: true, color: '#44403c', width: 1, radius: 4, style: 'solid' } },
+                        order: Object.keys(layoutNodes).length,
+                      };
+                      const updatedNodes = { ...layoutNodes, [newNodeId]: newNode };
+                      if (nodeType === 'tab') {
+                        const childId = crypto.randomUUID();
+                        const childNode: any = {
+                          id: childId,
+                          type: 'panel',
+                          name: 'Tab 1',
+                          parentId: newNodeId,
+                          childrenIds: [],
+                          positionConfig: { x: 0, y: 0 },
+                          sizeConfig: { width: canvas?.width || 450, height: 180 },
+                          layoutMode: 'freeform',
+                          styleConfig: { backgroundColor: '#1c1917' },
+                          order: 0,
+                        };
+                        updatedNodes[childId] = childNode;
+                        updatedNodes[newNodeId] = { ...newNode, childrenIds: [childId] };
+                      }
+                      updateTemplateMutationSheet.mutate({ data: JSON.stringify({ ...templateData, layoutNodes: updatedNodes }) });
+                      setAddNodeDialogOpen(false);
+                      toast({ title: `${nodeType} added` });
+                    }}
+                    data-testid={`button-add-${nodeType}`}
+                  >
+                    {nodeType}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
           {sectionContextMenu && createPortal(
             <div className="fixed inset-0 z-[9999]" onClick={() => setSectionContextMenu(null)}>
@@ -1606,32 +1671,44 @@ function SandboxSheetEditor({
                 className="fixed bg-stone-800 border border-stone-600 rounded-lg shadow-xl py-1 min-w-[160px]"
                 style={{ left: `${sectionContextMenu.x}px`, top: `${sectionContextMenu.y}px` }}
               >
-                <button className="w-full text-left px-3 py-1.5 text-xs text-stone-200 hover:bg-stone-700" onClick={() => { setEditingSectionName(sectionContextMenu.sectionId); setSectionContextMenu(null); }} data-testid="menu-rename-section">Rename Section</button>
+                <button className="w-full text-left px-3 py-1.5 text-xs text-stone-200 hover:bg-stone-700" onClick={() => { setEditingSectionName(sectionContextMenu.sectionId); setSectionContextMenu(null); }} data-testid="menu-rename-section">Rename Node</button>
                 <button className="w-full text-left px-3 py-1.5 text-xs text-stone-200 hover:bg-stone-700" onClick={() => {
-                  const s = sections.find((ss: any) => ss.id === sectionContextMenu.sectionId);
-                  if (!s) return;
-                  const locations = ['header', 'body', 'footer', 'left', 'right'];
-                  const currentIdx = locations.indexOf(s.location);
-                  const nextLoc = locations[(currentIdx + 1) % locations.length];
-                  const updatedSections = sections.map((ss: any) => ss.id === s.id ? { ...ss, location: nextLoc } : ss);
-                  updateTemplateMutationSheet.mutate({ data: JSON.stringify({ ...templateData, sections: updatedSections }) });
-                  toast({ title: `Section location: ${nextLoc}` });
+                  const node = layoutNodes[sectionContextMenu.sectionId];
+                  if (!node) return;
+                  const modes = ['freeform', 'grid', 'stack'];
+                  const currentIdx = modes.indexOf(node.layoutMode || 'freeform');
+                  const nextMode = modes[(currentIdx + 1) % modes.length];
+                  const updatedNodes = { ...layoutNodes, [node.id]: { ...node, layoutMode: nextMode } };
+                  updateTemplateMutationSheet.mutate({ data: JSON.stringify({ ...templateData, layoutNodes: updatedNodes }) });
+                  toast({ title: `Layout mode: ${nextMode}` });
                   setSectionContextMenu(null);
-                }} data-testid="menu-change-location">Change Location</button>
+                }} data-testid="menu-change-layout-mode">Change Layout Mode</button>
                 <button className="w-full text-left px-3 py-1.5 text-xs text-red-400 hover:bg-stone-700" onClick={() => {
-                  const sectionId = sectionContextMenu.sectionId;
-                  const propsInSection = Object.values(templateData.properties || {}).filter((p: any) => p.sectionId === sectionId);
-                  if (propsInSection.length > 0) {
+                  const nodeId = sectionContextMenu.sectionId;
+                  const node = layoutNodes[nodeId];
+                  if (!node) return;
+                  const propsInNode = Object.values(templateData.properties || {}).filter((p: any) => p.sectionNodeId === nodeId);
+                  const childNodesOfThis = layoutNodesList.filter((n: any) => n.parentId === nodeId);
+                  if (propsInNode.length > 0) {
                     toast({ title: "Cannot delete", description: "Remove all properties first", variant: "destructive" });
-                  } else if (sections.length <= 1) {
-                    toast({ title: "Cannot delete", description: "Template must have at least one section", variant: "destructive" });
+                  } else if (childNodesOfThis.length > 0) {
+                    toast({ title: "Cannot delete", description: "Remove all child nodes first", variant: "destructive" });
+                  } else if (Object.keys(layoutNodes).length <= 1) {
+                    toast({ title: "Cannot delete", description: "Template must have at least one node", variant: "destructive" });
                   } else {
-                    const updatedSections = sections.filter((ss: any) => ss.id !== sectionId);
-                    updateTemplateMutationSheet.mutate({ data: JSON.stringify({ ...templateData, sections: updatedSections }) });
-                    toast({ title: "Section deleted" });
+                    const updatedNodes = { ...layoutNodes };
+                    delete updatedNodes[nodeId];
+                    if (node.parentId && updatedNodes[node.parentId]) {
+                      updatedNodes[node.parentId] = {
+                        ...updatedNodes[node.parentId],
+                        childrenIds: (updatedNodes[node.parentId].childrenIds || []).filter((id: string) => id !== nodeId),
+                      };
+                    }
+                    updateTemplateMutationSheet.mutate({ data: JSON.stringify({ ...templateData, layoutNodes: updatedNodes }) });
+                    toast({ title: "Node deleted" });
                   }
                   setSectionContextMenu(null);
-                }} data-testid="menu-delete-section">Delete Section</button>
+                }} data-testid="menu-delete-section">Delete Node</button>
               </div>
             </div>,
             document.body
@@ -1641,14 +1718,17 @@ function SandboxSheetEditor({
     }
 
     const linkedTemplate = templates.find((t: any) => t.id === selectedTemplateId);
-    let actorSections: any[] = [];
+    let actorSectionNodes: any[] = [];
     let actorProperties: any[] = [];
+    let actorLayoutNodes: Record<string, any> = {};
     if (linkedTemplate) {
       try {
-        const td = JSON.parse(linkedTemplate.data || '{}');
-        actorSections = td.sections || [];
+        const td = migrateTemplateData(JSON.parse(linkedTemplate.data || '{}'));
+        actorLayoutNodes = td.layoutNodes || {};
+        actorSectionNodes = Object.values(actorLayoutNodes).filter((n: any) => n.type === 'section').sort((a: any, b: any) => a.order - b.order);
         actorProperties = Object.values(td.properties || {}).map((p: any) => ({
           ...p,
+          sectionNodeId: p.sectionNodeId,
           label: p.metadata?.label || p.key,
           x: p.metadata?.uiConfig?.x ?? 10,
           y: p.metadata?.uiConfig?.y ?? 10,
@@ -1664,7 +1744,7 @@ function SandboxSheetEditor({
       } catch {}
     }
 
-    if (actorSections.length === 0 && actorProperties.length === 0) {
+    if (actorSectionNodes.length === 0 && actorProperties.length === 0) {
       return (
         <div className="text-stone-500 text-center italic border border-dashed border-stone-700 rounded-lg p-8 text-sm" data-testid="actor-no-properties">
           {selectedTemplateId ? 'No properties defined in template' : 'Assign a template to see properties'}
@@ -1812,10 +1892,22 @@ function SandboxSheetEditor({
       );
     };
 
+    const isActorSectionVisible = (sectionNode: any): boolean => {
+      if (!sectionNode.parentId) return true;
+      const parent = actorLayoutNodes[sectionNode.parentId];
+      if (!parent) return true;
+      if (parent.type === 'tab') {
+        const parentChildren = Object.values(actorLayoutNodes).filter((n: any) => n.parentId === parent.id).sort((a: any, b: any) => a.order - b.order);
+        const activeChildId = activeTabState[parent.id] || parentChildren[0]?.id;
+        if (sectionNode.id !== activeChildId) return false;
+      }
+      return true;
+    };
+
     return (
       <div className="space-y-0" data-testid="actor-properties-display">
-        {actorSections.sort((a: any, b: any) => a.order - b.order).map((section: any) => {
-          const sectionProps = actorProperties.filter((p: any) => p.sectionId === section.id);
+        {actorSectionNodes.filter((sn: any) => isActorSectionVisible(sn)).map((section: any) => {
+          const sectionProps = actorProperties.filter((p: any) => p.sectionNodeId === section.id);
           const sectionStyle = section.styleConfig ? getPropertyCssStyle(section.styleConfig) : {};
           const sectionHeight = sectionProps.length > 0
             ? Math.max(60, Math.max(...sectionProps.map((p: any) => (p.y ?? 0) + (p.height ?? 40))) + 10)
@@ -1832,14 +1924,16 @@ function SandboxSheetEditor({
 
   const renderMobileActorBody = () => {
     const linkedTemplate = templates.find((t: any) => t.id === selectedTemplateId);
-    let mobileActorSections: any[] = [];
+    let mobileActorSectionNodes: any[] = [];
     let mobileActorProperties: any[] = [];
     if (linkedTemplate) {
       try {
-        const td = JSON.parse(linkedTemplate.data || '{}');
-        mobileActorSections = td.sections || [];
+        const td = migrateTemplateData(JSON.parse(linkedTemplate.data || '{}'));
+        const mobileLayoutNodes = td.layoutNodes || {};
+        mobileActorSectionNodes = Object.values(mobileLayoutNodes).filter((n: any) => n.type === 'section').sort((a: any, b: any) => a.order - b.order);
         mobileActorProperties = Object.values(td.properties || {}).map((p: any) => ({
           ...p,
+          sectionNodeId: p.sectionNodeId,
           label: p.metadata?.label || p.key,
           x: p.metadata?.uiConfig?.x ?? 10,
           y: p.metadata?.uiConfig?.y ?? 10,
@@ -1855,7 +1949,7 @@ function SandboxSheetEditor({
       } catch {}
     }
 
-    if (mobileActorSections.length === 0 && mobileActorProperties.length === 0) {
+    if (mobileActorSectionNodes.length === 0 && mobileActorProperties.length === 0) {
       return (
         <div className="text-stone-500 text-center italic border border-dashed border-stone-700 rounded-lg p-8 text-sm" data-testid="actor-no-properties-mobile">
           {selectedTemplateId ? 'No properties defined in template' : 'Assign a template to see properties'}
@@ -1976,8 +2070,8 @@ function SandboxSheetEditor({
 
     return (
       <div className="space-y-3" data-testid="actor-properties-display-mobile">
-        {mobileActorSections.sort((a: any, b: any) => a.order - b.order).map((section: any) => {
-          const sectionProps = mobileActorProperties.filter((p: any) => p.sectionId === section.id);
+        {mobileActorSectionNodes.map((section: any) => {
+          const sectionProps = mobileActorProperties.filter((p: any) => p.sectionNodeId === section.id);
           return (
             <div key={section.id} className="space-y-3" style={section.styleConfig ? getPropertyCssStyle(section.styleConfig) : {}}>
               {sectionProps.map((prop: any) => renderMobileProperty(prop))}
@@ -2395,20 +2489,20 @@ function SandboxSheetEditor({
                 />
               </div>
 
-              {sections.length > 0 && (
+              {sectionNodes.length > 0 && (
                 <div className="space-y-1">
                   <Label className="text-stone-500 text-[10px]">Section</Label>
                   <Select
-                    value={selectedProperty.sectionId || sections[0]?.id || ''}
-                    onValueChange={(v) => updatePropertyLayout(selectedProperty.id, { sectionId: v })}
+                    value={selectedProperty.sectionNodeId || sectionNodes[0]?.id || ''}
+                    onValueChange={(v) => updatePropertyLayout(selectedProperty.id, { sectionNodeId: v })}
                   >
                     <SelectTrigger className="bg-stone-900 border-stone-600 text-stone-200 h-7 text-xs" data-testid="select-prop-section">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent className="bg-stone-800 border-stone-700">
-                      {sections.map((s: any) => (
+                      {sectionNodes.map((s: any) => (
                         <SelectItem key={s.id} value={s.id} className="text-stone-200">
-                          {s.name} ({s.location})
+                          {s.name}
                         </SelectItem>
                       ))}
                     </SelectContent>

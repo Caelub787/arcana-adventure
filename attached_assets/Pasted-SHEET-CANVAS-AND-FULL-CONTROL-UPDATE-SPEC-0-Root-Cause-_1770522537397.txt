@@ -1,0 +1,228 @@
+SHEET CANVAS AND FULL CONTROL UPDATE SPEC
+0. Root Cause Summary
+
+Current problems exist because:
+
+Tabs do not exist as first class layout objects
+
+Sections are being created instead of edited
+
+There is no concept of a primary sheet surface
+
+Display logic is partially hardcoded
+
+This spec fixes that by introducing a Sheet Canvas and Layout Nodes.
+
+1. SHEET CANVAS (CRITICAL)
+
+Every template MUST have exactly one Sheet Canvas.
+
+The Sheet Canvas represents the entire visible sheet area.
+
+Fields:
+• id
+• width
+• height
+• backgroundConfig
+• layoutNodes array
+
+There is no default body section.
+The canvas itself is the body.
+
+Nothing auto creates sections.
+
+2. LAYOUT NODES (THIS IS THE FIX)
+
+Everything visible on a sheet is a Layout Node.
+
+Tabs
+Panels
+Sections
+Groups
+Frames
+
+They are all the same type.
+
+2.1 Layout Node Object
+
+Fields:
+• id
+• type enum panel tab section group
+• parentId nullable
+• childrenIds array
+• positionConfig
+• sizeConfig
+• layoutMode grid freeform stack
+• styleConfig
+• behaviorConfig
+
+Nothing renders unless it is part of the layout tree.
+
+3. TABS DONE CORRECTLY
+
+Tabs are NOT sections.
+
+Tabs are layout nodes that control visibility of child nodes.
+
+3.1 Tab Node
+
+type = tab
+
+Additional fields:
+• tabPosition top bottom left right
+• activeTabId
+• tabButtonsConfig
+
+Tabs can exist:
+• inside the canvas
+• on outer edges
+• nested inside other panels
+
+Tabs do not hold properties.
+
+Tabs show and hide child layout nodes.
+
+4. PANELS AND SECTIONS
+
+Panels are visual containers.
+Sections are logical property containers.
+
+Both are layout nodes.
+
+Panel Node
+
+Used for framing and grouping.
+
+Section Node
+
+Used to host properties.
+
+Properties attach ONLY to section nodes.
+
+5. PROPERTY ATTACHMENT RULE
+
+Properties do NOT attach to the canvas.
+
+Property fields:
+• sectionNodeId
+
+If a section node is hidden by a tab, its properties are hidden.
+
+6. NO AUTO SECTION CREATION
+
+Delete the Add Section button behavior.
+
+Replace it with:
+
+Add Layout Node
+
+User chooses:
+• panel
+• tab
+• section
+• group
+
+Nothing is created automatically.
+
+The main canvas always exists and fills the sheet.
+
+7. FULL DISPLAY CUSTOMIZATION
+
+Every layout node supports:
+
+PositionConfig
+
+• x
+• y
+• anchor
+• zIndex
+
+SizeConfig
+
+• width
+• height
+• minWidth
+• minHeight
+
+LayoutMode
+
+• grid with full config
+• freeform absolute
+• stack vertical or horizontal
+
+StyleConfig
+
+• background
+• border
+• padding
+• opacity
+• visibility rules
+
+No visual behavior may be hardcoded.
+
+8. PROPERTY UI CONTROL
+
+Property metadata MUST include:
+
+• renderComponent
+• labelVisibility
+• editable
+• customStyles
+• conditionalVisibilityExpression
+
+The builder must expose all of these.
+
+9. EDIT MODE VS PLAY MODE
+
+Template Editor Mode:
+• full drag resize edit access
+• edit all layout nodes
+• edit all property definitions
+
+Actor View Mode:
+• layout locked
+• values editable per permissions
+
+10. UPDATED RENDER PIPELINE
+
+Load template
+
+Load sheet canvas
+
+Build layout tree recursively
+
+Resolve tab visibility
+
+Render layout nodes
+
+Inject sections
+
+Inject properties
+
+Bind actor values
+
+Evaluate expressions
+
+11. KEY GUARANTEE
+
+After this change:
+
+• Tabs can exist anywhere
+• The canvas fills the sheet
+• Sections are intentional not automatic
+• You have pixel level control
+• Nothing is locked or implicit
+
+12. SUCCESS CONDITIONS
+
+System is correct when:
+
+You can delete all sections and still have a valid sheet
+
+Tabs can be placed on left right top bottom
+
+Properties only appear if their section node is visible
+
+No UI element creates structure without user intent
+
+You can recreate Sandbox and Custom System Builder layouts exactly
