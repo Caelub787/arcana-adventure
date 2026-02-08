@@ -76,6 +76,7 @@ export interface SandboxProperty {
   parentId?: string | null;
   tabId?: string | null;
   tabs?: TabDefinition[];
+  tabLayout?: 'top' | 'left';
 }
 
 function buildGradientString(gradient: PropertyGradient): string {

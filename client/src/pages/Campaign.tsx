@@ -1237,13 +1237,18 @@ function SandboxSheetEditor({
 
     if (prop.type === 'tab') {
       const tabs = prop.tabs || [{ id: '1', label: 'Tab 1' }, { id: '2', label: 'Tab 2' }];
+      const isLeftLayout = prop.tabLayout === 'left';
       return (
-        <div className="w-full h-full overflow-hidden flex flex-col" style={propStyle}>
-          <div className="flex border-b border-stone-600/50 shrink-0">
+        <div className={`w-full h-full overflow-hidden flex ${isLeftLayout ? 'flex-row' : 'flex-col'}`} style={propStyle}>
+          <div className={`flex shrink-0 ${isLeftLayout ? 'flex-col border-r border-stone-600/50 w-[60px]' : 'flex-row border-b border-stone-600/50'}`}>
             {tabs.map((tab: TabDefinition, idx: number) => (
               <div
                 key={tab.id}
-                className={`px-2 py-1 text-[10px] truncate ${idx === 0 ? 'text-purple-300 border-b-2 border-purple-500 bg-purple-900/20' : 'text-stone-500'}`}
+                className={`px-2 py-1 text-[10px] truncate ${
+                  idx === 0 
+                    ? `text-purple-300 bg-purple-900/20 ${isLeftLayout ? 'border-r-2 border-purple-500' : 'border-b-2 border-purple-500'}`
+                    : 'text-stone-500'
+                }`}
               >
                 {tab.label}
               </div>
@@ -1335,11 +1340,18 @@ function SandboxSheetEditor({
             >
               {renderFieldPreview(prop)}
               {(prop.type === 'panel' || prop.type === 'tab') && children.length > 0 && (
-                <div className="absolute inset-0 overflow-hidden pointer-events-none" style={{ top: prop.type === 'tab' ? '24px' : '0px' }}>
+                <div className="absolute inset-0 overflow-hidden pointer-events-none" style={{ 
+                  top: prop.type === 'tab' && prop.tabLayout !== 'left' ? '24px' : '0px',
+                  left: prop.type === 'tab' && prop.tabLayout === 'left' ? '60px' : '0px',
+                }}>
                   <div className="relative w-full h-full pointer-events-auto">
                     {children
                       .filter((c: any) => prop.type !== 'tab' || !prop.tabs || c.tabId === (prop.tabs[0]?.id ?? ''))
-                      .map((child: any) => renderCanvasProperty(child, overrides.x ?? prop.x ?? 10, (overrides.y ?? prop.y ?? 10) + (prop.type === 'tab' ? 24 : 0)))}
+                      .map((child: any) => renderCanvasProperty(
+                        child, 
+                        (overrides.x ?? prop.x ?? 10) + (prop.type === 'tab' && prop.tabLayout === 'left' ? 60 : 0), 
+                        (overrides.y ?? prop.y ?? 10) + (prop.type === 'tab' && prop.tabLayout !== 'left' ? 24 : 0)
+                      ))}
                   </div>
                 </div>
               )}
@@ -1536,22 +1548,24 @@ function SandboxSheetEditor({
         const tabs = prop.tabs || [];
         const activeTabId = activeTabIds[prop.id] || (tabs[0]?.id ?? '');
         const children = actorProperties.filter((c: any) => c.parentId === prop.id && c.tabId === activeTabId);
+        const isLeftLayout = prop.tabLayout === 'left';
+        const tabSideWidth = 80;
         const tabHeaderHeight = 28;
         return (
           <div
             key={prop.id}
-            className="absolute rounded overflow-hidden flex flex-col"
+            className={`absolute rounded overflow-hidden flex ${isLeftLayout ? 'flex-row' : 'flex-col'}`}
             style={{ left: `${px}px`, top: `${py}px`, width: `${pw}px`, height: `${ph}px`, ...propStyle }}
             data-testid={`actor-property-${prop.key}`}
           >
-            <div className="flex border-b border-stone-600/50 shrink-0" style={{ height: `${tabHeaderHeight}px` }}>
+            <div className={`flex shrink-0 ${isLeftLayout ? 'flex-col border-r border-stone-600/50' : 'border-b border-stone-600/50'}`} style={isLeftLayout ? { width: `${tabSideWidth}px` } : { height: `${tabHeaderHeight}px` }}>
               {tabs.map((tab: any) => (
                 <button
                   key={tab.id}
                   onClick={() => setActiveTabIds(prev => ({ ...prev, [prop.id]: tab.id }))}
                   className={`px-3 py-1 text-xs truncate transition-colors ${
                     tab.id === activeTabId
-                      ? 'text-purple-300 border-b-2 border-purple-500 bg-purple-900/20'
+                      ? `text-purple-300 bg-purple-900/20 ${isLeftLayout ? 'border-r-2 border-purple-500' : 'border-b-2 border-purple-500'}`
                       : 'text-stone-500 hover:text-stone-300'
                   }`}
                   data-testid={`actor-tab-${prop.key}-${tab.id}`}
@@ -1688,16 +1702,17 @@ function SandboxSheetEditor({
         const tabs = prop.tabs || [];
         const activeTabId = activeTabIds[prop.id] || (tabs[0]?.id ?? '');
         const children = actorProperties.filter((c: any) => c.parentId === prop.id && c.tabId === activeTabId);
+        const isLeftLayout = prop.tabLayout === 'left';
         return (
-          <div key={prop.id} className="rounded-lg overflow-hidden" style={propStyle} data-testid={`actor-property-mobile-${prop.key}`}>
-            <div className="flex border-b border-stone-600/50">
+          <div key={prop.id} className={`rounded-lg overflow-hidden flex ${isLeftLayout ? 'flex-row' : 'flex-col'}`} style={propStyle} data-testid={`actor-property-mobile-${prop.key}`}>
+            <div className={`flex shrink-0 ${isLeftLayout ? 'flex-col border-r border-stone-600/50 w-[80px]' : 'border-b border-stone-600/50'}`}>
               {tabs.map((tab: any) => (
                 <button
                   key={tab.id}
                   onClick={() => setActiveTabIds(prev => ({ ...prev, [prop.id]: tab.id }))}
-                  className={`px-3 py-2 text-xs truncate flex-1 transition-colors ${
+                  className={`px-3 py-2 text-xs truncate transition-colors ${isLeftLayout ? 'text-left' : 'flex-1'} ${
                     tab.id === activeTabId
-                      ? 'text-purple-300 border-b-2 border-purple-500 bg-purple-900/20'
+                      ? `text-purple-300 bg-purple-900/20 ${isLeftLayout ? 'border-r-2 border-purple-500' : 'border-b-2 border-purple-500'}`
                       : 'text-stone-500 hover:text-stone-300'
                   }`}
                   data-testid={`actor-tab-mobile-${prop.key}-${tab.id}`}
@@ -1706,7 +1721,7 @@ function SandboxSheetEditor({
                 </button>
               ))}
             </div>
-            <div className="p-3 space-y-3">
+            <div className="p-3 space-y-3 flex-1">
               {children.map((child: any) => renderMobileProperty(child))}
             </div>
           </div>
@@ -2173,6 +2188,18 @@ function SandboxSheetEditor({
 
               {selectedProperty.type === 'tab' && (
                 <div className="space-y-2">
+                  <div className="space-y-1">
+                    <Label className="text-stone-500 text-[10px]">Tab Position</Label>
+                    <Select value={selectedProperty.tabLayout || 'top'} onValueChange={(v) => updatePropertyLayout(selectedProperty.id, { tabLayout: v })}>
+                      <SelectTrigger className="bg-stone-800 border-stone-600 text-stone-200 h-7 text-xs" data-testid="select-tab-layout">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="bg-stone-800 border-stone-700">
+                        <SelectItem value="top" className="text-stone-200 text-xs">Top</SelectItem>
+                        <SelectItem value="left" className="text-stone-200 text-xs">Left (Side)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                   <Label className="text-stone-500 text-[10px]">Tabs</Label>
                   {(selectedProperty.tabs || []).map((tab: TabDefinition, idx: number) => (
                     <div key={tab.id} className="flex items-center gap-1">
