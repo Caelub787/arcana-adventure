@@ -3072,7 +3072,11 @@ export class DatabaseStorage implements IStorage {
   async deleteUser(userId: string): Promise<void> {
     // Delete all user-related data in the correct order to avoid foreign key conflicts
     // This is a cascading delete operation
-    
+
+    // Delete campaigns owned by this user (cascades to all campaign-related data:
+    // members, bans, characters, tokens, scenes, chat, items, spells, etc.)
+    await db.delete(campaigns).where(eq(campaigns.gmUserId, userId));
+
     // Delete notifications
     await db.delete(userNotifications).where(eq(userNotifications.userId, userId));
     
