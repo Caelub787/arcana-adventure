@@ -2026,7 +2026,7 @@ function SandboxSheetEditor({
               <SelectTrigger className="bg-stone-800 border-stone-700 text-stone-200">
                 <SelectValue placeholder="Select a template..." />
               </SelectTrigger>
-              <SelectContent className="bg-stone-800 border-stone-700">
+              <SelectContent className="bg-stone-800 border-stone-700 z-[10000]">
                 <SelectItem value="__none__" className="text-stone-400">No template</SelectItem>
                 {templates.map((t: any) => (
                   <SelectItem key={t.id} value={t.id} className="text-stone-200">
@@ -2130,7 +2130,7 @@ function SandboxSheetEditor({
               <SelectTrigger className="bg-stone-800 border-stone-700 text-stone-200 h-9">
                 <SelectValue placeholder="Select a template..." />
               </SelectTrigger>
-              <SelectContent className="bg-stone-800 border-stone-700">
+              <SelectContent className="bg-stone-800 border-stone-700 z-[10000]">
                 <SelectItem value="__none__" className="text-stone-400">No template</SelectItem>
                 {templates.map((t: any) => (
                   <SelectItem key={t.id} value={t.id} className="text-stone-200">
