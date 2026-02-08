@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { createPortal } from "react-dom";
 import { useLocation, useSearch, useRoute } from "wouter";
 import { motion } from "framer-motion";
 import { CharacterCreation, BattleMap, CampaignMenu, CharacterSheet, BattleMapHotbars, SelectionModeButtons, InitiativeTracker, type SelectionMode } from "@/components/game/GameComponents";
@@ -868,6 +869,13 @@ function SandboxSheetEditor({
   const [newPropOptions, setNewPropOptions] = useState('');
   const [newPropDefault, setNewPropDefault] = useState('');
   const [selectedPropertyId, setSelectedPropertyId] = useState<string | null>(null);
+  const [propSettingsOpen, setPropSettingsOpen] = useState(false);
+  const [propSettingsPanelPos, setPropSettingsPanelPos] = useState({ x: 400, y: 200 });
+  const [propSettingsPanelSize, setPropSettingsPanelSize] = useState({ width: 280, height: 420 });
+  const [isPropSettingsDragging, setIsPropSettingsDragging] = useState(false);
+  const [isPropSettingsResizing, setIsPropSettingsResizing] = useState(false);
+  const propSettingsDragRef = useRef({ x: 0, y: 0, startX: 0, startY: 0 });
+  const propSettingsResizeRef = useRef({ x: 0, y: 0, w: 0, h: 0 });
   const [draggingPropertyId, setDraggingPropertyId] = useState<string | null>(null);
   const [resizingPropertyId, setResizingPropertyId] = useState<string | null>(null);
   const [dragOverrides, setDragOverrides] = useState<Record<string, { x?: number; y?: number; width?: number; height?: number }>>({});
@@ -1052,12 +1060,14 @@ function SandboxSheetEditor({
   };
 
   const handlePropPointerDown = (e: React.PointerEvent, prop: any) => {
+    if (e.button === 2) return;
     e.stopPropagation();
     e.preventDefault();
     const el = e.currentTarget as HTMLElement;
     el.setPointerCapture(e.pointerId);
     setDraggingPropertyId(prop.id);
     setSelectedPropertyId(prop.id);
+    setPropSettingsOpen(false);
     propDragStartRef.current = { x: e.clientX, y: e.clientY, propX: prop.x ?? 10, propY: prop.y ?? 10 };
   };
 
@@ -1110,6 +1120,54 @@ function SandboxSheetEditor({
   };
 
   const selectedProperty = properties.find((p: any) => p.id === selectedPropertyId);
+
+  const handleSettingsDragDown = (e: React.PointerEvent) => {
+    const target = e.target as HTMLElement;
+    if (target.closest('button')) return;
+    e.preventDefault();
+    const el = e.currentTarget as HTMLElement;
+    el.setPointerCapture(e.pointerId);
+    setIsPropSettingsDragging(true);
+    propSettingsDragRef.current = { x: e.clientX, y: e.clientY, startX: propSettingsPanelPos.x, startY: propSettingsPanelPos.y };
+  };
+
+  const handleSettingsDragMove = (e: React.PointerEvent) => {
+    if (!isPropSettingsDragging) return;
+    const dx = e.clientX - propSettingsDragRef.current.x;
+    const dy = e.clientY - propSettingsDragRef.current.y;
+    setPropSettingsPanelPos({ x: propSettingsDragRef.current.startX + dx, y: propSettingsDragRef.current.startY + dy });
+  };
+
+  const handleSettingsDragUp = (e: React.PointerEvent) => {
+    setIsPropSettingsDragging(false);
+    const el = e.currentTarget as HTMLElement;
+    if (el.hasPointerCapture(e.pointerId)) el.releasePointerCapture(e.pointerId);
+  };
+
+  const handleSettingsResizeDown = (e: React.PointerEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    const el = e.currentTarget as HTMLElement;
+    el.setPointerCapture(e.pointerId);
+    setIsPropSettingsResizing(true);
+    propSettingsResizeRef.current = { x: e.clientX, y: e.clientY, w: propSettingsPanelSize.width, h: propSettingsPanelSize.height };
+  };
+
+  const handleSettingsResizeMove = (e: React.PointerEvent) => {
+    if (!isPropSettingsResizing) return;
+    const dx = e.clientX - propSettingsResizeRef.current.x;
+    const dy = e.clientY - propSettingsResizeRef.current.y;
+    setPropSettingsPanelSize({
+      width: Math.max(240, Math.min(500, propSettingsResizeRef.current.w + dx)),
+      height: Math.max(300, Math.min(600, propSettingsResizeRef.current.h + dy)),
+    });
+  };
+
+  const handleSettingsResizeUp = (e: React.PointerEvent) => {
+    setIsPropSettingsResizing(false);
+    const el = e.currentTarget as HTMLElement;
+    if (el.hasPointerCapture(e.pointerId)) el.releasePointerCapture(e.pointerId);
+  };
 
   const renderFieldPreview = (prop: any) => {
     const labelPos = prop.labelPosition || 'top';
@@ -1250,7 +1308,7 @@ function SandboxSheetEditor({
               }}
               data-testid="template-canvas"
               onClick={(e) => {
-                if (e.target === e.currentTarget) setSelectedPropertyId(null);
+                if (e.target === e.currentTarget) { setSelectedPropertyId(null); setPropSettingsOpen(false); }
               }}
             >
               {properties.map((prop: any) => {
@@ -1274,6 +1332,13 @@ function SandboxSheetEditor({
                       height: `${ph}px`,
                     }}
                     data-testid={`canvas-property-${prop.key}`}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setSelectedPropertyId(prop.id);
+                      setPropSettingsOpen(true);
+                      setPropSettingsPanelPos({ x: e.clientX, y: e.clientY });
+                    }}
                     onPointerDown={(e) => handlePropPointerDown(e, prop)}
                     onPointerMove={(e) => handlePropPointerMove(e, prop)}
                     onPointerUp={(e) => handlePropPointerUp(e, prop)}
@@ -1299,114 +1364,6 @@ function SandboxSheetEditor({
             </div>
           )}
 
-          {selectedProperty && (
-            <div className="bg-stone-800/80 border border-purple-800/40 rounded-lg p-3 space-y-3" data-testid="property-settings-panel">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-medium text-purple-300">
-                  Settings: <span className="font-mono text-purple-400">{selectedProperty.key}</span>
-                </span>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => setSelectedPropertyId(null)}
-                  className="h-5 w-5 text-stone-500 hover:text-white"
-                >
-                  <X className="h-3 w-3" />
-                </Button>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div className="space-y-1">
-                  <Label className="text-stone-500 text-[10px]">X</Label>
-                  <Input
-                    type="number"
-                    value={selectedProperty.x ?? 10}
-                    onChange={(e) => updatePropertyLayout(selectedProperty.id, { x: Math.max(0, parseInt(e.target.value) || 0) })}
-                    className="bg-stone-900 border-stone-600 text-stone-200 h-7 text-xs"
-                    data-testid={`input-prop-x-${selectedProperty.key}`}
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-stone-500 text-[10px]">Y</Label>
-                  <Input
-                    type="number"
-                    value={selectedProperty.y ?? 10}
-                    onChange={(e) => updatePropertyLayout(selectedProperty.id, { y: Math.max(0, parseInt(e.target.value) || 0) })}
-                    className="bg-stone-900 border-stone-600 text-stone-200 h-7 text-xs"
-                    data-testid={`input-prop-y-${selectedProperty.key}`}
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-stone-500 text-[10px]">Width</Label>
-                  <Input
-                    type="number"
-                    value={selectedProperty.width ?? 200}
-                    onChange={(e) => updatePropertyLayout(selectedProperty.id, { width: Math.max(60, parseInt(e.target.value) || 60) })}
-                    className="bg-stone-900 border-stone-600 text-stone-200 h-7 text-xs"
-                    data-testid={`input-prop-width-${selectedProperty.key}`}
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-stone-500 text-[10px]">Height</Label>
-                  <Input
-                    type="number"
-                    value={selectedProperty.height ?? 40}
-                    onChange={(e) => updatePropertyLayout(selectedProperty.id, { height: Math.max(20, parseInt(e.target.value) || 20) })}
-                    className="bg-stone-900 border-stone-600 text-stone-200 h-7 text-xs"
-                    data-testid={`input-prop-height-${selectedProperty.key}`}
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-stone-500 text-[10px]">Label Font</Label>
-                  <Input
-                    type="number"
-                    min={8}
-                    max={24}
-                    value={selectedProperty.labelFontSize ?? 11}
-                    onChange={(e) => updatePropertyLayout(selectedProperty.id, { labelFontSize: Math.min(24, Math.max(8, parseInt(e.target.value) || 11)) })}
-                    className="bg-stone-900 border-stone-600 text-stone-200 h-7 text-xs"
-                    data-testid={`input-prop-labelfont-${selectedProperty.key}`}
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-stone-500 text-[10px]">Value Font</Label>
-                  <Input
-                    type="number"
-                    min={8}
-                    max={24}
-                    value={selectedProperty.valueFontSize ?? 13}
-                    onChange={(e) => updatePropertyLayout(selectedProperty.id, { valueFontSize: Math.min(24, Math.max(8, parseInt(e.target.value) || 13)) })}
-                    className="bg-stone-900 border-stone-600 text-stone-200 h-7 text-xs"
-                    data-testid={`input-prop-valuefont-${selectedProperty.key}`}
-                  />
-                </div>
-              </div>
-              <div className="space-y-1">
-                <Label className="text-stone-500 text-[10px]">Label Position</Label>
-                <Select
-                  value={selectedProperty.labelPosition || 'top'}
-                  onValueChange={(v) => updatePropertyLayout(selectedProperty.id, { labelPosition: v })}
-                >
-                  <SelectTrigger className="bg-stone-900 border-stone-600 text-stone-200 h-7 text-xs" data-testid={`select-prop-labelpos-${selectedProperty.key}`}>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="bg-stone-800 border-stone-700">
-                    <SelectItem value="top" className="text-stone-200">Top</SelectItem>
-                    <SelectItem value="left" className="text-stone-200">Left</SelectItem>
-                    <SelectItem value="hidden" className="text-stone-200">Hidden</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => { handleDeleteProperty(selectedProperty.id); setSelectedPropertyId(null); }}
-                className="w-full border-red-800/50 text-red-400 hover:bg-red-900/20 hover:text-red-300 h-7 text-xs"
-                data-testid={`button-delete-property-${selectedProperty.id}`}
-              >
-                <Trash2 className="h-3 w-3 mr-1" /> Delete Property
-              </Button>
-            </div>
-          )}
         </div>
       );
     }
@@ -1755,6 +1712,162 @@ function SandboxSheetEditor({
           <div className={`${edgeCls} bottom-0 left-0 w-3 h-3 cursor-sw-resize`} {...resizeHandleProps('sw')} />
           <div className={`${edgeCls} bottom-0 right-0 w-3 h-3 cursor-se-resize`} {...resizeHandleProps('se')} data-testid="resize-handle-se" />
         </>
+      )}
+
+      {propSettingsOpen && selectedProperty && item.type === 'template' && createPortal(
+        <div
+          className="fixed z-[9999]"
+          style={{ left: propSettingsPanelPos.x, top: propSettingsPanelPos.y, width: propSettingsPanelSize.width, height: propSettingsPanelSize.height }}
+          data-testid="floating-property-settings"
+        >
+          <div className="w-full h-full bg-stone-900 border border-purple-700/60 rounded-lg shadow-2xl shadow-black/50 flex flex-col overflow-hidden relative">
+            <div
+              className="flex items-center justify-between px-3 py-2 bg-stone-800 border-b border-purple-800/40 cursor-grab active:cursor-grabbing shrink-0"
+              onPointerDown={handleSettingsDragDown}
+              onPointerMove={handleSettingsDragMove}
+              onPointerUp={handleSettingsDragUp}
+            >
+              <span className="text-xs font-medium text-purple-300">Property Settings</span>
+              <Button variant="ghost" size="icon" onClick={() => { setPropSettingsOpen(false); setSelectedPropertyId(null); }} className="h-5 w-5 text-stone-500 hover:text-white" data-testid="button-close-property-settings">
+                <X className="h-3 w-3" />
+              </Button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-3 space-y-3">
+              <div className="space-y-1">
+                <Label className="text-stone-500 text-[10px]">Name</Label>
+                <Input
+                  value={selectedProperty.label}
+                  onChange={(e) => updatePropertyLayout(selectedProperty.id, { label: e.target.value })}
+                  className="bg-stone-800 border-stone-600 text-stone-200 h-7 text-xs"
+                  data-testid="input-prop-name"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-stone-500 text-[10px]">Key</Label>
+                <Input
+                  value={selectedProperty.key}
+                  onChange={(e) => {
+                    const newKey = e.target.value.replace(/[^a-zA-Z0-9]/g, '');
+                    if (newKey && properties.some((p: any) => p.id !== selectedProperty.id && p.key === newKey)) {
+                      return;
+                    }
+                    updatePropertyLayout(selectedProperty.id, { key: newKey });
+                  }}
+                  className="bg-stone-800 border-stone-600 text-stone-200 h-7 text-xs font-mono"
+                  data-testid="input-prop-key"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <Label className="text-stone-500 text-[10px]">X</Label>
+                  <Input
+                    type="number"
+                    value={selectedProperty.x ?? 10}
+                    onChange={(e) => updatePropertyLayout(selectedProperty.id, { x: Math.max(0, parseInt(e.target.value) || 0) })}
+                    className="bg-stone-900 border-stone-600 text-stone-200 h-7 text-xs"
+                    data-testid={`input-prop-x-${selectedProperty.key}`}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-stone-500 text-[10px]">Y</Label>
+                  <Input
+                    type="number"
+                    value={selectedProperty.y ?? 10}
+                    onChange={(e) => updatePropertyLayout(selectedProperty.id, { y: Math.max(0, parseInt(e.target.value) || 0) })}
+                    className="bg-stone-900 border-stone-600 text-stone-200 h-7 text-xs"
+                    data-testid={`input-prop-y-${selectedProperty.key}`}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-stone-500 text-[10px]">Width</Label>
+                  <Input
+                    type="number"
+                    value={selectedProperty.width ?? 200}
+                    onChange={(e) => updatePropertyLayout(selectedProperty.id, { width: Math.max(60, parseInt(e.target.value) || 60) })}
+                    className="bg-stone-900 border-stone-600 text-stone-200 h-7 text-xs"
+                    data-testid={`input-prop-width-${selectedProperty.key}`}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-stone-500 text-[10px]">Height</Label>
+                  <Input
+                    type="number"
+                    value={selectedProperty.height ?? 40}
+                    onChange={(e) => updatePropertyLayout(selectedProperty.id, { height: Math.max(20, parseInt(e.target.value) || 20) })}
+                    className="bg-stone-900 border-stone-600 text-stone-200 h-7 text-xs"
+                    data-testid={`input-prop-height-${selectedProperty.key}`}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-stone-500 text-[10px]">Label Font</Label>
+                  <Input
+                    type="number"
+                    min={8}
+                    max={24}
+                    value={selectedProperty.labelFontSize ?? 11}
+                    onChange={(e) => updatePropertyLayout(selectedProperty.id, { labelFontSize: Math.min(24, Math.max(8, parseInt(e.target.value) || 11)) })}
+                    className="bg-stone-900 border-stone-600 text-stone-200 h-7 text-xs"
+                    data-testid={`input-prop-labelfont-${selectedProperty.key}`}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-stone-500 text-[10px]">Value Font</Label>
+                  <Input
+                    type="number"
+                    min={8}
+                    max={24}
+                    value={selectedProperty.valueFontSize ?? 13}
+                    onChange={(e) => updatePropertyLayout(selectedProperty.id, { valueFontSize: Math.min(24, Math.max(8, parseInt(e.target.value) || 13)) })}
+                    className="bg-stone-900 border-stone-600 text-stone-200 h-7 text-xs"
+                    data-testid={`input-prop-valuefont-${selectedProperty.key}`}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-stone-500 text-[10px]">Label Position</Label>
+                <Select
+                  value={selectedProperty.labelPosition || 'top'}
+                  onValueChange={(v) => updatePropertyLayout(selectedProperty.id, { labelPosition: v })}
+                >
+                  <SelectTrigger className="bg-stone-900 border-stone-600 text-stone-200 h-7 text-xs" data-testid={`select-prop-labelpos-${selectedProperty.key}`}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-stone-800 border-stone-700">
+                    <SelectItem value="top" className="text-stone-200">Top</SelectItem>
+                    <SelectItem value="left" className="text-stone-200">Left</SelectItem>
+                    <SelectItem value="hidden" className="text-stone-200">Hidden</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => { handleDeleteProperty(selectedProperty.id); setSelectedPropertyId(null); setPropSettingsOpen(false); }}
+                className="w-full border-red-800/50 text-red-400 hover:bg-red-900/20 hover:text-red-300 h-7 text-xs"
+                data-testid={`button-delete-property-${selectedProperty.id}`}
+              >
+                <Trash2 className="h-3 w-3 mr-1" /> Delete Property
+              </Button>
+            </div>
+
+            <div
+              className="absolute bottom-0 right-0 w-4 h-4 cursor-se-resize"
+              onPointerDown={handleSettingsResizeDown}
+              onPointerMove={handleSettingsResizeMove}
+              onPointerUp={handleSettingsResizeUp}
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" className="text-stone-600">
+                <path d="M14 14L8 14M14 14L14 8M14 14L6 6" stroke="currentColor" strokeWidth="1.5" fill="none" />
+              </svg>
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
     </div>
   );
