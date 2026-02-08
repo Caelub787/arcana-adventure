@@ -33,6 +33,8 @@ export interface PropertyBorder {
 
 export interface PropertyStyle {
   textColor?: string;
+  labelColor?: string;
+  valueColor?: string;
   backgroundColor?: string;
   backgroundGradient?: PropertyGradient;
   border?: PropertyBorder;
@@ -408,6 +410,20 @@ export function PropertyStyleEditor({
           onChange={(val) => update({ textColor: val })}
           onReset={() => update({ textColor: undefined })}
           testId="text-color"
+        />
+        <ColorPickerRow
+          label="Label Color"
+          value={style.labelColor || ""}
+          onChange={(val) => update({ labelColor: val })}
+          onReset={() => update({ labelColor: undefined })}
+          testId="label-color"
+        />
+        <ColorPickerRow
+          label="Value Color"
+          value={style.valueColor || ""}
+          onChange={(val) => update({ valueColor: val })}
+          onReset={() => update({ valueColor: undefined })}
+          testId="value-color"
         />
 
         <div className="space-y-1.5 pt-1">

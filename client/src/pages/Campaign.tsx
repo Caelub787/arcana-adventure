@@ -1217,12 +1217,14 @@ function SandboxSheetEditor({
     const isLeft = labelPos === 'left';
     const isHidden = labelPos === 'hidden';
     const propStyle = getPropertyCssStyle(prop.style);
+    const labelColor = prop.style?.labelColor || prop.style?.textColor || undefined;
+    const valueColor = prop.style?.valueColor || prop.style?.textColor || undefined;
 
     if (prop.type === 'panel') {
       return (
         <div className="w-full h-full overflow-hidden p-1 flex flex-col" style={propStyle}>
           {!isHidden && (
-            <span className="text-purple-300 truncate shrink-0 border-b border-purple-700/30 pb-1 mb-1" style={{ fontSize: `${lfs}px`, ...(propStyle.color ? { color: propStyle.color } : {}) }}>
+            <span className="text-purple-300 truncate shrink-0 border-b border-purple-700/30 pb-1 mb-1" style={{ fontSize: `${lfs}px`, ...(labelColor ? { color: labelColor } : {}) }}>
               {prop.label}
             </span>
           )}
@@ -1257,17 +1259,17 @@ function SandboxSheetEditor({
     return (
       <div className={`flex ${isLeft ? 'flex-row items-center gap-2' : 'flex-col'} w-full h-full overflow-hidden p-1`} style={propStyle}>
         {!isHidden && (
-          <span className="text-purple-300 truncate shrink-0" style={{ fontSize: `${lfs}px`, ...(propStyle.color ? { color: propStyle.color } : {}) }}>{prop.label}</span>
+          <span className="text-purple-300 truncate shrink-0" style={{ fontSize: `${lfs}px`, ...(labelColor ? { color: labelColor } : {}) }}>{prop.label}</span>
         )}
         <div className="flex-1 min-w-0">
           {prop.type === 'checkbox' ? (
             <div className="flex items-center"><input type="checkbox" disabled className="h-4 w-4 accent-purple-600" /></div>
           ) : prop.type === 'select' ? (
-            <div className="bg-stone-700/50 border border-stone-600/50 rounded px-1.5 truncate text-stone-400" style={{ fontSize: `${vfs}px` }}>Select ▾</div>
+            <div className="bg-stone-700/50 border border-stone-600/50 rounded px-1.5 truncate" style={{ fontSize: `${vfs}px`, color: valueColor || '#a8a29e' }}>Select ▾</div>
           ) : prop.type === 'textarea' ? (
-            <div className="bg-stone-700/50 border border-stone-600/50 rounded px-1.5 text-stone-400 h-full min-h-[20px]" style={{ fontSize: `${vfs}px` }}>Text area</div>
+            <div className="bg-stone-700/50 border border-stone-600/50 rounded px-1.5 h-full min-h-[20px]" style={{ fontSize: `${vfs}px`, color: valueColor || '#a8a29e' }}>Text area</div>
           ) : (
-            <div className="bg-stone-700/50 border border-stone-600/50 rounded px-1.5 truncate text-stone-400" style={{ fontSize: `${vfs}px` }}>
+            <div className="bg-stone-700/50 border border-stone-600/50 rounded px-1.5 truncate" style={{ fontSize: `${vfs}px`, color: valueColor || '#a8a29e' }}>
               {prop.type === 'number' ? '0' : 'abc'}
             </div>
           )}
@@ -1506,6 +1508,8 @@ function SandboxSheetEditor({
       const isLeft = labelPos === 'left';
       const isHidden = labelPos === 'hidden';
       const propStyle = getPropertyCssStyle(prop.style);
+      const labelColor = prop.style?.labelColor || prop.style?.textColor || undefined;
+      const valueColor = prop.style?.valueColor || prop.style?.textColor || undefined;
 
       if (prop.type === 'panel') {
         const children = actorProperties.filter((c: any) => c.parentId === prop.id);
@@ -1517,7 +1521,7 @@ function SandboxSheetEditor({
             data-testid={`actor-property-${prop.key}`}
           >
             {!isHidden && (
-              <div className="text-stone-300 truncate shrink-0 px-2 pt-1" style={{ fontSize: `${lfs}px`, ...(propStyle.color ? { color: propStyle.color } : {}) }}>
+              <div className="text-stone-300 truncate shrink-0 px-2 pt-1" style={{ fontSize: `${lfs}px`, ...(labelColor ? { color: labelColor } : {}) }}>
                 {prop.label}
               </div>
             )}
@@ -1572,7 +1576,7 @@ function SandboxSheetEditor({
         >
           <div className={`flex ${isLeft ? 'flex-row items-center gap-2' : 'flex-col'} w-full h-full`}>
             {!isHidden && (
-              <Label className="text-stone-400 truncate shrink-0" style={{ fontSize: `${lfs}px`, ...(propStyle.color ? { color: propStyle.color } : {}) }}>{prop.label}</Label>
+              <Label className="text-stone-400 truncate shrink-0" style={{ fontSize: `${lfs}px`, ...(labelColor ? { color: labelColor } : {}) }}>{prop.label}</Label>
             )}
             <div className="flex-1 min-w-0">
               {prop.type === 'text' && (
@@ -1580,7 +1584,7 @@ function SandboxSheetEditor({
                   value={val}
                   onChange={(e) => handleActorValueChange(prop.key, e.target.value)}
                   className="bg-stone-800 border-stone-700 text-stone-200 h-full w-full"
-                  style={{ fontSize: `${vfs}px` }}
+                  style={{ fontSize: `${vfs}px`, ...(valueColor ? { color: valueColor } : {}) }}
                   data-testid={`input-actor-${prop.key}`}
                 />
               )}
@@ -1590,7 +1594,7 @@ function SandboxSheetEditor({
                   value={val}
                   onChange={(e) => handleActorValueChange(prop.key, e.target.value)}
                   className="bg-stone-800 border-stone-700 text-stone-200 h-full w-full"
-                  style={{ fontSize: `${vfs}px` }}
+                  style={{ fontSize: `${vfs}px`, ...(valueColor ? { color: valueColor } : {}) }}
                   data-testid={`input-actor-${prop.key}`}
                 />
               )}
@@ -1610,13 +1614,13 @@ function SandboxSheetEditor({
                   value={val}
                   onChange={(e) => handleActorValueChange(prop.key, e.target.value)}
                   className="bg-stone-800 border-stone-700 text-stone-200 h-full w-full resize-none"
-                  style={{ fontSize: `${vfs}px` }}
+                  style={{ fontSize: `${vfs}px`, ...(valueColor ? { color: valueColor } : {}) }}
                   data-testid={`textarea-actor-${prop.key}`}
                 />
               )}
               {prop.type === 'select' && (
                 <Select value={val || '__empty__'} onValueChange={(v) => handleActorValueChange(prop.key, v === '__empty__' ? '' : v)}>
-                  <SelectTrigger className="bg-stone-800 border-stone-700 text-stone-200 h-full w-full" style={{ fontSize: `${vfs}px` }} data-testid={`select-actor-${prop.key}`}>
+                  <SelectTrigger className="bg-stone-800 border-stone-700 text-stone-200 h-full w-full" style={{ fontSize: `${vfs}px`, ...(valueColor ? { color: valueColor } : {}) }} data-testid={`select-actor-${prop.key}`}>
                     <SelectValue placeholder="Select..." />
                   </SelectTrigger>
                   <SelectContent className="bg-stone-800 border-stone-700">
@@ -1667,12 +1671,14 @@ function SandboxSheetEditor({
       const lfs = prop.labelFontSize ?? 11;
       const vfs = prop.valueFontSize ?? 13;
       const propStyle = getPropertyCssStyle(prop.style);
+      const labelColor = prop.style?.labelColor || prop.style?.textColor || undefined;
+      const valueColor = prop.style?.valueColor || prop.style?.textColor || undefined;
 
       if (prop.type === 'panel') {
         const children = actorProperties.filter((c: any) => c.parentId === prop.id);
         return (
           <div key={prop.id} className="rounded-lg p-3 space-y-3" style={propStyle} data-testid={`actor-property-mobile-${prop.key}`}>
-            <Label className="text-stone-300 font-medium" style={{ fontSize: `${lfs}px`, ...(propStyle.color ? { color: propStyle.color } : {}) }}>{prop.label}</Label>
+            <Label className="text-stone-300 font-medium" style={{ fontSize: `${lfs}px`, ...(labelColor ? { color: labelColor } : {}) }}>{prop.label}</Label>
             {children.map((child: any) => renderMobileProperty(child))}
           </div>
         );
@@ -1709,13 +1715,13 @@ function SandboxSheetEditor({
 
       return (
         <div key={prop.id} className="space-y-1" style={propStyle} data-testid={`actor-property-mobile-${prop.key}`}>
-          <Label className="text-stone-400" style={{ fontSize: `${lfs}px`, ...(propStyle.color ? { color: propStyle.color } : {}) }}>{prop.label}</Label>
+          <Label className="text-stone-400" style={{ fontSize: `${lfs}px`, ...(labelColor ? { color: labelColor } : {}) }}>{prop.label}</Label>
           {prop.type === 'text' && (
             <Input
               value={val}
               onChange={(e) => handleActorValueChange(prop.key, e.target.value)}
               className="bg-stone-800 border-stone-700 text-stone-200 h-8"
-              style={{ fontSize: `${vfs}px` }}
+              style={{ fontSize: `${vfs}px`, ...(valueColor ? { color: valueColor } : {}) }}
               data-testid={`input-actor-${prop.key}`}
             />
           )}
@@ -1725,7 +1731,7 @@ function SandboxSheetEditor({
               value={val}
               onChange={(e) => handleActorValueChange(prop.key, e.target.value)}
               className="bg-stone-800 border-stone-700 text-stone-200 h-8"
-              style={{ fontSize: `${vfs}px` }}
+              style={{ fontSize: `${vfs}px`, ...(valueColor ? { color: valueColor } : {}) }}
               data-testid={`input-actor-${prop.key}`}
             />
           )}
@@ -1745,13 +1751,13 @@ function SandboxSheetEditor({
               value={val}
               onChange={(e) => handleActorValueChange(prop.key, e.target.value)}
               className="bg-stone-800 border-stone-700 text-stone-200 min-h-[60px]"
-              style={{ fontSize: `${vfs}px` }}
+              style={{ fontSize: `${vfs}px`, ...(valueColor ? { color: valueColor } : {}) }}
               data-testid={`textarea-actor-${prop.key}`}
             />
           )}
           {prop.type === 'select' && (
             <Select value={val || '__empty__'} onValueChange={(v) => handleActorValueChange(prop.key, v === '__empty__' ? '' : v)}>
-              <SelectTrigger className="bg-stone-800 border-stone-700 text-stone-200 h-8" style={{ fontSize: `${vfs}px` }} data-testid={`select-actor-${prop.key}`}>
+              <SelectTrigger className="bg-stone-800 border-stone-700 text-stone-200 h-8" style={{ fontSize: `${vfs}px`, ...(valueColor ? { color: valueColor } : {}) }} data-testid={`select-actor-${prop.key}`}>
                 <SelectValue placeholder="Select..." />
               </SelectTrigger>
               <SelectContent className="bg-stone-800 border-stone-700">
