@@ -432,7 +432,7 @@ export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToo
         left: 0,
         top: 0,
         overflow: 'visible',
-        zIndex: 25,
+        zIndex: 100,
       }}
       data-testid="fog-of-war-overlay"
     >
@@ -1028,6 +1028,48 @@ export function FogToolsPanel({
     },
   });
 
+  const clearDoorsMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/scenes/${sceneId}/doors`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      if (!res.ok) throw new Error('Failed to clear doors');
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['scene-doors', sceneId] });
+      toast({ title: 'All doors cleared' });
+    },
+  });
+
+  const clearWindowsMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/scenes/${sceneId}/windows`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      if (!res.ok) throw new Error('Failed to clear windows');
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['scene-windows', sceneId] });
+      toast({ title: 'All windows cleared' });
+    },
+  });
+
+  const clearLightsMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/scenes/${sceneId}/lights`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      if (!res.ok) throw new Error('Failed to clear lights');
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['scene-lights', sceneId] });
+      toast({ title: 'All lights cleared' });
+    },
+  });
+
   const clearMode = useCallback(() => {
     setWallDrawMode(false);
     setDoorPlaceMode(false);
@@ -1297,7 +1339,7 @@ export function FogToolsPanel({
           </div>
         )}
 
-        <div className="border-t border-stone-700 pt-2">
+        <div className="border-t border-stone-700 pt-2 space-y-1">
           <Button
             variant="outline"
             size="sm"
@@ -1307,6 +1349,36 @@ export function FogToolsPanel({
           >
             <Trash2 className="h-3 w-3 mr-1" />
             Clear All Walls
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 w-full border-red-800 text-red-400 hover:bg-red-900/30 hover:text-red-300 text-xs"
+            onClick={() => clearDoorsMutation.mutate()}
+            data-testid="clear-all-doors"
+          >
+            <Trash2 className="h-3 w-3 mr-1" />
+            Clear All Doors
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 w-full border-red-800 text-red-400 hover:bg-red-900/30 hover:text-red-300 text-xs"
+            onClick={() => clearWindowsMutation.mutate()}
+            data-testid="clear-all-windows"
+          >
+            <Trash2 className="h-3 w-3 mr-1" />
+            Clear All Windows
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 w-full border-red-800 text-red-400 hover:bg-red-900/30 hover:text-red-300 text-xs"
+            onClick={() => clearLightsMutation.mutate()}
+            data-testid="clear-all-lights"
+          >
+            <Trash2 className="h-3 w-3 mr-1" />
+            Clear All Lights
           </Button>
         </div>
       </div>

@@ -200,18 +200,21 @@ export interface IStorage {
   createSceneDoor(door: InsertSceneDoor): Promise<SceneDoor>;
   updateSceneDoor(id: string, data: Partial<InsertSceneDoor>): Promise<SceneDoor | undefined>;
   deleteSceneDoor(id: string): Promise<void>;
+  deleteSceneDoors(sceneId: string): Promise<void>;
 
   // Scene Window operations
   getSceneWindows(sceneId: string): Promise<SceneWindow[]>;
   createSceneWindow(win: InsertSceneWindow): Promise<SceneWindow>;
   updateSceneWindow(id: string, data: Partial<InsertSceneWindow>): Promise<SceneWindow | undefined>;
   deleteSceneWindow(id: string): Promise<void>;
+  deleteSceneWindows(sceneId: string): Promise<void>;
 
   // Scene Light operations
   getSceneLights(sceneId: string): Promise<SceneLight[]>;
   createSceneLight(light: InsertSceneLight): Promise<SceneLight>;
   updateSceneLight(id: string, data: Partial<InsertSceneLight>): Promise<SceneLight | undefined>;
   deleteSceneLight(id: string): Promise<void>;
+  deleteSceneLights(sceneId: string): Promise<void>;
 
   // Character Permission operations
   getCharacterPermissions(characterId: string): Promise<CharacterPermission[]>;
@@ -1865,6 +1868,10 @@ export class DatabaseStorage implements IStorage {
     await db.delete(sceneDoors).where(eq(sceneDoors.id, id));
   }
 
+  async deleteSceneDoors(sceneId: string): Promise<void> {
+    await db.delete(sceneDoors).where(eq(sceneDoors.sceneId, sceneId));
+  }
+
   // Scene Window operations
   async getSceneWindows(sceneId: string): Promise<SceneWindow[]> {
     return await db.select().from(sceneWindows).where(eq(sceneWindows.sceneId, sceneId));
@@ -1884,6 +1891,10 @@ export class DatabaseStorage implements IStorage {
     await db.delete(sceneWindows).where(eq(sceneWindows.id, id));
   }
 
+  async deleteSceneWindows(sceneId: string): Promise<void> {
+    await db.delete(sceneWindows).where(eq(sceneWindows.sceneId, sceneId));
+  }
+
   // Scene Light operations
   async getSceneLights(sceneId: string): Promise<SceneLight[]> {
     return await db.select().from(sceneLights).where(eq(sceneLights.sceneId, sceneId));
@@ -1901,6 +1912,10 @@ export class DatabaseStorage implements IStorage {
 
   async deleteSceneLight(id: string): Promise<void> {
     await db.delete(sceneLights).where(eq(sceneLights.id, id));
+  }
+
+  async deleteSceneLights(sceneId: string): Promise<void> {
+    await db.delete(sceneLights).where(eq(sceneLights.sceneId, sceneId));
   }
 
   // Character Permission operations

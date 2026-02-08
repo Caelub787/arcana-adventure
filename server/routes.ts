@@ -6859,6 +6859,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.delete("/api/scenes/:sceneId/doors", requireAuth, async (req, res) => {
+    try {
+      const scene = await storage.getScene(req.params.sceneId);
+      if (!scene) return res.status(404).json({ error: "Scene not found" });
+      const isGm = await storage.isGM(req.session.userId!, scene.campaignId);
+      if (!isGm) return res.status(403).json({ error: "Only GMs can manage doors" });
+      
+      await storage.deleteSceneDoors(req.params.sceneId);
+      broadcastToCampaign(scene.campaignId, { type: "doors_cleared", sceneId: req.params.sceneId });
+      res.json({ success: true });
+    } catch (e) {
+      res.status(500).json({ error: "Failed to clear doors" });
+    }
+  });
+
   // Scene Doors CRUD
   app.get("/api/scenes/:sceneId/doors", requireAuth, async (req, res) => {
     try {
@@ -6903,6 +6918,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.delete("/api/scenes/:sceneId/windows", requireAuth, async (req, res) => {
+    try {
+      const scene = await storage.getScene(req.params.sceneId);
+      if (!scene) return res.status(404).json({ error: "Scene not found" });
+      const isGm = await storage.isGM(req.session.userId!, scene.campaignId);
+      if (!isGm) return res.status(403).json({ error: "Only GMs can manage windows" });
+      
+      await storage.deleteSceneWindows(req.params.sceneId);
+      broadcastToCampaign(scene.campaignId, { type: "windows_cleared", sceneId: req.params.sceneId });
+      res.json({ success: true });
+    } catch (e) {
+      res.status(500).json({ error: "Failed to clear windows" });
+    }
+  });
+
   // Scene Windows CRUD
   app.get("/api/scenes/:sceneId/windows", requireAuth, async (req, res) => {
     try {
@@ -6944,6 +6974,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ success: true });
     } catch (e) {
       res.status(500).json({ error: "Failed to delete window" });
+    }
+  });
+
+  app.delete("/api/scenes/:sceneId/lights", requireAuth, async (req, res) => {
+    try {
+      const scene = await storage.getScene(req.params.sceneId);
+      if (!scene) return res.status(404).json({ error: "Scene not found" });
+      const isGm = await storage.isGM(req.session.userId!, scene.campaignId);
+      if (!isGm) return res.status(403).json({ error: "Only GMs can manage lights" });
+      
+      await storage.deleteSceneLights(req.params.sceneId);
+      broadcastToCampaign(scene.campaignId, { type: "lights_cleared", sceneId: req.params.sceneId });
+      res.json({ success: true });
+    } catch (e) {
+      res.status(500).json({ error: "Failed to clear lights" });
     }
   });
 
