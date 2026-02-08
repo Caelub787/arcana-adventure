@@ -1,4 +1,4 @@
-export type PropertyType = 'number' | 'text' | 'boolean' | 'resource' | 'list' | 'formula' | 'pfp';
+export type PropertyType = 'number' | 'text' | 'boolean' | 'resource' | 'list' | 'formula' | 'textarea';
 
 export type SandboxPropertyType = PropertyType;
 
@@ -61,6 +61,8 @@ export interface TabBehaviorConfig {
   activeTabId?: string;
   tabButtonStyle?: StyleConfig;
   activeTabButtonStyle?: StyleConfig;
+  tabLayout?: 'top' | 'left' | 'right';
+  tabIcons?: Record<string, { type: 'icon' | 'image'; value: string }>;
 }
 
 export interface PanelBehaviorConfig {
@@ -174,20 +176,6 @@ export function createDefaultTemplateData(): TemplateData {
     },
     layoutNodes: {},
     properties: {
-      pfp: {
-        id: crypto.randomUUID(),
-        key: 'pfp',
-        type: 'pfp',
-        parentId: null,
-        metadata: {
-          label: 'Profile Picture',
-          uiConfig: { x: 10, y: 10, width: 100, height: 100, labelPosition: 'hidden' },
-          style: {
-            border: { enabled: true, color: '#44403c', width: 2, radius: 8, style: 'solid' },
-            backgroundColor: '#292524',
-          },
-        },
-      },
       name: {
         id: crypto.randomUUID(),
         key: 'name',
@@ -195,7 +183,7 @@ export function createDefaultTemplateData(): TemplateData {
         parentId: null,
         metadata: {
           label: 'Name',
-          uiConfig: { x: 120, y: 10, width: 310, height: 40, labelFontSize: 10, valueFontSize: 18, labelPosition: 'top' },
+          uiConfig: { x: 10, y: 10, width: 310, height: 40, labelFontSize: 10, valueFontSize: 18, labelPosition: 'top' },
           style: { labelColor: '#a8a29e', valueColor: '#e7e5e4' },
         },
       },
@@ -257,7 +245,7 @@ export function resolveValue(property: PropertyDefinition, actorValues: ActorVal
     case 'resource': return { current: 0, max: 0 };
     case 'list': return [];
     case 'text': return '';
-    case 'pfp': return '';
+    case 'textarea': return '';
     case 'formula': return 0;
   }
 }
@@ -337,7 +325,7 @@ export function migrateTemplateData(raw: any): TemplateData {
     } else if (Array.isArray(raw.properties)) {
       for (const p of raw.properties) {
         if (p.type === 'panel' || p.type === 'tab') continue;
-        const propType = p.type === 'checkbox' ? 'boolean' : p.type === 'select' ? 'list' : p.type === 'textarea' ? 'text' : p.type;
+        const propType = p.type === 'checkbox' ? 'boolean' : p.type === 'select' ? 'list' : p.type === 'textarea' ? 'textarea' : p.type;
         newProperties[p.key] = {
           id: p.id,
           key: p.key,

@@ -921,24 +921,10 @@ function SandboxSheetEditor({
     } catch { return item.type === 'actor' ? { name: item.name } : {}; }
   });
   const actorSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const [pfpEditorOpen, setPfpEditorOpen] = useState<string | null>(null);
-  const [pfpBrowseOpen, setPfpBrowseOpen] = useState(false);
-  const [pfpEditorPos, setPfpEditorPos] = useState({ x: 0, y: 0 });
-  const pfpDragRef = useRef({ startX: 0, startY: 0, posX: 0, posY: 0 });
-  const [pfpDragging, setPfpDragging] = useState(false);
   const [containerAddTarget, setContainerAddTarget] = useState<{ parentId: string; tabId?: string } | null>(null);
   const [activeTabState, setActiveTabState] = useState<Record<string, string>>({});
   const [collapsedPanels, setCollapsedPanels] = useState<Record<string, boolean>>({});
   const [addNodeDialogOpen, setAddNodeDialogOpen] = useState(false);
-
-  useEffect(() => {
-    if (pfpEditorOpen) {
-      setPfpEditorPos({
-        x: Math.max(20, (window.innerWidth - 340) / 2),
-        y: Math.max(20, (window.innerHeight - 400) / 2),
-      });
-    }
-  }, [pfpEditorOpen]);
 
   const updateTemplateMutationSheet = useMutation({
     mutationFn: (data: any) => api.updateSandboxTemplate(campaignId, item.id, data),
@@ -1043,6 +1029,13 @@ function SandboxSheetEditor({
     tooltip: p.metadata?.tooltip ?? p.tooltip,
     style: p.metadata?.style ?? p.style,
     options: p.metadata?.options ?? p.options,
+    placeholder: p.metadata?.placeholder,
+    min: p.metadata?.min,
+    max: p.metadata?.max,
+    step: p.metadata?.step,
+    formulaExpression: p.metadata?.formulaExpression,
+    showBar: p.metadata?.resourceConfig?.showBar,
+    barColor: p.metadata?.resourceConfig?.barColor,
   }));
 
   const layoutNodes: Record<string, any> = templateData.layoutNodes || {};
@@ -1113,13 +1106,12 @@ function SandboxSheetEditor({
 
   const handleNewPropTypeChange = (type: string) => {
     setNewPropType(type);
-    if (type === 'pfp') {
-      setNewPropWidth(100);
-      setNewPropHeight(100);
-      setNewPropLabelPosition('hidden');
-    } else if (type === 'resource') {
+    if (type === 'resource') {
       setNewPropWidth(200);
       setNewPropHeight(50);
+    } else if (type === 'textarea') {
+      setNewPropWidth(300);
+      setNewPropHeight(120);
     } else {
       setNewPropWidth(200);
       setNewPropHeight(40);
@@ -1229,9 +1221,23 @@ function SandboxSheetEditor({
           ...(updates.labelPosition !== undefined ? { labelPosition: updates.labelPosition } : {}),
         },
         ...(updates.style !== undefined ? { style: updates.style } : {}),
+        ...(updates.placeholder !== undefined ? { placeholder: updates.placeholder } : {}),
+        ...(updates.min !== undefined ? { min: updates.min } : {}),
+        ...(updates.max !== undefined ? { max: updates.max } : {}),
+        ...(updates.step !== undefined ? { step: updates.step } : {}),
+        ...(updates.formulaExpression !== undefined ? { formulaExpression: updates.formulaExpression } : {}),
+        ...(updates.options !== undefined ? { options: updates.options } : {}),
+        ...(updates.showBar !== undefined || updates.barColor !== undefined ? {
+          resourceConfig: {
+            ...original.metadata?.resourceConfig,
+            ...(updates.showBar !== undefined ? { showBar: updates.showBar } : {}),
+            ...(updates.barColor !== undefined ? { barColor: updates.barColor } : {}),
+          },
+        } : {}),
       },
       ...(updates.parentId !== undefined ? { parentId: updates.parentId } : {}),
       ...(updates.key !== undefined ? { key: updates.key } : {}),
+      ...(updates.type !== undefined ? { type: updates.type } : {}),
     };
     const newKey = updates.key !== undefined ? updates.key : prop.key;
     const newProps = { ...templateData.properties };
@@ -1360,17 +1366,6 @@ function SandboxSheetEditor({
     const labelColor = prop.style?.labelColor || prop.style?.textColor || undefined;
     const valueColor = prop.style?.valueColor || prop.style?.textColor || undefined;
 
-    if (prop.type === 'pfp') {
-      return (
-        <div className="w-full h-full flex items-center justify-center bg-stone-800/50 overflow-hidden rounded" style={propStyle}>
-          <div className="flex flex-col items-center justify-center text-stone-500 gap-1">
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-            <span className="text-[9px]">Profile Picture</span>
-          </div>
-        </div>
-      );
-    }
-
     return (
       <div className={`flex ${isLeft ? 'flex-row items-center gap-2' : 'flex-col'} w-full h-full overflow-hidden p-1`} style={propStyle}>
         {!isHidden && (
@@ -1387,6 +1382,10 @@ function SandboxSheetEditor({
             </div>
           ) : prop.type === 'formula' ? (
             <div className="bg-stone-700/30 border border-stone-600/50 rounded px-1.5 truncate text-amber-400 italic" style={{ fontSize: `${vfs}px` }}>f(x)</div>
+          ) : prop.type === 'textarea' ? (
+            <div className="bg-stone-700/50 border border-stone-600/50 rounded px-1.5 h-full" style={{ fontSize: `${vfs}px`, color: valueColor || '#a8a29e' }}>
+              <span className="text-stone-500 text-[9px]">Multi-line text...</span>
+            </div>
           ) : (
             <div className="bg-stone-700/50 border border-stone-600/50 rounded px-1.5 truncate" style={{ fontSize: `${vfs}px`, color: valueColor || '#a8a29e' }}>
               {prop.type === 'number' ? '0' : 'abc'}
@@ -1522,6 +1521,9 @@ function SandboxSheetEditor({
           const tabContentHeight = activeChildProps.length > 0
             ? Math.max(80, Math.max(...activeChildProps.map((p: any) => (p.y ?? 0) + (p.height ?? 40))) + 20)
             : 80;
+          const tabLayout = node.behaviorConfig?.tabConfig?.tabLayout || 'top';
+          const tabIcons = node.behaviorConfig?.tabConfig?.tabIcons || {};
+          const isVerticalTabs = tabLayout === 'left' || tabLayout === 'right';
 
           const handleAddTabPage = () => {
             const newChildId = crypto.randomUUID();
@@ -1547,6 +1549,56 @@ function SandboxSheetEditor({
             toast({ title: 'Tab page added' });
           };
 
+          const tabButtonsContent = (
+            <div className={`flex ${isVerticalTabs ? 'flex-col min-w-[80px]' : 'items-center'} gap-0.5 px-1 ${!isVerticalTabs ? 'border-b border-stone-700' : 'border-r border-stone-700'}`} data-testid={`tab-buttons-${node.id}`}>
+              {childNodes.map((child: any) => (
+                <div key={child.id} className="relative group">
+                  {editingSectionName === child.id ? (
+                    <input
+                      autoFocus
+                      defaultValue={child.name}
+                      className="bg-stone-700 border border-stone-500 text-stone-200 text-[10px] px-2 py-1 rounded w-20"
+                      onBlur={(e) => {
+                        const newName = e.target.value.trim() || child.name;
+                        const updatedNodes = { ...layoutNodes, [child.id]: { ...child, name: newName } };
+                        updateTemplateMutationSheet.mutate({ data: JSON.stringify({ ...templateData, layoutNodes: updatedNodes }) });
+                        setEditingSectionName(null);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                        if (e.key === 'Escape') setEditingSectionName(null);
+                      }}
+                      data-testid={`input-tab-name-${child.id}`}
+                    />
+                  ) : (
+                    <button
+                      className={`px-3 py-1.5 text-[10px] ${isVerticalTabs ? 'rounded-l w-full text-left' : 'rounded-t'} transition-colors ${isVerticalTabs ? 'border-r-2' : 'border-b-2'} ${activeChildId === child.id ? 'bg-purple-700/30 text-purple-300 border-purple-500' : 'bg-transparent text-stone-400 hover:bg-stone-700 hover:text-stone-300 border-transparent'}`}
+                      onClick={() => setActiveTabState(prev => ({ ...prev, [node.id]: child.id }))}
+                      onDoubleClick={() => setEditingSectionName(child.id)}
+                      onContextMenu={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setSectionContextMenu({ x: e.clientX, y: e.clientY, sectionId: child.id });
+                      }}
+                      data-testid={`tab-button-${child.id}`}
+                    >
+                      {tabIcons[child.id] && <span className="mr-1">{tabIcons[child.id].value}</span>}
+                      {child.name}
+                    </button>
+                  )}
+                </div>
+              ))}
+              <button
+                className={`px-1.5 py-1 text-[10px] text-stone-500 hover:text-stone-300 hover:bg-stone-700 rounded transition-colors ${isVerticalTabs ? '' : 'ml-0.5'}`}
+                onClick={handleAddTabPage}
+                title="Add tab page"
+                data-testid={`button-add-tab-page-${node.id}`}
+              >
+                <Plus className="h-3 w-3" />
+              </button>
+            </div>
+          );
+
           return (
             <div key={node.id} className="relative rounded overflow-visible mb-1" style={nodeStyle}
               onContextMenu={(e) => {
@@ -1558,62 +1610,18 @@ function SandboxSheetEditor({
               <div className="px-2 py-0.5">
                 <span className="text-[10px] text-stone-500 uppercase tracking-wider">{node.name} <span className="text-stone-600">(tab)</span></span>
               </div>
-              <div className="flex items-center gap-0.5 px-1 border-b border-stone-700" data-testid={`tab-buttons-${node.id}`}>
-                {childNodes.map((child: any) => (
-                  <div key={child.id} className="relative group">
-                    {editingSectionName === child.id ? (
-                      <input
-                        autoFocus
-                        defaultValue={child.name}
-                        className="bg-stone-700 border border-stone-500 text-stone-200 text-[10px] px-2 py-1 rounded w-20"
-                        onBlur={(e) => {
-                          const newName = e.target.value.trim() || child.name;
-                          const updatedNodes = { ...layoutNodes, [child.id]: { ...child, name: newName } };
-                          updateTemplateMutationSheet.mutate({ data: JSON.stringify({ ...templateData, layoutNodes: updatedNodes }) });
-                          setEditingSectionName(null);
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-                          if (e.key === 'Escape') setEditingSectionName(null);
-                        }}
-                        data-testid={`input-tab-name-${child.id}`}
-                      />
-                    ) : (
-                      <button
-                        className={`px-3 py-1.5 text-[10px] rounded-t transition-colors border-b-2 ${activeChildId === child.id ? 'bg-purple-700/30 text-purple-300 border-purple-500' : 'bg-transparent text-stone-400 hover:bg-stone-700 hover:text-stone-300 border-transparent'}`}
-                        onClick={() => setActiveTabState(prev => ({ ...prev, [node.id]: child.id }))}
-                        onDoubleClick={() => setEditingSectionName(child.id)}
-                        onContextMenu={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          setSectionContextMenu({ x: e.clientX, y: e.clientY, sectionId: child.id });
-                        }}
-                        data-testid={`tab-button-${child.id}`}
-                      >
-                        {child.name}
-                      </button>
-                    )}
-                  </div>
-                ))}
-                <button
-                  className="px-1.5 py-1 text-[10px] text-stone-500 hover:text-stone-300 hover:bg-stone-700 rounded transition-colors ml-0.5"
-                  onClick={handleAddTabPage}
-                  title="Add tab page"
-                  data-testid={`button-add-tab-page-${node.id}`}
-                >
-                  <Plus className="h-3 w-3" />
-                </button>
-              </div>
-              {activeChild && (
-                <div
-                  className="relative rounded-b overflow-visible"
-                  style={{ minHeight: `${tabContentHeight}px`, ...(activeChild.styleConfig ? getPropertyCssStyle(activeChild.styleConfig) : {}) }}
-                  onClick={(e) => {
-                    if (e.target === e.currentTarget) { setSelectedPropertyId(null); setPropSettingsOpen(false); }
-                  }}
-                >
-                  {activeChildProps.map((prop: any) => renderCanvasProperty(prop))}
-                  {activeChildChildren.map((child: any) => renderLayoutNode(child))}
+              <div className={`flex ${tabLayout === 'right' ? 'flex-row-reverse' : tabLayout === 'left' ? 'flex-row' : 'flex-col'}`}>
+                {tabButtonsContent}
+                {activeChild && (
+                  <div
+                    className="relative flex-1 rounded-b overflow-visible"
+                    style={{ minHeight: `${tabContentHeight}px`, ...(activeChild.styleConfig ? getPropertyCssStyle(activeChild.styleConfig) : {}) }}
+                    onClick={(e) => {
+                      if (e.target === e.currentTarget) { setSelectedPropertyId(null); setPropSettingsOpen(false); }
+                    }}
+                  >
+                    {activeChildProps.map((prop: any) => renderCanvasProperty(prop))}
+                    {activeChildChildren.map((child: any) => renderLayoutNode(child))}
                   <div className="absolute top-1 right-1 flex items-center gap-1 z-30">
                     <button
                       className="w-5 h-5 rounded bg-purple-700/60 hover:bg-purple-600 text-white flex items-center justify-center transition-all opacity-60 hover:opacity-100"
@@ -1867,32 +1875,85 @@ function SandboxSheetEditor({
                       }} data-testid="menu-change-layout-mode">Change Layout Mode</button>
 
                       {isTabNode && (
-                        <button className="w-full text-left px-3 py-1.5 text-xs text-purple-400 hover:bg-stone-700" onClick={() => {
-                          const tabChildren = layoutNodesList.filter((n: any) => n.parentId === ctxNode.id).sort((a: any, b: any) => a.order - b.order);
-                          const newChildId = crypto.randomUUID();
-                          const newChild: any = {
-                            id: newChildId,
-                            type: 'panel',
-                            name: `Tab ${tabChildren.length + 1}`,
-                            parentId: ctxNode.id,
-                            childrenIds: [],
-                            positionConfig: { x: 0, y: 0 },
-                            sizeConfig: { width: canvas?.width || 450, height: 180 },
-                            layoutMode: 'freeform',
-                            styleConfig: { backgroundColor: '#1c1917' },
-                            order: tabChildren.length,
-                          };
-                          const updatedNodes = {
-                            ...layoutNodes,
-                            [newChildId]: newChild,
-                            [ctxNode.id]: { ...ctxNode, childrenIds: [...(ctxNode.childrenIds || []), newChildId] },
-                          };
-                          updateTemplateMutationSheet.mutate({ data: JSON.stringify({ ...templateData, layoutNodes: updatedNodes }) });
-                          setActiveTabState(prev => ({ ...prev, [ctxNode.id]: newChildId }));
-                          toast({ title: 'Tab page added' });
-                          setSectionContextMenu(null);
-                        }} data-testid="menu-add-tab-page">Add Tab Page</button>
+                        <>
+                          <button className="w-full text-left px-3 py-1.5 text-xs text-purple-400 hover:bg-stone-700" onClick={() => {
+                            const tabChildren = layoutNodesList.filter((n: any) => n.parentId === ctxNode.id).sort((a: any, b: any) => a.order - b.order);
+                            const newChildId = crypto.randomUUID();
+                            const newChild: any = {
+                              id: newChildId,
+                              type: 'panel',
+                              name: `Tab ${tabChildren.length + 1}`,
+                              parentId: ctxNode.id,
+                              childrenIds: [],
+                              positionConfig: { x: 0, y: 0 },
+                              sizeConfig: { width: canvas?.width || 450, height: 180 },
+                              layoutMode: 'freeform',
+                              styleConfig: { backgroundColor: '#1c1917' },
+                              order: tabChildren.length,
+                            };
+                            const updatedNodes = {
+                              ...layoutNodes,
+                              [newChildId]: newChild,
+                              [ctxNode.id]: { ...ctxNode, childrenIds: [...(ctxNode.childrenIds || []), newChildId] },
+                            };
+                            updateTemplateMutationSheet.mutate({ data: JSON.stringify({ ...templateData, layoutNodes: updatedNodes }) });
+                            setActiveTabState(prev => ({ ...prev, [ctxNode.id]: newChildId }));
+                            toast({ title: 'Tab page added' });
+                            setSectionContextMenu(null);
+                          }} data-testid="menu-add-tab-page">Add Tab Page</button>
+                          <button className="w-full text-left px-3 py-1.5 text-xs text-stone-200 hover:bg-stone-700" onClick={() => {
+                            const currentLayout = ctxNode.behaviorConfig?.tabConfig?.tabLayout || 'top';
+                            const layouts = ['top', 'left', 'right'] as const;
+                            const nextLayout = layouts[(layouts.indexOf(currentLayout as any) + 1) % layouts.length];
+                            const updatedNodes = {
+                              ...layoutNodes,
+                              [ctxNode.id]: {
+                                ...ctxNode,
+                                behaviorConfig: {
+                                  ...ctxNode.behaviorConfig,
+                                  tabConfig: { ...ctxNode.behaviorConfig?.tabConfig, tabLayout: nextLayout },
+                                },
+                              },
+                            };
+                            updateTemplateMutationSheet.mutate({ data: JSON.stringify({ ...templateData, layoutNodes: updatedNodes }) });
+                            toast({ title: `Tab layout: ${nextLayout}` });
+                            setSectionContextMenu(null);
+                          }} data-testid="menu-tab-layout">Tab Position ({(ctxNode.behaviorConfig?.tabConfig?.tabLayout || 'top')})</button>
+                        </>
                       )}
+
+                      {isTabPage && (
+                        <button className="w-full text-left px-3 py-1.5 text-xs text-stone-200 hover:bg-stone-700" onClick={() => {
+                          const currentIcon = parentNode?.behaviorConfig?.tabConfig?.tabIcons?.[ctxNode.id]?.value || '';
+                          const newIcon = prompt('Enter an emoji or icon for this tab:', currentIcon);
+                          if (newIcon !== null) {
+                            const updatedNodes = {
+                              ...layoutNodes,
+                              [parentNode!.id]: {
+                                ...parentNode,
+                                behaviorConfig: {
+                                  ...parentNode?.behaviorConfig,
+                                  tabConfig: {
+                                    ...parentNode?.behaviorConfig?.tabConfig,
+                                    tabIcons: {
+                                      ...parentNode?.behaviorConfig?.tabConfig?.tabIcons,
+                                      [ctxNode.id]: newIcon ? { type: 'icon' as const, value: newIcon } : undefined,
+                                    },
+                                  },
+                                },
+                              },
+                            };
+                            if (!newIcon) {
+                              const icons = { ...updatedNodes[parentNode!.id].behaviorConfig.tabConfig.tabIcons };
+                              delete icons[ctxNode.id];
+                              updatedNodes[parentNode!.id].behaviorConfig.tabConfig.tabIcons = icons;
+                            }
+                            updateTemplateMutationSheet.mutate({ data: JSON.stringify({ ...templateData, layoutNodes: updatedNodes }) });
+                            toast({ title: newIcon ? `Tab icon set: ${newIcon}` : 'Tab icon removed' });
+                            setSectionContextMenu(null);
+                          }
+                        }} data-testid="menu-set-tab-icon">Set Tab Icon/Emoji</button>
+                      )
 
                       {isPanelNode && (
                         <button className="w-full text-left px-3 py-1.5 text-xs text-stone-200 hover:bg-stone-700" onClick={() => {
@@ -2134,29 +2195,20 @@ function SandboxSheetEditor({
       const labelColor = prop.style?.labelColor || prop.style?.textColor || undefined;
       const valueColor = prop.style?.valueColor || prop.style?.textColor || undefined;
 
-      if (prop.type === 'pfp') {
-        const pfpImage = val;
+      if (prop.type === 'textarea') {
         return (
-          <div
-            key={prop.id}
-            className="absolute overflow-hidden cursor-pointer group"
-            style={{ left: `${px}px`, top: `${py}px`, width: `${pw}px`, height: `${ph}px`, ...propStyle }}
-            data-testid={`actor-property-${prop.key}`}
-            title={prop.tooltip || "Double-click to change picture"}
-            onDoubleClick={() => setPfpEditorOpen(prop.key)}
-          >
-            {pfpImage ? (
-              <img src={pfpImage} alt="Profile" className="w-full h-full object-cover rounded" />
-            ) : (
-              <div className="w-full h-full flex items-center justify-center bg-stone-800 rounded">
-                <div className="flex flex-col items-center text-stone-500 gap-1">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-                  <span className="text-xs">Click to set</span>
-                </div>
+          <div key={prop.id} className="absolute" style={{ left: `${px}px`, top: `${py}px`, width: `${pw}px`, height: `${ph}px`, ...propStyle }} data-testid={`actor-property-${prop.key}`} title={prop.tooltip || prop.label}>
+            <div className={`flex ${isLeft ? 'flex-row items-start gap-2' : 'flex-col'} w-full h-full`}>
+              {!isHidden && <Label className="text-stone-400 truncate shrink-0" style={{ fontSize: `${lfs}px`, ...(labelColor ? { color: labelColor } : {}) }}>{prop.label}</Label>}
+              <div className="flex-1 min-w-0 h-full">
+                <textarea
+                  value={val}
+                  onChange={(e) => handleActorValueChange(prop.key, e.target.value)}
+                  className="bg-stone-800 border border-stone-700 text-stone-200 w-full h-full resize-none rounded px-2 py-1"
+                  style={{ fontSize: `${vfs}px`, ...(valueColor ? { color: valueColor } : {}) }}
+                  data-testid={`textarea-actor-${prop.key}`}
+                />
               </div>
-            )}
-            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded">
-              <span className="text-white text-xs">Change</span>
             </div>
           </div>
         );
@@ -2279,21 +2331,29 @@ function SandboxSheetEditor({
 
       if (node.type === 'tab') {
         const activeChildId = activeTabState[node.id] || node.behaviorConfig?.tabConfig?.activeTabId || childNodes[0]?.id;
+        const tabLayout = node.behaviorConfig?.tabConfig?.tabLayout || 'top';
+        const tabIcons = node.behaviorConfig?.tabConfig?.tabIcons || {};
+        const isVerticalTabs = tabLayout === 'left' || tabLayout === 'right';
         return (
           <div key={node.id} className="relative rounded overflow-visible mb-1" style={nodeStyle}>
-            <div className="flex gap-1 mb-1 px-1" data-testid={`actor-tab-buttons-${node.id}`}>
-              {childNodes.map((child: any) => (
-                <button
-                  key={child.id}
-                  className={`px-2 py-1 text-[10px] rounded transition-colors ${activeChildId === child.id ? 'bg-amber-700 text-white' : 'bg-stone-700 text-stone-400 hover:bg-stone-600'}`}
-                  onClick={() => setActiveTabState(prev => ({ ...prev, [node.id]: child.id }))}
-                  data-testid={`actor-tab-button-${child.id}`}
-                >
-                  {child.name}
-                </button>
-              ))}
+            <div className={`flex ${tabLayout === 'right' ? 'flex-row-reverse' : tabLayout === 'left' ? 'flex-row' : 'flex-col'}`}>
+              <div className={`flex ${isVerticalTabs ? 'flex-col min-w-[80px]' : 'flex-row'} gap-1 ${isVerticalTabs ? '' : 'mb-1'} px-1`} data-testid={`actor-tab-buttons-${node.id}`}>
+                {childNodes.map((child: any) => (
+                  <button
+                    key={child.id}
+                    className={`px-2 py-1 text-[10px] rounded transition-colors ${isVerticalTabs ? 'text-left' : ''} ${activeChildId === child.id ? 'bg-amber-700 text-white' : 'bg-stone-700 text-stone-400 hover:bg-stone-600'}`}
+                    onClick={() => setActiveTabState(prev => ({ ...prev, [node.id]: child.id }))}
+                    data-testid={`actor-tab-button-${child.id}`}
+                  >
+                    {tabIcons[child.id] && <span className="mr-1">{tabIcons[child.id].value}</span>}
+                    {child.name}
+                  </button>
+                ))}
+              </div>
+              <div className="flex-1">
+                {childNodes.filter((c: any) => c.id === activeChildId).map((child: any) => renderActorLayoutNode(child))}
+              </div>
             </div>
-            {childNodes.filter((c: any) => c.id === activeChildId).map((child: any) => renderActorLayoutNode(child))}
           </div>
         );
       }
@@ -2398,26 +2458,17 @@ function SandboxSheetEditor({
       const labelColor = prop.style?.labelColor || prop.style?.textColor || undefined;
       const valueColor = prop.style?.valueColor || prop.style?.textColor || undefined;
 
-      if (prop.type === 'pfp') {
-        const pfpImage = val;
+      if (prop.type === 'textarea') {
         return (
-          <div key={prop.id} className="flex items-center gap-3" data-testid={`actor-property-mobile-${prop.key}`}>
-            <div
-              className="w-20 h-20 rounded-lg overflow-hidden cursor-pointer shrink-0 group relative"
-              style={propStyle}
-              onDoubleClick={() => setPfpEditorOpen(prop.key)}
-            >
-              {pfpImage ? (
-                <img src={pfpImage} alt="Profile" className="w-full h-full object-cover" />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center bg-stone-800">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-stone-500"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-                </div>
-              )}
-              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                <span className="text-white text-[10px]">Change</span>
-              </div>
-            </div>
+          <div key={prop.id} className="space-y-1" style={propStyle} data-testid={`actor-property-mobile-${prop.key}`} title={prop.tooltip || prop.label}>
+            <Label className="text-stone-400" style={{ fontSize: `${lfs}px`, ...(labelColor ? { color: labelColor } : {}) }}>{prop.label}</Label>
+            <textarea
+              value={val}
+              onChange={(e) => handleActorValueChange(prop.key, e.target.value)}
+              className="bg-stone-800 border border-stone-700 text-stone-200 w-full resize-none rounded px-2 py-1"
+              style={{ fontSize: `${vfs}px`, height: `${(prop.height ?? 80) - 20}px`, ...(valueColor ? { color: valueColor } : {}) }}
+              data-testid={`textarea-actor-${prop.key}`}
+            />
           </div>
         );
       }
@@ -2538,21 +2589,29 @@ function SandboxSheetEditor({
 
       if (node.type === 'tab') {
         const activeChildId = activeTabState[node.id] || node.behaviorConfig?.tabConfig?.activeTabId || childNodes[0]?.id;
+        const tabLayout = node.behaviorConfig?.tabConfig?.tabLayout || 'top';
+        const tabIcons = node.behaviorConfig?.tabConfig?.tabIcons || {};
+        const isVerticalTabs = tabLayout === 'left' || tabLayout === 'right';
         return (
           <div key={node.id} className="space-y-2" style={nodeStyle}>
-            <div className="flex gap-1 flex-wrap" data-testid={`mobile-tab-buttons-${node.id}`}>
-              {childNodes.map((child: any) => (
-                <button
-                  key={child.id}
-                  className={`px-3 py-1.5 text-xs rounded transition-colors ${activeChildId === child.id ? 'bg-amber-700 text-white' : 'bg-stone-700 text-stone-400 hover:bg-stone-600'}`}
-                  onClick={() => setActiveTabState(prev => ({ ...prev, [node.id]: child.id }))}
-                  data-testid={`mobile-tab-button-${child.id}`}
-                >
-                  {child.name}
-                </button>
-              ))}
+            <div className={`flex ${tabLayout === 'right' ? 'flex-row-reverse' : tabLayout === 'left' ? 'flex-row' : 'flex-col'} gap-2`}>
+              <div className={`flex ${isVerticalTabs ? 'flex-col min-w-[80px]' : 'flex-row flex-wrap'} gap-1`} data-testid={`mobile-tab-buttons-${node.id}`}>
+                {childNodes.map((child: any) => (
+                  <button
+                    key={child.id}
+                    className={`px-3 py-1.5 text-xs rounded transition-colors ${isVerticalTabs ? 'text-left' : ''} ${activeChildId === child.id ? 'bg-amber-700 text-white' : 'bg-stone-700 text-stone-400 hover:bg-stone-600'}`}
+                    onClick={() => setActiveTabState(prev => ({ ...prev, [node.id]: child.id }))}
+                    data-testid={`mobile-tab-button-${child.id}`}
+                  >
+                    {tabIcons[child.id] && <span className="mr-1">{tabIcons[child.id].value}</span>}
+                    {child.name}
+                  </button>
+                ))}
+              </div>
+              <div className="flex-1">
+                {childNodes.filter((c: any) => c.id === activeChildId).map((child: any) => renderMobileLayoutNode(child))}
+              </div>
             </div>
-            {childNodes.filter((c: any) => c.id === activeChildId).map((child: any) => renderMobileLayoutNode(child))}
           </div>
         );
       }
@@ -2913,6 +2972,27 @@ function SandboxSheetEditor({
                 />
               </div>
 
+              <div className="space-y-1">
+                <Label className="text-stone-500 text-[10px]">Type</Label>
+                <Select
+                  value={selectedProperty.type}
+                  onValueChange={(v) => updatePropertyLayout(selectedProperty.id, { type: v })}
+                >
+                  <SelectTrigger className="bg-stone-900 border-stone-600 text-stone-200 h-7 text-xs" data-testid="select-prop-type">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-stone-800 border-stone-700">
+                    <SelectItem value="text">Text</SelectItem>
+                    <SelectItem value="number">Number</SelectItem>
+                    <SelectItem value="boolean">Boolean (Checkbox)</SelectItem>
+                    <SelectItem value="list">List (Select)</SelectItem>
+                    <SelectItem value="resource">Resource (Current/Max)</SelectItem>
+                    <SelectItem value="formula">Formula</SelectItem>
+                    <SelectItem value="textarea">Text Field (Multi-line)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
               <div className="grid grid-cols-2 gap-2">
                 <div className="space-y-1">
                   <Label className="text-stone-500 text-[10px]">X</Label>
@@ -2954,30 +3034,34 @@ function SandboxSheetEditor({
                     data-testid={`input-prop-height-${selectedProperty.key}`}
                   />
                 </div>
-                <div className="space-y-1">
-                  <Label className="text-stone-500 text-[10px]">Label Font</Label>
-                  <Input
-                    type="number"
-                    min={8}
-                    max={24}
-                    value={selectedProperty.labelFontSize ?? 11}
-                    onChange={(e) => updatePropertyLayout(selectedProperty.id, { labelFontSize: Math.min(24, Math.max(8, parseInt(e.target.value) || 11)) })}
-                    className="bg-stone-900 border-stone-600 text-stone-200 h-7 text-xs"
-                    data-testid={`input-prop-labelfont-${selectedProperty.key}`}
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-stone-500 text-[10px]">Value Font</Label>
-                  <Input
-                    type="number"
-                    min={8}
-                    max={24}
-                    value={selectedProperty.valueFontSize ?? 13}
-                    onChange={(e) => updatePropertyLayout(selectedProperty.id, { valueFontSize: Math.min(24, Math.max(8, parseInt(e.target.value) || 13)) })}
-                    className="bg-stone-900 border-stone-600 text-stone-200 h-7 text-xs"
-                    data-testid={`input-prop-valuefont-${selectedProperty.key}`}
-                  />
-                </div>
+                {selectedProperty.type !== 'boolean' && (
+                  <div className="space-y-1">
+                    <Label className="text-stone-500 text-[10px]">Label Font</Label>
+                    <Input
+                      type="number"
+                      min={8}
+                      max={24}
+                      value={selectedProperty.labelFontSize ?? 11}
+                      onChange={(e) => updatePropertyLayout(selectedProperty.id, { labelFontSize: Math.min(24, Math.max(8, parseInt(e.target.value) || 11)) })}
+                      className="bg-stone-900 border-stone-600 text-stone-200 h-7 text-xs"
+                      data-testid={`input-prop-labelfont-${selectedProperty.key}`}
+                    />
+                  </div>
+                )}
+                {selectedProperty.type !== 'boolean' && (
+                  <div className="space-y-1">
+                    <Label className="text-stone-500 text-[10px]">Value Font</Label>
+                    <Input
+                      type="number"
+                      min={8}
+                      max={24}
+                      value={selectedProperty.valueFontSize ?? 13}
+                      onChange={(e) => updatePropertyLayout(selectedProperty.id, { valueFontSize: Math.min(24, Math.max(8, parseInt(e.target.value) || 13)) })}
+                      className="bg-stone-900 border-stone-600 text-stone-200 h-7 text-xs"
+                      data-testid={`input-prop-valuefont-${selectedProperty.key}`}
+                    />
+                  </div>
+                )}
               </div>
 
               <div className="space-y-1">
@@ -3027,6 +3111,126 @@ function SandboxSheetEditor({
                   </SelectContent>
                 </Select>
               </div>
+
+              {selectedProperty.type === 'text' && (
+                <div className="space-y-1">
+                  <Label className="text-stone-500 text-[10px]">Placeholder</Label>
+                  <Input
+                    value={selectedProperty.placeholder || ''}
+                    onChange={(e) => updatePropertyLayout(selectedProperty.id, { placeholder: e.target.value })}
+                    placeholder="Enter placeholder text..."
+                    className="bg-stone-800 border-stone-600 text-stone-200 h-7 text-xs"
+                    data-testid="input-prop-placeholder"
+                  />
+                </div>
+              )}
+
+              {selectedProperty.type === 'textarea' && (
+                <div className="space-y-1">
+                  <Label className="text-stone-500 text-[10px]">Placeholder</Label>
+                  <Input
+                    value={selectedProperty.placeholder || ''}
+                    onChange={(e) => updatePropertyLayout(selectedProperty.id, { placeholder: e.target.value })}
+                    placeholder="Enter placeholder text..."
+                    className="bg-stone-800 border-stone-600 text-stone-200 h-7 text-xs"
+                    data-testid="input-prop-textarea-placeholder"
+                  />
+                </div>
+              )}
+
+              {selectedProperty.type === 'number' && (
+                <div className="space-y-2">
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="space-y-1">
+                      <Label className="text-stone-500 text-[10px]">Min</Label>
+                      <Input
+                        type="number"
+                        value={selectedProperty.min ?? ''}
+                        onChange={(e) => updatePropertyLayout(selectedProperty.id, { min: e.target.value ? Number(e.target.value) : undefined })}
+                        className="bg-stone-800 border-stone-600 text-stone-200 h-7 text-xs"
+                        data-testid="input-prop-min"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-stone-500 text-[10px]">Max</Label>
+                      <Input
+                        type="number"
+                        value={selectedProperty.max ?? ''}
+                        onChange={(e) => updatePropertyLayout(selectedProperty.id, { max: e.target.value ? Number(e.target.value) : undefined })}
+                        className="bg-stone-800 border-stone-600 text-stone-200 h-7 text-xs"
+                        data-testid="input-prop-max"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-stone-500 text-[10px]">Step</Label>
+                      <Input
+                        type="number"
+                        value={selectedProperty.step ?? 1}
+                        onChange={(e) => updatePropertyLayout(selectedProperty.id, { step: Number(e.target.value) || 1 })}
+                        className="bg-stone-800 border-stone-600 text-stone-200 h-7 text-xs"
+                        data-testid="input-prop-step"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {selectedProperty.type === 'resource' && (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={selectedProperty.showBar ?? false}
+                      onChange={(e) => updatePropertyLayout(selectedProperty.id, { showBar: e.target.checked })}
+                      className="h-3 w-3 accent-purple-600"
+                      data-testid="checkbox-prop-showbar"
+                    />
+                    <Label className="text-stone-500 text-[10px]">Show Progress Bar</Label>
+                  </div>
+                  {selectedProperty.showBar && (
+                    <div className="space-y-1">
+                      <Label className="text-stone-500 text-[10px]">Bar Color</Label>
+                      <input
+                        type="color"
+                        value={selectedProperty.barColor || '#d97706'}
+                        onChange={(e) => updatePropertyLayout(selectedProperty.id, { barColor: e.target.value })}
+                        className="w-7 h-7 rounded border border-stone-700 bg-stone-800 cursor-pointer p-0"
+                        data-testid="input-prop-barcolor"
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {selectedProperty.type === 'list' && (
+                <div className="space-y-1">
+                  <Label className="text-stone-500 text-[10px]">Options (comma-separated)</Label>
+                  <Input
+                    value={(selectedProperty.options || []).join(', ')}
+                    onChange={(e) => {
+                      const options = e.target.value.split(',').map((o: string) => o.trim()).filter(Boolean);
+                      updatePropertyLayout(selectedProperty.id, { options });
+                    }}
+                    placeholder="Option 1, Option 2, Option 3"
+                    className="bg-stone-800 border-stone-600 text-stone-200 h-7 text-xs"
+                    data-testid="input-prop-options"
+                  />
+                </div>
+              )}
+
+              {selectedProperty.type === 'formula' && (
+                <div className="space-y-1">
+                  <Label className="text-stone-500 text-[10px]">Formula Expression</Label>
+                  <Input
+                    value={selectedProperty.formulaExpression || ''}
+                    onChange={(e) => updatePropertyLayout(selectedProperty.id, { formulaExpression: e.target.value })}
+                    placeholder="e.g. {strength} + {dexterity}"
+                    className="bg-stone-800 border-stone-600 text-stone-200 h-7 text-xs font-mono"
+                    data-testid="input-prop-formula"
+                  />
+                  <p className="text-stone-600 text-[9px]">Use {'{propertyKey}'} to reference other properties</p>
+                </div>
+              )}
 
               <div className="border-t border-stone-700/50 pt-3">
                 <PropertyStyleEditor
@@ -3116,7 +3320,7 @@ function SandboxSheetEditor({
                     <SelectItem value="select" className="text-stone-200 text-xs">List (Select)</SelectItem>
                     <SelectItem value="resource" className="text-stone-200 text-xs">Resource (Current/Max)</SelectItem>
                     <SelectItem value="formula" className="text-stone-200 text-xs">Formula</SelectItem>
-                    <SelectItem value="pfp" className="text-stone-200 text-xs">Profile Picture</SelectItem>
+                    <SelectItem value="textarea" className="text-stone-200 text-xs">Text Field (Multi-line)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -3222,102 +3426,6 @@ function SandboxSheetEditor({
         document.body
       )}
 
-      {pfpEditorOpen && createPortal(
-        <div
-          className="fixed bg-stone-900 border border-purple-700/50 rounded-lg shadow-2xl shadow-purple-900/30"
-          style={{ left: pfpEditorPos.x, top: pfpEditorPos.y, width: '340px', zIndex: 10000 }}
-          onMouseDown={(e) => e.stopPropagation()}
-        >
-          <div
-            className="flex items-center justify-between px-3 py-2 border-b border-stone-700 bg-stone-800/50 rounded-t-lg cursor-move select-none"
-            onPointerDown={(e) => {
-              e.preventDefault();
-              setPfpDragging(true);
-              pfpDragRef.current = { startX: e.clientX, startY: e.clientY, posX: pfpEditorPos.x, posY: pfpEditorPos.y };
-              (e.target as HTMLElement).setPointerCapture(e.pointerId);
-            }}
-            onPointerMove={(e) => {
-              if (!pfpDragging) return;
-              setPfpEditorPos({
-                x: pfpDragRef.current.posX + e.clientX - pfpDragRef.current.startX,
-                y: Math.max(0, pfpDragRef.current.posY + e.clientY - pfpDragRef.current.startY),
-              });
-            }}
-            onPointerUp={(e) => {
-              if (pfpDragging) {
-                setPfpDragging(false);
-                (e.target as HTMLElement).releasePointerCapture(e.pointerId);
-              }
-            }}
-          >
-            <span className="text-xs font-semibold text-purple-300">Profile Picture Editor</span>
-            <button onClick={() => { setPfpEditorOpen(null); setPfpBrowseOpen(false); }} className="text-stone-400 hover:text-stone-200"><X className="h-4 w-4" /></button>
-          </div>
-          <div className="p-4 space-y-4">
-            <div className="w-32 h-32 mx-auto rounded-lg overflow-hidden border-2 border-stone-600 bg-stone-800">
-              {actorValues[pfpEditorOpen] ? (
-                <img src={actorValues[pfpEditorOpen]} alt="Current PFP" className="w-full h-full object-cover" />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center text-stone-500">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-                </div>
-              )}
-            </div>
-            <div className="space-y-2">
-              <Button
-                onClick={() => setPfpBrowseOpen(true)}
-                className="w-full bg-purple-700 hover:bg-purple-600 text-white text-xs h-9"
-                data-testid="button-pfp-browse"
-              >
-                <Search className="h-3.5 w-3.5 mr-2" /> Browse Image Library
-              </Button>
-              <label className="flex items-center justify-center w-full h-9 rounded-md border border-stone-600 bg-stone-800 hover:bg-stone-700 cursor-pointer text-xs text-stone-300 transition-colors">
-                <Upload className="h-3.5 w-3.5 mr-2" /> Upload from Device
-                <input
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (!file) return;
-                    if (file.size > 5 * 1024 * 1024) {
-                      toast({ title: "File too large", description: "Maximum size is 5MB", variant: "destructive" });
-                      return;
-                    }
-                    const reader = new FileReader();
-                    reader.onload = (ev) => {
-                      const base64 = ev.target?.result as string;
-                      handleActorValueChange(pfpEditorOpen, base64);
-                    };
-                    reader.readAsDataURL(file);
-                  }}
-                  data-testid="input-pfp-upload"
-                />
-              </label>
-              {actorValues[pfpEditorOpen] && (
-                <Button
-                  variant="outline"
-                  onClick={() => handleActorValueChange(pfpEditorOpen, '')}
-                  className="w-full border-red-800 text-red-400 hover:bg-red-900/20 text-xs h-9"
-                  data-testid="button-pfp-remove"
-                >
-                  <Trash2 className="h-3.5 w-3.5 mr-2" /> Remove Picture
-                </Button>
-              )}
-            </div>
-          </div>
-          <ImageBrowser
-            open={pfpBrowseOpen}
-            onOpenChange={setPfpBrowseOpen}
-            onSelect={(imageBase64) => {
-              handleActorValueChange(pfpEditorOpen, imageBase64);
-              setPfpBrowseOpen(false);
-            }}
-            title="Select Profile Picture"
-          />
-        </div>,
-        document.body
-      )}
     </div>
   );
 }

@@ -57,8 +57,7 @@ export type SandboxPropertyType =
   | "textarea"
   | "select"
   | "panel"
-  | "tab"
-  | "pfp";
+  | "tab";
 
 export interface SandboxProperty {
   id: string;
@@ -400,7 +399,7 @@ export function PropertyStyleEditor({
     ],
   };
 
-  const showFontSection = propertyType !== "panel" && propertyType !== "tab" && propertyType !== "pfp";
+  const showFontSection = propertyType !== "panel" && propertyType !== "tab";
 
   return (
     <div
