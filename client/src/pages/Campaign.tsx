@@ -920,7 +920,19 @@ function SandboxSheetEditor({
   const [activeTabIds, setActiveTabIds] = useState<Record<string, string>>({});
   const [pfpEditorOpen, setPfpEditorOpen] = useState<string | null>(null);
   const [pfpBrowseOpen, setPfpBrowseOpen] = useState(false);
+  const [pfpEditorPos, setPfpEditorPos] = useState({ x: 0, y: 0 });
+  const pfpDragRef = useRef({ startX: 0, startY: 0, posX: 0, posY: 0 });
+  const [pfpDragging, setPfpDragging] = useState(false);
   const [containerAddTarget, setContainerAddTarget] = useState<{ parentId: string; tabId?: string } | null>(null);
+
+  useEffect(() => {
+    if (pfpEditorOpen) {
+      setPfpEditorPos({
+        x: Math.max(20, (window.innerWidth - 340) / 2),
+        y: Math.max(20, (window.innerHeight - 400) / 2),
+      });
+    }
+  }, [pfpEditorOpen]);
 
   const updateTemplateMutationSheet = useMutation({
     mutationFn: (data: any) => api.updateSandboxTemplate(campaignId, item.id, data),
@@ -2760,9 +2772,34 @@ function SandboxSheetEditor({
         document.body
       )}
 
-      {pfpEditorOpen && (
-        <div className="fixed z-[60] bg-stone-900 border border-purple-700/50 rounded-lg shadow-2xl shadow-purple-900/30" style={{ left: '50%', top: '50%', transform: 'translate(-50%, -50%)', width: '340px' }}>
-          <div className="flex items-center justify-between px-3 py-2 border-b border-stone-700 bg-stone-800/50 rounded-t-lg">
+      {pfpEditorOpen && createPortal(
+        <div
+          className="fixed bg-stone-900 border border-purple-700/50 rounded-lg shadow-2xl shadow-purple-900/30"
+          style={{ left: pfpEditorPos.x, top: pfpEditorPos.y, width: '340px', zIndex: 10000 }}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          <div
+            className="flex items-center justify-between px-3 py-2 border-b border-stone-700 bg-stone-800/50 rounded-t-lg cursor-move select-none"
+            onPointerDown={(e) => {
+              e.preventDefault();
+              setPfpDragging(true);
+              pfpDragRef.current = { startX: e.clientX, startY: e.clientY, posX: pfpEditorPos.x, posY: pfpEditorPos.y };
+              (e.target as HTMLElement).setPointerCapture(e.pointerId);
+            }}
+            onPointerMove={(e) => {
+              if (!pfpDragging) return;
+              setPfpEditorPos({
+                x: pfpDragRef.current.posX + e.clientX - pfpDragRef.current.startX,
+                y: Math.max(0, pfpDragRef.current.posY + e.clientY - pfpDragRef.current.startY),
+              });
+            }}
+            onPointerUp={(e) => {
+              if (pfpDragging) {
+                setPfpDragging(false);
+                (e.target as HTMLElement).releasePointerCapture(e.pointerId);
+              }
+            }}
+          >
             <span className="text-xs font-semibold text-purple-300">Profile Picture Editor</span>
             <button onClick={() => { setPfpEditorOpen(null); setPfpBrowseOpen(false); }} className="text-stone-400 hover:text-stone-200"><X className="h-4 w-4" /></button>
           </div>
@@ -2828,7 +2865,8 @@ function SandboxSheetEditor({
             }}
             title="Select Profile Picture"
           />
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
