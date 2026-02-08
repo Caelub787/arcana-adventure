@@ -2145,7 +2145,7 @@ function SandboxSheetEditor({
         {!collapsed && showTemplateSettings && item.type === 'template' && role === 'gm' && (() => {
           const currentSettings = settings;
           const saveTemplateSettings = (newSettings: any) => {
-            const currentData = { ...templateData, settings: newSettings, properties: templateData.properties || [] };
+            const currentData = { ...templateData, settings: newSettings, properties: templateData.properties || {} };
             updateTemplateMutationSheet.mutate({ data: JSON.stringify(currentData) });
             toast({ title: "Template settings saved" });
           };
