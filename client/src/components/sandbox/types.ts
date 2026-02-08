@@ -1,5 +1,7 @@
 export type PropertyType = 'number' | 'text' | 'boolean' | 'resource' | 'list' | 'formula' | 'pfp';
 
+export type SandboxPropertyType = PropertyType;
+
 export type TemplateType = 'character' | 'item' | 'vehicle' | 'beast' | 'custom';
 
 export type LayoutNodeType = 'panel' | 'tab' | 'section' | 'group';
@@ -38,6 +40,8 @@ export interface StyleConfig {
   visibility?: 'visible' | 'hidden';
 }
 
+export type PropertyStyle = StyleConfig;
+
 export interface GridConfig {
   columns: number;
   rows: number;
@@ -59,8 +63,14 @@ export interface TabBehaviorConfig {
   activeTabButtonStyle?: StyleConfig;
 }
 
+export interface PanelBehaviorConfig {
+  collapsible?: boolean;
+  defaultCollapsed?: boolean;
+}
+
 export interface BehaviorConfig {
   tabConfig?: TabBehaviorConfig;
+  panelConfig?: PanelBehaviorConfig;
 }
 
 export interface LayoutNode {
@@ -127,7 +137,7 @@ export interface PropertyDefinition {
   id: string;
   key: string;
   type: PropertyType;
-  sectionNodeId: string;
+  parentId: string | null;
   defaultValue?: any;
   metadata: PropertyMetadata;
 }
@@ -150,10 +160,9 @@ export type ActorValues = Record<string, ActorValue>;
 
 export function createDefaultTemplateData(): TemplateData {
   const canvasId = crypto.randomUUID();
-  const sectionId = crypto.randomUUID();
 
   return {
-    version: 2,
+    version: 3,
     type: 'character',
     canvas: {
       id: canvasId,
@@ -163,29 +172,13 @@ export function createDefaultTemplateData(): TemplateData {
         backgroundColor: '#1c1917',
       },
     },
-    layoutNodes: {
-      [sectionId]: {
-        id: sectionId,
-        type: 'section',
-        name: 'Main',
-        parentId: null,
-        childrenIds: [],
-        positionConfig: { x: 0, y: 0 },
-        sizeConfig: { width: 450, height: 550 },
-        layoutMode: 'freeform',
-        styleConfig: {
-          backgroundColor: '#1c1917',
-          border: { enabled: false, color: '#44403c', width: 0, radius: 0, style: 'solid' },
-        },
-        order: 0,
-      },
-    },
+    layoutNodes: {},
     properties: {
       pfp: {
         id: crypto.randomUUID(),
         key: 'pfp',
         type: 'pfp',
-        sectionNodeId: sectionId,
+        parentId: null,
         metadata: {
           label: 'Profile Picture',
           uiConfig: { x: 10, y: 10, width: 100, height: 100, labelPosition: 'hidden' },
@@ -199,7 +192,7 @@ export function createDefaultTemplateData(): TemplateData {
         id: crypto.randomUUID(),
         key: 'name',
         type: 'text',
-        sectionNodeId: sectionId,
+        parentId: null,
         metadata: {
           label: 'Name',
           uiConfig: { x: 120, y: 10, width: 310, height: 40, labelFontSize: 10, valueFontSize: 18, labelPosition: 'top' },
@@ -214,8 +207,8 @@ export function createDefaultTemplateData(): TemplateData {
   };
 }
 
-export function getPropertiesForNode(data: TemplateData, nodeId: string): PropertyDefinition[] {
-  return Object.values(data.properties).filter(p => p.sectionNodeId === nodeId);
+export function getPropertiesForNode(data: TemplateData, nodeId: string | null): PropertyDefinition[] {
+  return Object.values(data.properties).filter(p => p.parentId === nodeId);
 }
 
 export function getChildNodes(data: TemplateData, parentId: string | null): LayoutNode[] {
@@ -228,27 +221,31 @@ export function getRootNodes(data: TemplateData): LayoutNode[] {
   return getChildNodes(data, null);
 }
 
-export function isNodeVisible(data: TemplateData, nodeId: string): boolean {
+export function isNodeVisible(data: TemplateData, nodeId: string, activeTabState?: Record<string, string>): boolean {
   const node = data.layoutNodes[nodeId];
   if (!node) return false;
   if (node.styleConfig?.visibility === 'hidden') return false;
 
   if (node.parentId) {
     const parent = data.layoutNodes[node.parentId];
-    if (parent?.type === 'tab' && parent.behaviorConfig?.tabConfig) {
-      const activeChildId = parent.behaviorConfig.tabConfig.activeTabId;
+    if (parent?.type === 'tab') {
+      const siblings = Object.values(data.layoutNodes)
+        .filter(n => n.parentId === parent.id)
+        .sort((a, b) => a.order - b.order);
+      const activeChildId = activeTabState?.[parent.id] || parent.behaviorConfig?.tabConfig?.activeTabId || siblings[0]?.id;
       if (activeChildId && activeChildId !== nodeId) return false;
     }
-    return isNodeVisible(data, node.parentId);
+    return isNodeVisible(data, node.parentId, activeTabState);
   }
 
   return true;
 }
 
-export function getAllVisibleSectionIds(data: TemplateData): string[] {
-  return Object.values(data.layoutNodes)
-    .filter(n => n.type === 'section' && isNodeVisible(data, n.id))
-    .map(n => n.id);
+export function getAllVisibleProperties(data: TemplateData, activeTabState?: Record<string, string>): PropertyDefinition[] {
+  return Object.values(data.properties).filter(p => {
+    if (!p.parentId) return true;
+    return isNodeVisible(data, p.parentId, activeTabState);
+  });
 }
 
 export function resolveValue(property: PropertyDefinition, actorValues: ActorValues): ActorValue {
@@ -266,7 +263,7 @@ export function resolveValue(property: PropertyDefinition, actorValues: ActorVal
 }
 
 export function migrateTemplateData(raw: any): TemplateData {
-  if (raw.version === 2 && raw.canvas && raw.layoutNodes) {
+  if (raw.version === 3 && raw.canvas && raw.layoutNodes !== undefined) {
     return raw as TemplateData;
   }
 
@@ -280,9 +277,32 @@ export function migrateTemplateData(raw: any): TemplateData {
 
   const layoutNodes: Record<string, LayoutNode> = {};
   const newProperties: Record<string, PropertyDefinition> = {};
-  const sectionIdMap: Record<string, string> = {};
 
-  if (raw.sections && Array.isArray(raw.sections)) {
+  if (raw.version === 2 && raw.layoutNodes) {
+    for (const [nodeId, node] of Object.entries(raw.layoutNodes as Record<string, any>)) {
+      layoutNodes[nodeId] = node;
+    }
+    if (raw.canvas) {
+      canvas.id = raw.canvas.id || canvasId;
+      canvas.width = raw.canvas.width || 450;
+      canvas.height = raw.canvas.height || 550;
+      canvas.backgroundConfig = raw.canvas.backgroundConfig || { backgroundColor: '#1c1917' };
+    }
+
+    if (raw.properties && typeof raw.properties === 'object') {
+      for (const [key, prop] of Object.entries(raw.properties as Record<string, any>)) {
+        const sectionNodeId = prop.sectionNodeId;
+        newProperties[key] = {
+          ...prop,
+          parentId: sectionNodeId || null,
+        };
+        if ('sectionNodeId' in newProperties[key]) {
+          delete (newProperties[key] as any).sectionNodeId;
+        }
+      }
+    }
+  } else if (raw.sections && Array.isArray(raw.sections)) {
+    const sectionIdMap: Record<string, string> = {};
     for (const section of raw.sections) {
       const nodeId = section.id || crypto.randomUUID();
       sectionIdMap[section.id] = nodeId;
@@ -300,80 +320,63 @@ export function migrateTemplateData(raw: any): TemplateData {
         order: section.order ?? 0,
       };
     }
-  }
 
-  if (Object.keys(layoutNodes).length === 0) {
-    const sectionId = crypto.randomUUID();
-    layoutNodes[sectionId] = {
-      id: sectionId,
-      type: 'section',
-      name: 'Main',
-      parentId: null,
-      childrenIds: [],
-      positionConfig: { x: 0, y: 0 },
-      sizeConfig: { width: canvas.width, height: canvas.height },
-      layoutMode: 'freeform',
-      styleConfig: { backgroundColor: '#1c1917' },
-      order: 0,
-    };
-    sectionIdMap['default'] = sectionId;
-  }
+    const firstNodeId = Object.keys(layoutNodes)[0] || null;
 
-  const firstSectionNodeId = Object.keys(layoutNodes)[0];
-
-  if (raw.properties && typeof raw.properties === 'object' && !Array.isArray(raw.properties)) {
-    for (const [key, prop] of Object.entries(raw.properties as Record<string, any>)) {
-      const oldSectionId = prop.sectionId;
-      const newSectionNodeId = sectionIdMap[oldSectionId] || firstSectionNodeId;
-      newProperties[key] = {
-        ...prop,
-        sectionNodeId: newSectionNodeId,
-      };
-      if ('sectionId' in newProperties[key]) {
-        delete (newProperties[key] as any).sectionId;
+    if (raw.properties && typeof raw.properties === 'object' && !Array.isArray(raw.properties)) {
+      for (const [key, prop] of Object.entries(raw.properties as Record<string, any>)) {
+        const oldSectionId = prop.sectionId || prop.sectionNodeId;
+        const mappedParentId = sectionIdMap[oldSectionId] || firstNodeId;
+        newProperties[key] = {
+          ...prop,
+          parentId: mappedParentId,
+        };
+        if ('sectionId' in newProperties[key]) delete (newProperties[key] as any).sectionId;
+        if ('sectionNodeId' in newProperties[key]) delete (newProperties[key] as any).sectionNodeId;
+      }
+    } else if (Array.isArray(raw.properties)) {
+      for (const p of raw.properties) {
+        if (p.type === 'panel' || p.type === 'tab') continue;
+        const propType = p.type === 'checkbox' ? 'boolean' : p.type === 'select' ? 'list' : p.type === 'textarea' ? 'text' : p.type;
+        newProperties[p.key] = {
+          id: p.id,
+          key: p.key,
+          type: propType,
+          parentId: firstNodeId,
+          defaultValue: p.defaultValue,
+          metadata: {
+            label: p.label || p.key,
+            tooltip: p.tooltip,
+            uiConfig: {
+              x: p.x ?? 10,
+              y: p.y ?? 10,
+              width: p.width ?? 200,
+              height: p.height ?? 40,
+              labelFontSize: p.labelFontSize ?? 11,
+              valueFontSize: p.valueFontSize ?? 13,
+              labelPosition: p.labelPosition ?? 'top',
+            },
+            style: p.style,
+            options: p.options,
+          },
+        };
       }
     }
-  } else if (Array.isArray(raw.properties)) {
-    const headerNodeId = Object.values(layoutNodes).find(n => n.name === 'Header')?.id || firstSectionNodeId;
-    const bodyNodeId = Object.values(layoutNodes).find(n => n.name === 'Body')?.id || firstSectionNodeId;
-
-    for (const p of raw.properties) {
-      if (p.type === 'panel' || p.type === 'tab') continue;
-      let targetNodeId = bodyNodeId;
-      if (p.parentId) {
-        const parent = raw.properties.find((pp: any) => pp.id === p.parentId);
-        if (parent?.key === 'header' || parent?.location === 'header') {
-          targetNodeId = headerNodeId;
-        }
+  } else {
+    if (raw.properties && typeof raw.properties === 'object') {
+      for (const [key, prop] of Object.entries(raw.properties as Record<string, any>)) {
+        newProperties[key] = {
+          ...prop,
+          parentId: prop.parentId ?? prop.sectionNodeId ?? prop.sectionId ?? null,
+        };
+        if ('sectionId' in newProperties[key]) delete (newProperties[key] as any).sectionId;
+        if ('sectionNodeId' in newProperties[key]) delete (newProperties[key] as any).sectionNodeId;
       }
-      const propType = p.type === 'checkbox' ? 'boolean' : p.type === 'select' ? 'list' : p.type === 'textarea' ? 'text' : p.type;
-      newProperties[p.key] = {
-        id: p.id,
-        key: p.key,
-        type: propType,
-        sectionNodeId: targetNodeId,
-        defaultValue: p.defaultValue,
-        metadata: {
-          label: p.label || p.key,
-          tooltip: p.tooltip,
-          uiConfig: {
-            x: p.x ?? 10,
-            y: p.y ?? 10,
-            width: p.width ?? 200,
-            height: p.height ?? 40,
-            labelFontSize: p.labelFontSize ?? 11,
-            valueFontSize: p.valueFontSize ?? 13,
-            labelPosition: p.labelPosition ?? 'top',
-          },
-          style: p.style,
-          options: p.options,
-        },
-      };
     }
   }
 
   return {
-    version: 2,
+    version: 3,
     type: raw.type || 'character',
     canvas,
     layoutNodes,

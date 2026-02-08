@@ -8074,9 +8074,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const isGM = await hasGmAccess(req.session.userId!, req.params.campaignId, campaign.gmUserId);
       if (!isGM) return res.status(403).json({ error: "Only GMs can manage templates" });
       const canvasId = crypto.randomUUID();
-      const sectionId = crypto.randomUUID();
       const defaultData = {
-        version: 2,
+        version: 3,
         type: req.body.templateType || "character",
         canvas: {
           id: canvasId,
@@ -8084,26 +8083,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
           height: 550,
           backgroundConfig: { backgroundColor: "#1c1917" },
         },
-        layoutNodes: {
-          [sectionId]: {
-            id: sectionId,
-            type: "section",
-            name: "Main",
-            parentId: null,
-            childrenIds: [],
-            positionConfig: { x: 0, y: 0 },
-            sizeConfig: { width: 450, height: 550 },
-            layoutMode: "freeform",
-            styleConfig: { backgroundColor: "#1c1917", border: { enabled: false, color: "#44403c", width: 0, radius: 0, style: "solid" } },
-            order: 0,
-          },
-        },
+        layoutNodes: {},
         properties: {
           pfp: {
             id: crypto.randomUUID(),
             key: "pfp",
             type: "pfp",
-            sectionNodeId: sectionId,
+            parentId: null,
             metadata: {
               label: "Profile Picture",
               uiConfig: { x: 10, y: 10, width: 100, height: 100, labelPosition: "hidden" },
@@ -8114,7 +8100,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             id: crypto.randomUUID(),
             key: "name",
             type: "text",
-            sectionNodeId: sectionId,
+            parentId: null,
             metadata: {
               label: "Name",
               uiConfig: { x: 120, y: 10, width: 310, height: 40, labelFontSize: 10, valueFontSize: 18, labelPosition: "top" },
