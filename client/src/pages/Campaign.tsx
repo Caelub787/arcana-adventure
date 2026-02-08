@@ -2006,7 +2006,7 @@ function SandboxSheetEditor({
               {item.name}
             </h2>
             <span className={`text-[10px] px-1.5 py-0.5 rounded ${item.type === 'actor' ? 'text-amber-500/60 bg-amber-900/20' : 'text-purple-400/60 bg-purple-900/20'}`}>
-              {item.type === 'actor' ? 'Actor' : 'Actor Template'}
+              {item.type === 'actor' ? 'Actor' : 'Template'}
             </span>
           </div>
           <div className="flex items-center gap-1">
@@ -2080,7 +2080,7 @@ function SandboxSheetEditor({
               {item.type === 'actor' ? (actorValues.name || item.name) : item.name}
             </span>
             <span className={`text-[10px] px-1.5 py-0.5 rounded shrink-0 ${item.type === 'actor' ? 'text-amber-500/60 bg-amber-900/20' : 'text-purple-400/60 bg-purple-900/20'}`}>
-              {item.type === 'actor' ? 'Actor' : 'Actor Template'}
+              {item.type === 'actor' ? 'Actor' : 'Template'}
             </span>
           </div>
           <div className="flex items-center gap-1 shrink-0">
@@ -3085,7 +3085,7 @@ function SandboxCharactersContent({
             </span>
           )}
           <span className={`text-[10px] px-1.5 py-0.5 rounded shrink-0 ${type === 'actor' ? 'text-amber-500/60 bg-amber-900/20' : 'text-purple-400/60 bg-purple-900/20'}`}>
-            {type === 'actor' ? 'Actor' : 'Actor Template'}
+            {type === 'actor' ? 'Actor' : 'Template'}
           </span>
         </div>
         <div className="flex items-center gap-0.5 shrink-0">
@@ -3250,7 +3250,7 @@ function SandboxCharactersContent({
                 }`}
                 data-testid="toggle-type-template"
               >
-                Actor Template
+                Template
               </button>
             </div>
             <div className="flex gap-2">
@@ -3307,7 +3307,7 @@ function SandboxCharactersContent({
         {rootTemplates.map((t: any) => renderItem(t, 'template'))}
         {rootFolders.length === 0 && rootActors.length === 0 && rootTemplates.length === 0 && (
           <div className="text-center py-12 text-stone-600 italic text-sm">
-            No characters yet. Click Create to add one.
+            No actors yet. Click Create to add one.
           </div>
         )}
       </div>
@@ -5848,7 +5848,7 @@ export default function Campaign() {
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="left" className="bg-stone-800 border-stone-700 text-stone-200">
-                <p>Characters</p>
+                <p>Actors</p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
@@ -6985,7 +6985,7 @@ export default function Campaign() {
             <div className="flex items-center justify-between p-3 border-b border-stone-800 shrink-0">
               <h2 className="text-amber-500 font-display text-lg font-bold">
                 {activeSidePanel === 'chat' && 'Adventure Log'}
-                {activeSidePanel === 'characters' && 'Characters'}
+                {activeSidePanel === 'characters' && 'Actors'}
                 {activeSidePanel === 'notes' && 'Notes'}
                 {activeSidePanel === 'settings' && 'Settings'}
                 {activeSidePanel === 'scene' && 'Scenes'}
