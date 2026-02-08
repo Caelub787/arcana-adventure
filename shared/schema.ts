@@ -1139,6 +1139,7 @@ export const sandboxFolders = pgTable("sandbox_folders", {
   campaignId: varchar("campaign_id").notNull().references(() => campaigns.id, { onDelete: "cascade" }),
   parentId: varchar("parent_id").references((): AnyPgColumn => sandboxFolders.id, { onDelete: "set null" }),
   name: text("name").notNull(),
+  color: varchar("color", { length: 20 }),
   sortOrder: integer("sort_order").default(0).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
