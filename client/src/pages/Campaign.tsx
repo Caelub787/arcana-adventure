@@ -9655,7 +9655,7 @@ export default function Campaign() {
           {/* For players: show ONLY when they have an assigned character */}
           {!isSandbox && ((role === 'player' && character) || (role === 'gm' && inspectedChar)) && (
             <div 
-              className="absolute top-44 z-20 flex flex-col gap-2 transition-all duration-300 ease-in-out"
+              className="absolute top-80 z-20 flex flex-col gap-2 transition-all duration-300 ease-in-out"
               style={{ right: sidePanelOpen && !isMobile ? `${notesPanelWidth + 16}px` : '12px' }}
             >
               {[
