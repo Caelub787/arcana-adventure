@@ -374,7 +374,20 @@ export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToo
 
   const renderFog = useMemo(() => {
     if (!fogEnabled) return null;
-    if (isGM) return null;
+
+    if (isGM) {
+      return (
+        <rect
+          x={0}
+          y={0}
+          width={20000}
+          height={20000}
+          fill="#1a1a2e"
+          fillOpacity={0.15}
+          data-testid="fog-gm-preview"
+        />
+      );
+    }
 
     const visionPathData = visionPolygons.map((poly, i) => {
       if (poly.points.length < 3) return '';
@@ -841,6 +854,12 @@ export function FogToolsPanel({
   const fogExploredDimness = scene?.fogExploredDimness ?? 0.5;
   const isDayTime = scene?.isDayTime ?? true;
 
+  const [localFogOpacity, setLocalFogOpacity] = useState(fogOpacity);
+  const [localFogExploredDimness, setLocalFogExploredDimness] = useState(fogExploredDimness);
+
+  useEffect(() => { setLocalFogOpacity(fogOpacity); }, [fogOpacity]);
+  useEffect(() => { setLocalFogExploredDimness(fogExploredDimness); }, [fogExploredDimness]);
+
   const updateSceneMutation = useMutation({
     mutationFn: async (updates: Record<string, any>) => {
       const res = await fetch(`/api/scenes/${sceneId}`, {
@@ -971,14 +990,15 @@ export function FogToolsPanel({
         <div className="space-y-1">
           <div className="flex items-center justify-between">
             <span className="text-xs text-stone-300">Fog Opacity</span>
-            <span className="text-xs text-stone-500">{Math.round(fogOpacity * 100)}%</span>
+            <span className="text-xs text-stone-500">{Math.round(localFogOpacity * 100)}%</span>
           </div>
           <Slider
-            value={[fogOpacity * 100]}
+            value={[localFogOpacity * 100]}
             min={10}
             max={100}
             step={5}
-            onValueChange={(v) => updateSceneMutation.mutate({ fogOpacity: v[0] / 100 })}
+            onValueChange={(v) => setLocalFogOpacity(v[0] / 100)}
+            onValueCommit={(v) => updateSceneMutation.mutate({ fogOpacity: v[0] / 100 })}
             data-testid="slider-fog-opacity"
           />
         </div>
@@ -986,14 +1006,15 @@ export function FogToolsPanel({
         <div className="space-y-1">
           <div className="flex items-center justify-between">
             <span className="text-xs text-stone-300">Explored Dimness</span>
-            <span className="text-xs text-stone-500">{Math.round(fogExploredDimness * 100)}%</span>
+            <span className="text-xs text-stone-500">{Math.round(localFogExploredDimness * 100)}%</span>
           </div>
           <Slider
-            value={[fogExploredDimness * 100]}
+            value={[localFogExploredDimness * 100]}
             min={0}
             max={100}
             step={5}
-            onValueChange={(v) => updateSceneMutation.mutate({ fogExploredDimness: v[0] / 100 })}
+            onValueChange={(v) => setLocalFogExploredDimness(v[0] / 100)}
+            onValueCommit={(v) => updateSceneMutation.mutate({ fogExploredDimness: v[0] / 100 })}
             data-testid="slider-explored-dimness"
           />
         </div>

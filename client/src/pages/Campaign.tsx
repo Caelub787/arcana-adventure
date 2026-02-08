@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from "react"
 import { createPortal } from "react-dom";
 import { useLocation, useSearch, useRoute } from "wouter";
 import { motion } from "framer-motion";
-import { CharacterCreation, BattleMap, CampaignMenu, CharacterSheet, BattleMapHotbars, InitiativeTracker, type SelectionMode } from "@/components/game/GameComponents";
+import { CharacterCreation, BattleMap, CampaignMenu, CharacterSheet, BattleMapHotbars, InitiativeTracker, SelectionModeButtons, type SelectionMode } from "@/components/game/GameComponents";
 import { BattlemapDiceOverlay, triggerBattlemapDiceRoll } from "@/components/game/BattlemapDiceOverlay";
 import { type AoeTargetState, createInitialAoeState, getTokensInAoe } from "@/lib/aoeHelpers";
 import { RollNotificationContainer, triggerInitiativeNotification, triggerEffectRollNotification, getNotificationStyle, setNotificationStyle, type NotificationStyle } from "@/components/game/RollNotification";
@@ -9603,7 +9603,17 @@ export default function Campaign() {
            {/* Battlemap Dice Overlay for 3D dice rolling */}
            <BattlemapDiceOverlay />
            
-           {/* Selection Mode Buttons removed - character sheets opened via triple-click on tokens */}
+           <SelectionModeButtons
+             selectionMode={selectionMode}
+             onModeChange={handleModeChange}
+             character={role === 'gm' ? inspectedChar : character}
+             tokens={tokens}
+             onEnterSpellTargeting={(spell, casterTokenId) => enterAoeMode(spell, casterTokenId)}
+             onClearSpellTargeting={exitAoeMode}
+             isSpellTargetingActive={aoeTargetState.active}
+             notesPanelOpen={sidePanelOpen}
+             notesPanelWidth={notesPanelWidth}
+           />
            
            {/* AOE Width Control Panel - Shows when line or cone AOE is active */}
            {aoeTargetState.active && aoeTargetState.spell && (() => {
@@ -9663,6 +9673,25 @@ export default function Campaign() {
              return null;
            })()}
            
+           {!isSandbox && (role === 'gm' ? inspectedChar : character)?.id && (
+             <div className="absolute bottom-[72px] right-4 z-30" data-testid="btn-character-overview">
+               <button
+                 className="w-10 h-10 rounded-lg bg-stone-800/90 border border-stone-600 hover:border-amber-500 hover:bg-stone-700 text-stone-300 hover:text-amber-400 flex items-center justify-center transition-all shadow-lg backdrop-blur-sm"
+                 onClick={() => {
+                   const char = role === 'gm' ? inspectedChar : character;
+                   if (char?.id) {
+                     setCharacterSheetDefaultTab("overview");
+                     openCharacterSheet(char);
+                   }
+                 }}
+                 title="Character Overview"
+                 data-testid="button-character-overview"
+               >
+                 <User className="h-5 w-5" />
+               </button>
+             </div>
+           )}
+
            {/* Hotbars Display - only show when there's a character to display */}
            {/* For players: show ONLY their assigned character (not changed by token clicks) */}
            {/* For GMs: show inspectedChar (clicked token) */}
