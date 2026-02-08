@@ -22,7 +22,7 @@ import {
   Users, User, Plus, Minus, LogOut, Menu, ChevronRight, ChevronLeft, ChevronDown, ChevronUp,
   Heart, Zap, Backpack, Sparkles, Dice5, MessageSquare, RefreshCw, X, Trash2, Package, FolderOpen, Folder, FolderPlus, GripVertical, Lock, Unlock, Camera,
   BarChart3, Grid3X3, ScrollText, Upload, Image as ImageIcon, Layers, Search, TrendingUp, UserMinus, Ban,
-  MousePointer, Target, UserCheck, Swords, ArrowRight, ArrowLeft, Eye, EyeOff, Check, Moon, Coffee, AlertTriangle, GitBranch, Star, BookOpen, Pencil, Dna, Type, Library, Filter, MoreVertical, Flame, Highlighter, Bell, BellOff, FileText, Download, Loader2, Beaker, Coins
+  MousePointer, Target, UserCheck, Swords, ArrowRight, ArrowLeft, Eye, EyeOff, Check, Moon, Coffee, AlertTriangle, GitBranch, Star, BookOpen, Pencil, Dna, Type, Library, Filter, MoreVertical, Flame, Highlighter, Bell, BellOff, FileText, Download, Loader2, Beaker, Coins, Dices, Edit3
 } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useForm } from "react-hook-form";
@@ -41,6 +41,7 @@ import { triggerSkillRollNotification, triggerRollNotification, triggerEffectRol
 import { ImageBrowser } from '@/components/ImageBrowser';
 import { BattlemapAoeOverlay } from './BattlemapAoeOverlay';
 import { type AoeTargetState, getTokensInAoe, getTokenGridSpan, getDistanceToTokenEdge, getDistanceBetweenTokensFeet, isTokenInRangeOfToken } from '@/lib/aoeHelpers';
+import { rollDice } from '../sandbox/diceEngine';
 
 
 // --- Types & Mock Data ---
@@ -13096,6 +13097,108 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
   const [spellAoeLibraryFilter, setSpellAoeLibraryFilter] = useState('all');
   const [spellDurationLibraryFilter, setSpellDurationLibraryFilter] = useState('all');
 
+  const [editingSpellRoll, setEditingSpellRoll] = useState<string | null>(null);
+  const [newSpellRoll, setNewSpellRoll] = useState<any>(null);
+  const [spellRollFormData, setSpellRollFormData] = useState<any>({});
+
+  const { data: spellRollEntries = [] } = useQuery({
+    queryKey: ['rollEntries', 'spell', selectedSpell?.id],
+    queryFn: () => api.getSpellRolls(selectedSpell!.id),
+    enabled: !!selectedSpell?.id && showSpellDetail,
+  });
+
+  const createSpellRollMutation = useMutation({
+    mutationFn: (data: any) => api.createRollEntry(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['rollEntries', 'spell', selectedSpell?.id] });
+      setNewSpellRoll(null);
+      setSpellRollFormData({});
+    }
+  });
+
+  const updateSpellRollMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: any }) => api.updateRollEntry(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['rollEntries', 'spell', selectedSpell?.id] });
+      setEditingSpellRoll(null);
+      setSpellRollFormData({});
+    }
+  });
+
+  const deleteSpellRollMutation = useMutation({
+    mutationFn: (id: string) => api.deleteRollEntry(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['rollEntries', 'spell', selectedSpell?.id] });
+    }
+  });
+
+  const executeSpellRoll = (rollEntry: any) => {
+    if (!rollEntry.diceFormula || !selectedSpell) return;
+    
+    const formulaParts: string[] = [rollEntry.diceFormula];
+    
+    if (rollEntry.mod && rollEntry.mod !== 0) {
+      formulaParts.push(rollEntry.mod > 0 ? `+${rollEntry.mod}` : `${rollEntry.mod}`);
+    }
+    
+    let attrMod = 0;
+    if (rollEntry.attribute && character) {
+      const attrValue = character[rollEntry.attribute] || 0;
+      attrMod = Math.floor((attrValue - 10) / 2);
+      if (attrMod !== 0) {
+        formulaParts.push(attrMod > 0 ? `+${attrMod}` : `${attrMod}`);
+      }
+    }
+    
+    const fullFormula = formulaParts.join('');
+    const result = rollDice(fullFormula);
+    
+    const breakdown = [
+      rollEntry.diceFormula,
+      rollEntry.mod ? `Mod: ${rollEntry.mod > 0 ? '+' : ''}${rollEntry.mod}` : null,
+      rollEntry.attribute ? `${rollEntry.attribute.charAt(0).toUpperCase() + rollEntry.attribute.slice(1)}: ${attrMod >= 0 ? '+' : ''}${attrMod}` : null,
+      rollEntry.damageType ? `Type: ${rollEntry.damageType}` : null,
+    ].filter(Boolean).join(' | ');
+    
+    triggerRollNotification({
+      type: rollEntry.rollType === 'heal' ? 'heal' : rollEntry.rollType === 'attack' ? 'attack' : 'damage',
+      dieType: 'd20',
+      label: `${selectedSpell.name} - ${rollEntry.name}`,
+      result: result.total,
+      modifier: (rollEntry.mod || 0) + attrMod,
+      total: result.total,
+      username: character?.name || 'Unknown',
+      characterName: character?.name,
+      calculationBreakdown: breakdown,
+      isHealing: rollEntry.rollType === 'heal',
+    });
+    
+    if (character?.campaignId) {
+      const chatText = `${selectedSpell.name} - ${rollEntry.name}: ${breakdown} = ${result.total}`;
+      gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', chatText, 'roll');
+    }
+
+    if (rollEntry.applyToStat && rollEntry.applyToStat !== 'none' && character?.id) {
+      const isHeal = rollEntry.rollType === 'heal';
+      if (rollEntry.applyToStat === 'hp') {
+        gameWs.sendCombatDamage(
+          character.id,
+          result.total,
+          rollEntry.damageType || undefined,
+          character?.name || 'Unknown',
+          isHeal
+        );
+      } else if (rollEntry.applyToStat === 'energy') {
+        gameWs.sendCombatEnergy(
+          character.id,
+          result.total,
+          character?.name || 'Unknown',
+          isHeal
+        );
+      }
+    }
+  };
+
   const hasActiveSpellLibraryFilters = spellActionTypeLibraryFilter !== 'all' || 
     spellEnergyLibraryFilter !== 'all' || 
     spellDamageTypeLibraryFilter !== 'all' || 
@@ -16918,6 +17021,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                         {selectedSpell.name}
                       </DialogTitle>
                     </DialogHeader>
+                    <ScrollArea className="max-h-[500px] pr-4">
                     <div className="space-y-4">
                       <div className="flex gap-2">
                         <Badge className="bg-cyan-600/30 text-cyan-300">
@@ -16973,6 +17077,315 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                             </p>
                           </div>
                         )}
+                      </div>
+
+                      {/* Multi-Roll Entries Section */}
+                      <div className="pt-4 border-t border-stone-700">
+                        <div className="flex items-center justify-between mb-2">
+                          <h3 className="text-sm font-bold text-stone-300 flex items-center gap-1">
+                            <Dices className="h-4 w-4" /> Rolls
+                          </h3>
+                          {isGM && (
+                            <Button 
+                              size="sm" 
+                              variant="outline" 
+                              className="h-6 text-xs"
+                              onClick={() => {
+                                setNewSpellRoll(true);
+                                setSpellRollFormData({
+                                  ownerType: 'spell',
+                                  ownerId: selectedSpell.id,
+                                  name: '',
+                                  rollType: 'damage',
+                                  diceFormula: '',
+                                  mod: 0,
+                                  damageType: '',
+                                  attribute: '',
+                                  applyToStat: 'none',
+                                  sortOrder: spellRollEntries.length,
+                                });
+                              }}
+                              data-testid="button-add-spell-roll"
+                            >
+                              <Plus className="h-3 w-3 mr-1" /> Add Roll
+                            </Button>
+                          )}
+                        </div>
+                        
+                        {spellRollEntries.length === 0 && !newSpellRoll && (
+                          <p className="text-stone-500 text-xs italic">No custom rolls defined</p>
+                        )}
+                        
+                        <div className="space-y-2">
+                          {spellRollEntries.map((roll: any) => (
+                            <div key={roll.id} className="bg-stone-800/50 rounded-lg border border-stone-700 p-2">
+                              {editingSpellRoll === roll.id ? (
+                                <div className="space-y-2">
+                                  <div className="grid grid-cols-2 gap-2">
+                                    <div>
+                                      <Label className="text-xs text-stone-400">Name</Label>
+                                      <Input 
+                                        value={spellRollFormData.name || ''} 
+                                        onChange={(e) => setSpellRollFormData({ ...spellRollFormData, name: e.target.value })}
+                                        className="bg-stone-900 border-stone-600 h-7 text-xs"
+                                        placeholder="e.g. Attack Roll"
+                                      />
+                                    </div>
+                                    <div>
+                                      <Label className="text-xs text-stone-400">Type</Label>
+                                      <Select value={spellRollFormData.rollType || 'damage'} onValueChange={(v) => setSpellRollFormData({ ...spellRollFormData, rollType: v })}>
+                                        <SelectTrigger className="bg-stone-900 border-stone-600 h-7 text-xs">
+                                          <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          <SelectItem value="attack">Attack</SelectItem>
+                                          <SelectItem value="damage">Damage</SelectItem>
+                                          <SelectItem value="heal">Heal</SelectItem>
+                                          <SelectItem value="effect">Effect</SelectItem>
+                                        </SelectContent>
+                                      </Select>
+                                    </div>
+                                  </div>
+                                  <div className="grid grid-cols-2 gap-2">
+                                    <div>
+                                      <Label className="text-xs text-stone-400">Dice Formula</Label>
+                                      <Input 
+                                        value={spellRollFormData.diceFormula || ''} 
+                                        onChange={(e) => setSpellRollFormData({ ...spellRollFormData, diceFormula: e.target.value })}
+                                        className="bg-stone-900 border-stone-600 h-7 text-xs"
+                                        placeholder="e.g. 2d6+3"
+                                      />
+                                    </div>
+                                    <div>
+                                      <Label className="text-xs text-stone-400">Modifier</Label>
+                                      <Input 
+                                        type="number"
+                                        value={spellRollFormData.mod ?? 0} 
+                                        onChange={(e) => setSpellRollFormData({ ...spellRollFormData, mod: parseInt(e.target.value) || 0 })}
+                                        className="bg-stone-900 border-stone-600 h-7 text-xs"
+                                      />
+                                    </div>
+                                  </div>
+                                  <div className="grid grid-cols-2 gap-2">
+                                    <div>
+                                      <Label className="text-xs text-stone-400">Damage Type</Label>
+                                      <Input 
+                                        value={spellRollFormData.damageType || ''} 
+                                        onChange={(e) => setSpellRollFormData({ ...spellRollFormData, damageType: e.target.value })}
+                                        className="bg-stone-900 border-stone-600 h-7 text-xs"
+                                        placeholder="e.g. Fire"
+                                      />
+                                    </div>
+                                    <div>
+                                      <Label className="text-xs text-stone-400">Attribute</Label>
+                                      <Select value={spellRollFormData.attribute || 'none'} onValueChange={(v) => setSpellRollFormData({ ...spellRollFormData, attribute: v === 'none' ? '' : v })}>
+                                        <SelectTrigger className="bg-stone-900 border-stone-600 h-7 text-xs">
+                                          <SelectValue placeholder="None" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          <SelectItem value="none">None</SelectItem>
+                                          <SelectItem value="might">Might</SelectItem>
+                                          <SelectItem value="finesse">Finesse</SelectItem>
+                                          <SelectItem value="wit">Wit</SelectItem>
+                                          <SelectItem value="presence">Presence</SelectItem>
+                                          <SelectItem value="will">Will</SelectItem>
+                                          <SelectItem value="craft">Craft</SelectItem>
+                                        </SelectContent>
+                                      </Select>
+                                    </div>
+                                  </div>
+                                  <div>
+                                    <Label className="text-xs text-stone-400">Apply to Target Stat</Label>
+                                    <Select value={spellRollFormData.applyToStat || 'none'} onValueChange={(v) => setSpellRollFormData({ ...spellRollFormData, applyToStat: v })}>
+                                      <SelectTrigger className="bg-stone-900 border-stone-600 h-7 text-xs">
+                                        <SelectValue />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value="none">None</SelectItem>
+                                        <SelectItem value="hp">HP (subtract damage / add healing)</SelectItem>
+                                        <SelectItem value="energy">Energy (subtract / add)</SelectItem>
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
+                                  <div className="flex gap-2 pt-1">
+                                    <Button size="sm" className="h-6 text-xs" onClick={() => {
+                                      updateSpellRollMutation.mutate({ id: roll.id, data: spellRollFormData });
+                                    }}>Save</Button>
+                                    <Button size="sm" variant="outline" className="h-6 text-xs" onClick={() => {
+                                      setEditingSpellRoll(null);
+                                      setSpellRollFormData({});
+                                    }}>Cancel</Button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="flex items-center justify-between">
+                                  <div 
+                                    className="flex items-center gap-2 flex-1 cursor-pointer hover:bg-stone-700/30 rounded px-1 py-0.5 transition-colors"
+                                    onClick={() => executeSpellRoll(roll)}
+                                    data-testid={`button-execute-spell-roll-${roll.id}`}
+                                  >
+                                    <div className={`w-2 h-2 rounded-full ${
+                                      roll.rollType === 'attack' ? 'bg-red-400' :
+                                      roll.rollType === 'damage' ? 'bg-orange-400' :
+                                      roll.rollType === 'heal' ? 'bg-green-400' :
+                                      'bg-blue-400'
+                                    }`} />
+                                    <span className="text-sm font-medium text-stone-200">{roll.name}</span>
+                                    <span className="text-xs text-stone-400">
+                                      {roll.diceFormula}{roll.mod ? (roll.mod > 0 ? `+${roll.mod}` : roll.mod) : ''}
+                                      {roll.attribute ? ` +${roll.attribute.slice(0, 3).toUpperCase()}` : ''}
+                                    </span>
+                                    {roll.damageType && (
+                                      <span className="text-xs text-amber-500/70">{roll.damageType}</span>
+                                    )}
+                                    {roll.applyToStat && roll.applyToStat !== 'none' && (
+                                      <span className="text-xs text-cyan-400/70">→{roll.applyToStat.toUpperCase()}</span>
+                                    )}
+                                  </div>
+                                  {isGM && (
+                                    <div className="flex gap-1">
+                                      <Button 
+                                        size="sm" 
+                                        variant="ghost" 
+                                        className="h-6 w-6 p-0"
+                                        onClick={() => {
+                                          setEditingSpellRoll(roll.id);
+                                          setSpellRollFormData({
+                                            name: roll.name,
+                                            rollType: roll.rollType,
+                                            diceFormula: roll.diceFormula,
+                                            mod: roll.mod,
+                                            damageType: roll.damageType,
+                                            attribute: roll.attribute,
+                                            applyToStat: roll.applyToStat,
+                                            sortOrder: roll.sortOrder,
+                                          });
+                                        }}
+                                        data-testid={`button-edit-spell-roll-${roll.id}`}
+                                      >
+                                        <Edit3 className="h-3 w-3" />
+                                      </Button>
+                                      <Button 
+                                        size="sm" 
+                                        variant="ghost" 
+                                        className="h-6 w-6 p-0 text-red-400 hover:text-red-300"
+                                        onClick={() => deleteSpellRollMutation.mutate(roll.id)}
+                                        data-testid={`button-delete-spell-roll-${roll.id}`}
+                                      >
+                                        <Trash2 className="h-3 w-3" />
+                                      </Button>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                          
+                          {/* New Spell Roll Form */}
+                          {newSpellRoll && (
+                            <div className="bg-stone-800/50 rounded-lg border border-purple-700/50 p-2">
+                              <div className="space-y-2">
+                                <div className="grid grid-cols-2 gap-2">
+                                  <div>
+                                    <Label className="text-xs text-stone-400">Name</Label>
+                                    <Input 
+                                      value={spellRollFormData.name || ''} 
+                                      onChange={(e) => setSpellRollFormData({ ...spellRollFormData, name: e.target.value })}
+                                      className="bg-stone-900 border-stone-600 h-7 text-xs"
+                                      placeholder="e.g. Fireball Damage"
+                                    />
+                                  </div>
+                                  <div>
+                                    <Label className="text-xs text-stone-400">Type</Label>
+                                    <Select value={spellRollFormData.rollType || 'damage'} onValueChange={(v) => setSpellRollFormData({ ...spellRollFormData, rollType: v })}>
+                                      <SelectTrigger className="bg-stone-900 border-stone-600 h-7 text-xs">
+                                        <SelectValue />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value="attack">Attack</SelectItem>
+                                        <SelectItem value="damage">Damage</SelectItem>
+                                        <SelectItem value="heal">Heal</SelectItem>
+                                        <SelectItem value="effect">Effect</SelectItem>
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
+                                </div>
+                                <div className="grid grid-cols-2 gap-2">
+                                  <div>
+                                    <Label className="text-xs text-stone-400">Dice Formula</Label>
+                                    <Input 
+                                      value={spellRollFormData.diceFormula || ''} 
+                                      onChange={(e) => setSpellRollFormData({ ...spellRollFormData, diceFormula: e.target.value })}
+                                      className="bg-stone-900 border-stone-600 h-7 text-xs"
+                                      placeholder="e.g. 8d6"
+                                    />
+                                  </div>
+                                  <div>
+                                    <Label className="text-xs text-stone-400">Modifier</Label>
+                                    <Input 
+                                      type="number"
+                                      value={spellRollFormData.mod ?? 0} 
+                                      onChange={(e) => setSpellRollFormData({ ...spellRollFormData, mod: parseInt(e.target.value) || 0 })}
+                                      className="bg-stone-900 border-stone-600 h-7 text-xs"
+                                    />
+                                  </div>
+                                </div>
+                                <div className="grid grid-cols-2 gap-2">
+                                  <div>
+                                    <Label className="text-xs text-stone-400">Damage Type</Label>
+                                    <Input 
+                                      value={spellRollFormData.damageType || ''} 
+                                      onChange={(e) => setSpellRollFormData({ ...spellRollFormData, damageType: e.target.value })}
+                                      className="bg-stone-900 border-stone-600 h-7 text-xs"
+                                      placeholder="e.g. Fire"
+                                    />
+                                  </div>
+                                  <div>
+                                    <Label className="text-xs text-stone-400">Attribute</Label>
+                                    <Select value={spellRollFormData.attribute || 'none'} onValueChange={(v) => setSpellRollFormData({ ...spellRollFormData, attribute: v === 'none' ? '' : v })}>
+                                      <SelectTrigger className="bg-stone-900 border-stone-600 h-7 text-xs">
+                                        <SelectValue placeholder="None" />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value="none">None</SelectItem>
+                                        <SelectItem value="might">Might</SelectItem>
+                                        <SelectItem value="finesse">Finesse</SelectItem>
+                                        <SelectItem value="wit">Wit</SelectItem>
+                                        <SelectItem value="presence">Presence</SelectItem>
+                                        <SelectItem value="will">Will</SelectItem>
+                                        <SelectItem value="craft">Craft</SelectItem>
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
+                                </div>
+                                <div>
+                                  <Label className="text-xs text-stone-400">Apply to Target Stat</Label>
+                                  <Select value={spellRollFormData.applyToStat || 'none'} onValueChange={(v) => setSpellRollFormData({ ...spellRollFormData, applyToStat: v })}>
+                                    <SelectTrigger className="bg-stone-900 border-stone-600 h-7 text-xs">
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="none">None</SelectItem>
+                                      <SelectItem value="hp">HP (subtract damage / add healing)</SelectItem>
+                                      <SelectItem value="energy">Energy (subtract / add)</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                <div className="flex gap-2 pt-1">
+                                  <Button size="sm" className="h-6 text-xs" onClick={() => {
+                                    if (spellRollFormData.name && spellRollFormData.diceFormula) {
+                                      createSpellRollMutation.mutate(spellRollFormData);
+                                    }
+                                  }}>Create</Button>
+                                  <Button size="sm" variant="outline" className="h-6 text-xs" onClick={() => {
+                                    setNewSpellRoll(null);
+                                    setSpellRollFormData({});
+                                  }}>Cancel</Button>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
                       </div>
 
                       {/* Roll Buttons */}
@@ -17138,6 +17551,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                         </Button>
                       </div>
                     </div>
+                    </ScrollArea>
                   </>
                 )}
               </DialogContent>
@@ -20252,6 +20666,40 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState<any>(null);
   const [showEquipMenu, setShowEquipMenu] = useState(false);
+  const [editingRoll, setEditingRoll] = useState<string | null>(null);
+  const [newRoll, setNewRoll] = useState<any>(null);
+  const [rollFormData, setRollFormData] = useState<any>({});
+
+  const { data: rollEntries = [] } = useQuery({
+    queryKey: ['rollEntries', 'item', item?.id],
+    queryFn: () => api.getItemRolls(item.id),
+    enabled: !!item?.id && open,
+  });
+
+  const createRollMutation = useMutation({
+    mutationFn: (data: any) => api.createRollEntry(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['rollEntries', 'item', item?.id] });
+      setNewRoll(null);
+      setRollFormData({});
+    }
+  });
+
+  const updateRollMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: any }) => api.updateRollEntry(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['rollEntries', 'item', item?.id] });
+      setEditingRoll(null);
+      setRollFormData({});
+    }
+  });
+
+  const deleteRollMutation = useMutation({
+    mutationFn: (id: string) => api.deleteRollEntry(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['rollEntries', 'item', item?.id] });
+    }
+  });
 
   const { data: hotbars = [] } = useQuery({
     queryKey: ['hotbars', character.id],
@@ -20338,6 +20786,68 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
     }
     
     return slots;
+  };
+
+  const executeRoll = (rollEntry: any) => {
+    if (!rollEntry.diceFormula) return;
+    
+    const formulaParts: string[] = [rollEntry.diceFormula];
+    
+    if (rollEntry.mod && rollEntry.mod !== 0) {
+      formulaParts.push(rollEntry.mod > 0 ? `+${rollEntry.mod}` : `${rollEntry.mod}`);
+    }
+    
+    let attrMod = 0;
+    if (rollEntry.attribute && character) {
+      const attrValue = character[rollEntry.attribute] || 0;
+      attrMod = Math.floor((attrValue - 10) / 2);
+      if (attrMod !== 0) {
+        formulaParts.push(attrMod > 0 ? `+${attrMod}` : `${attrMod}`);
+      }
+    }
+    
+    const fullFormula = formulaParts.join('');
+    const result = rollDice(fullFormula);
+    
+    const breakdown = [
+      rollEntry.diceFormula,
+      rollEntry.mod ? `Mod: ${rollEntry.mod > 0 ? '+' : ''}${rollEntry.mod}` : null,
+      rollEntry.attribute ? `${rollEntry.attribute.charAt(0).toUpperCase() + rollEntry.attribute.slice(1)}: ${attrMod >= 0 ? '+' : ''}${attrMod}` : null,
+      rollEntry.damageType ? `Type: ${rollEntry.damageType}` : null,
+    ].filter(Boolean).join(' | ');
+    
+    triggerRollNotification({
+      type: rollEntry.rollType === 'heal' ? 'heal' : rollEntry.rollType === 'attack' ? 'attack' : 'damage',
+      dieType: 'd20',
+      label: `${item.name} - ${rollEntry.name}`,
+      result: result.total,
+      modifier: (rollEntry.mod || 0) + attrMod,
+      total: result.total,
+      username: character?.name || 'Unknown',
+      characterName: character?.name,
+      calculationBreakdown: breakdown,
+      isHealing: rollEntry.rollType === 'heal',
+    });
+
+    if (rollEntry.applyToStat && rollEntry.applyToStat !== 'none' && character?.id) {
+      const isHeal = rollEntry.rollType === 'heal';
+      if (rollEntry.applyToStat === 'hp') {
+        gameWs.sendCombatDamage(
+          character.id,
+          result.total,
+          rollEntry.damageType || undefined,
+          character?.name || 'Unknown',
+          isHeal
+        );
+      } else if (rollEntry.applyToStat === 'energy') {
+        gameWs.sendCombatEnergy(
+          character.id,
+          result.total,
+          character?.name || 'Unknown',
+          isHeal
+        );
+      }
+    }
   };
 
   if (!item) return null;
@@ -21181,6 +21691,314 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
                 </div>
               </div>
             )}
+
+            {/* Roll Entries Section */}
+            <div className="pt-4 border-t border-stone-700">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-sm font-bold text-stone-300 flex items-center gap-1">
+                  <Dices className="h-4 w-4" /> Rolls
+                </h3>
+                {isGM && !isEditing && (
+                  <Button 
+                    size="sm" 
+                    variant="outline" 
+                    className="h-6 text-xs"
+                    onClick={() => {
+                      setNewRoll(true);
+                      setRollFormData({
+                        ownerType: 'item',
+                        ownerId: item.id,
+                        name: '',
+                        rollType: 'damage',
+                        diceFormula: '',
+                        mod: 0,
+                        damageType: '',
+                        attribute: '',
+                        applyToStat: 'none',
+                        sortOrder: rollEntries.length,
+                      });
+                    }}
+                    data-testid="button-add-roll"
+                  >
+                    <Plus className="h-3 w-3 mr-1" /> Add Roll
+                  </Button>
+                )}
+              </div>
+              
+              {rollEntries.length === 0 && !newRoll && (
+                <p className="text-stone-500 text-xs italic">No rolls defined</p>
+              )}
+              
+              <div className="space-y-2">
+                {rollEntries.map((roll: any) => (
+                  <div key={roll.id} className="bg-stone-800/50 rounded-lg border border-stone-700 p-2">
+                    {editingRoll === roll.id ? (
+                      <div className="space-y-2">
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <Label className="text-xs text-stone-400">Name</Label>
+                            <Input 
+                              value={rollFormData.name || ''} 
+                              onChange={(e) => setRollFormData({ ...rollFormData, name: e.target.value })}
+                              className="bg-stone-900 border-stone-600 h-7 text-xs"
+                              placeholder="e.g. Attack Roll"
+                            />
+                          </div>
+                          <div>
+                            <Label className="text-xs text-stone-400">Type</Label>
+                            <Select value={rollFormData.rollType || 'damage'} onValueChange={(v) => setRollFormData({ ...rollFormData, rollType: v })}>
+                              <SelectTrigger className="bg-stone-900 border-stone-600 h-7 text-xs">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="attack">Attack</SelectItem>
+                                <SelectItem value="damage">Damage</SelectItem>
+                                <SelectItem value="heal">Heal</SelectItem>
+                                <SelectItem value="effect">Effect</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <Label className="text-xs text-stone-400">Dice Formula</Label>
+                            <Input 
+                              value={rollFormData.diceFormula || ''} 
+                              onChange={(e) => setRollFormData({ ...rollFormData, diceFormula: e.target.value })}
+                              className="bg-stone-900 border-stone-600 h-7 text-xs"
+                              placeholder="e.g. 2d6+3"
+                            />
+                          </div>
+                          <div>
+                            <Label className="text-xs text-stone-400">Modifier</Label>
+                            <Input 
+                              type="number"
+                              value={rollFormData.mod ?? 0} 
+                              onChange={(e) => setRollFormData({ ...rollFormData, mod: parseInt(e.target.value) || 0 })}
+                              className="bg-stone-900 border-stone-600 h-7 text-xs"
+                            />
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <Label className="text-xs text-stone-400">Damage Type</Label>
+                            <Input 
+                              value={rollFormData.damageType || ''} 
+                              onChange={(e) => setRollFormData({ ...rollFormData, damageType: e.target.value })}
+                              className="bg-stone-900 border-stone-600 h-7 text-xs"
+                              placeholder="e.g. Slashing"
+                            />
+                          </div>
+                          <div>
+                            <Label className="text-xs text-stone-400">Attribute</Label>
+                            <Select value={rollFormData.attribute || 'none'} onValueChange={(v) => setRollFormData({ ...rollFormData, attribute: v === 'none' ? '' : v })}>
+                              <SelectTrigger className="bg-stone-900 border-stone-600 h-7 text-xs">
+                                <SelectValue placeholder="None" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="none">None</SelectItem>
+                                <SelectItem value="might">Might</SelectItem>
+                                <SelectItem value="finesse">Finesse</SelectItem>
+                                <SelectItem value="wit">Wit</SelectItem>
+                                <SelectItem value="presence">Presence</SelectItem>
+                                <SelectItem value="will">Will</SelectItem>
+                                <SelectItem value="craft">Craft</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                        <div>
+                          <Label className="text-xs text-stone-400">Apply to Target Stat</Label>
+                          <Select value={rollFormData.applyToStat || 'none'} onValueChange={(v) => setRollFormData({ ...rollFormData, applyToStat: v })}>
+                            <SelectTrigger className="bg-stone-900 border-stone-600 h-7 text-xs">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="none">None</SelectItem>
+                              <SelectItem value="hp">HP (subtract damage / add healing)</SelectItem>
+                              <SelectItem value="energy">Energy (subtract / add)</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="flex gap-2 pt-1">
+                          <Button size="sm" className="h-6 text-xs" onClick={() => {
+                            updateRollMutation.mutate({ id: roll.id, data: rollFormData });
+                          }}>Save</Button>
+                          <Button size="sm" variant="outline" className="h-6 text-xs" onClick={() => {
+                            setEditingRoll(null);
+                            setRollFormData({});
+                          }}>Cancel</Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-between">
+                        <div 
+                          className="flex items-center gap-2 flex-1 cursor-pointer hover:bg-stone-700/30 rounded px-1 py-0.5 transition-colors"
+                          onClick={() => executeRoll(roll)}
+                          data-testid={`button-execute-roll-${roll.id}`}
+                        >
+                          <div className={`w-2 h-2 rounded-full ${
+                            roll.rollType === 'attack' ? 'bg-red-400' :
+                            roll.rollType === 'damage' ? 'bg-orange-400' :
+                            roll.rollType === 'heal' ? 'bg-green-400' :
+                            'bg-blue-400'
+                          }`} />
+                          <span className="text-sm font-medium text-stone-200">{roll.name}</span>
+                          <span className="text-xs text-stone-400">
+                            {roll.diceFormula}{roll.mod ? (roll.mod > 0 ? `+${roll.mod}` : roll.mod) : ''}
+                            {roll.attribute ? ` +${roll.attribute.slice(0, 3).toUpperCase()}` : ''}
+                          </span>
+                          {roll.damageType && (
+                            <span className="text-xs text-amber-500/70">{roll.damageType}</span>
+                          )}
+                          {roll.applyToStat && roll.applyToStat !== 'none' && (
+                            <span className="text-xs text-cyan-400/70">→{roll.applyToStat.toUpperCase()}</span>
+                          )}
+                        </div>
+                        {isGM && !isEditing && (
+                          <div className="flex gap-1">
+                            <Button 
+                              size="sm" 
+                              variant="ghost" 
+                              className="h-6 w-6 p-0"
+                              onClick={() => {
+                                setEditingRoll(roll.id);
+                                setRollFormData({
+                                  name: roll.name,
+                                  rollType: roll.rollType,
+                                  diceFormula: roll.diceFormula,
+                                  mod: roll.mod,
+                                  damageType: roll.damageType,
+                                  attribute: roll.attribute,
+                                  applyToStat: roll.applyToStat,
+                                  sortOrder: roll.sortOrder,
+                                });
+                              }}
+                              data-testid={`button-edit-roll-${roll.id}`}
+                            >
+                              <Edit3 className="h-3 w-3" />
+                            </Button>
+                            <Button 
+                              size="sm" 
+                              variant="ghost" 
+                              className="h-6 w-6 p-0 text-red-400 hover:text-red-300"
+                              onClick={() => deleteRollMutation.mutate(roll.id)}
+                              data-testid={`button-delete-roll-${roll.id}`}
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ))}
+                
+                {newRoll && (
+                  <div className="bg-stone-800/50 rounded-lg border border-amber-700/50 p-2">
+                    <div className="space-y-2">
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <Label className="text-xs text-stone-400">Name</Label>
+                          <Input 
+                            value={rollFormData.name || ''} 
+                            onChange={(e) => setRollFormData({ ...rollFormData, name: e.target.value })}
+                            className="bg-stone-900 border-stone-600 h-7 text-xs"
+                            placeholder="e.g. Attack Roll"
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-xs text-stone-400">Type</Label>
+                          <Select value={rollFormData.rollType || 'damage'} onValueChange={(v) => setRollFormData({ ...rollFormData, rollType: v })}>
+                            <SelectTrigger className="bg-stone-900 border-stone-600 h-7 text-xs">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="attack">Attack</SelectItem>
+                              <SelectItem value="damage">Damage</SelectItem>
+                              <SelectItem value="heal">Heal</SelectItem>
+                              <SelectItem value="effect">Effect</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <Label className="text-xs text-stone-400">Dice Formula</Label>
+                          <Input 
+                            value={rollFormData.diceFormula || ''} 
+                            onChange={(e) => setRollFormData({ ...rollFormData, diceFormula: e.target.value })}
+                            className="bg-stone-900 border-stone-600 h-7 text-xs"
+                            placeholder="e.g. 2d6+3"
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-xs text-stone-400">Modifier</Label>
+                          <Input 
+                            type="number"
+                            value={rollFormData.mod ?? 0} 
+                            onChange={(e) => setRollFormData({ ...rollFormData, mod: parseInt(e.target.value) || 0 })}
+                            className="bg-stone-900 border-stone-600 h-7 text-xs"
+                          />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <Label className="text-xs text-stone-400">Damage Type</Label>
+                          <Input 
+                            value={rollFormData.damageType || ''} 
+                            onChange={(e) => setRollFormData({ ...rollFormData, damageType: e.target.value })}
+                            className="bg-stone-900 border-stone-600 h-7 text-xs"
+                            placeholder="e.g. Slashing"
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-xs text-stone-400">Attribute</Label>
+                          <Select value={rollFormData.attribute || 'none'} onValueChange={(v) => setRollFormData({ ...rollFormData, attribute: v === 'none' ? '' : v })}>
+                            <SelectTrigger className="bg-stone-900 border-stone-600 h-7 text-xs">
+                              <SelectValue placeholder="None" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="none">None</SelectItem>
+                              <SelectItem value="might">Might</SelectItem>
+                              <SelectItem value="finesse">Finesse</SelectItem>
+                              <SelectItem value="wit">Wit</SelectItem>
+                              <SelectItem value="presence">Presence</SelectItem>
+                              <SelectItem value="will">Will</SelectItem>
+                              <SelectItem value="craft">Craft</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                      <div>
+                        <Label className="text-xs text-stone-400">Apply to Target Stat</Label>
+                        <Select value={rollFormData.applyToStat || 'none'} onValueChange={(v) => setRollFormData({ ...rollFormData, applyToStat: v })}>
+                          <SelectTrigger className="bg-stone-900 border-stone-600 h-7 text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none">None</SelectItem>
+                            <SelectItem value="hp">HP (subtract damage / add healing)</SelectItem>
+                            <SelectItem value="energy">Energy (subtract / add)</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="flex gap-2 pt-1">
+                        <Button size="sm" className="h-6 text-xs" onClick={() => {
+                          if (rollFormData.name && rollFormData.diceFormula) {
+                            createRollMutation.mutate(rollFormData);
+                          }
+                        }}>Create</Button>
+                        <Button size="sm" variant="outline" className="h-6 text-xs" onClick={() => {
+                          setNewRoll(null);
+                          setRollFormData({});
+                        }}>Cancel</Button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
 
             <div className="flex gap-2 pt-4">
               {isEditing ? (

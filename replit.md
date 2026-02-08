@@ -54,6 +54,8 @@ Preferred communication style: Simple, everyday language.
 -   **Utilities**: `date-fns`, `nanoid`, `bcryptjs`.
 
 ## Recent Changes (Feb 2026)
+- **Multi-Roll System**: New `rollEntries` table allows GMs to define multiple roll entries per item or spell. Each roll has name, type (attack/damage/heal/effect), dice formula, modifier, attribute bonus, damage type, and apply-to-stat (hp/energy/none). Rolls are clickable from ItemDetailDialog and SpellDetailDialog. Self-targeting stat application via WebSocket combat damage/energy.
+- **Character Overview Redesign**: Portrait always visible top-left, HP/Energy bars stacked right, DC below, two-column info grid, feat tree at bottom.
 - **Embedded Items/Spells**: Character actor sheets can embed items/spells from other templates. Each embedded item stores its own values, has collapsible UI, roll buttons that merge parent actor context with item values.
 - **AOE Targeting**: Button properties have `targetingConfig` (type: none/self/single/aoe, shape, range, hitFormula, damageFormula). AOE buttons enter battlemap targeting mode, auto-resolve hits against tokens in area.
 - **Player Hotbar**: 8-slot customizable bottom bar (localStorage-persisted per campaign/user). Slots: roll buttons or sheet shortcuts. Right-click to clear, toggle visibility.
