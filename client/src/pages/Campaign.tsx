@@ -30,7 +30,8 @@ import { useToast } from "@/hooks/use-toast";
 import { ImageBrowser } from "@/components/ImageBrowser";
 import { CampaignNotesPanel } from "@/components/notes/CampaignNotesPanel";
 import { FloatingPanel } from "@/components/ui/floating-panel";
-import { Folder, FolderOpen, FolderPlus, Plus, GripVertical, Eye, Radio, ChevronDown, ChevronRight, Pencil, Minus, Copy } from "lucide-react";
+import { Folder, FolderOpen, FolderPlus, Plus, GripVertical, Eye, Radio, ChevronDown, ChevronRight, Pencil, Minus, Copy, Palette } from "lucide-react";
+import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger, ContextMenuSub, ContextMenuSubTrigger, ContextMenuSubContent } from "@/components/ui/context-menu";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { PropertyStyleEditor, getPropertyCssStyle, type PropertyStyle, type SandboxPropertyType, type TabDefinition } from "@/components/sandbox/PropertyStyleEditor";
 
@@ -2379,6 +2380,13 @@ function SandboxCharactersContent({
     },
   });
 
+  const updateFolderMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: any }) => api.updateSandboxFolder(campaignId, id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sandbox-folders', campaignId] });
+    },
+  });
+
   const updateTemplateMutation = useMutation({
     mutationFn: ({ id, data }: { id: string; data: any }) => api.updateSandboxTemplate(campaignId, id, data),
     onSuccess: () => {
@@ -2392,6 +2400,18 @@ function SandboxCharactersContent({
       queryClient.invalidateQueries({ queryKey: ['sandbox-actors', campaignId] });
     },
   });
+
+  const folderColors = [
+    { name: 'Default', value: null, hex: '#d97706' },
+    { name: 'Red', value: '#ef4444', hex: '#ef4444' },
+    { name: 'Orange', value: '#f97316', hex: '#f97316' },
+    { name: 'Yellow', value: '#eab308', hex: '#eab308' },
+    { name: 'Green', value: '#22c55e', hex: '#22c55e' },
+    { name: 'Blue', value: '#3b82f6', hex: '#3b82f6' },
+    { name: 'Purple', value: '#a855f7', hex: '#a855f7' },
+    { name: 'Pink', value: '#ec4899', hex: '#ec4899' },
+    { name: 'Cyan', value: '#06b6d4', hex: '#06b6d4' },
+  ];
 
   const isSandboxDrag = (e: React.DragEvent) => {
     return e.dataTransfer.types.includes('application/sandbox-actor-move') ||
@@ -2583,42 +2603,78 @@ function SandboxCharactersContent({
     const folderActors = actors.filter((a: any) => a.folderId === folder.id);
     const folderTemplates = templates.filter((t: any) => t.folderId === folder.id);
     const isDragOver = dragOverFolderId === folder.id;
+    const folderColor = folder.color || '#d97706';
     
     return (
       <div key={folder.id} data-testid={`sandbox-folder-${folder.id}`}>
-        <div 
-          className={`flex items-center justify-between py-2 px-3 hover:bg-stone-800/40 rounded-lg cursor-pointer group transition-colors ${isDragOver ? 'bg-purple-900/30 ring-1 ring-purple-500/50' : ''}`}
-          style={{ paddingLeft: `${depth * 16 + 12}px` }}
-          onClick={() => toggleFolder(folder.id)}
-          onDragOver={(e) => {
-            if (isSandboxDrag(e)) {
-              e.preventDefault();
-              e.stopPropagation();
-              e.dataTransfer.dropEffect = 'move';
-              setDragOverFolderId(folder.id);
-            }
-          }}
-          onDragLeave={(e) => { e.stopPropagation(); setDragOverFolderId(prev => prev === folder.id ? null : prev); }}
-          onDrop={(e) => {
-            handleItemDrop(folder.id, e);
-            setExpandedFolders(prev => new Set([...prev, folder.id]));
-          }}
-        >
-          <div className="flex items-center gap-2">
-            <ChevronRight className={`h-3.5 w-3.5 text-stone-500 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
-            <FolderOpen className="h-4 w-4 text-amber-600" />
-            <span className="text-stone-300 text-sm font-medium">{folder.name}</span>
-          </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={(e) => { e.stopPropagation(); deleteFolderMutation.mutate(folder.id); }}
-            className="h-7 w-7 text-stone-600 hover:text-red-400 hover:bg-red-900/20 opacity-0 group-hover:opacity-100 transition-opacity"
-            data-testid={`button-delete-folder-${folder.id}`}
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </Button>
-        </div>
+        <ContextMenu>
+          <ContextMenuTrigger asChild>
+            <div 
+              className={`flex items-center justify-between py-2 px-3 hover:bg-stone-800/40 rounded-lg cursor-pointer group transition-colors ${isDragOver ? 'bg-purple-900/30 ring-1 ring-purple-500/50' : ''}`}
+              style={{ paddingLeft: `${depth * 16 + 12}px` }}
+              onClick={() => toggleFolder(folder.id)}
+              onDragOver={(e) => {
+                if (isSandboxDrag(e)) {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  e.dataTransfer.dropEffect = 'move';
+                  setDragOverFolderId(folder.id);
+                }
+              }}
+              onDragLeave={(e) => { e.stopPropagation(); setDragOverFolderId(prev => prev === folder.id ? null : prev); }}
+              onDrop={(e) => {
+                handleItemDrop(folder.id, e);
+                setExpandedFolders(prev => new Set([...prev, folder.id]));
+              }}
+            >
+              <div className="flex items-center gap-2">
+                <ChevronRight className={`h-3.5 w-3.5 text-stone-500 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+                <FolderOpen className="h-4 w-4" style={{ color: folderColor }} />
+                <span className="text-stone-300 text-sm font-medium">{folder.name}</span>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={(e) => { e.stopPropagation(); deleteFolderMutation.mutate(folder.id); }}
+                className="h-7 w-7 text-stone-600 hover:text-red-400 hover:bg-red-900/20 opacity-0 group-hover:opacity-100 transition-opacity"
+                data-testid={`button-delete-folder-${folder.id}`}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          </ContextMenuTrigger>
+          <ContextMenuContent className="w-48">
+            <ContextMenuSub>
+              <ContextMenuSubTrigger>
+                <Palette className="h-4 w-4 mr-2" />
+                Folder Color
+              </ContextMenuSubTrigger>
+              <ContextMenuSubContent className="w-40">
+                {folderColors.map((c) => (
+                  <ContextMenuItem
+                    key={c.name}
+                    onClick={() => updateFolderMutation.mutate({ id: folder.id, data: { color: c.value } })}
+                    data-testid={`folder-color-${c.name.toLowerCase()}-${folder.id}`}
+                  >
+                    <div className="h-4 w-4 rounded-full mr-2 border border-stone-600" style={{ backgroundColor: c.hex }} />
+                    {c.name}
+                    {(folder.color === c.value || (!folder.color && c.value === null)) && (
+                      <span className="ml-auto text-amber-500">●</span>
+                    )}
+                  </ContextMenuItem>
+                ))}
+              </ContextMenuSubContent>
+            </ContextMenuSub>
+            <ContextMenuItem
+              className="text-red-400 focus:text-red-300 focus:bg-red-900/20"
+              onClick={() => deleteFolderMutation.mutate(folder.id)}
+              data-testid={`context-delete-folder-${folder.id}`}
+            >
+              <Trash2 className="h-4 w-4 mr-2" />
+              Delete Folder
+            </ContextMenuItem>
+          </ContextMenuContent>
+        </ContextMenu>
         {isExpanded && (
           <div className="ml-4 space-y-1 mt-1">
             {childFolders.map((f: any) => renderFolder(f, depth + 1))}
