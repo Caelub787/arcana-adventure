@@ -134,6 +134,20 @@ export const scenes = pgTable("scenes", {
   defaultViewVersion: integer("default_view_version").default(0).notNull(), // 0 = legacy pixel offsets, 1 = world center coords
   inCombat: boolean("in_combat").default(false).notNull(), // Whether combat/initiative tracking is active
   currentTurnCharacterId: varchar("current_turn_character_id"), // Character whose turn it is
+  // Fog of War settings
+  fogEnabled: boolean("fog_enabled").default(false).notNull(),
+  fogExploredMemory: boolean("fog_explored_memory").default(true).notNull(),
+  fogTokenVision: boolean("fog_token_vision").default(true).notNull(),
+  fogLightVision: boolean("fog_light_vision").default(true).notNull(),
+  fogWallBlocking: boolean("fog_wall_blocking").default(true).notNull(),
+  fogDoorBlocking: boolean("fog_door_blocking").default(true).notNull(),
+  fogOpacity: real("fog_opacity").default(0.85).notNull(),
+  fogExploredDimness: real("fog_explored_dimness").default(0.5).notNull(),
+  fogTexture: text("fog_texture").default("solid").notNull(), // "solid", "clouds", "noise"
+  fogState: text("fog_state"), // JSON string of grid-based fog state {cellSize, cells: {x_y: "hidden"|"explored"|"visible"}}
+  // Day/Night system
+  isDayTime: boolean("is_day_time").default(true).notNull(),
+  globalLightLevel: real("global_light_level").default(1.0).notNull(), // 0.0 (pitch dark) to 1.0 (full daylight)
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -250,6 +264,11 @@ export const characters = pgTable("characters", {
   cancelledSkillPoints: integer("cancelled_skill_points").notNull().default(0),
   // Exhaustion (0-7 scale)
   exhaustion: integer("exhaustion").notNull().default(0),
+  // Vision settings
+  visionType: text("vision_type").default("normal").notNull(), // "normal", "darkvision", "blindsight", "truesight", "tremorsense"
+  dayVisionDistance: integer("day_vision_distance").default(120).notNull(), // Vision distance in feet during day
+  nightVisionDistance: integer("night_vision_distance").default(60).notNull(), // Vision distance in feet during night/dark
+  specialVisionNotes: text("special_vision_notes"), // Freeform notes about special vision abilities
   // Background/notes
   nickname: text("nickname"), // Optional nickname to display on tokens instead of character name
   biography: text("biography"),
@@ -280,6 +299,13 @@ export const tokens = pgTable("tokens", {
   y: real("y").notNull(),
   image: text("image").notNull(),
   isInvisible: boolean("is_invisible").default(false).notNull(), // GM sees 40% opacity, non-edit users see nothing
+  // Vision overrides
+  isBlind: boolean("is_blind").default(false).notNull(), // Token cannot see anything
+  visionOverrideDistance: integer("vision_override_distance"), // Temporary vision distance override (null = use character default)
+  visionOverrideType: text("vision_override_type"), // Temporary vision type override (null = use character default)
+  lightRadius: integer("light_radius"), // Light emitted by this token (e.g. torch)
+  lightColor: text("light_color").default("#ffcc44"), // Color of token-emitted light
+  lightIntensity: real("light_intensity").default(1.0), // 0.0-1.0 intensity of token light
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -577,6 +603,11 @@ export const systemTraits = pgTable("system_traits", {
   damageModifierType: text("damage_modifier_type").default("none"), // "none", "reduce", "resistance", "immune"
   damageModifierDamageType: text("damage_modifier_damage_type"), // Damage type affected
   damageModifierValue: integer("damage_modifier_value").default(0), // Value for "reduce" type
+  // Vision modifiers
+  visionModifier: integer("vision_modifier").default(0), // +/- to vision distance
+  visionModifierTime: text("vision_modifier_time").default("both"), // "day", "night", "both"
+  visionOverrideType: text("vision_override_type"), // Override vision type (null = no override)
+  visionOverrideToggle: boolean("vision_override_toggle").default(false), // If true, overrides rather than stacks
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -603,6 +634,11 @@ export const characterTraits = pgTable("character_traits", {
   damageModifierType: text("damage_modifier_type").default("none"), // "none", "reduce", "resistance", "immune"
   damageModifierDamageType: text("damage_modifier_damage_type"), // Damage type affected
   damageModifierValue: integer("damage_modifier_value").default(0), // Value for "reduce" type
+  // Vision modifiers
+  visionModifier: integer("vision_modifier").default(0), // +/- to vision distance
+  visionModifierTime: text("vision_modifier_time").default("both"), // "day", "night", "both"
+  visionOverrideType: text("vision_override_type"), // Override vision type (null = no override)
+  visionOverrideToggle: boolean("vision_override_toggle").default(false), // If true, overrides rather than stacks
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -1206,3 +1242,94 @@ export const insertRollEntrySchema = createInsertSchema(rollEntries).omit({
 });
 export type InsertRollEntry = z.infer<typeof insertRollEntrySchema>;
 export type RollEntry = typeof rollEntries.$inferSelect;
+
+// Scene Walls table (for fog of war line-of-sight)
+export const sceneWalls = pgTable("scene_walls", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  sceneId: varchar("scene_id").notNull().references(() => scenes.id, { onDelete: "cascade" }),
+  x1: real("x1").notNull(),
+  y1: real("y1").notNull(),
+  x2: real("x2").notNull(),
+  y2: real("y2").notNull(),
+  wallType: text("wall_type").default("solid").notNull(), // "solid" (blocks movement+vision), "transparent" (blocks movement only), "one_way" (blocks vision from one side), "invisible" (blocks movement only, not rendered)
+  oneWayDirection: text("one_way_direction"), // "left" or "right" - which side blocks vision for one-way walls
+  snapToGrid: boolean("snap_to_grid").default(true).notNull(),
+  playerVisible: boolean("player_visible").default(true).notNull(), // Whether players see the wall line
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertSceneWallSchema = createInsertSchema(sceneWalls).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertSceneWall = z.infer<typeof insertSceneWallSchema>;
+export type SceneWall = typeof sceneWalls.$inferSelect;
+
+// Scene Doors table
+export const sceneDoors = pgTable("scene_doors", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  sceneId: varchar("scene_id").notNull().references(() => scenes.id, { onDelete: "cascade" }),
+  x1: real("x1").notNull(),
+  y1: real("y1").notNull(),
+  x2: real("x2").notNull(),
+  y2: real("y2").notNull(),
+  isOpen: boolean("is_open").default(false).notNull(),
+  isLocked: boolean("is_locked").default(false).notNull(),
+  blocksVisionWhenClosed: boolean("blocks_vision_when_closed").default(true).notNull(),
+  blocksMovementWhenClosed: boolean("blocks_movement_when_closed").default(true).notNull(),
+  snapToGrid: boolean("snap_to_grid").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertSceneDoorSchema = createInsertSchema(sceneDoors).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertSceneDoor = z.infer<typeof insertSceneDoorSchema>;
+export type SceneDoor = typeof sceneDoors.$inferSelect;
+
+// Scene Windows table
+export const sceneWindows = pgTable("scene_windows", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  sceneId: varchar("scene_id").notNull().references(() => scenes.id, { onDelete: "cascade" }),
+  x1: real("x1").notNull(),
+  y1: real("y1").notNull(),
+  x2: real("x2").notNull(),
+  y2: real("y2").notNull(),
+  shutterClosed: boolean("shutter_closed").default(false).notNull(), // Shutter blocks vision when closed
+  snapToGrid: boolean("snap_to_grid").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertSceneWindowSchema = createInsertSchema(sceneWindows).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertSceneWindow = z.infer<typeof insertSceneWindowSchema>;
+export type SceneWindow = typeof sceneWindows.$inferSelect;
+
+// Scene Lights table
+export const sceneLights = pgTable("scene_lights", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  sceneId: varchar("scene_id").notNull().references(() => scenes.id, { onDelete: "cascade" }),
+  x: real("x").notNull(),
+  y: real("y").notNull(),
+  radius: integer("radius").default(30).notNull(), // Light radius in feet
+  color: text("color").default("#ffcc44").notNull(), // Light color hex
+  intensity: real("intensity").default(1.0).notNull(), // 0.0-1.0
+  softEdge: boolean("soft_edge").default(true).notNull(), // Soft vs hard edge
+  flicker: boolean("flicker").default(false).notNull(),
+  flickerSpeed: real("flicker_speed").default(1.0).notNull(), // 0.5-3.0 flicker animation speed
+  attachmentType: text("attachment_type").default("static").notNull(), // "static", "token", "item"
+  attachedTokenId: varchar("attached_token_id").references(() => tokens.id, { onDelete: "cascade" }),
+  attachedItemId: varchar("attached_item_id"), // references items.id but not FK constrained for flexibility
+  enabled: boolean("enabled").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertSceneLightSchema = createInsertSchema(sceneLights).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertSceneLight = z.infer<typeof insertSceneLightSchema>;
+export type SceneLight = typeof sceneLights.$inferSelect;
