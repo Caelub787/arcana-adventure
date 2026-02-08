@@ -8132,7 +8132,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             style: { backgroundColor: "#1c1917", border: { enabled: true, color: "#44403c", width: 1, radius: 4, style: "solid" } },
           },
         ],
-        settings: { defaultWidth: 500, defaultHeight: 450 },
+        settings: { defaultWidth: 450, defaultHeight: 550 },
       };
       const template = await storage.createSandboxTemplate({
         campaignId: req.params.campaignId,

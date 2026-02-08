@@ -858,8 +858,8 @@ function SandboxSheetEditor({
 
   const settings = templateData.settings || {};
   const [size, setSize] = useState({ 
-    width: settings.defaultWidth || 400, 
-    height: settings.defaultHeight || 450 
+    width: settings.defaultWidth || 450, 
+    height: settings.defaultHeight || 550 
   });
 
   const [isDragging, setIsDragging] = useState(false);
@@ -2161,10 +2161,10 @@ function SandboxSheetEditor({
                   type="number"
                   min={280}
                   max={900}
-                  defaultValue={currentSettings.defaultWidth || 400}
+                  defaultValue={currentSettings.defaultWidth || 450}
                   onBlur={(e) => {
                     const v = Math.min(900, Math.max(280, parseInt(e.target.value) || 400));
-                    saveTemplateSettings({ ...currentSettings, defaultWidth: v, defaultHeight: currentSettings.defaultHeight || 450, allowResize: currentSettings.allowResize !== false });
+                    saveTemplateSettings({ ...currentSettings, defaultWidth: v, defaultHeight: currentSettings.defaultHeight || 550, allowResize: currentSettings.allowResize !== false });
                   }}
                   className="bg-stone-900 border-stone-600 text-stone-200 h-7 text-xs"
                   data-testid="input-template-default-width"
@@ -2176,10 +2176,10 @@ function SandboxSheetEditor({
                   type="number"
                   min={200}
                   max={800}
-                  defaultValue={currentSettings.defaultHeight || 450}
+                  defaultValue={currentSettings.defaultHeight || 550}
                   onBlur={(e) => {
                     const v = Math.min(800, Math.max(200, parseInt(e.target.value) || 450));
-                    saveTemplateSettings({ ...currentSettings, defaultWidth: currentSettings.defaultWidth || 400, defaultHeight: v, allowResize: currentSettings.allowResize !== false });
+                    saveTemplateSettings({ ...currentSettings, defaultWidth: currentSettings.defaultWidth || 450, defaultHeight: v, allowResize: currentSettings.allowResize !== false });
                   }}
                   className="bg-stone-900 border-stone-600 text-stone-200 h-7 text-xs"
                   data-testid="input-template-default-height"
@@ -2190,7 +2190,7 @@ function SandboxSheetEditor({
                   type="checkbox"
                   defaultChecked={currentSettings.allowResize !== false}
                   onChange={(e) => {
-                    saveTemplateSettings({ ...currentSettings, defaultWidth: currentSettings.defaultWidth || 400, defaultHeight: currentSettings.defaultHeight || 450, allowResize: e.target.checked });
+                    saveTemplateSettings({ ...currentSettings, defaultWidth: currentSettings.defaultWidth || 450, defaultHeight: currentSettings.defaultHeight || 550, allowResize: e.target.checked });
                   }}
                   className="h-4 w-4 accent-purple-600"
                   data-testid="checkbox-template-allow-resize"
