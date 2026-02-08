@@ -1,3 +1,5 @@
+import { rollDice } from './diceEngine';
+
 export interface ExpressionContext {
   values: Record<string, any>;
   properties?: Record<string, { type: string; defaultValue?: any }>;
@@ -345,6 +347,41 @@ class Parser {
     }
     this.expect('paren', ')');
 
+    const lowerName = name.toLowerCase();
+
+    if (lowerName === 'roll') {
+      const expr = args.length > 0 ? String(args[0]) : '';
+      return rollDice(expr).total;
+    }
+
+    if (lowerName === 'if') {
+      const condition = args[0];
+      const trueVal = args.length > 1 ? args[1] : 0;
+      const falseVal = args.length > 2 ? args[2] : 0;
+      return isTruthy(condition) ? trueVal : falseVal;
+    }
+
+    if (lowerName === 'concat') {
+      return args.map(a => String(a)).join('');
+    }
+
+    if (lowerName === 'lookup') {
+      if (args.length < 2) return 0;
+      const index = Math.floor(toNumber(args[0]));
+      const values = args.slice(1);
+      if (index < 1 || index > values.length) return 0;
+      return values[index - 1];
+    }
+
+    if (lowerName === 'sign') {
+      const n = toNumber(args[0] ?? 0);
+      return n >= 0 ? `+${n}` : `${n}`;
+    }
+
+    if (lowerName === 'text') {
+      return String(args[0] ?? 0);
+    }
+
     const fn = BUILT_IN_FUNCTIONS[name];
     if (!fn) {
       throw new Error(`Unknown function: '${name}'`);
@@ -448,7 +485,7 @@ export function isExpression(value: string): boolean {
     /[+\-*/%]/, /[><=!]{1,2}/, /&&/, /\|\|/, /\?/, /\(/, /\)/,
   ];
 
-  const functionPattern = /\b(min|max|clamp|floor|ceil|round|abs)\s*\(/;
+  const functionPattern = /\b(min|max|clamp|floor|ceil|round|abs|roll|if|concat|lookup|sign|text)\s*\(/;
   if (functionPattern.test(trimmed)) return true;
 
   for (const pattern of expressionPatterns) {
@@ -462,7 +499,7 @@ export function getExpressionDependencies(expression: string): string[] {
   if (!expression || typeof expression !== 'string') return [];
 
   const deps = new Set<string>();
-  const functionNames = new Set(['min', 'max', 'clamp', 'floor', 'ceil', 'round', 'abs', 'true', 'false']);
+  const functionNames = new Set(['min', 'max', 'clamp', 'floor', 'ceil', 'round', 'abs', 'roll', 'if', 'concat', 'lookup', 'sign', 'text', 'true', 'false']);
 
   try {
     const tokens = tokenize(expression.trim());

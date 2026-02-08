@@ -30,12 +30,13 @@ import { useToast } from "@/hooks/use-toast";
 import { ImageBrowser } from "@/components/ImageBrowser";
 import { CampaignNotesPanel } from "@/components/notes/CampaignNotesPanel";
 import { FloatingPanel } from "@/components/ui/floating-panel";
-import { Folder, FolderOpen, FolderPlus, Plus, GripVertical, Eye, Radio, ChevronDown, ChevronRight, Pencil, Minus, Copy, Palette } from "lucide-react";
+import { Folder, FolderOpen, FolderPlus, Plus, GripVertical, Eye, Radio, ChevronDown, ChevronRight, Pencil, Minus, Copy, Palette, Coffee } from "lucide-react";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger, ContextMenuSub, ContextMenuSubTrigger, ContextMenuSubContent } from "@/components/ui/context-menu";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { PropertyStyleEditor, getPropertyCssStyle, type PropertyStyle } from "@/components/sandbox/PropertyStyleEditor";
 import { migrateTemplateData } from "@/components/sandbox/types";
 import { evaluateExpression, ExpressionContext } from '@/components/sandbox/expressionEngine';
+import { rollDice, formatRollResult, isDiceExpression, DiceRollResult } from '@/components/sandbox/diceEngine';
 
 // Scene Settings Form Component
 function SceneSettingsForm({ scene, onUpdateScene }: { scene: Scene; onUpdateScene: (settings: Partial<Scene>) => void }) {
@@ -846,6 +847,9 @@ function SandboxSheetEditor({
   const { toast } = useToast();
   const [collapsed, setCollapsed] = useState(false);
   const [position, setPosition] = useState({ x: 100 + Math.random() * 200, y: 80 + Math.random() * 100 });
+  const [lastRollResult, setLastRollResult] = useState<DiceRollResult | null>(null);
+  const [rollResultVisible, setRollResultVisible] = useState(false);
+  const rollResultTimeoutRef = useRef<any>(null);
 
   const interpolateColor = (color1: string, color2: string, t: number): string => {
     const hex = (c: string) => {
@@ -920,6 +924,7 @@ function SandboxSheetEditor({
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(item.templateId || null);
   const [showActorSettings, setShowActorSettings] = useState(false);
   const [showTemplateSettings, setShowTemplateSettings] = useState(false);
+  const [showRestMenu, setShowRestMenu] = useState(false);
 
   const [addingProperty, setAddingProperty] = useState(false);
   const [newPropKey, setNewPropKey] = useState('');
@@ -1109,6 +1114,13 @@ function SandboxSheetEditor({
     useGradient: p.metadata?.resourceConfig?.useGradient,
     calculationExpression: p.metadata?.calculationExpression,
     visibilityExpression: p.metadata?.visibilityExpression,
+    rollFormula: p.metadata?.buttonConfig?.rollFormula,
+    buttonLabel: p.metadata?.buttonConfig?.label,
+    buttonColor: p.metadata?.buttonConfig?.color,
+    successThreshold: p.metadata?.buttonConfig?.successThreshold,
+    resourceCost: p.metadata?.buttonConfig?.resourceCost,
+    maxUses: p.metadata?.buttonConfig?.maxUses,
+    usesPerRest: p.metadata?.buttonConfig?.usesPerRest,
   }));
 
   const layoutNodes: Record<string, any> = templateData.layoutNodes || {};
@@ -1177,6 +1189,101 @@ function SandboxSheetEditor({
     setContainerAddTarget(null);
   };
 
+  const handleButtonRoll = useCallback((prop: any) => {
+    if (!prop.rollFormula) {
+      toast({ title: 'No roll formula configured', variant: 'destructive' });
+      return;
+    }
+
+    if (prop.resourceCost?.propertyKey && prop.resourceCost?.amount > 0) {
+      const resKey = prop.resourceCost.propertyKey;
+      const resVal = actorValues[resKey];
+      try {
+        const parsed = JSON.parse(resVal as string || '{"current":0,"max":0}');
+        const current = Number(parsed.current) || 0;
+        if (current < prop.resourceCost.amount) {
+          toast({ title: `Not enough ${resKey}! Need ${prop.resourceCost.amount}, have ${current}`, variant: 'destructive' });
+          return;
+        }
+        const newCurrent = current - prop.resourceCost.amount;
+        handleActorValueChange(resKey, JSON.stringify({ current: newCurrent, max: parsed.max }));
+      } catch {
+        toast({ title: `Invalid resource: ${resKey}`, variant: 'destructive' });
+        return;
+      }
+    }
+
+    if (prop.maxUses && prop.maxUses > 0) {
+      const usesKey = `__uses_${prop.key}`;
+      const currentUses = Number(actorValues[usesKey] || '0');
+      if (currentUses >= prop.maxUses) {
+        toast({ title: `No uses remaining for ${prop.buttonLabel || prop.label || prop.key}!`, variant: 'destructive' });
+        return;
+      }
+      handleActorValueChange(usesKey, String(currentUses + 1));
+    }
+
+    const context: Record<string, any> = {};
+    if (templateData) {
+      for (const [key, p] of Object.entries(templateData.properties)) {
+        let val = actorValues[key];
+
+        if (p.metadata?.calculationExpression) {
+          const calcCtx = getExpressionContext();
+          const calcResult = evaluateExpression(p.metadata.calculationExpression, calcCtx);
+          if (!calcResult.error) {
+            val = String(calcResult.value);
+          }
+        }
+
+        if (p.type === 'resource') {
+          try {
+            const parsed = JSON.parse(val as string || '{}');
+            context[key] = parsed;
+          } catch { context[key] = 0; }
+        } else if (p.type === 'number') {
+          context[key] = Number(val) || 0;
+        } else if (p.type === 'boolean') {
+          context[key] = val === 'true';
+        } else {
+          context[key] = val || '';
+        }
+      }
+    }
+
+    const result = rollDice(prop.rollFormula, context);
+    setLastRollResult(result);
+    setRollResultVisible(true);
+
+    if (rollResultTimeoutRef.current) clearTimeout(rollResultTimeoutRef.current);
+    rollResultTimeoutRef.current = setTimeout(() => setRollResultVisible(false), 8000);
+
+    const rollText = formatRollResult(result);
+    const actorName = actorValues['name'] || actorValues['Name'] || item.name || 'Actor';
+    const label = prop.buttonLabel || prop.label || prop.key;
+    gameWs.sendChatMessage('', actorName as string, `🎲 ${label}: ${rollText}`, 'roll');
+  }, [templateData, actorValues, item.name, toast, getExpressionContext]);
+
+  const handleRest = useCallback((restType: 'short' | 'long') => {
+    if (!templateData) return;
+    const allProps = Object.values(templateData.properties || {});
+    let resetCount = 0;
+    for (const p of allProps) {
+      const usesPerRest = (p as any).metadata?.buttonConfig?.usesPerRest;
+      if (!usesPerRest || usesPerRest === 'none') continue;
+      if (restType === 'short' && usesPerRest === 'short') {
+        handleActorValueChange(`__uses_${p.key}`, '0');
+        resetCount++;
+      }
+      if (restType === 'long' && (usesPerRest === 'short' || usesPerRest === 'long')) {
+        handleActorValueChange(`__uses_${p.key}`, '0');
+        resetCount++;
+      }
+    }
+    setShowRestMenu(false);
+    toast({ title: `${restType === 'short' ? 'Short' : 'Long'} Rest completed! ${resetCount} ${resetCount === 1 ? 'ability' : 'abilities'} refreshed.` });
+  }, [templateData, toast]);
+
   const handleNewPropTypeChange = (type: string) => {
     setNewPropType(type);
     if (type === 'resource') {
@@ -1192,6 +1299,14 @@ function SandboxSheetEditor({
     } else if (type === 'label') {
       setNewPropWidth(200);
       setNewPropHeight(40);
+      setNewPropLabelPosition('hidden');
+    } else if (type === 'button') {
+      setNewPropWidth(120);
+      setNewPropHeight(36);
+      setNewPropLabelPosition('hidden');
+    } else if (type === 'divider') {
+      setNewPropWidth(200);
+      setNewPropHeight(2);
       setNewPropLabelPosition('hidden');
     } else {
       setNewPropWidth(200);
@@ -1319,6 +1434,20 @@ function SandboxSheetEditor({
         } : {}),
         ...(updates.calculationExpression !== undefined ? { calculationExpression: updates.calculationExpression } : {}),
         ...(updates.visibilityExpression !== undefined ? { visibilityExpression: updates.visibilityExpression } : {}),
+        ...(() => {
+          const buttonUpdates: any = {};
+          if (updates.rollFormula !== undefined) buttonUpdates.rollFormula = updates.rollFormula;
+          if (updates.buttonLabel !== undefined) buttonUpdates.label = updates.buttonLabel;
+          if (updates.buttonColor !== undefined) buttonUpdates.color = updates.buttonColor;
+          if (updates.successThreshold !== undefined) buttonUpdates.successThreshold = updates.successThreshold;
+          if (updates.resourceCost !== undefined) buttonUpdates.resourceCost = updates.resourceCost;
+          if (updates.maxUses !== undefined) buttonUpdates.maxUses = updates.maxUses;
+          if (updates.usesPerRest !== undefined) buttonUpdates.usesPerRest = updates.usesPerRest;
+          if (Object.keys(buttonUpdates).length > 0) {
+            return { buttonConfig: { ...(original.metadata?.buttonConfig || {}), ...buttonUpdates } };
+          }
+          return {};
+        })(),
       },
       ...(updates.parentId !== undefined ? { parentId: updates.parentId } : {}),
       ...(updates.key !== undefined ? { key: updates.key } : {}),
@@ -1476,6 +1605,19 @@ function SandboxSheetEditor({
           ) : prop.type === 'textarea' ? (
             <div className="bg-stone-700/50 border border-stone-600/50 rounded px-1.5 h-full" style={{ fontSize: `${vfs}px`, color: valueColor || '#a8a29e' }}>
               <span className="text-stone-500 text-[9px]">Multi-line text...</span>
+            </div>
+          ) : prop.type === 'button' ? (
+            <div className="flex items-center justify-center h-full">
+              <div 
+                className="px-3 py-1 rounded text-xs font-medium text-white cursor-pointer"
+                style={{ backgroundColor: prop.buttonColor || '#d97706', fontSize: `${vfs}px` }}
+              >
+                {prop.buttonLabel || prop.label || 'Roll'}
+              </div>
+            </div>
+          ) : prop.type === 'divider' ? (
+            <div className="flex items-center justify-center h-full w-full">
+              <div className="w-full border-t border-stone-600" style={{ borderColor: prop.style?.textColor || '#57534e' }} />
             </div>
           ) : prop.type === 'label' ? (
             <div className="text-stone-400 italic truncate" style={{ fontSize: `${vfs}px` }}>
@@ -1750,6 +1892,86 @@ function SandboxSheetEditor({
           );
         }
 
+        if (node.type === 'stat_block') {
+          const statProps = properties.filter((p: any) => p.parentId === node.id);
+          return (
+            <div
+              key={node.id}
+              className="relative rounded overflow-visible mb-1 border border-amber-900/50"
+              style={{ minHeight: '80px', background: '#1a1412', ...nodeStyle }}
+              data-testid={`template-stat-block-${node.name.toLowerCase()}`}
+              onClick={(e) => {
+                if (e.target === e.currentTarget) { setSelectedPropertyId(null); setPropSettingsOpen(false); }
+              }}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setSectionContextMenu({ x: e.clientX, y: e.clientY, sectionId: node.id });
+              }}
+            >
+              <div className="absolute top-0 left-0 z-20 px-2 py-0.5 flex items-center gap-1">
+                {editingSectionName === node.id ? (
+                  <input
+                    autoFocus
+                    defaultValue={node.name}
+                    className="bg-stone-700 border border-stone-500 text-stone-200 text-[10px] px-1 rounded w-20"
+                    onBlur={(e) => {
+                      const newName = e.target.value.trim() || node.name;
+                      const updatedNodes = { ...layoutNodes, [node.id]: { ...node, name: newName } };
+                      updateTemplateMutationSheet.mutate({ data: JSON.stringify({ ...templateData, layoutNodes: updatedNodes }) });
+                      setEditingSectionName(null);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                      if (e.key === 'Escape') setEditingSectionName(null);
+                    }}
+                    data-testid={`input-section-name-${node.name.toLowerCase()}`}
+                  />
+                ) : (
+                  <span className="text-[10px] text-amber-600 uppercase tracking-wider font-semibold">{node.name} <span className="text-stone-600">(stat block)</span></span>
+                )}
+              </div>
+              <div className="grid grid-cols-2 gap-1 p-2 pt-5">
+                {statProps.map((prop: any) => (
+                  <div
+                    key={prop.id}
+                    className={`flex items-center justify-between px-2 py-1 bg-stone-800/50 rounded cursor-pointer border ${selectedPropertyId === prop.id ? 'border-purple-400 ring-1 ring-purple-400' : 'border-transparent hover:border-stone-600'}`}
+                    onClick={(e) => { e.stopPropagation(); setSelectedPropertyId(prop.id); }}
+                    onDoubleClick={(e) => {
+                      e.preventDefault(); e.stopPropagation();
+                      setSelectedPropertyId(prop.id);
+                      setPropSettingsOpen(true);
+                      setPropContextMenu(null);
+                      setPropSettingsPanelPos({ x: e.clientX, y: e.clientY });
+                    }}
+                    onContextMenu={(e) => {
+                      e.preventDefault(); e.stopPropagation();
+                      setPropContextMenu({ x: e.clientX, y: e.clientY, propId: prop.id });
+                    }}
+                    data-testid={`canvas-property-${prop.key}`}
+                  >
+                    <span className="text-stone-400 text-xs truncate">{prop.label || prop.key}</span>
+                    <span className="text-stone-200 text-sm font-medium">{prop.type === 'number' ? '0' : prop.type === 'boolean' ? '☐' : 'abc'}</span>
+                  </div>
+                ))}
+              </div>
+              {childNodes.map((child: any) => renderLayoutNode(child))}
+              <button
+                className="absolute w-5 h-5 rounded bg-purple-700/60 hover:bg-purple-600 text-white flex items-center justify-center transition-all opacity-60 hover:opacity-100 z-30 top-1 right-1"
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleAddPropertyToSection(node.id);
+                }}
+                title={`Add property to ${node.name}`}
+                data-testid={`button-add-to-section-${node.name.toLowerCase()}`}
+              >
+                <Plus className="h-3 w-3" />
+              </button>
+            </div>
+          );
+        }
+
         if (node.type === 'panel') {
           const isCollapsible = node.behaviorConfig?.panelConfig?.collapsible;
           const isPanelCollapsed = collapsedPanels[node.id] ?? node.behaviorConfig?.panelConfig?.defaultCollapsed ?? false;
@@ -1889,7 +2111,7 @@ function SandboxSheetEditor({
             </button>
             {addNodeDialogOpen && (
               <div className="absolute bottom-full left-0 mb-1 bg-stone-800 border border-stone-600 rounded-lg shadow-xl py-1 min-w-[160px] z-30" data-testid="add-node-dialog">
-                {(['section', 'panel', 'tab', 'group'] as const).map((nodeType) => (
+                {(['section', 'panel', 'tab', 'group', 'stat_block'] as const).map((nodeType) => (
                   <button
                     key={nodeType}
                     className="w-full text-left px-3 py-1.5 text-xs text-stone-200 hover:bg-stone-700 capitalize"
@@ -1965,7 +2187,7 @@ function SandboxSheetEditor({
                   const isPanelNode = ctxNode.type === 'panel';
                   const parentNode = ctxNode.parentId ? layoutNodes[ctxNode.parentId] : null;
                   const isTabPage = isPanelNode && parentNode?.type === 'tab';
-                  const isContainer = ['panel', 'section', 'group', 'tab'].includes(ctxNode.type);
+                  const isContainer = ['panel', 'section', 'group', 'tab', 'stat_block'].includes(ctxNode.type);
                   const siblings = parentNode ? layoutNodesList.filter((n: any) => n.parentId === parentNode.id).sort((a: any, b: any) => a.order - b.order) : [];
                   const siblingIndex = siblings.findIndex((s: any) => s.id === ctxNode.id);
 
@@ -2329,6 +2551,13 @@ function SandboxSheetEditor({
           options: p.metadata?.options,
           calculationExpression: p.metadata?.calculationExpression,
           visibilityExpression: p.metadata?.visibilityExpression,
+          rollFormula: p.metadata?.buttonConfig?.rollFormula,
+          buttonLabel: p.metadata?.buttonConfig?.label,
+          buttonColor: p.metadata?.buttonConfig?.color,
+          successThreshold: p.metadata?.buttonConfig?.successThreshold,
+          resourceCost: p.metadata?.buttonConfig?.resourceCost,
+          maxUses: p.metadata?.buttonConfig?.maxUses,
+          usesPerRest: p.metadata?.buttonConfig?.usesPerRest,
         }));
       } catch {}
     }
@@ -2416,6 +2645,54 @@ function SandboxSheetEditor({
               style={{ fontSize: `${vfs}px`, color: valueColor || '#e7e5e4' }}
               dangerouslySetInnerHTML={{ __html: content }}
             />
+          </div>
+        );
+      }
+
+      if (prop.type === 'button' && item.type === 'actor') {
+        const usesKey = `__uses_${prop.key}`;
+        const currentUses = Number(actorValues[usesKey] || '0');
+        const hasUses = prop.maxUses && prop.maxUses > 0;
+        const usesRemaining = hasUses ? prop.maxUses - currentUses : null;
+        const isDisabled = hasUses && currentUses >= prop.maxUses;
+
+        return (
+          <div
+            key={prop.id}
+            className="absolute"
+            style={{ left: `${px}px`, top: `${py}px`, width: `${pw}px`, height: `${ph}px`, ...propStyle }}
+            data-testid={`actor-property-${prop.key}`}
+            title={prop.tooltip}
+          >
+            <button
+              onClick={() => !isDisabled && handleButtonRoll(prop)}
+              disabled={isDisabled}
+              className={`w-full h-full rounded font-medium text-white transition-all ${isDisabled ? 'opacity-40 cursor-not-allowed' : 'hover:brightness-110 active:scale-95 cursor-pointer'}`}
+              style={{ 
+                backgroundColor: prop.buttonColor || '#d97706', 
+                fontSize: `${vfs}px`,
+                textShadow: '0 1px 2px rgba(0,0,0,0.3)'
+              }}
+              data-testid={`button-roll-${prop.key}`}
+            >
+              {prop.buttonLabel || prop.label || 'Roll'}
+              {hasUses && (
+                <span className="ml-1 opacity-70 text-[10px]">({usesRemaining}/{prop.maxUses})</span>
+              )}
+            </button>
+          </div>
+        );
+      }
+
+      if (prop.type === 'divider') {
+        return (
+          <div
+            key={prop.id}
+            className="absolute flex items-center"
+            style={{ left: `${px}px`, top: `${py}px`, width: `${pw}px`, height: `${ph}px`, ...propStyle }}
+            data-testid={`actor-property-${prop.key}`}
+          >
+            <div className="w-full border-t-2" style={{ borderColor: prop.style?.textColor || '#57534e' }} />
           </div>
         );
       }
@@ -2588,6 +2865,57 @@ function SandboxSheetEditor({
         );
       }
 
+      if (node.type === 'stat_block') {
+        return (
+          <div key={node.id} className="relative rounded overflow-hidden mb-1 border border-amber-900/50" style={{ background: '#1a1412', ...nodeStyle }} data-testid={`actor-stat-block-${node.id}`}>
+            {node.name && <div className="px-2 py-1 border-b border-amber-900/30"><span className="text-[10px] text-amber-600 uppercase tracking-wider font-semibold">{node.name}</span></div>}
+            <div className="grid grid-cols-2 gap-1 p-2">
+              {nodeProps.map((prop: any) => {
+                const val = actorValues[prop.key] ?? prop.defaultValue ?? '';
+                let displayVal = val;
+                const hasFormula = !!(prop.calculationExpression && item.type === 'actor');
+                if (hasFormula) {
+                  const ctx = getExpressionContext();
+                  const result = evaluateExpression(prop.calculationExpression, ctx);
+                  if (!result.error) displayVal = result.value;
+                }
+                if (prop.type === 'divider') {
+                  return (
+                    <div key={prop.id} className="col-span-2 my-1" data-testid={`actor-property-${prop.key}`}>
+                      <div className="w-full border-t-2" style={{ borderColor: prop.style?.textColor || '#57534e' }} />
+                    </div>
+                  );
+                }
+                if (prop.type === 'resource') {
+                  const rv = typeof displayVal === 'object' && displayVal !== null ? displayVal : { current: 0, max: 0 };
+                  return (
+                    <div key={prop.id} className="flex items-center justify-between px-2 py-1 bg-stone-800/50 rounded" data-testid={`actor-property-${prop.key}`}>
+                      <span className="text-stone-400 text-xs truncate">{prop.label || prop.key}</span>
+                      <span className="text-stone-200 text-sm font-medium">{rv.current}/{rv.max}</span>
+                    </div>
+                  );
+                }
+                if (prop.type === 'boolean') {
+                  return (
+                    <div key={prop.id} className="flex items-center justify-between px-2 py-1 bg-stone-800/50 rounded" data-testid={`actor-property-${prop.key}`}>
+                      <span className="text-stone-400 text-xs truncate">{prop.label || prop.key}</span>
+                      <input type="checkbox" checked={!!displayVal} onChange={(e) => handleActorValueChange(prop.key, e.target.checked)} className="h-3 w-3 accent-amber-600" />
+                    </div>
+                  );
+                }
+                return (
+                  <div key={prop.id} className="flex items-center justify-between px-2 py-1 bg-stone-800/50 rounded" data-testid={`actor-property-${prop.key}`}>
+                    <span className="text-stone-400 text-xs truncate">{prop.label || prop.key}</span>
+                    <span className="text-stone-200 text-sm font-medium">{String(displayVal)}</span>
+                  </div>
+                );
+              })}
+            </div>
+            {childNodes.map((child: any) => renderActorLayoutNode(child))}
+          </div>
+        );
+      }
+
       if (node.type === 'tab') {
         const activeChildId = activeTabState[node.id] || node.behaviorConfig?.tabConfig?.activeTabId || childNodes[0]?.id;
         const tabLayout = node.behaviorConfig?.tabConfig?.tabLayout || 'top';
@@ -2711,6 +3039,13 @@ function SandboxSheetEditor({
           options: p.metadata?.options,
           calculationExpression: p.metadata?.calculationExpression,
           visibilityExpression: p.metadata?.visibilityExpression,
+          rollFormula: p.metadata?.buttonConfig?.rollFormula,
+          buttonLabel: p.metadata?.buttonConfig?.label,
+          buttonColor: p.metadata?.buttonConfig?.color,
+          successThreshold: p.metadata?.buttonConfig?.successThreshold,
+          resourceCost: p.metadata?.buttonConfig?.resourceCost,
+          maxUses: p.metadata?.buttonConfig?.maxUses,
+          usesPerRest: p.metadata?.buttonConfig?.usesPerRest,
         }));
       } catch {}
     }
@@ -2748,6 +3083,43 @@ function SandboxSheetEditor({
       const labelColor = prop.style?.labelColor || prop.style?.textColor || undefined;
       const valueColor = prop.style?.valueColor || prop.style?.textColor || undefined;
       const formulaBorder = hasFormula ? { borderColor: '#d97706', borderWidth: '1px', borderStyle: 'solid' } : {};
+
+      if (prop.type === 'button' && item.type === 'actor') {
+        const usesKey = `__uses_${prop.key}`;
+        const currentUses = Number(actorValues[usesKey] || '0');
+        const hasUses = prop.maxUses && prop.maxUses > 0;
+        const usesRemaining = hasUses ? prop.maxUses - currentUses : null;
+        const isDisabled = hasUses && currentUses >= prop.maxUses;
+
+        return (
+          <div key={prop.id} className="mb-2" data-testid={`actor-property-${prop.key}`} title={prop.tooltip}>
+            <button
+              onClick={() => !isDisabled && handleButtonRoll(prop)}
+              disabled={isDisabled}
+              className={`w-full py-2 rounded font-medium text-white transition-all ${isDisabled ? 'opacity-40 cursor-not-allowed' : 'hover:brightness-110 active:scale-95 cursor-pointer'}`}
+              style={{ 
+                backgroundColor: prop.buttonColor || '#d97706', 
+                fontSize: `${vfs}px`,
+                textShadow: '0 1px 2px rgba(0,0,0,0.3)'
+              }}
+              data-testid={`button-roll-${prop.key}`}
+            >
+              {prop.buttonLabel || prop.label || 'Roll'}
+              {hasUses && (
+                <span className="ml-1 opacity-70 text-[10px]">({usesRemaining}/{prop.maxUses})</span>
+              )}
+            </button>
+          </div>
+        );
+      }
+
+      if (prop.type === 'divider') {
+        return (
+          <div key={prop.id} className="my-2" data-testid={`actor-property-${prop.key}`}>
+            <div className="w-full border-t-2" style={{ borderColor: prop.style?.textColor || '#57534e' }} />
+          </div>
+        );
+      }
 
       if (prop.type === 'label') {
         let content = String(prop.defaultValue || val || '');
@@ -2932,6 +3304,57 @@ function SandboxSheetEditor({
         );
       }
 
+      if (node.type === 'stat_block') {
+        return (
+          <div key={node.id} className="rounded overflow-hidden mb-2 border border-amber-900/50" style={{ background: '#1a1412', ...nodeStyle }} data-testid={`mobile-stat-block-${node.id}`}>
+            {node.name && <div className="px-3 py-1.5 border-b border-amber-900/30"><span className="text-xs text-amber-600 uppercase tracking-wider font-semibold">{node.name}</span></div>}
+            <div className="grid grid-cols-1 gap-1 p-2">
+              {nodeProps.map((prop: any) => {
+                const val = actorValues[prop.key] ?? prop.defaultValue ?? '';
+                let displayVal = val;
+                const hasFormula = !!(prop.calculationExpression && item.type === 'actor');
+                if (hasFormula) {
+                  const ctx = getExpressionContext();
+                  const result = evaluateExpression(prop.calculationExpression, ctx);
+                  if (!result.error) displayVal = result.value;
+                }
+                if (prop.type === 'divider') {
+                  return (
+                    <div key={prop.id} className="my-1" data-testid={`actor-property-${prop.key}`}>
+                      <div className="w-full border-t-2" style={{ borderColor: prop.style?.textColor || '#57534e' }} />
+                    </div>
+                  );
+                }
+                if (prop.type === 'resource') {
+                  const rv = typeof displayVal === 'object' && displayVal !== null ? displayVal : { current: 0, max: 0 };
+                  return (
+                    <div key={prop.id} className="flex items-center justify-between px-2 py-1 bg-stone-800/50 rounded" data-testid={`actor-property-${prop.key}`}>
+                      <span className="text-stone-400 text-xs truncate">{prop.label || prop.key}</span>
+                      <span className="text-stone-200 text-sm font-medium">{rv.current}/{rv.max}</span>
+                    </div>
+                  );
+                }
+                if (prop.type === 'boolean') {
+                  return (
+                    <div key={prop.id} className="flex items-center justify-between px-2 py-1 bg-stone-800/50 rounded" data-testid={`actor-property-${prop.key}`}>
+                      <span className="text-stone-400 text-xs truncate">{prop.label || prop.key}</span>
+                      <input type="checkbox" checked={!!displayVal} onChange={(e) => handleActorValueChange(prop.key, e.target.checked)} className="h-3 w-3 accent-amber-600" />
+                    </div>
+                  );
+                }
+                return (
+                  <div key={prop.id} className="flex items-center justify-between px-2 py-1 bg-stone-800/50 rounded" data-testid={`actor-property-${prop.key}`}>
+                    <span className="text-stone-400 text-xs truncate">{prop.label || prop.key}</span>
+                    <span className="text-stone-200 text-sm font-medium">{String(displayVal)}</span>
+                  </div>
+                );
+              })}
+            </div>
+            {childNodes.map((child: any) => renderMobileLayoutNode(child))}
+          </div>
+        );
+      }
+
       if (node.type === 'tab') {
         const activeChildId = activeTabState[node.id] || node.behaviorConfig?.tabConfig?.activeTabId || childNodes[0]?.id;
         const tabLayout = node.behaviorConfig?.tabConfig?.tabLayout || 'top';
@@ -3035,6 +3458,31 @@ function SandboxSheetEditor({
             </span>
           </div>
           <div className="flex items-center gap-1">
+            {item.type === 'actor' && (
+              <div className="relative">
+                <Button variant="ghost" size="icon" onClick={() => setShowRestMenu(!showRestMenu)} className={`text-stone-400 hover:text-white ${showRestMenu ? 'text-amber-400' : ''}`} data-testid="button-rest-menu-mobile">
+                  <Coffee className="h-5 w-5" />
+                </Button>
+                {showRestMenu && (
+                  <div className="absolute right-0 top-full mt-1 bg-stone-800 border border-stone-600 rounded-lg shadow-xl z-50 py-1 min-w-[120px]">
+                    <button
+                      onClick={() => handleRest('short')}
+                      className="w-full text-left px-3 py-2 text-sm text-stone-200 hover:bg-stone-700 transition-colors"
+                      data-testid="button-short-rest-mobile"
+                    >
+                      Short Rest
+                    </button>
+                    <button
+                      onClick={() => handleRest('long')}
+                      className="w-full text-left px-3 py-2 text-sm text-stone-200 hover:bg-stone-700 transition-colors"
+                      data-testid="button-long-rest-mobile"
+                    >
+                      Long Rest
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
             {item.type === 'actor' && role === 'gm' && (
               <Button variant="ghost" size="icon" onClick={() => setShowActorSettings(!showActorSettings)} className={`text-stone-400 hover:text-white ${showActorSettings ? 'text-amber-400' : ''}`} data-testid="button-actor-settings-mobile">
                 <Settings className="h-5 w-5" />
@@ -3109,6 +3557,37 @@ function SandboxSheetEditor({
             </span>
           </div>
           <div className="flex items-center gap-1 shrink-0">
+            {item.type === 'actor' && (
+              <div className="relative">
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  onClick={() => setShowRestMenu(!showRestMenu)} 
+                  className={`h-6 w-6 text-stone-400 hover:text-white ${showRestMenu ? 'text-amber-400' : ''}`}
+                  data-testid="button-rest-menu"
+                >
+                  <Coffee className="h-3.5 w-3.5" />
+                </Button>
+                {showRestMenu && (
+                  <div className="absolute right-0 top-full mt-1 bg-stone-800 border border-stone-600 rounded-lg shadow-xl z-50 py-1 min-w-[120px]">
+                    <button
+                      onClick={() => handleRest('short')}
+                      className="w-full text-left px-3 py-1.5 text-xs text-stone-200 hover:bg-stone-700 transition-colors"
+                      data-testid="button-short-rest"
+                    >
+                      Short Rest
+                    </button>
+                    <button
+                      onClick={() => handleRest('long')}
+                      className="w-full text-left px-3 py-1.5 text-xs text-stone-200 hover:bg-stone-700 transition-colors"
+                      data-testid="button-long-rest"
+                    >
+                      Long Rest
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
             {item.type === 'actor' && role === 'gm' && (
               <Button 
                 variant="ghost" 
@@ -3347,6 +3826,8 @@ function SandboxSheetEditor({
                     <SelectItem value="textarea">Text Field (Multi-line)</SelectItem>
                     <SelectItem value="pfp">Profile Picture</SelectItem>
                     <SelectItem value="label">Label (Rich Text)</SelectItem>
+                    <SelectItem value="button">Button (Action/Roll)</SelectItem>
+                    <SelectItem value="divider">Divider (Separator)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -3392,7 +3873,7 @@ function SandboxSheetEditor({
                     data-testid={`input-prop-height-${selectedProperty.key}`}
                   />
                 </div>
-                {selectedProperty.type !== 'boolean' && selectedProperty.type !== 'label' && (
+                {selectedProperty.type !== 'boolean' && selectedProperty.type !== 'label' && selectedProperty.type !== 'divider' && (
                   <div className="space-y-1">
                     <Label className="text-stone-500 text-[10px]">Label Font</Label>
                     <Input
@@ -3406,7 +3887,7 @@ function SandboxSheetEditor({
                     />
                   </div>
                 )}
-                {selectedProperty.type !== 'boolean' && (
+                {selectedProperty.type !== 'boolean' && selectedProperty.type !== 'divider' && (
                   <div className="space-y-1">
                     <Label className="text-stone-500 text-[10px]">Value Font</Label>
                     <Input
@@ -3678,6 +4159,101 @@ function SandboxSheetEditor({
                 <div className="space-y-1">
                   <p className="text-stone-600 text-[9px]">Use the Default Value field to define options (separate with commas)</p>
                 </div>
+              )}
+
+              {selectedProperty.type === 'button' && (
+                <>
+                  <div className="space-y-1">
+                    <Label className="text-stone-500 text-[10px]">Roll Formula</Label>
+                    <Input
+                      value={selectedProperty.rollFormula || ''}
+                      onChange={(e) => updatePropertyLayout(selectedProperty.id, { rollFormula: e.target.value })}
+                      placeholder="e.g. 1d20+{{strength_mod}}"
+                      className="bg-stone-900 border-stone-600 text-stone-200 h-7 text-xs font-mono"
+                      data-testid="input-prop-rollformula"
+                    />
+                    <span className="text-stone-600 text-[9px]">Use {"{{key}}"} to reference property values</span>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-stone-500 text-[10px]">Button Label</Label>
+                    <Input
+                      value={selectedProperty.buttonLabel || ''}
+                      onChange={(e) => updatePropertyLayout(selectedProperty.id, { buttonLabel: e.target.value })}
+                      placeholder="Roll Attack"
+                      className="bg-stone-900 border-stone-600 text-stone-200 h-7 text-xs"
+                      data-testid="input-prop-buttonlabel"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-stone-500 text-[10px]">Button Color</Label>
+                    <div className="flex gap-2">
+                      <input
+                        type="color"
+                        value={selectedProperty.buttonColor || '#d97706'}
+                        onChange={(e) => updatePropertyLayout(selectedProperty.id, { buttonColor: e.target.value })}
+                        className="h-7 w-10 bg-stone-900 border border-stone-600 rounded cursor-pointer"
+                        data-testid="input-prop-buttoncolor"
+                      />
+                      <Input
+                        value={selectedProperty.buttonColor || '#d97706'}
+                        onChange={(e) => updatePropertyLayout(selectedProperty.id, { buttonColor: e.target.value })}
+                        className="bg-stone-900 border-stone-600 text-stone-200 h-7 text-xs font-mono flex-1"
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-stone-500 text-[10px]">Resource Cost</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        value={selectedProperty.resourceCost?.propertyKey || ''}
+                        onChange={(e) => updatePropertyLayout(selectedProperty.id, { 
+                          resourceCost: { ...(selectedProperty.resourceCost || {}), propertyKey: e.target.value, amount: selectedProperty.resourceCost?.amount || 1 }
+                        })}
+                        placeholder="property key"
+                        className="bg-stone-900 border-stone-600 text-stone-200 h-7 text-xs font-mono flex-1"
+                        data-testid="input-prop-resourcecost-key"
+                      />
+                      <Input
+                        type="number"
+                        value={selectedProperty.resourceCost?.amount || ''}
+                        onChange={(e) => updatePropertyLayout(selectedProperty.id, { 
+                          resourceCost: { ...(selectedProperty.resourceCost || {}), propertyKey: selectedProperty.resourceCost?.propertyKey || '', amount: Number(e.target.value) || 0 }
+                        })}
+                        placeholder="cost"
+                        className="bg-stone-900 border-stone-600 text-stone-200 h-7 text-xs w-16"
+                        data-testid="input-prop-resourcecost-amount"
+                      />
+                    </div>
+                    <span className="text-stone-600 text-[9px]">Deducts from a resource property each use</span>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-stone-500 text-[10px]">Max Uses</Label>
+                    <div className="flex gap-2 items-center">
+                      <Input
+                        type="number"
+                        value={selectedProperty.maxUses || ''}
+                        onChange={(e) => updatePropertyLayout(selectedProperty.id, { maxUses: Number(e.target.value) || 0 })}
+                        placeholder="0 = unlimited"
+                        className="bg-stone-900 border-stone-600 text-stone-200 h-7 text-xs flex-1"
+                        data-testid="input-prop-maxuses"
+                      />
+                      <Select 
+                        value={selectedProperty.usesPerRest || 'none'} 
+                        onValueChange={(v) => updatePropertyLayout(selectedProperty.id, { usesPerRest: v })}
+                      >
+                        <SelectTrigger className="bg-stone-900 border-stone-600 text-stone-200 h-7 text-xs w-24" data-testid="select-prop-usesperest">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent className="bg-stone-800 border-stone-600">
+                          <SelectItem value="none">No Reset</SelectItem>
+                          <SelectItem value="short">Short Rest</SelectItem>
+                          <SelectItem value="long">Long Rest</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <span className="text-stone-600 text-[9px]">Limit uses, optionally reset on rest</span>
+                  </div>
+                </>
               )}
 
               {(selectedProperty.type === 'number' || selectedProperty.type === 'resource' || selectedProperty.type === 'text') && (
@@ -4122,6 +4698,8 @@ function SandboxSheetEditor({
                     <SelectItem value="textarea" className="text-stone-200 text-xs">Text Field (Multi-line)</SelectItem>
                     <SelectItem value="pfp" className="text-stone-200 text-xs">Profile Picture</SelectItem>
                     <SelectItem value="label" className="text-stone-200 text-xs">Label (Rich Text)</SelectItem>
+                    <SelectItem value="button" className="text-stone-200 text-xs">Button (Action/Roll)</SelectItem>
+                    <SelectItem value="divider" className="text-stone-200 text-xs">Divider (Separator)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -4225,6 +4803,25 @@ function SandboxSheetEditor({
           </div>
         </div>,
         document.body
+      )}
+
+      {rollResultVisible && lastRollResult && (
+        <div 
+          className="fixed bottom-20 left-1/2 -translate-x-1/2 z-[9999] animate-in slide-in-from-bottom-4 fade-in duration-300"
+          onClick={() => setRollResultVisible(false)}
+        >
+          <div className="bg-stone-900/95 border-2 border-amber-500/50 rounded-xl px-6 py-4 shadow-2xl backdrop-blur-sm min-w-[280px] max-w-[400px]">
+            <div className="text-amber-400 font-bold text-lg text-center mb-1">
+              🎲 {lastRollResult.expression}
+            </div>
+            <div className="text-stone-400 text-sm text-center mb-2">
+              {formatRollResult(lastRollResult).split('=')[0]?.split('→')[1]?.trim() || ''}
+            </div>
+            <div className="text-white font-bold text-3xl text-center">
+              {lastRollResult.total}
+            </div>
+          </div>
+        </div>
       )}
 
     </div>

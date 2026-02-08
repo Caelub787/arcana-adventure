@@ -1,10 +1,10 @@
-export type PropertyType = 'number' | 'text' | 'boolean' | 'resource' | 'list' | 'textarea' | 'pfp' | 'label';
+export type PropertyType = 'number' | 'text' | 'boolean' | 'resource' | 'list' | 'textarea' | 'pfp' | 'label' | 'button' | 'divider';
 
 export type SandboxPropertyType = PropertyType;
 
 export type TemplateType = 'character' | 'item' | 'vehicle' | 'beast' | 'custom';
 
-export type LayoutNodeType = 'panel' | 'tab' | 'section' | 'group';
+export type LayoutNodeType = 'panel' | 'tab' | 'section' | 'group' | 'stat_block';
 
 export type LayoutMode = 'grid' | 'freeform' | 'stack';
 
@@ -138,6 +138,18 @@ export interface PropertyMetadata {
     colorThresholds?: Array<{ percent: number; color: string }>;
     useGradient?: boolean;
   };
+  buttonConfig?: {
+    rollFormula?: string;
+    label?: string;
+    color?: string;
+    successThreshold?: number;
+    resourceCost?: {
+      propertyKey: string;
+      amount: number;
+    };
+    maxUses?: number;
+    usesPerRest?: 'none' | 'short' | 'long';
+  };
 }
 
 export interface PropertyDefinition {
@@ -253,6 +265,8 @@ export function resolveValue(property: PropertyDefinition, actorValues: ActorVal
     case 'textarea': return '';
     case 'pfp': return '';
     case 'label': return '';
+    case 'button': return '';
+    case 'divider': return '';
   }
 }
 
