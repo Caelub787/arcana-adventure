@@ -1497,6 +1497,7 @@ function SandboxSheetEditor({
                 )}
               </div>
               {sectionProps.map((prop: any) => renderCanvasProperty(prop))}
+              {childNodes.map((child: any) => renderLayoutNode(child))}
               <button
                 className="absolute w-5 h-5 rounded bg-purple-700/60 hover:bg-purple-600 text-white flex items-center justify-center transition-all opacity-60 hover:opacity-100 z-30 top-1 right-1"
                 onPointerDown={(e) => e.stopPropagation()}
@@ -1514,7 +1515,38 @@ function SandboxSheetEditor({
         }
 
         if (node.type === 'tab') {
-          const activeChildId = activeTabState[node.id] || childNodes[0]?.id;
+          const activeChildId = activeTabState[node.id] || node.behaviorConfig?.tabConfig?.activeTabId || childNodes[0]?.id;
+          const activeChild = childNodes.find((c: any) => c.id === activeChildId);
+          const activeChildProps = activeChild ? properties.filter((p: any) => p.parentId === activeChild.id) : [];
+          const activeChildChildren = activeChild ? layoutNodesList.filter((n: any) => n.parentId === activeChild.id).sort((a: any, b: any) => a.order - b.order) : [];
+          const tabContentHeight = activeChildProps.length > 0
+            ? Math.max(80, Math.max(...activeChildProps.map((p: any) => (p.y ?? 0) + (p.height ?? 40))) + 20)
+            : 80;
+
+          const handleAddTabPage = () => {
+            const newChildId = crypto.randomUUID();
+            const newChild: any = {
+              id: newChildId,
+              type: 'panel',
+              name: `Tab ${childNodes.length + 1}`,
+              parentId: node.id,
+              childrenIds: [],
+              positionConfig: { x: 0, y: 0 },
+              sizeConfig: { width: canvas?.width || 450, height: 180 },
+              layoutMode: 'freeform',
+              styleConfig: { backgroundColor: '#1c1917' },
+              order: childNodes.length,
+            };
+            const updatedNodes = {
+              ...layoutNodes,
+              [newChildId]: newChild,
+              [node.id]: { ...node, childrenIds: [...(node.childrenIds || []), newChildId] },
+            };
+            updateTemplateMutationSheet.mutate({ data: JSON.stringify({ ...templateData, layoutNodes: updatedNodes }) });
+            setActiveTabState(prev => ({ ...prev, [node.id]: newChildId }));
+            toast({ title: 'Tab page added' });
+          };
+
           return (
             <div key={node.id} className="relative rounded overflow-visible mb-1" style={nodeStyle}
               onContextMenu={(e) => {
@@ -1523,22 +1555,81 @@ function SandboxSheetEditor({
                 setSectionContextMenu({ x: e.clientX, y: e.clientY, sectionId: node.id });
               }}
             >
-              <div className="absolute top-0 left-0 z-20 px-2 py-0.5">
+              <div className="px-2 py-0.5">
                 <span className="text-[10px] text-stone-500 uppercase tracking-wider">{node.name} <span className="text-stone-600">(tab)</span></span>
               </div>
-              <div className="flex gap-1 mt-5 mb-1 px-1" data-testid={`tab-buttons-${node.id}`}>
+              <div className="flex items-center gap-0.5 px-1 border-b border-stone-700" data-testid={`tab-buttons-${node.id}`}>
                 {childNodes.map((child: any) => (
-                  <button
-                    key={child.id}
-                    className={`px-2 py-1 text-[10px] rounded transition-colors ${activeChildId === child.id ? 'bg-purple-700 text-white' : 'bg-stone-700 text-stone-400 hover:bg-stone-600'}`}
-                    onClick={() => setActiveTabState(prev => ({ ...prev, [node.id]: child.id }))}
-                    data-testid={`tab-button-${child.id}`}
-                  >
-                    {child.name}
-                  </button>
+                  <div key={child.id} className="relative group">
+                    {editingSectionName === child.id ? (
+                      <input
+                        autoFocus
+                        defaultValue={child.name}
+                        className="bg-stone-700 border border-stone-500 text-stone-200 text-[10px] px-2 py-1 rounded w-20"
+                        onBlur={(e) => {
+                          const newName = e.target.value.trim() || child.name;
+                          const updatedNodes = { ...layoutNodes, [child.id]: { ...child, name: newName } };
+                          updateTemplateMutationSheet.mutate({ data: JSON.stringify({ ...templateData, layoutNodes: updatedNodes }) });
+                          setEditingSectionName(null);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                          if (e.key === 'Escape') setEditingSectionName(null);
+                        }}
+                        data-testid={`input-tab-name-${child.id}`}
+                      />
+                    ) : (
+                      <button
+                        className={`px-3 py-1.5 text-[10px] rounded-t transition-colors border-b-2 ${activeChildId === child.id ? 'bg-purple-700/30 text-purple-300 border-purple-500' : 'bg-transparent text-stone-400 hover:bg-stone-700 hover:text-stone-300 border-transparent'}`}
+                        onClick={() => setActiveTabState(prev => ({ ...prev, [node.id]: child.id }))}
+                        onDoubleClick={() => setEditingSectionName(child.id)}
+                        onContextMenu={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setSectionContextMenu({ x: e.clientX, y: e.clientY, sectionId: child.id });
+                        }}
+                        data-testid={`tab-button-${child.id}`}
+                      >
+                        {child.name}
+                      </button>
+                    )}
+                  </div>
                 ))}
+                <button
+                  className="px-1.5 py-1 text-[10px] text-stone-500 hover:text-stone-300 hover:bg-stone-700 rounded transition-colors ml-0.5"
+                  onClick={handleAddTabPage}
+                  title="Add tab page"
+                  data-testid={`button-add-tab-page-${node.id}`}
+                >
+                  <Plus className="h-3 w-3" />
+                </button>
               </div>
-              {childNodes.filter((c: any) => c.id === activeChildId).map((child: any) => renderLayoutNode(child))}
+              {activeChild && (
+                <div
+                  className="relative rounded-b overflow-visible"
+                  style={{ minHeight: `${tabContentHeight}px`, ...(activeChild.styleConfig ? getPropertyCssStyle(activeChild.styleConfig) : {}) }}
+                  onClick={(e) => {
+                    if (e.target === e.currentTarget) { setSelectedPropertyId(null); setPropSettingsOpen(false); }
+                  }}
+                >
+                  {activeChildProps.map((prop: any) => renderCanvasProperty(prop))}
+                  {activeChildChildren.map((child: any) => renderLayoutNode(child))}
+                  <div className="absolute top-1 right-1 flex items-center gap-1 z-30">
+                    <button
+                      className="w-5 h-5 rounded bg-purple-700/60 hover:bg-purple-600 text-white flex items-center justify-center transition-all opacity-60 hover:opacity-100"
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleAddPropertyToSection(activeChild.id);
+                      }}
+                      title={`Add property to ${activeChild.name}`}
+                      data-testid={`button-add-to-tab-${activeChild.id}`}
+                    >
+                      <Plus className="h-3 w-3" />
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           );
         }
@@ -1625,7 +1716,7 @@ function SandboxSheetEditor({
       };
 
       const canvas = templateData.canvas;
-      const canvasBgStyle = canvas?.backgroundConfig ? getPropertyCssStyle(canvas.backgroundConfig) : {};
+      const canvasBgStyle = canvas?.backgroundConfig ? getPropertyCssStyle(canvas.backgroundConfig as any) : {};
       const rootNodes = layoutNodesList.filter((n: any) => n.parentId === null);
       const canvasRootProps = properties.filter((p: any) => p.parentId === null);
       const canvasRootHeight = canvasRootProps.length > 0
@@ -1702,9 +1793,10 @@ function SandboxSheetEditor({
                       };
                       const updatedNodes = { ...layoutNodes, [newNodeId]: newNode };
                       if (nodeType === 'tab') {
-                        const childId = crypto.randomUUID();
-                        const childNode: any = {
-                          id: childId,
+                        const childId1 = crypto.randomUUID();
+                        const childId2 = crypto.randomUUID();
+                        const childNode1: any = {
+                          id: childId1,
                           type: 'panel',
                           name: 'Tab 1',
                           parentId: newNodeId,
@@ -1715,8 +1807,21 @@ function SandboxSheetEditor({
                           styleConfig: { backgroundColor: '#1c1917' },
                           order: 0,
                         };
-                        updatedNodes[childId] = childNode;
-                        updatedNodes[newNodeId] = { ...newNode, childrenIds: [childId] };
+                        const childNode2: any = {
+                          id: childId2,
+                          type: 'panel',
+                          name: 'Tab 2',
+                          parentId: newNodeId,
+                          childrenIds: [],
+                          positionConfig: { x: 0, y: 0 },
+                          sizeConfig: { width: canvas?.width || 450, height: 180 },
+                          layoutMode: 'freeform',
+                          styleConfig: { backgroundColor: '#1c1917' },
+                          order: 1,
+                        };
+                        updatedNodes[childId1] = childNode1;
+                        updatedNodes[childId2] = childNode2;
+                        updatedNodes[newNodeId] = { ...newNode, childrenIds: [childId1, childId2], behaviorConfig: { tabConfig: { tabPosition: 'top', activeTabId: childId1 } } };
                       }
                       updateTemplateMutationSheet.mutate({ data: JSON.stringify({ ...templateData, layoutNodes: updatedNodes }) });
                       setAddNodeDialogOpen(false);
@@ -1735,45 +1840,222 @@ function SandboxSheetEditor({
               <div
                 className="fixed bg-stone-800 border border-stone-600 rounded-lg shadow-xl py-1 min-w-[160px]"
                 style={{ left: `${sectionContextMenu.x}px`, top: `${sectionContextMenu.y}px` }}
+                onClick={(e) => e.stopPropagation()}
               >
-                <button className="w-full text-left px-3 py-1.5 text-xs text-stone-200 hover:bg-stone-700" onClick={() => { setEditingSectionName(sectionContextMenu.sectionId); setSectionContextMenu(null); }} data-testid="menu-rename-section">Rename Node</button>
-                <button className="w-full text-left px-3 py-1.5 text-xs text-stone-200 hover:bg-stone-700" onClick={() => {
-                  const node = layoutNodes[sectionContextMenu.sectionId];
-                  if (!node) return;
-                  const modes = ['freeform', 'grid', 'stack'];
-                  const currentIdx = modes.indexOf(node.layoutMode || 'freeform');
-                  const nextMode = modes[(currentIdx + 1) % modes.length];
-                  const updatedNodes = { ...layoutNodes, [node.id]: { ...node, layoutMode: nextMode } };
-                  updateTemplateMutationSheet.mutate({ data: JSON.stringify({ ...templateData, layoutNodes: updatedNodes }) });
-                  toast({ title: `Layout mode: ${nextMode}` });
-                  setSectionContextMenu(null);
-                }} data-testid="menu-change-layout-mode">Change Layout Mode</button>
-                <button className="w-full text-left px-3 py-1.5 text-xs text-red-400 hover:bg-stone-700" onClick={() => {
-                  const nodeId = sectionContextMenu.sectionId;
-                  const node = layoutNodes[nodeId];
-                  if (!node) return;
-                  const propsInNode = Object.values(templateData.properties || {}).filter((p: any) => p.parentId === nodeId);
-                  const childNodesOfThis = layoutNodesList.filter((n: any) => n.parentId === nodeId);
-                  if (propsInNode.length > 0) {
-                    toast({ title: "Cannot delete", description: "Remove all properties first", variant: "destructive" });
-                  } else if (childNodesOfThis.length > 0) {
-                    toast({ title: "Cannot delete", description: "Remove all child nodes first", variant: "destructive" });
-                  } else if (Object.keys(layoutNodes).length <= 1) {
-                    toast({ title: "Cannot delete", description: "Template must have at least one node", variant: "destructive" });
-                  } else {
-                    const updatedNodes = { ...layoutNodes };
-                    delete updatedNodes[nodeId];
-                    if (node.parentId && updatedNodes[node.parentId]) {
-                      updatedNodes[node.parentId] = {
-                        ...updatedNodes[node.parentId],
-                        childrenIds: (updatedNodes[node.parentId].childrenIds || []).filter((id: string) => id !== nodeId),
-                      };
-                    }
-                    updateTemplateMutationSheet.mutate({ data: JSON.stringify({ ...templateData, layoutNodes: updatedNodes }) });
-                    toast({ title: "Node deleted" });
-                  }
-                  setSectionContextMenu(null);
-                }} data-testid="menu-delete-section">Delete Node</button>
+                {(() => {
+                  const ctxNode = layoutNodes[sectionContextMenu.sectionId];
+                  if (!ctxNode) return null;
+                  const isTabNode = ctxNode.type === 'tab';
+                  const isPanelNode = ctxNode.type === 'panel';
+                  const parentNode = ctxNode.parentId ? layoutNodes[ctxNode.parentId] : null;
+                  const isTabPage = isPanelNode && parentNode?.type === 'tab';
+                  const isContainer = ['panel', 'section', 'group', 'tab'].includes(ctxNode.type);
+                  const siblings = parentNode ? layoutNodesList.filter((n: any) => n.parentId === parentNode.id).sort((a: any, b: any) => a.order - b.order) : [];
+                  const siblingIndex = siblings.findIndex((s: any) => s.id === ctxNode.id);
+
+                  return (
+                    <>
+                      <button className="w-full text-left px-3 py-1.5 text-xs text-stone-200 hover:bg-stone-700" onClick={() => { setEditingSectionName(sectionContextMenu.sectionId); setSectionContextMenu(null); }} data-testid="menu-rename-section">Rename</button>
+                      <button className="w-full text-left px-3 py-1.5 text-xs text-stone-200 hover:bg-stone-700" onClick={() => {
+                        const modes = ['freeform', 'grid', 'stack'];
+                        const currentIdx = modes.indexOf(ctxNode.layoutMode || 'freeform');
+                        const nextMode = modes[(currentIdx + 1) % modes.length];
+                        const updatedNodes = { ...layoutNodes, [ctxNode.id]: { ...ctxNode, layoutMode: nextMode } };
+                        updateTemplateMutationSheet.mutate({ data: JSON.stringify({ ...templateData, layoutNodes: updatedNodes }) });
+                        toast({ title: `Layout mode: ${nextMode}` });
+                        setSectionContextMenu(null);
+                      }} data-testid="menu-change-layout-mode">Change Layout Mode</button>
+
+                      {isTabNode && (
+                        <button className="w-full text-left px-3 py-1.5 text-xs text-purple-400 hover:bg-stone-700" onClick={() => {
+                          const tabChildren = layoutNodesList.filter((n: any) => n.parentId === ctxNode.id).sort((a: any, b: any) => a.order - b.order);
+                          const newChildId = crypto.randomUUID();
+                          const newChild: any = {
+                            id: newChildId,
+                            type: 'panel',
+                            name: `Tab ${tabChildren.length + 1}`,
+                            parentId: ctxNode.id,
+                            childrenIds: [],
+                            positionConfig: { x: 0, y: 0 },
+                            sizeConfig: { width: canvas?.width || 450, height: 180 },
+                            layoutMode: 'freeform',
+                            styleConfig: { backgroundColor: '#1c1917' },
+                            order: tabChildren.length,
+                          };
+                          const updatedNodes = {
+                            ...layoutNodes,
+                            [newChildId]: newChild,
+                            [ctxNode.id]: { ...ctxNode, childrenIds: [...(ctxNode.childrenIds || []), newChildId] },
+                          };
+                          updateTemplateMutationSheet.mutate({ data: JSON.stringify({ ...templateData, layoutNodes: updatedNodes }) });
+                          setActiveTabState(prev => ({ ...prev, [ctxNode.id]: newChildId }));
+                          toast({ title: 'Tab page added' });
+                          setSectionContextMenu(null);
+                        }} data-testid="menu-add-tab-page">Add Tab Page</button>
+                      )}
+
+                      {isPanelNode && (
+                        <button className="w-full text-left px-3 py-1.5 text-xs text-stone-200 hover:bg-stone-700" onClick={() => {
+                          const isCollapsible = ctxNode.behaviorConfig?.panelConfig?.collapsible ?? false;
+                          const updatedNodes = {
+                            ...layoutNodes,
+                            [ctxNode.id]: {
+                              ...ctxNode,
+                              behaviorConfig: {
+                                ...ctxNode.behaviorConfig,
+                                panelConfig: { ...ctxNode.behaviorConfig?.panelConfig, collapsible: !isCollapsible },
+                              },
+                            },
+                          };
+                          updateTemplateMutationSheet.mutate({ data: JSON.stringify({ ...templateData, layoutNodes: updatedNodes }) });
+                          toast({ title: isCollapsible ? 'Panel no longer collapsible' : 'Panel is now collapsible' });
+                          setSectionContextMenu(null);
+                        }} data-testid="menu-toggle-collapsible">Toggle Collapsible</button>
+                      )}
+
+                      {isTabPage && siblings.length > 1 && (
+                        <>
+                          {siblingIndex > 0 && (
+                            <button className="w-full text-left px-3 py-1.5 text-xs text-stone-200 hover:bg-stone-700" onClick={() => {
+                              const prevSibling = siblings[siblingIndex - 1];
+                              const updatedNodes = {
+                                ...layoutNodes,
+                                [ctxNode.id]: { ...ctxNode, order: prevSibling.order },
+                                [prevSibling.id]: { ...prevSibling, order: ctxNode.order },
+                              };
+                              updateTemplateMutationSheet.mutate({ data: JSON.stringify({ ...templateData, layoutNodes: updatedNodes }) });
+                              toast({ title: 'Moved left' });
+                              setSectionContextMenu(null);
+                            }} data-testid="menu-move-left">Move Left</button>
+                          )}
+                          {siblingIndex < siblings.length - 1 && (
+                            <button className="w-full text-left px-3 py-1.5 text-xs text-stone-200 hover:bg-stone-700" onClick={() => {
+                              const nextSibling = siblings[siblingIndex + 1];
+                              const updatedNodes = {
+                                ...layoutNodes,
+                                [ctxNode.id]: { ...ctxNode, order: nextSibling.order },
+                                [nextSibling.id]: { ...nextSibling, order: ctxNode.order },
+                              };
+                              updateTemplateMutationSheet.mutate({ data: JSON.stringify({ ...templateData, layoutNodes: updatedNodes }) });
+                              toast({ title: 'Moved right' });
+                              setSectionContextMenu(null);
+                            }} data-testid="menu-move-right">Move Right</button>
+                          )}
+                        </>
+                      )}
+
+                      {isContainer && (
+                        <>
+                          <div className="border-t border-stone-700 my-1" />
+                          <div className="px-3 py-1 text-[10px] text-stone-500 uppercase tracking-wider">Add Child Node</div>
+                          {(['section', 'panel', 'tab', 'group'] as const).map((childType) => (
+                            <button
+                              key={childType}
+                              className="w-full text-left px-4 py-1.5 text-xs text-stone-300 hover:bg-stone-700 capitalize"
+                              onClick={() => {
+                                const newChildId = crypto.randomUUID();
+                                const existingChildren = layoutNodesList.filter((n: any) => n.parentId === ctxNode.id);
+                                const newChild: any = {
+                                  id: newChildId,
+                                  type: childType,
+                                  name: `${childType} ${existingChildren.length + 1}`,
+                                  parentId: ctxNode.id,
+                                  childrenIds: [],
+                                  positionConfig: { x: 0, y: 0 },
+                                  sizeConfig: { width: canvas?.width || 450, height: childType === 'tab' ? 200 : 120 },
+                                  layoutMode: 'freeform',
+                                  styleConfig: { backgroundColor: '#1c1917', border: { enabled: true, color: '#44403c', width: 1, radius: 4, style: 'solid' } },
+                                  order: existingChildren.length,
+                                };
+                                const updatedNodes = {
+                                  ...layoutNodes,
+                                  [newChildId]: newChild,
+                                  [ctxNode.id]: { ...ctxNode, childrenIds: [...(ctxNode.childrenIds || []), newChildId] },
+                                };
+                                if (childType === 'tab') {
+                                  const tabChild1Id = crypto.randomUUID();
+                                  const tabChild2Id = crypto.randomUUID();
+                                  updatedNodes[tabChild1Id] = {
+                                    id: tabChild1Id, type: 'panel', name: 'Tab 1', parentId: newChildId, childrenIds: [],
+                                    positionConfig: { x: 0, y: 0 }, sizeConfig: { width: canvas?.width || 450, height: 180 },
+                                    layoutMode: 'freeform', styleConfig: { backgroundColor: '#1c1917' }, order: 0,
+                                  };
+                                  updatedNodes[tabChild2Id] = {
+                                    id: tabChild2Id, type: 'panel', name: 'Tab 2', parentId: newChildId, childrenIds: [],
+                                    positionConfig: { x: 0, y: 0 }, sizeConfig: { width: canvas?.width || 450, height: 180 },
+                                    layoutMode: 'freeform', styleConfig: { backgroundColor: '#1c1917' }, order: 1,
+                                  };
+                                  updatedNodes[newChildId] = { ...updatedNodes[newChildId], childrenIds: [tabChild1Id, tabChild2Id], behaviorConfig: { tabConfig: { tabPosition: 'top', activeTabId: tabChild1Id } } };
+                                }
+                                updateTemplateMutationSheet.mutate({ data: JSON.stringify({ ...templateData, layoutNodes: updatedNodes }) });
+                                toast({ title: `${childType} added to ${ctxNode.name}` });
+                                setSectionContextMenu(null);
+                              }}
+                              data-testid={`menu-add-child-${childType}`}
+                            >
+                              {childType}
+                            </button>
+                          ))}
+                        </>
+                      )}
+
+                      <div className="border-t border-stone-700 my-1" />
+                      <button className="w-full text-left px-3 py-1.5 text-xs text-red-400 hover:bg-stone-700" onClick={() => {
+                        const nodeId = sectionContextMenu.sectionId;
+                        const propsInNode = Object.values(templateData.properties || {}).filter((p: any) => p.parentId === nodeId);
+                        const childNodesOfThis = layoutNodesList.filter((n: any) => n.parentId === nodeId);
+
+                        if (isTabPage && parentNode) {
+                          const tabSiblings = layoutNodesList.filter((n: any) => n.parentId === parentNode.id);
+                          if (tabSiblings.length <= 1) {
+                            toast({ title: "Cannot delete", description: "Tab must have at least one page", variant: "destructive" });
+                            setSectionContextMenu(null);
+                            return;
+                          }
+                          if (propsInNode.length > 0 || childNodesOfThis.length > 0) {
+                            toast({ title: "Cannot delete", description: "Remove all properties and child nodes first", variant: "destructive" });
+                            setSectionContextMenu(null);
+                            return;
+                          }
+                          const updatedNodes = { ...layoutNodes };
+                          delete updatedNodes[nodeId];
+                          updatedNodes[parentNode.id] = {
+                            ...updatedNodes[parentNode.id],
+                            childrenIds: (updatedNodes[parentNode.id].childrenIds || []).filter((id: string) => id !== nodeId),
+                          };
+                          const remainingTabs = tabSiblings.filter((n: any) => n.id !== nodeId);
+                          if (activeTabState[parentNode.id] === nodeId && remainingTabs.length > 0) {
+                            setActiveTabState(prev => ({ ...prev, [parentNode.id]: remainingTabs[0].id }));
+                          }
+                          updateTemplateMutationSheet.mutate({ data: JSON.stringify({ ...templateData, layoutNodes: updatedNodes }) });
+                          toast({ title: "Tab page deleted" });
+                          setSectionContextMenu(null);
+                          return;
+                        }
+
+                        if (propsInNode.length > 0) {
+                          toast({ title: "Cannot delete", description: "Remove all properties first", variant: "destructive" });
+                        } else if (childNodesOfThis.length > 0) {
+                          toast({ title: "Cannot delete", description: "Remove all child nodes first", variant: "destructive" });
+                        } else if (Object.keys(layoutNodes).length <= 1) {
+                          toast({ title: "Cannot delete", description: "Template must have at least one node", variant: "destructive" });
+                        } else {
+                          const updatedNodes = { ...layoutNodes };
+                          delete updatedNodes[nodeId];
+                          if (ctxNode.parentId && updatedNodes[ctxNode.parentId]) {
+                            updatedNodes[ctxNode.parentId] = {
+                              ...updatedNodes[ctxNode.parentId],
+                              childrenIds: (updatedNodes[ctxNode.parentId].childrenIds || []).filter((id: string) => id !== nodeId),
+                            };
+                          }
+                          updateTemplateMutationSheet.mutate({ data: JSON.stringify({ ...templateData, layoutNodes: updatedNodes }) });
+                          toast({ title: "Node deleted" });
+                        }
+                        setSectionContextMenu(null);
+                      }} data-testid="menu-delete-section">Delete</button>
+                    </>
+                  );
+                })()}
               </div>
             </div>,
             document.body
@@ -1825,7 +2107,7 @@ function SandboxSheetEditor({
         if (!parent) return true;
         if (parent.type === 'tab') {
           const parentChildren = Object.values(actorLayoutNodes).filter((n: any) => n.parentId === parent.id).sort((a: any, b: any) => a.order - b.order);
-          const activeChildId = activeTabState[parent.id] || parentChildren[0]?.id;
+          const activeChildId = activeTabState[parent.id] || parent.behaviorConfig?.tabConfig?.activeTabId || parentChildren[0]?.id;
           if (node.id !== activeChildId) return false;
         }
         if (parent.type === 'panel') {
@@ -1990,12 +2272,13 @@ function SandboxSheetEditor({
         return (
           <div key={node.id} className="relative rounded overflow-hidden mb-1" style={{ minHeight: `${sectionHeight}px`, ...nodeStyle }}>
             {nodeProps.map((prop: any) => renderActorProperty(prop))}
+            {childNodes.map((child: any) => renderActorLayoutNode(child))}
           </div>
         );
       }
 
       if (node.type === 'tab') {
-        const activeChildId = activeTabState[node.id] || childNodes[0]?.id;
+        const activeChildId = activeTabState[node.id] || node.behaviorConfig?.tabConfig?.activeTabId || childNodes[0]?.id;
         return (
           <div key={node.id} className="relative rounded overflow-visible mb-1" style={nodeStyle}>
             <div className="flex gap-1 mb-1 px-1" data-testid={`actor-tab-buttons-${node.id}`}>
@@ -2226,7 +2509,7 @@ function SandboxSheetEditor({
         if (!parent) return true;
         if (parent.type === 'tab') {
           const parentChildren = mobileLayoutNodesList.filter((n: any) => n.parentId === parent.id).sort((a: any, b: any) => a.order - b.order);
-          const activeChildId = activeTabState[parent.id] || parentChildren[0]?.id;
+          const activeChildId = activeTabState[parent.id] || parent.behaviorConfig?.tabConfig?.activeTabId || parentChildren[0]?.id;
           if (node.id !== activeChildId) return false;
         }
         if (parent.type === 'panel') {
@@ -2244,8 +2527,17 @@ function SandboxSheetEditor({
       const childNodes = mobileLayoutNodesList.filter((n: any) => n.parentId === node.id).sort((a: any, b: any) => a.order - b.order);
       const nodeProps = mobileActorProperties.filter((p: any) => p.parentId === node.id);
 
+      if (node.type === 'section') {
+        return (
+          <div key={node.id} className="space-y-3" style={nodeStyle}>
+            {nodeProps.map((prop: any) => renderMobileProperty(prop))}
+            {childNodes.map((child: any) => renderMobileLayoutNode(child))}
+          </div>
+        );
+      }
+
       if (node.type === 'tab') {
-        const activeChildId = activeTabState[node.id] || childNodes[0]?.id;
+        const activeChildId = activeTabState[node.id] || node.behaviorConfig?.tabConfig?.activeTabId || childNodes[0]?.id;
         return (
           <div key={node.id} className="space-y-2" style={nodeStyle}>
             <div className="flex gap-1 flex-wrap" data-testid={`mobile-tab-buttons-${node.id}`}>
