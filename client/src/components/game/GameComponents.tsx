@@ -7248,6 +7248,171 @@ function InviteCodeSection({ inviteCode }: { inviteCode?: string }) {
   );
 }
 
+// Character Management Content - extracted for reuse in characters-only mode
+function CharacterManagementContent({ role, characters, folders, unfiledCharacters, expandedFolders, editingFolderId, editingFolderName, draggingCharacterId, newFolderName, onSetNewFolderName, onCreateFolder, createFolderPending, onToggleFolder, onSetEditingFolderId, onSetEditingFolderName, onUpdateFolder, onDeleteFolder, deleteFolderPending, onMoveCharacter, onSetDraggingCharacterId, getCharactersInFolder, onAddCharacter, onShowTemplateLibrary, onShowImportDialog, onViewCharacter, onAssignCharacter, onDeleteCharacter, deleteCharacterPending, onManageAccess, myPermissions }: {
+  role: Role;
+  characters?: any[];
+  folders: any[];
+  unfiledCharacters: any[];
+  expandedFolders: Set<string>;
+  editingFolderId: string | null;
+  editingFolderName: string;
+  draggingCharacterId: string | null;
+  newFolderName: string;
+  onSetNewFolderName: (name: string) => void;
+  onCreateFolder: (name: string) => void;
+  createFolderPending: boolean;
+  onToggleFolder: (folderId: string) => void;
+  onSetEditingFolderId: (id: string | null) => void;
+  onSetEditingFolderName: (name: string) => void;
+  onUpdateFolder: (id: string, name: string) => void;
+  onDeleteFolder: (id: string) => void;
+  deleteFolderPending: boolean;
+  onMoveCharacter: (characterId: string, folderId: string | null) => void;
+  onSetDraggingCharacterId: (id: string | null) => void;
+  getCharactersInFolder: (folderId: string | null) => any[];
+  onAddCharacter?: () => void;
+  onShowTemplateLibrary: () => void;
+  onShowImportDialog: () => void;
+  onViewCharacter?: (char: any) => void;
+  onAssignCharacter?: (char: any) => void;
+  onDeleteCharacter: (char: any) => void;
+  deleteCharacterPending: boolean;
+  onManageAccess: (char: any) => void;
+  myPermissions?: { permissions: Record<string, string> };
+}) {
+  return (
+    <div className="space-y-3">
+      {role === 'gm' && onAddCharacter && (
+        <Button variant="secondary" className="w-full bg-stone-800 hover:bg-stone-700" onClick={onAddCharacter} data-testid="button-add-character-inline">
+          <Plus className="mr-2 h-4 w-4" /> Create Character
+        </Button>
+      )}
+      {role === 'gm' && (
+        <Button variant="outline" className="w-full border-teal-700 text-teal-400 hover:bg-teal-900/30" onClick={onShowTemplateLibrary} data-testid="button-add-from-library-inline">
+          <Library className="mr-2 h-4 w-4" /> Add from Library
+        </Button>
+      )}
+      {role === 'gm' && (
+        <Button variant="secondary" className="w-full bg-stone-800/80 border-stone-700 hover:bg-stone-700" onClick={onShowImportDialog} data-testid="button-import-character-inline">
+          <Download className="mr-2 h-4 w-4" /> Import from Campaign
+        </Button>
+      )}
+      {role === 'gm' && (
+        <div className="flex gap-2">
+          <Input placeholder="New folder name..." value={newFolderName} onChange={(e) => onSetNewFolderName(e.target.value)} className="flex-1 bg-stone-900 border-stone-700 text-stone-200" data-testid="input-new-folder-name-inline" />
+          <Button variant="secondary" size="sm" onClick={() => { if (newFolderName.trim()) { onCreateFolder(newFolderName.trim()); onSetNewFolderName(''); } }} disabled={!newFolderName.trim() || createFolderPending} className="bg-stone-800 hover:bg-stone-700" data-testid="button-create-folder-inline">
+            <FolderPlus className="h-4 w-4" />
+          </Button>
+        </div>
+      )}
+      <div className="space-y-3">
+        {folders.map((folder: any) => {
+          const folderChars = getCharactersInFolder(folder.id);
+          const isExpanded = expandedFolders.has(folder.id);
+          return (
+            <div key={folder.id} className={`bg-stone-850 rounded-lg border border-stone-700 p-2 transition-colors ${draggingCharacterId ? 'border-dashed' : ''}`}
+              onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add('border-amber-500'); }}
+              onDragLeave={(e) => { e.currentTarget.classList.remove('border-amber-500'); }}
+              onDrop={(e) => { e.preventDefault(); e.currentTarget.classList.remove('border-amber-500'); const charId = e.dataTransfer.getData('text/plain'); if (charId) { onMoveCharacter(charId, folder.id); onSetDraggingCharacterId(null); } }}
+            >
+              <div className="flex items-center justify-between p-2 cursor-pointer hover:bg-stone-800/50 rounded" onClick={() => onToggleFolder(folder.id)}>
+                <div className="flex items-center gap-2 flex-1 min-w-0">
+                  {isExpanded ? <ChevronDown className="h-4 w-4 text-stone-400 shrink-0" /> : <ChevronRight className="h-4 w-4 text-stone-400 shrink-0" />}
+                  <Folder className="h-4 w-4 text-amber-500 shrink-0" />
+                  {editingFolderId === folder.id ? (
+                    <Input value={editingFolderName} onChange={(e) => onSetEditingFolderName(e.target.value)} onClick={(e) => e.stopPropagation()}
+                      onKeyDown={(e) => { if (e.key === 'Enter') { onUpdateFolder(folder.id, editingFolderName); onSetEditingFolderId(null); } else if (e.key === 'Escape') { onSetEditingFolderId(null); } }}
+                      onBlur={() => { if (editingFolderName.trim() && editingFolderName !== folder.name) { onUpdateFolder(folder.id, editingFolderName); } onSetEditingFolderId(null); }}
+                      className="h-6 py-0 px-1 text-sm bg-stone-900 border-stone-600" autoFocus />
+                  ) : (
+                    <span className="font-medium text-stone-200 truncate">{folder.name}</span>
+                  )}
+                  <Badge variant="secondary" className="bg-stone-700 text-stone-300 text-xs shrink-0">{folderChars.length}</Badge>
+                </div>
+                {role === 'gm' && editingFolderId !== folder.id && (
+                  <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+                    <Button size="sm" variant="ghost" onClick={() => { onSetEditingFolderId(folder.id); onSetEditingFolderName(folder.name); }} className="h-6 w-6 p-0 text-stone-400 hover:text-stone-200"><Pencil className="h-3 w-3" /></Button>
+                    <Button size="sm" variant="ghost" onClick={() => onDeleteFolder(folder.id)} disabled={deleteFolderPending} className="h-6 w-6 p-0 text-red-400 hover:text-red-300"><Trash2 className="h-3 w-3" /></Button>
+                  </div>
+                )}
+              </div>
+              {isExpanded && (
+                <div className="mt-2 space-y-2 pl-6">
+                  {folderChars.length > 0 ? folderChars.map((char: any) => (
+                    <CharacterListItem key={char.id} char={char} role={role} onViewCharacter={onViewCharacter} onAssignCharacter={onAssignCharacter} onDeleteCharacter={onDeleteCharacter} deleteCharacterPending={deleteCharacterPending} onManageAccess={onManageAccess} myPermissions={myPermissions} onSetDraggingCharacterId={onSetDraggingCharacterId} />
+                  )) : (
+                    <div className="p-3 text-center text-stone-500 text-sm border border-dashed border-stone-700 rounded">Drag characters here</div>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+        <div className={`bg-stone-850 rounded-lg border border-stone-700 p-2 transition-colors ${draggingCharacterId ? 'border-dashed' : ''}`}
+          onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add('border-amber-500'); }}
+          onDragLeave={(e) => { e.currentTarget.classList.remove('border-amber-500'); }}
+          onDrop={(e) => { e.preventDefault(); e.currentTarget.classList.remove('border-amber-500'); const charId = e.dataTransfer.getData('text/plain'); if (charId) { onMoveCharacter(charId, null); onSetDraggingCharacterId(null); } }}
+        >
+          <div className="flex items-center gap-2 p-2 text-stone-400">
+            <FolderOpen className="h-4 w-4" />
+            <span className="font-medium">Unfiled</span>
+            <Badge variant="secondary" className="bg-stone-700 text-stone-300 text-xs">{unfiledCharacters.length}</Badge>
+          </div>
+          <div className="mt-2 space-y-2">
+            {unfiledCharacters.length > 0 ? unfiledCharacters.map((char: any) => (
+              <CharacterListItem key={char.id} char={char} role={role} onViewCharacter={onViewCharacter} onAssignCharacter={onAssignCharacter} onDeleteCharacter={onDeleteCharacter} deleteCharacterPending={deleteCharacterPending} onManageAccess={onManageAccess} myPermissions={myPermissions} onSetDraggingCharacterId={onSetDraggingCharacterId} />
+            )) : (
+              <div className="p-4 text-center text-stone-500 text-sm">
+                {characters && characters.length > 0 ? 'All characters are in folders' : 'No characters yet'}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CharacterListItem({ char, role, onViewCharacter, onAssignCharacter, onDeleteCharacter, deleteCharacterPending, onManageAccess, myPermissions, onSetDraggingCharacterId }: {
+  char: any; role: Role; onViewCharacter?: (char: any) => void; onAssignCharacter?: (char: any) => void; onDeleteCharacter: (char: any) => void; deleteCharacterPending: boolean; onManageAccess: (char: any) => void; myPermissions?: { permissions: Record<string, string> }; onSetDraggingCharacterId: (id: string | null) => void;
+}) {
+  return (
+    <div className="p-2 bg-stone-900 rounded border border-stone-800 flex justify-between items-center gap-2"
+      draggable={role === 'gm'}
+      onDragStart={(e) => { e.dataTransfer.setData('text/plain', char.id.toString()); onSetDraggingCharacterId(char.id); }}
+      onDragEnd={() => onSetDraggingCharacterId(null)}
+    >
+      <div className="flex items-center gap-2 flex-1 min-w-0">
+        {role === 'gm' && <GripVertical className="h-4 w-4 text-stone-500 cursor-grab shrink-0" />}
+        <div className="min-w-0 flex-1"><div className="font-medium text-stone-200 truncate text-sm">{char.name}</div></div>
+      </div>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-stone-400 hover:text-stone-200"><MoreVertical className="h-4 w-4" /></Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="bg-stone-900 border-stone-700">
+          {onViewCharacter && (
+            <DropdownMenuItem onClick={() => onViewCharacter(char)} className="text-amber-200 focus:bg-amber-900/30 focus:text-amber-200"><User className="h-4 w-4 mr-2" />View Sheet</DropdownMenuItem>
+          )}
+          {onAssignCharacter && (role === 'gm' || myPermissions?.permissions?.[char.id] === 'edit' || myPermissions?.permissions?.[char.id] === 'owner') && (
+            <DropdownMenuItem onClick={() => onAssignCharacter(char)} className="text-green-200 focus:bg-green-900/30 focus:text-green-200"><UserCheck className="h-4 w-4 mr-2" />Assign Character</DropdownMenuItem>
+          )}
+          {role === 'gm' && (
+            <DropdownMenuItem onClick={() => onManageAccess(char)} className="text-purple-200 focus:bg-purple-900/30 focus:text-purple-200"><Shield className="h-4 w-4 mr-2" />Manage Access</DropdownMenuItem>
+          )}
+          {role === 'gm' && (
+            <>
+              <DropdownMenuSeparator className="bg-stone-700" />
+              <DropdownMenuItem onClick={() => onDeleteCharacter(char)} disabled={deleteCharacterPending} className="text-red-400 focus:bg-red-900/30 focus:text-red-400"><Trash2 className="h-4 w-4 mr-2" />Delete</DropdownMenuItem>
+            </>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  );
+}
+
 // 5. Campaign Menu & Chat
 interface CampaignMenuProps {
   campaignId?: string;
@@ -7276,9 +7441,10 @@ interface CampaignMenuProps {
   defaultPanel?: string;
   onDefaultPanelChange?: (panel: string) => void;
   inline?: boolean;
+  charactersOnly?: boolean;
 }
 
-export function CampaignMenu({ campaignId, role, inviteCode, hotbarSlots = 5, inspectedChar, onInspectChar, onAddCharacterToken, onChangeMap, characters, members, onAddCharacter, onViewCharacter, onLevelUpAll, chatOpen = false, onChatOpenChange, onAssignCharacter, myPermissions, onOpenCampaignSpecies, isOwner = false, gmUserId, beaconColor, onChangeBeaconColor, system, defaultPanel, onDefaultPanelChange, inline = false }: CampaignMenuProps) {
+export function CampaignMenu({ campaignId, role, inviteCode, hotbarSlots = 5, inspectedChar, onInspectChar, onAddCharacterToken, onChangeMap, characters, members, onAddCharacter, onViewCharacter, onLevelUpAll, chatOpen = false, onChatOpenChange, onAssignCharacter, myPermissions, onOpenCampaignSpecies, isOwner = false, gmUserId, beaconColor, onChangeBeaconColor, system, defaultPanel, onDefaultPanelChange, inline = false, charactersOnly = false }: CampaignMenuProps) {
   const { user } = useAuth();
   const setChatOpen = onChatOpenChange || (() => {});
   const [addCharacterOpen, setAddCharacterOpen] = useState(false);
@@ -8644,8 +8810,8 @@ export function CampaignMenu({ campaignId, role, inviteCode, hotbarSlots = 5, in
 
       {inline && (
         <div className="space-y-4">
-          <InviteCodeSection inviteCode={inviteCode} />
-          {role === 'gm' && onOpenCampaignSpecies && (
+          {!charactersOnly && <InviteCodeSection inviteCode={inviteCode} />}
+          {!charactersOnly && role === 'gm' && onOpenCampaignSpecies && (
             <Button
               variant="secondary"
               className="w-full bg-purple-900/50 hover:bg-purple-800/50 border border-purple-700"
@@ -8655,7 +8821,7 @@ export function CampaignMenu({ campaignId, role, inviteCode, hotbarSlots = 5, in
               <Dna className="mr-2 h-4 w-4" /> Campaign Species
             </Button>
           )}
-          <div className="p-4 bg-stone-900/50 border border-stone-800 rounded-lg space-y-4">
+          {!charactersOnly && <div className="p-4 bg-stone-900/50 border border-stone-800 rounded-lg space-y-4">
             <h3 className="text-xs font-bold text-stone-400 uppercase flex items-center gap-2">
               <Bell className="h-3 w-3 text-blue-400" /> Display Settings
             </h3>
@@ -8765,7 +8931,41 @@ export function CampaignMenu({ campaignId, role, inviteCode, hotbarSlots = 5, in
                 <p className="text-xs text-stone-500 mt-1">Panel to open by default when loading the campaign</p>
               </div>
             )}
-          </div>
+          </div>}
+          {charactersOnly ? (
+            <CharacterManagementContent
+              role={role}
+              characters={characters}
+              folders={folders}
+              unfiledCharacters={unfiledCharacters}
+              expandedFolders={expandedFolders}
+              editingFolderId={editingFolderId}
+              editingFolderName={editingFolderName}
+              draggingCharacterId={draggingCharacterId}
+              newFolderName={newFolderName}
+              onSetNewFolderName={setNewFolderName}
+              onCreateFolder={(name) => createFolderMutation.mutate(name)}
+              createFolderPending={createFolderMutation.isPending}
+              onToggleFolder={toggleFolder}
+              onSetEditingFolderId={setEditingFolderId}
+              onSetEditingFolderName={setEditingFolderName}
+              onUpdateFolder={(id, name) => updateFolderMutation.mutate({ id, name })}
+              onDeleteFolder={(id) => deleteFolderMutation.mutate(id)}
+              deleteFolderPending={deleteFolderMutation.isPending}
+              onMoveCharacter={(characterId, folderId) => moveCharacterMutation.mutate({ characterId, folderId })}
+              onSetDraggingCharacterId={setDraggingCharacterId}
+              getCharactersInFolder={getCharactersInFolder}
+              onAddCharacter={onAddCharacter ? () => setAddCharacterOpen(true) : undefined}
+              onShowTemplateLibrary={() => setShowTemplateLibrary(true)}
+              onShowImportDialog={() => setShowImportDialog(true)}
+              onViewCharacter={onViewCharacter}
+              onAssignCharacter={onAssignCharacter}
+              onDeleteCharacter={handleDeleteCharacter}
+              deleteCharacterPending={deleteCharacterMutation.isPending}
+              onManageAccess={(char) => { setSelectedCharForAccess(char); setShowAccessDialog(true); }}
+              myPermissions={myPermissions}
+            />
+          ) : (
           <Tabs defaultValue="players" className="w-full">
             {system !== 'sandbox' && (
               <TabsList className="w-full grid grid-cols-2 bg-stone-900">
@@ -8798,6 +8998,7 @@ export function CampaignMenu({ campaignId, role, inviteCode, hotbarSlots = 5, in
               </div>
             </TabsContent>
           </Tabs>
+          )}
         </div>
       )}
       

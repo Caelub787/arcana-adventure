@@ -8661,33 +8661,31 @@ export default function Campaign() {
             </TooltipProvider>
           )}
 
-          {isSandbox && (
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => {
-                      if (activeSidePanel === 'characters' && !sidePanelMinimized) {
-                        setSidePanelMinimized(true);
-                      } else {
-                        setActiveSidePanel('characters');
-                        setSidePanelMinimized(false);
-                      }
-                    }}
-                    className={`text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto ${activeSidePanel === 'characters' && !sidePanelMinimized ? 'text-amber-400 bg-white/10' : ''}`}
-                    data-testid="button-panel-characters"
-                  >
-                    <Users className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
-                </Button>
-                </TooltipTrigger>
-                <TooltipContent side="left" className="bg-stone-800 border-stone-700 text-stone-200">
-                  <p>Actors</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          )}
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => {
+                    if (activeSidePanel === 'characters' && !sidePanelMinimized) {
+                      setSidePanelMinimized(true);
+                    } else {
+                      setActiveSidePanel('characters');
+                      setSidePanelMinimized(false);
+                    }
+                  }}
+                  className={`text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto ${activeSidePanel === 'characters' && !sidePanelMinimized ? 'text-amber-400 bg-white/10' : ''}`}
+                  data-testid="button-panel-characters"
+                >
+                  <Users className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
+              </Button>
+              </TooltipTrigger>
+              <TooltipContent side="left" className="bg-stone-800 border-stone-700 text-stone-200">
+                <p>{isSandbox ? 'Actors' : 'Characters'}</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
 
           <TooltipProvider>
             <Tooltip>
@@ -9670,7 +9668,7 @@ export default function Campaign() {
           {/* For players: show ONLY when they have an assigned character */}
           {!isSandbox && ((role === 'player' && character) || (role === 'gm' && inspectedChar)) && (
             <div 
-              className="absolute top-44 z-20 flex flex-col gap-2 transition-all duration-300 ease-in-out"
+              className="absolute top-48 z-20 flex flex-col gap-2 transition-all duration-300 ease-in-out"
               style={{ right: sidePanelOpen && !isMobile ? `${notesPanelWidth + 16}px` : '12px' }}
             >
               {[
@@ -9805,7 +9803,7 @@ export default function Campaign() {
             <div className="flex items-center justify-between p-3 border-b border-stone-800 shrink-0">
               <h2 className="text-amber-500 font-display text-lg font-bold">
                 {activeSidePanel === 'chat' && 'Adventure Log'}
-                {activeSidePanel === 'characters' && 'Actors'}
+                {activeSidePanel === 'characters' && (isSandbox ? 'Actors' : 'Characters')}
                 {activeSidePanel === 'notes' && 'Notes'}
                 {activeSidePanel === 'settings' && 'Settings'}
                 {activeSidePanel === 'scene' && 'Scenes'}
@@ -9847,8 +9845,44 @@ export default function Campaign() {
                       }}
                     />
                   ) : (
-                    <div className="text-stone-500 text-center italic text-sm pt-8">
-                      Character management panel
+                    <div className="h-full overflow-y-auto">
+                      <CampaignMenu 
+                        campaignId={effectiveCampaignId}
+                        role={role} 
+                        inviteCode=""
+                        hotbarSlots={(campaign && typeof campaign === 'object' && 'hotbarSlots' in campaign ? (campaign as any).hotbarSlots as number : 5) || 5}
+                        inspectedChar={inspectedChar}
+                        onInspectChar={setInspectedChar}
+                        onAddCharacterToken={handleAddCharacterToken}
+                        onChangeMap={handleChangeMap}
+                        characters={characters as any[]}
+                        members={members as any[]}
+                        onAddCharacter={handleAddCharacter}
+                        onViewCharacter={handleViewCharacter}
+                        onLevelUpAll={handleLevelUpAll}
+                        chatOpen={false}
+                        onChatOpenChange={() => {}}
+                        onAssignCharacter={handleAssignCharacter}
+                        myPermissions={myPermissions}
+                        onOpenCampaignSpecies={() => setCampaignSpeciesOpen(true)}
+                        isOwner={!!(campaign && typeof campaign === 'object' && 'gmUserId' in campaign && (campaign as any).gmUserId === user?.id)}
+                        gmUserId={(campaign && typeof campaign === 'object' && 'gmUserId' in campaign ? (campaign as any).gmUserId as string : undefined)}
+                        beaconColor={myMembership?.beaconColor || '#FBB524'}
+                        onChangeBeaconColor={() => {
+                          setPendingBeaconColor(myMembership?.beaconColor || '#FBB524');
+                          setBeaconColorDialogOpen(true);
+                        }}
+                        system={isSandbox ? 'sandbox' : 'arcana-adventure'}
+                        defaultPanel={(campaign && typeof campaign === 'object' && 'defaultPanel' in campaign ? (campaign as any).defaultPanel as string : 'characters') || 'characters'}
+                        onDefaultPanelChange={(panel: string) => {
+                          if (effectiveCampaignId) {
+                            api.updateCampaign(effectiveCampaignId, { defaultPanel: panel } as any);
+                            queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${effectiveCampaignId}`] });
+                          }
+                        }}
+                        inline={true}
+                        charactersOnly={true}
+                      />
                     </div>
                   )}
                 </div>
