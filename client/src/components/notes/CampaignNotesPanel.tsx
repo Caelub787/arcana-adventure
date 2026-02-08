@@ -2451,7 +2451,7 @@ export function CampaignNotesPanel({
                   compact
                 />
               )}
-              <div className="flex-1 min-h-0 overflow-hidden relative isolate">
+              <div className="flex-1 min-h-0 overflow-hidden relative isolate flex flex-col">
                 {selectedNoteId ? (
                   currentNote?.type === "canvas" || noteMode === "edit" ? renderNoteEditor() : renderNoteReadView()
                 ) : showHomeView ? (
