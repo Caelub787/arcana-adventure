@@ -1961,6 +1961,7 @@ function SandboxCharactersContent({
   const [createFolderOpen, setCreateFolderOpen] = useState(false);
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
   const [templateSettingsOpen, setTemplateSettingsOpen] = useState<string | null>(null);
+  const [dragOverFolderId, setDragOverFolderId] = useState<string | null>(null);
 
   const { data: templates = [] } = useQuery({
     queryKey: ['sandbox-templates', campaignId],
@@ -2046,6 +2047,41 @@ function SandboxCharactersContent({
       queryClient.invalidateQueries({ queryKey: ['sandbox-templates', campaignId] });
     },
   });
+
+  const updateActorMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: any }) => api.updateSandboxActor(campaignId, id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sandbox-actors', campaignId] });
+    },
+  });
+
+  const isSandboxDrag = (e: React.DragEvent) => {
+    return e.dataTransfer.types.includes('application/sandbox-actor-move') ||
+           e.dataTransfer.types.includes('application/sandbox-template-move') ||
+           e.dataTransfer.types.includes('text/plain');
+  };
+
+  const handleItemDrop = (folderId: string | null, e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOverFolderId(null);
+    const templateData = e.dataTransfer.getData('application/sandbox-template-move');
+    const actorData = e.dataTransfer.getData('application/sandbox-actor-move');
+    if (templateData) {
+      try { const { id } = JSON.parse(templateData); updateTemplateMutation.mutate({ id, data: { folderId } }); } catch {}
+    } else if (actorData) {
+      try { const { id } = JSON.parse(actorData); updateActorMutation.mutate({ id, data: { folderId } }); } catch {}
+    } else {
+      const plainData = e.dataTransfer.getData('text/plain');
+      if (plainData) {
+        try {
+          const { id, type } = JSON.parse(plainData);
+          if (type === 'template') updateTemplateMutation.mutate({ id, data: { folderId } });
+          else if (type === 'actor') updateActorMutation.mutate({ id, data: { folderId } });
+        } catch {}
+      }
+    }
+  };
 
   const handleCreate = () => {
     if (!newName.trim()) return;
@@ -2147,13 +2183,17 @@ function SandboxCharactersContent({
       <div
         className="flex items-center justify-between py-2 px-3 bg-stone-800/30 border border-stone-700/50 rounded-lg hover:bg-stone-800/60 transition-colors cursor-pointer group"
         onClick={() => type === 'actor' ? onOpenActor(item) : onOpenTemplate(item)}
-        draggable={type === 'actor'}
+        draggable
         onDragStart={(e) => {
+          const payload = JSON.stringify({ id: item.id, name: item.name, type });
+          e.dataTransfer.setData('text/plain', payload);
+          e.dataTransfer.setData(`application/sandbox-${type}-move`, payload);
           if (type === 'actor') {
-            e.dataTransfer.setData('application/sandbox-actor', JSON.stringify({ id: item.id, name: item.name }));
-            e.dataTransfer.effectAllowed = 'copy';
+            e.dataTransfer.setData('application/sandbox-actor', payload);
           }
+          e.dataTransfer.effectAllowed = 'move';
         }}
+        onDragEnd={() => setDragOverFolderId(null)}
         data-testid={`sandbox-${type}-${item.id}`}
       >
         <div className="flex items-center gap-2.5 min-w-0 flex-1">
@@ -2204,13 +2244,27 @@ function SandboxCharactersContent({
     const childFolders = folders.filter((f: any) => f.parentId === folder.id);
     const folderActors = actors.filter((a: any) => a.folderId === folder.id);
     const folderTemplates = templates.filter((t: any) => t.folderId === folder.id);
+    const isDragOver = dragOverFolderId === folder.id;
     
     return (
       <div key={folder.id} data-testid={`sandbox-folder-${folder.id}`}>
         <div 
-          className="flex items-center justify-between py-2 px-3 hover:bg-stone-800/40 rounded-lg cursor-pointer group transition-colors"
+          className={`flex items-center justify-between py-2 px-3 hover:bg-stone-800/40 rounded-lg cursor-pointer group transition-colors ${isDragOver ? 'bg-purple-900/30 ring-1 ring-purple-500/50' : ''}`}
           style={{ paddingLeft: `${depth * 16 + 12}px` }}
           onClick={() => toggleFolder(folder.id)}
+          onDragOver={(e) => {
+            if (isSandboxDrag(e)) {
+              e.preventDefault();
+              e.stopPropagation();
+              e.dataTransfer.dropEffect = 'move';
+              setDragOverFolderId(folder.id);
+            }
+          }}
+          onDragLeave={(e) => { e.stopPropagation(); setDragOverFolderId(prev => prev === folder.id ? null : prev); }}
+          onDrop={(e) => {
+            handleItemDrop(folder.id, e);
+            setExpandedFolders(prev => new Set([...prev, folder.id]));
+          }}
         >
           <div className="flex items-center gap-2">
             <ChevronRight className={`h-3.5 w-3.5 text-stone-500 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
@@ -2333,7 +2387,21 @@ function SandboxCharactersContent({
         )}
       </div>
 
-      <div className="flex-1 overflow-y-auto space-y-1 custom-scrollbar">
+      <div
+        className={`flex-1 overflow-y-auto space-y-1 custom-scrollbar ${dragOverFolderId === 'root' ? 'ring-1 ring-purple-500/30 rounded-lg' : ''}`}
+        onDragOver={(e) => {
+          if (isSandboxDrag(e)) {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            setDragOverFolderId(prev => prev !== null && prev !== 'root' ? prev : 'root');
+          }
+        }}
+        onDragLeave={(e) => {
+          if (e.currentTarget === e.target) setDragOverFolderId(null);
+        }}
+        onDrop={(e) => handleItemDrop(null, e)}
+        data-testid="sandbox-root-drop-zone"
+      >
         {rootFolders.map((f: any) => renderFolder(f))}
         {rootActors.map((a: any) => renderItem(a, 'actor'))}
         {rootTemplates.map((t: any) => renderItem(t, 'template'))}
