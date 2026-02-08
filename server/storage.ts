@@ -46,7 +46,8 @@ import {
   type SandboxTemplate, type InsertSandboxTemplate,
   type SandboxActor, type InsertSandboxActor,
   type SandboxFolder, type InsertSandboxFolder,
-  users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, items, spells, characterPermissions, initiativeEntries, systemSpecies, campaignSpecies, featTemplates, featTrees, feats, featConnections, characterFeats, systemSpells, systemSkills, characterCustomSkills, systemTraits, characterTraits, characterFolders, characterTemplateFolders, sceneFolders, friendRequests, friendships, noteFolders, notes, noteReferences, noteShares, tokenEffects, spellEffects, itemEffects, tokenActiveEffects, thrownItems, adminNotifications, userNotifications, termsAndConditions, userTermsAcceptance, sandboxFolders, sandboxTemplates, sandboxActors
+  type RollEntry, type InsertRollEntry,
+  users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, items, spells, characterPermissions, initiativeEntries, systemSpecies, campaignSpecies, featTemplates, featTrees, feats, featConnections, characterFeats, systemSpells, systemSkills, characterCustomSkills, systemTraits, characterTraits, characterFolders, characterTemplateFolders, sceneFolders, friendRequests, friendships, noteFolders, notes, noteReferences, noteShares, tokenEffects, spellEffects, itemEffects, tokenActiveEffects, thrownItems, adminNotifications, userNotifications, termsAndConditions, userTermsAcceptance, sandboxFolders, sandboxTemplates, sandboxActors, rollEntries
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql, inArray, or, isNull } from "drizzle-orm";
@@ -174,6 +175,13 @@ export interface IStorage {
   createSpell(spell: InsertSpell): Promise<Spell>;
   updateSpell(id: string, updates: Partial<InsertSpell>): Promise<Spell | undefined>;
   deleteSpell(id: string): Promise<void>;
+
+  // Roll Entry operations
+  getRollEntries(ownerType: string, ownerId: string): Promise<RollEntry[]>;
+  createRollEntry(entry: InsertRollEntry): Promise<RollEntry>;
+  updateRollEntry(id: string, data: Partial<InsertRollEntry>): Promise<RollEntry | undefined>;
+  deleteRollEntry(id: string): Promise<void>;
+  deleteRollEntriesByOwner(ownerType: string, ownerId: string): Promise<void>;
 
   // Character Permission operations
   getCharacterPermissions(characterId: string): Promise<CharacterPermission[]>;
@@ -1744,6 +1752,40 @@ export class DatabaseStorage implements IStorage {
     await db.delete(hotbars).where(eq(hotbars.spellId, id));
     // Then delete the spell
     await db.delete(spells).where(eq(spells.id, id));
+  }
+
+  // Roll Entry operations
+  async getRollEntries(ownerType: string, ownerId: string): Promise<RollEntry[]> {
+    return await db.select()
+      .from(rollEntries)
+      .where(and(
+        eq(rollEntries.ownerType, ownerType),
+        eq(rollEntries.ownerId, ownerId)
+      ));
+  }
+
+  async createRollEntry(entry: InsertRollEntry): Promise<RollEntry> {
+    const [newEntry] = await db.insert(rollEntries).values(entry).returning();
+    return newEntry;
+  }
+
+  async updateRollEntry(id: string, data: Partial<InsertRollEntry>): Promise<RollEntry | undefined> {
+    const [entry] = await db.update(rollEntries)
+      .set(data)
+      .where(eq(rollEntries.id, id))
+      .returning();
+    return entry;
+  }
+
+  async deleteRollEntry(id: string): Promise<void> {
+    await db.delete(rollEntries).where(eq(rollEntries.id, id));
+  }
+
+  async deleteRollEntriesByOwner(ownerType: string, ownerId: string): Promise<void> {
+    await db.delete(rollEntries).where(and(
+      eq(rollEntries.ownerType, ownerType),
+      eq(rollEntries.ownerId, ownerId)
+    ));
   }
 
   // Character Permission operations

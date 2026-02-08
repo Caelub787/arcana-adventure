@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertUserSchema, insertCampaignSchema, insertCharacterSchema, insertTokenSchema, insertChatMessageSchema, insertSceneSchema, insertHotbarSchema, insertItemSchema, insertSpellSchema, initiativeEntries, insertTokenEffectSchema, insertTokenActiveEffectSchema } from "@shared/schema";
+import { insertUserSchema, insertCampaignSchema, insertCharacterSchema, insertTokenSchema, insertChatMessageSchema, insertSceneSchema, insertHotbarSchema, insertItemSchema, insertSpellSchema, initiativeEntries, insertTokenEffectSchema, insertTokenActiveEffectSchema, rollEntries, insertRollEntrySchema } from "@shared/schema";
 import bcrypt from "bcryptjs";
 import { WebSocketServer } from "ws";
 import { sendPasswordResetEmail } from "./email";
@@ -3092,6 +3092,55 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ success: true });
     } catch (err) {
       res.status(400).json({ error: "Failed to delete spell" });
+    }
+  });
+
+  // Roll Entry routes
+  app.get("/api/items/:id/rolls", requireAuth, async (req, res) => {
+    try {
+      const rolls = await storage.getRollEntries("item", req.params.id);
+      res.json(rolls);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch item roll entries" });
+    }
+  });
+
+  app.get("/api/spells/:id/rolls", requireAuth, async (req, res) => {
+    try {
+      const rolls = await storage.getRollEntries("spell", req.params.id);
+      res.json(rolls);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch spell roll entries" });
+    }
+  });
+
+  app.post("/api/roll-entries", requireAuth, async (req, res) => {
+    try {
+      const entry = await storage.createRollEntry(req.body);
+      res.json(entry);
+    } catch (err) {
+      res.status(400).json({ error: "Failed to create roll entry" });
+    }
+  });
+
+  app.patch("/api/roll-entries/:id", requireAuth, async (req, res) => {
+    try {
+      const entry = await storage.updateRollEntry(req.params.id, req.body);
+      if (!entry) {
+        return res.status(404).json({ error: "Roll entry not found" });
+      }
+      res.json(entry);
+    } catch (err) {
+      res.status(400).json({ error: "Failed to update roll entry" });
+    }
+  });
+
+  app.delete("/api/roll-entries/:id", requireAuth, async (req, res) => {
+    try {
+      await storage.deleteRollEntry(req.params.id);
+      res.json({ success: true });
+    } catch (err) {
+      res.status(400).json({ error: "Failed to delete roll entry" });
     }
   });
 

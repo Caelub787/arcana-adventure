@@ -446,6 +446,20 @@ export interface CampaignBan {
   username: string;
 }
 
+export interface RollEntry {
+  id: string;
+  ownerType: string;
+  ownerId: string;
+  name: string;
+  rollType: string;
+  diceFormula?: string;
+  mod?: number;
+  damageType?: string;
+  attribute?: string;
+  applyToStat?: string;
+  sortOrder: number;
+}
+
 export interface SystemTrait {
   id: string;
   name: string;
@@ -993,6 +1007,33 @@ class ApiClient {
 
   async deleteSpell(id: string): Promise<void> {
     return this.request(`/spells/${id}`, { method: 'DELETE' });
+  }
+
+  // Roll Entries
+  async getItemRolls(itemId: string): Promise<RollEntry[]> {
+    return this.request(`/items/${itemId}/rolls`);
+  }
+
+  async getSpellRolls(spellId: string): Promise<RollEntry[]> {
+    return this.request(`/spells/${spellId}/rolls`);
+  }
+
+  async createRollEntry(data: Partial<RollEntry>): Promise<RollEntry> {
+    return this.request('/roll-entries', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateRollEntry(id: string, data: Partial<RollEntry>): Promise<RollEntry> {
+    return this.request(`/roll-entries/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteRollEntry(id: string): Promise<void> {
+    return this.request(`/roll-entries/${id}`, { method: 'DELETE' });
   }
 
   // Public system item (single item for entity references)

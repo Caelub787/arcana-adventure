@@ -1185,3 +1185,24 @@ export const insertSandboxActorSchema = createInsertSchema(sandboxActors).omit({
 });
 export type InsertSandboxActor = z.infer<typeof insertSandboxActorSchema>;
 export type SandboxActor = typeof sandboxActors.$inferSelect;
+
+// Roll Entries table (multiple roll definitions per item or spell)
+export const rollEntries = pgTable("roll_entries", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  ownerType: text("owner_type").notNull(), // "item" or "spell"
+  ownerId: varchar("owner_id").notNull(), // references items.id or spells.id
+  name: text("name").notNull(), // e.g. "Attack Roll", "Damage Roll", "Heal"
+  rollType: text("roll_type").notNull(), // "attack", "damage", "heal", "effect"
+  diceFormula: text("dice_formula"), // e.g. "1d20", "2d6+3", "1d8"
+  mod: integer("mod").default(0),
+  damageType: text("damage_type"), // "Sharp", "Blunt", "Piercing", "Flame", etc.
+  attribute: text("attribute"), // "might", "finesse", "wit", "presence", "will", "craft" - adds attribute mod
+  applyToStat: text("apply_to_stat").default("none"), // "hp", "energy", "none" - what stat to affect on target
+  sortOrder: integer("sort_order").default(0).notNull(),
+});
+
+export const insertRollEntrySchema = createInsertSchema(rollEntries).omit({
+  id: true,
+});
+export type InsertRollEntry = z.infer<typeof insertRollEntrySchema>;
+export type RollEntry = typeof rollEntries.$inferSelect;
