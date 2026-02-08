@@ -455,6 +455,7 @@ interface WallDrawingOverlayProps {
   lightPlaceMode: boolean;
   lightRadius: number;
   lightColor: string;
+  lightIntensity: number;
   onFinish?: () => void;
 }
 
@@ -468,6 +469,7 @@ export function WallDrawingOverlay({
   lightPlaceMode,
   lightRadius,
   lightColor,
+  lightIntensity,
   onFinish,
 }: WallDrawingOverlayProps) {
   const queryClient = useQueryClient();
@@ -527,7 +529,7 @@ export function WallDrawingOverlay({
       const res = await fetch(`/api/scenes/${sceneId}/lights`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...light, sceneId, intensity: 1.0, softEdge: true, flicker: false, flickerSpeed: 1.0, attachmentType: 'static', enabled: true }),
+        body: JSON.stringify({ ...light, sceneId, intensity: lightIntensity, softEdge: true, flicker: false, flickerSpeed: 1.0, attachmentType: 'static', enabled: true }),
       });
       if (!res.ok) throw new Error('Failed to create light');
       return res.json();
@@ -610,7 +612,7 @@ export function WallDrawingOverlay({
         color: lightColor,
       });
     }
-  }, [wallDrawMode, doorPlaceMode, windowPlaceMode, lightPlaceMode, wallPoints, doorStart, windowStart, gridSize, selectedWallType, lightRadius, lightColor, createWallMutation, createDoorMutation, createWindowMutation, createLightMutation]);
+  }, [wallDrawMode, doorPlaceMode, windowPlaceMode, lightPlaceMode, wallPoints, doorStart, windowStart, gridSize, selectedWallType, lightRadius, lightColor, lightIntensity, createWallMutation, createDoorMutation, createWindowMutation, createLightMutation]);
 
   const handleDoubleClick = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
     if (wallDrawMode && wallPoints.length >= 2) {
@@ -790,6 +792,8 @@ interface FogToolsPanelProps {
   setLightRadius: (v: number) => void;
   lightColor: string;
   setLightColor: (v: string) => void;
+  lightIntensity: number;
+  setLightIntensity: (v: number) => void;
 }
 
 export function FogToolsPanel({
@@ -812,6 +816,8 @@ export function FogToolsPanel({
   setLightRadius,
   lightColor,
   setLightColor,
+  lightIntensity,
+  setLightIntensity,
 }: FogToolsPanelProps) {
   const queryClient = useQueryClient();
   const sceneId = scene?.id;
@@ -1112,6 +1118,20 @@ export function FogToolsPanel({
                 step={5}
                 onValueChange={(v) => setLightRadius(v[0])}
                 data-testid="slider-light-radius"
+              />
+            </div>
+            <div className="space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-stone-400">Brightness</span>
+                <span className="text-xs text-stone-500">{Math.round(lightIntensity * 100)}%</span>
+              </div>
+              <Slider
+                value={[lightIntensity * 100]}
+                min={10}
+                max={200}
+                step={10}
+                onValueChange={(v) => setLightIntensity(v[0] / 100)}
+                data-testid="slider-light-intensity"
               />
             </div>
             <div className="flex items-center gap-2">

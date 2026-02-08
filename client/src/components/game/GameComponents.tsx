@@ -377,6 +377,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
   const [lightPlaceMode, setLightPlaceMode] = useState(false);
   const [lightRadius, setLightRadius] = useState(30);
   const [lightColor, setLightColor] = useState('#ffcc44');
+  const [lightIntensity, setLightIntensity] = useState(1.0);
   
   // Cleanup timers on unmount
   useEffect(() => {
@@ -1083,6 +1084,12 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
     // Only pan with primary button (left click / single touch)
     if (e.button !== 0) return;
     
+    // Don't capture pointer when fog drawing tools are active - let WallDrawingOverlay handle clicks
+    if (wallDrawMode || doorPlaceMode || windowPlaceMode || lightPlaceMode) return;
+    
+    // Don't capture pointer when placing a character token - let onClick handle it
+    if (placingCharacterId) return;
+    
     // Clear thrown item delete mode when starting a new map interaction
     if (thrownItemDeleteMode) {
       setThrownItemDeleteMode(null);
@@ -1659,18 +1666,21 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
         onClick={(e) => {
           setShowDeleteButton(null);
           if (placingCharacterId && onMapClickToPlace) {
-            const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-            const screenX = e.clientX - rect.left;
-            const screenY = e.clientY - rect.top;
-            const currentZoom = zoomRef.current;
-            const currentPan = panRef.current;
-            const worldX = (screenX - currentPan.x) / currentZoom;
-            const worldY = (screenY - currentPan.y) / currentZoom;
-            const effectiveGridSize = scene?.gridSize || gridSize;
-            const gridEnabled = scene?.gridEnabled !== undefined ? scene.gridEnabled : true;
-            const snappedX = gridEnabled ? Math.round(worldX / effectiveGridSize) * effectiveGridSize : worldX;
-            const snappedY = gridEnabled ? Math.round(worldY / effectiveGridSize) * effectiveGridSize : worldY;
-            onMapClickToPlace(snappedX, snappedY);
+            const container = containerRef.current;
+            if (container) {
+              const rect = container.getBoundingClientRect();
+              const screenX = e.clientX - rect.left;
+              const screenY = e.clientY - rect.top;
+              const currentZoom = zoomRef.current;
+              const currentPan = panRef.current;
+              const worldX = ((screenX + 9000 - currentPan.x) / currentZoom) - 9000;
+              const worldY = ((screenY + 9000 - currentPan.y) / currentZoom) - 9000;
+              const effectiveGridSize = scene?.gridSize || gridSize;
+              const gridEnabled = scene?.gridEnabled !== undefined ? scene.gridEnabled : true;
+              const snappedX = gridEnabled ? Math.round(worldX / effectiveGridSize) * effectiveGridSize : worldX;
+              const snappedY = gridEnabled ? Math.round(worldY / effectiveGridSize) * effectiveGridSize : worldY;
+              onMapClickToPlace(snappedX, snappedY);
+            }
           }
         }}
       >
@@ -3312,6 +3322,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
             lightPlaceMode={lightPlaceMode}
             lightRadius={lightRadius}
             lightColor={lightColor}
+            lightIntensity={lightIntensity}
           />
         )}
       </motion.div>
@@ -3338,6 +3349,8 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
           setLightRadius={setLightRadius}
           lightColor={lightColor}
           setLightColor={setLightColor}
+          lightIntensity={lightIntensity}
+          setLightIntensity={setLightIntensity}
         />
       )}
 
