@@ -6839,10 +6839,22 @@ export default function Campaign() {
                   <div className="border-t border-stone-700 pt-3">
                     <Label className="text-stone-300 text-xs font-bold mb-2 block">Scene Settings</Label>
                     {activeScene ? (
-                      <SceneSettingsForm
-                        scene={activeScene}
-                        onUpdateScene={handleUpdateScene}
-                      />
+                      <>
+                        <SceneSettingsForm
+                          scene={activeScene}
+                          onUpdateScene={handleUpdateScene}
+                        />
+                        <div className="pt-4">
+                          <Button
+                            onClick={handleSetDefaultView}
+                            className="w-full bg-blue-900/80 hover:bg-blue-800 text-white border border-blue-700"
+                            data-testid="button-set-default-view-desktop"
+                          >
+                            <MapIcon className="h-4 w-4 mr-2" />
+                            Set Default View
+                          </Button>
+                        </div>
+                      </>
                     ) : (
                       <div className="text-stone-500 text-center italic text-xs pt-4">
                         No scene selected
