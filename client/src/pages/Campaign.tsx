@@ -928,6 +928,7 @@ function SandboxSheetEditor({
   const [pfpDragging, setPfpDragging] = useState(false);
   const [containerAddTarget, setContainerAddTarget] = useState<{ parentId: string; tabId?: string } | null>(null);
   const [activeTabState, setActiveTabState] = useState<Record<string, string>>({});
+  const [collapsedPanels, setCollapsedPanels] = useState<Record<string, boolean>>({});
   const [addNodeDialogOpen, setAddNodeDialogOpen] = useState(false);
 
   useEffect(() => {
@@ -1030,7 +1031,7 @@ function SandboxSheetEditor({
 
   const properties: any[] = Object.values(templateData.properties || {}).map((p: any) => ({
     ...p,
-    sectionNodeId: p.sectionNodeId,
+    parentId: p.parentId ?? null,
     label: p.metadata?.label || p.label || p.key,
     x: p.metadata?.uiConfig?.x ?? p.x ?? 10,
     y: p.metadata?.uiConfig?.y ?? p.y ?? 10,
@@ -1059,13 +1060,11 @@ function SandboxSheetEditor({
       return;
     }
 
-    const targetSectionId = containerAddTarget?.parentId || sectionNodes.find((s: any) => s.type === 'section')?.id || Object.keys(layoutNodes)[0];
-
     const newProp = {
       id: crypto.randomUUID(),
       key: newPropKey.trim(),
       type: newPropType === 'checkbox' ? 'boolean' : newPropType === 'textarea' ? 'text' : newPropType === 'select' ? 'list' : newPropType,
-      sectionNodeId: targetSectionId,
+      parentId: containerAddTarget?.parentId || null,
       defaultValue: newPropDefault || undefined,
       metadata: {
         label: newPropLabel.trim(),
@@ -1131,7 +1130,7 @@ function SandboxSheetEditor({
     setContainerAddTarget({ parentId: sectionId });
     resetNewPropState();
     setContainerAddTarget({ parentId: sectionId });
-    const sectionProps = properties.filter((p: any) => p.sectionNodeId === sectionId);
+    const sectionProps = properties.filter((p: any) => p.parentId === sectionId);
     if (sectionProps.length > 0) {
       const maxY = Math.max(...sectionProps.map((p: any) => (p.y ?? 0) + (p.height ?? 40)));
       setNewPropX(10);
@@ -1231,7 +1230,7 @@ function SandboxSheetEditor({
         },
         ...(updates.style !== undefined ? { style: updates.style } : {}),
       },
-      ...(updates.sectionNodeId !== undefined ? { sectionNodeId: updates.sectionNodeId } : {}),
+      ...(updates.parentId !== undefined ? { parentId: updates.parentId } : {}),
       ...(updates.key !== undefined ? { key: updates.key } : {}),
     };
     const newKey = updates.key !== undefined ? updates.key : prop.key;
@@ -1455,7 +1454,7 @@ function SandboxSheetEditor({
         const childNodes = layoutNodesList.filter((n: any) => n.parentId === node.id).sort((a: any, b: any) => a.order - b.order);
 
         if (node.type === 'section') {
-          const sectionProps = properties.filter((p: any) => p.sectionNodeId === node.id);
+          const sectionProps = properties.filter((p: any) => p.parentId === node.id);
           const sectionHeight = sectionProps.length > 0
             ? Math.max(120, Math.max(...sectionProps.map((p: any) => (p.y ?? 0) + (p.height ?? 40))) + 20)
             : 120;
@@ -1545,15 +1544,30 @@ function SandboxSheetEditor({
         }
 
         if (node.type === 'panel') {
+          const isCollapsible = node.behaviorConfig?.panelConfig?.collapsible;
+          const isPanelCollapsed = collapsedPanels[node.id] ?? node.behaviorConfig?.panelConfig?.defaultCollapsed ?? false;
+          const panelProps = properties.filter((p: any) => p.parentId === node.id);
+          const panelHeight = panelProps.length > 0
+            ? Math.max(60, Math.max(...panelProps.map((p: any) => (p.y ?? 0) + (p.height ?? 40))) + 20)
+            : 60;
           return (
-            <div key={node.id} className="relative rounded overflow-visible mb-1" style={{ minHeight: '60px', ...nodeStyle }}
+            <div key={node.id} className="relative rounded overflow-visible mb-1" style={{ minHeight: isPanelCollapsed ? '24px' : `${panelHeight}px`, ...nodeStyle }}
               onContextMenu={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
                 setSectionContextMenu({ x: e.clientX, y: e.clientY, sectionId: node.id });
               }}
             >
-              <div className="absolute top-0 left-0 z-20 px-2 py-0.5">
+              <div className="absolute top-0 left-0 z-20 px-2 py-0.5 flex items-center gap-1">
+                {isCollapsible && (
+                  <button
+                    className="text-stone-500 hover:text-stone-300 transition-colors"
+                    onClick={() => setCollapsedPanels(prev => ({ ...prev, [node.id]: !isPanelCollapsed }))}
+                    data-testid={`button-toggle-panel-${node.id}`}
+                  >
+                    {isPanelCollapsed ? <ChevronRight className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                  </button>
+                )}
                 {editingSectionName === node.id ? (
                   <input
                     autoFocus
@@ -1575,9 +1589,24 @@ function SandboxSheetEditor({
                   <span className="text-[10px] text-stone-500 uppercase tracking-wider">{node.name} <span className="text-stone-600">(panel)</span></span>
                 )}
               </div>
-              <div className="mt-4">
-                {childNodes.map((child: any) => renderLayoutNode(child))}
-              </div>
+              {!isPanelCollapsed && (
+                <div className="mt-4">
+                  {panelProps.map((prop: any) => renderCanvasProperty(prop))}
+                  {childNodes.map((child: any) => renderLayoutNode(child))}
+                </div>
+              )}
+              <button
+                className="absolute w-5 h-5 rounded bg-purple-700/60 hover:bg-purple-600 text-white flex items-center justify-center transition-all opacity-60 hover:opacity-100 z-30 top-1 right-1"
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleAddPropertyToSection(node.id);
+                }}
+                title={`Add property to ${node.name}`}
+                data-testid={`button-add-to-panel-${node.name.toLowerCase()}`}
+              >
+                <Plus className="h-3 w-3" />
+              </button>
             </div>
           );
         }
@@ -1598,13 +1627,29 @@ function SandboxSheetEditor({
       const canvas = templateData.canvas;
       const canvasBgStyle = canvas?.backgroundConfig ? getPropertyCssStyle(canvas.backgroundConfig) : {};
       const rootNodes = layoutNodesList.filter((n: any) => n.parentId === null);
+      const canvasRootProps = properties.filter((p: any) => p.parentId === null);
+      const canvasRootHeight = canvasRootProps.length > 0
+        ? Math.max(60, Math.max(...canvasRootProps.map((p: any) => (p.y ?? 0) + (p.height ?? 40))) + 20)
+        : 0;
 
       return (
         <div className="space-y-0" data-testid="template-properties-editor" style={canvasBgStyle}>
+          {canvasRootProps.length > 0 && (
+            <div
+              className="relative rounded overflow-visible mb-1"
+              style={{ minHeight: `${canvasRootHeight}px` }}
+              onClick={(e) => {
+                if (e.target === e.currentTarget) { setSelectedPropertyId(null); setPropSettingsOpen(false); }
+              }}
+              data-testid="canvas-root-area"
+            >
+              {canvasRootProps.map((prop: any) => renderCanvasProperty(prop))}
+            </div>
+          )}
           {rootNodes.map((node: any) => renderLayoutNode(node))}
-          {rootNodes.length === 0 && (
+          {rootNodes.length === 0 && canvasRootProps.length === 0 && (
             <div className="text-stone-500 text-center italic border border-dashed border-stone-700 rounded-lg p-6 text-sm">
-              No layout nodes defined. Add nodes to build your template.
+              No layout nodes or properties defined. Add nodes or properties to build your template.
             </div>
           )}
           <div className="flex items-center gap-2 mt-2 relative">
@@ -1614,6 +1659,26 @@ function SandboxSheetEditor({
               data-testid="button-add-section"
             >
               <Plus className="h-3 w-3" /> Add Layout Node
+            </button>
+            <button
+              className="text-xs bg-purple-700/60 hover:bg-purple-600 text-stone-300 px-2 py-1 rounded flex items-center gap-1"
+              onClick={() => {
+                setContainerAddTarget(null);
+                resetNewPropState();
+                const rootProps = properties.filter((p: any) => p.parentId === null);
+                if (rootProps.length > 0) {
+                  const maxY = Math.max(...rootProps.map((p: any) => (p.y ?? 0) + (p.height ?? 40)));
+                  setNewPropX(10);
+                  setNewPropY(maxY + 10);
+                } else {
+                  setNewPropX(10);
+                  setNewPropY(10);
+                }
+                setAddingProperty(true);
+              }}
+              data-testid="button-add-canvas-root-property"
+            >
+              <Plus className="h-3 w-3" /> Add Property
             </button>
             {addNodeDialogOpen && (
               <div className="absolute bottom-full left-0 mb-1 bg-stone-800 border border-stone-600 rounded-lg shadow-xl py-1 min-w-[160px] z-30" data-testid="add-node-dialog">
@@ -1687,7 +1752,7 @@ function SandboxSheetEditor({
                   const nodeId = sectionContextMenu.sectionId;
                   const node = layoutNodes[nodeId];
                   if (!node) return;
-                  const propsInNode = Object.values(templateData.properties || {}).filter((p: any) => p.sectionNodeId === nodeId);
+                  const propsInNode = Object.values(templateData.properties || {}).filter((p: any) => p.parentId === nodeId);
                   const childNodesOfThis = layoutNodesList.filter((n: any) => n.parentId === nodeId);
                   if (propsInNode.length > 0) {
                     toast({ title: "Cannot delete", description: "Remove all properties first", variant: "destructive" });
@@ -1718,17 +1783,17 @@ function SandboxSheetEditor({
     }
 
     const linkedTemplate = templates.find((t: any) => t.id === selectedTemplateId);
-    let actorSectionNodes: any[] = [];
     let actorProperties: any[] = [];
     let actorLayoutNodes: Record<string, any> = {};
+    let actorLayoutNodesList: any[] = [];
     if (linkedTemplate) {
       try {
         const td = migrateTemplateData(JSON.parse(linkedTemplate.data || '{}'));
         actorLayoutNodes = td.layoutNodes || {};
-        actorSectionNodes = Object.values(actorLayoutNodes).filter((n: any) => n.type === 'section').sort((a: any, b: any) => a.order - b.order);
+        actorLayoutNodesList = Object.values(actorLayoutNodes).sort((a: any, b: any) => a.order - b.order);
         actorProperties = Object.values(td.properties || {}).map((p: any) => ({
           ...p,
-          sectionNodeId: p.sectionNodeId,
+          parentId: p.parentId ?? null,
           label: p.metadata?.label || p.key,
           x: p.metadata?.uiConfig?.x ?? 10,
           y: p.metadata?.uiConfig?.y ?? 10,
@@ -1744,13 +1809,33 @@ function SandboxSheetEditor({
       } catch {}
     }
 
-    if (actorSectionNodes.length === 0 && actorProperties.length === 0) {
+    if (actorLayoutNodesList.length === 0 && actorProperties.length === 0) {
       return (
         <div className="text-stone-500 text-center italic border border-dashed border-stone-700 rounded-lg p-8 text-sm" data-testid="actor-no-properties">
           {selectedTemplateId ? 'No properties defined in template' : 'Assign a template to see properties'}
         </div>
       );
     }
+
+    const isActorNodeVisible = (nodeId: string): boolean => {
+      const node = actorLayoutNodes[nodeId];
+      if (!node) return false;
+      if (node.parentId) {
+        const parent = actorLayoutNodes[node.parentId];
+        if (!parent) return true;
+        if (parent.type === 'tab') {
+          const parentChildren = Object.values(actorLayoutNodes).filter((n: any) => n.parentId === parent.id).sort((a: any, b: any) => a.order - b.order);
+          const activeChildId = activeTabState[parent.id] || parentChildren[0]?.id;
+          if (node.id !== activeChildId) return false;
+        }
+        if (parent.type === 'panel') {
+          const isPanelCollapsed = collapsedPanels[parent.id] ?? parent.behaviorConfig?.panelConfig?.defaultCollapsed ?? false;
+          if (isPanelCollapsed) return false;
+        }
+        return isActorNodeVisible(node.parentId);
+      }
+      return true;
+    };
 
     const renderActorProperty = (prop: any) => {
       const val = actorValues[prop.key] ?? prop.defaultValue ?? '';
@@ -1892,48 +1977,113 @@ function SandboxSheetEditor({
       );
     };
 
-    const isActorSectionVisible = (sectionNode: any): boolean => {
-      if (!sectionNode.parentId) return true;
-      const parent = actorLayoutNodes[sectionNode.parentId];
-      if (!parent) return true;
-      if (parent.type === 'tab') {
-        const parentChildren = Object.values(actorLayoutNodes).filter((n: any) => n.parentId === parent.id).sort((a: any, b: any) => a.order - b.order);
-        const activeChildId = activeTabState[parent.id] || parentChildren[0]?.id;
-        if (sectionNode.id !== activeChildId) return false;
+    const renderActorLayoutNode = (node: any): React.ReactNode => {
+      if (!isActorNodeVisible(node.id)) return null;
+      const nodeStyle = node.styleConfig ? getPropertyCssStyle(node.styleConfig) : {};
+      const childNodes = actorLayoutNodesList.filter((n: any) => n.parentId === node.id).sort((a: any, b: any) => a.order - b.order);
+      const nodeProps = actorProperties.filter((p: any) => p.parentId === node.id);
+
+      if (node.type === 'section') {
+        const sectionHeight = nodeProps.length > 0
+          ? Math.max(60, Math.max(...nodeProps.map((p: any) => (p.y ?? 0) + (p.height ?? 40))) + 10)
+          : 60;
+        return (
+          <div key={node.id} className="relative rounded overflow-hidden mb-1" style={{ minHeight: `${sectionHeight}px`, ...nodeStyle }}>
+            {nodeProps.map((prop: any) => renderActorProperty(prop))}
+          </div>
+        );
       }
-      return true;
+
+      if (node.type === 'tab') {
+        const activeChildId = activeTabState[node.id] || childNodes[0]?.id;
+        return (
+          <div key={node.id} className="relative rounded overflow-visible mb-1" style={nodeStyle}>
+            <div className="flex gap-1 mb-1 px-1" data-testid={`actor-tab-buttons-${node.id}`}>
+              {childNodes.map((child: any) => (
+                <button
+                  key={child.id}
+                  className={`px-2 py-1 text-[10px] rounded transition-colors ${activeChildId === child.id ? 'bg-amber-700 text-white' : 'bg-stone-700 text-stone-400 hover:bg-stone-600'}`}
+                  onClick={() => setActiveTabState(prev => ({ ...prev, [node.id]: child.id }))}
+                  data-testid={`actor-tab-button-${child.id}`}
+                >
+                  {child.name}
+                </button>
+              ))}
+            </div>
+            {childNodes.filter((c: any) => c.id === activeChildId).map((child: any) => renderActorLayoutNode(child))}
+          </div>
+        );
+      }
+
+      if (node.type === 'panel') {
+        const isCollapsible = node.behaviorConfig?.panelConfig?.collapsible;
+        const isPanelCollapsed = collapsedPanels[node.id] ?? node.behaviorConfig?.panelConfig?.defaultCollapsed ?? false;
+        const panelHeight = nodeProps.length > 0
+          ? Math.max(60, Math.max(...nodeProps.map((p: any) => (p.y ?? 0) + (p.height ?? 40))) + 10)
+          : 60;
+        return (
+          <div key={node.id} className="relative rounded overflow-visible mb-1" style={{ minHeight: isPanelCollapsed ? '24px' : `${panelHeight}px`, ...nodeStyle }}>
+            {isCollapsible && (
+              <div className="absolute top-0 left-0 z-20 px-2 py-0.5 flex items-center gap-1">
+                <button
+                  className="text-stone-500 hover:text-stone-300 transition-colors"
+                  onClick={() => setCollapsedPanels(prev => ({ ...prev, [node.id]: !isPanelCollapsed }))}
+                  data-testid={`actor-toggle-panel-${node.id}`}
+                >
+                  {isPanelCollapsed ? <ChevronRight className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                </button>
+                <span className="text-[10px] text-stone-500 uppercase tracking-wider">{node.name}</span>
+              </div>
+            )}
+            {!isPanelCollapsed && (
+              <div className={isCollapsible ? "mt-4" : ""}>
+                {nodeProps.map((prop: any) => renderActorProperty(prop))}
+                {childNodes.map((child: any) => renderActorLayoutNode(child))}
+              </div>
+            )}
+          </div>
+        );
+      }
+
+      return (
+        <div key={node.id} className="relative overflow-visible mb-1" style={nodeStyle}>
+          {nodeProps.map((prop: any) => renderActorProperty(prop))}
+          {childNodes.map((child: any) => renderActorLayoutNode(child))}
+        </div>
+      );
     };
+
+    const actorRootNodes = actorLayoutNodesList.filter((n: any) => n.parentId === null);
+    const actorCanvasRootProps = actorProperties.filter((p: any) => p.parentId === null);
+    const actorCanvasRootHeight = actorCanvasRootProps.length > 0
+      ? Math.max(60, Math.max(...actorCanvasRootProps.map((p: any) => (p.y ?? 0) + (p.height ?? 40))) + 10)
+      : 0;
 
     return (
       <div className="space-y-0" data-testid="actor-properties-display">
-        {actorSectionNodes.filter((sn: any) => isActorSectionVisible(sn)).map((section: any) => {
-          const sectionProps = actorProperties.filter((p: any) => p.sectionNodeId === section.id);
-          const sectionStyle = section.styleConfig ? getPropertyCssStyle(section.styleConfig) : {};
-          const sectionHeight = sectionProps.length > 0
-            ? Math.max(60, Math.max(...sectionProps.map((p: any) => (p.y ?? 0) + (p.height ?? 40))) + 10)
-            : 60;
-          return (
-            <div key={section.id} className="relative rounded overflow-hidden mb-1" style={{ minHeight: `${sectionHeight}px`, ...sectionStyle }}>
-              {sectionProps.map((prop: any) => renderActorProperty(prop))}
-            </div>
-          );
-        })}
+        {actorCanvasRootProps.length > 0 && (
+          <div className="relative rounded overflow-hidden mb-1" style={{ minHeight: `${actorCanvasRootHeight}px` }}>
+            {actorCanvasRootProps.map((prop: any) => renderActorProperty(prop))}
+          </div>
+        )}
+        {actorRootNodes.map((node: any) => renderActorLayoutNode(node))}
       </div>
     );
   };
 
   const renderMobileActorBody = () => {
     const linkedTemplate = templates.find((t: any) => t.id === selectedTemplateId);
-    let mobileActorSectionNodes: any[] = [];
     let mobileActorProperties: any[] = [];
+    let mobileLayoutNodes: Record<string, any> = {};
+    let mobileLayoutNodesList: any[] = [];
     if (linkedTemplate) {
       try {
         const td = migrateTemplateData(JSON.parse(linkedTemplate.data || '{}'));
-        const mobileLayoutNodes = td.layoutNodes || {};
-        mobileActorSectionNodes = Object.values(mobileLayoutNodes).filter((n: any) => n.type === 'section').sort((a: any, b: any) => a.order - b.order);
+        mobileLayoutNodes = td.layoutNodes || {};
+        mobileLayoutNodesList = Object.values(mobileLayoutNodes).sort((a: any, b: any) => a.order - b.order);
         mobileActorProperties = Object.values(td.properties || {}).map((p: any) => ({
           ...p,
-          sectionNodeId: p.sectionNodeId,
+          parentId: p.parentId ?? null,
           label: p.metadata?.label || p.key,
           x: p.metadata?.uiConfig?.x ?? 10,
           y: p.metadata?.uiConfig?.y ?? 10,
@@ -1949,7 +2099,7 @@ function SandboxSheetEditor({
       } catch {}
     }
 
-    if (mobileActorSectionNodes.length === 0 && mobileActorProperties.length === 0) {
+    if (mobileLayoutNodesList.length === 0 && mobileActorProperties.length === 0) {
       return (
         <div className="text-stone-500 text-center italic border border-dashed border-stone-700 rounded-lg p-8 text-sm" data-testid="actor-no-properties-mobile">
           {selectedTemplateId ? 'No properties defined in template' : 'Assign a template to see properties'}
@@ -2068,16 +2218,93 @@ function SandboxSheetEditor({
       );
     };
 
+    const isMobileNodeVisible = (nodeId: string): boolean => {
+      const node = mobileLayoutNodes[nodeId];
+      if (!node) return false;
+      if (node.parentId) {
+        const parent = mobileLayoutNodes[node.parentId];
+        if (!parent) return true;
+        if (parent.type === 'tab') {
+          const parentChildren = mobileLayoutNodesList.filter((n: any) => n.parentId === parent.id).sort((a: any, b: any) => a.order - b.order);
+          const activeChildId = activeTabState[parent.id] || parentChildren[0]?.id;
+          if (node.id !== activeChildId) return false;
+        }
+        if (parent.type === 'panel') {
+          const isPanelCollapsed = collapsedPanels[parent.id] ?? parent.behaviorConfig?.panelConfig?.defaultCollapsed ?? false;
+          if (isPanelCollapsed) return false;
+        }
+        return isMobileNodeVisible(node.parentId);
+      }
+      return true;
+    };
+
+    const renderMobileLayoutNode = (node: any): React.ReactNode => {
+      if (!isMobileNodeVisible(node.id)) return null;
+      const nodeStyle = node.styleConfig ? getPropertyCssStyle(node.styleConfig) : {};
+      const childNodes = mobileLayoutNodesList.filter((n: any) => n.parentId === node.id).sort((a: any, b: any) => a.order - b.order);
+      const nodeProps = mobileActorProperties.filter((p: any) => p.parentId === node.id);
+
+      if (node.type === 'tab') {
+        const activeChildId = activeTabState[node.id] || childNodes[0]?.id;
+        return (
+          <div key={node.id} className="space-y-2" style={nodeStyle}>
+            <div className="flex gap-1 flex-wrap" data-testid={`mobile-tab-buttons-${node.id}`}>
+              {childNodes.map((child: any) => (
+                <button
+                  key={child.id}
+                  className={`px-3 py-1.5 text-xs rounded transition-colors ${activeChildId === child.id ? 'bg-amber-700 text-white' : 'bg-stone-700 text-stone-400 hover:bg-stone-600'}`}
+                  onClick={() => setActiveTabState(prev => ({ ...prev, [node.id]: child.id }))}
+                  data-testid={`mobile-tab-button-${child.id}`}
+                >
+                  {child.name}
+                </button>
+              ))}
+            </div>
+            {childNodes.filter((c: any) => c.id === activeChildId).map((child: any) => renderMobileLayoutNode(child))}
+          </div>
+        );
+      }
+
+      if (node.type === 'panel') {
+        const isCollapsible = node.behaviorConfig?.panelConfig?.collapsible;
+        const isPanelCollapsed = collapsedPanels[node.id] ?? node.behaviorConfig?.panelConfig?.defaultCollapsed ?? false;
+        return (
+          <div key={node.id} className="space-y-2" style={nodeStyle}>
+            {isCollapsible && (
+              <button
+                className="flex items-center gap-1 text-stone-400 hover:text-stone-200 transition-colors"
+                onClick={() => setCollapsedPanels(prev => ({ ...prev, [node.id]: !isPanelCollapsed }))}
+                data-testid={`mobile-toggle-panel-${node.id}`}
+              >
+                {isPanelCollapsed ? <ChevronRight className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                <span className="text-xs uppercase tracking-wider">{node.name}</span>
+              </button>
+            )}
+            {!isPanelCollapsed && (
+              <div className="space-y-3">
+                {nodeProps.map((prop: any) => renderMobileProperty(prop))}
+                {childNodes.map((child: any) => renderMobileLayoutNode(child))}
+              </div>
+            )}
+          </div>
+        );
+      }
+
+      return (
+        <div key={node.id} className="space-y-3" style={nodeStyle}>
+          {nodeProps.map((prop: any) => renderMobileProperty(prop))}
+          {childNodes.map((child: any) => renderMobileLayoutNode(child))}
+        </div>
+      );
+    };
+
+    const mobileRootNodes = mobileLayoutNodesList.filter((n: any) => n.parentId === null);
+    const mobileCanvasRootProps = mobileActorProperties.filter((p: any) => p.parentId === null);
+
     return (
       <div className="space-y-3" data-testid="actor-properties-display-mobile">
-        {mobileActorSectionNodes.map((section: any) => {
-          const sectionProps = mobileActorProperties.filter((p: any) => p.sectionNodeId === section.id);
-          return (
-            <div key={section.id} className="space-y-3" style={section.styleConfig ? getPropertyCssStyle(section.styleConfig) : {}}>
-              {sectionProps.map((prop: any) => renderMobileProperty(prop))}
-            </div>
-          );
-        })}
+        {mobileCanvasRootProps.map((prop: any) => renderMobileProperty(prop))}
+        {mobileRootNodes.map((node: any) => renderMobileLayoutNode(node))}
       </div>
     );
   };
@@ -2489,26 +2716,25 @@ function SandboxSheetEditor({
                 />
               </div>
 
-              {sectionNodes.length > 0 && (
-                <div className="space-y-1">
-                  <Label className="text-stone-500 text-[10px]">Section</Label>
-                  <Select
-                    value={selectedProperty.sectionNodeId || sectionNodes[0]?.id || ''}
-                    onValueChange={(v) => updatePropertyLayout(selectedProperty.id, { sectionNodeId: v })}
-                  >
-                    <SelectTrigger className="bg-stone-900 border-stone-600 text-stone-200 h-7 text-xs" data-testid="select-prop-section">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent className="bg-stone-800 border-stone-700">
-                      {sectionNodes.map((s: any) => (
-                        <SelectItem key={s.id} value={s.id} className="text-stone-200">
-                          {s.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
+              <div className="space-y-1">
+                <Label className="text-stone-500 text-[10px]">Parent</Label>
+                <Select
+                  value={selectedProperty.parentId || '__canvas_root__'}
+                  onValueChange={(v) => updatePropertyLayout(selectedProperty.id, { parentId: v === '__canvas_root__' ? null : v })}
+                >
+                  <SelectTrigger className="bg-stone-900 border-stone-600 text-stone-200 h-7 text-xs" data-testid="select-prop-parent">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-stone-800 border-stone-700">
+                    <SelectItem value="__canvas_root__" className="text-stone-400">Canvas Root (none)</SelectItem>
+                    {layoutNodesList.map((n: any) => (
+                      <SelectItem key={n.id} value={n.id} className="text-stone-200">
+                        {n.name} ({n.type})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
 
               <div className="border-t border-stone-700/50 pt-3">
                 <PropertyStyleEditor

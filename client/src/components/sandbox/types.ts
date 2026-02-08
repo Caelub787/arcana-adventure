@@ -326,7 +326,7 @@ export function migrateTemplateData(raw: any): TemplateData {
     if (raw.properties && typeof raw.properties === 'object' && !Array.isArray(raw.properties)) {
       for (const [key, prop] of Object.entries(raw.properties as Record<string, any>)) {
         const oldSectionId = prop.sectionId || prop.sectionNodeId;
-        const mappedParentId = sectionIdMap[oldSectionId] || firstNodeId;
+        const mappedParentId = oldSectionId ? (sectionIdMap[oldSectionId] || null) : null;
         newProperties[key] = {
           ...prop,
           parentId: mappedParentId,
