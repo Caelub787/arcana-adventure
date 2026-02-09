@@ -187,6 +187,12 @@ export function calculateVisionInLight(
 
   const distToLight = Math.hypot(lightX - tokenX, lightY - tokenY);
   const maxReach = distToLight + lightRadius;
+  const insideLight = distToLight <= lightRadius;
+
+  const lightAngle = Math.atan2(lightY - tokenY, lightX - tokenX);
+  const angularSpan = insideLight 
+    ? Math.PI 
+    : Math.asin(Math.min(1, lightRadius / Math.max(1, distToLight)));
 
   const angles: number[] = [];
   const EPSILON = 0.001;
@@ -194,14 +200,33 @@ export function calculateVisionInLight(
   for (const seg of blockingSegments) {
     const a1 = Math.atan2(seg.y1 - tokenY, seg.x1 - tokenX);
     const a2 = Math.atan2(seg.y2 - tokenY, seg.x2 - tokenX);
-    angles.push(a1 - EPSILON, a1, a1 + EPSILON);
-    angles.push(a2 - EPSILON, a2, a2 + EPSILON);
+    
+    for (const a of [a1, a2]) {
+      let diff = a - lightAngle;
+      while (diff > Math.PI) diff -= 2 * Math.PI;
+      while (diff < -Math.PI) diff += 2 * Math.PI;
+      if (insideLight || Math.abs(diff) <= angularSpan + 0.5) {
+        angles.push(a - EPSILON, a, a + EPSILON);
+      }
+    }
   }
 
-  const lightAngle = Math.atan2(lightY - tokenY, lightX - tokenX);
-  const angularSpan = distToLight > 0 ? Math.atan2(lightRadius, distToLight) : Math.PI;
-  const STEP = Math.PI / 36;
-  for (let a = lightAngle - angularSpan - STEP; a <= lightAngle + angularSpan + STEP; a += STEP) {
+  if (!insideLight && distToLight > lightRadius) {
+    const tangentAngle = Math.asin(Math.min(1, lightRadius / distToLight));
+    angles.push(
+      lightAngle - tangentAngle - EPSILON,
+      lightAngle - tangentAngle,
+      lightAngle - tangentAngle + EPSILON,
+      lightAngle + tangentAngle - EPSILON,
+      lightAngle + tangentAngle,
+      lightAngle + tangentAngle + EPSILON
+    );
+  }
+
+  const STEP = Math.PI / 72;
+  const sweepStart = insideLight ? -Math.PI : lightAngle - angularSpan - STEP;
+  const sweepEnd = insideLight ? Math.PI : lightAngle + angularSpan + STEP;
+  for (let a = sweepStart; a <= sweepEnd; a += STEP) {
     angles.push(a);
   }
 
@@ -220,17 +245,24 @@ export function calculateVisionInLight(
       const sinA = Math.sin(angle);
       const fx = tokenX - lightX;
       const fy = tokenY - lightY;
-      const a = cosA * cosA + sinA * sinA;
-      const b = 2 * (fx * cosA + fy * sinA);
-      const c = fx * fx + fy * fy - lightRadius * lightRadius;
-      const disc = b * b - 4 * a * c;
+      const a_coeff = 1;
+      const b_coeff = 2 * (fx * cosA + fy * sinA);
+      const c_coeff = fx * fx + fy * fy - lightRadius * lightRadius;
+      const disc = b_coeff * b_coeff - 4 * a_coeff * c_coeff;
 
       if (disc >= 0) {
         const sqrtDisc = Math.sqrt(disc);
-        const t1 = (-b - sqrtDisc) / (2 * a);
-        const t2 = (-b + sqrtDisc) / (2 * a);
-        const t = t2 > 1e-6 ? t2 : t1;
-        if (t > 1e-6 && t <= ray.dist) {
+        const t1 = (-b_coeff - sqrtDisc) / (2 * a_coeff);
+        const t2 = (-b_coeff + sqrtDisc) / (2 * a_coeff);
+        
+        let t: number;
+        if (insideLight) {
+          t = t2 > 1e-6 ? t2 : t1;
+        } else {
+          t = t1 > 1e-6 ? t1 : (t2 > 1e-6 ? t2 : -1);
+        }
+        
+        if (t > 1e-6 && t <= ray.dist + 1) {
           rayResults.push({
             x: tokenX + cosA * t,
             y: tokenY + sinA * t,
@@ -251,7 +283,7 @@ export function calculateVisionInLight(
   const seen = new Set<string>();
   const uniqueResults: RayIntersection[] = [];
   for (const r of rayResults) {
-    const key = `${r.x.toFixed(2)},${r.y.toFixed(2)}`;
+    const key = `${r.x.toFixed(1)},${r.y.toFixed(1)}`;
     if (!seen.has(key)) {
       seen.add(key);
       uniqueResults.push(r);

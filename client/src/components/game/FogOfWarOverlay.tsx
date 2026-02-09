@@ -479,12 +479,83 @@ export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToo
 
   const prevVisionKeyRef = useRef<string>('');
   useEffect(() => {
-    const key = visionPolygons.map(p => `${p.tokenX}:${p.tokenY}:${p.radius}:${p.points.length}`).join('|');
+    const combined = [...visionPolygons, ...lightVisionPolygons];
+    const key = combined.map(p => `${p.tokenX}:${p.tokenY}:${p.radius}:${p.points.length}`).join('|');
     if (key !== prevVisionKeyRef.current) {
       prevVisionKeyRef.current = key;
-      onVisionPolygonsChange?.(visionPolygons);
+      onVisionPolygonsChange?.(combined);
     }
-  }, [visionPolygons]);
+  }, [visionPolygons, lightVisionPolygons]);
+
+  const [exploredCells, setExploredCells] = useState<Set<string>>(new Set());
+
+  const fogExploredMemoryEnabled = scene?.fogExploredMemory ?? false;
+  useEffect(() => {
+    setExploredCells(new Set());
+  }, [sceneId]);
+  useEffect(() => {
+    if (!fogExploredMemoryEnabled) {
+      setExploredCells(new Set());
+    }
+  }, [fogExploredMemoryEnabled]);
+
+  function isPointInPoly(px: number, py: number, polygon: { x: number; y: number }[]): boolean {
+    let inside = false;
+    for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+      const xi = polygon[i].x, yi = polygon[i].y;
+      const xj = polygon[j].x, yj = polygon[j].y;
+      if ((yi > py) !== (yj > py) && px < (xj - xi) * (py - yi) / (yj - yi) + xi) {
+        inside = !inside;
+      }
+    }
+    return inside;
+  }
+
+  useEffect(() => {
+    if (!fogEnabled || (isGM && !gmSeeAsPlayer)) return;
+    if (!scene?.fogExploredMemory) return;
+
+    const allPolys = [...visionPolygons, ...lightVisionPolygons];
+    if (allPolys.length === 0) return;
+
+    setExploredCells(prev => {
+      const newSet = new Set(prev);
+      let changed = false;
+
+      for (const poly of allPolys) {
+        if (poly.points.length < 3) continue;
+        let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+        for (const p of poly.points) {
+          if (p.x < minX) minX = p.x;
+          if (p.x > maxX) maxX = p.x;
+          if (p.y < minY) minY = p.y;
+          if (p.y > maxY) maxY = p.y;
+        }
+
+        const cellSize = gridSize;
+        const startCol = Math.floor(minX / cellSize);
+        const endCol = Math.ceil(maxX / cellSize);
+        const startRow = Math.floor(minY / cellSize);
+        const endRow = Math.ceil(maxY / cellSize);
+
+        for (let col = startCol; col <= endCol; col++) {
+          for (let row = startRow; row <= endRow; row++) {
+            const cx = (col + 0.5) * cellSize;
+            const cy = (row + 0.5) * cellSize;
+            if (isPointInPoly(cx, cy, poly.points)) {
+              const key = `${col},${row}`;
+              if (!newSet.has(key)) {
+                newSet.add(key);
+                changed = true;
+              }
+            }
+          }
+        }
+      }
+
+      return changed ? newSet : prev;
+    });
+  }, [visionPolygons, lightVisionPolygons, fogEnabled, isGM, gmSeeAsPlayer, scene?.fogExploredMemory, gridSize]);
 
   const renderNightFilter = useMemo(() => {
     const isDayTime = scene?.isDayTime ?? true;
@@ -507,15 +578,8 @@ export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToo
 
     if (isGM && !gmSeeAsPlayer) {
       return (
-        <rect
-          x={0}
-          y={0}
-          width={20000}
-          height={20000}
-          fill="#1a1a2e"
-          fillOpacity={0.15}
-          data-testid="fog-gm-preview"
-        />
+        <rect x={0} y={0} width={20000} height={20000}
+          fill="#1a1a2e" fillOpacity={0.15} data-testid="fog-gm-preview" />
       );
     }
 
@@ -535,31 +599,67 @@ export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToo
       return pts + ' Z';
     }).filter(Boolean).join(' ');
 
-    return (
-      <g>
-        <defs>
-          <mask id="fog-vision-mask">
-            <rect x={0} y={0} width={20000} height={20000} fill="white" shapeRendering="optimizeSpeed" />
-            {visionPathData && (
-              <path d={visionPathData} fill="black" shapeRendering="optimizeSpeed" />
-            )}
-            {lightPathData && (
-              <path d={lightPathData} fill="black" shapeRendering="optimizeSpeed" />
-            )}
-          </mask>
-        </defs>
-        <rect
-          x={0}
-          y={0}
-          width={20000}
-          height={20000}
-          fill="black"
-          fillOpacity={1}
-          mask="url(#fog-vision-mask)"
-        />
-      </g>
-    );
-  }, [fogEnabled, isGM, gmSeeAsPlayer, visionPolygons, lightVisionPolygons]);
+    const allVisionPath = [visionPathData, lightPathData].filter(Boolean).join(' ');
+
+    const fogExploredMemory = scene?.fogExploredMemory ?? false;
+    const currentFogOpacity = scene?.fogOpacity ?? 0.85;
+    const currentExploredDimness = scene?.fogExploredDimness ?? 0.5;
+
+    if (fogExploredMemory) {
+      const cellSize = gridSize;
+      let exploredPathParts: string[] = [];
+      exploredCells.forEach((key) => {
+        const [col, row] = key.split(',').map(Number);
+        const x = col * cellSize + MAP_OFFSET;
+        const y = row * cellSize + MAP_OFFSET;
+        exploredPathParts.push(`M ${x} ${y} L ${x + cellSize} ${y} L ${x + cellSize} ${y + cellSize} L ${x} ${y + cellSize} Z`);
+      });
+      const exploredPath = exploredPathParts.join(' ');
+
+      const exploredAndVisionPath = [exploredPath, allVisionPath].filter(Boolean).join(' ');
+
+      return (
+        <g>
+          <defs>
+            <mask id="fog-unexplored-mask">
+              <rect x={0} y={0} width={20000} height={20000} fill="white" shapeRendering="optimizeSpeed" />
+              {exploredAndVisionPath && (
+                <path d={exploredAndVisionPath} fill="black" shapeRendering="optimizeSpeed" />
+              )}
+            </mask>
+            <mask id="fog-explored-mask">
+              <rect x={0} y={0} width={20000} height={20000} fill="white" shapeRendering="optimizeSpeed" />
+              {allVisionPath && (
+                <path d={allVisionPath} fill="black" shapeRendering="optimizeSpeed" />
+              )}
+            </mask>
+          </defs>
+          <rect x={0} y={0} width={20000} height={20000}
+            fill="black" fillOpacity={1}
+            mask="url(#fog-unexplored-mask)" />
+          <rect x={0} y={0} width={20000} height={20000}
+            fill="black" fillOpacity={currentExploredDimness}
+            mask="url(#fog-explored-mask)" />
+        </g>
+      );
+    } else {
+      return (
+        <g>
+          <defs>
+            <mask id="fog-vision-mask">
+              <rect x={0} y={0} width={20000} height={20000} fill="white" shapeRendering="optimizeSpeed" />
+              {allVisionPath && (
+                <path d={allVisionPath} fill="black" shapeRendering="optimizeSpeed" />
+              )}
+            </mask>
+          </defs>
+          <rect x={0} y={0} width={20000} height={20000}
+            fill="black" fillOpacity={currentFogOpacity}
+            mask="url(#fog-vision-mask)" />
+        </g>
+      );
+    }
+  }, [fogEnabled, isGM, gmSeeAsPlayer, visionPolygons, lightVisionPolygons, exploredCells, gridSize, scene?.fogExploredMemory, scene?.fogOpacity, scene?.fogExploredDimness]);
 
   if (!sceneId) return null;
 
@@ -1385,6 +1485,22 @@ export function FogToolsPanel({
           >
             {isDayTime ? <Sun className="h-3 w-3 mr-1" /> : <Moon className="h-3 w-3 mr-1" />}
             {isDayTime ? 'Day' : 'Night'}
+          </Button>
+        </div>
+
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-stone-300">Explored Memory</span>
+          <Button
+            variant="outline"
+            size="sm"
+            className={scene?.fogExploredMemory
+              ? 'h-7 border-green-600 text-green-300 text-xs'
+              : 'h-7 border-stone-600 text-stone-400 text-xs'}
+            onClick={() => updateSceneMutation.mutate({ fogExploredMemory: !scene?.fogExploredMemory })}
+            data-testid="toggle-explored-memory"
+          >
+            {scene?.fogExploredMemory ? <Eye className="h-3 w-3 mr-1" /> : <EyeOff className="h-3 w-3 mr-1" />}
+            {scene?.fogExploredMemory ? 'On' : 'Off'}
           </Button>
         </div>
 
