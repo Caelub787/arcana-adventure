@@ -602,7 +602,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
   
   // Detect token position changes and start animations for remote moves
   useEffect(() => {
-    const effectiveGridSize = scene?.gridSize || gridSize;
+    const effectiveGridSize = gridSize;
     let startedNewAnimation = false;
     
     tokens.forEach(token => {
@@ -926,7 +926,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
     // Set gesture mode to prevent map panning
     gestureModeRef.current = 'draggingToken';
     
-    const effectiveGridSize = scene?.gridSize || gridSize;
+    const effectiveGridSize = gridSize;
     const gridEnabled = scene?.gridEnabled !== undefined ? scene.gridEnabled : true;
     
     // Calculate initial snapped position
@@ -991,7 +991,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
   const moveTokenDrag = (e: React.PointerEvent) => {
     if (!draggingToken) return;
     
-    const effectiveGridSize = scene?.gridSize || gridSize;
+    const effectiveGridSize = gridSize;
     const gridEnabled = scene?.gridEnabled !== undefined ? scene.gridEnabled : true;
     const currentZoom = zoomRef.current;
     
@@ -1044,7 +1044,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
     target.releasePointerCapture(e.pointerId);
     
     try {
-      const effectiveGridSize = scene?.gridSize || gridSize;
+      const effectiveGridSize = gridSize;
       
       // Collect all tokens being moved (primary + selected others)
       const tokensToMove: Array<{ id: string; visualX: number; visualY: number }> = [
@@ -1236,7 +1236,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
         const worldX = ((screenX + 9000 - panRef.current.x) / zoomRef.current) - 9000;
         const worldY = ((screenY + 9000 - panRef.current.y) / zoomRef.current) - 9000;
         // Snap to grid cell
-        const effectiveGridSize = scene?.gridSize || gridSize;
+        const effectiveGridSize = gridSize;
         const cellX = Math.floor(worldX / effectiveGridSize);
         const cellY = Math.floor(worldY / effectiveGridSize);
         const cellKey = `${cellX},${cellY}`;
@@ -1275,7 +1275,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
         const worldX = ((screenX + 9000 - panRef.current.x) / zoomRef.current) - 9000;
         const worldY = ((screenY + 9000 - panRef.current.y) / zoomRef.current) - 9000;
         // Snap to grid cell
-        const effectiveGridSize = scene?.gridSize || gridSize;
+        const effectiveGridSize = gridSize;
         const cellX = Math.floor(worldX / effectiveGridSize);
         const cellY = Math.floor(worldY / effectiveGridSize);
         onGridTargetClick(cellX, cellY);
@@ -1560,7 +1560,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
           const currentPan = panRef.current;
           const worldX = (screenX - currentPan.x) / currentZoom;
           const worldY = (screenY - currentPan.y) / currentZoom;
-          const effectiveGridSize = scene?.gridSize || gridSize;
+          const effectiveGridSize = gridSize;
           const gridEnabled = scene?.gridEnabled !== undefined ? scene.gridEnabled : true;
           const snappedX = gridEnabled ? Math.round(worldX / effectiveGridSize) * effectiveGridSize : worldX;
           const snappedY = gridEnabled ? Math.round(worldY / effectiveGridSize) * effectiveGridSize : worldY;
@@ -1730,7 +1730,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
               const currentPan = panRef.current;
               const worldX = ((screenX + 9000 - currentPan.x) / currentZoom) - 9000;
               const worldY = ((screenY + 9000 - currentPan.y) / currentZoom) - 9000;
-              const effectiveGridSize = scene?.gridSize || gridSize;
+              const effectiveGridSize = gridSize;
               const gridEnabled = scene?.gridEnabled !== undefined ? scene.gridEnabled : true;
               const snappedX = gridEnabled ? Math.round(worldX / effectiveGridSize) * effectiveGridSize : worldX;
               const snappedY = gridEnabled ? Math.round(worldY / effectiveGridSize) * effectiveGridSize : worldY;
@@ -1743,7 +1743,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
         {(scene?.gridEnabled !== undefined ? scene.gridEnabled : true) && (
           <>
             {(() => {
-              const effectiveGridSize = scene?.gridSize || gridSize;
+              const effectiveGridSize = gridSize;
               const MAP_OFFSET = 9000;
               const gridOffsetBase = MAP_OFFSET % effectiveGridSize;
               const userOffsetX = (scene as any)?.gridOffsetX || 0;
@@ -1795,7 +1795,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
         {activeBeacons && activeBeacons.length > 0 && (
           <div className="absolute inset-0 pointer-events-none" style={{ zIndex: 50 }}>
             {activeBeacons.map((beacon) => {
-              const effectiveGridSize = scene?.gridSize || gridSize;
+              const effectiveGridSize = gridSize;
               const MAP_OFFSET = 9000;
               const x = beacon.gridX * effectiveGridSize + MAP_OFFSET;
               const y = beacon.gridY * effectiveGridSize + MAP_OFFSET;
@@ -1886,7 +1886,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
           const hasMoved = actualToken.x !== ghostToken.startX || actualToken.y !== ghostToken.startY;
           if (!hasMoved) return null;
           
-          const effectiveGridSize = scene?.gridSize || gridSize;
+          const effectiveGridSize = gridSize;
           const gridThickness = scene?.gridThickness ?? 1;
           const tokenSize = effectiveGridSize * ghostToken.gridSpan * 0.9;
           const usableCellSize = effectiveGridSize * ghostToken.gridSpan - gridThickness;
@@ -1922,8 +1922,8 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
         {/* Tokens - Keep original coordinate system */}
         {(((!isGM || gmSeeAsPlayer) && scene?.fogEnabled)
           ? (visionPolygons && visionPolygons.length > 0 ? tokens.filter(token => {
-              const tokenCenterX = token.x + (scene?.gridSize || gridSize) / 2;
-              const tokenCenterY = token.y + (scene?.gridSize || gridSize) / 2;
+              const tokenCenterX = token.x + (gridSize) / 2;
+              const tokenCenterY = token.y + (gridSize) / 2;
               return visionPolygons.some(poly => 
                 isPointInPolygon(tokenCenterX, tokenCenterY, poly.points)
               );
@@ -1941,7 +1941,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
           const tokenImage = (token as any).tokenImage || character?.portrait || token.image;
           const hpPercent = character ? (character.hp / character.maxHp) * 100 : null;
           const energyPercent = character ? (character.energy / character.maxEnergy) * 100 : null;
-          const effectiveGridSize = scene?.gridSize || gridSize;
+          const effectiveGridSize = gridSize;
           
           // Check if user can drag this token:
           // - GMs can always drag any token
@@ -2486,7 +2486,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
           const attachedToken = tokens.find(t => t.id === thrownItem.attachedToTokenId);
           if (!attachedToken) return null;
           
-          const effectiveGridSize = scene?.gridSize || gridSize;
+          const effectiveGridSize = gridSize;
           const item = thrownItem.item!;
           // AOE stat is the diameter (edge-to-edge distance), not radius
           // 30ft AOE = 6 squares diameter = 3 squares radius
@@ -2520,7 +2520,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
 
         {/* Thrown Items - Items placed on the map with AOE circles */}
         {thrownItems.map((thrownItem) => {
-          const effectiveGridSize = scene?.gridSize || gridSize;
+          const effectiveGridSize = gridSize;
           const item = thrownItem.item;
           if (!item) return null;
           
@@ -2644,7 +2644,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
 
         {/* Throwable Grid Target Marker - Shows where throwable will be placed */}
         {throwableGridTarget && selectionMode === 'target' && (() => {
-          const effectiveGridSize = scene?.gridSize || gridSize;
+          const effectiveGridSize = gridSize;
           const markerSize = effectiveGridSize * 0.8;
           const markerOffset = (effectiveGridSize - markerSize) / 2;
           
@@ -2672,7 +2672,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
 
         {/* Token Movement Path Visualization - Shows path and distance while dragging */}
         {draggingToken && (() => {
-          const effectiveGridSize = scene?.gridSize || gridSize;
+          const effectiveGridSize = gridSize;
           
           // Calculate start and end grid positions
           const startGridX = Math.round(draggingToken.startX / effectiveGridSize);
@@ -2814,20 +2814,20 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
           const aoeRangeFeet = parseInt(parsedRadius, 10) || 15;
           // AOE stat is the diameter (edge-to-edge distance), not radius
           // 30ft AOE = 6 squares diameter = 3 squares radius
-          const effectiveGridSize = scene?.gridSize || gridSize;
+          const effectiveGridSize = gridSize;
           const aoeDiameterCells = aoeRangeFeet / 5;
           const radiusPixels = (aoeDiameterCells / 2) * effectiveGridSize;
           const { center, locked } = aoeTargetState;
           
           const casterToken = tokens.find(t => t.id === aoeTargetState.casterTokenId);
           const spellRangeFeet = spell.rangeNum || 30;
-          const spellRangePixels = (spellRangeFeet / 5) * (scene?.gridSize || gridSize);
+          const spellRangePixels = (spellRangeFeet / 5) * (gridSize);
           
           // Check if in range
           let isInRange = true;
           if (casterToken) {
-            const casterCenterX = casterToken.x + (scene?.gridSize || gridSize) / 2;
-            const casterCenterY = casterToken.y + (scene?.gridSize || gridSize) / 2;
+            const casterCenterX = casterToken.x + (gridSize) / 2;
+            const casterCenterY = casterToken.y + (gridSize) / 2;
             const distance = Math.sqrt(
               Math.pow(center.x - casterCenterX, 2) + Math.pow(center.y - casterCenterY, 2)
             );
@@ -2881,8 +2881,8 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                 />
               )}
               {aoeShape === 'cone' && casterToken && (() => {
-                const casterCenterX = casterToken.x + (scene?.gridSize || gridSize) / 2 + 9000;
-                const casterCenterY = casterToken.y + (scene?.gridSize || gridSize) / 2 + 9000;
+                const casterCenterX = casterToken.x + (gridSize) / 2 + 9000;
+                const casterCenterY = casterToken.y + (gridSize) / 2 + 9000;
                 const angleRad = Math.atan2(worldY - casterCenterY, worldX - casterCenterX);
                 const halfConeAngle = (90 / 2) * (Math.PI / 180);
                 const leftAngle = angleRad - halfConeAngle;
@@ -2902,9 +2902,9 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                 );
               })()}
               {aoeShape === 'line' && casterToken && (() => {
-                const casterCenterX = casterToken.x + (scene?.gridSize || gridSize) / 2 + 9000;
-                const casterCenterY = casterToken.y + (scene?.gridSize || gridSize) / 2 + 9000;
-                const lineWidth = (scene?.gridSize || gridSize);
+                const casterCenterX = casterToken.x + (gridSize) / 2 + 9000;
+                const casterCenterY = casterToken.y + (gridSize) / 2 + 9000;
+                const lineWidth = (gridSize);
                 const dirX = worldX - casterCenterX;
                 const dirY = worldY - casterCenterY;
                 const dirLen = Math.sqrt(dirX * dirX + dirY * dirY);
@@ -2947,20 +2947,20 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
           const aoeRangeFeet = item.throwableAoeRange || 10;
           // AOE stat is the diameter (edge-to-edge distance), not radius
           // 30ft AOE = 6 squares diameter = 3 squares radius
-          const effectiveGridSize = scene?.gridSize || gridSize;
+          const effectiveGridSize = gridSize;
           const aoeDiameterCells = aoeRangeFeet / 5;
           const radiusPixels = (aoeDiameterCells / 2) * effectiveGridSize;
           const { center, locked } = aoeTargetState;
           
           const casterToken = tokens.find(t => t.id === aoeTargetState.casterTokenId);
           const throwRangeFeet = item.range || 30;
-          const throwRangePixels = (throwRangeFeet / 5) * (scene?.gridSize || gridSize);
+          const throwRangePixels = (throwRangeFeet / 5) * (gridSize);
           
           // Check if in range
           let isInRange = true;
           if (casterToken) {
-            const casterCenterX = casterToken.x + (scene?.gridSize || gridSize) / 2;
-            const casterCenterY = casterToken.y + (scene?.gridSize || gridSize) / 2;
+            const casterCenterX = casterToken.x + (gridSize) / 2;
+            const casterCenterY = casterToken.y + (gridSize) / 2;
             const distance = Math.sqrt(
               Math.pow(center.x - casterCenterX, 2) + Math.pow(center.y - casterCenterY, 2)
             );
@@ -3053,7 +3053,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
           const aoeRangeFeet = parseInt(parsedRadius, 10) || 15;
           // AOE stat is the diameter (edge-to-edge distance), not radius
           // 30ft AOE = 6 squares diameter = 3 squares radius
-          const effectiveGridSize = scene?.gridSize || gridSize;
+          const effectiveGridSize = gridSize;
           const aoeDiameterCells = aoeRangeFeet / 5;
           const radiusPixels = (aoeDiameterCells / 2) * effectiveGridSize;
           const { center, locked: playerLocked } = playerAoe;
@@ -3108,8 +3108,8 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
               {aoeShape === 'cone' && (() => {
                 const playerCasterToken = playerAoe.casterTokenId ? tokens.find(t => t.id === playerAoe.casterTokenId) : null;
                 if (!playerCasterToken) return null;
-                const casterCenterX = playerCasterToken.x + (scene?.gridSize || gridSize) / 2 + 9000;
-                const casterCenterY = playerCasterToken.y + (scene?.gridSize || gridSize) / 2 + 9000;
+                const casterCenterX = playerCasterToken.x + (gridSize) / 2 + 9000;
+                const casterCenterY = playerCasterToken.y + (gridSize) / 2 + 9000;
                 const angleRad = Math.atan2(worldY - casterCenterY, worldX - casterCenterX);
                 const halfConeAngle = (90 / 2) * (Math.PI / 180);
                 const leftAngle = angleRad - halfConeAngle;
@@ -3131,9 +3131,9 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
               {aoeShape === 'line' && (() => {
                 const playerCasterToken = playerAoe.casterTokenId ? tokens.find(t => t.id === playerAoe.casterTokenId) : null;
                 if (!playerCasterToken) return null;
-                const casterCenterX = playerCasterToken.x + (scene?.gridSize || gridSize) / 2 + 9000;
-                const casterCenterY = playerCasterToken.y + (scene?.gridSize || gridSize) / 2 + 9000;
-                const lineWidth = (scene?.gridSize || gridSize);
+                const casterCenterX = playerCasterToken.x + (gridSize) / 2 + 9000;
+                const casterCenterY = playerCasterToken.y + (gridSize) / 2 + 9000;
+                const lineWidth = (gridSize);
                 const dirX = worldX - casterCenterX;
                 const dirY = worldY - casterCenterY;
                 const dirLen = Math.sqrt(dirX * dirX + dirY * dirY);
@@ -3198,14 +3198,14 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
             if (!targetToken) return;
             
             // Get target token center in world coordinates
-            const targetCenterX = targetToken.x + (scene?.gridSize || gridSize) / 2 + 9000;
-            const targetCenterY = targetToken.y + (scene?.gridSize || gridSize) / 2 + 9000;
+            const targetCenterX = targetToken.x + (gridSize) / 2 + 9000;
+            const targetCenterY = targetToken.y + (gridSize) / 2 + 9000;
             
             // If we have a source token, draw a line from source to target
             // Otherwise, just show a targeting indicator on the target
             if (sourceToken) {
-              const sourceCenterX = sourceToken.x + (scene?.gridSize || gridSize) / 2 + 9000;
-              const sourceCenterY = sourceToken.y + (scene?.gridSize || gridSize) / 2 + 9000;
+              const sourceCenterX = sourceToken.x + (gridSize) / 2 + 9000;
+              const sourceCenterY = sourceToken.y + (gridSize) / 2 + 9000;
               
               targetingLines.push(
                 <g key={`targeting-${userId}`}>
@@ -3376,7 +3376,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
           <FogOfWarOverlay
             scene={scene}
             isGM={isGM}
-            gridSize={scene?.gridSize || gridSize}
+            gridSize={gridSize}
             fogToolActive={fogToolActive}
             onFogToolToggle={setFogToolActive}
             tokens={tokens as any}
@@ -3394,7 +3394,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
         {scene?.id && fogToolActive && isGM && (wallDrawMode || doorPlaceMode || windowPlaceMode || lightPlaceMode) && (
           <WallDrawingOverlay
             scene={scene}
-            gridSize={scene?.gridSize || gridSize}
+            gridSize={gridSize}
             wallDrawMode={wallDrawMode}
             selectedWallType={selectedWallType}
             doorPlaceMode={doorPlaceMode}
@@ -3413,7 +3413,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
         <FogToolsPanel
           scene={scene}
           isGM={isGM}
-          gridSize={scene?.gridSize || gridSize}
+          gridSize={gridSize}
           fogToolActive={fogToolActive}
           onFogToolToggle={setFogToolActive}
           wallDrawMode={wallDrawMode}
@@ -3883,7 +3883,7 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     return getDistanceBetweenTokensFeet(
       token1X, token1Y, token1Size,
       token2X, token2Y, token2Size,
-      scene?.gridSize || gridSize
+      gridSize
     );
   };
   
@@ -3893,8 +3893,8 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     // Calculate grid distance using Chebyshev distance (max of x and y grid difference)
     // This treats diagonal movement as 1 grid, matching most TTRPG rules
     // Use floor to be lenient with positioning (tokens may not be perfectly grid-aligned)
-    const gridDiffX = Math.abs(x2 - x1) / (scene?.gridSize || gridSize);
-    const gridDiffY = Math.abs(y2 - y1) / (scene?.gridSize || gridSize);
+    const gridDiffX = Math.abs(x2 - x1) / gridSize;
+    const gridDiffY = Math.abs(y2 - y1) / gridSize;
     const gridDistance = Math.max(gridDiffX, gridDiffY);
     // Floor the result to be forgiving with token positioning - slightly off grid shouldn't break attacks
     return Math.floor(gridDistance) * 5; // Each grid = 5ft
@@ -4819,7 +4819,7 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
       
       try {
         // Convert token pixel position to grid coordinates for miss case
-        const effectiveGridSize = scene?.gridSize || gridSize || 50;
+        const effectiveGridSize = gridSize || 50;
         const gridX = Math.floor((throwTargetToken?.x ?? 0) / effectiveGridSize);
         const gridY = Math.floor((throwTargetToken?.y ?? 0) / effectiveGridSize);
         
@@ -4867,7 +4867,7 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     if (throwableGridTarget) {
       // Range check - validate grid target is within weapon range (uses edge-based distance for large attackers)
       if (attackerToken) {
-        const effectiveGridSize = scene?.gridSize || gridSize || 50;
+        const effectiveGridSize = gridSize || 50;
         // Convert grid coordinates to pixel coordinates for distance calculation
         const gridCenterX = (throwableGridTarget.x + 0.5) * effectiveGridSize;
         const gridCenterY = (throwableGridTarget.y + 0.5) * effectiveGridSize;
@@ -4971,7 +4971,7 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
       
       // Range check - validate AOE target is within weapon range (uses edge-based distance for large attackers)
       if (attackerToken && aoeTargetState.center) {
-        const effectiveGridSize = scene?.gridSize || gridSize || 50;
+        const effectiveGridSize = gridSize || 50;
         // Use edge-based distance from attacker token to AOE center point
         const distancePixels = getDistanceToTokenEdge(
           aoeTargetState.center.x, aoeTargetState.center.y,
@@ -5010,7 +5010,7 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
       
       // Create thrown item at AOE target location
       // Convert from world pixel coordinates to grid cell coordinates
-      const effectiveGridSize = scene?.gridSize || gridSize || 50;
+      const effectiveGridSize = gridSize || 50;
       const gridX = Math.floor(aoeTargetState.center.x / effectiveGridSize);
       const gridY = Math.floor(aoeTargetState.center.y / effectiveGridSize);
       
@@ -5123,7 +5123,7 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     const affectedNames: string[] = [];
     const affectedTokenIds: string[] = [];
     
-    const effectiveGridSize = scene?.gridSize || gridSize || 50;
+    const effectiveGridSize = gridSize || 50;
     
     for (const thrownItem of itemThrownItems) {
       // Get tokens within AOE range of this thrown item
