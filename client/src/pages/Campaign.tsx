@@ -9853,7 +9853,7 @@ export default function Campaign() {
            })()}
            
            {!isSandbox && (() => {
-             const sheetChar = role === 'gm' ? inspectedChar : character;
+             const sheetChar = role === 'gm' ? (inspectedChar || (character?.id ? character : null)) : character;
              if (!sheetChar?.id) return null;
              return (
                <div className="fixed bottom-[140px] right-4 z-[60]" data-testid="btn-character-overview">
@@ -9880,9 +9880,9 @@ export default function Campaign() {
              );
            })()}
 
-           {!isSandbox && (role === 'gm' ? inspectedChar : character) && (
+           {!isSandbox && (role === 'gm' ? (inspectedChar || (character?.id ? character : null)) : character) && (
              <BattleMapHotbars 
-               character={role === 'gm' ? inspectedChar : character}
+               character={role === 'gm' ? (inspectedChar || (character?.id ? character : null)) : character}
                tokens={tokens}
                targetedTokenId={targetedTokenId}
                characters={characters as any[]}
@@ -10874,7 +10874,7 @@ export default function Campaign() {
         if (!tokenChar) return null;
         
         return (
-          <div className="fixed bottom-20 left-4 z-[70] bg-stone-900/95 border border-stone-700 rounded-lg p-3 w-64 shadow-xl backdrop-blur-sm" data-testid="token-fog-settings">
+          <div className="fixed top-4 left-4 z-[70] bg-stone-900/95 border border-stone-700 rounded-lg p-3 w-64 shadow-xl backdrop-blur-sm" data-testid="token-fog-settings">
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
                 <Layers className="h-4 w-4 text-cyan-400" />

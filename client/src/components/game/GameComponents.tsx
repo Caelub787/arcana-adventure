@@ -2018,7 +2018,6 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
             if (role === 'gm') {
               holdTimerRef.current = setTimeout(() => {
                 setShowDeleteButton(token.id);
-                onTokenLongPress?.(token);
               }, 500);
             }
           };
