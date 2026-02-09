@@ -1007,34 +1007,31 @@ export function FogToolsPanel({
   const panelPosRef = useRef({ x: Math.max(0, (window.innerWidth - 256) / 2), y: Math.max(0, (window.innerHeight - 400) / 2) });
   const panelElRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(null);
+  const dragHandleRef = useRef<HTMLDivElement>(null);
 
-  const handleDragStart = useCallback((e: React.MouseEvent | React.TouchEvent) => {
+  const handleDragPointerDown = useCallback((e: React.PointerEvent) => {
     e.preventDefault();
-    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
-    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
-    dragRef.current = { startX: clientX, startY: clientY, origX: panelPosRef.current.x, origY: panelPosRef.current.y };
+    e.stopPropagation();
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    dragRef.current = { startX: e.clientX, startY: e.clientY, origX: panelPosRef.current.x, origY: panelPosRef.current.y };
+  }, []);
 
-    const handleMove = (ev: MouseEvent | TouchEvent) => {
-      if (!dragRef.current || !panelElRef.current) return;
-      const cx = 'touches' in ev ? (ev as TouchEvent).touches[0].clientX : (ev as MouseEvent).clientX;
-      const cy = 'touches' in ev ? (ev as TouchEvent).touches[0].clientY : (ev as MouseEvent).clientY;
-      const newX = Math.max(0, Math.min(window.innerWidth - 260, dragRef.current.origX + (cx - dragRef.current.startX)));
-      const newY = Math.max(0, Math.min(window.innerHeight - 100, dragRef.current.origY + (cy - dragRef.current.startY)));
-      panelPosRef.current = { x: newX, y: newY };
-      panelElRef.current.style.left = `${newX}px`;
-      panelElRef.current.style.top = `${newY}px`;
-    };
-    const handleEnd = () => {
-      dragRef.current = null;
-      window.removeEventListener('mousemove', handleMove);
-      window.removeEventListener('mouseup', handleEnd);
-      window.removeEventListener('touchmove', handleMove);
-      window.removeEventListener('touchend', handleEnd);
-    };
-    window.addEventListener('mousemove', handleMove);
-    window.addEventListener('mouseup', handleEnd);
-    window.addEventListener('touchmove', handleMove);
-    window.addEventListener('touchend', handleEnd);
+  const handleDragPointerMove = useCallback((e: React.PointerEvent) => {
+    if (!dragRef.current || !panelElRef.current) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const newX = Math.max(0, Math.min(window.innerWidth - 260, dragRef.current.origX + (e.clientX - dragRef.current.startX)));
+    const newY = Math.max(0, Math.min(window.innerHeight - 100, dragRef.current.origY + (e.clientY - dragRef.current.startY)));
+    panelPosRef.current = { x: newX, y: newY };
+    panelElRef.current.style.left = `${newX}px`;
+    panelElRef.current.style.top = `${newY}px`;
+  }, []);
+
+  const handleDragPointerUp = useCallback((e: React.PointerEvent) => {
+    if (!dragRef.current) return;
+    e.stopPropagation();
+    (e.target as HTMLElement).releasePointerCapture(e.pointerId);
+    dragRef.current = null;
   }, []);
 
   const fogEnabled = scene?.fogEnabled ?? false;
@@ -1169,9 +1166,13 @@ export function FogToolsPanel({
       data-testid="fog-tools-panel"
     >
       <div
+        ref={dragHandleRef}
         className="flex items-center justify-between border-b border-stone-700 px-3 py-2 cursor-grab active:cursor-grabbing select-none"
-        onMouseDown={handleDragStart}
-        onTouchStart={handleDragStart}
+        style={{ touchAction: 'none' }}
+        onPointerDown={handleDragPointerDown}
+        onPointerMove={handleDragPointerMove}
+        onPointerUp={handleDragPointerUp}
+        onPointerCancel={handleDragPointerUp}
       >
         <div className="flex items-center gap-2">
           <Layers className="h-4 w-4 text-amber-400" />
@@ -1185,7 +1186,7 @@ export function FogToolsPanel({
             clearMode();
             onFogToolToggle(false);
           }}
-          onMouseDown={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
           data-testid="close-fog-panel"
         >
           <X className="h-4 w-4" />
