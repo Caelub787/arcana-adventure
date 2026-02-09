@@ -2231,12 +2231,12 @@ export class GameWebSocket {
     this.send({ type: 'token_move', campaignId: this.campaignId, tokenId, x, y });
   }
 
-  sendChatMessage(userId: string, sender: string, text: string, messageType = 'chat') {
+  sendChatMessage(userId: string, sender: string, text: string, messageType = 'chat', recipientId?: string, recipientName?: string) {
     if (!this.campaignId) {
       console.error('Cannot send chat message: not connected to a campaign');
       return;
     }
-    this.send({ type: 'chat_message', campaignId: this.campaignId, text, messageType });
+    this.send({ type: 'chat_message', campaignId: this.campaignId, text, messageType, recipientId, recipientName });
   }
 
   sendCharacterUpdate(characterId: string) {

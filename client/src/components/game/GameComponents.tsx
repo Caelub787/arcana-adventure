@@ -7617,7 +7617,21 @@ export function CampaignMenu({ campaignId, role, inviteCode, hotbarSlots = 5, in
   // Folder mutations
   const createFolderMutation = useMutation({
     mutationFn: (name: string) => api.createCharacterFolder(campaignId!, { name, sortOrder: folders.length }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['campaign-folders', campaignId] }),
+    onMutate: async (name) => {
+      await queryClient.cancelQueries({ queryKey: ['campaign-folders', campaignId] });
+      const previousFolders = queryClient.getQueryData(['campaign-folders', campaignId]);
+      queryClient.setQueryData(['campaign-folders', campaignId], (old: any[]) => [
+        ...(old || []),
+        { id: `temp-${Date.now()}`, name, sortOrder: (old || []).length, campaignId }
+      ]);
+      return { previousFolders };
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.previousFolders) {
+        queryClient.setQueryData(['campaign-folders', campaignId], context.previousFolders);
+      }
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['campaign-folders', campaignId] }),
   });
 
   const updateFolderMutation = useMutation({
@@ -7636,7 +7650,20 @@ export function CampaignMenu({ campaignId, role, inviteCode, hotbarSlots = 5, in
   const moveCharacterMutation = useMutation({
     mutationFn: ({ characterId, folderId }: { characterId: string; folderId: string | null }) => 
       api.moveCharacterToFolder(characterId, folderId),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${campaignId}/characters`] }),
+    onMutate: async ({ characterId, folderId }) => {
+      await queryClient.cancelQueries({ queryKey: [`/api/campaigns/${campaignId}/characters`] });
+      const previousCharacters = queryClient.getQueryData([`/api/campaigns/${campaignId}/characters`]);
+      queryClient.setQueryData([`/api/campaigns/${campaignId}/characters`], (old: any[]) => 
+        old?.map((c: any) => c.id === characterId ? { ...c, folderId } : c) || []
+      );
+      return { previousCharacters };
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.previousCharacters) {
+        queryClient.setQueryData([`/api/campaigns/${campaignId}/characters`], context.previousCharacters);
+      }
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${campaignId}/characters`] }),
   });
 
   // Campaign settings mutation

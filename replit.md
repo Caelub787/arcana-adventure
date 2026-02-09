@@ -76,3 +76,7 @@ Preferred communication style: Simple, everyday language.
   - **Click-to-Place Tokens**: GM clicks "+" on character in panel, then clicks map to place token at that location.
   - **Character Sheet Tab Buttons**: Removed right-side floating tab buttons. Character sheets accessed via triple-click on tokens.
   - **Right Toolbar Order**: Characters, Initiative, Notes, Scene Settings (GM), Fog of War (GM), Settings.
+- **Chat /roll Command**: `/roll` command in chat (e.g. `/roll 1d20`, `/roll 2d6+3`) using existing dice engine. Results displayed as roll messages.
+- **Private Messaging**: Chat has "To:" dropdown to select recipient (All or specific member). Whisper messages only visible to sender and recipient. Purple styling for whisper messages. Schema: `recipient_id` and `recipient_name` columns on `chat_messages`. Server filters whispers in both WebSocket broadcast and REST fetch.
+- **Character Panel Performance**: Optimistic updates for folder creation and character moves between folders to eliminate refetch lag.
+- **Floating Notes Fixes**: Fixed close/minimize buttons (pointer capture was blocking button clicks), fixed canvas/notes not filling available space when panel resized larger.

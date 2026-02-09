@@ -2370,7 +2370,7 @@ export function CampaignNotesPanel({
         {viewMode === "graph" ? (
           renderGraphView()
         ) : (
-          <div className="flex h-full">
+          <div className="flex h-full min-h-0 overflow-hidden">
             {showSidebar && !(selectedNoteId && (currentNote?.type === "canvas" || noteMode === "edit")) && (
               <>
                 <div

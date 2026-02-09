@@ -743,11 +743,12 @@ function CampaignSpeciesFormDialog({ open, onOpenChange, onSave, initialData, is
   );
 }
 
-function SidePanelChat({ campaignId, role }: { campaignId: string; role: string }) {
+function SidePanelChat({ campaignId, role, members }: { campaignId: string; role: string; members?: any[] }) {
   const { toast } = useToast();
   const { user } = useAuth();
   const [message, setMessage] = useState('');
-  const [messages, setMessages] = useState<Array<{ id: string; userId?: string; sender: string; text: string; createdAt: string; type?: string }>>([]);
+  const [messages, setMessages] = useState<Array<{ id: string; userId?: string; sender: string; text: string; createdAt: string; type?: string; recipientId?: string; recipientName?: string }>>([]);
+  const [chatTarget, setChatTarget] = useState<string>('all');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
 
@@ -785,7 +786,33 @@ function SidePanelChat({ campaignId, role }: { campaignId: string; role: string 
 
   const handleSend = () => {
     if (!message.trim()) return;
-    gameWs.sendChatMessage(user?.id || '', user?.username || '', message.trim(), 'chat');
+    const text = message.trim();
+
+    const rollMatch = text.match(/^\/roll\s+(.+)$/i);
+    if (rollMatch) {
+      try {
+        const result = rollDice(rollMatch[1]);
+        const rollText = formatRollResult(result);
+        const rollMsg = `rolled ${rollMatch[1]}: ${rollText}`;
+        if (chatTarget !== 'all') {
+          const targetMember = (members || []).find((m: any) => m.userId === chatTarget);
+          gameWs.sendChatMessage(user?.id || '', user?.username || '', rollMsg, 'whisper', chatTarget, targetMember?.username || '');
+        } else {
+          gameWs.sendChatMessage(user?.id || '', user?.username || '', rollMsg, 'roll');
+        }
+      } catch (err: any) {
+        toast({ title: "Invalid dice expression", description: err.message || "Could not parse dice formula", variant: "destructive" });
+      }
+      setMessage('');
+      return;
+    }
+
+    if (chatTarget !== 'all') {
+      const targetMember = (members || []).find((m: any) => m.userId === chatTarget);
+      gameWs.sendChatMessage(user?.id || '', user?.username || '', text, 'whisper', chatTarget, targetMember?.username || '');
+    } else {
+      gameWs.sendChatMessage(user?.id || '', user?.username || '', text, 'chat');
+    }
     setMessage('');
   };
 
@@ -809,6 +836,8 @@ function SidePanelChat({ campaignId, role }: { campaignId: string; role: string 
     return null;
   };
 
+  const otherMembers = (members || []).filter((m: any) => m.userId !== user?.id);
+
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center justify-between px-4 pt-3 pb-2">
@@ -829,19 +858,25 @@ function SidePanelChat({ campaignId, role }: { campaignId: string; role: string 
         <div className="space-y-2 py-2">
           {messages.map((msg, i) => {
             const isRoll = msg.type === 'roll' || msg.text?.includes('rolled');
+            const isWhisper = msg.type === 'whisper';
             const rollTotal = isRoll ? parseRollTotal(msg.text) : null;
             const isMe = msg.userId === user?.id;
             return (
-              <div key={msg.id || i} className={`${isRoll ? 'bg-amber-900/20 border border-amber-800/30 rounded-lg p-2' : ''}`}>
+              <div key={msg.id || i} className={`${isRoll ? 'bg-amber-900/20 border border-amber-800/30 rounded-lg p-2' : ''} ${isWhisper ? 'bg-purple-900/20 border border-purple-800/30 rounded-lg p-2' : ''}`}>
                 <div className="flex items-start gap-2">
-                  <span className={`text-xs font-bold shrink-0 ${isMe ? 'text-amber-400' : 'text-stone-400'}`}>
+                  <span className={`text-xs font-bold shrink-0 ${isWhisper ? 'text-purple-400' : isMe ? 'text-amber-400' : 'text-stone-400'}`}>
                     {msg.sender}
                   </span>
+                  {isWhisper && (
+                    <span className="text-[10px] text-purple-400/70 shrink-0">
+                      {isMe ? `to ${msg.recipientName || 'someone'}` : 'whispers'}
+                    </span>
+                  )}
                   <span className="text-xs text-stone-500 shrink-0">
                     {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </span>
                 </div>
-                <div className={`text-sm mt-0.5 ${isRoll ? 'text-amber-200 font-mono text-xs' : 'text-stone-300'}`}>
+                <div className={`text-sm mt-0.5 ${isRoll ? 'text-amber-200 font-mono text-xs' : isWhisper ? 'text-purple-200 italic' : 'text-stone-300'}`}>
                   {msg.text}
                   {rollTotal !== null && (
                     <span className="ml-2 text-amber-400 font-bold">({rollTotal})</span>
@@ -854,12 +889,31 @@ function SidePanelChat({ campaignId, role }: { campaignId: string; role: string 
         </div>
       </ScrollArea>
       <div className="px-4 pb-3 pt-1 border-t border-stone-800">
+        <div className="flex items-center gap-1 mb-1.5">
+          <span className="text-[10px] text-stone-500">To:</span>
+          <select
+            value={chatTarget}
+            onChange={(e) => setChatTarget(e.target.value)}
+            className="bg-stone-800 border border-stone-700 text-stone-200 text-xs rounded px-1.5 py-0.5 h-6 min-w-0 flex-1 max-w-[160px]"
+            data-testid="select-chat-target"
+          >
+            <option value="all">All</option>
+            {otherMembers.map((m: any) => (
+              <option key={m.userId} value={m.userId}>
+                {m.username} {m.role === 'gm' ? '(GM)' : m.role === 'assistant_gm' ? '(Asst. GM)' : ''}
+              </option>
+            ))}
+          </select>
+          {chatTarget !== 'all' && (
+            <span className="text-[10px] text-purple-400">Private</span>
+          )}
+        </div>
         <div className="flex gap-2">
           <Input
             value={message}
             onChange={(e) => setMessage(e.target.value)}
-            placeholder="Type a message..."
-            className="bg-stone-800 border-stone-700 text-stone-200 h-9 text-sm"
+            placeholder={chatTarget !== 'all' ? "Private message..." : "Type a message or /roll 1d20..."}
+            className={`h-9 text-sm ${chatTarget !== 'all' ? 'bg-purple-900/20 border-purple-700 text-purple-200' : 'bg-stone-800 border-stone-700 text-stone-200'}`}
             onKeyDown={(e) => e.key === 'Enter' && handleSend()}
             data-testid="input-chat-message"
           />
@@ -867,7 +921,7 @@ function SidePanelChat({ campaignId, role }: { campaignId: string; role: string 
             size="sm"
             onClick={handleSend}
             disabled={!message.trim()}
-            className="bg-amber-600 hover:bg-amber-700 text-white h-9"
+            className={`h-9 ${chatTarget !== 'all' ? 'bg-purple-600 hover:bg-purple-700 text-white' : 'bg-amber-600 hover:bg-amber-700 text-white'}`}
             data-testid="button-send-chat"
           >
             <Send className="h-4 w-4" />
@@ -6206,6 +6260,7 @@ function FloatingNotesEditor({
   }, [position]);
 
   const handlePointerDown = (e: React.PointerEvent) => {
+    if ((e.target as HTMLElement).closest('button')) return;
     const el = e.currentTarget as HTMLElement;
     el.setPointerCapture(e.pointerId);
     setIsDragging(true);
@@ -6268,7 +6323,7 @@ function FloatingNotesEditor({
           </div>
         </div>
         {!collapsed && (
-          <div className="flex-1 overflow-hidden">
+          <div className="flex-1 overflow-hidden min-h-0">
             <CampaignNotesPanel
               campaignId={campaignId}
               onClose={onClose}
@@ -9928,6 +9983,7 @@ export default function Campaign() {
                 <SidePanelChat 
                   campaignId={effectiveCampaignId} 
                   role={role}
+                  members={members as any[]}
                 />
               )}
               {activeSidePanel === 'characters' && effectiveCampaignId && (

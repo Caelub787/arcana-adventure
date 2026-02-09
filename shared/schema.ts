@@ -379,7 +379,9 @@ export const chatMessages = pgTable("chat_messages", {
   userId: varchar("user_id").references(() => users.id, { onDelete: "set null" }),
   sender: text("sender").notNull(), // Display name
   text: text("text").notNull(),
-  type: text("type").notNull().default("chat"), // "chat" or "system"
+  type: text("type").notNull().default("chat"), // "chat" or "system" or "roll" or "whisper"
+  recipientId: varchar("recipient_id").references(() => users.id, { onDelete: "set null" }),
+  recipientName: text("recipient_name"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

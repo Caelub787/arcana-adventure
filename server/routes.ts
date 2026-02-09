@@ -675,7 +675,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
 
         if (message.type === "chat_message") {
-          const { campaignId, text, messageType } = message;
+          const { campaignId, text, messageType, recipientId, recipientName } = message;
           
           // Verify user has joined this campaign
           const userCampaign = (ws as any).campaigns.get(campaignId);
@@ -705,19 +705,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
           
           // Validate messageType to prevent injection
-          const validMessageTypes = ["chat", "roll", "emote", "system"];
+          const validMessageTypes = ["chat", "roll", "emote", "system", "whisper"];
           const sanitizedMessageType = validMessageTypes.includes(messageType) ? messageType : "chat";
           
           // Save to database with server-side authenticated userId
           const chatMessage = await storage.createChatMessage({
             campaignId,
-            userId: authenticatedUserId, // Use server-authenticated userId
-            sender: username, // Use server-authenticated username
+            userId: authenticatedUserId,
+            sender: username,
             text,
-            type: sanitizedMessageType
+            type: sanitizedMessageType,
+            recipientId: sanitizedMessageType === 'whisper' ? (recipientId || null) : null,
+            recipientName: sanitizedMessageType === 'whisper' ? (recipientName || null) : null,
           });
 
-          // Broadcast to all clients in the campaign
+          // Broadcast to appropriate clients
           const room = campaignRooms.get(campaignId);
           if (room) {
             const broadcastMessage = JSON.stringify({ 
@@ -725,11 +727,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
               message: chatMessage 
             });
             
-            room.forEach((client) => {
-              if (client.readyState === 1) {
-                client.send(broadcastMessage);
-              }
-            });
+            if (sanitizedMessageType === 'whisper' && recipientId) {
+              // Whisper: only send to sender and recipient
+              room.forEach((client) => {
+                const clientUserId = (client as any).userId;
+                if (client.readyState === 1 && (clientUserId === authenticatedUserId || clientUserId === recipientId)) {
+                  client.send(broadcastMessage);
+                }
+              });
+            } else {
+              // Normal broadcast to all clients
+              room.forEach((client) => {
+                if (client.readyState === 1) {
+                  client.send(broadcastMessage);
+                }
+              });
+            }
           }
         }
 
@@ -2130,9 +2143,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get chat messages for a campaign
   app.get("/api/campaigns/:id/chat", requireAuth, async (req, res) => {
     try {
+      const userId = req.session.userId!;
       const messages = await storage.getCampaignMessages(req.params.id, 100);
+      // Filter whisper messages: only show to sender or recipient
+      const filtered = messages.filter((msg: any) => {
+        if (msg.type === 'whisper') {
+          return msg.userId === userId || msg.recipientId === userId;
+        }
+        return true;
+      });
       // Return in chronological order (oldest first)
-      res.json(messages.reverse());
+      res.json(filtered.reverse());
     } catch (err) {
       console.error('Error fetching chat messages:', err);
       res.status(500).json({ error: "Failed to fetch chat messages" });
