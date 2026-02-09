@@ -898,7 +898,7 @@ export default function AdminSettings() {
         )}
 
         {viewingCharacterSheet && (
-          <div className="fixed inset-0 z-50 bg-stone-950/95 flex flex-col overflow-hidden">
+          <div className="fixed inset-0 z-[10000] bg-stone-950/95 flex flex-col overflow-hidden">
             <div className="flex-1 overflow-auto">
               <CharacterSheet
                 character={viewingCharacterSheet}
@@ -4207,7 +4207,7 @@ function FeatTreesView() {
         {/* Centered Feat Action Menu */}
         {featActionMenu && (
           <div 
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+            className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/60"
             onClick={() => setFeatActionMenu(null)}
           >
             <div
