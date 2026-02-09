@@ -9774,6 +9774,7 @@ export default function Campaign() {
              onMapClickToPlace={handleMapClickToPlace}
              placingCharacterId={placingCharacterId}
              currentUserId={user?.id || null}
+             assignedCharacterId={character?.id || null}
              onTokenLongPress={setLongPressedToken}
            />
            

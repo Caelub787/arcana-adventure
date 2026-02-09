@@ -334,7 +334,7 @@ interface BattleMapProps {
   onTokenLongPress?: (token: any) => void;
 }
 
-export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClick, onTokenTripleClick, onDeleteToken, role, gridSize, backgroundImage, scene, onViewChange, characters = [], allSpecies = [], selectionMode = 'select', targetedTokenId, selectedTokenId, aoeTargetState, onAoeMouseMove, onAoeClick, otherPlayersAoe, myPermissions, tokenActiveEffects, allTokenEffects, onApplyEffect, onRemoveEffect, onToggleInvisibility, currentTurnCharacterId, otherPlayersTargeting, activeBeacons, onBeacon, otherPlayersViewports, thrownItems = [], onRefetchThrownItems, onDeleteThrownItem, throwableGridTarget, onGridTargetClick, notesPanelOpen = false, notesPanelWidth = 0, onNotesClick, inCombat = false, fogToolActive: fogToolActiveProp, onFogToolActiveChange, onDropCharacterOnMap, onMapClickToPlace, placingCharacterId, currentUserId, onTokenLongPress }: BattleMapProps) {
+export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClick, onTokenTripleClick, onDeleteToken, role, gridSize, backgroundImage, scene, onViewChange, characters = [], allSpecies = [], selectionMode = 'select', targetedTokenId, selectedTokenId, aoeTargetState, onAoeMouseMove, onAoeClick, otherPlayersAoe, myPermissions, tokenActiveEffects, allTokenEffects, onApplyEffect, onRemoveEffect, onToggleInvisibility, currentTurnCharacterId, otherPlayersTargeting, activeBeacons, onBeacon, otherPlayersViewports, thrownItems = [], onRefetchThrownItems, onDeleteThrownItem, throwableGridTarget, onGridTargetClick, notesPanelOpen = false, notesPanelWidth = 0, onNotesClick, inCombat = false, fogToolActive: fogToolActiveProp, onFogToolActiveChange, onDropCharacterOnMap, onMapClickToPlace, placingCharacterId, currentUserId, assignedCharacterId, onTokenLongPress }: BattleMapProps) {
   // Derive isGM from role prop
   const isGM = role === 'gm';
   
@@ -420,23 +420,17 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
   }, [gmSeeAllVision, campaignId]);
 
   useEffect(() => {
-    if (currentUserId && tokens.length > 0 && characters.length > 0) {
-      const myTokens = tokens.filter(t => {
-        if (!t.characterId) return false;
-        const char = characters.find((c: any) => c.id === t.characterId);
-        if (!char) return false;
-        const isOwner = (char as any).userId === currentUserId;
-        const permLevel = myPermissions?.permissions?.[t.characterId!];
-        const hasAccess = permLevel === 'edit' || permLevel === 'owner';
-        return isOwner || hasAccess;
-      });
-      if (myTokens.length > 0 && !selectedVisionTokenId) {
-        setSelectedVisionTokenId(myTokens[0].id);
-      } else if (myTokens.length > 0 && selectedVisionTokenId && !myTokens.find(t => t.id === selectedVisionTokenId)) {
-        setSelectedVisionTokenId(myTokens[0].id);
+    if (assignedCharacterId && tokens.length > 0) {
+      const assignedToken = tokens.find(t => t.characterId === assignedCharacterId);
+      if (assignedToken) {
+        setSelectedVisionTokenId(assignedToken.id);
+      } else {
+        setSelectedVisionTokenId(null);
       }
+    } else {
+      setSelectedVisionTokenId(null);
     }
-  }, [currentUserId, tokens, characters, selectedVisionTokenId, myPermissions]);
+  }, [assignedCharacterId, tokens]);
 
   // Cleanup timers on unmount
   useEffect(() => {
