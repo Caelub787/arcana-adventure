@@ -9852,43 +9852,33 @@ export default function Campaign() {
              return null;
            })()}
            
-           {!isSandbox && (role === 'gm' ? inspectedChar : character)?.id && (
-             <div className="absolute bottom-[72px] right-4 z-30" data-testid="btn-character-overview">
-               <button
-                 className="w-10 h-10 rounded-lg bg-stone-800/90 border border-stone-600 hover:border-amber-500 hover:bg-stone-700 text-stone-300 hover:text-amber-400 flex items-center justify-center transition-all shadow-lg backdrop-blur-sm"
-                 onClick={() => {
-                   const char = role === 'gm' ? inspectedChar : character;
-                   if (char?.id) {
+           {!isSandbox && (() => {
+             const sheetChar = role === 'gm' ? inspectedChar : character;
+             if (!sheetChar?.id) return null;
+             return (
+               <div className="fixed bottom-[72px] right-4 z-[60]" data-testid="btn-character-overview">
+                 <button
+                   className="flex items-center gap-2 px-3 py-2 rounded-lg bg-stone-800/95 border border-stone-600 hover:border-amber-500 hover:bg-stone-700 text-stone-200 hover:text-amber-400 transition-all shadow-lg backdrop-blur-sm"
+                   onClick={() => {
                      setCharacterSheetDefaultTab("overview");
-                     openCharacterSheet(char);
-                   }
-                 }}
-                 title="Character Overview"
-                 data-testid="button-character-overview"
-               >
-                 <User className="h-5 w-5" />
-               </button>
-             </div>
-           )}
-
-           {/* Hotbars Display - only show when there's a character to display */}
-           {/* For players: show ONLY their assigned character (not changed by token clicks) */}
-           {/* For GMs: show inspectedChar (clicked token) */}
-           {!isSandbox && character && (
-             <button
-               onClick={() => {
-                 if (character) {
-                   setCharacterSheetDefaultTab('overview');
-                   openCharacterSheet(character);
-                 }
-               }}
-               className="absolute bottom-[72px] left-4 w-8 h-8 rounded-lg bg-stone-800/90 border border-stone-600 text-stone-300 flex items-center justify-center shadow-lg hover:bg-stone-700 hover:text-amber-400 transition-all z-10"
-               data-testid="button-open-character-sheet"
-               title={`Open ${character.name || 'Character'} Sheet`}
-             >
-               <User className="h-4 w-4" />
-             </button>
-           )}
+                     openCharacterSheet(sheetChar);
+                   }}
+                   title={`Open ${sheetChar.name || 'Character'} Sheet`}
+                   data-testid="button-character-overview"
+                 >
+                   {sheetChar.portrait ? (
+                     <img src={sheetChar.portrait} alt="" className="w-7 h-7 rounded-full object-cover border border-stone-500" />
+                   ) : (
+                     <div className="w-7 h-7 rounded-full bg-amber-900/50 border border-amber-700/50 flex items-center justify-center">
+                       <User className="h-4 w-4 text-amber-400" />
+                     </div>
+                   )}
+                   <span className="text-sm font-medium max-w-[120px] truncate">{sheetChar.name || 'Character'}</span>
+                   <ScrollText className="h-4 w-4 text-stone-400" />
+                 </button>
+               </div>
+             );
+           })()}
 
            {!isSandbox && (role === 'gm' ? inspectedChar : character) && (
              <BattleMapHotbars 
