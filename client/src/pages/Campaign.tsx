@@ -9882,7 +9882,7 @@ export default function Campaign() {
                    openCharacterSheet(character);
                  }
                }}
-               className="absolute bottom-[72px] right-16 w-8 h-8 rounded-lg bg-stone-800/90 border border-stone-600 text-stone-300 flex items-center justify-center shadow-lg hover:bg-stone-700 hover:text-amber-400 transition-all z-10"
+               className="absolute bottom-[72px] left-4 w-8 h-8 rounded-lg bg-stone-800/90 border border-stone-600 text-stone-300 flex items-center justify-center shadow-lg hover:bg-stone-700 hover:text-amber-400 transition-all z-10"
                data-testid="button-open-character-sheet"
                title={`Open ${character.name || 'Character'} Sheet`}
              >
