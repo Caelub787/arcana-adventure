@@ -202,6 +202,7 @@ export function FloatingPanel({
       }}
       data-testid="floating-panel"
       onMouseDown={onBringToFront}
+      onPointerDown={onBringToFront}
     >
       <div
         className={cn(

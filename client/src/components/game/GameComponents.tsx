@@ -7487,7 +7487,7 @@ function CharacterManagementContent({ role, characters, folders, unfiledCharacte
         </div>
       )}
       <div className="space-y-3">
-        {folders.map((folder: any) => {
+        {folders.filter((folder: any) => role === 'gm' || getCharactersInFolder(folder.id).length > 0).map((folder: any) => {
           const folderChars = getCharactersInFolder(folder.id);
           const isExpanded = expandedFolders.has(folder.id);
           return (
@@ -8644,7 +8644,7 @@ export function CampaignMenu({ campaignId, role, inviteCode, hotbarSlots = 5, in
                
                {/* Folder Sections */}
                <div className="space-y-3">
-                 {folders.map((folder: any) => {
+                 {folders.filter((folder: any) => role === 'gm' || getCharactersInFolder(folder.id).length > 0).map((folder: any) => {
                    const folderCharacters = getCharactersInFolder(folder.id);
                    const isExpanded = expandedFolders.has(folder.id);
                    
@@ -9288,7 +9288,7 @@ export function CampaignMenu({ campaignId, role, inviteCode, hotbarSlots = 5, in
                
                {/* Folder Sections */}
                <div className="space-y-3">
-                 {folders.map((folder: any) => {
+                 {folders.filter((folder: any) => role === 'gm' || getCharactersInFolder(folder.id).length > 0).map((folder: any) => {
                    const folderCharacters = getCharactersInFolder(folder.id);
                    const isExpanded = expandedFolders.has(folder.id);
                    
