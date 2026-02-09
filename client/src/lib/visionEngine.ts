@@ -173,6 +173,99 @@ export function calculateVisionPolygon(
   };
 }
 
+export function calculateVisionInLight(
+  tokenX: number,
+  tokenY: number,
+  lightX: number,
+  lightY: number,
+  lightRadius: number,
+  blockingSegments: BlockingSegment[]
+): VisionPolygon {
+  if (lightRadius <= 0) {
+    return { tokenX, tokenY, radius: lightRadius, points: [] };
+  }
+
+  const distToLight = Math.hypot(lightX - tokenX, lightY - tokenY);
+  const maxReach = distToLight + lightRadius;
+
+  const angles: number[] = [];
+  const EPSILON = 0.001;
+
+  for (const seg of blockingSegments) {
+    const a1 = Math.atan2(seg.y1 - tokenY, seg.x1 - tokenX);
+    const a2 = Math.atan2(seg.y2 - tokenY, seg.x2 - tokenX);
+    angles.push(a1 - EPSILON, a1, a1 + EPSILON);
+    angles.push(a2 - EPSILON, a2, a2 + EPSILON);
+  }
+
+  const lightAngle = Math.atan2(lightY - tokenY, lightX - tokenX);
+  const angularSpan = distToLight > 0 ? Math.atan2(lightRadius, distToLight) : Math.PI;
+  const STEP = Math.PI / 36;
+  for (let a = lightAngle - angularSpan - STEP; a <= lightAngle + angularSpan + STEP; a += STEP) {
+    angles.push(a);
+  }
+
+  const rayResults: RayIntersection[] = [];
+  for (const angle of angles) {
+    const ray = castRay(tokenX, tokenY, angle, maxReach, blockingSegments);
+
+    const dx = ray.x - lightX;
+    const dy = ray.y - lightY;
+    const distFromLight = Math.hypot(dx, dy);
+
+    if (distFromLight <= lightRadius) {
+      rayResults.push(ray);
+    } else {
+      const cosA = Math.cos(angle);
+      const sinA = Math.sin(angle);
+      const fx = tokenX - lightX;
+      const fy = tokenY - lightY;
+      const a = cosA * cosA + sinA * sinA;
+      const b = 2 * (fx * cosA + fy * sinA);
+      const c = fx * fx + fy * fy - lightRadius * lightRadius;
+      const disc = b * b - 4 * a * c;
+
+      if (disc >= 0) {
+        const sqrtDisc = Math.sqrt(disc);
+        const t1 = (-b - sqrtDisc) / (2 * a);
+        const t2 = (-b + sqrtDisc) / (2 * a);
+        const t = t2 > 1e-6 ? t2 : t1;
+        if (t > 1e-6 && t <= ray.dist) {
+          rayResults.push({
+            x: tokenX + cosA * t,
+            y: tokenY + sinA * t,
+            dist: t,
+            angle,
+          });
+        }
+      }
+    }
+  }
+
+  if (rayResults.length === 0) {
+    return { tokenX, tokenY, radius: lightRadius, points: [] };
+  }
+
+  rayResults.sort((a, b) => a.angle - b.angle);
+
+  const seen = new Set<string>();
+  const uniqueResults: RayIntersection[] = [];
+  for (const r of rayResults) {
+    const key = `${r.x.toFixed(2)},${r.y.toFixed(2)}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      uniqueResults.push(r);
+    }
+  }
+
+  return {
+    tokenX,
+    tokenY,
+    radius: lightRadius,
+    points: uniqueResults.map(r => ({ x: r.x, y: r.y })),
+  };
+}
+
 export function isPointVisible(
   fromX: number,
   fromY: number,

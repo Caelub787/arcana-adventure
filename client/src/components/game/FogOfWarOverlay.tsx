@@ -8,7 +8,7 @@ import {
   Layers, Eye, EyeOff, Lock, Unlock, DoorOpen, DoorClosed,
   Sun, Moon, Lightbulb, Trash2, Plus, X, Square, Minus, Grid3X3
 } from 'lucide-react';
-import { getBlockingSegments, calculateVisionPolygon, type VisionPolygon } from '@/lib/visionEngine';
+import { getBlockingSegments, calculateVisionPolygon, calculateVisionInLight, type VisionPolygon } from '@/lib/visionEngine';
 
 const MAP_OFFSET = 9000;
 
@@ -30,6 +30,44 @@ const WALL_LABELS: Record<WallType, string> = {
 
 function snapToGrid(val: number, gridSize: number): number {
   return Math.round(val / gridSize) * gridSize;
+}
+
+function findNearestEndpoint(
+  x: number, y: number,
+  walls: Array<{x1: number; y1: number; x2: number; y2: number}>,
+  doors: Array<{x1: number; y1: number; x2: number; y2: number}>,
+  windows: Array<{x1: number; y1: number; x2: number; y2: number}>,
+  lights: Array<{x: number; y: number}>,
+  threshold: number
+): {x: number; y: number} | null {
+  let bestX = 0, bestY = 0, bestDist = threshold;
+  let found = false;
+
+  const allPoints: Array<{x: number; y: number}> = [];
+  for (const w of walls) {
+    allPoints.push({x: w.x1, y: w.y1}, {x: w.x2, y: w.y2});
+  }
+  for (const d of doors) {
+    allPoints.push({x: d.x1, y: d.y1}, {x: d.x2, y: d.y2});
+  }
+  for (const w of windows) {
+    allPoints.push({x: w.x1, y: w.y1}, {x: w.x2, y: w.y2});
+  }
+  for (const l of lights) {
+    allPoints.push({x: l.x, y: l.y});
+  }
+
+  for (const p of allPoints) {
+    const dist = Math.hypot(x - p.x, y - p.y);
+    if (dist < bestDist) {
+      bestDist = dist;
+      bestX = p.x;
+      bestY = p.y;
+      found = true;
+    }
+  }
+
+  return found ? { x: bestX, y: bestY } : null;
 }
 
 interface FogToken {
@@ -407,16 +445,37 @@ export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToo
     if (enabledLights.length === 0) return [];
     
     const feetPerCell = scene?.feetPerCell ?? 5;
+    
+    const currentTokens = tokensRef.current;
+    let playerTokens: FogToken[];
+    if (gmSeeAllVision) {
+      playerTokens = currentTokens;
+    } else if (selectedTokenId) {
+      playerTokens = currentTokens.filter(t => t.id === selectedTokenId);
+    } else {
+      playerTokens = [];
+    }
+    
     const polys: VisionPolygon[] = [];
     
-    for (const light of enabledLights) {
-      const lightRadiusPixels = (light.radius / feetPerCell) * gridSize;
-      const poly = calculateVisionPolygon(light.x, light.y, lightRadiusPixels, blockingSegs);
-      polys.push(poly);
+    for (const token of playerTokens) {
+      if ((token as any).isBlind) continue;
+      const tokenCenterX = token.x + gridSize / 2;
+      const tokenCenterY = token.y + gridSize / 2;
+      
+      for (const light of enabledLights) {
+        const lightRadiusPixels = (light.radius / feetPerCell) * gridSize;
+        const distToLight = Math.hypot(tokenCenterX - light.x, tokenCenterY - light.y);
+        if (distToLight > lightRadiusPixels + 5000) continue;
+        const poly = calculateVisionInLight(tokenCenterX, tokenCenterY, light.x, light.y, lightRadiusPixels, blockingSegs);
+        if (poly.points.length >= 3) {
+          polys.push(poly);
+        }
+      }
     }
     
     return polys;
-  }, [fogEnabled, isGM, gmSeeAsPlayer, blockingSegs, lights, gridSize, scene?.feetPerCell]);
+  }, [fogEnabled, isGM, gmSeeAsPlayer, blockingSegs, lights, gridSize, scene?.feetPerCell, tokenPositionKey, selectedTokenId, gmSeeAllVision]);
 
   const prevVisionKeyRef = useRef<string>('');
   useEffect(() => {
@@ -728,8 +787,16 @@ export function WallDrawingOverlay({
 
     const worldX = rawX - MAP_OFFSET;
     const worldY = rawY - MAP_OFFSET;
-    const snappedX = snapEnabled ? snapToGrid(worldX, gridSize) : worldX;
-    const snappedY = snapEnabled ? snapToGrid(worldY, gridSize) : worldY;
+    let snappedX = snapEnabled ? snapToGrid(worldX, gridSize) : worldX;
+    let snappedY = snapEnabled ? snapToGrid(worldY, gridSize) : worldY;
+
+    if (e.ctrlKey || e.metaKey) {
+      const nearest = findNearestEndpoint(worldX, worldY, walls, doors, windowsList, lightsList, gridSize * 1.5);
+      if (nearest) {
+        snappedX = nearest.x;
+        snappedY = nearest.y;
+      }
+    }
 
     if (e.altKey) {
       const clickX = snappedX;
@@ -841,10 +908,18 @@ export function WallDrawingOverlay({
 
     const worldX = rawX - MAP_OFFSET;
     const worldY = rawY - MAP_OFFSET;
-    const snappedX = snapEnabled ? snapToGrid(worldX, gridSize) : worldX;
-    const snappedY = snapEnabled ? snapToGrid(worldY, gridSize) : worldY;
+    let snappedX = snapEnabled ? snapToGrid(worldX, gridSize) : worldX;
+    let snappedY = snapEnabled ? snapToGrid(worldY, gridSize) : worldY;
+
+    if (e.ctrlKey || e.metaKey) {
+      const nearest = findNearestEndpoint(worldX, worldY, walls, doors, windowsList, lightsList, gridSize * 1.5);
+      if (nearest) {
+        snappedX = nearest.x;
+        snappedY = nearest.y;
+      }
+    }
     setMousePos({ x: snappedX, y: snappedY });
-  }, [gridSize, snapEnabled]);
+  }, [gridSize, snapEnabled, walls, doors, windowsList, lightsList]);
 
   const isActive = wallDrawMode || doorPlaceMode || windowPlaceMode || lightPlaceMode;
   if (!isActive || !sceneId) return null;
