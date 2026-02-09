@@ -324,15 +324,18 @@ export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToo
     });
   }, [lights, gridSize, isGM, fogEnabled]);
 
-  const visionPolygons = useMemo(() => {
+  const blockingSegs = useMemo(() => {
     if (!fogEnabled) return [];
-    if (isGM && !gmSeeAsPlayer) return [];
-    
-    const blockingSegs = getBlockingSegments(
+    return getBlockingSegments(
       walls.map(w => ({ x1: w.x1, y1: w.y1, x2: w.x2, y2: w.y2, wallType: w.wallType, oneWayDirection: w.oneWayDirection })),
       doors.map(d => ({ x1: d.x1, y1: d.y1, x2: d.x2, y2: d.y2, isOpen: d.isOpen, blocksVisionWhenClosed: d.blocksVisionWhenClosed })),
       windows.map(w => ({ x1: w.x1, y1: w.y1, x2: w.x2, y2: w.y2, shutterClosed: w.shutterClosed }))
     );
+  }, [fogEnabled, walls, doors, windows]);
+
+  const visionPolygons = useMemo(() => {
+    if (!fogEnabled) return [];
+    if (isGM && !gmSeeAsPlayer) return [];
     
     const isDayTime = scene?.isDayTime ?? true;
     const polys: VisionPolygon[] = [];
@@ -374,7 +377,26 @@ export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToo
     }
     
     return polys;
-  }, [fogEnabled, isGM, gmSeeAsPlayer, walls, doors, windows, tokens, characters, gridSize, scene?.isDayTime, scene?.feetPerCell, currentUserId, selectedTokenId, gmSeeAllVision]);
+  }, [fogEnabled, isGM, gmSeeAsPlayer, blockingSegs, tokens, characters, gridSize, scene?.isDayTime, scene?.feetPerCell, currentUserId, selectedTokenId, gmSeeAllVision]);
+
+  const lightVisionPolygons = useMemo(() => {
+    if (!fogEnabled) return [];
+    if (isGM && !gmSeeAsPlayer) return [];
+    
+    const enabledLights = lights.filter(l => l.enabled);
+    if (enabledLights.length === 0) return [];
+    
+    const feetPerCell = scene?.feetPerCell ?? 5;
+    const polys: VisionPolygon[] = [];
+    
+    for (const light of enabledLights) {
+      const lightRadiusPixels = (light.radius / feetPerCell) * gridSize;
+      const poly = calculateVisionPolygon(light.x, light.y, lightRadiusPixels, blockingSegs);
+      polys.push(poly);
+    }
+    
+    return polys;
+  }, [fogEnabled, isGM, gmSeeAsPlayer, blockingSegs, lights, gridSize, scene?.feetPerCell]);
 
   const prevVisionPolygonsRef = useRef<string>('');
   useEffect(() => {
@@ -426,7 +448,13 @@ export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToo
       return pts + ' Z';
     }).filter(Boolean).join(' ');
 
-    const enabledLights = lights.filter(l => l.enabled);
+    const lightPathData = lightVisionPolygons.map((poly) => {
+      if (poly.points.length < 3) return '';
+      const pts = poly.points.map((p, j) => 
+        `${j === 0 ? 'M' : 'L'} ${p.x + MAP_OFFSET} ${p.y + MAP_OFFSET}`
+      ).join(' ');
+      return pts + ' Z';
+    }).filter(Boolean).join(' ');
 
     return (
       <g>
@@ -436,15 +464,9 @@ export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToo
             {visionPathData && (
               <path d={visionPathData} fill="black" />
             )}
-            {enabledLights.map((light) => (
-              <circle
-                key={`light-cutout-${light.id}`}
-                cx={light.x + MAP_OFFSET}
-                cy={light.y + MAP_OFFSET}
-                r={(light.radius / (scene?.feetPerCell ?? 5)) * gridSize}
-                fill="black"
-              />
-            ))}
+            {lightPathData && (
+              <path d={lightPathData} fill="black" />
+            )}
           </mask>
         </defs>
         <rect
@@ -458,7 +480,7 @@ export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToo
         />
       </g>
     );
-  }, [fogEnabled, isGM, gmSeeAsPlayer, visionPolygons, lights, gridSize]);
+  }, [fogEnabled, isGM, gmSeeAsPlayer, visionPolygons, lightVisionPolygons]);
 
   if (!sceneId) return null;
 
