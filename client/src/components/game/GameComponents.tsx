@@ -2491,7 +2491,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
           // AOE stat is the diameter (edge-to-edge distance), not radius
           // 30ft AOE = 6 squares diameter = 3 squares radius
           const aoeRangeInFeet = item.throwableAoeRange || 0;
-          const feetPerCell = 5;
+          const feetPerCell = scene?.feetPerCell ?? 5;
           const aoeDiameterCells = aoeRangeInFeet / feetPerCell;
           const aoeRadiusPixels = (aoeDiameterCells / 2) * effectiveGridSize;
           
@@ -2531,7 +2531,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
           // AOE stat is the diameter (edge-to-edge distance), not radius
           // 30ft AOE = 6 squares diameter = 3 squares radius
           const aoeRangeInFeet = item.throwableAoeRange || 0;
-          const feetPerCell = 5;
+          const feetPerCell = scene?.feetPerCell ?? 5;
           const aoeDiameterCells = aoeRangeInFeet / feetPerCell;
           const aoeRadiusPixels = (aoeDiameterCells / 2) * effectiveGridSize;
           

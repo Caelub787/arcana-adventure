@@ -147,6 +147,7 @@ export const scenes = pgTable("scenes", {
   fogExploredDimness: real("fog_explored_dimness").default(0.5).notNull(),
   fogTexture: text("fog_texture").default("solid").notNull(), // "solid", "clouds", "noise"
   fogState: text("fog_state"), // JSON string of grid-based fog state {cellSize, cells: {x_y: "hidden"|"explored"|"visible"}}
+  feetPerCell: real("feet_per_cell").default(5).notNull(),
   // Day/Night system
   isDayTime: boolean("is_day_time").default(true).notNull(),
   globalLightLevel: real("global_light_level").default(1.0).notNull(), // 0.0 (pitch dark) to 1.0 (full daylight)
