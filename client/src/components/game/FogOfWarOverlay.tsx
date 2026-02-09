@@ -116,17 +116,28 @@ export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToo
   });
 
   const toggleDoorMutation = useMutation({
-    mutationFn: async (doorId: string) => {
+    mutationFn: async ({ doorId, shiftKey }: { doorId: string; shiftKey: boolean }) => {
       const door = doors.find(d => d.id === doorId);
       if (!door) return;
-      const res = await fetch(`/api/doors/${doorId}/toggle`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ isOpen: !door.isOpen }),
-      });
-      if (!res.ok) throw new Error('Failed to toggle door');
-      return res.json();
+      if (shiftKey) {
+        const res = await fetch(`/api/doors/${doorId}/toggle`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ blocksVisionWhenClosed: !door.blocksVisionWhenClosed }),
+        });
+        if (!res.ok) throw new Error('Failed to toggle door vision');
+        return res.json();
+      } else {
+        const res = await fetch(`/api/doors/${doorId}/toggle`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ isOpen: !door.isOpen }),
+        });
+        if (!res.ok) throw new Error('Failed to toggle door');
+        return res.json();
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['scene-doors', sceneId] });
@@ -204,6 +215,17 @@ export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToo
               strokeWidth={1.5}
             />
           )}
+          {isGM && !door.blocksVisionWhenClosed && (
+            <circle
+              cx={mx}
+              cy={my}
+              r={5}
+              fill="#06b6d4"
+              stroke="#0891b2"
+              strokeWidth={1.5}
+              fillOpacity={0.8}
+            />
+          )}
           {isGM && (
             <rect
               x={Math.min(door.x1, door.x2) + MAP_OFFSET - 4}
@@ -215,7 +237,7 @@ export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToo
               style={{ cursor: 'pointer' }}
               onClick={(e) => {
                 e.stopPropagation();
-                toggleDoorMutation.mutate(door.id);
+                toggleDoorMutation.mutate({ doorId: door.id, shiftKey: e.shiftKey });
               }}
               data-testid={`door-toggle-${door.id}`}
             />

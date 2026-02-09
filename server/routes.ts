@@ -7079,7 +7079,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const existingDoor = await storage.getSceneDoor(req.params.id);
       if (!existingDoor) return res.status(404).json({ error: "Door not found" });
-      const door = await storage.updateSceneDoor(req.params.id, { isOpen: req.body.isOpen });
+
+      const updates: Record<string, any> = {};
+      if (req.body.isOpen !== undefined) {
+        updates.isOpen = req.body.isOpen;
+      }
+      if (req.body.blocksVisionWhenClosed !== undefined) {
+        const scene = await storage.getScene(existingDoor.sceneId);
+        if (!scene) return res.status(404).json({ error: "Scene not found" });
+        const campaign = await storage.getCampaign(scene.campaignId);
+        if (!campaign || campaign.gmUserId !== req.session.userId) {
+          return res.status(403).json({ error: "Only the GM can toggle door vision" });
+        }
+        updates.blocksVisionWhenClosed = req.body.blocksVisionWhenClosed;
+      }
+
+      const door = await storage.updateSceneDoor(req.params.id, updates);
       if (!door) return res.status(404).json({ error: "Door not found" });
       
       const scene = await storage.getScene(door.sceneId);
