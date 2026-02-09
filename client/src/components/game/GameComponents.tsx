@@ -3926,6 +3926,7 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
   // Handle attack roll (1d20 + attribute modifier)
   // Options allow for extra modifiers and advantage/disadvantage from the popup
   const handleAttackRoll = async (options?: { extraMod?: number; advantage?: boolean; disadvantage?: boolean }) => {
+    console.log("[HandleAttackRoll] Called", { itemName: itemData?.name, itemType: itemData?.itemType, targetedTokenId, characterId: character?.id });
     // Allow weapons and damaging consumables
     const isDamagingConsumable = itemData && itemData.itemType === 'consumable' && itemData.isDamaging;
     if (!itemData || (itemData.itemType !== 'weapon' && !isDamagingConsumable)) return;
@@ -5586,6 +5587,7 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
 
   // Handle click with single/double/triple click detection
   const handleClick = () => {
+    console.log("[HotbarClick] Clicked slot", slotIndex, { isTraitClickable, isSkillClickable, isSpellClickable, isThrowableClickable, isWeapon: itemData?.itemType === "weapon", itemName: itemData?.name, itemType: itemData?.itemType, isThrowable: itemData?.isThrowable, targetedTokenId, hasCharacter: !!character });
     // Handle trait clicks
     if (isTraitClickable) {
       handleTraitRoll();
@@ -5653,13 +5655,26 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     }
     
     clickTimerRef.current = setTimeout(() => {
-      if (clickCountRef.current === 1) {
-        handleAttackRoll();
-      } else if (clickCountRef.current >= 2) {
-        handleDamageRoll();
+      console.log("[HotbarTimeout] Firing, clickCount:", clickCountRef.current, "targetedTokenId:", targetedTokenId);
+      try {
+        if (clickCountRef.current === 1) {
+          handleAttackRoll().catch(err => console.error("[HandleAttackRoll] Error:", err));
+        } else if (clickCountRef.current >= 2) {
+          handleDamageRoll().catch(err => console.error("[HandleDamageRoll] Error:", err));
+        }
+      } catch (err) {
+        console.error("[HotbarTimeout] Error:", err);
       }
       clickCountRef.current = 0;
     }, 250);
+
+
+
+
+
+
+
+
   };
 
   // Determine what to display
@@ -11555,6 +11570,7 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
 
   // Handle attack roll (1d20 + attribute modifier)
   const handleAttackRoll = async () => {
+    console.log("[HandleAttackRoll] Called", { itemName: itemData?.name, itemType: itemData?.itemType, targetedTokenId, characterId: character?.id });
     if (!itemData || itemData.itemType !== 'weapon') return;
     
     // Check if ranged weapon requires ammunition
