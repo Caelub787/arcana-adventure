@@ -3926,7 +3926,6 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
   // Handle attack roll (1d20 + attribute modifier)
   // Options allow for extra modifiers and advantage/disadvantage from the popup
   const handleAttackRoll = async (options?: { extraMod?: number; advantage?: boolean; disadvantage?: boolean }) => {
-    console.log("[HandleAttackRoll] Called", { itemName: itemData?.name, itemType: itemData?.itemType, targetedTokenId, characterId: character?.id });
     // Allow weapons and damaging consumables
     const isDamagingConsumable = itemData && itemData.itemType === 'consumable' && itemData.isDamaging;
     if (!itemData || (itemData.itemType !== 'weapon' && !isDamagingConsumable)) return;
@@ -3990,15 +3989,6 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
       }
       const weaponRange = itemRange;
       
-      console.log('[Range Check]', {
-        attacker: { x: attackerToken.x, y: attackerToken.y, size: (attackerToken as any).speciesSize },
-        target: { x: targetData.token.x, y: targetData.token.y, size: (targetData.token as any).speciesSize },
-        gridSize,
-        distance,
-        weaponRange,
-        isRanged: isRangedWeapon(itemData),
-        itemRange: itemData.range
-      });
       
       if (distance > weaponRange) {
         triggerRollNotification({
@@ -4162,7 +4152,6 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     
     // For healing, no armor reduction applies
     if (isHealing) {
-      console.log('[Healing] Applying', damageAmount, 'healing to', targetName);
       // Use WebSocket combat damage which bypasses edit permissions
       gameWs.sendCombatDamage(
         charId,
@@ -4176,7 +4165,6 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     
     // For energy effects, no armor reduction applies
     if (isEnergy) {
-      console.log('[Energy] Applying', damageAmount, 'energy', gainEnergy ? 'gain' : 'drain', 'to', targetName);
       // Use WebSocket combat energy which bypasses edit permissions
       gameWs.sendCombatEnergy(
         charId,
@@ -4243,7 +4231,6 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     
     // Apply immunity first (takes precedence)
     if (traitImmune) {
-      console.log('[Damage] Target is immune to', damageType, 'via', traitName);
       finalDamage = 0;
     } else {
       // Apply armor reduction
@@ -4254,14 +4241,12 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
       
       // Apply resistance (half damage) after reductions
       if (traitResistance && finalDamage > 0) {
-        console.log('[Damage] Target has resistance to', damageType, 'via', traitName);
         finalDamage = Math.floor(finalDamage / 2);
       }
     }
     
     // Apply damage using WebSocket - bypasses edit permission checks
     // Anyone in the campaign can apply combat damage (send single message only)
-    console.log('[Damage] Applying', finalDamage, 'damage to', targetName, traitImmune ? '(IMMUNE)' : '');
     gameWs.sendCombatDamage(
       charId,
       finalDamage,
@@ -4566,14 +4551,6 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     }
     
     // DEBUG: Log all values
-    console.log('[SkillRoll DEBUG]', {
-      skillName,
-      isCustomSkill: !!customSkill,
-      skillModifier,
-      attributeKey,
-      attributeValue,
-      characterId: character?.id,
-    });
     
     // Determine die type: d30 if attribute >= 5, otherwise d20
     const dieMax = attributeValue >= 5 ? 30 : 20;
@@ -5459,18 +5436,9 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     const hasAoe = (spellData.aoe && typeof spellData.aoe === 'string' && spellData.aoe.includes(':')) || 
                    (aoeTargetState?.spell?.aoe && typeof aoeTargetState.spell.aoe === 'string' && aoeTargetState.spell.aoe.includes(':')) ||
                    spellData.isAoe;
-    console.log('[SpellDamage] AoE check:', { 
-      hasAoe, 
-      spellDataAoe: spellData.aoe,
-      aoeStateSpellAoe: aoeTargetState?.spell?.aoe,
-      aoeActive: aoeTargetState?.active, 
-      aoeLocked: aoeTargetState?.locked, 
-      tokensCount: tokens?.length 
-    });
     if (hasAoe && aoeTargetState?.active && aoeTargetState?.locked && tokens) {
       const casterToken = tokens.find((t: any) => t.id === aoeTargetState.casterTokenId);
       const tokensInAoe = getTokensInAoe(tokens, aoeTargetState, gridSize, casterToken, aoeTargetState.width);
-      console.log('[SpellDamage] Tokens in AoE:', tokensInAoe.length, 'Center:', aoeTargetState.center);
       
       if (tokensInAoe.length === 0) {
         triggerRollNotification({
@@ -5587,7 +5555,6 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
 
   // Handle click with single/double/triple click detection
   const handleClick = () => {
-    console.log("[HotbarClick] Clicked slot", slotIndex, { isTraitClickable, isSkillClickable, isSpellClickable, isThrowableClickable, isWeapon: itemData?.itemType === "weapon", itemName: itemData?.name, itemType: itemData?.itemType, isThrowable: itemData?.isThrowable, targetedTokenId, hasCharacter: !!character });
     // Handle trait clicks
     if (isTraitClickable) {
       handleTraitRoll();
@@ -5655,7 +5622,6 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     }
     
     clickTimerRef.current = setTimeout(() => {
-      console.log("[HotbarTimeout] Firing, clickCount:", clickCountRef.current, "targetedTokenId:", targetedTokenId);
       try {
         if (clickCountRef.current === 1) {
           handleAttackRoll().catch(err => console.error("[HandleAttackRoll] Error:", err));
@@ -6249,13 +6215,8 @@ export function SelectionModeButtons({
   // Handle spell selection from picker - allow AoE placement without energy check
   // Energy is only checked/deducted on attack roll, not when entering targeting mode
   const handleSpellSelect = (spell: any) => {
-    console.log('[SpellPicker] handleSpellSelect called with spell:', spell);
-    console.log('[SpellPicker] character:', character);
-    console.log('[SpellPicker] tokens:', tokens);
-    console.log('[SpellPicker] onEnterSpellTargeting:', !!onEnterSpellTargeting);
     
     if (!character || !tokens || !onEnterSpellTargeting) {
-      console.log('[SpellPicker] Missing required props, returning');
       toast({
         title: "Cannot target spell",
         description: "Missing character or targeting configuration",
@@ -6266,13 +6227,10 @@ export function SelectionModeButtons({
     }
     
     const casterToken = tokens.find((t: any) => t.characterId === character.id);
-    console.log('[SpellPicker] casterToken:', casterToken);
     if (casterToken) {
-      console.log('[SpellPicker] Calling onEnterSpellTargeting with tokenId:', casterToken.id);
       onEnterSpellTargeting(spell, casterToken.id);
       setShowSpellPicker(false);
     } else {
-      console.log('[SpellPicker] No caster token found for character:', character.id);
       toast({
         title: "No token on map",
         description: "Place your character token on the battlemap first",
@@ -6500,7 +6458,6 @@ function SpellPickerDialog({ open, onOpenChange, character, onSelectSpell }: Spe
                     onClick={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
-                      console.log('[SpellPickerDialog] Spell item clicked:', spell.name);
                       onSelectSpell(spell);
                     }}
                     className={`
@@ -10402,7 +10359,6 @@ function HotbarsTabContent({ character, isGM, isOwner }: HotbarsTabContentProps)
           await api.updateSpell(data.id, { isEquipped: true });
         } catch (flagErr) {
           // Silently ignore - the spell is already equipped in the hotbar
-          console.log('isEquipped flag update skipped:', flagErr);
         }
         queryClient.invalidateQueries({ queryKey: ['spells', character.id] });
 
@@ -11570,7 +11526,6 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
 
   // Handle attack roll (1d20 + attribute modifier)
   const handleAttackRoll = async () => {
-    console.log("[HandleAttackRoll] Called", { itemName: itemData?.name, itemType: itemData?.itemType, targetedTokenId, characterId: character?.id });
     if (!itemData || itemData.itemType !== 'weapon') return;
     
     // Check if ranged weapon requires ammunition
@@ -12543,7 +12498,6 @@ function InventoryItemRow({ item, depth, expandedContainers, toggleContainer, se
     }
     
     if (draggedItemId && draggedItemId !== item.id) {
-      console.log('Moving item', draggedItemId, 'to container', item.id);
       moveItemToContainer(draggedItemId, item.id);
     }
     

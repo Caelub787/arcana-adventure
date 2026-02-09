@@ -334,18 +334,27 @@ export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToo
     );
   }, [fogEnabled, walls, doors, windows]);
 
+  const tokensRef = useRef(tokens);
+  tokensRef.current = tokens;
+
+  const tokenPositionKey = useMemo(() => {
+    if (!fogEnabled) return '';
+    return tokens.map(t => `${t.id}:${t.x}:${t.y}:${t.characterId}:${(t as any).isBlind}:${t.visionOverrideDistance}:${t.visionOverrideType}`).join('|');
+  }, [fogEnabled, tokens]);
+
   const visionPolygons = useMemo(() => {
     if (!fogEnabled) return [];
     if (isGM && !gmSeeAsPlayer) return [];
     
     const isDayTime = scene?.isDayTime ?? true;
     const polys: VisionPolygon[] = [];
+    const currentTokens = tokensRef.current;
     
     let playerTokens: FogToken[];
     if (gmSeeAllVision) {
-      playerTokens = tokens;
+      playerTokens = currentTokens;
     } else if (selectedTokenId) {
-      playerTokens = tokens.filter(t => t.id === selectedTokenId);
+      playerTokens = currentTokens.filter(t => t.id === selectedTokenId);
     } else {
       playerTokens = [];
     }
@@ -378,7 +387,7 @@ export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToo
     }
     
     return polys;
-  }, [fogEnabled, isGM, gmSeeAsPlayer, blockingSegs, tokens, characters, gridSize, scene?.isDayTime, scene?.feetPerCell, currentUserId, selectedTokenId, gmSeeAllVision]);
+  }, [fogEnabled, isGM, gmSeeAsPlayer, blockingSegs, tokenPositionKey, characters, gridSize, scene?.isDayTime, scene?.feetPerCell, currentUserId, selectedTokenId, gmSeeAllVision]);
 
   const lightVisionPolygons = useMemo(() => {
     if (!fogEnabled) return [];
@@ -399,11 +408,11 @@ export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToo
     return polys;
   }, [fogEnabled, isGM, gmSeeAsPlayer, blockingSegs, lights, gridSize, scene?.feetPerCell]);
 
-  const prevVisionPolygonsRef = useRef<string>('');
+  const prevVisionKeyRef = useRef<string>('');
   useEffect(() => {
-    const key = JSON.stringify(visionPolygons.map(p => ({ tx: p.tokenX, ty: p.tokenY, r: p.radius, n: p.points.length })));
-    if (key !== prevVisionPolygonsRef.current) {
-      prevVisionPolygonsRef.current = key;
+    const key = visionPolygons.map(p => `${p.tokenX}:${p.tokenY}:${p.radius}:${p.points.length}`).join('|');
+    if (key !== prevVisionKeyRef.current) {
+      prevVisionKeyRef.current = key;
       onVisionPolygonsChange?.(visionPolygons);
     }
   }, [visionPolygons]);

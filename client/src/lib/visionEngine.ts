@@ -143,7 +143,7 @@ export function calculateVisionPolygon(
     angles.push(a2 - EPSILON, a2, a2 + EPSILON);
   }
 
-  const STEP = Math.PI / 180;
+  const STEP = Math.PI / 36;
   for (let a = -Math.PI; a < Math.PI; a += STEP) {
     angles.push(a);
   }
