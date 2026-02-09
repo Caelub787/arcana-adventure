@@ -20299,7 +20299,7 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-stone-900 border-stone-700 max-w-3xl max-h-[90vh] flex flex-col z-[200]">
+      <DialogContent className="bg-stone-900 border-stone-700 max-w-3xl max-h-[90vh] flex flex-col">
         <DialogHeader>
           <DialogTitle className="text-amber-500">Add Item</DialogTitle>
         </DialogHeader>
