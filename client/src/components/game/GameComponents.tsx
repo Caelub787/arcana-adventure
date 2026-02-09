@@ -5846,12 +5846,15 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
         </Tooltip>
       </TooltipProvider>
       
-      {/* Modifier Popup Dialog */}
-      <Dialog open={showModifierPopup} onOpenChange={setShowModifierPopup}>
-        <DialogContent className="w-72 bg-stone-900 border-stone-700 text-stone-200 p-4">
-          <DialogHeader>
-            <DialogTitle className="text-amber-500 text-lg">{isTraitClickable ? traitData?.name : isSkillClickable ? hotbar?.skillName : itemData?.name || 'Roll'} Modifiers</DialogTitle>
-          </DialogHeader>
+      {/* Modifier Popup - Floating Panel */}
+      {showModifierPopup && (
+        <>
+        <div className="fixed inset-0 z-[10000]" onClick={() => setShowModifierPopup(false)} />
+        <div className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[10001] w-72 bg-stone-900 border border-stone-700 text-stone-200 p-4 rounded-lg shadow-2xl">
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-amber-500 text-lg font-semibold">{isTraitClickable ? traitData?.name : isSkillClickable ? hotbar?.skillName : itemData?.name || 'Roll'} Modifiers</h3>
+            <button onClick={() => setShowModifierPopup(false)} className="text-stone-400 hover:text-stone-200"><X className="h-4 w-4" /></button>
+          </div>
           <div className="space-y-4 mt-2">
             {/* Extra Modifier Input */}
             <div className="flex items-center gap-3">
@@ -5956,8 +5959,9 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
               </div>
             )}
           </div>
-        </DialogContent>
-      </Dialog>
+        </div>
+        </>
+      )}
     </>
   );
 }
