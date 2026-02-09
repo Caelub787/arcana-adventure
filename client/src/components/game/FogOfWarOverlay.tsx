@@ -234,7 +234,7 @@ export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToo
               height={Math.abs(door.y2 - door.y1) + 8}
               fill="transparent"
               stroke="none"
-              style={{ cursor: 'pointer' }}
+              style={{ cursor: 'pointer', pointerEvents: 'auto' }}
               onClick={(e) => {
                 e.stopPropagation();
                 toggleDoorMutation.mutate({ doorId: door.id, shiftKey: e.shiftKey });
