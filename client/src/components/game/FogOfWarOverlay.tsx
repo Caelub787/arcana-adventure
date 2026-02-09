@@ -1004,25 +1004,25 @@ export function FogToolsPanel({
   const queryClient = useQueryClient();
   const sceneId = scene?.id;
 
-  const [panelPos, setPanelPos] = useState({ x: Math.max(0, (window.innerWidth - 256) / 2), y: Math.max(0, (window.innerHeight - 400) / 2) });
+  const panelPosRef = useRef({ x: Math.max(0, (window.innerWidth - 256) / 2), y: Math.max(0, (window.innerHeight - 400) / 2) });
+  const panelElRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(null);
 
   const handleDragStart = useCallback((e: React.MouseEvent | React.TouchEvent) => {
     e.preventDefault();
     const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
     const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
-    dragRef.current = { startX: clientX, startY: clientY, origX: panelPos.x, origY: panelPos.y };
+    dragRef.current = { startX: clientX, startY: clientY, origX: panelPosRef.current.x, origY: panelPosRef.current.y };
 
     const handleMove = (ev: MouseEvent | TouchEvent) => {
-      if (!dragRef.current) return;
+      if (!dragRef.current || !panelElRef.current) return;
       const cx = 'touches' in ev ? (ev as TouchEvent).touches[0].clientX : (ev as MouseEvent).clientX;
       const cy = 'touches' in ev ? (ev as TouchEvent).touches[0].clientY : (ev as MouseEvent).clientY;
-      const dx = cx - dragRef.current.startX;
-      const dy = cy - dragRef.current.startY;
-      setPanelPos({
-        x: Math.max(0, Math.min(window.innerWidth - 260, dragRef.current.origX + dx)),
-        y: Math.max(0, Math.min(window.innerHeight - 100, dragRef.current.origY + dy)),
-      });
+      const newX = Math.max(0, Math.min(window.innerWidth - 260, dragRef.current.origX + (cx - dragRef.current.startX)));
+      const newY = Math.max(0, Math.min(window.innerHeight - 100, dragRef.current.origY + (cy - dragRef.current.startY)));
+      panelPosRef.current = { x: newX, y: newY };
+      panelElRef.current.style.left = `${newX}px`;
+      panelElRef.current.style.top = `${newY}px`;
     };
     const handleEnd = () => {
       dragRef.current = null;
@@ -1035,7 +1035,7 @@ export function FogToolsPanel({
     window.addEventListener('mouseup', handleEnd);
     window.addEventListener('touchmove', handleMove);
     window.addEventListener('touchend', handleEnd);
-  }, [panelPos]);
+  }, []);
 
   const fogEnabled = scene?.fogEnabled ?? false;
   const fogOpacity = scene?.fogOpacity ?? 0.85;
@@ -1160,8 +1160,9 @@ export function FogToolsPanel({
 
   return (
     <div
+      ref={panelElRef}
       className="fixed z-[80] w-64 rounded-lg border border-stone-700 bg-stone-900/95 shadow-2xl backdrop-blur-sm"
-      style={{ left: panelPos.x, top: panelPos.y }}
+      style={{ left: panelPosRef.current.x, top: panelPosRef.current.y }}
       onPointerDown={(e) => e.stopPropagation()}
       onWheel={(e) => e.stopPropagation()}
       onMouseMove={(e) => e.stopPropagation()}
