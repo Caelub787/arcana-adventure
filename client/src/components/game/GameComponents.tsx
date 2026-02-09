@@ -420,7 +420,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
   }, [gmSeeAllVision, campaignId]);
 
   useEffect(() => {
-    if (!isGM && currentUserId && tokens.length > 0 && characters.length > 0) {
+    if (currentUserId && tokens.length > 0 && characters.length > 0) {
       const myTokens = tokens.filter(t => {
         if (!t.characterId) return false;
         const char = characters.find((c: any) => c.id === t.characterId);
@@ -432,7 +432,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
         setSelectedVisionTokenId(myTokens[0].id);
       }
     }
-  }, [isGM, currentUserId, tokens, characters, selectedVisionTokenId]);
+  }, [currentUserId, tokens, characters, selectedVisionTokenId]);
 
   // Cleanup timers on unmount
   useEffect(() => {
@@ -3385,7 +3385,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
             onVisionPolygonsChange={setVisionPolygons}
             showDrawingTools={showDrawingTools}
             gmSeeAsPlayer={gmSeeAsPlayer}
-            selectedTokenId={isGM ? undefined : selectedVisionTokenId}
+            selectedTokenId={selectedVisionTokenId}
             gmSeeAllVision={gmSeeAllVision}
           />
         )}

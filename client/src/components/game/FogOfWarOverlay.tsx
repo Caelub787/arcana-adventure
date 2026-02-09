@@ -320,14 +320,8 @@ export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToo
       playerTokens = tokens;
     } else if (selectedTokenId) {
       playerTokens = tokens.filter(t => t.id === selectedTokenId);
-    } else if (currentUserId) {
-      playerTokens = tokens.filter(t => {
-        if (!t.characterId) return false;
-        const char = characters.find(c => c.id === t.characterId);
-        return char && char.userId === currentUserId;
-      });
     } else {
-      playerTokens = tokens;
+      playerTokens = [];
     }
     
     for (const token of playerTokens) {
