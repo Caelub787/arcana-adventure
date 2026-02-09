@@ -6,7 +6,7 @@ import { Slider } from '@/components/ui/slider';
 import { toast } from '@/hooks/use-toast';
 import {
   Layers, Eye, EyeOff, Lock, Unlock, DoorOpen, DoorClosed,
-  Sun, Moon, Lightbulb, Trash2, Plus, X, Square, Minus
+  Sun, Moon, Lightbulb, Trash2, Plus, X, Square, Minus, Grid3X3
 } from 'lucide-react';
 import { getBlockingSegments, calculateVisionPolygon, type VisionPolygon } from '@/lib/visionEngine';
 
@@ -267,40 +267,40 @@ export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToo
   const renderLights = useMemo(() => {
     if (!isGM && fogEnabled) return null;
     return lights.filter(l => l.enabled).map((light) => {
-      const radiusPixels = (light.radius / 5) * gridSize;
       const cx = light.x + MAP_OFFSET;
       const cy = light.y + MAP_OFFSET;
 
       return (
         <g key={`light-${light.id}`} data-testid={`light-${light.id}`}>
-          <defs>
-            <radialGradient id={`light-grad-${light.id}`}>
-              <stop offset="0%" stopColor={light.color} stopOpacity={light.intensity * 0.4} />
-              <stop offset="70%" stopColor={light.color} stopOpacity={light.intensity * 0.15} />
-              <stop offset="100%" stopColor={light.color} stopOpacity={0} />
-            </radialGradient>
-          </defs>
-          <circle
-            cx={cx}
-            cy={cy}
-            r={radiusPixels}
-            fill={`url(#light-grad-${light.id})`}
-          />
           {isGM && (
-            <circle
-              cx={cx}
-              cy={cy}
-              r={6}
-              fill={light.color}
-              stroke="#fff"
-              strokeWidth={1.5}
-              strokeOpacity={0.8}
-            />
+            <>
+              <defs>
+                <radialGradient id={`light-grad-${light.id}`}>
+                  <stop offset="0%" stopColor={light.color} stopOpacity={light.intensity * 0.3} />
+                  <stop offset="100%" stopColor={light.color} stopOpacity={0} />
+                </radialGradient>
+              </defs>
+              <circle
+                cx={cx}
+                cy={cy}
+                r={12}
+                fill={`url(#light-grad-${light.id})`}
+              />
+              <circle
+                cx={cx}
+                cy={cy}
+                r={6}
+                fill={light.color}
+                stroke="#fff"
+                strokeWidth={1.5}
+                strokeOpacity={0.8}
+              />
+            </>
           )}
         </g>
       );
     });
-  }, [lights, gridSize, isGM]);
+  }, [lights, gridSize, isGM, fogEnabled]);
 
   const visionPolygons = useMemo(() => {
     if (!fogEnabled) return [];
@@ -403,6 +403,8 @@ export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToo
       return pts + ' Z';
     }).filter(Boolean).join(' ');
 
+    const enabledLights = lights.filter(l => l.enabled);
+
     return (
       <g>
         <defs>
@@ -411,6 +413,15 @@ export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToo
             {visionPathData && (
               <path d={visionPathData} fill="black" />
             )}
+            {enabledLights.map((light) => (
+              <circle
+                key={`light-cutout-${light.id}`}
+                cx={light.x + MAP_OFFSET}
+                cy={light.y + MAP_OFFSET}
+                r={(light.radius / 5) * gridSize}
+                fill="black"
+              />
+            ))}
           </mask>
         </defs>
         <rect
@@ -424,7 +435,7 @@ export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToo
         />
       </g>
     );
-  }, [fogEnabled, isGM, gmSeeAsPlayer, visionPolygons]);
+  }, [fogEnabled, isGM, gmSeeAsPlayer, visionPolygons, lights, gridSize]);
 
   if (!sceneId) return null;
 
@@ -463,6 +474,7 @@ interface WallDrawingOverlayProps {
   lightColor: string;
   lightIntensity: number;
   onFinish?: () => void;
+  snapToGrid?: boolean;
 }
 
 export function WallDrawingOverlay({
@@ -477,6 +489,7 @@ export function WallDrawingOverlay({
   lightColor,
   lightIntensity,
   onFinish,
+  snapToGrid: snapEnabled = true,
 }: WallDrawingOverlayProps) {
   const queryClient = useQueryClient();
   const sceneId = scene?.id;
@@ -647,8 +660,8 @@ export function WallDrawingOverlay({
 
     const worldX = rawX - MAP_OFFSET;
     const worldY = rawY - MAP_OFFSET;
-    const snappedX = snapToGrid(worldX, gridSize);
-    const snappedY = snapToGrid(worldY, gridSize);
+    const snappedX = snapEnabled ? snapToGrid(worldX, gridSize) : worldX;
+    const snappedY = snapEnabled ? snapToGrid(worldY, gridSize) : worldY;
 
     if (e.altKey) {
       const clickX = snappedX;
@@ -750,7 +763,7 @@ export function WallDrawingOverlay({
         color: lightColor,
       });
     }
-  }, [wallDrawMode, doorPlaceMode, windowPlaceMode, lightPlaceMode, wallPoints, doorStart, windowStart, gridSize, selectedWallType, lightRadius, lightColor, lightIntensity, createWallMutation, createDoorMutation, createWindowMutation, createLightMutation, walls, doors, windowsList, lightsList, deleteWallMutation, deleteDoorMutation, deleteWindowMutation, deleteLightMutation]);
+  }, [wallDrawMode, doorPlaceMode, windowPlaceMode, lightPlaceMode, wallPoints, doorStart, windowStart, gridSize, selectedWallType, lightRadius, lightColor, lightIntensity, createWallMutation, createDoorMutation, createWindowMutation, createLightMutation, walls, doors, windowsList, lightsList, deleteWallMutation, deleteDoorMutation, deleteWindowMutation, deleteLightMutation, snapEnabled]);
 
   const handleMouseMove = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
     const svg = e.currentTarget;
@@ -760,10 +773,10 @@ export function WallDrawingOverlay({
 
     const worldX = rawX - MAP_OFFSET;
     const worldY = rawY - MAP_OFFSET;
-    const snappedX = snapToGrid(worldX, gridSize);
-    const snappedY = snapToGrid(worldY, gridSize);
+    const snappedX = snapEnabled ? snapToGrid(worldX, gridSize) : worldX;
+    const snappedY = snapEnabled ? snapToGrid(worldY, gridSize) : worldY;
     setMousePos({ x: snappedX, y: snappedY });
-  }, [gridSize]);
+  }, [gridSize, snapEnabled]);
 
   const isActive = wallDrawMode || doorPlaceMode || windowPlaceMode || lightPlaceMode;
   if (!isActive || !sceneId) return null;
@@ -930,6 +943,8 @@ interface FogToolsPanelProps {
   onGmSeeAsPlayerChange?: (val: boolean) => void;
   gmSeeAllVision?: boolean;
   onGmSeeAllVisionChange?: (val: boolean) => void;
+  snapToGrid?: boolean;
+  setSnapToGrid?: (v: boolean) => void;
 }
 
 export function FogToolsPanel({
@@ -960,6 +975,8 @@ export function FogToolsPanel({
   onGmSeeAsPlayerChange,
   gmSeeAllVision,
   onGmSeeAllVisionChange,
+  snapToGrid: snapEnabled = true,
+  setSnapToGrid,
 }: FogToolsPanelProps) {
   const queryClient = useQueryClient();
   const sceneId = scene?.id;
@@ -1256,6 +1273,22 @@ export function FogToolsPanel({
 
         <div className="border-t border-stone-700 pt-2">
           <span className="text-xs font-semibold text-stone-400 uppercase tracking-wide">Drawing Tools</span>
+        </div>
+
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-stone-300">Snap to Grid</span>
+          <Button
+            variant={snapEnabled ? 'default' : 'outline'}
+            size="sm"
+            className={snapEnabled
+              ? 'h-7 bg-stone-600 hover:bg-stone-700 text-white text-xs'
+              : 'h-7 border-stone-600 text-stone-400 text-xs'}
+            onClick={() => setSnapToGrid?.(!snapEnabled)}
+            data-testid="toggle-snap-to-grid"
+          >
+            <Grid3X3 className="h-3 w-3 mr-1" />
+            {snapEnabled ? 'On' : 'Off'}
+          </Button>
         </div>
 
         <div className="grid grid-cols-2 gap-1.5">

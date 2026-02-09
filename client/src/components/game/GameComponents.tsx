@@ -380,6 +380,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
   const [lightColor, setLightColor] = useState('#ffcc44');
   const [lightIntensity, setLightIntensity] = useState(1.0);
   const [showDrawingTools, setShowDrawingTools] = useState(true);
+  const [fogSnapToGrid, setFogSnapToGrid] = useState(true);
   const campaignId = scene?.campaignId;
   const [gmSeeAsPlayer, setGmSeeAsPlayer] = useState(() => {
     try {
@@ -3402,6 +3403,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
             lightRadius={lightRadius}
             lightColor={lightColor}
             lightIntensity={lightIntensity}
+            snapToGrid={fogSnapToGrid}
           />
         )}
       </motion.div>
@@ -3436,6 +3438,8 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
           onGmSeeAsPlayerChange={setGmSeeAsPlayer}
           gmSeeAllVision={gmSeeAllVision}
           onGmSeeAllVisionChange={setGmSeeAllVision}
+          snapToGrid={fogSnapToGrid}
+          setSnapToGrid={setFogSnapToGrid}
         />
       )}
 
