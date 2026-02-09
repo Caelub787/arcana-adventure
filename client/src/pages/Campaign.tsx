@@ -9953,6 +9953,8 @@ export default function Campaign() {
                 campaignId={effectiveCampaignId || undefined}
                 sceneId={activeScene?.id}
                 allSpecies={[...(systemSpecies || []), ...campaignSpeciesList]}
+                bringToFront={bringToFront}
+                floatingZIndices={floatingZIndices}
               />
             )}
           </DialogContent>
@@ -9989,6 +9991,8 @@ export default function Campaign() {
               campaignId={effectiveCampaignId || undefined}
               sceneId={activeScene?.id}
               allSpecies={[...(systemSpecies || []), ...campaignSpeciesList]}
+              bringToFront={bringToFront}
+              floatingZIndices={floatingZIndices}
             />
           </FloatingPanel>
         ))

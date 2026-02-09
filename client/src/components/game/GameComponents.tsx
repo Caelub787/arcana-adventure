@@ -10,6 +10,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
+import { FloatingPanel } from "@/components/ui/floating-panel";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -12587,7 +12588,7 @@ function InventoryItemRow({ item, depth, expandedContainers, toggleContainer, se
           
           <div 
             className="flex items-center gap-3 flex-1 cursor-pointer"
-            onClick={() => { setSelectedItem(item); setShowItemDetail(true); }}
+            onClick={() => { setSelectedItem(item); setShowItemDetail(true); bringToFront?.('item-detail'); }}
           >
             <div className="w-12 h-12 bg-black/50 rounded flex items-center justify-center shrink-0 border border-stone-700">
               {item.image ? (
@@ -12715,7 +12716,7 @@ function InventoryItemRow({ item, depth, expandedContainers, toggleContainer, se
                 className={`p-2 bg-stone-800 border ${stackedItemRarityClass} rounded cursor-pointer hover:bg-stone-750 transition-colors`}
                 onDoubleClick={() => {
                   setSelectedItem(stackedItem);
-                  setShowItemDetail(true);
+                  setShowItemDetail(true); bringToFront?.('item-detail');
                 }}
                 data-testid={`stacked-item-${stackedItem.id}`}
               >
@@ -12889,6 +12890,8 @@ interface CharacterSheetProps {
   sceneId?: string;
   isTemplate?: boolean;
   allSpecies?: (SystemSpecies | CampaignSpecies)[];
+  bringToFront?: (panelKey: string) => void;
+  floatingZIndices?: Record<string, number>;
 }
 
 // Custom Skill Form for adding new skills to a character
@@ -13630,7 +13633,7 @@ function TraitEditForm({
   );
 }
 
-export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, accessLevel = 'view', onUpdate, onClose, defaultTab = "overview", campaignId, sceneId, isTemplate = false, allSpecies: passedSpecies }: CharacterSheetProps) {
+export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, accessLevel = 'view', onUpdate, onClose, defaultTab = "overview", campaignId, sceneId, isTemplate = false, allSpecies: passedSpecies, bringToFront, floatingZIndices }: CharacterSheetProps) {
   // Name-only mode: user only has 'name' access (token name only, no stats)
   // They can see name and portrait but not stats, inventory, or abilities
   const isViewOnly = accessLevel === 'name' && !isGM && !isOwner;
@@ -17126,7 +17129,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                             className="bg-stone-900 rounded-lg p-3 border border-stone-700 hover:border-purple-500 cursor-pointer transition-all"
                             onClick={() => {
                               setSelectedSpell(spell);
-                              setShowSpellDetail(true);
+                              setShowSpellDetail(true); bringToFront?.('spell-detail');
                             }}
                             data-testid={`spell-card-${spell.id}`}
                           >
@@ -17929,22 +17932,18 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
             </Dialog>
 
             {/* Spell Detail Dialog */}
-            <Dialog open={showSpellDetail} onOpenChange={setShowSpellDetail}>
-              <DialogContent className="max-w-2xl bg-stone-900 border-stone-700">
-                {selectedSpell && (
-                  <>
-                    <DialogHeader>
-                      <DialogTitle className="text-purple-400 flex items-center gap-2">
-                        {selectedSpell.image ? (
-                          <img src={selectedSpell.image} alt={selectedSpell.name} className="w-8 h-8 rounded" />
-                        ) : (
-                          <Sparkles className={`h-6 w-6 ${getSpellLevelColor(selectedSpell.level)}`} />
-                        )}
-                        {selectedSpell.name}
-                      </DialogTitle>
-                    </DialogHeader>
-                    <ScrollArea className="max-h-[500px] pr-4">
-                    <div className="space-y-4">
+            {showSpellDetail && selectedSpell && (
+              <FloatingPanel
+                open={showSpellDetail}
+                onClose={() => setShowSpellDetail(false)}
+                title={selectedSpell.name}
+                defaultSize={{ width: 600, height: 500 }}
+                minWidth={350}
+                minHeight={300}
+                zIndex={floatingZIndices?.['spell-detail'] || 55}
+                onBringToFront={() => bringToFront?.('spell-detail')}
+              >
+                    <div className="p-4 space-y-4">
                       <div className="flex gap-2">
                         <Badge className="bg-cyan-600/30 text-cyan-300">
                           {selectedSpell.energyCost !== undefined ? `${selectedSpell.energyCost} Energy` : '0 Energy'}
@@ -18473,11 +18472,8 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                         </Button>
                       </div>
                     </div>
-                    </ScrollArea>
-                  </>
-                )}
-              </DialogContent>
-            </Dialog>
+              </FloatingPanel>
+            )}
 
             {/* Spell Delete Confirmation Dialog */}
             <AlertDialog open={showSpellDeleteConfirm} onOpenChange={setShowSpellDeleteConfirm}>
@@ -18891,6 +18887,8 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
         items={items}
         onUpdate={(data) => updateItemMutation.mutate({ id: selectedItem.id, data })}
         onDelete={() => deleteItemMutation.mutate(selectedItem.id)}
+        bringToFront={bringToFront}
+        floatingZIndices={floatingZIndices}
       />
 
       {/* Add/Edit Item Dialog */}
@@ -21581,9 +21579,11 @@ interface ItemDetailDialogProps {
   items: any[];
   onUpdate: (data: any) => void;
   onDelete: () => void;
+  bringToFront?: (panelKey: string) => void;
+  floatingZIndices?: Record<string, number>;
 }
 
-function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, items, onUpdate, onDelete }: ItemDetailDialogProps) {
+function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, items, onUpdate, onDelete, bringToFront, floatingZIndices }: ItemDetailDialogProps) {
   const queryClient = useQueryClient();
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState<any>(null);
@@ -21778,11 +21778,20 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
   const canEditItem = isOwner || isGM;
   const canEditAllFields = isGM;
 
+  if (!open || !item) return null;
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-stone-900 border-stone-700 max-w-2xl">
-        <DialogHeader>
-          <div className="flex items-center justify-between">
+    <FloatingPanel
+      open={open}
+      onClose={() => onOpenChange(false)}
+      title={isEditing ? "Edit Item" : item.name}
+      defaultSize={{ width: 600, height: 500 }}
+      minWidth={350}
+      minHeight={300}
+      zIndex={floatingZIndices?.['item-detail'] || 55}
+      onBringToFront={() => bringToFront?.('item-detail')}
+    >
+      <div className="p-4">
+          <div className="flex items-center justify-between mb-4">
             {isEditing ? (
               <Input 
                 value={currentData.name} 
@@ -21791,7 +21800,7 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
                 data-testid="input-edit-name"
               />
             ) : (
-              <DialogTitle className="text-amber-500 text-xl">{currentData.name}</DialogTitle>
+              <h2 className="text-amber-500 text-xl font-bold">{currentData.name}</h2>
             )}
             {canEditItem && !isEditing && (
               <Button size="sm" variant="outline" onClick={handleEditToggle} data-testid="button-edit-item">
@@ -21799,8 +21808,6 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
               </Button>
             )}
           </div>
-        </DialogHeader>
-        <ScrollArea className="max-h-[500px] pr-4">
           <div className="space-y-4">
             <div className="flex gap-4">
               <div className="flex-shrink-0">
@@ -22939,9 +22946,8 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
               )}
             </div>
           </div>
-        </ScrollArea>
-      </DialogContent>
-    </Dialog>
+      </div>
+    </FloatingPanel>
   );
 }
 
