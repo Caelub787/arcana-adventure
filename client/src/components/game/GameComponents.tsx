@@ -14493,7 +14493,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
     setExtraModifier(0);
     setHasAdvantage(false);
     setHasDisadvantage(false);
-    setRollPanelOpen(true);
+    setRollPanelOpen(true); bringToFront?.('roll-modifier');
   };
 
   // Fetch items
@@ -18910,22 +18910,26 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
       )}
 
       {/* Roll Modifier Panel */}
-      <Dialog open={rollPanelOpen} onOpenChange={(open) => {
-        if (!open) {
-          setRollPanelOpen(false);
-          setHasAdvantage(false);
-          setHasDisadvantage(false);
-        }
-      }}>
-        <DialogContent className="sm:max-w-[300px] bg-stone-900 border-stone-700">
-          <DialogHeader>
-            <DialogTitle className="text-amber-500">{rollPanelData?.name} Roll</DialogTitle>
-            <DialogDescription>
-              Base modifier: {(rollPanelData?.modifier ?? 0) >= 0 ? '+' : ''}{rollPanelData?.modifier ?? 0}
-              {rollPanelData?.modifier === 5 ? ' (d30)' : ' (d20)'}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
+      {rollPanelOpen && rollPanelData && (
+        <FloatingPanel
+          open={rollPanelOpen}
+          onClose={() => {
+            setRollPanelOpen(false);
+            setHasAdvantage(false);
+            setHasDisadvantage(false);
+          }}
+          title={`${rollPanelData.name} Roll`}
+          defaultSize={{ width: 320, height: 340 }}
+          minWidth={280}
+          minHeight={250}
+          zIndex={floatingZIndices?.['roll-modifier'] || 55}
+          onBringToFront={() => bringToFront?.('roll-modifier')}
+        >
+          <div className="p-4 space-y-4">
+            <p className="text-sm text-stone-400">
+              Base modifier: {(rollPanelData.modifier ?? 0) >= 0 ? '+' : ''}{rollPanelData.modifier ?? 0}
+              {rollPanelData.modifier === 5 ? ' (d30)' : ' (d20)'}
+            </p>
             <div className="flex items-center justify-center gap-3">
               <Label className="text-stone-400">Extra Modifier:</Label>
               <div className="flex items-center gap-2">
@@ -18956,7 +18960,6 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
               </div>
             </div>
             
-            {/* Advantage/Disadvantage Checkboxes */}
             <div className="flex items-center justify-center gap-6">
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
@@ -18984,7 +18987,6 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
               </label>
             </div>
             
-            {/* Info text when both are checked */}
             {hasAdvantage && hasDisadvantage && (
               <div className="text-center text-xs text-stone-500">
                 ADV and DIS cancel out - rolling normally
@@ -18992,22 +18994,22 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
             )}
             
             <div className="text-center text-sm text-stone-400">
-              Total: <span className="text-amber-500 font-semibold">{(rollPanelData?.modifier || 0) + extraModifier >= 0 ? '+' : ''}{(rollPanelData?.modifier || 0) + extraModifier}</span>
+              Total: <span className="text-amber-500 font-semibold">{(rollPanelData.modifier || 0) + extraModifier >= 0 ? '+' : ''}{(rollPanelData.modifier || 0) + extraModifier}</span>
               {hasAdvantage && !hasDisadvantage && <span className="text-green-400 ml-2">[ADV]</span>}
               {hasDisadvantage && !hasAdvantage && <span className="text-red-400 ml-2">[DIS]</span>}
             </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => setRollPanelOpen(false)} data-testid="button-cancel-roll">Cancel</Button>
+              <Button 
+                onClick={confirmRollFromPanel} 
+                data-testid="button-confirm-roll"
+              >
+                Roll
+              </Button>
+            </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setRollPanelOpen(false)} data-testid="button-cancel-roll">Cancel</Button>
-            <Button 
-              onClick={confirmRollFromPanel} 
-              data-testid="button-confirm-roll"
-            >
-              Roll
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        </FloatingPanel>
+      )}
 
       {/* Level-Up HP Dialog */}
       <Dialog open={showLevelUpHpDialog} onOpenChange={(open) => {
