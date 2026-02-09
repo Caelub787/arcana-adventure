@@ -3823,7 +3823,7 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     return getDistanceBetweenTokensFeet(
       token1X, token1Y, token1Size,
       token2X, token2Y, token2Size,
-      gridSize
+      scene?.gridSize || gridSize
     );
   };
   
@@ -3833,8 +3833,8 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     // Calculate grid distance using Chebyshev distance (max of x and y grid difference)
     // This treats diagonal movement as 1 grid, matching most TTRPG rules
     // Use floor to be lenient with positioning (tokens may not be perfectly grid-aligned)
-    const gridDiffX = Math.abs(x2 - x1) / gridSize;
-    const gridDiffY = Math.abs(y2 - y1) / gridSize;
+    const gridDiffX = Math.abs(x2 - x1) / (scene?.gridSize || gridSize);
+    const gridDiffY = Math.abs(y2 - y1) / (scene?.gridSize || gridSize);
     const gridDistance = Math.max(gridDiffX, gridDiffY);
     // Floor the result to be forgiving with token positioning - slightly off grid shouldn't break attacks
     return Math.floor(gridDistance) * 5; // Each grid = 5ft
@@ -4781,7 +4781,7 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
       
       try {
         // Convert token pixel position to grid coordinates for miss case
-        const effectiveGridSize = gridSize || 50;
+        const effectiveGridSize = scene?.gridSize || gridSize || 50;
         const gridX = Math.floor((throwTargetToken?.x ?? 0) / effectiveGridSize);
         const gridY = Math.floor((throwTargetToken?.y ?? 0) / effectiveGridSize);
         
@@ -4829,7 +4829,7 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     if (throwableGridTarget) {
       // Range check - validate grid target is within weapon range (uses edge-based distance for large attackers)
       if (attackerToken) {
-        const effectiveGridSize = gridSize || 50;
+        const effectiveGridSize = scene?.gridSize || gridSize || 50;
         // Convert grid coordinates to pixel coordinates for distance calculation
         const gridCenterX = (throwableGridTarget.x + 0.5) * effectiveGridSize;
         const gridCenterY = (throwableGridTarget.y + 0.5) * effectiveGridSize;
@@ -4933,7 +4933,7 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
       
       // Range check - validate AOE target is within weapon range (uses edge-based distance for large attackers)
       if (attackerToken && aoeTargetState.center) {
-        const effectiveGridSize = gridSize || 50;
+        const effectiveGridSize = scene?.gridSize || gridSize || 50;
         // Use edge-based distance from attacker token to AOE center point
         const distancePixels = getDistanceToTokenEdge(
           aoeTargetState.center.x, aoeTargetState.center.y,
@@ -4972,7 +4972,7 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
       
       // Create thrown item at AOE target location
       // Convert from world pixel coordinates to grid cell coordinates
-      const effectiveGridSize = gridSize || 50;
+      const effectiveGridSize = scene?.gridSize || gridSize || 50;
       const gridX = Math.floor(aoeTargetState.center.x / effectiveGridSize);
       const gridY = Math.floor(aoeTargetState.center.y / effectiveGridSize);
       
@@ -5085,7 +5085,7 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     const affectedNames: string[] = [];
     const affectedTokenIds: string[] = [];
     
-    const effectiveGridSize = gridSize || 50;
+    const effectiveGridSize = scene?.gridSize || gridSize || 50;
     
     for (const thrownItem of itemThrownItems) {
       // Get tokens within AOE range of this thrown item
