@@ -7774,11 +7774,19 @@ export function CampaignMenu({ campaignId, role, inviteCode, hotbarSlots = 5, in
     },
   });
   
+  const isPlayerRole = role === 'player';
+  const canSeeCharacter = (c: any) => {
+    if (!isPlayerRole) return true;
+    if (c.userId === user?.id) return true;
+    const perm = myPermissions?.permissions?.[c.id];
+    return perm === 'edit' || perm === 'owner';
+  };
+
   // Folder helper functions
   const getCharactersInFolder = (folderId: string | null) => {
-    return characters?.filter((c: any) => c.folderId === folderId) || [];
+    return characters?.filter((c: any) => c.folderId === folderId && canSeeCharacter(c)) || [];
   };
-  const unfiledCharacters = characters?.filter((c: any) => !c.folderId) || [];
+  const unfiledCharacters = characters?.filter((c: any) => !c.folderId && canSeeCharacter(c)) || [];
   
   const toggleFolder = (folderId: string) => {
     setExpandedFolders(prev => {
