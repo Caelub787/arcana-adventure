@@ -2175,6 +2175,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       await storage.clearChatMessages(campaignId);
+      broadcastToCampaign(campaignId, { type: 'chat_cleared' });
       res.json({ success: true });
     } catch (err) {
       console.error('Error clearing chat messages:', err);
