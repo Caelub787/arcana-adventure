@@ -287,6 +287,22 @@ export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToo
     });
   }, [windows]);
 
+  const lightGradientDefs = useMemo(() => {
+    if (!isGM || (!isGM && fogEnabled)) return null;
+    const enabledLights = lights.filter(l => l.enabled);
+    if (enabledLights.length === 0) return null;
+    return (
+      <defs>
+        {enabledLights.map((light) => (
+          <radialGradient key={`light-grad-${light.id}`} id={`light-grad-${light.id}`}>
+            <stop offset="0%" stopColor={light.color} stopOpacity={light.intensity * 0.3} />
+            <stop offset="100%" stopColor={light.color} stopOpacity={0} />
+          </radialGradient>
+        ))}
+      </defs>
+    );
+  }, [lights, isGM, fogEnabled]);
+
   const renderLights = useMemo(() => {
     if (!isGM && fogEnabled) return null;
     return lights.filter(l => l.enabled).map((light) => {
@@ -297,12 +313,6 @@ export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToo
         <g key={`light-${light.id}`} data-testid={`light-${light.id}`}>
           {isGM && (
             <>
-              <defs>
-                <radialGradient id={`light-grad-${light.id}`}>
-                  <stop offset="0%" stopColor={light.color} stopOpacity={light.intensity * 0.3} />
-                  <stop offset="100%" stopColor={light.color} stopOpacity={0} />
-                </radialGradient>
-              </defs>
               <circle
                 cx={cx}
                 cy={cy}
@@ -470,12 +480,12 @@ export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToo
       <g>
         <defs>
           <mask id="fog-vision-mask">
-            <rect x={0} y={0} width={20000} height={20000} fill="white" />
+            <rect x={0} y={0} width={20000} height={20000} fill="white" shapeRendering="optimizeSpeed" />
             {visionPathData && (
-              <path d={visionPathData} fill="black" />
+              <path d={visionPathData} fill="black" shapeRendering="optimizeSpeed" />
             )}
             {lightPathData && (
-              <path d={lightPathData} fill="black" />
+              <path d={lightPathData} fill="black" shapeRendering="optimizeSpeed" />
             )}
           </mask>
         </defs>
@@ -504,9 +514,12 @@ export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToo
         top: 0,
         overflow: 'visible',
         zIndex: 100,
+        willChange: 'contents',
       }}
+      shapeRendering="optimizeSpeed"
       data-testid="fog-of-war-overlay"
     >
+      {lightGradientDefs}
       {renderNightFilter}
       {renderFog}
       {showDrawingTools && renderLights}

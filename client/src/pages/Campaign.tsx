@@ -9690,7 +9690,7 @@ export default function Campaign() {
       >
         
         {/* Map Area - Takes full space, but HUD overlays it */}
-        <div ref={battlemapContainerRef} className="relative flex-grow w-full bg-stone-900 z-0 overflow-hidden"
+        <div ref={battlemapContainerRef} className="relative flex-grow w-full bg-stone-900 z-0 overflow-hidden" style={{ contain: 'layout paint style', isolation: 'isolate' }}
           onDragOver={(e) => {
             if (e.dataTransfer.types.includes('application/sandbox-actor')) {
               e.preventDefault();
