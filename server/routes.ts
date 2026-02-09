@@ -7088,7 +7088,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const scene = await storage.getScene(existingDoor.sceneId);
         if (!scene) return res.status(404).json({ error: "Scene not found" });
         const campaign = await storage.getCampaign(scene.campaignId);
-        if (!campaign || campaign.gmUserId !== req.session.userId) {
+        if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+        const gmAccess = await hasGmAccess(req.session.userId!, campaign.id, campaign.gmUserId);
+        if (!gmAccess) {
           return res.status(403).json({ error: "Only the GM can toggle door vision" });
         }
         updates.blocksVisionWhenClosed = req.body.blocksVisionWhenClosed;

@@ -228,15 +228,16 @@ export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToo
           )}
           {isGM && (
             <rect
-              x={Math.min(door.x1, door.x2) + MAP_OFFSET - 4}
-              y={Math.min(door.y1, door.y2) + MAP_OFFSET - 4}
-              width={Math.abs(door.x2 - door.x1) + 8}
-              height={Math.abs(door.y2 - door.y1) + 8}
+              x={Math.min(door.x1, door.x2) + MAP_OFFSET - 12}
+              y={Math.min(door.y1, door.y2) + MAP_OFFSET - 12}
+              width={Math.abs(door.x2 - door.x1) + 24}
+              height={Math.abs(door.y2 - door.y1) + 24}
               fill="transparent"
               stroke="none"
               style={{ cursor: 'pointer', pointerEvents: 'auto' }}
-              onClick={(e) => {
+              onPointerDown={(e) => {
                 e.stopPropagation();
+                e.preventDefault();
                 toggleDoorMutation.mutate({ doorId: door.id, shiftKey: e.shiftKey });
               }}
               data-testid={`door-toggle-${door.id}`}
@@ -501,7 +502,7 @@ export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToo
       {renderFog}
       {showDrawingTools && renderLights}
       {showDrawingTools && renderWalls}
-      {showDrawingTools && renderDoors}
+      {renderDoors}
       {showDrawingTools && renderWindows}
     </svg>
   );
