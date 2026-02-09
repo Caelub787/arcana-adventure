@@ -424,7 +424,11 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
       const myTokens = tokens.filter(t => {
         if (!t.characterId) return false;
         const char = characters.find((c: any) => c.id === t.characterId);
-        return char && (char as any).userId === currentUserId;
+        if (!char) return false;
+        const isOwner = (char as any).userId === currentUserId;
+        const permLevel = myPermissions?.permissions?.[t.characterId!];
+        const hasAccess = permLevel === 'edit' || permLevel === 'owner';
+        return isOwner || hasAccess;
       });
       if (myTokens.length > 0 && !selectedVisionTokenId) {
         setSelectedVisionTokenId(myTokens[0].id);
@@ -432,7 +436,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
         setSelectedVisionTokenId(myTokens[0].id);
       }
     }
-  }, [currentUserId, tokens, characters, selectedVisionTokenId]);
+  }, [currentUserId, tokens, characters, selectedVisionTokenId, myPermissions]);
 
   // Cleanup timers on unmount
   useEffect(() => {
