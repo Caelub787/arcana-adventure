@@ -513,6 +513,9 @@ export const systemSpecies = pgTable("system_species", {
   energyPerLevel: integer("energy_per_level").default(6).notNull(), // Dice size for energy level-ups (d6 by default)
   carryWeight: integer("carry_weight").default(50).notNull(), // Base carry weight capacity
   featTree: text("feat_tree").default(""), // Reference to the feat tree for this species
+  visionType: text("vision_type").default("normal").notNull(),
+  dayVisionDistance: integer("day_vision_distance").default(120).notNull(),
+  nightVisionDistance: integer("night_vision_distance").default(60).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -545,6 +548,9 @@ export const campaignSpecies = pgTable("campaign_species", {
   energyPerLevel: integer("energy_per_level").default(6).notNull(), // Dice size for energy level-ups (d6 by default)
   carryWeight: integer("carry_weight").default(50).notNull(),
   featTree: text("feat_tree").default(""),
+  visionType: text("vision_type").default("normal").notNull(),
+  dayVisionDistance: integer("day_vision_distance").default(120).notNull(),
+  nightVisionDistance: integer("night_vision_distance").default(60).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

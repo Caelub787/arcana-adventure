@@ -2974,6 +2974,14 @@ function CharacterFormDialog({ open, onOpenChange, onSave, initialData, isLoadin
     }
   }, [initialData, open]);
 
+  useEffect(() => {
+    if (selectedSpecies && !initialData) {
+      setVisionType((selectedSpecies as any).visionType || 'normal');
+      setDayVisionDistance((selectedSpecies as any).dayVisionDistance ?? 120);
+      setNightVisionDistance((selectedSpecies as any).nightVisionDistance ?? 60);
+    }
+  }, [selectedRace]);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim() || isSubmitting) return;
@@ -5530,6 +5538,9 @@ function SpeciesFormDialog({ open, onOpenChange, onSave, initialData, isLoading,
     energyPerLevel: number | string;
     carryWeight: number | string;
     featTree: string;
+    visionType: string;
+    dayVisionDistance: number | string;
+    nightVisionDistance: number | string;
   }>({
     name: initialData?.name || '',
     description: initialData?.description || '',
@@ -5548,6 +5559,9 @@ function SpeciesFormDialog({ open, onOpenChange, onSave, initialData, isLoading,
     energyPerLevel: (initialData as any)?.energyPerLevel ?? '',
     carryWeight: initialData?.carryWeight ?? '',
     featTree: initialData?.featTree || '',
+    visionType: (initialData as any)?.visionType || 'normal',
+    dayVisionDistance: (initialData as any)?.dayVisionDistance ?? 120,
+    nightVisionDistance: (initialData as any)?.nightVisionDistance ?? 60,
   });
   
   const [showSpeciesImageBrowser, setShowSpeciesImageBrowser] = useState(false);
@@ -5598,6 +5612,9 @@ function SpeciesFormDialog({ open, onOpenChange, onSave, initialData, isLoading,
       startingMaxEnergy: Number(formData.startingMaxEnergy) || 10,
       energyPerLevel: Number(formData.energyPerLevel) || 6,
       carryWeight: Number(formData.carryWeight) || 50,
+      visionType: formData.visionType || 'normal',
+      dayVisionDistance: Number(formData.dayVisionDistance) || 120,
+      nightVisionDistance: Number(formData.nightVisionDistance) || 60,
     });
   };
 
@@ -5840,6 +5857,48 @@ function SpeciesFormDialog({ open, onOpenChange, onSave, initialData, isLoading,
                   onChange={(e) => handleNumericChange('carryWeight', e.target.value)}
                   className="bg-stone-800 border-stone-700"
                   data-testid="input-species-carryweight"
+                />
+              </div>
+
+              <div className="col-span-2 border-t border-stone-700 pt-3 mt-2">
+                <Label className="text-sm font-semibold text-stone-300">Vision</Label>
+              </div>
+
+              <div className="col-span-2">
+                <Label>Vision Type</Label>
+                <Select value={formData.visionType} onValueChange={(value) => setFormData({ ...formData, visionType: value })}>
+                  <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-species-visiontype">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="normal">Normal</SelectItem>
+                    <SelectItem value="darkvision">Darkvision</SelectItem>
+                    <SelectItem value="blindsight">Blindsight</SelectItem>
+                    <SelectItem value="truesight">Truesight</SelectItem>
+                    <SelectItem value="tremorsense">Tremorsense</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <Label>Day Vision Distance (ft)</Label>
+                <Input
+                  type="number"
+                  value={formData.dayVisionDistance}
+                  onChange={(e) => handleNumericChange('dayVisionDistance', e.target.value)}
+                  className="bg-stone-800 border-stone-700"
+                  data-testid="input-species-dayvision"
+                />
+              </div>
+
+              <div>
+                <Label>Night Vision Distance (ft)</Label>
+                <Input
+                  type="number"
+                  value={formData.nightVisionDistance}
+                  onChange={(e) => handleNumericChange('nightVisionDistance', e.target.value)}
+                  className="bg-stone-800 border-stone-700"
+                  data-testid="input-species-nightvision"
                 />
               </div>
 

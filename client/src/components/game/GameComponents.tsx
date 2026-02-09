@@ -379,8 +379,61 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
   const [lightColor, setLightColor] = useState('#ffcc44');
   const [lightIntensity, setLightIntensity] = useState(1.0);
   const [showDrawingTools, setShowDrawingTools] = useState(true);
-  const [gmSeeAsPlayer, setGmSeeAsPlayer] = useState(false);
-  
+  const campaignId = scene?.campaignId;
+  const [gmSeeAsPlayer, setGmSeeAsPlayer] = useState(() => {
+    try {
+      if (scene?.campaignId) return localStorage.getItem(`fogSeeAsPlayer_${scene.campaignId}`) === 'true';
+    } catch {}
+    return false;
+  });
+  const [gmSeeAllVision, setGmSeeAllVision] = useState(() => {
+    try {
+      if (scene?.campaignId) return localStorage.getItem(`fogSeeAllVision_${scene.campaignId}`) === 'true';
+    } catch {}
+    return false;
+  });
+  const [selectedVisionTokenId, setSelectedVisionTokenId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (campaignId) {
+      try {
+        const saved = localStorage.getItem(`fogSeeAsPlayer_${campaignId}`);
+        if (saved !== null) setGmSeeAsPlayer(saved === 'true');
+      } catch {}
+      try {
+        const saved = localStorage.getItem(`fogSeeAllVision_${campaignId}`);
+        if (saved !== null) setGmSeeAllVision(saved === 'true');
+      } catch {}
+    }
+  }, [campaignId]);
+
+  useEffect(() => {
+    if (campaignId) {
+      try { localStorage.setItem(`fogSeeAsPlayer_${campaignId}`, String(gmSeeAsPlayer)); } catch {}
+    }
+  }, [gmSeeAsPlayer, campaignId]);
+
+  useEffect(() => {
+    if (campaignId) {
+      try { localStorage.setItem(`fogSeeAllVision_${campaignId}`, String(gmSeeAllVision)); } catch {}
+    }
+  }, [gmSeeAllVision, campaignId]);
+
+  useEffect(() => {
+    if (!isGM && currentUserId && tokens.length > 0 && characters.length > 0) {
+      const myTokens = tokens.filter(t => {
+        if (!t.characterId) return false;
+        const char = characters.find((c: any) => c.id === t.characterId);
+        return char && (char as any).userId === currentUserId;
+      });
+      if (myTokens.length > 0 && !selectedVisionTokenId) {
+        setSelectedVisionTokenId(myTokens[0].id);
+      } else if (myTokens.length > 0 && selectedVisionTokenId && !myTokens.find(t => t.id === selectedVisionTokenId)) {
+        setSelectedVisionTokenId(myTokens[0].id);
+      }
+    }
+  }, [isGM, currentUserId, tokens, characters, selectedVisionTokenId]);
+
   // Cleanup timers on unmount
   useEffect(() => {
     return () => {
@@ -3332,6 +3385,8 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
             onVisionPolygonsChange={setVisionPolygons}
             showDrawingTools={showDrawingTools}
             gmSeeAsPlayer={gmSeeAsPlayer}
+            selectedTokenId={isGM ? undefined : selectedVisionTokenId}
+            gmSeeAllVision={gmSeeAllVision}
           />
         )}
         
@@ -3380,6 +3435,8 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
           setShowDrawingTools={setShowDrawingTools}
           gmSeeAsPlayer={gmSeeAsPlayer}
           onGmSeeAsPlayerChange={setGmSeeAsPlayer}
+          gmSeeAllVision={gmSeeAllVision}
+          onGmSeeAllVisionChange={setGmSeeAllVision}
         />
       )}
 

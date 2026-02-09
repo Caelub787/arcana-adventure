@@ -109,7 +109,7 @@ function castRay(
       seg.x1, seg.y1, seg.x2, seg.y2
     );
 
-    if (hit && hit.t > 0) {
+    if (hit && hit.t > 1e-6) {
       const dist = hit.t * visionRadius;
       if (dist < closestDist) {
         closestDist = dist;
@@ -158,7 +158,7 @@ export function calculateVisionPolygon(
   const seen = new Set<string>();
   const uniqueResults: RayIntersection[] = [];
   for (const r of rayResults) {
-    const key = `${r.x.toFixed(1)},${r.y.toFixed(1)}`;
+    const key = `${r.x.toFixed(2)},${r.y.toFixed(2)}`;
     if (!seen.has(key)) {
       seen.add(key);
       uniqueResults.push(r);
@@ -186,7 +186,7 @@ export function isPointVisible(
       seg.x1, seg.y1, seg.x2, seg.y2
     );
 
-    if (hit && hit.t > 0 && hit.t < 1) {
+    if (hit && hit.t > 1e-6 && hit.t < 1) {
       return false;
     }
   }

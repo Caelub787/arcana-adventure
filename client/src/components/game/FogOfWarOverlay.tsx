@@ -63,9 +63,11 @@ interface FogOfWarOverlayProps {
   onVisionPolygonsChange?: (polygons: VisionPolygon[]) => void;
   showDrawingTools?: boolean;
   gmSeeAsPlayer?: boolean;
+  selectedTokenId?: string | null;
+  gmSeeAllVision?: boolean;
 }
 
-export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToolToggle, tokens = [], characters = [], currentUserId, onVisionPolygonsChange, showDrawingTools = true, gmSeeAsPlayer = false }: FogOfWarOverlayProps) {
+export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToolToggle, tokens = [], characters = [], currentUserId, onVisionPolygonsChange, showDrawingTools = true, gmSeeAsPlayer = false, selectedTokenId, gmSeeAllVision = false }: FogOfWarOverlayProps) {
   const queryClient = useQueryClient();
   const sceneId = scene?.id;
 
@@ -313,13 +315,20 @@ export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToo
     const isDayTime = scene?.isDayTime ?? true;
     const polys: VisionPolygon[] = [];
     
-    const playerTokens = currentUserId
-      ? tokens.filter(t => {
-          if (!t.characterId) return false;
-          const char = characters.find(c => c.id === t.characterId);
-          return char && char.userId === currentUserId;
-        })
-      : tokens;
+    let playerTokens: FogToken[];
+    if (gmSeeAllVision) {
+      playerTokens = tokens;
+    } else if (selectedTokenId) {
+      playerTokens = tokens.filter(t => t.id === selectedTokenId);
+    } else if (currentUserId) {
+      playerTokens = tokens.filter(t => {
+        if (!t.characterId) return false;
+        const char = characters.find(c => c.id === t.characterId);
+        return char && char.userId === currentUserId;
+      });
+    } else {
+      playerTokens = tokens;
+    }
     
     for (const token of playerTokens) {
       if ((token as any).isBlind) continue;
@@ -348,7 +357,7 @@ export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToo
     }
     
     return polys;
-  }, [fogEnabled, isGM, gmSeeAsPlayer, walls, doors, windows, tokens, characters, gridSize, scene?.isDayTime, currentUserId]);
+  }, [fogEnabled, isGM, gmSeeAsPlayer, walls, doors, windows, tokens, characters, gridSize, scene?.isDayTime, currentUserId, selectedTokenId, gmSeeAllVision]);
 
   const prevVisionPolygonsRef = useRef<string>('');
   useEffect(() => {
@@ -925,6 +934,8 @@ interface FogToolsPanelProps {
   setShowDrawingTools: (v: boolean) => void;
   gmSeeAsPlayer?: boolean;
   onGmSeeAsPlayerChange?: (val: boolean) => void;
+  gmSeeAllVision?: boolean;
+  onGmSeeAllVisionChange?: (val: boolean) => void;
 }
 
 export function FogToolsPanel({
@@ -953,6 +964,8 @@ export function FogToolsPanel({
   setShowDrawingTools,
   gmSeeAsPlayer,
   onGmSeeAsPlayerChange,
+  gmSeeAllVision,
+  onGmSeeAllVisionChange,
 }: FogToolsPanelProps) {
   const queryClient = useQueryClient();
   const sceneId = scene?.id;
@@ -1167,6 +1180,19 @@ export function FogToolsPanel({
           >
             <Eye className="h-3 w-3 mr-1" />
             {gmSeeAsPlayer ? 'Seeing as Player' : 'See as Player'}
+          </Button>
+        )}
+
+        {fogEnabled && gmSeeAsPlayer && (
+          <Button
+            variant="outline"
+            size="sm"
+            className={`h-7 w-full text-xs ${gmSeeAllVision ? 'bg-purple-900/50 border-purple-600 text-purple-300' : 'border-stone-600 text-stone-400'}`}
+            onClick={() => onGmSeeAllVisionChange?.(!gmSeeAllVision)}
+            data-testid="toggle-gm-see-all-vision"
+          >
+            <Layers className="h-3 w-3 mr-1" />
+            {gmSeeAllVision ? 'All Token Vision' : 'See All Vision'}
           </Button>
         )}
 

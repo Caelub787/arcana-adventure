@@ -368,6 +368,9 @@ function CampaignSpeciesFormDialog({ open, onOpenChange, onSave, initialData, is
     energyPerLevel: number | string;
     carryWeight: number | string;
     featTree: string;
+    visionType: string;
+    dayVisionDistance: number | string;
+    nightVisionDistance: number | string;
   }>({
     name: '',
     description: '',
@@ -386,6 +389,9 @@ function CampaignSpeciesFormDialog({ open, onOpenChange, onSave, initialData, is
     energyPerLevel: '',
     carryWeight: '',
     featTree: '',
+    visionType: 'normal',
+    dayVisionDistance: 120,
+    nightVisionDistance: 60,
   });
   
   const { toast } = useToast();
@@ -412,6 +418,9 @@ function CampaignSpeciesFormDialog({ open, onOpenChange, onSave, initialData, is
         energyPerLevel: (initialData as any)?.energyPerLevel ?? '',
         carryWeight: initialData?.carryWeight ?? '',
         featTree: initialData?.featTree || '',
+        visionType: (initialData as any)?.visionType || 'normal',
+        dayVisionDistance: (initialData as any)?.dayVisionDistance ?? 120,
+        nightVisionDistance: (initialData as any)?.nightVisionDistance ?? 60,
       });
     }
   }, [open, initialData]);
@@ -458,6 +467,9 @@ function CampaignSpeciesFormDialog({ open, onOpenChange, onSave, initialData, is
       startingMaxEnergy: Number(formData.startingMaxEnergy) || 10,
       energyPerLevel: Number(formData.energyPerLevel) || 6,
       carryWeight: Number(formData.carryWeight) || 50,
+      visionType: formData.visionType || 'normal',
+      dayVisionDistance: Number(formData.dayVisionDistance) || 120,
+      nightVisionDistance: Number(formData.nightVisionDistance) || 60,
     } as any);
   };
 
@@ -686,6 +698,48 @@ function CampaignSpeciesFormDialog({ open, onOpenChange, onSave, initialData, is
                   onChange={(e) => handleNumericChange('carryWeight', e.target.value)}
                   className="bg-stone-800 border-stone-700"
                   placeholder="50"
+                />
+              </div>
+
+              <div className="col-span-2 border-t border-stone-700 pt-3 mt-2">
+                <Label className="text-sm font-semibold text-stone-300">Vision</Label>
+              </div>
+
+              <div className="col-span-2">
+                <Label>Vision Type</Label>
+                <Select value={formData.visionType} onValueChange={(value) => setFormData({ ...formData, visionType: value })}>
+                  <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-campaign-species-visiontype">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="normal">Normal</SelectItem>
+                    <SelectItem value="darkvision">Darkvision</SelectItem>
+                    <SelectItem value="blindsight">Blindsight</SelectItem>
+                    <SelectItem value="truesight">Truesight</SelectItem>
+                    <SelectItem value="tremorsense">Tremorsense</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <Label>Day Vision Distance (ft)</Label>
+                <Input
+                  type="number"
+                  value={formData.dayVisionDistance}
+                  onChange={(e) => handleNumericChange('dayVisionDistance', e.target.value)}
+                  className="bg-stone-800 border-stone-700"
+                  data-testid="input-campaign-species-dayvision"
+                />
+              </div>
+
+              <div>
+                <Label>Night Vision Distance (ft)</Label>
+                <Input
+                  type="number"
+                  value={formData.nightVisionDistance}
+                  onChange={(e) => handleNumericChange('nightVisionDistance', e.target.value)}
+                  className="bg-stone-800 border-stone-700"
+                  data-testid="input-campaign-species-nightvision"
                 />
               </div>
 
