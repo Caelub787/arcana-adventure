@@ -191,6 +191,37 @@ export function calculateVisionPolygon(
   };
 }
 
+function pointInPolygon(px: number, py: number, poly: { x: number; y: number }[]): boolean {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const yi = poly[i].y, yj = poly[j].y;
+    if ((yi > py) !== (yj > py) &&
+        px < (poly[j].x - poly[i].x) * (py - yi) / (yj - yi) + poly[i].x) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+
+function clipSegmentToPolygon(
+  ax: number, ay: number, bx: number, by: number,
+  poly: { x: number; y: number }[]
+): { x: number; y: number }[] {
+  const intersections: { x: number; y: number; t: number }[] = [];
+  for (let i = 0; i < poly.length; i++) {
+    const j = (i + 1) % poly.length;
+    const hit = lineSegmentIntersection(
+      ax, ay, bx, by,
+      poly[i].x, poly[i].y, poly[j].x, poly[j].y
+    );
+    if (hit && hit.t > 1e-6 && hit.t < 1 - 1e-6) {
+      intersections.push({ x: hit.x, y: hit.y, t: hit.t });
+    }
+  }
+  intersections.sort((a, b) => a.t - b.t);
+  return intersections;
+}
+
 export function calculateVisionInLight(
   tokenX: number,
   tokenY: number,
@@ -209,21 +240,10 @@ export function calculateVisionInLight(
   }
 
   const lp = lightPoly.points;
-  const lightEdges: BlockingSegment[] = [];
-  for (let i = 0; i < lp.length; i++) {
-    const j = (i + 1) % lp.length;
-    lightEdges.push({
-      x1: lp[i].x, y1: lp[i].y,
-      x2: lp[j].x, y2: lp[j].y,
-      type: 'wall',
-    });
-  }
-
-  const combinedSegments = [...blockingSegments, ...lightEdges];
 
   const distToLight = Math.hypot(lightX - tokenX, lightY - tokenY);
   const insideLight = distToLight <= lightRadius;
-  const maxReach = distToLight + lightRadius;
+  const maxReach = distToLight + lightRadius + 50;
 
   const lightAngle = Math.atan2(lightY - tokenY, lightX - tokenX);
   const angularSpan = insideLight
@@ -233,18 +253,29 @@ export function calculateVisionInLight(
   const angles: number[] = [];
   const EPSILON = 0.0005;
 
-  for (const seg of combinedSegments) {
+  for (const seg of blockingSegments) {
     const a1 = Math.atan2(seg.y1 - tokenY, seg.x1 - tokenX);
     const a2 = Math.atan2(seg.y2 - tokenY, seg.x2 - tokenX);
-
     for (const a of [a1, a2]) {
       if (insideLight) {
         angles.push(a - EPSILON, a, a + EPSILON);
       } else {
-        let diff = normalizeAngle(a - lightAngle);
+        const diff = normalizeAngle(a - lightAngle);
         if (Math.abs(diff) <= angularSpan + 0.5) {
           angles.push(a - EPSILON, a, a + EPSILON);
         }
+      }
+    }
+  }
+
+  for (let i = 0; i < lp.length; i++) {
+    const a = Math.atan2(lp[i].y - tokenY, lp[i].x - tokenX);
+    if (insideLight) {
+      angles.push(a - EPSILON, a, a + EPSILON);
+    } else {
+      const diff = normalizeAngle(a - lightAngle);
+      if (Math.abs(diff) <= angularSpan + 0.5) {
+        angles.push(a - EPSILON, a, a + EPSILON);
       }
     }
   }
@@ -268,33 +299,49 @@ export function calculateVisionInLight(
     angles.push(a);
   }
 
+  const tokenInsideLight = pointInPolygon(tokenX, tokenY, lp);
   const rayResults: RayIntersection[] = [];
 
   for (const angle of angles) {
-    const ray = castRay(tokenX, tokenY, angle, maxReach, combinedSegments);
+    const ray = castRay(tokenX, tokenY, angle, maxReach, blockingSegments);
+    const wallDist = ray.dist;
 
-    const dx = ray.x - lightX;
-    const dy = ray.y - lightY;
-    const distSqFromLight = dx * dx + dy * dy;
-    const radiusSqTolerance = (lightRadius + 2) * (lightRadius + 2);
+    const crossings = clipSegmentToPolygon(tokenX, tokenY, ray.x, ray.y, lp);
 
-    if (distSqFromLight <= radiusSqTolerance) {
-      const nudge = 0.5;
-      const dirToLightX = lightX - ray.x;
-      const dirToLightY = lightY - ray.y;
-      const dirLen = Math.sqrt(dirToLightX * dirToLightX + dirToLightY * dirToLightY);
-      const px = dirLen > 0.01 ? ray.x + (dirToLightX / dirLen) * nudge : ray.x;
-      const py = dirLen > 0.01 ? ray.y + (dirToLightY / dirLen) * nudge : ray.y;
-      let inPoly = false;
-      for (let i = 0, j = lp.length - 1; i < lp.length; j = i++) {
-        const yi = lp[i].y, yj = lp[j].y;
-        if ((yi > py) !== (yj > py) && px < (lp[j].x - lp[i].x) * (py - yi) / (yj - yi) + lp[i].x) {
-          inPoly = !inPoly;
+    let bestX = 0, bestY = 0, bestDist = -1;
+
+    if (crossings.length === 0) {
+      if (tokenInsideLight) {
+        bestX = ray.x;
+        bestY = ray.y;
+        bestDist = wallDist;
+      }
+    } else {
+      let inside = tokenInsideLight;
+
+      for (const c of crossings) {
+        const cDist = Math.hypot(c.x - tokenX, c.y - tokenY);
+        if (inside && cDist <= wallDist + 1) {
+          if (cDist > bestDist) {
+            bestX = c.x;
+            bestY = c.y;
+            bestDist = cDist;
+          }
+        }
+        inside = !inside;
+      }
+
+      if (inside && wallDist > bestDist) {
+        if (pointInPolygon(ray.x, ray.y, lp)) {
+          bestX = ray.x;
+          bestY = ray.y;
+          bestDist = wallDist;
         }
       }
-      if (inPoly) {
-        rayResults.push(ray);
-      }
+    }
+
+    if (bestDist > 0) {
+      rayResults.push({ x: bestX, y: bestY, dist: bestDist, angle });
     }
   }
 
@@ -312,7 +359,7 @@ export function calculateVisionInLight(
       lastAngle = r.angle;
     } else if (uniqueResults.length > 0) {
       const prev = uniqueResults[uniqueResults.length - 1];
-      if (r.dist < prev.dist) {
+      if (r.dist > prev.dist) {
         uniqueResults[uniqueResults.length - 1] = r;
       }
     }
