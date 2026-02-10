@@ -3635,8 +3635,7 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
   const clickCountRef = useRef(0);
   const queryClient = useQueryClient();
   
-  // Long-press modifier popup state
-  const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
+  // Modifier popup state
   const [showModifierPopup, setShowModifierPopup] = useState(false);
   const [extraModifier, setExtraModifier] = useState(0);
   const [hasAdvantage, setHasAdvantage] = useState(false);
@@ -3922,10 +3921,10 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
 
   // Handle attack roll (1d20 + attribute modifier)
   // Options allow for extra modifiers and advantage/disadvantage from the popup
-  const handleAttackRoll = async (options?: { extraMod?: number; advantage?: boolean; disadvantage?: boolean }) => {
+  const handleAttackRoll = async (options?: { extraMod?: number; advantage?: boolean; disadvantage?: boolean }): Promise<{ hit: boolean } | null | undefined> => {
     // Allow weapons and damaging consumables
     const isDamagingConsumable = itemData && itemData.itemType === 'consumable' && itemData.isDamaging;
-    if (!itemData || (itemData.itemType !== 'weapon' && !isDamagingConsumable)) return;
+    if (!itemData || (itemData.itemType !== 'weapon' && !isDamagingConsumable)) return null;
     
     // Guard: prevent using exhausted damaging consumables
     if (isDamagingConsumable && (itemData.quantity || 1) <= 0) {
@@ -3938,7 +3937,7 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
         characterName: character.name,
         calculationBreakdown: 'No consumables remaining',
       });
-      return;
+      return null;
     }
     
     // Check if ranged weapon requires ammunition (skip for damaging consumables)
@@ -3957,7 +3956,7 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
         username: character.name || 'Unknown',
         characterName: character.name,
       });
-      return;
+      return null;
     }
     
     // Get targeting data for range check and hit detection
@@ -3997,7 +3996,7 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
           characterName: character.name,
           calculationBreakdown: `Target not within range (${Math.floor(distance)}ft > ${weaponRange}ft)`,
         });
-        return;
+        return null;
       }
     }
     
@@ -4045,25 +4044,30 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     const isCritFailure = roll === 1;  // Natural 1
     let hitStatus = '';
     let hitLabel = '';
+    let isHit = false;
     
     // Check for hit/miss when targeting a token with a linked character
     // Use character data if available, otherwise use defaults for enemy tokens
-    if (targetedTokenId && targetData?.characterId) {
+    if (targetedTokenId && targetData) {
       const targetDC = targetData.character?.naturalArmor || 10; // Default DC is 10 if no naturalArmor or no character data
       const targetName = targetData.character?.name || targetData.token?.name || 'Target';
       
       if (isCritSuccess) {
         hitStatus = ' - Crit Success!';
         hitLabel = `vs ${targetName} (DC ${targetDC}) - Crit Success!`;
+        isHit = true;
       } else if (isCritFailure) {
         hitStatus = ' - Crit Failure!';
         hitLabel = `vs ${targetName} (DC ${targetDC}) - Crit Failure!`;
+        isHit = false;
       } else if (total >= targetDC) {
         hitStatus = ' - HIT!';
         hitLabel = `vs ${targetName} (DC ${targetDC}) - HIT!`;
+        isHit = true;
       } else {
         hitStatus = ' - MISS!';
         hitLabel = `vs ${targetName} (DC ${targetDC}) - MISS!`;
+        isHit = false;
       }
     }
     
@@ -4127,6 +4131,8 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
         console.error('Failed to update weapon durability:', err);
       }
     }
+    
+    return targetedTokenId ? { hit: isHit } : null;
   };
 
   // Apply damage to target character with armor damage reduction
@@ -4436,27 +4442,6 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     }
   };
 
-  // Long-press handlers for opening modifier popup
-  const handlePointerDown = () => {
-    if (!isClickable) return;
-    longPressTimerRef.current = setTimeout(() => {
-      setShowModifierPopup(true);
-    }, 500); // 500ms hold to open popup
-  };
-  
-  const handlePointerUp = () => {
-    if (longPressTimerRef.current) {
-      clearTimeout(longPressTimerRef.current);
-      longPressTimerRef.current = null;
-    }
-  };
-  
-  const handlePointerLeave = () => {
-    if (longPressTimerRef.current) {
-      clearTimeout(longPressTimerRef.current);
-      longPressTimerRef.current = null;
-    }
-  };
   
   // Execute roll from modifier popup
   const handleModifiedAttackRoll = async () => {
@@ -5268,8 +5253,8 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
   };
 
   // Handle spell attack roll (1d20 + attribute modifier)
-  const handleSpellAttackRoll = async () => {
-    if (!spellData) return;
+  const handleSpellAttackRoll = async (): Promise<{ hit: boolean } | null | undefined> => {
+    if (!spellData) return null;
     
     // Check if there's a locked AoE marker on the map - validate spell matches
     if (aoeTargetState?.active && aoeTargetState?.locked && aoeTargetState?.spell) {
@@ -5284,7 +5269,7 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
           characterName: character.name,
           calculationBreakdown: `Cannot use "${spellData.name}" - AoE marker is set for "${aoeTargetState.spell?.name}". Cancel the AoE or use the correct spell.`,
         });
-        return;
+        return null;
       }
     }
     
@@ -5294,7 +5279,7 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
       const casterToken = tokens?.find((t: any) => t.characterId === character.id);
       if (casterToken) {
         onEnterAoeMode(spellData, casterToken.id);
-        return;
+        return null;
       } else {
         triggerRollNotification({
           type: 'system',
@@ -5305,7 +5290,7 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
           characterName: character.name,
           calculationBreakdown: 'You need a token on the map to cast AoE spells',
         });
-        return;
+        return null;
       }
     }
     
@@ -5323,7 +5308,7 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
         characterName: character.name,
         calculationBreakdown: `${spellData.name} requires ${energyCost} energy but you only have ${currentEnergy}.`,
       });
-      return;
+      return null;
     }
     
     // Deduct energy cost
@@ -5346,23 +5331,56 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
       ? `1d20 = ${roll} + ${attrDisplayName} (${attrMod >= 0 ? '+' : ''}${attrMod})`
       : `1d20 = ${roll}`;
     
+    // Determine hit/miss status if targeting
+    const isCritSuccess = roll === 20;
+    const isCritFailure = roll === 1;
+    let hitStatus = '';
+    let hitLabel = '';
+    let isHit = false;
+    const targetData = getTargetData();
+    
+    if (targetedTokenId && targetData) {
+      const targetDC = targetData.character?.naturalArmor || 10;
+      const targetName = targetData.character?.name || targetData.token?.name || 'Target';
+      
+      if (isCritSuccess) {
+        hitStatus = ' - Crit Success!';
+        hitLabel = `vs ${targetName} (DC ${targetDC}) - Crit Success!`;
+        isHit = true;
+      } else if (isCritFailure) {
+        hitStatus = ' - Crit Failure!';
+        hitLabel = `vs ${targetName} (DC ${targetDC}) - Crit Failure!`;
+        isHit = false;
+      } else if (total >= targetDC) {
+        hitStatus = ' - HIT!';
+        hitLabel = `vs ${targetName} (DC ${targetDC}) - HIT!`;
+        isHit = true;
+      } else {
+        hitStatus = ' - MISS!';
+        hitLabel = `vs ${targetName} (DC ${targetDC}) - MISS!`;
+        isHit = false;
+      }
+    }
+    
     const rollLabel = spellData.isAttack !== false ? 'Attack' : 'Use';
     triggerRollNotification({
       type: 'attack',
       dieType: 'd20',
-      label: `${spellData.name} ${rollLabel}`,
+      label: `${spellData.name} ${rollLabel}${hitStatus}`,
       result: roll,
       modifier: attrMod,
       total,
       username: character.name || 'Unknown',
       characterName: character.name,
-      calculationBreakdown,
+      calculationBreakdown: hitLabel ? `${calculationBreakdown} ${hitLabel}` : calculationBreakdown,
     });
     
     if (character.campaignId) {
-      const chatText = `${spellData.name} ${rollLabel}: ${calculationBreakdown} = ${total}`;
+      const chatText = `${spellData.name} ${rollLabel}: ${calculationBreakdown} = ${total}${hitStatus}`;
       gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', chatText, 'roll');
     }
+    
+    return targetedTokenId ? { hit: isHit } : null;
   };
 
   // Helper to normalize spell AoE properties for comparison
@@ -5550,33 +5568,54 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     }
   };
 
-  // Handle click with single/double/triple click detection
+  // Handle click with single/double click detection
   const handleClick = () => {
-    // Handle trait clicks
+    // Handle trait clicks (single = roll, double = modifier popup)
     if (isTraitClickable) {
-      handleTraitRoll();
+      clickCountRef.current += 1;
+      if (clickTimerRef.current) clearTimeout(clickTimerRef.current);
+      clickTimerRef.current = setTimeout(() => {
+        if (clickCountRef.current === 1) {
+          handleTraitRoll();
+        } else if (clickCountRef.current >= 2) {
+          setShowModifierPopup(true);
+        }
+        clickCountRef.current = 0;
+      }, 250);
       return;
     }
 
-    // Handle skill clicks
+    // Handle skill clicks (single = roll, double = modifier popup)
     if (isSkillClickable) {
-      handleSkillRoll();
+      clickCountRef.current += 1;
+      if (clickTimerRef.current) clearTimeout(clickTimerRef.current);
+      clickTimerRef.current = setTimeout(() => {
+        if (clickCountRef.current === 1) {
+          handleSkillRoll();
+        } else if (clickCountRef.current >= 2) {
+          setShowModifierPopup(true);
+        }
+        clickCountRef.current = 0;
+      }, 250);
       return;
     }
     
-    // Handle spell clicks (single = attack, double = damage)
+    // Handle spell clicks (single with target = attack+auto damage, single without = modifier popup, double = modifier popup)
     if (isSpellClickable) {
       clickCountRef.current += 1;
-      
-      if (clickTimerRef.current) {
-        clearTimeout(clickTimerRef.current);
-      }
-      
-      clickTimerRef.current = setTimeout(() => {
+      if (clickTimerRef.current) clearTimeout(clickTimerRef.current);
+      clickTimerRef.current = setTimeout(async () => {
         if (clickCountRef.current === 1) {
-          handleSpellAttackRoll();
+          if (targetedTokenId) {
+            const result = await handleSpellAttackRoll();
+            if (result?.hit) {
+              await handleSpellDamageRoll();
+            }
+          } else {
+            setShowModifierPopup(true);
+          }
         } else if (clickCountRef.current >= 2) {
-          handleSpellDamageRoll();
+          setShowModifierPopup(true);
         }
         clickCountRef.current = 0;
       }, 250);
@@ -5586,21 +5625,13 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     // Handle throwable items (single = throw, double = normal damage, triple = detonate with AOE damage)
     if (isThrowableClickable) {
       clickCountRef.current += 1;
-      
-      if (clickTimerRef.current) {
-        clearTimeout(clickTimerRef.current);
-      }
-      
-      // Use longer timeout (500ms) for triple-click detection
+      if (clickTimerRef.current) clearTimeout(clickTimerRef.current);
       clickTimerRef.current = setTimeout(() => {
         if (clickCountRef.current === 1) {
-          // Single-click: Throw item to targeted token or grid space
           handleThrowItem();
         } else if (clickCountRef.current === 2) {
-          // Double-click: Roll normal damage (like regular weapons)
           handleDamageRoll();
         } else if (clickCountRef.current >= 3) {
-          // Triple-click: Detonate all thrown items with AOE damage
           handleDetonateThrowables();
         }
         clickCountRef.current = 0;
@@ -5608,37 +5639,32 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
       return;
     }
     
-    // Handle weapons and damaging consumables
+    // Handle weapons and damaging consumables (single with target = attack+auto damage, single without = modifier popup, double = modifier popup)
     const isWeaponOrDamagingConsumable = itemData && (itemData.itemType === 'weapon' || (itemData.itemType === 'consumable' && itemData.isDamaging));
     if (!isWeaponOrDamagingConsumable) return;
     
     clickCountRef.current += 1;
-    
-    if (clickTimerRef.current) {
-      clearTimeout(clickTimerRef.current);
-    }
-    
-    clickTimerRef.current = setTimeout(() => {
+    if (clickTimerRef.current) clearTimeout(clickTimerRef.current);
+    clickTimerRef.current = setTimeout(async () => {
       try {
         if (clickCountRef.current === 1) {
-          handleAttackRoll().catch(err => console.error("[HandleAttackRoll] Error:", err));
+          if (targetedTokenId) {
+            const result = await handleAttackRoll();
+            if (result?.hit) {
+              await handleDamageRoll();
+            }
+          } else {
+            setShowModifierPopup(true);
+          }
         } else if (clickCountRef.current >= 2) {
-          handleDamageRoll().catch(err => console.error("[HandleDamageRoll] Error:", err));
+          setShowModifierPopup(true);
         }
       } catch (err) {
-        console.error("[HotbarTimeout] Error:", err);
+        console.error('[HotbarTimeout] Error:', err);
       }
       clickCountRef.current = 0;
     }, 250);
-
-
-
-
-
-
-
-
-  };
+    };
 
   // Determine what to display
   let content = null;
@@ -5678,7 +5704,7 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
         {spellData.attribute && <p className="text-sm">{spellData.isAttack !== false ? 'Attack' : 'Attribute'}: {spellData.attribute}</p>}
         {spellData.rangeNum && <p className="text-sm">Range: {spellData.rangeNum}ft</p>}
         <p className="text-sm text-cyan-400">Energy: {energyCost}</p>
-        <p className="text-xs text-stone-400 mt-1">{spellData.isAttack !== false ? 'Click: Attack | Double-click: Damage' : 'Click: Use | Double-click: Effect'}</p>
+        <p className="text-xs text-stone-400 mt-1">{spellData.isAttack !== false ? 'Click: Attack | Double-click: Modifiers' : 'Click: Use | Double-click: Modifiers'}</p>
       </>
     );
   } else if (hotbar?.itemId && itemData) {
@@ -5730,7 +5756,7 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
         {isThrowableClickable ? (
           <p className="text-xs text-stone-400 mt-1">Click: Throw | 2x: Damage | 3x: Detonate AOE</p>
         ) : isClickable && (
-          <p className="text-xs text-stone-400 mt-1">Click: Attack | Double-click: Damage</p>
+          <p className="text-xs text-stone-400 mt-1">Click: Attack | Double-click: Modifiers</p>
         )}
       </>
     );
@@ -5748,7 +5774,7 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
       <>
         <p className="font-bold">{hotbar.skillName}</p>
         <p className="text-sm">Modifier: +{skillMod}</p>
-        <p className="text-xs text-stone-400 mt-1">Click to roll | Hold for modifiers</p>
+        <p className="text-xs text-stone-400 mt-1">Click to roll | Double-click for modifiers</p>
       </>
     );
   } else if (hotbar?.traitId && traitData) {
@@ -5776,7 +5802,7 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
         </p>
         {isExhausted 
           ? <p className="text-xs text-red-400 mt-1">No uses remaining - take a long rest</p>
-          : <p className="text-xs text-stone-400 mt-1">Click to roll | Hold for modifiers</p>
+          : <p className="text-xs text-stone-400 mt-1">Click to roll | Double-click for modifiers</p>
         }
       </>
     );
@@ -5798,10 +5824,7 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
           <TooltipTrigger asChild>
             <div
               onClick={isClickable ? handleClick : undefined}
-              onPointerDown={handlePointerDown}
-              onPointerUp={handlePointerUp}
-              onPointerLeave={handlePointerLeave}
-              onContextMenu={(e) => { e.preventDefault(); if (isClickable) setShowModifierPopup(true); }}
+              onContextMenu={(e) => e.preventDefault()}
               className={`
                 w-11 h-11 md:w-16 md:h-16 rounded border flex items-center justify-center text-[9px] md:text-[12px]
                 ${content 
@@ -5823,7 +5846,7 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
           {tooltipContent && (
             <TooltipContent>
               {tooltipContent}
-              {isClickable && <p className="text-xs text-stone-400 mt-1">Hold for modifiers</p>}
+              {isClickable && <p className="text-xs text-stone-400 mt-1">Double-click for modifiers</p>}
             </TooltipContent>
           )}
         </Tooltip>
