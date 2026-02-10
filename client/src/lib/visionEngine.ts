@@ -191,16 +191,21 @@ export function calculateVisionPolygon(
   };
 }
 
-function isPointInPolygon(px: number, py: number, polygon: { x: number; y: number }[]): boolean {
-  let inside = false;
-  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-    const xi = polygon[i].x, yi = polygon[i].y;
-    const xj = polygon[j].x, yj = polygon[j].y;
-    if ((yi > py) !== (yj > py) && px < (xj - xi) * (py - yi) / (yj - yi) + xi) {
-      inside = !inside;
-    }
-  }
-  return inside;
+function rayCircleClip(
+  ox: number, oy: number, cosA: number, sinA: number,
+  cx: number, cy: number, radius: number
+): { entry: number; exit: number } | null {
+  const fx = ox - cx;
+  const fy = oy - cy;
+  const b = 2 * (fx * cosA + fy * sinA);
+  const c = fx * fx + fy * fy - radius * radius;
+  const disc = b * b - 4 * c;
+  if (disc < 0) return null;
+  const sqrtDisc = Math.sqrt(disc);
+  const t1 = (-b - sqrtDisc) / 2;
+  const t2 = (-b + sqrtDisc) / 2;
+  if (t2 < 1e-6) return null;
+  return { entry: t1, exit: t2 };
 }
 
 export function calculateVisionInLight(
@@ -215,22 +220,6 @@ export function calculateVisionInLight(
     return { tokenX, tokenY, radius: lightRadius, points: [] };
   }
 
-  const lightPoly = calculateVisionPolygon(lightX, lightY, lightRadius, blockingSegments);
-  if (lightPoly.points.length < 3) {
-    return { tokenX, tokenY, radius: lightRadius, points: [] };
-  }
-
-  const lightEdges: BlockingSegment[] = [];
-  const lp = lightPoly.points;
-  for (let i = 0; i < lp.length; i++) {
-    const j = (i + 1) % lp.length;
-    lightEdges.push({
-      x1: lp[i].x, y1: lp[i].y,
-      x2: lp[j].x, y2: lp[j].y,
-      type: 'wall',
-    });
-  }
-
   const distToLight = Math.hypot(lightX - tokenX, lightY - tokenY);
   const insideLight = distToLight <= lightRadius;
   const maxReach = distToLight + lightRadius;
@@ -243,8 +232,7 @@ export function calculateVisionInLight(
   const angles: number[] = [];
   const EPSILON = 0.0005;
 
-  const allSegs = [...blockingSegments, ...lightEdges];
-  for (const seg of allSegs) {
+  for (const seg of blockingSegments) {
     const a1 = Math.atan2(seg.y1 - tokenY, seg.x1 - tokenX);
     const a2 = Math.atan2(seg.y2 - tokenY, seg.x2 - tokenX);
 
@@ -282,22 +270,31 @@ export function calculateVisionInLight(
   const rayResults: RayIntersection[] = [];
 
   for (const angle of angles) {
+    const cosA = Math.cos(angle);
+    const sinA = Math.sin(angle);
+
+    const circle = rayCircleClip(tokenX, tokenY, cosA, sinA, lightX, lightY, lightRadius);
+    if (!circle) continue;
+
     const ray = castRay(tokenX, tokenY, angle, maxReach, blockingSegments);
+    const wallDist = ray.dist;
 
-    const px = ray.x;
-    const py = ray.y;
-    const distFromLight = Math.hypot(px - lightX, py - lightY);
+    const effectiveEntry = Math.max(circle.entry, 1e-6);
+    if (effectiveEntry > wallDist + 0.5) continue;
 
-    if (distFromLight <= lightRadius + 0.5 && isPointInPolygon(px, py, lp)) {
-      rayResults.push(ray);
+    const clipDist = Math.min(wallDist, circle.exit);
+
+    const clipX = tokenX + cosA * clipDist;
+    const clipY = tokenY + sinA * clipDist;
+
+    if (isPointVisible(lightX, lightY, clipX, clipY, blockingSegments)) {
+      rayResults.push({ x: clipX, y: clipY, dist: clipDist, angle });
     } else {
-      const edgeRay = castRay(tokenX, tokenY, angle, maxReach, lightEdges);
-      const epx = edgeRay.x;
-      const epy = edgeRay.y;
-      const edgeDistFromLight = Math.hypot(epx - lightX, epy - lightY);
-
-      if (edgeDistFromLight <= lightRadius + 1 && edgeRay.dist < ray.dist + 0.5) {
-        rayResults.push(edgeRay);
+      const midDist = (effectiveEntry + clipDist) / 2;
+      const midX = tokenX + cosA * midDist;
+      const midY = tokenY + sinA * midDist;
+      if (isPointVisible(lightX, lightY, midX, midY, blockingSegments)) {
+        rayResults.push({ x: midX, y: midY, dist: midDist, angle });
       }
     }
   }
