@@ -1710,9 +1710,6 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
           top: '-9000px',
           transformOrigin: "0 0",
           willChange: 'transform',
-          backfaceVisibility: 'hidden',
-          perspective: 1000,
-          WebkitOverflowScrolling: 'touch'
         }}
         onPointerDown={handleMapPointerDown}
         onPointerMove={handleMapPointerMove}
@@ -1868,10 +1865,6 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
             left: '9000px',
             top: '9000px',
             transformOrigin: 'top left',
-            willChange: 'transform',
-            transform: 'translateZ(0)',
-            imageRendering: 'auto',
-            backfaceVisibility: 'hidden'
           }}
           draggable={false}
         />
@@ -2165,7 +2158,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                 top: displayY + 9000 + tokenOffset,
                 opacity: isInvisible ? 0.4 : 1,
                 willChange: isDragging ? 'transform' : 'auto',
-                transform: isDragging ? 'scale(1.1) translateZ(0)' : 'translateZ(0)',
+                transform: isDragging ? 'scale(1.1)' : undefined,
                 contain: 'layout style'
               }}
               aria-label={`${token.type} token`}

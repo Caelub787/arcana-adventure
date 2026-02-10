@@ -390,6 +390,21 @@ export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToo
     return tokens.map(t => `${t.id}:${t.x}:${t.y}:${t.characterId}:${(t as any).isBlind}:${t.visionOverrideDistance}:${t.visionOverrideType}`).join('|');
   }, [fogEnabled, tokens]);
 
+  const [debouncedTokenKey, setDebouncedTokenKey] = useState(tokenPositionKey);
+  const tokenKeyTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    if (tokenKeyTimerRef.current) {
+      clearTimeout(tokenKeyTimerRef.current);
+    }
+    tokenKeyTimerRef.current = setTimeout(() => {
+      setDebouncedTokenKey(tokenPositionKey);
+    }, 100);
+    return () => {
+      if (tokenKeyTimerRef.current) clearTimeout(tokenKeyTimerRef.current);
+    };
+  }, [tokenPositionKey]);
+
   const visionPolygons = useMemo(() => {
     if (!fogEnabled) return [];
     if (isGM && !gmSeeAsPlayer) return [];
@@ -434,7 +449,7 @@ export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToo
     }
     
     return polys;
-  }, [fogEnabled, isGM, gmSeeAsPlayer, blockingSegs, tokenPositionKey, characters, gridSize, scene?.isDayTime, currentUserId, selectedTokenId, gmSeeAllVision]);
+  }, [fogEnabled, isGM, gmSeeAsPlayer, blockingSegs, debouncedTokenKey, characters, gridSize, scene?.isDayTime, currentUserId, selectedTokenId, gmSeeAllVision]);
 
   const cachedLightPolygons = useMemo(() => {
     if (!fogEnabled) return new Map<string, VisionPolygon>();
@@ -493,7 +508,7 @@ export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToo
     }
     
     return polys;
-  }, [fogEnabled, isGM, gmSeeAsPlayer, blockingSegs, lights, gridSize, tokenPositionKey, selectedTokenId, gmSeeAllVision, cachedLightPolygons]);
+  }, [fogEnabled, isGM, gmSeeAsPlayer, blockingSegs, lights, gridSize, debouncedTokenKey, selectedTokenId, gmSeeAllVision, cachedLightPolygons]);
 
   const prevVisionKeyRef = useRef<string>('');
   useEffect(() => {
@@ -628,11 +643,32 @@ export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToo
     if (fogExploredMemory) {
       const cellSize = gridSize;
       const exploredHoleParts: string[] = [];
+      const rowMap = new Map<number, number[]>();
       exploredCells.forEach((key) => {
         const [col, row] = key.split(',').map(Number);
-        const x = col * cellSize + MAP_OFFSET;
-        const y = row * cellSize + MAP_OFFSET;
-        exploredHoleParts.push(`M ${x} ${y} L ${x + cellSize} ${y} L ${x + cellSize} ${y + cellSize} L ${x} ${y + cellSize} Z`);
+        if (!rowMap.has(row)) rowMap.set(row, []);
+        rowMap.get(row)!.push(col);
+      });
+
+      rowMap.forEach((cols, row) => {
+        cols.sort((a, b) => a - b);
+        let runStart = cols[0];
+        let runEnd = cols[0];
+
+        for (let i = 1; i <= cols.length; i++) {
+          if (i < cols.length && cols[i] === runEnd + 1) {
+            runEnd = cols[i];
+          } else {
+            const x = runStart * cellSize + MAP_OFFSET;
+            const y = row * cellSize + MAP_OFFSET;
+            const w = (runEnd - runStart + 1) * cellSize;
+            exploredHoleParts.push(`M ${x} ${y} L ${x + w} ${y} L ${x + w} ${y + cellSize} L ${x} ${y + cellSize} Z`);
+            if (i < cols.length) {
+              runStart = cols[i];
+              runEnd = cols[i];
+            }
+          }
+        }
       });
       const exploredHoles = exploredHoleParts.join(' ');
 
@@ -666,11 +702,10 @@ export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToo
         height: 20000,
         left: 0,
         top: 0,
-        overflow: 'visible',
-        zIndex: 100,
-        contain: 'layout style paint',
+        overflow: 'hidden',
+        zIndex: 5,
       }}
-      shapeRendering="optimizeSpeed"
+      shapeRendering="crispEdges"
       data-testid="fog-of-war-overlay"
     >
       {lightGradientDefs}
