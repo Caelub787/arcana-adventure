@@ -9861,7 +9861,7 @@ export default function Campaign() {
                : character;
              if (!sheetChar?.id) return null;
              return (
-               <div className="absolute bottom-[105px] md:bottom-[120px] right-4 z-[60] pointer-events-auto" data-testid="btn-character-overview">
+               <div className="absolute bottom-[105px] md:bottom-[140px] right-4 z-[60] pointer-events-auto" data-testid="btn-character-overview">
                  <button
                    className="flex items-center gap-2 px-3 py-2 rounded-lg bg-stone-800/95 border border-stone-600 hover:border-amber-500 hover:bg-stone-700 text-stone-200 hover:text-amber-400 transition-all shadow-lg backdrop-blur-sm"
                    onClick={() => {
