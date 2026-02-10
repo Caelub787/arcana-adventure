@@ -122,6 +122,12 @@ function castRay(
   return { x: closestX, y: closestY, dist: closestDist, angle };
 }
 
+function normalizeAngle(a: number): number {
+  while (a > Math.PI) a -= 2 * Math.PI;
+  while (a < -Math.PI) a += 2 * Math.PI;
+  return a;
+}
+
 export function calculateVisionPolygon(
   tokenX: number,
   tokenY: number,
@@ -133,17 +139,25 @@ export function calculateVisionPolygon(
   }
 
   const angles: number[] = [];
-  const EPSILON = 0.001;
+  const EPSILON = 0.0005;
 
   for (const seg of blockingSegments) {
-    const a1 = Math.atan2(seg.y1 - tokenY, seg.x1 - tokenX);
-    const a2 = Math.atan2(seg.y2 - tokenY, seg.x2 - tokenX);
+    const dx1 = seg.x1 - tokenX;
+    const dy1 = seg.y1 - tokenY;
+    const dx2 = seg.x2 - tokenX;
+    const dy2 = seg.y2 - tokenY;
+    const dist1 = Math.hypot(dx1, dy1);
+    const dist2 = Math.hypot(dx2, dy2);
+    if (dist1 > visionRadius * 1.5 && dist2 > visionRadius * 1.5) continue;
+
+    const a1 = Math.atan2(dy1, dx1);
+    const a2 = Math.atan2(dy2, dx2);
 
     angles.push(a1 - EPSILON, a1, a1 + EPSILON);
     angles.push(a2 - EPSILON, a2, a2 + EPSILON);
   }
 
-  const STEP = Math.PI / 36;
+  const STEP = Math.PI / 90;
   for (let a = -Math.PI; a < Math.PI; a += STEP) {
     angles.push(a);
   }
@@ -155,13 +169,17 @@ export function calculateVisionPolygon(
 
   rayResults.sort((a, b) => a.angle - b.angle);
 
-  const seen = new Set<string>();
   const uniqueResults: RayIntersection[] = [];
+  let lastAngle = -Infinity;
   for (const r of rayResults) {
-    const key = `${r.x.toFixed(2)},${r.y.toFixed(2)}`;
-    if (!seen.has(key)) {
-      seen.add(key);
+    if (r.angle - lastAngle > 1e-6) {
       uniqueResults.push(r);
+      lastAngle = r.angle;
+    } else if (uniqueResults.length > 0) {
+      const prev = uniqueResults[uniqueResults.length - 1];
+      if (r.dist < prev.dist) {
+        uniqueResults[uniqueResults.length - 1] = r;
+      }
     }
   }
 
@@ -171,6 +189,28 @@ export function calculateVisionPolygon(
     radius: visionRadius,
     points: uniqueResults.map(r => ({ x: r.x, y: r.y })),
   };
+}
+
+function rayCircleIntersection(
+  ox: number, oy: number, cosA: number, sinA: number,
+  cx: number, cy: number, radius: number,
+  inside: boolean
+): number {
+  const fx = ox - cx;
+  const fy = oy - cy;
+  const b = 2 * (fx * cosA + fy * sinA);
+  const c = fx * fx + fy * fy - radius * radius;
+  const disc = b * b - 4 * c;
+  if (disc < 0) return -1;
+  const sqrtDisc = Math.sqrt(disc);
+  const t1 = (-b - sqrtDisc) / 2;
+  const t2 = (-b + sqrtDisc) / 2;
+  if (inside) {
+    return t2 > 1e-6 ? t2 : -1;
+  }
+  if (t1 > 1e-6) return t1;
+  if (t2 > 1e-6) return t2;
+  return -1;
 }
 
 export function calculateVisionInLight(
@@ -186,26 +226,24 @@ export function calculateVisionInLight(
   }
 
   const distToLight = Math.hypot(lightX - tokenX, lightY - tokenY);
-  const maxReach = distToLight + lightRadius;
   const insideLight = distToLight <= lightRadius;
+  const maxReach = distToLight + lightRadius;
 
   const lightAngle = Math.atan2(lightY - tokenY, lightX - tokenX);
-  const angularSpan = insideLight 
-    ? Math.PI 
+  const angularSpan = insideLight
+    ? Math.PI
     : Math.asin(Math.min(1, lightRadius / Math.max(1, distToLight)));
 
   const angles: number[] = [];
-  const EPSILON = 0.001;
+  const EPSILON = 0.0005;
 
   for (const seg of blockingSegments) {
     const a1 = Math.atan2(seg.y1 - tokenY, seg.x1 - tokenX);
     const a2 = Math.atan2(seg.y2 - tokenY, seg.x2 - tokenX);
-    
+
     for (const a of [a1, a2]) {
-      let diff = a - lightAngle;
-      while (diff > Math.PI) diff -= 2 * Math.PI;
-      while (diff < -Math.PI) diff += 2 * Math.PI;
-      if (insideLight || Math.abs(diff) <= angularSpan + 0.5) {
+      let diff = normalizeAngle(a - lightAngle);
+      if (insideLight || Math.abs(diff) <= angularSpan + 0.3) {
         angles.push(a - EPSILON, a, a + EPSILON);
       }
     }
@@ -223,7 +261,7 @@ export function calculateVisionInLight(
     );
   }
 
-  const STEP = Math.PI / 72;
+  const STEP = Math.PI / 90;
   const sweepStart = insideLight ? -Math.PI : lightAngle - angularSpan - STEP;
   const sweepEnd = insideLight ? Math.PI : lightAngle + angularSpan + STEP;
   for (let a = sweepStart; a <= sweepEnd; a += STEP) {
@@ -231,45 +269,28 @@ export function calculateVisionInLight(
   }
 
   const rayResults: RayIntersection[] = [];
+
   for (const angle of angles) {
+    const cosA = Math.cos(angle);
+    const sinA = Math.sin(angle);
     const ray = castRay(tokenX, tokenY, angle, maxReach, blockingSegments);
+    const wallDist = ray.dist;
 
     const dx = ray.x - lightX;
     const dy = ray.y - lightY;
     const distFromLight = Math.hypot(dx, dy);
 
-    if (distFromLight <= lightRadius) {
+    if (distFromLight <= lightRadius + 0.5) {
       rayResults.push(ray);
     } else {
-      const cosA = Math.cos(angle);
-      const sinA = Math.sin(angle);
-      const fx = tokenX - lightX;
-      const fy = tokenY - lightY;
-      const a_coeff = 1;
-      const b_coeff = 2 * (fx * cosA + fy * sinA);
-      const c_coeff = fx * fx + fy * fy - lightRadius * lightRadius;
-      const disc = b_coeff * b_coeff - 4 * a_coeff * c_coeff;
-
-      if (disc >= 0) {
-        const sqrtDisc = Math.sqrt(disc);
-        const t1 = (-b_coeff - sqrtDisc) / (2 * a_coeff);
-        const t2 = (-b_coeff + sqrtDisc) / (2 * a_coeff);
-        
-        let t: number;
-        if (insideLight) {
-          t = t2 > 1e-6 ? t2 : t1;
-        } else {
-          t = t1 > 1e-6 ? t1 : (t2 > 1e-6 ? t2 : -1);
-        }
-        
-        if (t > 1e-6 && t <= ray.dist + 1) {
-          rayResults.push({
-            x: tokenX + cosA * t,
-            y: tokenY + sinA * t,
-            dist: t,
-            angle,
-          });
-        }
+      const t = rayCircleIntersection(tokenX, tokenY, cosA, sinA, lightX, lightY, lightRadius, insideLight);
+      if (t > 1e-6 && t < wallDist + 0.5) {
+        rayResults.push({
+          x: tokenX + cosA * t,
+          y: tokenY + sinA * t,
+          dist: t,
+          angle,
+        });
       }
     }
   }
@@ -280,13 +301,17 @@ export function calculateVisionInLight(
 
   rayResults.sort((a, b) => a.angle - b.angle);
 
-  const seen = new Set<string>();
   const uniqueResults: RayIntersection[] = [];
+  let lastAngle = -Infinity;
   for (const r of rayResults) {
-    const key = `${r.x.toFixed(1)},${r.y.toFixed(1)}`;
-    if (!seen.has(key)) {
-      seen.add(key);
+    if (r.angle - lastAngle > 1e-6) {
       uniqueResults.push(r);
+      lastAngle = r.angle;
+    } else if (uniqueResults.length > 0) {
+      const prev = uniqueResults[uniqueResults.length - 1];
+      if (r.dist < prev.dist) {
+        uniqueResults[uniqueResults.length - 1] = r;
+      }
     }
   }
 
