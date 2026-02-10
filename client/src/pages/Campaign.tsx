@@ -9859,26 +9859,31 @@ export default function Campaign() {
              const sheetChar = role === 'gm' 
                ? (inspectedChar || (character?.id ? character : null) || (characters as any[] || []).find((c: any) => c.id)) 
                : character;
-             if (!sheetChar?.id) return null;
+             const hasChar = !!sheetChar?.id;
+             const showButton = role === 'gm' || hasChar;
+             if (!showButton) return null;
              return (
                <div className="absolute bottom-[105px] md:bottom-[140px] right-4 z-[60] pointer-events-auto" data-testid="btn-character-overview">
                  <button
                    className="flex items-center gap-2 px-3 py-2 rounded-lg bg-stone-800/95 border border-stone-600 hover:border-amber-500 hover:bg-stone-700 text-stone-200 hover:text-amber-400 transition-all shadow-lg backdrop-blur-sm"
                    onClick={() => {
-                     setCharacterSheetDefaultTab("overview");
-                     openCharacterSheet(sheetChar);
+                     const charToOpen = sheetChar || (characters as any[] || []).find((c: any) => c.id);
+                     if (charToOpen?.id) {
+                       setCharacterSheetDefaultTab("overview");
+                       openCharacterSheet(charToOpen);
+                     }
                    }}
-                   title={`Open ${sheetChar.name || 'Character'} Sheet`}
+                   title={hasChar ? `Open ${sheetChar.name || 'Character'} Sheet` : 'Open Character Sheet'}
                    data-testid="button-character-overview"
                  >
-                   {sheetChar.portrait ? (
+                   {hasChar && sheetChar.portrait ? (
                      <img src={sheetChar.portrait} alt="" className="w-7 h-7 rounded-full object-cover border border-stone-500" />
                    ) : (
                      <div className="w-7 h-7 rounded-full bg-amber-900/50 border border-amber-700/50 flex items-center justify-center">
                        <User className="h-4 w-4 text-amber-400" />
                      </div>
                    )}
-                   <span className="text-sm font-medium max-w-[120px] truncate">{sheetChar.name || 'Character'}</span>
+                   <span className="text-sm font-medium max-w-[120px] truncate">{hasChar ? (sheetChar.name || 'Character') : 'Overview'}</span>
                    <ScrollText className="h-4 w-4 text-stone-400" />
                  </button>
                </div>
