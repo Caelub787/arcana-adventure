@@ -97,7 +97,8 @@ function castRay(
   originY: number,
   angle: number,
   visionRadius: number,
-  segments: BlockingSegment[]
+  segments: BlockingSegment[],
+  skipEndpoints: boolean = true
 ): RayIntersection {
   const farX = originX + Math.cos(angle) * visionRadius;
   const farY = originY + Math.sin(angle) * visionRadius;
@@ -115,7 +116,7 @@ function castRay(
     );
 
     if (hit && hit.t > 1e-6) {
-      if (hit.u < ENDPOINT_U_MARGIN || hit.u > 1 - ENDPOINT_U_MARGIN) {
+      if (skipEndpoints && (hit.u < ENDPOINT_U_MARGIN || hit.u > 1 - ENDPOINT_U_MARGIN)) {
         let bodyDx: number, bodyDy: number;
         if (hit.u < 0.5) {
           bodyDx = seg.x2 - seg.x1;
@@ -152,7 +153,8 @@ export function calculateVisionPolygon(
   tokenX: number,
   tokenY: number,
   visionRadius: number,
-  blockingSegments: BlockingSegment[]
+  blockingSegments: BlockingSegment[],
+  skipEndpoints: boolean = true
 ): VisionPolygon {
   if (visionRadius <= 0) {
     return { tokenX, tokenY, radius: visionRadius, points: [] };
@@ -184,7 +186,7 @@ export function calculateVisionPolygon(
 
   const rayResults: RayIntersection[] = [];
   for (const angle of angles) {
-    rayResults.push(castRay(tokenX, tokenY, angle, visionRadius, blockingSegments));
+    rayResults.push(castRay(tokenX, tokenY, angle, visionRadius, blockingSegments, skipEndpoints));
   }
 
   rayResults.sort((a, b) => a.angle - b.angle);
@@ -255,7 +257,7 @@ export function calculateVisionInLight(
     return { tokenX, tokenY, radius: lightRadius, points: [] };
   }
 
-  const lightPoly = precomputedLightPoly || calculateVisionPolygon(lightX, lightY, lightRadius, blockingSegments);
+  const lightPoly = precomputedLightPoly || calculateVisionPolygon(lightX, lightY, lightRadius, blockingSegments, false);
   if (lightPoly.points.length < 3) {
     return { tokenX, tokenY, radius: lightRadius, points: [] };
   }

@@ -447,7 +447,7 @@ export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToo
     for (const light of enabledLights) {
       const lightRadiusPixels = (light.radius / feetPerCell) * gridSize;
       const key = `${light.id}`;
-      const poly = calculateVisionPolygon(light.x, light.y, lightRadiusPixels, blockingSegs);
+      const poly = calculateVisionPolygon(light.x, light.y, lightRadiusPixels, blockingSegs, false);
       cache.set(key, poly);
     }
 
