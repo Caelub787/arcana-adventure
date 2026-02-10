@@ -290,11 +290,27 @@ export function calculateVisionInLight(
     if (isPointVisible(lightX, lightY, clipX, clipY, blockingSegments)) {
       rayResults.push({ x: clipX, y: clipY, dist: clipDist, angle });
     } else {
-      const midDist = (effectiveEntry + clipDist) / 2;
-      const midX = tokenX + cosA * midDist;
-      const midY = tokenY + sinA * midDist;
-      if (isPointVisible(lightX, lightY, midX, midY, blockingSegments)) {
-        rayResults.push({ x: midX, y: midY, dist: midDist, angle });
+      let lo = effectiveEntry;
+      let hi = clipDist;
+      let bestDist = -1;
+      for (let step = 0; step < 8; step++) {
+        const mid = (lo + hi) / 2;
+        const mx = tokenX + cosA * mid;
+        const my = tokenY + sinA * mid;
+        if (isPointVisible(lightX, lightY, mx, my, blockingSegments)) {
+          bestDist = mid;
+          lo = mid;
+        } else {
+          hi = mid;
+        }
+      }
+      if (bestDist > 0) {
+        rayResults.push({
+          x: tokenX + cosA * bestDist,
+          y: tokenY + sinA * bestDist,
+          dist: bestDist,
+          angle,
+        });
       }
     }
   }
