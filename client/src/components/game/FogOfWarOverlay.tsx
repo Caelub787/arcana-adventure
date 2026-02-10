@@ -425,8 +425,7 @@ export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToo
         visionDistFeet = isDayTime ? 120 : 60;
       }
       
-      const feetPerCell = scene?.feetPerCell ?? 5;
-      const visionRadius = (visionDistFeet / feetPerCell) * gridSize;
+      const visionRadius = (visionDistFeet / 5) * gridSize;
       const tokenCenterX = token.x + gridSize / 2;
       const tokenCenterY = token.y + gridSize / 2;
       
@@ -435,7 +434,7 @@ export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToo
     }
     
     return polys;
-  }, [fogEnabled, isGM, gmSeeAsPlayer, blockingSegs, tokenPositionKey, characters, gridSize, scene?.isDayTime, scene?.feetPerCell, currentUserId, selectedTokenId, gmSeeAllVision]);
+  }, [fogEnabled, isGM, gmSeeAsPlayer, blockingSegs, tokenPositionKey, characters, gridSize, scene?.isDayTime, currentUserId, selectedTokenId, gmSeeAllVision]);
 
   const lightVisionPolygons = useMemo(() => {
     if (!fogEnabled) return [];
@@ -444,7 +443,7 @@ export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToo
     const enabledLights = lights.filter(l => l.enabled);
     if (enabledLights.length === 0) return [];
     
-    const feetPerCell = scene?.feetPerCell ?? 5;
+    const feetPerCell = 5;
     
     const currentTokens = tokensRef.current;
     let playerTokens: FogToken[];
@@ -475,7 +474,7 @@ export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToo
     }
     
     return polys;
-  }, [fogEnabled, isGM, gmSeeAsPlayer, blockingSegs, lights, gridSize, scene?.feetPerCell, tokenPositionKey, selectedTokenId, gmSeeAllVision]);
+  }, [fogEnabled, isGM, gmSeeAsPlayer, blockingSegs, lights, gridSize, tokenPositionKey, selectedTokenId, gmSeeAllVision]);
 
   const prevVisionKeyRef = useRef<string>('');
   useEffect(() => {
@@ -1126,7 +1125,7 @@ export function WallDrawingOverlay({
           <circle
             cx={mousePos.x + MAP_OFFSET}
             cy={mousePos.y + MAP_OFFSET}
-            r={(lightRadius / (scene?.feetPerCell ?? 5)) * gridSize}
+            r={(lightRadius / 5) * gridSize}
             fill={lightColor}
             fillOpacity={0.15}
             stroke={lightColor}
@@ -1259,15 +1258,13 @@ export function FogToolsPanel({
   const fogExploredDimness = scene?.fogExploredDimness ?? 0.5;
   const isDayTime = scene?.isDayTime ?? true;
 
-  const feetPerCell = scene?.feetPerCell ?? 5;
+  const feetPerCell = 5;
 
   const [localFogOpacity, setLocalFogOpacity] = useState(fogOpacity);
   const [localFogExploredDimness, setLocalFogExploredDimness] = useState(fogExploredDimness);
-  const [localFeetPerCell, setLocalFeetPerCell] = useState(feetPerCell);
 
   useEffect(() => { setLocalFogOpacity(fogOpacity); }, [fogOpacity]);
   useEffect(() => { setLocalFogExploredDimness(fogExploredDimness); }, [fogExploredDimness]);
-  useEffect(() => { setLocalFeetPerCell(feetPerCell); }, [feetPerCell]);
 
   const updateSceneMutation = useMutation({
     mutationFn: async (updates: Record<string, any>) => {
@@ -1534,27 +1531,6 @@ export function FogToolsPanel({
             onValueCommit={(v) => updateSceneMutation.mutate({ fogExploredDimness: v[0] / 100 })}
             data-testid="slider-explored-dimness"
           />
-        </div>
-
-        <div className="space-y-1">
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-stone-300">Feet Per Cell</span>
-            <input
-              type="number"
-              min={1}
-              max={100}
-              step={1}
-              value={localFeetPerCell}
-              onChange={(e) => setLocalFeetPerCell(Number(e.target.value) || 5)}
-              onBlur={() => {
-                const val = Math.max(1, Math.min(100, localFeetPerCell));
-                setLocalFeetPerCell(val);
-                updateSceneMutation.mutate({ feetPerCell: val });
-              }}
-              className="w-16 h-7 rounded border border-stone-600 bg-stone-800 text-center text-xs text-stone-200 focus:border-amber-500 focus:outline-none"
-              data-testid="input-feet-per-cell"
-            />
-          </div>
         </div>
 
         <div className="border-t border-stone-700 pt-2">
