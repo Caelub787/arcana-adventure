@@ -68,7 +68,7 @@ export function getBlockingSegments(
 function lineSegmentIntersection(
   rx1: number, ry1: number, rx2: number, ry2: number,
   sx1: number, sy1: number, sx2: number, sy2: number
-): { x: number; y: number; t: number } | null {
+): { x: number; y: number; t: number; u: number } | null {
   const dx = rx2 - rx1;
   const dy = ry2 - ry1;
   const ex = sx2 - sx1;
@@ -86,8 +86,11 @@ function lineSegmentIntersection(
     x: rx1 + t * dx,
     y: ry1 + t * dy,
     t,
+    u,
   };
 }
+
+const ENDPOINT_U_MARGIN = 1e-4;
 
 function castRay(
   originX: number,
@@ -98,6 +101,8 @@ function castRay(
 ): RayIntersection {
   const farX = originX + Math.cos(angle) * visionRadius;
   const farY = originY + Math.sin(angle) * visionRadius;
+  const rayDx = Math.cos(angle);
+  const rayDy = Math.sin(angle);
 
   let closestDist = visionRadius;
   let closestX = farX;
@@ -110,6 +115,21 @@ function castRay(
     );
 
     if (hit && hit.t > 1e-6) {
+      if (hit.u < ENDPOINT_U_MARGIN || hit.u > 1 - ENDPOINT_U_MARGIN) {
+        let bodyDx: number, bodyDy: number;
+        if (hit.u < 0.5) {
+          bodyDx = seg.x2 - seg.x1;
+          bodyDy = seg.y2 - seg.y1;
+        } else {
+          bodyDx = seg.x1 - seg.x2;
+          bodyDy = seg.y1 - seg.y2;
+        }
+        const dot = bodyDx * rayDx + bodyDy * rayDy;
+        if (dot <= 0) {
+          continue;
+        }
+      }
+
       const dist = hit.t * visionRadius;
       if (dist < closestDist) {
         closestDist = dist;
@@ -139,7 +159,7 @@ export function calculateVisionPolygon(
   }
 
   const angles: number[] = [];
-  const EPSILON = 0.0005;
+  const EPSILON = 0.001;
 
   for (const seg of blockingSegments) {
     const dx1 = seg.x1 - tokenX;
@@ -252,7 +272,7 @@ export function calculateVisionInLight(
     : Math.asin(Math.min(1, lightRadius / Math.max(1, distToLight)));
 
   const angles: number[] = [];
-  const EPSILON = 0.0005;
+  const EPSILON = 0.001;
 
   for (const seg of blockingSegments) {
     const a1 = Math.atan2(seg.y1 - tokenY, seg.x1 - tokenX);
@@ -381,6 +401,12 @@ export function isPointVisible(
   toY: number,
   blockingSegments: BlockingSegment[]
 ): boolean {
+  const rayDx = toX - fromX;
+  const rayDy = toY - fromY;
+  const rayLen = Math.hypot(rayDx, rayDy);
+  const nRayDx = rayLen > 0 ? rayDx / rayLen : 0;
+  const nRayDy = rayLen > 0 ? rayDy / rayLen : 0;
+
   for (const seg of blockingSegments) {
     const hit = lineSegmentIntersection(
       fromX, fromY, toX, toY,
@@ -388,6 +414,20 @@ export function isPointVisible(
     );
 
     if (hit && hit.t > 1e-6 && hit.t < 1) {
+      if (hit.u < ENDPOINT_U_MARGIN || hit.u > 1 - ENDPOINT_U_MARGIN) {
+        let bodyDx: number, bodyDy: number;
+        if (hit.u < 0.5) {
+          bodyDx = seg.x2 - seg.x1;
+          bodyDy = seg.y2 - seg.y1;
+        } else {
+          bodyDx = seg.x1 - seg.x2;
+          bodyDy = seg.y1 - seg.y2;
+        }
+        const dot = bodyDx * nRayDx + bodyDy * nRayDy;
+        if (dot <= 0) {
+          continue;
+        }
+      }
       return false;
     }
   }
