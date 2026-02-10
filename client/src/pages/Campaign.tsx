@@ -9855,40 +9855,7 @@ export default function Campaign() {
              return null;
            })()}
            
-           {!isSandbox && (() => {
-             const sheetChar = role === 'gm' 
-               ? (inspectedChar || (character?.id ? character : null) || (characters as any[] || []).find((c: any) => c.id)) 
-               : character;
-             const hasChar = !!sheetChar?.id;
-             const showButton = role === 'gm' || hasChar;
-             if (!showButton) return null;
-             return (
-               <div className="absolute bottom-[105px] md:bottom-[140px] right-4 z-[60] pointer-events-auto" data-testid="btn-character-overview">
-                 <button
-                   className="flex items-center gap-2 px-3 py-2 rounded-lg bg-stone-800/95 border border-stone-600 hover:border-amber-500 hover:bg-stone-700 text-stone-200 hover:text-amber-400 transition-all shadow-lg backdrop-blur-sm"
-                   onClick={() => {
-                     const charToOpen = sheetChar || (characters as any[] || []).find((c: any) => c.id);
-                     if (charToOpen?.id) {
-                       setCharacterSheetDefaultTab("overview");
-                       openCharacterSheet(charToOpen);
-                     }
-                   }}
-                   title={hasChar ? `Open ${sheetChar.name || 'Character'} Sheet` : 'Open Character Sheet'}
-                   data-testid="button-character-overview"
-                 >
-                   {hasChar && sheetChar.portrait ? (
-                     <img src={sheetChar.portrait} alt="" className="w-7 h-7 rounded-full object-cover border border-stone-500" />
-                   ) : (
-                     <div className="w-7 h-7 rounded-full bg-amber-900/50 border border-amber-700/50 flex items-center justify-center">
-                       <User className="h-4 w-4 text-amber-400" />
-                     </div>
-                   )}
-                   <span className="text-sm font-medium max-w-[120px] truncate">{hasChar ? (sheetChar.name || 'Character') : 'Overview'}</span>
-                   <ScrollText className="h-4 w-4 text-stone-400" />
-                 </button>
-               </div>
-             );
-           })()}
+           
 
            {!isSandbox && (role === 'gm' ? (inspectedChar || (character?.id ? character : null)) : character) && (
              <BattleMapHotbars 
@@ -9924,6 +9891,37 @@ export default function Campaign() {
 
         </div>
       </div>
+
+      {/* Character Overview Button - Outside battlemap container so fixed positioning works */}
+      {!isSandbox && (() => {
+        const sheetChar = role === 'gm' 
+          ? (inspectedChar || (character?.id ? character : null) || (characters as any[] || []).find((c: any) => c.id)) 
+          : character;
+        if (!sheetChar?.id) return null;
+        return (
+          <div className="fixed bottom-[105px] md:bottom-[140px] right-4 z-[60]" data-testid="btn-character-overview">
+            <button
+              className="flex items-center gap-2 px-3 py-2 rounded-lg bg-stone-800/95 border border-stone-600 hover:border-amber-500 hover:bg-stone-700 text-stone-200 hover:text-amber-400 transition-all shadow-lg backdrop-blur-sm"
+              onClick={() => {
+                setCharacterSheetDefaultTab("overview");
+                openCharacterSheet(sheetChar);
+              }}
+              title={`Open ${sheetChar.name || 'Character'} Sheet`}
+              data-testid="button-character-overview"
+            >
+              {sheetChar.portrait ? (
+                <img src={sheetChar.portrait} alt="" className="w-7 h-7 rounded-full object-cover border border-stone-500" />
+              ) : (
+                <div className="w-7 h-7 rounded-full bg-amber-900/50 border border-amber-700/50 flex items-center justify-center">
+                  <User className="h-4 w-4 text-amber-400" />
+                </div>
+              )}
+              <span className="text-sm font-medium max-w-[120px] truncate">{sheetChar.name || 'Character'}</span>
+              <ScrollText className="h-4 w-4 text-stone-400" />
+            </button>
+          </div>
+        );
+      })()}
 
       {/* Character Sheet - Dialog on mobile (single), FloatingPanel on desktop (multiple) */}
       {!isSandbox && (isMobile ? (
