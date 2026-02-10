@@ -228,13 +228,14 @@ export function calculateVisionInLight(
   lightX: number,
   lightY: number,
   lightRadius: number,
-  blockingSegments: BlockingSegment[]
+  blockingSegments: BlockingSegment[],
+  precomputedLightPoly?: VisionPolygon
 ): VisionPolygon {
   if (lightRadius <= 0) {
     return { tokenX, tokenY, radius: lightRadius, points: [] };
   }
 
-  const lightPoly = calculateVisionPolygon(lightX, lightY, lightRadius, blockingSegments);
+  const lightPoly = precomputedLightPoly || calculateVisionPolygon(lightX, lightY, lightRadius, blockingSegments);
   if (lightPoly.points.length < 3) {
     return { tokenX, tokenY, radius: lightRadius, points: [] };
   }
@@ -292,7 +293,7 @@ export function calculateVisionInLight(
     );
   }
 
-  const STEP = Math.PI / 90;
+  const STEP = Math.PI / 60;
   const sweepStart = insideLight ? -Math.PI : lightAngle - angularSpan - STEP;
   const sweepEnd = insideLight ? Math.PI : lightAngle + angularSpan + STEP;
   for (let a = sweepStart; a <= sweepEnd; a += STEP) {

@@ -436,6 +436,24 @@ export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToo
     return polys;
   }, [fogEnabled, isGM, gmSeeAsPlayer, blockingSegs, tokenPositionKey, characters, gridSize, scene?.isDayTime, currentUserId, selectedTokenId, gmSeeAllVision]);
 
+  const cachedLightPolygons = useMemo(() => {
+    if (!fogEnabled) return new Map<string, VisionPolygon>();
+    const enabledLights = lights.filter(l => l.enabled);
+    if (enabledLights.length === 0) return new Map<string, VisionPolygon>();
+
+    const feetPerCell = 5;
+    const cache = new Map<string, VisionPolygon>();
+
+    for (const light of enabledLights) {
+      const lightRadiusPixels = (light.radius / feetPerCell) * gridSize;
+      const key = `${light.id}`;
+      const poly = calculateVisionPolygon(light.x, light.y, lightRadiusPixels, blockingSegs);
+      cache.set(key, poly);
+    }
+
+    return cache;
+  }, [fogEnabled, blockingSegs, lights, gridSize]);
+
   const lightVisionPolygons = useMemo(() => {
     if (!fogEnabled) return [];
     if (isGM && !gmSeeAsPlayer) return [];
@@ -466,7 +484,8 @@ export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToo
         const lightRadiusPixels = (light.radius / feetPerCell) * gridSize;
         const distToLight = Math.hypot(tokenCenterX - light.x, tokenCenterY - light.y);
         if (distToLight > lightRadiusPixels + 5000) continue;
-        const poly = calculateVisionInLight(tokenCenterX, tokenCenterY, light.x, light.y, lightRadiusPixels, blockingSegs);
+        const precomputed = cachedLightPolygons.get(`${light.id}`);
+        const poly = calculateVisionInLight(tokenCenterX, tokenCenterY, light.x, light.y, lightRadiusPixels, blockingSegs, precomputed);
         if (poly.points.length >= 3) {
           polys.push(poly);
         }
@@ -474,7 +493,7 @@ export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToo
     }
     
     return polys;
-  }, [fogEnabled, isGM, gmSeeAsPlayer, blockingSegs, lights, gridSize, tokenPositionKey, selectedTokenId, gmSeeAllVision]);
+  }, [fogEnabled, isGM, gmSeeAsPlayer, blockingSegs, lights, gridSize, tokenPositionKey, selectedTokenId, gmSeeAllVision, cachedLightPolygons]);
 
   const prevVisionKeyRef = useRef<string>('');
   useEffect(() => {
@@ -582,7 +601,9 @@ export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToo
       );
     }
 
-    const visionPathData = visionPolygons.map((poly) => {
+    const fogRect = `M 0 0 L 20000 0 L 20000 20000 L 0 20000 Z`;
+
+    const visionHoles = visionPolygons.map((poly) => {
       if (poly.points.length < 3) return '';
       const pts = poly.points.map((p, j) => 
         `${j === 0 ? 'M' : 'L'} ${p.x + MAP_OFFSET} ${p.y + MAP_OFFSET}`
@@ -590,7 +611,7 @@ export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToo
       return pts + ' Z';
     }).filter(Boolean).join(' ');
 
-    const lightPathData = lightVisionPolygons.map((poly) => {
+    const lightHoles = lightVisionPolygons.map((poly) => {
       if (poly.points.length < 3) return '';
       const pts = poly.points.map((p, j) => 
         `${j === 0 ? 'M' : 'L'} ${p.x + MAP_OFFSET} ${p.y + MAP_OFFSET}`
@@ -598,7 +619,7 @@ export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToo
       return pts + ' Z';
     }).filter(Boolean).join(' ');
 
-    const allVisionPath = [visionPathData, lightPathData].filter(Boolean).join(' ');
+    const allHoles = [visionHoles, lightHoles].filter(Boolean).join(' ');
 
     const fogExploredMemory = scene?.fogExploredMemory ?? false;
     const currentFogOpacity = scene?.fogOpacity ?? 0.85;
@@ -606,56 +627,31 @@ export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToo
 
     if (fogExploredMemory) {
       const cellSize = gridSize;
-      let exploredPathParts: string[] = [];
+      const exploredHoleParts: string[] = [];
       exploredCells.forEach((key) => {
         const [col, row] = key.split(',').map(Number);
         const x = col * cellSize + MAP_OFFSET;
         const y = row * cellSize + MAP_OFFSET;
-        exploredPathParts.push(`M ${x} ${y} L ${x + cellSize} ${y} L ${x + cellSize} ${y + cellSize} L ${x} ${y + cellSize} Z`);
+        exploredHoleParts.push(`M ${x} ${y} L ${x + cellSize} ${y} L ${x + cellSize} ${y + cellSize} L ${x} ${y + cellSize} Z`);
       });
-      const exploredPath = exploredPathParts.join(' ');
+      const exploredHoles = exploredHoleParts.join(' ');
 
-      const exploredAndVisionPath = [exploredPath, allVisionPath].filter(Boolean).join(' ');
+      const unexploredPath = [fogRect, exploredHoles, allHoles].filter(Boolean).join(' ');
+      const dimPath = [fogRect, allHoles].filter(Boolean).join(' ');
 
       return (
         <g>
-          <defs>
-            <mask id="fog-unexplored-mask">
-              <rect x={0} y={0} width={20000} height={20000} fill="white" shapeRendering="optimizeSpeed" />
-              {exploredAndVisionPath && (
-                <path d={exploredAndVisionPath} fill="black" shapeRendering="optimizeSpeed" />
-              )}
-            </mask>
-            <mask id="fog-explored-mask">
-              <rect x={0} y={0} width={20000} height={20000} fill="white" shapeRendering="optimizeSpeed" />
-              {allVisionPath && (
-                <path d={allVisionPath} fill="black" shapeRendering="optimizeSpeed" />
-              )}
-            </mask>
-          </defs>
-          <rect x={0} y={0} width={20000} height={20000}
-            fill="black" fillOpacity={1}
-            mask="url(#fog-unexplored-mask)" />
-          <rect x={0} y={0} width={20000} height={20000}
-            fill="black" fillOpacity={currentExploredDimness}
-            mask="url(#fog-explored-mask)" />
+          <path d={unexploredPath} fill="black" fillOpacity={1}
+            fillRule="evenodd" shapeRendering="optimizeSpeed" />
+          <path d={dimPath} fill="black" fillOpacity={currentExploredDimness}
+            fillRule="evenodd" shapeRendering="optimizeSpeed" />
         </g>
       );
     } else {
+      const fogPath = [fogRect, allHoles].filter(Boolean).join(' ');
       return (
-        <g>
-          <defs>
-            <mask id="fog-vision-mask">
-              <rect x={0} y={0} width={20000} height={20000} fill="white" shapeRendering="optimizeSpeed" />
-              {allVisionPath && (
-                <path d={allVisionPath} fill="black" shapeRendering="optimizeSpeed" />
-              )}
-            </mask>
-          </defs>
-          <rect x={0} y={0} width={20000} height={20000}
-            fill="black" fillOpacity={currentFogOpacity}
-            mask="url(#fog-vision-mask)" />
-        </g>
+        <path d={fogPath} fill="black" fillOpacity={currentFogOpacity}
+          fillRule="evenodd" shapeRendering="optimizeSpeed" />
       );
     }
   }, [fogEnabled, isGM, gmSeeAsPlayer, visionPolygons, lightVisionPolygons, exploredCells, gridSize, scene?.fogExploredMemory, scene?.fogOpacity, scene?.fogExploredDimness]);
@@ -672,7 +668,7 @@ export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToo
         top: 0,
         overflow: 'visible',
         zIndex: 100,
-        willChange: 'contents',
+        contain: 'layout style paint',
       }}
       shapeRendering="optimizeSpeed"
       data-testid="fog-of-war-overlay"
