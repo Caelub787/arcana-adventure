@@ -191,26 +191,21 @@ export function calculateVisionPolygon(
   };
 }
 
-function rayCircleIntersection(
+function rayCircleExitPoint(
   ox: number, oy: number, cosA: number, sinA: number,
-  cx: number, cy: number, radius: number,
-  inside: boolean
-): number {
+  cx: number, cy: number, radius: number
+): { entry: number; exit: number } | null {
   const fx = ox - cx;
   const fy = oy - cy;
   const b = 2 * (fx * cosA + fy * sinA);
   const c = fx * fx + fy * fy - radius * radius;
   const disc = b * b - 4 * c;
-  if (disc < 0) return -1;
+  if (disc < 0) return null;
   const sqrtDisc = Math.sqrt(disc);
   const t1 = (-b - sqrtDisc) / 2;
   const t2 = (-b + sqrtDisc) / 2;
-  if (inside) {
-    return t2 > 1e-6 ? t2 : -1;
-  }
-  if (t1 > 1e-6) return t1;
-  if (t2 > 1e-6) return t2;
-  return -1;
+  if (t2 < 1e-6) return null;
+  return { entry: Math.max(t1, 1e-6), exit: t2 };
 }
 
 export function calculateVisionInLight(
@@ -283,14 +278,17 @@ export function calculateVisionInLight(
     if (distFromLight <= lightRadius + 0.5) {
       rayResults.push(ray);
     } else {
-      const t = rayCircleIntersection(tokenX, tokenY, cosA, sinA, lightX, lightY, lightRadius, insideLight);
-      if (t > 1e-6 && t < wallDist + 0.5) {
-        rayResults.push({
-          x: tokenX + cosA * t,
-          y: tokenY + sinA * t,
-          dist: t,
-          angle,
-        });
+      const circle = rayCircleExitPoint(tokenX, tokenY, cosA, sinA, lightX, lightY, lightRadius);
+      if (circle) {
+        const clipT = Math.min(circle.exit, wallDist);
+        if (clipT >= circle.entry - 0.5) {
+          rayResults.push({
+            x: tokenX + cosA * clipT,
+            y: tokenY + sinA * clipT,
+            dist: clipT,
+            angle,
+          });
+        }
       }
     }
   }
