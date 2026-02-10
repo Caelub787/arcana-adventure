@@ -3816,6 +3816,14 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     return { result: total, dieType: `d${sides}` };
   };
 
+  const getMaxDice = (notation: string): number => {
+    const match = notation.match(/(\d+)d(\d+)/i);
+    if (!match) return 0;
+    const count = parseInt(match[1]);
+    const sides = parseInt(match[2]);
+    return count * sides;
+  };
+
   // Get attribute modifier from character
   const getAttributeModifier = (attrName: string): number => {
     if (!attrName || !character) return 0;
@@ -4132,7 +4140,7 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
       }
     }
     
-    return targetedTokenId ? { hit: isHit } : null;
+    return targetedTokenId ? { hit: isHit, critSuccess: isCritSuccess } : null;
   };
 
   // Apply damage to target character with armor damage reduction
@@ -4262,7 +4270,7 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
   };
 
   // Handle damage roll (weapon damage dice + mod, or ammunition damage for ranged weapons)
-  const handleDamageRoll = async (options?: { extraMod?: number }) => {
+  const handleDamageRoll = async (options?: { extraMod?: number; critSuccess?: boolean }) => {
     if (!itemData) return;
     
     // Guard: prevent using exhausted damaging consumables
@@ -4301,10 +4309,11 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
       }
       
       const { result, dieType } = rollDice(ammo.damage);
+      const critBonus = options?.critSuccess ? getMaxDice(ammo.damage) : 0;
       const weaponMod = itemData.mod || 0;
       const ammoMod = ammo.mod || 0;
       const totalMod = weaponMod + ammoMod + extraMod;
-      const total = result + totalMod;
+      const total = result + critBonus + totalMod;
       const damageType = ammo.damageType || itemData.damageType || null;
       
       // Build calculation breakdown
@@ -4312,12 +4321,13 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
       if (weaponMod !== 0) modParts.push(`${itemData.name} (${weaponMod >= 0 ? '+' : ''}${weaponMod})`);
       if (ammoMod !== 0) modParts.push(`${ammo.name} (${ammoMod >= 0 ? '+' : ''}${ammoMod})`);
       if (extraMod !== 0) modParts.push(`Extra (${extraMod >= 0 ? '+' : ''}${extraMod})`);
+      const diceResult = critBonus > 0 ? `${result} + MAX (${critBonus})` : `${result}`;
       let calculationBreakdown = modParts.length > 0
-        ? `${ammo.damage} = ${result} + ${modParts.join(' + ')}`
-        : `${ammo.damage} = ${result}`;
+        ? `${ammo.damage} = ${diceResult} + ${modParts.join(' + ')}`
+        : `${ammo.damage} = ${diceResult}`;
       
       // Apply damage to target if one is selected (characterId allows damage to enemies without full character data)
-      let damageLabel = `${itemData.name} Damage`;
+      let damageLabel = options?.critSuccess ? `${itemData.name} CRIT Damage` : `${itemData.name} Damage`;
       let finalTotal = total;
       
       if (targetedTokenId && targetData?.characterId) {
@@ -4325,13 +4335,14 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
         finalTotal = finalDamage;
         const displayName = targetData.character?.name || targetData.token?.name || targetName || 'Target';
         
+        const critPrefix = options?.critSuccess ? 'CRIT ' : '';
         if (isHealing) {
           damageLabel = `${itemData.name} Healing → ${displayName} (+${finalDamage} HP)`;
         } else if (reduction > 0) {
           calculationBreakdown += ` - ${reduction} (${armorName || 'Armor'})`;
-          damageLabel = `${itemData.name} Damage → ${displayName} (-${finalDamage} HP)`;
+          damageLabel = `${itemData.name} ${critPrefix}Damage → ${displayName} (-${finalDamage} HP)`;
         } else {
-          damageLabel = `${itemData.name} Damage → ${displayName} (-${finalDamage} HP)`;
+          damageLabel = `${itemData.name} ${critPrefix}Damage → ${displayName} (-${finalDamage} HP)`;
         }
       }
       
@@ -4363,20 +4374,22 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     if (!itemData.damage) return;
     
     const { result, dieType } = rollDice(itemData.damage);
+    const critBonus = options?.critSuccess ? getMaxDice(itemData.damage) : 0;
     const mod = (itemData.mod || 0) + extraMod;
-    const total = result + mod;
+    const total = result + critBonus + mod;
     const damageType = itemData.damageType || null;
     
     // Build calculation breakdown
     const modParts: string[] = [];
     if (itemData.mod) modParts.push(`Mod (${itemData.mod >= 0 ? '+' : ''}${itemData.mod})`);
     if (extraMod !== 0) modParts.push(`Extra (${extraMod >= 0 ? '+' : ''}${extraMod})`);
+    const meleeDiceResult = critBonus > 0 ? `${result} + MAX (${critBonus})` : `${result}`;
     let calculationBreakdown = modParts.length > 0
-      ? `${itemData.damage} = ${result} + ${modParts.join(' + ')}`
-      : `${itemData.damage} = ${result}`;
+      ? `${itemData.damage} = ${meleeDiceResult} + ${modParts.join(' + ')}`
+      : `${itemData.damage} = ${meleeDiceResult}`;
     
     // Apply damage to target if one is selected (characterId allows damage to enemies without full character data)
-    let damageLabel = `${itemData.name} Damage`;
+    let damageLabel = options?.critSuccess ? `${itemData.name} CRIT Damage` : `${itemData.name} Damage`;
     let finalTotal = total;
     
     if (targetedTokenId && targetData?.characterId) {
@@ -4384,13 +4397,14 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
       finalTotal = finalDamage;
       const displayName = targetData.character?.name || targetData.token?.name || targetName || 'Target';
       
+      const meleeCritPrefix = options?.critSuccess ? 'CRIT ' : '';
       if (isHealing) {
         damageLabel = `${itemData.name} Healing → ${displayName} (+${finalDamage} HP)`;
       } else if (reduction > 0) {
         calculationBreakdown += ` - ${reduction} (${armorName || 'Armor'})`;
-        damageLabel = `${itemData.name} Damage → ${displayName} (-${finalDamage} HP)`;
+        damageLabel = `${itemData.name} ${meleeCritPrefix}Damage → ${displayName} (-${finalDamage} HP)`;
       } else {
-        damageLabel = `${itemData.name} Damage → ${displayName} (-${finalDamage} HP)`;
+        damageLabel = `${itemData.name} ${meleeCritPrefix}Damage → ${displayName} (-${finalDamage} HP)`;
       }
     }
     
@@ -5380,7 +5394,7 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
       gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', chatText, 'roll');
     }
     
-    return targetedTokenId ? { hit: isHit } : null;
+    return targetedTokenId ? { hit: isHit, critSuccess: isCritSuccess } : null;
   };
 
   // Helper to normalize spell AoE properties for comparison
@@ -5404,7 +5418,7 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
   };
 
   // Handle spell damage roll (damage dice + mod) - with target application
-  const handleSpellDamageRoll = async () => {
+  const handleSpellDamageRoll = async (options?: { critSuccess?: boolean }) => {
     if (!spellData) return;
     
     // Check if there's a locked AoE marker on the map - validate spell matches
@@ -5469,12 +5483,14 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
       }
       
       const { result, dieType } = rollDice(diceNotation);
+      const critBonus = options?.critSuccess ? getMaxDice(diceNotation) : 0;
       const mod = typeof spellData.mod === 'number' ? spellData.mod : (parseInt(spellData.mod) || 0);
-      const total = (result || 0) + mod;
+      const total = (result || 0) + critBonus + mod;
       
+      const aoeDiceResult = critBonus > 0 ? `${result} + MAX (${critBonus})` : `${result}`;
       let calculationBreakdown = mod !== 0 
-        ? `${diceNotation} = ${result} + Mod (${mod >= 0 ? '+' : ''}${mod})`
-        : `${diceNotation} = ${result}`;
+        ? `${diceNotation} = ${aoeDiceResult} + Mod (${mod >= 0 ? '+' : ''}${mod})`
+        : `${diceNotation} = ${aoeDiceResult}`;
       const damageTypeDisplay = spellData.damageType ? ` (${spellData.damageType})` : '';
       
       const affectedNames: string[] = [];
@@ -5488,9 +5504,10 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
       }
       
       const aoeEffectLabel = spellData.isAttack !== false ? 'Damage' : 'Effect';
+      const aoeCritPrefix = options?.critSuccess ? 'CRIT ' : '';
       const label = isHealing 
         ? `${spellData.name} AoE Healing → ${affectedNames.join(', ')}`
-        : `${spellData.name} AoE ${aoeEffectLabel} → ${affectedNames.join(', ')}`;
+        : `${spellData.name} AoE ${aoeCritPrefix}${aoeEffectLabel} → ${affectedNames.join(', ')}`;
       
       triggerRollNotification({
         type: 'attack',
@@ -5514,15 +5531,18 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     const targetData = getTargetData();
     
     const { result, dieType } = rollDice(diceNotation);
+    const spellCritBonus = options?.critSuccess ? getMaxDice(diceNotation) : 0;
     const mod = typeof spellData.mod === 'number' ? spellData.mod : (parseInt(spellData.mod) || 0);
-    const total = (result || 0) + mod;
+    const total = (result || 0) + spellCritBonus + mod;
     
+    const spellDiceResult = spellCritBonus > 0 ? `${result} + MAX (${spellCritBonus})` : `${result}`;
     let calculationBreakdown = mod !== 0 
-      ? `${diceNotation} = ${result} + Mod (${mod >= 0 ? '+' : ''}${mod})`
-      : `${diceNotation} = ${result}`;
+      ? `${diceNotation} = ${spellDiceResult} + Mod (${mod >= 0 ? '+' : ''}${mod})`
+      : `${diceNotation} = ${spellDiceResult}`;
     
     const effectLabel = spellData.isAttack !== false ? 'Damage' : 'Effect';
-    let label = isHealing ? `${spellData.name} Healing` : `${spellData.name} ${effectLabel}`;
+    const spellCritPrefix = options?.critSuccess ? 'CRIT ' : '';
+    let label = isHealing ? `${spellData.name} Healing` : `${spellData.name} ${spellCritPrefix}${effectLabel}`;
     const damageTypeDisplay = spellData.damageType ? ` (${spellData.damageType})` : '';
     let finalTotal = total;
     
@@ -5540,9 +5560,9 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
         label = `${spellData.name} Healing → ${displayName} (+${finalDamage} HP)`;
       } else if (reduction > 0) {
         calculationBreakdown += ` - ${reduction} (${armorName || 'Armor'})`;
-        label = `${spellData.name} ${effectLabel} → ${displayName} (-${finalDamage} HP)`;
+        label = `${spellData.name} ${spellCritPrefix}${effectLabel} → ${displayName} (-${finalDamage} HP)`;
       } else {
-        label = `${spellData.name} ${effectLabel} → ${displayName} (-${finalDamage} HP)`;
+        label = `${spellData.name} ${spellCritPrefix}${effectLabel} → ${displayName} (-${finalDamage} HP)`;
       }
     }
     
@@ -5609,7 +5629,8 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
           if (targetedTokenId) {
             const result = await handleSpellAttackRoll();
             if (result?.hit) {
-              await handleSpellDamageRoll();
+              await new Promise(resolve => setTimeout(resolve, 500));
+              await handleSpellDamageRoll({ critSuccess: result.critSuccess });
             }
           } else {
             setShowModifierPopup(true);
@@ -5651,7 +5672,8 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
           if (targetedTokenId) {
             const result = await handleAttackRoll();
             if (result?.hit) {
-              await handleDamageRoll();
+              await new Promise(resolve => setTimeout(resolve, 500));
+              await handleDamageRoll({ critSuccess: result.critSuccess });
             }
           } else {
             setShowModifierPopup(true);
