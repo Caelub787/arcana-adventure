@@ -41,7 +41,7 @@ import goblinToken from "@assets/generated_images/top_down_goblin_token.png";
 import { triggerSkillRollNotification, triggerRollNotification, triggerEffectRollNotification, getNotificationStyle, setNotificationStyle, type NotificationStyle } from './RollNotification';
 import { ImageBrowser } from '@/components/ImageBrowser';
 import { BattlemapAoeOverlay } from './BattlemapAoeOverlay';
-import { FogOfWarOverlay, WallDrawingOverlay, FogToolsPanel } from './FogOfWarOverlay';
+import { FogOfWarOverlay, WallDrawingOverlay, FogToolsPanel, FogCanvasOverlay } from './FogOfWarOverlay';
 import { type AoeTargetState, getTokensInAoe, getTokenGridSpan, getDistanceToTokenEdge, getDistanceBetweenTokensFeet, isTokenInRangeOfToken } from '@/lib/aoeHelpers';
 import { rollDice } from '../sandbox/diceEngine';
 import type { VisionPolygon } from '@/lib/visionEngine';
@@ -367,6 +367,11 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
   const [fogToolActiveInternal, setFogToolActiveInternal] = useState(false);
   const fogToolActive = fogToolActiveProp ?? fogToolActiveInternal;
   const [visionPolygons, setVisionPolygons] = useState<VisionPolygon[]>([]);
+  const [fogRenderData, setFogRenderData] = useState<{
+    visionPolygons: VisionPolygon[];
+    lightVisionPolygons: VisionPolygon[];
+    exploredCells: Set<string>;
+  }>({ visionPolygons: [], lightVisionPolygons: [], exploredCells: new Set() });
   const setFogToolActive = useCallback((v: boolean) => {
     setFogToolActiveInternal(v);
     onFogToolActiveChange?.(v);
@@ -3377,6 +3382,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
             gmSeeAsPlayer={gmSeeAsPlayer}
             selectedTokenId={selectedVisionTokenId}
             gmSeeAllVision={gmSeeAllVision}
+            onFogRenderData={setFogRenderData}
           />
         )}
         
@@ -3397,6 +3403,22 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
           />
         )}
       </motion.div>
+
+      <FogCanvasOverlay
+        fogEnabled={scene?.fogEnabled ?? false}
+        isGM={isGM}
+        gmSeeAsPlayer={gmSeeAsPlayer}
+        visionPolygons={fogRenderData.visionPolygons}
+        lightVisionPolygons={fogRenderData.lightVisionPolygons}
+        exploredCells={fogRenderData.exploredCells}
+        gridSize={gridSize}
+        scene={scene}
+        motionX={motionX}
+        motionY={motionY}
+        motionZoom={motionZoom}
+        containerWidth={viewportSize.width}
+        containerHeight={viewportSize.height}
+      />
 
       {/* Fog of War GM Tools Panel */}
       {scene?.id && isGM && (

@@ -9,6 +9,7 @@ import {
   Sun, Moon, Lightbulb, Trash2, Plus, X, Square, Minus, Grid3X3
 } from 'lucide-react';
 import { getBlockingSegments, calculateVisionPolygon, calculateVisionInLight, type VisionPolygon } from '@/lib/visionEngine';
+import type { MotionValue } from 'framer-motion';
 
 const MAP_OFFSET = 9000;
 
@@ -103,9 +104,14 @@ interface FogOfWarOverlayProps {
   gmSeeAsPlayer?: boolean;
   selectedTokenId?: string | null;
   gmSeeAllVision?: boolean;
+  onFogRenderData?: (data: {
+    visionPolygons: VisionPolygon[];
+    lightVisionPolygons: VisionPolygon[];
+    exploredCells: Set<string>;
+  }) => void;
 }
 
-export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToolToggle, tokens = [], characters = [], currentUserId, onVisionPolygonsChange, showDrawingTools = true, gmSeeAsPlayer = false, selectedTokenId, gmSeeAllVision = false }: FogOfWarOverlayProps) {
+export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToolToggle, tokens = [], characters = [], currentUserId, onVisionPolygonsChange, showDrawingTools = true, gmSeeAsPlayer = false, selectedTokenId, gmSeeAllVision = false, onFogRenderData }: FogOfWarOverlayProps) {
   const queryClient = useQueryClient();
   const sceneId = scene?.id;
 
@@ -590,6 +596,14 @@ export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToo
     });
   }, [visionPolygons, lightVisionPolygons, fogEnabled, isGM, gmSeeAsPlayer, scene?.fogExploredMemory, gridSize]);
 
+  useEffect(() => {
+    onFogRenderData?.({
+      visionPolygons,
+      lightVisionPolygons,
+      exploredCells,
+    });
+  }, [visionPolygons, lightVisionPolygons, exploredCells, onFogRenderData]);
+
   const renderNightFilter = useMemo(() => {
     const isDayTime = scene?.isDayTime ?? true;
     if (isDayTime) return null;
@@ -709,13 +723,228 @@ export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToo
       data-testid="fog-of-war-overlay"
     >
       {lightGradientDefs}
-      {renderNightFilter}
-      {renderFog}
       {showDrawingTools && renderLights}
       {showDrawingTools && renderWalls}
       {renderDoors}
       {showDrawingTools && renderWindows}
     </svg>
+  );
+}
+
+function drawVisionHoles(
+  ctx: CanvasRenderingContext2D,
+  polygons: VisionPolygon[],
+  toX: (wx: number) => number,
+  toY: (wy: number) => number
+) {
+  for (const poly of polygons) {
+    if (poly.points.length < 3) continue;
+    ctx.beginPath();
+    ctx.moveTo(toX(poly.points[0].x), toY(poly.points[0].y));
+    for (let i = 1; i < poly.points.length; i++) {
+      ctx.lineTo(toX(poly.points[i].x), toY(poly.points[i].y));
+    }
+    ctx.closePath();
+    ctx.fill();
+  }
+}
+
+interface FogCanvasOverlayProps {
+  fogEnabled: boolean;
+  isGM: boolean;
+  gmSeeAsPlayer: boolean;
+  visionPolygons: VisionPolygon[];
+  lightVisionPolygons: VisionPolygon[];
+  exploredCells: Set<string>;
+  gridSize: number;
+  scene: any;
+  motionX: MotionValue<number>;
+  motionY: MotionValue<number>;
+  motionZoom: MotionValue<number>;
+  containerWidth: number;
+  containerHeight: number;
+}
+
+export function FogCanvasOverlay({
+  fogEnabled,
+  isGM,
+  gmSeeAsPlayer,
+  visionPolygons,
+  lightVisionPolygons,
+  exploredCells,
+  gridSize,
+  scene,
+  motionX,
+  motionY,
+  motionZoom,
+  containerWidth,
+  containerHeight,
+}: FogCanvasOverlayProps) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  const fogEnabledRef = useRef(fogEnabled);
+  const isGMRef = useRef(isGM);
+  const gmSeeAsPlayerRef = useRef(gmSeeAsPlayer);
+  const visionPolygonsRef = useRef(visionPolygons);
+  const lightVisionPolygonsRef = useRef(lightVisionPolygons);
+  const exploredCellsRef = useRef(exploredCells);
+  const gridSizeRef = useRef(gridSize);
+  const sceneRef = useRef(scene);
+  const containerWidthRef = useRef(containerWidth);
+  const containerHeightRef = useRef(containerHeight);
+
+  fogEnabledRef.current = fogEnabled;
+  isGMRef.current = isGM;
+  gmSeeAsPlayerRef.current = gmSeeAsPlayer;
+  visionPolygonsRef.current = visionPolygons;
+  lightVisionPolygonsRef.current = lightVisionPolygons;
+  exploredCellsRef.current = exploredCells;
+  gridSizeRef.current = gridSize;
+  sceneRef.current = scene;
+  containerWidthRef.current = containerWidth;
+  containerHeightRef.current = containerHeight;
+
+  useEffect(() => {
+    let rafId: number;
+
+    function draw() {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      const width = containerWidthRef.current;
+      const height = containerHeightRef.current;
+      if (width === 0 || height === 0) return;
+
+      if (canvas.width !== width || canvas.height !== height) {
+        canvas.width = width;
+        canvas.height = height;
+      } else {
+        ctx.clearRect(0, 0, width, height);
+      }
+
+      const currentFogEnabled = fogEnabledRef.current;
+      const currentIsGM = isGMRef.current;
+      const currentGmSeeAsPlayer = gmSeeAsPlayerRef.current;
+      const currentScene = sceneRef.current;
+      const isDayTime = currentScene?.isDayTime ?? true;
+
+      if (!currentFogEnabled && isDayTime) return;
+
+      const panX = motionX.get();
+      const panY = motionY.get();
+      const zoom = motionZoom.get();
+
+      function worldToScreenX(wx: number): number {
+        return panX + (wx + 9000) * zoom - 9000;
+      }
+      function worldToScreenY(wy: number): number {
+        return panY + (wy + 9000) * zoom - 9000;
+      }
+
+      if (!isDayTime) {
+        ctx.fillStyle = 'rgba(10, 22, 40, 0.35)';
+        ctx.fillRect(0, 0, width, height);
+      }
+
+      if (currentFogEnabled) {
+        const currentVisionPolygons = visionPolygonsRef.current;
+        const currentLightVisionPolygons = lightVisionPolygonsRef.current;
+        const currentExploredCells = exploredCellsRef.current;
+        const currentGridSize = gridSizeRef.current;
+
+        if (currentIsGM && !currentGmSeeAsPlayer) {
+          ctx.fillStyle = 'rgba(26, 26, 46, 0.15)';
+          ctx.fillRect(0, 0, width, height);
+        } else {
+          const fogExploredMemory = currentScene?.fogExploredMemory ?? false;
+          const currentFogOpacity = currentScene?.fogOpacity ?? 0.85;
+          const currentExploredDimness = currentScene?.fogExploredDimness ?? 0.5;
+
+          if (fogExploredMemory) {
+            ctx.save();
+            ctx.fillStyle = 'rgba(0, 0, 0, 1)';
+            ctx.fillRect(0, 0, width, height);
+
+            ctx.globalCompositeOperation = 'destination-out';
+            ctx.fillStyle = 'rgba(0, 0, 0, 1)';
+
+            const cellSize = currentGridSize;
+            const rowMap = new Map<number, number[]>();
+            currentExploredCells.forEach((key) => {
+              const [col, row] = key.split(',').map(Number);
+              if (!rowMap.has(row)) rowMap.set(row, []);
+              rowMap.get(row)!.push(col);
+            });
+            rowMap.forEach((cols, row) => {
+              cols.sort((a, b) => a - b);
+              let runStart = cols[0];
+              let runEnd = cols[0];
+              for (let i = 1; i <= cols.length; i++) {
+                if (i < cols.length && cols[i] === runEnd + 1) {
+                  runEnd = cols[i];
+                } else {
+                  const sx = worldToScreenX(runStart * cellSize);
+                  const sy = worldToScreenY(row * cellSize);
+                  const sw = (runEnd - runStart + 1) * cellSize * zoom;
+                  const sh = cellSize * zoom;
+                  ctx.fillRect(sx, sy, sw, sh);
+                  if (i < cols.length) {
+                    runStart = cols[i];
+                    runEnd = cols[i];
+                  }
+                }
+              }
+            });
+
+            drawVisionHoles(ctx, currentVisionPolygons, worldToScreenX, worldToScreenY);
+            drawVisionHoles(ctx, currentLightVisionPolygons, worldToScreenX, worldToScreenY);
+            ctx.restore();
+
+            ctx.save();
+            ctx.fillStyle = `rgba(0, 0, 0, ${currentExploredDimness})`;
+            ctx.fillRect(0, 0, width, height);
+
+            ctx.globalCompositeOperation = 'destination-out';
+            ctx.fillStyle = 'rgba(0, 0, 0, 1)';
+            drawVisionHoles(ctx, currentVisionPolygons, worldToScreenX, worldToScreenY);
+            drawVisionHoles(ctx, currentLightVisionPolygons, worldToScreenX, worldToScreenY);
+            ctx.restore();
+          } else {
+            ctx.save();
+            ctx.fillStyle = `rgba(0, 0, 0, ${currentFogOpacity})`;
+            ctx.fillRect(0, 0, width, height);
+
+            ctx.globalCompositeOperation = 'destination-out';
+            ctx.fillStyle = 'rgba(0, 0, 0, 1)';
+            drawVisionHoles(ctx, currentVisionPolygons, worldToScreenX, worldToScreenY);
+            drawVisionHoles(ctx, currentLightVisionPolygons, worldToScreenX, worldToScreenY);
+            ctx.restore();
+          }
+        }
+      }
+    }
+
+    const unsubX = motionX.on('change', () => { cancelAnimationFrame(rafId); rafId = requestAnimationFrame(draw); });
+    const unsubY = motionY.on('change', () => { cancelAnimationFrame(rafId); rafId = requestAnimationFrame(draw); });
+    const unsubZ = motionZoom.on('change', () => { cancelAnimationFrame(rafId); rafId = requestAnimationFrame(draw); });
+
+    draw();
+
+    return () => { unsubX(); unsubY(); unsubZ(); cancelAnimationFrame(rafId); };
+  }, [motionX, motionY, motionZoom, fogEnabled, visionPolygons, lightVisionPolygons, exploredCells, gridSize, scene?.isDayTime, scene?.fogExploredMemory, scene?.fogOpacity, scene?.fogExploredDimness, isGM, gmSeeAsPlayer, containerWidth, containerHeight]);
+
+  const isDayTime = scene?.isDayTime ?? true;
+  if (!fogEnabled && isDayTime) return null;
+
+  return (
+    <canvas
+      ref={canvasRef}
+      className="absolute inset-0 pointer-events-none"
+      style={{ zIndex: 30 }}
+      data-testid="fog-canvas-overlay"
+    />
   );
 }
 
