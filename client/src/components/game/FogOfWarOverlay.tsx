@@ -1223,7 +1223,7 @@ export function FogToolsPanel({
   const queryClient = useQueryClient();
   const sceneId = scene?.id;
 
-  const panelPosRef = useRef({ x: Math.max(0, (window.innerWidth - 256) / 2), y: Math.max(0, (window.innerHeight - 400) / 2) });
+  const panelPosRef = useRef({ x: Math.max(0, (window.innerWidth - 256) / 2), y: window.innerWidth < 640 ? 10 : Math.max(0, (window.innerHeight - 400) / 2) });
   const panelElRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(null);
   const dragHandleRef = useRef<HTMLDivElement>(null);
@@ -1376,7 +1376,7 @@ export function FogToolsPanel({
     <div
       ref={panelElRef}
       className="fixed z-[80] w-64 rounded-lg border border-stone-700 bg-stone-900/95 shadow-2xl backdrop-blur-sm"
-      style={{ left: panelPosRef.current.x, top: panelPosRef.current.y }}
+      style={{ left: panelPosRef.current.x, top: panelPosRef.current.y, maxHeight: 'calc(100vh - 20px)', overflowY: 'auto', touchAction: 'none' }}
       onPointerDown={(e) => e.stopPropagation()}
       onWheel={(e) => e.stopPropagation()}
       onMouseMove={(e) => e.stopPropagation()}

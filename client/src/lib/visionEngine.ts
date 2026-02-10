@@ -279,8 +279,13 @@ export function calculateVisionInLight(
     const radiusSqTolerance = (lightRadius + 2) * (lightRadius + 2);
 
     if (distSqFromLight <= radiusSqTolerance) {
+      const nudge = 0.5;
+      const dirToLightX = lightX - ray.x;
+      const dirToLightY = lightY - ray.y;
+      const dirLen = Math.sqrt(dirToLightX * dirToLightX + dirToLightY * dirToLightY);
+      const px = dirLen > 0.01 ? ray.x + (dirToLightX / dirLen) * nudge : ray.x;
+      const py = dirLen > 0.01 ? ray.y + (dirToLightY / dirLen) * nudge : ray.y;
       let inPoly = false;
-      const px = ray.x, py = ray.y;
       for (let i = 0, j = lp.length - 1; i < lp.length; j = i++) {
         const yi = lp[i].y, yj = lp[j].y;
         if ((yi > py) !== (yj > py) && px < (lp[j].x - lp[i].x) * (py - yi) / (yj - yi) + lp[i].x) {
