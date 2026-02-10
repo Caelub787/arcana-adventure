@@ -9893,7 +9893,7 @@ export default function Campaign() {
       </div>
 
       {/* Character Overview Button - Outside battlemap container so fixed positioning works */}
-      {!isSandbox && (() => {
+      {(() => {
         const sheetChar = role === 'gm' 
           ? (inspectedChar || (character?.id ? character : null) || (characters as any[] || []).find((c: any) => c.id)) 
           : character;
