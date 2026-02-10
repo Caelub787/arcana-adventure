@@ -65,11 +65,30 @@ const DIE_COLORS: Partial<Record<DieType, string>> = {
   d20: 'from-cyan-500 to-cyan-700',
 };
 
+type HitMissStatus = 'hit' | 'miss' | 'crit' | 'crit_fail' | null;
+
+function detectHitMiss(label: string, breakdown?: string): HitMissStatus {
+  const text = `${label} ${breakdown || ''}`;
+  if (/Crit Success/i.test(text)) return 'crit';
+  if (/Crit Failure/i.test(text)) return 'crit_fail';
+  if (/\bHIT\b/i.test(text)) return 'hit';
+  if (/\bMISS\b/i.test(text)) return 'miss';
+  return null;
+}
+
+const HIT_MISS_CONFIG = {
+  hit: { text: 'HIT', bg: 'bg-green-600', border: 'ring-green-400' },
+  miss: { text: 'MISS', bg: 'bg-red-700', border: 'ring-red-500' },
+  crit: { text: 'CRIT HIT', bg: 'bg-yellow-500', border: 'ring-yellow-300' },
+  crit_fail: { text: 'CRIT MISS', bg: 'bg-red-900', border: 'ring-red-700' },
+};
+
 function CompactRollCard({ notification, onComplete }: { notification: RollNotification; onComplete: (id: string) => void }) {
   const notificationDuration = notification.duration ?? 2500;
   const displayName = notification.characterName || notification.username;
   const isNat20 = notification.dieType === 'd20' && notification.result === 20;
   const isNat1 = notification.dieType === 'd20' && notification.result === 1;
+  const hitMiss = notification.type === 'attack' ? detectHitMiss(notification.label, notification.calculationBreakdown) : null;
   
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -78,7 +97,6 @@ function CompactRollCard({ notification, onComplete }: { notification: RollNotif
     return () => clearTimeout(timer);
   }, [notification.id, onComplete, notificationDuration]);
   
-  // Use the same gradient colors as full notifications for consistency
   const effectColor = notification.isHealing 
     ? 'from-emerald-500 to-green-600' 
     : 'from-orange-500 to-red-600';
@@ -110,8 +128,13 @@ function CompactRollCard({ notification, onComplete }: { notification: RollNotif
           <span className="text-white/70 text-xs truncate max-w-[100px]">
             {displayName}
           </span>
-          {isNat20 && <span className="text-yellow-200 text-[10px] font-bold">CRIT!</span>}
-          {isNat1 && <span className="text-red-200 text-[10px] font-bold">FAIL</span>}
+          {hitMiss && (
+            <span className={`${HIT_MISS_CONFIG[hitMiss].bg} text-white text-[10px] font-bold px-1.5 py-0.5 rounded`}>
+              {HIT_MISS_CONFIG[hitMiss].text}
+            </span>
+          )}
+          {!hitMiss && isNat20 && <span className="text-yellow-200 text-[10px] font-bold">CRIT!</span>}
+          {!hitMiss && isNat1 && <span className="text-red-200 text-[10px] font-bold">FAIL</span>}
         </div>
       </div>
     </motion.div>
@@ -145,6 +168,7 @@ function RollCard({ notification, onComplete }: { notification: RollNotification
   const displayName = notification.characterName || notification.username;
   const isNat20 = notification.dieType === 'd20' && notification.result === 20;
   const isNat1 = notification.dieType === 'd20' && notification.result === 1;
+  const hitMiss = notification.type === 'attack' ? detectHitMiss(notification.label, notification.calculationBreakdown) : null;
   
   // Handle double-click to dismiss
   const handleDoubleClick = () => {
@@ -216,7 +240,17 @@ function RollCard({ notification, onComplete }: { notification: RollNotification
                 >
                   {notification.total}
                 </motion.span>
-                {isNat20 && (
+                {hitMiss && (
+                  <motion.span
+                    initial={{ opacity: 0, scale: 0.5 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ type: 'spring', damping: 12, delay: 0.25 }}
+                    className={`${HIT_MISS_CONFIG[hitMiss].bg} text-white font-bold text-sm uppercase tracking-wider px-2 py-0.5 rounded`}
+                  >
+                    {HIT_MISS_CONFIG[hitMiss].text}
+                  </motion.span>
+                )}
+                {!hitMiss && isNat20 && (
                   <motion.span
                     initial={{ opacity: 0, x: -10 }}
                     animate={{ opacity: 1, x: 0 }}
@@ -225,7 +259,7 @@ function RollCard({ notification, onComplete }: { notification: RollNotification
                     Crit Success
                   </motion.span>
                 )}
-                {isNat1 && (
+                {!hitMiss && isNat1 && (
                   <motion.span
                     initial={{ opacity: 0, x: -10 }}
                     animate={{ opacity: 1, x: 0 }}
