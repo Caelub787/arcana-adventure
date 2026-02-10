@@ -6568,7 +6568,10 @@ export default function Campaign() {
 
   // Unified side panel state (campaignDefaultPanel and useEffect moved after campaign query declaration)
   type SidePanelTab = 'characters' | 'chat' | 'notes' | 'settings' | 'scene' | 'initiative' | null;
-  const [activeSidePanel, setActiveSidePanel] = useState<SidePanelTab>('characters');
+  const [activeSidePanel, setActiveSidePanel] = useState<SidePanelTab>(() => {
+    if (typeof window !== 'undefined' && window.innerWidth < 768) return null;
+    return 'characters';
+  });
   const [sidePanelMinimized, setSidePanelMinimized] = useState(false);
   const defaultPanelAppliedRef = useRef(false);
   const sidePanelOpen = activeSidePanel !== null && !sidePanelMinimized;
