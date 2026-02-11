@@ -685,6 +685,14 @@ export const spells = pgTable("spells", {
   isEquipped: boolean("is_equipped").default(false).notNull(),
   isAttack: boolean("is_attack").default(true).notNull(), // If true: Attack/Damage rolls, if false: Use/Effect rolls
   gainEnergy: boolean("gain_energy").default(false), // For Energy damage type: if true adds energy, if false subtracts
+  isAoe: boolean("is_aoe").default(false),
+  aoeRange: integer("aoe_range"),
+  aoeShape: text("aoe_shape"),
+  passesThroughWalls: boolean("passes_through_walls").default(false),
+  requiresSave: boolean("requires_save").default(false),
+  saveAttribute: text("save_attribute"),
+  saveDc: integer("save_dc"),
+  saveSuccessEffect: text("save_success_effect").default("half"),
 });
 
 export const insertSpellSchema = createInsertSchema(spells).omit({
@@ -907,6 +915,11 @@ export const systemSpells = pgTable("system_spells", {
   isAoe: boolean("is_aoe").default(false), // Whether the spell has an area of effect
   aoeRange: integer("aoe_range"), // Area of effect range in feet (optional, no default)
   aoeShape: text("aoe_shape"), // Shape of the area effect: circle, square, cone, line
+  passesThroughWalls: boolean("passes_through_walls").default(false),
+  requiresSave: boolean("requires_save").default(false),
+  saveAttribute: text("save_attribute"),
+  saveDc: integer("save_dc"),
+  saveSuccessEffect: text("save_success_effect").default("half"),
   savingThrow: text("saving_throw"),
   effects: jsonb("effects").default([]).notNull(),
   isAttack: boolean("is_attack").default(true).notNull(), // If true: Attack/Damage rolls, if false: Use/Effect rolls
