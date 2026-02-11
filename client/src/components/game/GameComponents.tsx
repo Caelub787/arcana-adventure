@@ -4051,7 +4051,7 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
   
   // Modifier popup state
   const [showModifierPopup, setShowModifierPopup] = useState(false);
-  const [popupPosition, setPopupPosition] = useState({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
+  const [popupPosition, setPopupPosition] = useState({ x: window.innerWidth / 2, y: window.innerHeight / 3 });
   const popupDragRef = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(null);
   const [extraModifier, setExtraModifier] = useState(0);
   const [hasAdvantage, setHasAdvantage] = useState(false);
@@ -6090,6 +6090,13 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
               characterName: targetChar.name,
               calculationBreakdown: `d20 (${saveRoll.result}) + ${saveAttr} (${attrMod >= 0 ? '+' : ''}${attrMod}) = ${saveTotal} vs DC ${saveDc} → ${saveSuccess ? 'SAVED' : 'FAILED'} → ${appliedDamage} damage`,
             });
+            if (character.campaignId) {
+              const saveResultChat = saveSuccess 
+                ? `SAVED (${saveTotal} vs DC ${saveDc}) → ${saveSuccessEffect === 'none' ? 'No damage' : `Half damage: ${appliedDamage}`}`
+                : `FAILED (${saveTotal} vs DC ${saveDc}) → Full damage: ${appliedDamage}`;
+              gameWs.sendChatMessage(character.userId || '', targetChar.name || 'Unknown', 
+                `${saveAttr.charAt(0).toUpperCase() + saveAttr.slice(1)} Save vs ${spellData.name}: d20 (${saveRoll.result}) + ${saveAttr} (${attrMod >= 0 ? '+' : ''}${attrMod}) = ${saveTotal} → ${saveResultChat}`, 'roll');
+            }
           }
           
           const label = `${spellData.name} AoE (DC ${saveDc} ${saveAttr.charAt(0).toUpperCase() + saveAttr.slice(1)} Save)`;
@@ -6275,101 +6282,69 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
 
   // Handle click with single/double click detection
   const handleClick = () => {
-    if (isTraitClickable) {
-      clickCountRef.current += 1;
-      if (clickCountRef.current === 1) {
-        clickTimerRef.current = setTimeout(() => { clickCountRef.current = 0; }, 400);
-        handleTraitRoll();
-      } else if (clickCountRef.current >= 2) {
-        if (clickTimerRef.current) clearTimeout(clickTimerRef.current);
-        clickCountRef.current = 0;
-        setPopupPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
-        setShowModifierPopup(true);
-      }
-      return;
-    }
-
-    if (isSkillClickable) {
-      clickCountRef.current += 1;
-      if (clickCountRef.current === 1) {
-        clickTimerRef.current = setTimeout(() => { clickCountRef.current = 0; }, 400);
-        handleSkillRoll();
-      } else if (clickCountRef.current >= 2) {
-        if (clickTimerRef.current) clearTimeout(clickTimerRef.current);
-        clickCountRef.current = 0;
-        setPopupPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
-        setShowModifierPopup(true);
-      }
-      return;
-    }
-    
-    if (isSpellClickable) {
-      clickCountRef.current += 1;
-      if (clickCountRef.current === 1) {
-        clickTimerRef.current = setTimeout(() => { clickCountRef.current = 0; }, 400);
-        if (aoeTargetState?.active && aoeTargetState?.locked) {
-          handleSpellDamageRoll();
-        } else if (targetedTokenId) {
-          (async () => {
-            const result = await handleSpellAttackRoll();
-            if (result?.hit) {
-              await new Promise(resolve => setTimeout(resolve, 500));
-              await handleSpellDamageRoll({ critSuccess: result.critSuccess });
-            }
-          })();
-        } else {
-          handleSpellAttackRoll();
-        }
-      } else if (clickCountRef.current >= 2) {
-        if (clickTimerRef.current) clearTimeout(clickTimerRef.current);
-        clickCountRef.current = 0;
-        setPopupPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
-        setShowModifierPopup(true);
-      }
-      return;
-    }
-    
-    if (isThrowableClickable) {
-      clickCountRef.current += 1;
-      if (clickCountRef.current === 1) {
-        clickTimerRef.current = setTimeout(() => { clickCountRef.current = 0; }, 500);
-        handleThrowItem();
-      } else if (clickCountRef.current === 2) {
-        handleDamageRoll();
-      } else if (clickCountRef.current >= 3) {
-        if (clickTimerRef.current) clearTimeout(clickTimerRef.current);
-        clickCountRef.current = 0;
-        handleDetonateThrowables();
-      }
-      return;
-    }
-    
-    const isWeaponOrDamagingConsumable = itemData && (itemData.itemType === 'weapon' || (itemData.itemType === 'consumable' && itemData.isDamaging));
-    if (!isWeaponOrDamagingConsumable) return;
-    
     clickCountRef.current += 1;
+    
     if (clickCountRef.current === 1) {
-      clickTimerRef.current = setTimeout(() => { clickCountRef.current = 0; }, 400);
-      if (targetedTokenId) {
-        (async () => {
-          try {
-            const result = await handleAttackRoll();
-            if (result?.hit) {
-              await new Promise(resolve => setTimeout(resolve, 500));
-              await handleDamageRoll({ critSuccess: result.critSuccess });
-            }
-          } catch (err) {
-            console.error('[HotbarTimeout] Error:', err);
+      clickTimerRef.current = setTimeout(() => {
+        clickCountRef.current = 0;
+        
+        if (isTraitClickable) {
+          handleTraitRoll();
+        } else if (isSkillClickable) {
+          handleSkillRoll();
+        } else if (isSpellClickable) {
+          if (aoeTargetState?.active && aoeTargetState?.locked) {
+            handleSpellDamageRoll();
+          } else if (targetedTokenId) {
+            (async () => {
+              const result = await handleSpellAttackRoll();
+              if (result?.hit) {
+                await new Promise(resolve => setTimeout(resolve, 500));
+                await handleSpellDamageRoll({ critSuccess: result.critSuccess });
+              }
+            })();
+          } else {
+            handleSpellAttackRoll();
           }
-        })();
+        } else if (isThrowableClickable) {
+          handleThrowItem();
+        } else {
+          const isWeaponOrDamagingConsumable = itemData && (itemData.itemType === 'weapon' || (itemData.itemType === 'consumable' && itemData.isDamaging));
+          if (!isWeaponOrDamagingConsumable) return;
+          if (targetedTokenId) {
+            (async () => {
+              try {
+                const result = await handleAttackRoll();
+                if (result?.hit) {
+                  await new Promise(resolve => setTimeout(resolve, 500));
+                  await handleDamageRoll({ critSuccess: result.critSuccess });
+                }
+              } catch (err) {
+                console.error('[HotbarTimeout] Error:', err);
+              }
+            })();
+          } else {
+            handleAttackRoll();
+          }
+        }
+      }, 300);
+    } else if (clickCountRef.current === 2) {
+      if (isThrowableClickable) {
+        if (clickTimerRef.current) clearTimeout(clickTimerRef.current);
+        clickTimerRef.current = setTimeout(() => { clickCountRef.current = 0; }, 500);
+        handleDamageRoll();
       } else {
-        handleAttackRoll();
+        if (clickTimerRef.current) clearTimeout(clickTimerRef.current);
+        clickCountRef.current = 0;
+        setPopupPosition({ x: window.innerWidth / 2, y: window.innerHeight / 3 });
+        setShowModifierPopup(true);
       }
-    } else if (clickCountRef.current >= 2) {
+    } else if (clickCountRef.current >= 3) {
       if (clickTimerRef.current) clearTimeout(clickTimerRef.current);
       clickCountRef.current = 0;
-      setPopupPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
-      setShowModifierPopup(true);
+      if (isThrowableClickable) {
+        handleDetonateThrowables();
+      }
     }
   };
 
