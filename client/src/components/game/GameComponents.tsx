@@ -6038,7 +6038,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
               await new Promise(resolve => setTimeout(resolve, 1000));
             }
             
-            const isPlayerToken = !!(targetChar.userId && targetChar.userId !== character.userId);
+            const isPlayerToken = !!(targetChar.userId);
             
             if (isPlayerToken) {
               // Player token: show awaiting notification (prompt sent after damage is known)
@@ -6226,7 +6226,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
       if (targetChar) {
         const saveAttr = spellData.saveAttribute || spellData.attribute || 'wit';
         const saveSuccessEffect = spellData.saveSuccessEffect || 'half';
-        const isPlayerTarget = targetChar.userId && targetChar.userId !== character.userId;
+        const isPlayerTarget = !!(targetChar.userId);
         
         if (isPlayerTarget) {
           // STEP 1: Show notification that player must roll save
@@ -15047,9 +15047,9 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
       gainEnergy: spellFormData.damageType === 'Energy' ? spellFormData.gainEnergy : false,
       passesThroughWalls: spellFormData.isAoe ? spellFormData.passesThroughWalls : false,
       requiresSave: spellFormData.requiresSave,
-      saveAttribute: spellFormData.requiresSave ? normalizeNone(spellFormData.saveAttribute) : undefined,
-      saveDc: spellFormData.requiresSave ? optionalNum(spellFormData.saveDc) : undefined,
-      saveSuccessEffect: spellFormData.requiresSave ? spellFormData.saveSuccessEffect : undefined,
+      saveAttribute: (spellFormData.requiresSave || spellFormData.saveSuccessEffect) ? normalizeNone(spellFormData.saveAttribute) : undefined,
+      saveDc: (spellFormData.requiresSave || spellFormData.saveSuccessEffect) ? optionalNum(spellFormData.saveDc) : undefined,
+      saveSuccessEffect: spellFormData.saveSuccessEffect || undefined,
     };
 
     if (editSpellData) {
@@ -18605,7 +18605,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                         <Label htmlFor="spell-requires-save" className="cursor-pointer">Requires Save</Label>
                         <span className="text-xs text-stone-500">(Targets roll to resist)</span>
                       </div>
-                      {spellFormData.requiresSave && (
+                      {(spellFormData.requiresSave || spellFormData.saveSuccessEffect) && (
                         <div className="space-y-3 pl-4 border-l-2 border-blue-600/30">
                           <div className="grid grid-cols-2 gap-3">
                             <div>
