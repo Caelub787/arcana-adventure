@@ -4113,10 +4113,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const updated = await storage.updateCampaign(req.params.campaignId, { activeSceneId: sceneId || null });
       
+      // Fetch scene data to include in broadcast
+      let scene = null;
+      if (sceneId) {
+        scene = await storage.getScene(sceneId);
+      }
+      
       // Broadcast to WebSocket clients that the active scene has changed
       broadcastToCampaign(req.params.campaignId, {
-        type: 'activeSceneChanged',
-        sceneId: sceneId || null
+        type: 'active_scene_changed',
+        sceneId: sceneId || null,
+        scene
       });
       
       res.json(updated);
