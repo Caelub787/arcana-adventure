@@ -5879,6 +5879,28 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
                    (aoeTargetState?.spell?.aoe && typeof aoeTargetState.spell.aoe === 'string' && aoeTargetState.spell.aoe.includes(':')) ||
                    spellData.isAoe;
     if (hasAoe && aoeTargetState?.active && aoeTargetState?.locked && tokens) {
+      const energyCost = spellData.energyCost || 0;
+      const currentEnergy = character.energy || 0;
+      if (energyCost > 0 && currentEnergy < energyCost) {
+        triggerRollNotification({
+          type: 'system',
+          label: `Not Enough Energy!`,
+          result: 0,
+          total: 0,
+          username: character.name || 'Unknown',
+          characterName: character.name,
+          calculationBreakdown: `${spellData.name} requires ${energyCost} energy but you only have ${currentEnergy}.`,
+        });
+        return;
+      }
+      if (energyCost > 0) {
+        try {
+          await api.updateCharacter(character.id, { energy: currentEnergy - energyCost });
+          queryClient.invalidateQueries({ queryKey: ['character', character.id] });
+        } catch (err) {
+          console.error('Failed to deduct energy:', err);
+        }
+      }
       const casterToken = tokens.find((t: any) => t.id === aoeTargetState.casterTokenId);
       const cachedWalls = queryClient.getQueryData(['scene-walls', sceneId]) as any[] || [];
       const cachedDoors = queryClient.getQueryData(['scene-doors', sceneId]) as any[] || [];
@@ -6168,103 +6190,100 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
 
   // Handle click with single/double click detection
   const handleClick = () => {
-    // Handle trait clicks (single = roll, double = modifier popup)
     if (isTraitClickable) {
       clickCountRef.current += 1;
-      if (clickTimerRef.current) clearTimeout(clickTimerRef.current);
-      clickTimerRef.current = setTimeout(() => {
-        if (clickCountRef.current === 1) {
-          handleTraitRoll();
-        } else if (clickCountRef.current >= 2) {
-          setShowModifierPopup(true);
-        }
+      if (clickCountRef.current === 1) {
+        clickTimerRef.current = setTimeout(() => { clickCountRef.current = 0; }, 400);
+        handleTraitRoll();
+      } else if (clickCountRef.current >= 2) {
+        if (clickTimerRef.current) clearTimeout(clickTimerRef.current);
         clickCountRef.current = 0;
-      }, 250);
+        setShowModifierPopup(true);
+      }
       return;
     }
 
-    // Handle skill clicks (single = roll, double = modifier popup)
     if (isSkillClickable) {
       clickCountRef.current += 1;
-      if (clickTimerRef.current) clearTimeout(clickTimerRef.current);
-      clickTimerRef.current = setTimeout(() => {
-        if (clickCountRef.current === 1) {
-          handleSkillRoll();
-        } else if (clickCountRef.current >= 2) {
-          setShowModifierPopup(true);
-        }
+      if (clickCountRef.current === 1) {
+        clickTimerRef.current = setTimeout(() => { clickCountRef.current = 0; }, 400);
+        handleSkillRoll();
+      } else if (clickCountRef.current >= 2) {
+        if (clickTimerRef.current) clearTimeout(clickTimerRef.current);
         clickCountRef.current = 0;
-      }, 250);
+        setShowModifierPopup(true);
+      }
       return;
     }
     
-    // Handle spell clicks (single with target = attack+auto damage, single without = modifier popup, double = modifier popup)
     if (isSpellClickable) {
       clickCountRef.current += 1;
-      if (clickTimerRef.current) clearTimeout(clickTimerRef.current);
-      clickTimerRef.current = setTimeout(async () => {
-        if (clickCountRef.current === 1) {
-          if (targetedTokenId) {
+      if (clickCountRef.current === 1) {
+        clickTimerRef.current = setTimeout(() => { clickCountRef.current = 0; }, 400);
+        if (aoeTargetState?.active && aoeTargetState?.locked) {
+          handleSpellDamageRoll();
+        } else if (targetedTokenId) {
+          (async () => {
             const result = await handleSpellAttackRoll();
             if (result?.hit) {
               await new Promise(resolve => setTimeout(resolve, 500));
               await handleSpellDamageRoll({ critSuccess: result.critSuccess });
             }
-          } else {
-            setShowModifierPopup(true);
-          }
-        } else if (clickCountRef.current >= 2) {
-          setShowModifierPopup(true);
+          })();
+        } else {
+          handleSpellAttackRoll();
         }
+      } else if (clickCountRef.current >= 2) {
+        if (clickTimerRef.current) clearTimeout(clickTimerRef.current);
         clickCountRef.current = 0;
-      }, 250);
+        setShowModifierPopup(true);
+      }
       return;
     }
     
-    // Handle throwable items (single = throw, double = normal damage, triple = detonate with AOE damage)
     if (isThrowableClickable) {
       clickCountRef.current += 1;
-      if (clickTimerRef.current) clearTimeout(clickTimerRef.current);
-      clickTimerRef.current = setTimeout(() => {
-        if (clickCountRef.current === 1) {
-          handleThrowItem();
-        } else if (clickCountRef.current === 2) {
-          handleDamageRoll();
-        } else if (clickCountRef.current >= 3) {
-          handleDetonateThrowables();
-        }
+      if (clickCountRef.current === 1) {
+        clickTimerRef.current = setTimeout(() => { clickCountRef.current = 0; }, 500);
+        handleThrowItem();
+      } else if (clickCountRef.current === 2) {
+        handleDamageRoll();
+      } else if (clickCountRef.current >= 3) {
+        if (clickTimerRef.current) clearTimeout(clickTimerRef.current);
         clickCountRef.current = 0;
-      }, 500);
+        handleDetonateThrowables();
+      }
       return;
     }
     
-    // Handle weapons and damaging consumables (single with target = attack+auto damage, single without = modifier popup, double = modifier popup)
     const isWeaponOrDamagingConsumable = itemData && (itemData.itemType === 'weapon' || (itemData.itemType === 'consumable' && itemData.isDamaging));
     if (!isWeaponOrDamagingConsumable) return;
     
     clickCountRef.current += 1;
-    if (clickTimerRef.current) clearTimeout(clickTimerRef.current);
-    clickTimerRef.current = setTimeout(async () => {
-      try {
-        if (clickCountRef.current === 1) {
-          if (targetedTokenId) {
+    if (clickCountRef.current === 1) {
+      clickTimerRef.current = setTimeout(() => { clickCountRef.current = 0; }, 400);
+      if (targetedTokenId) {
+        (async () => {
+          try {
             const result = await handleAttackRoll();
             if (result?.hit) {
               await new Promise(resolve => setTimeout(resolve, 500));
               await handleDamageRoll({ critSuccess: result.critSuccess });
             }
-          } else {
-            setShowModifierPopup(true);
+          } catch (err) {
+            console.error('[HotbarTimeout] Error:', err);
           }
-        } else if (clickCountRef.current >= 2) {
-          setShowModifierPopup(true);
-        }
-      } catch (err) {
-        console.error('[HotbarTimeout] Error:', err);
+        })();
+      } else {
+        setShowModifierPopup(true);
       }
+    } else if (clickCountRef.current >= 2) {
+      if (clickTimerRef.current) clearTimeout(clickTimerRef.current);
       clickCountRef.current = 0;
-    }, 250);
-    };
+      setShowModifierPopup(true);
+    }
+  };
+
 
   // Determine what to display
   let content = null;
@@ -12415,40 +12434,30 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
     e.stopPropagation();
     
     clickCountRef.current += 1;
-    
-    if (clickTimerRef.current) {
-      clearTimeout(clickTimerRef.current);
-    }
-    
-    clickTimerRef.current = setTimeout(() => {
-      if (clickCountRef.current === 1) {
-        handleSpellAttackRoll();
-      } else if (clickCountRef.current >= 2) {
-        handleSpellDamageRoll();
-      }
+    if (clickCountRef.current === 1) {
+      clickTimerRef.current = setTimeout(() => { clickCountRef.current = 0; }, 400);
+      handleSpellAttackRoll();
+    } else if (clickCountRef.current >= 2) {
+      if (clickTimerRef.current) clearTimeout(clickTimerRef.current);
       clickCountRef.current = 0;
-    }, 250);
+      handleSpellDamageRoll();
+    }
   };
 
   // Handle click with single/double click detection for weapons
   const handleWeaponClick = (e: React.MouseEvent) => {
-    if (!itemData || itemData.itemType !== 'weapon') return;
+    if (!itemData) return;
     e.stopPropagation();
     
     clickCountRef.current += 1;
-    
-    if (clickTimerRef.current) {
-      clearTimeout(clickTimerRef.current);
-    }
-    
-    clickTimerRef.current = setTimeout(() => {
-      if (clickCountRef.current === 1) {
-        handleAttackRoll();
-      } else if (clickCountRef.current >= 2) {
-        handleDamageRoll();
-      }
+    if (clickCountRef.current === 1) {
+      clickTimerRef.current = setTimeout(() => { clickCountRef.current = 0; }, 400);
+      handleAttackRoll();
+    } else if (clickCountRef.current >= 2) {
+      if (clickTimerRef.current) clearTimeout(clickTimerRef.current);
       clickCountRef.current = 0;
-    }, 250);
+      handleDamageRoll();
+    }
   };
 
   const isWeaponClickable = itemData && itemData.itemType === 'weapon';
@@ -14887,62 +14896,9 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
   const hpPerLevel = currentSpecies?.hpPerLevel || 5; // Default to d5 if no species found
   const energyPerLevel = (currentSpecies as any)?.energyPerLevel || 6; // Default to d6 if no species found
   
-  // Auto-correct character stats when species data loads and there's a mismatch
-  // This fixes characters created before species data was properly configured
-  // IMPORTANT: Must account for both HP and Energy level-up bonuses
+  // Auto-correct is disabled - GMs can set HP/Energy to any value including above species max
+  // The species formula is used as a baseline for new characters and level-ups only
   const hasAutoCorrectRef = useRef(false);
-  useEffect(() => {
-    if (hasAutoCorrectRef.current || !currentSpecies || !liveCharacter.id) return;
-    
-    const bonusHp = liveCharacter.bonusHpFromLevelUps || 0;
-    const bonusEnergy = liveCharacter.bonusEnergyFromLevelUps || 0;
-    const expectedMaxHp = currentSpecies.startingMaxHp + bonusHp;
-    const expectedMaxEnergy = currentSpecies.startingMaxEnergy + bonusEnergy;
-    
-    // Check if there's a mismatch that needs correction
-    const hpMismatch = liveCharacter.maxHp !== expectedMaxHp;
-    const energyMismatch = liveCharacter.maxEnergy !== expectedMaxEnergy;
-    
-    if (hpMismatch || energyMismatch) {
-      hasAutoCorrectRef.current = true;
-      
-      // Calculate corrected values
-      const correctedMaxHp = expectedMaxHp;
-      const correctedHp = Math.min(liveCharacter.hp || currentSpecies.startingHp, correctedMaxHp);
-      const correctedMaxEnergy = expectedMaxEnergy;
-      const correctedEnergy = Math.min(liveCharacter.energy || currentSpecies.startingEnergy, correctedMaxEnergy);
-      
-      // Update local state
-      setOverviewData(prev => ({
-        ...prev,
-        hp: correctedHp,
-        maxHp: correctedMaxHp,
-        energy: correctedEnergy,
-        maxEnergy: correctedMaxEnergy
-      }));
-      
-      // Also update liveCharacter
-      setLiveCharacter((prev: any) => ({
-        ...prev,
-        hp: correctedHp,
-        maxHp: correctedMaxHp,
-        energy: correctedEnergy,
-        maxEnergy: correctedMaxEnergy
-      }));
-      
-      // Save the corrected values to the database
-      api.updateCharacter(liveCharacter.id, {
-        hp: correctedHp,
-        maxHp: correctedMaxHp,
-        energy: correctedEnergy,
-        maxEnergy: correctedMaxEnergy
-      }).then(() => {
-        if (campaignId) {
-          queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${campaignId}/characters`] });
-        }
-      });
-    }
-  }, [currentSpecies, liveCharacter.id, liveCharacter.maxHp, liveCharacter.maxEnergy, liveCharacter.bonusHpFromLevelUps, liveCharacter.bonusEnergyFromLevelUps]);
   
   // Calculate dice count for HP: 1 base + 1 extra every 3 levels
   const calculateDiceCount = (level: number) => {
@@ -14984,7 +14940,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
       bonusHpFromLevelUps: newBonusHp,
       lastLevelUpRolled: rollingHpLevel,
       maxHp: newMaxHp,
-      hp: Math.min(liveCharacter.hp + total, newMaxHp)
+      hp: liveCharacter.hp + total
     });
     
     // Send to chat as a dice roll notification
@@ -15024,7 +14980,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
       bonusEnergyFromLevelUps: newBonusEnergy,
       lastEnergyLevelUpRolled: rollingEnergyLevel,
       maxEnergy: newMaxEnergy,
-      energy: Math.min(liveCharacter.energy + total, newMaxEnergy)
+      energy: liveCharacter.energy + total
     });
     
     // Send to chat as a dice roll notification
@@ -16136,7 +16092,6 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                           <div className="flex gap-1 items-center">
                             <Input
                               type="number"
-                              min="0"
                               value={overviewData.hp}
                               onChange={(e) => setOverviewData({ ...overviewData, hp: e.target.value === '' ? '' : parseInt(e.target.value) })}
                               className="w-16 h-7 text-xs bg-stone-900 border-stone-700 text-stone-200"
@@ -16146,7 +16101,6 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                             <div className="flex items-center gap-1">
                               <Input
                                 type="number"
-                                min="1"
                                 value={overviewData.maxHp}
                                 onChange={(e) => setOverviewData({ ...overviewData, maxHp: e.target.value === '' ? '' : parseInt(e.target.value) })}
                                 className={`w-16 h-7 text-xs bg-stone-900 text-stone-200 ${isGM ? 'border-amber-700' : 'border-stone-700'}`}
@@ -16169,7 +16123,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                           </div>
                         ) : (
                           <span className="text-xs font-bold" data-testid="text-hp">
-                            {Math.min(liveCharacter.hp, effectiveMaxHp)} / {effectiveMaxHp}
+                            {liveCharacter.hp} / {effectiveMaxHp}
                           </span>
                         )}
                       </div>
@@ -16215,7 +16169,6 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                           <div className="flex gap-1 items-center">
                             <Input
                               type="number"
-                              min="0"
                               value={overviewData.energy}
                               onChange={(e) => setOverviewData({ ...overviewData, energy: e.target.value === '' ? '' : parseInt(e.target.value) })}
                               className="w-16 h-7 text-xs bg-stone-900 border-stone-700 text-stone-200"
@@ -16225,7 +16178,6 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                             <div className="flex items-center gap-1">
                               <Input
                                 type="number"
-                                min="0"
                                 value={overviewData.maxEnergy}
                                 onChange={(e) => setOverviewData({ ...overviewData, maxEnergy: e.target.value === '' ? '' : parseInt(e.target.value) })}
                                 className={`w-16 h-7 text-xs bg-stone-900 text-stone-200 ${isGM ? 'border-amber-700' : 'border-stone-700'}`}
@@ -16248,7 +16200,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                           </div>
                         ) : (
                           <span className="text-xs font-bold" data-testid="text-energy">
-                            {Math.min(liveCharacter.energy, effectiveMaxEnergy)} / {effectiveMaxEnergy}
+                            {liveCharacter.energy} / {effectiveMaxEnergy}
                           </span>
                         )}
                       </div>
