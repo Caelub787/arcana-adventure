@@ -6479,6 +6479,7 @@ export default function Campaign() {
       if (prev.some(c => c.id === char.id)) return prev;
       return [...prev, char];
     });
+    bringToFront(`char-${char.id}`);
   };
   
   const closeCharacterSheet = (charId: string) => {
