@@ -39,7 +39,7 @@ import { evaluateExpression, ExpressionContext } from '@/components/sandbox/expr
 import { rollDice, formatRollResult, isDiceExpression, DiceRollResult } from '@/components/sandbox/diceEngine';
 
 // Scene Settings Form Component
-function SceneSettingsForm({ scene, onUpdateScene }: { scene: Scene; onUpdateScene: (settings: Partial<Scene>) => void }) {
+function SceneSettingsForm({ scene, onUpdateScene, onCalibrateGrid }: { scene: Scene; onUpdateScene: (settings: Partial<Scene>) => void; onCalibrateGrid?: () => void }) {
   const [localSettings, setLocalSettings] = useState({
     gridEnabled: scene.gridEnabled,
     gridType: scene.gridType,
@@ -239,6 +239,20 @@ function SceneSettingsForm({ scene, onUpdateScene }: { scene: Scene; onUpdateSce
             </div>
           </div>
         </div>
+      )}
+
+      {/* Calibrate Grid Button */}
+      {localSettings.gridEnabled && onCalibrateGrid && (
+        <Button
+          type="button"
+          variant="outline"
+          onClick={onCalibrateGrid}
+          className="w-full border-amber-700 hover:bg-amber-900/50 text-amber-500"
+          data-testid="button-calibrate-grid"
+        >
+          <Grid3X3 className="h-4 w-4 mr-2" />
+          Calibrate Grid
+        </Button>
       )}
 
       {/* Grid Color */}
@@ -6688,6 +6702,7 @@ export default function Campaign() {
   
   // Other players' viewport states (keyed by userId) - for GM visibility
   const [fogToolActive, setFogToolActive] = useState(false);
+  const [gridCalibrationMode, setGridCalibrationMode] = useState(false);
 
   const [otherPlayersViewports, setOtherPlayersViewports] = useState<Map<string, {
     userId: string;
@@ -9399,7 +9414,8 @@ export default function Campaign() {
 
                   <SceneSettingsForm 
                     scene={activeScene} 
-                    onUpdateScene={handleUpdateScene} 
+                    onUpdateScene={handleUpdateScene}
+                    onCalibrateGrid={() => setGridCalibrationMode(true)}
                   />
 
                   {/* Set Default View Button */}
@@ -9780,6 +9796,12 @@ export default function Campaign() {
              currentUserId={user?.id || null}
              assignedCharacterId={character?.id || null}
              onTokenLongPress={setLongPressedToken}
+             gridCalibrationMode={gridCalibrationMode}
+             onGridCalibrationConfirm={(newSize, offsetX, offsetY) => {
+               updateSceneMutation.mutate({ gridSize: newSize, gridOffsetX: offsetX, gridOffsetY: offsetY } as any);
+               setGridCalibrationMode(false);
+             }}
+             onGridCalibrationCancel={() => setGridCalibrationMode(false)}
            />
            
            {/* Battlemap Dice Overlay for 3D dice rolling */}
@@ -10399,6 +10421,7 @@ export default function Campaign() {
                         <SceneSettingsForm
                           scene={activeScene}
                           onUpdateScene={handleUpdateScene}
+                          onCalibrateGrid={() => setGridCalibrationMode(true)}
                         />
                         <div className="pt-4">
                           <Button

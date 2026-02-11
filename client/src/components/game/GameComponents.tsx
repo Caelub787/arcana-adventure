@@ -333,9 +333,14 @@ interface BattleMapProps {
   placingCharacterId?: string | null;
   currentUserId?: string | null;
   onTokenLongPress?: (token: any) => void;
+  gridCalibrationMode?: boolean;
+  onGridCalibrationConfirm?: (gridSize: number, offsetX: number, offsetY: number) => void;
+  onGridCalibrationCancel?: () => void;
 }
 
-export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClick, onTokenTripleClick, onDeleteToken, role, gridSize, backgroundImage, scene, onViewChange, characters = [], allSpecies = [], selectionMode = 'select', targetedTokenId, selectedTokenId, aoeTargetState, onAoeMouseMove, onAoeClick, otherPlayersAoe, myPermissions, tokenActiveEffects, allTokenEffects, onApplyEffect, onRemoveEffect, onToggleInvisibility, currentTurnCharacterId, otherPlayersTargeting, activeBeacons, onBeacon, otherPlayersViewports, thrownItems = [], onRefetchThrownItems, onDeleteThrownItem, throwableGridTarget, onGridTargetClick, notesPanelOpen = false, notesPanelWidth = 0, onNotesClick, inCombat = false, fogToolActive: fogToolActiveProp, onFogToolActiveChange, onDropCharacterOnMap, onMapClickToPlace, placingCharacterId, currentUserId, assignedCharacterId, onTokenLongPress }: BattleMapProps) {
+
+
+export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClick, onTokenTripleClick, onDeleteToken, role, gridSize, backgroundImage, scene, onViewChange, characters = [], allSpecies = [], selectionMode = 'select', targetedTokenId, selectedTokenId, aoeTargetState, onAoeMouseMove, onAoeClick, otherPlayersAoe, myPermissions, tokenActiveEffects, allTokenEffects, onApplyEffect, onRemoveEffect, onToggleInvisibility, currentTurnCharacterId, otherPlayersTargeting, activeBeacons, onBeacon, otherPlayersViewports, thrownItems = [], onRefetchThrownItems, onDeleteThrownItem, throwableGridTarget, onGridTargetClick, notesPanelOpen = false, notesPanelWidth = 0, onNotesClick, inCombat = false, fogToolActive: fogToolActiveProp, onFogToolActiveChange, onDropCharacterOnMap, onMapClickToPlace, placingCharacterId, currentUserId, assignedCharacterId, onTokenLongPress, gridCalibrationMode, onGridCalibrationConfirm, onGridCalibrationCancel }: BattleMapProps) {
   // Derive isGM from role prop
   const isGM = role === 'gm';
   
@@ -358,6 +363,31 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
   
   // Grid double-click tracking for beacon (in select mode)
   const gridDoubleClickRef = useRef<{ cellKey: string; lastClickTime: number }>({ cellKey: '', lastClickTime: 0 });
+  // Grid Calibration state
+  const [calibSquare, setCalibSquare] = useState({ x: 9050, y: 9050, size: 50 });
+  const [calibDrag, setCalibDrag] = useState<{ type: 'move' | 'resize'; startX: number; startY: number; origX: number; origY: number; origSize: number } | null>(null);
+  const calibDragRef = useRef<{ type: 'move' | 'resize'; startX: number; startY: number; origX: number; origY: number; origSize: number } | null>(null);
+
+  useEffect(() => {
+    if (gridCalibrationMode) {
+      const container = containerRef.current;
+      const currentSize = gridSize || 50;
+      let startX = 100, startY = 100;
+      if (container) {
+        const rect = container.getBoundingClientRect();
+        const centerScreenX = rect.width / 2;
+        const centerScreenY = rect.height / 2;
+        const MAP_OFF = 9000;
+        startX = ((centerScreenX + MAP_OFF - panRef.current.x) / zoomRef.current) - MAP_OFF;
+        startY = ((centerScreenY + MAP_OFF - panRef.current.y) / zoomRef.current) - MAP_OFF;
+        startX = Math.round(startX - currentSize / 2);
+        startY = Math.round(startY - currentSize / 2);
+      }
+      setCalibSquare({ x: startX, y: startY, size: currentSize });
+      setCalibDrag(null);
+      calibDragRef.current = null;
+    }
+  }, [gridCalibrationMode]);
   
   // Long-press delete mode for thrown items (mobile-friendly)
   const [thrownItemDeleteMode, setThrownItemDeleteMode] = useState<string | null>(null);
@@ -1139,6 +1169,8 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
    * In AoE targeting mode, panning still works - click without drag locks the AoE.
    */
   const handleMapPointerDown = (e: React.PointerEvent) => {
+    // If in calibration mode, don't do normal panning
+    if (gridCalibrationMode) return;
     // Don't start panning if locked, pinching, or dragging a token
     if (isMapLockedRef.current) return;
     if (gestureModeRef.current !== 'idle') return;
@@ -1174,6 +1206,30 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
   };
   
   const handleMapPointerMove = (e: React.PointerEvent) => {
+    // Handle calibration drag
+    if (gridCalibrationMode && calibDragRef.current) {
+      const container = containerRef.current;
+      if (container) {
+        const rect = container.getBoundingClientRect();
+        const screenX = e.clientX - rect.left;
+        const screenY = e.clientY - rect.top;
+        const worldX = ((screenX + 9000 - panRef.current.x) / zoomRef.current) - 9000;
+        const worldY = ((screenY + 9000 - panRef.current.y) / zoomRef.current) - 9000;
+        const drag = calibDragRef.current;
+        if (drag.type === 'move') {
+          const dx = worldX - drag.startX;
+          const dy = worldY - drag.startY;
+          setCalibSquare(prev => ({ ...prev, x: drag.origX + dx, y: drag.origY + dy }));
+        } else if (drag.type === 'resize') {
+          const dx = worldX - drag.startX;
+          const dy = worldY - drag.startY;
+          const delta = Math.max(dx, dy);
+          const newSize = Math.max(10, drag.origSize + delta);
+          setCalibSquare(prev => ({ ...prev, size: newSize }));
+        }
+      }
+      return;
+    }
     // Handle AoE targeting mode mouse tracking
     if (aoeTargetState?.active && !aoeTargetState.locked && onAoeMouseMove) {
       const container = containerRef.current;
@@ -1210,6 +1266,11 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
   };
   
   const handleMapPointerUp = (e: React.PointerEvent) => {
+    if (gridCalibrationMode && calibDragRef.current) {
+      calibDragRef.current = null;
+      setCalibDrag(null);
+      return;
+    }
     if (gestureModeRef.current !== 'panning') return;
     if (panPointerIdRef.current !== e.pointerId) return;
     
@@ -1763,14 +1824,14 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
               return (scene?.gridType || 'square') === 'square' ? (
                 <div className="absolute inset-0 pointer-events-none" 
                      style={{ 
-                       opacity: scene?.gridOpacity ?? 0.4,
+                       opacity: gridCalibrationMode ? 0.1 : (scene?.gridOpacity ?? 0.4),
                        backgroundImage: `linear-gradient(${scene?.gridColor || '#ffffff'} ${scene?.gridThickness ?? 1}px, transparent ${scene?.gridThickness ?? 1}px), linear-gradient(90deg, ${scene?.gridColor || '#ffffff'} ${scene?.gridThickness ?? 1}px, transparent ${scene?.gridThickness ?? 1}px)`,
                        backgroundSize: `${displayGridSize}px ${displayGridSize}px`,
                        backgroundPosition: `${displayOffsetX}px ${displayOffsetY}px`
                      }} 
                 />
               ) : (
-                <svg className="absolute inset-0 pointer-events-none" width="100%" height="100%" style={{ opacity: scene?.gridOpacity ?? 0.4 }}>
+                <svg className="absolute inset-0 pointer-events-none" width="100%" height="100%" style={{ opacity: gridCalibrationMode ? 0.1 : (scene?.gridOpacity ?? 0.4) }}>
                   <defs>
                     <pattern 
                       id="hexgrid" 
@@ -1795,6 +1856,114 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
           </>
         )}
         
+
+        {/* Grid Calibration Square Overlay */}
+        {gridCalibrationMode && (
+          <div
+            data-testid="calibration-square"
+            style={{
+              position: 'absolute',
+              left: calibSquare.x + 9000,
+              top: calibSquare.y + 9000,
+              width: calibSquare.size,
+              height: calibSquare.size,
+              border: '3px dashed #f59e0b',
+              backgroundColor: 'rgba(245, 158, 11, 0.15)',
+              cursor: 'move',
+              zIndex: 100,
+              boxSizing: 'border-box',
+            }}
+            onPointerDown={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              (e.target as HTMLElement).setPointerCapture(e.pointerId);
+              const container = containerRef.current;
+              if (!container) return;
+              const rect = container.getBoundingClientRect();
+              const screenX = e.clientX - rect.left;
+              const screenY = e.clientY - rect.top;
+              const worldX = ((screenX + 9000 - panRef.current.x) / zoomRef.current) - 9000;
+              const worldY = ((screenY + 9000 - panRef.current.y) / zoomRef.current) - 9000;
+              const dragState = { type: 'move' as const, startX: worldX, startY: worldY, origX: calibSquare.x, origY: calibSquare.y, origSize: calibSquare.size };
+              calibDragRef.current = dragState;
+              setCalibDrag(dragState);
+            }}
+            onPointerMove={(e) => {
+              if (!calibDragRef.current) return;
+              const container = containerRef.current;
+              if (!container) return;
+              const rect = container.getBoundingClientRect();
+              const screenX = e.clientX - rect.left;
+              const screenY = e.clientY - rect.top;
+              const worldX = ((screenX + 9000 - panRef.current.x) / zoomRef.current) - 9000;
+              const worldY = ((screenY + 9000 - panRef.current.y) / zoomRef.current) - 9000;
+              const drag = calibDragRef.current;
+              if (drag.type === 'move') {
+                const dx = worldX - drag.startX;
+                const dy = worldY - drag.startY;
+                setCalibSquare(prev => ({ ...prev, x: drag.origX + dx, y: drag.origY + dy }));
+              }
+            }}
+            onPointerUp={(e) => {
+              try { (e.target as HTMLElement).releasePointerCapture(e.pointerId); } catch(err) {}
+              calibDragRef.current = null;
+              setCalibDrag(null);
+            }}
+          >
+            {/* Resize handle at bottom-right */}
+            <div
+              style={{
+                position: 'absolute',
+                right: -6,
+                bottom: -6,
+                width: 12,
+                height: 12,
+                backgroundColor: '#f59e0b',
+                border: '2px solid #d97706',
+                cursor: 'nwse-resize',
+                zIndex: 101,
+              }}
+              onPointerDown={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                (e.target as HTMLElement).setPointerCapture(e.pointerId);
+                const container = containerRef.current;
+                if (!container) return;
+                const rect = container.getBoundingClientRect();
+                const screenX = e.clientX - rect.left;
+                const screenY = e.clientY - rect.top;
+                const worldX = ((screenX + 9000 - panRef.current.x) / zoomRef.current) - 9000;
+                const worldY = ((screenY + 9000 - panRef.current.y) / zoomRef.current) - 9000;
+                const dragState = { type: 'resize' as const, startX: worldX, startY: worldY, origX: calibSquare.x, origY: calibSquare.y, origSize: calibSquare.size };
+                calibDragRef.current = dragState;
+                setCalibDrag(dragState);
+              }}
+              onPointerMove={(e) => {
+                if (!calibDragRef.current) return;
+                const container = containerRef.current;
+                if (!container) return;
+                const rect = container.getBoundingClientRect();
+                const screenX = e.clientX - rect.left;
+                const screenY = e.clientY - rect.top;
+                const worldX = ((screenX + 9000 - panRef.current.x) / zoomRef.current) - 9000;
+                const worldY = ((screenY + 9000 - panRef.current.y) / zoomRef.current) - 9000;
+                const drag = calibDragRef.current;
+                if (drag.type === 'resize') {
+                  const dx = worldX - drag.startX;
+                  const dy = worldY - drag.startY;
+                  const delta = Math.max(dx, dy);
+                  const newSize = Math.max(10, drag.origSize + delta);
+                  setCalibSquare(prev => ({ ...prev, size: newSize }));
+                }
+              }}
+              onPointerUp={(e) => {
+                try { (e.target as HTMLElement).releasePointerCapture(e.pointerId); } catch(err) {}
+                calibDragRef.current = null;
+                setCalibDrag(null);
+              }}
+            />
+          </div>
+        )}
         {/* Active Beacons Overlay - Render pulsating ring animations */}
         {activeBeacons && activeBeacons.length > 0 && (
           <div className="absolute inset-0 pointer-events-none" style={{ zIndex: 50 }}>
@@ -3571,6 +3740,73 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Grid Calibration Floating Control Bar */}
+      {gridCalibrationMode && (
+        <div
+          style={{
+            position: 'fixed',
+            bottom: 24,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 10000,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+            backgroundColor: 'rgba(28, 25, 23, 0.95)',
+            border: '1px solid rgba(245, 158, 11, 0.5)',
+            borderRadius: 12,
+            padding: '10px 20px',
+            backdropFilter: 'blur(8px)',
+          }}
+        >
+          <span style={{ color: '#f59e0b', fontSize: 14, fontWeight: 500 }}>
+            Grid Square: {Math.round(calibSquare.size)}px
+          </span>
+          <button
+            data-testid="button-calibrate-confirm"
+            onClick={() => {
+              if (onGridCalibrationConfirm) {
+                const newGridSize = Math.round(calibSquare.size);
+                const MAP_OFF = 9000;
+                const newOffsetX = ((calibSquare.x % newGridSize) - (MAP_OFF % newGridSize) + newGridSize * 2) % newGridSize;
+                const newOffsetY = ((calibSquare.y % newGridSize) - (MAP_OFF % newGridSize) + newGridSize * 2) % newGridSize;
+                onGridCalibrationConfirm(newGridSize, newOffsetX, newOffsetY);
+              }
+            }}
+            style={{
+              backgroundColor: '#16a34a',
+              color: 'white',
+              border: 'none',
+              borderRadius: 8,
+              padding: '8px 16px',
+              cursor: 'pointer',
+              fontSize: 14,
+              fontWeight: 600,
+            }}
+          >
+            Confirm
+          </button>
+          <button
+            data-testid="button-calibrate-cancel"
+            onClick={() => {
+              if (onGridCalibrationCancel) onGridCalibrationCancel();
+            }}
+            style={{
+              backgroundColor: '#57534e',
+              color: 'white',
+              border: 'none',
+              borderRadius: 8,
+              padding: '8px 16px',
+              cursor: 'pointer',
+              fontSize: 14,
+              fontWeight: 600,
+            }}
+          >
+            Cancel
+          </button>
+        </div>
+      )}
 
     </div>
   );
@@ -9730,8 +9966,8 @@ export function CampaignMenu({ campaignId, role, inviteCode, hotbarSlots = 5, in
                             >
                               {/* Character Portrait */}
                               <div className="w-10 h-10 rounded-full overflow-hidden border-2 border-stone-700 flex-shrink-0">
-                                {(char.portrait || allSpecies.find((s: any) => s.name === char.race)?.defaultImage) ? (
-                                  <img src={char.portrait || allSpecies.find((s: any) => s.name === char.race)?.defaultImage} alt={char.name} className="w-full h-full object-cover" />
+                                {(char.portrait) ? (
+                                  <img src={char.portrait} alt={char.name} className="w-full h-full object-cover" />
                                 ) : (
                                   <div className="w-full h-full bg-stone-800 flex items-center justify-center">
                                     <Users className="h-5 w-5 text-stone-600" />
@@ -9793,8 +10029,8 @@ export function CampaignMenu({ campaignId, role, inviteCode, hotbarSlots = 5, in
                       >
                         {/* Character Portrait */}
                         <div className="w-10 h-10 rounded-full overflow-hidden border-2 border-stone-700 flex-shrink-0">
-                          {(char.portrait || allSpecies.find((s: any) => s.name === char.race)?.defaultImage) ? (
-                            <img src={char.portrait || allSpecies.find((s: any) => s.name === char.race)?.defaultImage} alt={char.name} className="w-full h-full object-cover" />
+                          {(char.portrait) ? (
+                            <img src={char.portrait} alt={char.name} className="w-full h-full object-cover" />
                           ) : (
                             <div className="w-full h-full bg-stone-800 flex items-center justify-center">
                               <Users className="h-5 w-5 text-stone-600" />
@@ -10208,8 +10444,8 @@ export function CampaignMenu({ campaignId, role, inviteCode, hotbarSlots = 5, in
                         data-testid={`import-character-${char.id}`}
                       >
                         <div className="w-10 h-10 rounded-full overflow-hidden border-2 border-stone-700 flex-shrink-0">
-                          {(char.portrait || allSpecies.find((s: any) => s.name === char.race)?.defaultImage) ? (
-                            <img src={char.portrait || allSpecies.find((s: any) => s.name === char.race)?.defaultImage} alt={char.name} className="w-full h-full object-cover" />
+                          {(char.portrait) ? (
+                            <img src={char.portrait} alt={char.name} className="w-full h-full object-cover" />
                           ) : (
                             <div className="w-full h-full bg-stone-800 flex items-center justify-center">
                               <User className="h-5 w-5 text-stone-600" />
