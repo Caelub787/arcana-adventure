@@ -98,7 +98,8 @@ function castRay(
   angle: number,
   visionRadius: number,
   segments: BlockingSegment[],
-  skipEndpointCheck = false
+  skipEndpointCheck = false,
+  cornerEndpoints?: Set<string>
 ): RayIntersection {
   const farX = originX + Math.cos(angle) * visionRadius;
   const farY = originY + Math.sin(angle) * visionRadius;
@@ -116,18 +117,35 @@ function castRay(
     );
 
     if (hit && hit.t > 1e-6) {
-      if (!skipEndpointCheck && (hit.u < ENDPOINT_U_MARGIN || hit.u > 1 - ENDPOINT_U_MARGIN)) {
-        let bodyDx: number, bodyDy: number;
-        if (hit.u < 0.5) {
-          bodyDx = seg.x2 - seg.x1;
-          bodyDy = seg.y2 - seg.y1;
-        } else {
-          bodyDx = seg.x1 - seg.x2;
-          bodyDy = seg.y1 - seg.y2;
+      if (hit.u < ENDPOINT_U_MARGIN || hit.u > 1 - ENDPOINT_U_MARGIN) {
+        if (skipEndpointCheck && cornerEndpoints) {
+          const epX = hit.u < 0.5 ? seg.x1 : seg.x2;
+          const epY = hit.u < 0.5 ? seg.y1 : seg.y2;
+          const key = `${Math.round(epX)},${Math.round(epY)}`;
+          if (cornerEndpoints.has(key)) {
+            const dist = hit.t * visionRadius;
+            if (dist < closestDist) {
+              closestDist = dist;
+              closestX = hit.x;
+              closestY = hit.y;
+            }
+            continue;
+          }
         }
-        const dot = bodyDx * rayDx + bodyDy * rayDy;
-        if (dot <= 0) {
-          continue;
+
+        {
+          let bodyDx: number, bodyDy: number;
+          if (hit.u < 0.5) {
+            bodyDx = seg.x2 - seg.x1;
+            bodyDy = seg.y2 - seg.y1;
+          } else {
+            bodyDx = seg.x1 - seg.x2;
+            bodyDy = seg.y1 - seg.y2;
+          }
+          const dot = bodyDx * rayDx + bodyDy * rayDy;
+          if (dot <= 0) {
+            continue;
+          }
         }
       }
 
@@ -160,6 +178,21 @@ export function calculateVisionPolygon(
     return { tokenX, tokenY, radius: visionRadius, points: [] };
   }
 
+  let cornerEndpoints: Set<string> | undefined;
+  if (skipEndpointCheck) {
+    const epCount = new Map<string, number>();
+    for (const seg of blockingSegments) {
+      const k1 = `${Math.round(seg.x1)},${Math.round(seg.y1)}`;
+      const k2 = `${Math.round(seg.x2)},${Math.round(seg.y2)}`;
+      epCount.set(k1, (epCount.get(k1) || 0) + 1);
+      epCount.set(k2, (epCount.get(k2) || 0) + 1);
+    }
+    cornerEndpoints = new Set<string>();
+    epCount.forEach((count, k) => {
+      if (count >= 2) cornerEndpoints!.add(k);
+    });
+  }
+
   const angles: number[] = [];
   const EPSILON = 0.001;
 
@@ -186,7 +219,7 @@ export function calculateVisionPolygon(
 
   const rayResults: RayIntersection[] = [];
   for (const angle of angles) {
-    rayResults.push(castRay(tokenX, tokenY, angle, visionRadius, blockingSegments, skipEndpointCheck));
+    rayResults.push(castRay(tokenX, tokenY, angle, visionRadius, blockingSegments, skipEndpointCheck, cornerEndpoints));
   }
 
   rayResults.sort((a, b) => a.angle - b.angle);

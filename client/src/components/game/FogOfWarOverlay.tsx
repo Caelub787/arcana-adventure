@@ -1586,6 +1586,25 @@ export function ZoneDrawingOverlay({
   const [points, setPoints] = useState<{ x: number; y: number }[]>([]);
   const [mousePos, setMousePos] = useState<{ x: number; y: number } | null>(null);
 
+  const { data: existingZones = [] } = useQuery<any[]>({
+    queryKey: ['scene-vision-zones', sceneId],
+    queryFn: async () => {
+      if (!sceneId) return [];
+      const res = await fetch(`/api/scenes/${sceneId}/vision-zones`, { credentials: 'include' });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!sceneId && zoneDrawMode,
+  });
+
+  const deleteZoneMutation = useMutation({
+    mutationFn: async (zoneId: string) => {
+      const res = await fetch(`/api/vision-zones/${zoneId}`, { method: 'DELETE', credentials: 'include' });
+      if (!res.ok) throw new Error('Failed to delete zone');
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['scene-vision-zones', sceneId] }),
+  });
+
   const createZoneMutation = useMutation({
     mutationFn: async (zone: { points: string; mode: string; name: string }) => {
       const res = await fetch(`/api/scenes/${sceneId}/vision-zones`, {
@@ -1620,6 +1639,28 @@ export function ZoneDrawingOverlay({
       worldY = snapToGrid(worldY, gridSize);
     }
 
+    if (e.altKey && existingZones.length > 0) {
+      for (let zi = existingZones.length - 1; zi >= 0; zi--) {
+        const zone = existingZones[zi];
+        const pts = (typeof zone.points === 'string' ? JSON.parse(zone.points || '[]') : zone.points) as { x: number; y: number }[];
+        if (pts && pts.length >= 3) {
+          let inside = false;
+          for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+            const xi = pts[i].x, yi = pts[i].y;
+            const xj = pts[j].x, yj = pts[j].y;
+            if (((yi > worldY) !== (yj > worldY)) && worldX < (xj - xi) * (worldY - yi) / (yj - yi) + xi) {
+              inside = !inside;
+            }
+          }
+          if (inside) {
+            deleteZoneMutation.mutate(zone.id);
+            return;
+          }
+        }
+      }
+      return;
+    }
+
     if (points.length >= 3) {
       const firstPoint = points[0];
       const dist = Math.hypot(worldX - firstPoint.x, worldY - firstPoint.y);
@@ -1636,7 +1677,7 @@ export function ZoneDrawingOverlay({
     }
 
     setPoints(prev => [...prev, { x: worldX, y: worldY }]);
-  }, [zoneDrawMode, snapEnabled, gridSize, points, selectedZoneMode, createZoneMutation]);
+  }, [zoneDrawMode, snapEnabled, gridSize, points, selectedZoneMode, createZoneMutation, existingZones, deleteZoneMutation]);
 
   const handleDoubleClick = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
     if (!zoneDrawMode || points.length < 3) return;
@@ -1769,7 +1810,7 @@ function VisionZonesList({ sceneId }: { sceneId: string }) {
   const { data: zones = [] } = useQuery<Array<{ id: string; name: string; mode: string; points: string }>>({
     queryKey: ['scene-vision-zones', sceneId],
     queryFn: async () => {
-      const res = await fetch(`/api/scenes/${sceneId}/vision-zones`);
+      const res = await fetch(`/api/scenes/${sceneId}/vision-zones`, { credentials: 'include' });
       if (!res.ok) return [];
       return res.json();
     },
