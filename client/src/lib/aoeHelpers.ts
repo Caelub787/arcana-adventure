@@ -236,8 +236,8 @@ export function getTokensInAoe(
         break;
     }
     if (!inShape) return false;
-    if (!passesThroughWalls && walls && walls.length > 0) {
-      if (isPathBlockedByWalls(center.x, center.y, tokenCenterX, tokenCenterY, walls, doors || [])) {
+    if (!passesThroughWalls && ((walls && walls.length > 0) || (doors && doors.length > 0))) {
+      if (isPathBlockedByWalls(center.x, center.y, tokenCenterX, tokenCenterY, walls || [], doors || [])) {
         return false;
       }
     }
