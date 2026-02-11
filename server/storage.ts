@@ -220,6 +220,7 @@ export interface IStorage {
   // Scene Vision Zone operations
   getSceneVisionZones(sceneId: string): Promise<SceneVisionZone[]>;
   createSceneVisionZone(zone: InsertSceneVisionZone): Promise<SceneVisionZone>;
+  updateVisionZone(id: string, updates: Record<string, any>): Promise<SceneVisionZone | undefined>;
   deleteSceneVisionZone(zoneId: string): Promise<void>;
   deleteAllSceneVisionZones(sceneId: string): Promise<void>;
 
@@ -1933,6 +1934,11 @@ export class DatabaseStorage implements IStorage {
   async createSceneVisionZone(zone: InsertSceneVisionZone): Promise<SceneVisionZone> {
     const [created] = await db.insert(sceneVisionZones).values(zone).returning();
     return created;
+  }
+
+  async updateVisionZone(id: string, updates: Record<string, any>): Promise<SceneVisionZone | undefined> {
+    const [zone] = await db.update(sceneVisionZones).set(updates).where(eq(sceneVisionZones.id, id)).returning();
+    return zone;
   }
 
   async deleteSceneVisionZone(zoneId: string): Promise<void> {

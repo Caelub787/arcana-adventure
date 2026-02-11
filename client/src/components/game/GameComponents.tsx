@@ -41,7 +41,7 @@ import goblinToken from "@assets/generated_images/top_down_goblin_token.png";
 import { triggerSkillRollNotification, triggerRollNotification, triggerEffectRollNotification, getNotificationStyle, setNotificationStyle, type NotificationStyle } from './RollNotification';
 import { ImageBrowser } from '@/components/ImageBrowser';
 import { BattlemapAoeOverlay } from './BattlemapAoeOverlay';
-import { FogOfWarOverlay, WallDrawingOverlay, ZoneDrawingOverlay, FogToolsPanel, FogCanvasOverlay } from './FogOfWarOverlay';
+import { FogOfWarOverlay, WallDrawingOverlay, ZoneDrawingOverlay, FogToolsPanel, FogCanvasOverlay, FogMoveOverlay } from './FogOfWarOverlay';
 import { type AoeTargetState, getTokensInAoe, getTokenGridSpan, getDistanceToTokenEdge, getDistanceBetweenTokensFeet, isTokenInRangeOfToken } from '@/lib/aoeHelpers';
 import { rollDice } from '../sandbox/diceEngine';
 import type { VisionPolygon } from '@/lib/visionEngine';
@@ -418,6 +418,8 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
   const [fogSnapToGrid, setFogSnapToGrid] = useState(true);
   const [zoneDrawMode, setZoneDrawMode] = useState(false);
   const [selectedZoneMode, setSelectedZoneMode] = useState<'indoor' | 'outdoor'>('indoor');
+  const [moveMode, setMoveMode] = useState(false);
+  const [freeformMode, setFreeformMode] = useState(false);
   const campaignId = scene?.campaignId;
   const [gmSeeAsPlayer, setGmSeeAsPlayer] = useState(() => {
     try {
@@ -1179,7 +1181,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
     if (e.button !== 0) return;
     
     // Don't capture pointer when fog drawing tools are active - let WallDrawingOverlay handle clicks
-    if (wallDrawMode || doorPlaceMode || windowPlaceMode || lightPlaceMode || zoneDrawMode) return;
+    if (wallDrawMode || doorPlaceMode || windowPlaceMode || lightPlaceMode || zoneDrawMode || moveMode) return;
     
     // Don't capture pointer when placing a character token - let onClick handle it
     if (placingCharacterId) return;
@@ -3559,7 +3561,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
         )}
         
         {/* Wall/Door/Window/Light Drawing Overlay - interactive drawing on map */}
-        {scene?.id && fogToolActive && isGM && (wallDrawMode || doorPlaceMode || windowPlaceMode || lightPlaceMode) && (
+        {scene?.id && fogToolActive && isGM && (
           <WallDrawingOverlay
             scene={scene}
             gridSize={gridSize}
@@ -3573,9 +3575,19 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
             lightIntensity={lightIntensity}
             snapToGrid={fogSnapToGrid}
             zoneDrawMode={zoneDrawMode}
+            freeformMode={freeformMode}
           />
         )}
         
+        
+        {scene?.id && fogToolActive && isGM && moveMode && (
+          <FogMoveOverlay
+            scene={scene}
+            gridSize={gridSize}
+            moveMode={moveMode}
+            snapToGrid={fogSnapToGrid}
+          />
+        )}
         {scene?.id && fogToolActive && isGM && zoneDrawMode && (
           <ZoneDrawingOverlay
             scene={scene}
@@ -3639,6 +3651,10 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
           setZoneDrawMode={setZoneDrawMode}
           selectedZoneMode={selectedZoneMode}
           setSelectedZoneMode={setSelectedZoneMode}
+          moveMode={moveMode}
+          setMoveMode={setMoveMode}
+          freeformMode={freeformMode}
+          setFreeformMode={setFreeformMode}
         />
       )}
 

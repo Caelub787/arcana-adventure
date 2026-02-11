@@ -7,7 +7,7 @@ import { Slider } from '@/components/ui/slider';
 import { toast } from '@/hooks/use-toast';
 import {
   Layers, Eye, EyeOff, Lock, Unlock, DoorOpen, DoorClosed,
-  Sun, Moon, Lightbulb, Trash2, Plus, X, Square, Minus, Grid3X3
+  Sun, Moon, Lightbulb, Trash2, Plus, X, Square, Minus, Grid3X3, Move
 } from 'lucide-react';
 import { getBlockingSegments, calculateVisionPolygon, calculateVisionInLight, type VisionPolygon } from '@/lib/visionEngine';
 import type { MotionValue } from 'framer-motion';
@@ -70,6 +70,47 @@ function findNearestEndpoint(
   }
 
   return found ? { x: bestX, y: bestY } : null;
+}
+
+function findConnectedWalls(startWallId: string, walls: Array<{id: string; x1: number; y1: number; x2: number; y2: number}>, threshold: number = 2): string[] {
+  const adjacency = new Map<string, Set<string>>();
+  for (const w of walls) adjacency.set(w.id, new Set());
+
+  for (let i = 0; i < walls.length; i++) {
+    for (let j = i + 1; j < walls.length; j++) {
+      const a = walls[i], b = walls[j];
+      const endpoints = [
+        [a.x1, a.y1, b.x1, b.y1], [a.x1, a.y1, b.x2, b.y2],
+        [a.x2, a.y2, b.x1, b.y1], [a.x2, a.y2, b.x2, b.y2],
+      ];
+      for (const [ax, ay, bx, by] of endpoints) {
+        if (Math.hypot(ax - bx, ay - by) <= threshold) {
+          adjacency.get(a.id)!.add(b.id);
+          adjacency.get(b.id)!.add(a.id);
+          break;
+        }
+      }
+    }
+  }
+
+  const visited = new Set<string>();
+  const queue = [startWallId];
+  visited.add(startWallId);
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    const neighbors = adjacency.get(current);
+    if (neighbors) {
+      const neighborArr = Array.from(neighbors);
+      for (let ni = 0; ni < neighborArr.length; ni++) {
+        const n = neighborArr[ni];
+        if (!visited.has(n)) {
+          visited.add(n);
+          queue.push(n);
+        }
+      }
+    }
+  }
+  return Array.from(visited);
 }
 
 interface FogToken {
@@ -1070,6 +1111,7 @@ interface WallDrawingOverlayProps {
   onFinish?: () => void;
   snapToGrid?: boolean;
   zoneDrawMode?: boolean;
+  freeformMode: boolean;
 }
 
 export function WallDrawingOverlay({
@@ -1086,6 +1128,7 @@ export function WallDrawingOverlay({
   onFinish,
   snapToGrid: snapEnabled = true,
   zoneDrawMode = false,
+  freeformMode = false,
 }: WallDrawingOverlayProps) {
   const queryClient = useQueryClient();
   const sceneId = scene?.id;
@@ -1093,6 +1136,8 @@ export function WallDrawingOverlay({
   const [mousePos, setMousePos] = useState<{ x: number; y: number } | null>(null);
   const [doorStart, setDoorStart] = useState<{ x: number; y: number } | null>(null);
   const [windowStart, setWindowStart] = useState<{ x: number; y: number } | null>(null);
+  const [freeformPoints, setFreeformPoints] = useState<{ x: number; y: number }[]>([]);
+  const [isFreeformDrawing, setIsFreeformDrawing] = useState(false);
 
   const createWallMutation = useMutation({
     mutationFn: async (wall: { x1: number; y1: number; x2: number; y2: number; wallType: string }) => {
@@ -1278,11 +1323,36 @@ export function WallDrawingOverlay({
     let snappedX = snapEnabled ? snapToGrid(worldX, gridSize) : worldX;
     let snappedY = snapEnabled ? snapToGrid(worldY, gridSize) : worldY;
 
+    const isInAnyDrawMode = wallDrawMode || doorPlaceMode || windowPlaceMode || lightPlaceMode;
+
     if (e.ctrlKey || e.metaKey) {
-      const nearest = findNearestEndpoint(worldX, worldY, walls, doors, windowsList, lightsList, gridSize * 1.5);
-      if (nearest) {
-        snappedX = nearest.x;
-        snappedY = nearest.y;
+      if (isInAnyDrawMode) {
+        const nearest = findNearestEndpoint(worldX, worldY, walls, doors, windowsList, lightsList, gridSize * 1.5);
+        if (nearest) {
+          snappedX = nearest.x;
+          snappedY = nearest.y;
+        }
+      } else {
+        const clickX = worldX;
+        const clickY = worldY;
+        const threshold = gridSize;
+        const distToSegment = (px: number, py: number, x1: number, y1: number, x2: number, y2: number) => {
+          const dx = x2 - x1, dy = y2 - y1;
+          const lenSq = dx * dx + dy * dy;
+          if (lenSq === 0) return Math.hypot(px - x1, py - y1);
+          let t = ((px - x1) * dx + (py - y1) * dy) / lenSq;
+          t = Math.max(0, Math.min(1, t));
+          return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
+        };
+        let closestWall: { id: string; dist: number } | null = null;
+        for (const w of walls) {
+          const d = distToSegment(clickX, clickY, w.x1, w.y1, w.x2, w.y2);
+          if (d < threshold && (!closestWall || d < closestWall.dist)) closestWall = { id: w.id, dist: d };
+        }
+        if (closestWall) {
+          deleteWallMutation.mutate(closestWall.id);
+        }
+        return;
       }
     }
 
@@ -1341,7 +1411,12 @@ export function WallDrawingOverlay({
       }
       
       if (closest) {
-        if (closest.type === 'wall') deleteWallMutation.mutate(closest.id);
+        if (closest.type === 'wall') {
+          const connectedIds = findConnectedWalls(closest.id, walls);
+          for (const wid of connectedIds) {
+            deleteWallMutation.mutate(wid);
+          }
+        }
         else if (closest.type === 'door') deleteDoorMutation.mutate(closest.id);
         else if (closest.type === 'window') deleteWindowMutation.mutate(closest.id);
         else if (closest.type === 'light') deleteLightMutation.mutate(closest.id);
@@ -1430,8 +1505,77 @@ export function WallDrawingOverlay({
     setMousePos({ x: snappedX, y: snappedY });
   }, [gridSize, snapEnabled, walls, doors, windowsList, lightsList]);
 
+  const handleFreeformPointerDown = useCallback((e: React.PointerEvent<SVGSVGElement>) => {
+    if (!wallDrawMode || !freeformMode) return;
+    e.preventDefault();
+    e.stopPropagation();
+    (e.currentTarget as SVGSVGElement).setPointerCapture(e.pointerId);
+
+    const svg = e.currentTarget;
+    const rect = svg.getBoundingClientRect();
+    const rawX = (e.clientX - rect.left) / (rect.width / 20000);
+    const rawY = (e.clientY - rect.top) / (rect.height / 20000);
+    const worldX = rawX - MAP_OFFSET;
+    const worldY = rawY - MAP_OFFSET;
+    const sx = snapEnabled ? snapToGrid(worldX, gridSize) : worldX;
+    const sy = snapEnabled ? snapToGrid(worldY, gridSize) : worldY;
+
+    setFreeformPoints([{ x: sx, y: sy }]);
+    setIsFreeformDrawing(true);
+  }, [wallDrawMode, freeformMode, snapEnabled, gridSize]);
+
+  const handleFreeformPointerMove = useCallback((e: React.PointerEvent<SVGSVGElement>) => {
+    if (!isFreeformDrawing) return;
+    e.preventDefault();
+
+    const svg = e.currentTarget;
+    const rect = svg.getBoundingClientRect();
+    const rawX = (e.clientX - rect.left) / (rect.width / 20000);
+    const rawY = (e.clientY - rect.top) / (rect.height / 20000);
+    const worldX = rawX - MAP_OFFSET;
+    const worldY = rawY - MAP_OFFSET;
+    const sx = snapEnabled ? snapToGrid(worldX, gridSize) : worldX;
+    const sy = snapEnabled ? snapToGrid(worldY, gridSize) : worldY;
+
+    setFreeformPoints(prev => {
+      const last = prev[prev.length - 1];
+      if (!last) return [{ x: sx, y: sy }];
+      const dist = Math.hypot(sx - last.x, sy - last.y);
+      if (dist >= 10) {
+        return [...prev, { x: sx, y: sy }];
+      }
+      return prev;
+    });
+  }, [isFreeformDrawing, snapEnabled, gridSize]);
+
+  const handleFreeformPointerUp = useCallback((e: React.PointerEvent<SVGSVGElement>) => {
+    if (!isFreeformDrawing) return;
+    e.preventDefault();
+    (e.currentTarget as SVGSVGElement).releasePointerCapture(e.pointerId);
+    setIsFreeformDrawing(false);
+
+    if (freeformPoints.length >= 2) {
+      const mutations: Promise<any>[] = [];
+      for (let i = 0; i < freeformPoints.length - 1; i++) {
+        mutations.push(
+          createWallMutation.mutateAsync({
+            x1: freeformPoints[i].x,
+            y1: freeformPoints[i].y,
+            x2: freeformPoints[i + 1].x,
+            y2: freeformPoints[i + 1].y,
+            wallType: selectedWallType,
+          })
+        );
+      }
+      Promise.all(mutations).then(() => {
+        queryClient.invalidateQueries({ queryKey: ['scene-walls', sceneId] });
+      });
+    }
+    setFreeformPoints([]);
+  }, [isFreeformDrawing, freeformPoints, createWallMutation, selectedWallType, sceneId, queryClient]);
+
   const isActive = wallDrawMode || doorPlaceMode || windowPlaceMode || lightPlaceMode;
-  if (!isActive || !sceneId) return null;
+  if (!sceneId) return null;
 
   const previewColor = wallDrawMode
     ? WALL_COLORS[selectedWallType]
@@ -1451,117 +1595,150 @@ export function WallDrawingOverlay({
         top: 0,
         overflow: 'visible',
         zIndex: 30,
-        cursor: 'crosshair',
+        cursor: isActive ? 'crosshair' : 'default',
         pointerEvents: 'all',
       }}
       onClick={handleClick}
-      onMouseMove={handleMouseMove}
+      onMouseMove={isActive ? handleMouseMove : undefined}
+      {...(freeformMode && wallDrawMode ? {
+        onPointerDown: handleFreeformPointerDown,
+        onPointerMove: handleFreeformPointerMove,
+        onPointerUp: handleFreeformPointerUp,
+      } : {})}
       data-testid="wall-drawing-overlay"
     >
-      {wallDrawMode && wallPoints.map((pt, i) => (
-        <circle
-          key={`wp-${i}`}
-          cx={pt.x + MAP_OFFSET}
-          cy={pt.y + MAP_OFFSET}
-          r={5}
-          fill={WALL_COLORS[selectedWallType]}
-          stroke="#fff"
-          strokeWidth={1.5}
-          data-testid={`wall-point-${i}`}
-        />
-      ))}
-
-      {wallDrawMode && wallPoints.length > 0 && mousePos && (
-        <line
-          x1={wallPoints[wallPoints.length - 1].x + MAP_OFFSET}
-          y1={wallPoints[wallPoints.length - 1].y + MAP_OFFSET}
-          x2={mousePos.x + MAP_OFFSET}
-          y2={mousePos.y + MAP_OFFSET}
-          stroke={WALL_COLORS[selectedWallType]}
-          strokeWidth={2}
-          strokeOpacity={0.5}
-          strokeDasharray="6 3"
-        />
-      )}
-
-      {doorPlaceMode && doorStart && mousePos && (
+      {isActive && (
         <>
-          <line
-            x1={doorStart.x + MAP_OFFSET}
-            y1={doorStart.y + MAP_OFFSET}
-            x2={mousePos.x + MAP_OFFSET}
-            y2={mousePos.y + MAP_OFFSET}
-            stroke="#ef4444"
-            strokeWidth={4}
-            strokeOpacity={0.5}
-            strokeDasharray="6 3"
-          />
-          <circle
-            cx={doorStart.x + MAP_OFFSET}
-            cy={doorStart.y + MAP_OFFSET}
-            r={5}
-            fill="#ef4444"
-            stroke="#fff"
-            strokeWidth={1.5}
-          />
-        </>
-      )}
+          {wallDrawMode && freeformMode && freeformPoints.length >= 2 && (
+            <polyline
+              points={freeformPoints.map(p => `${p.x + MAP_OFFSET},${p.y + MAP_OFFSET}`).join(' ')}
+              fill="none"
+              stroke={WALL_COLORS[selectedWallType]}
+              strokeWidth={3}
+              strokeOpacity={0.7}
+              strokeLinejoin="round"
+              strokeLinecap="round"
+              data-testid="freeform-preview"
+            />
+          )}
 
-      {windowPlaceMode && windowStart && mousePos && (
-        <>
-          <line
-            x1={windowStart.x + MAP_OFFSET}
-            y1={windowStart.y + MAP_OFFSET}
-            x2={mousePos.x + MAP_OFFSET}
-            y2={mousePos.y + MAP_OFFSET}
-            stroke="#3b82f6"
-            strokeWidth={3}
-            strokeOpacity={0.5}
-            strokeDasharray="6 3"
-          />
-          <circle
-            cx={windowStart.x + MAP_OFFSET}
-            cy={windowStart.y + MAP_OFFSET}
-            r={5}
-            fill="#3b82f6"
-            stroke="#fff"
-            strokeWidth={1.5}
-          />
-        </>
-      )}
+          {wallDrawMode && freeformMode && freeformPoints.map((pt, i) => (
+            <circle
+              key={`fp-${i}`}
+              cx={pt.x + MAP_OFFSET}
+              cy={pt.y + MAP_OFFSET}
+              r={3}
+              fill={WALL_COLORS[selectedWallType]}
+              fillOpacity={0.8}
+            />
+          ))}
 
-      {lightPlaceMode && mousePos && (
-        <>
-          <circle
-            cx={mousePos.x + MAP_OFFSET}
-            cy={mousePos.y + MAP_OFFSET}
-            r={(lightRadius / 5) * gridSize}
-            fill={lightColor}
-            fillOpacity={0.15}
-            stroke={lightColor}
-            strokeWidth={2}
-            strokeOpacity={0.4}
-            strokeDasharray="8 4"
-          />
-          <circle
-            cx={mousePos.x + MAP_OFFSET}
-            cy={mousePos.y + MAP_OFFSET}
-            r={6}
-            fill={lightColor}
-            stroke="#fff"
-            strokeWidth={1.5}
-          />
-        </>
-      )}
+          {wallDrawMode && !freeformMode && wallPoints.map((pt, i) => (
+            <circle
+              key={`wp-${i}`}
+              cx={pt.x + MAP_OFFSET}
+              cy={pt.y + MAP_OFFSET}
+              r={5}
+              fill={WALL_COLORS[selectedWallType]}
+              stroke="#fff"
+              strokeWidth={1.5}
+              data-testid={`wall-point-${i}`}
+            />
+          ))}
 
-      {mousePos && (
-        <circle
-          cx={mousePos.x + MAP_OFFSET}
-          cy={mousePos.y + MAP_OFFSET}
-          r={3}
-          fill={previewColor}
-          fillOpacity={0.7}
-        />
+          {wallDrawMode && !freeformMode && wallPoints.length > 0 && mousePos && (
+            <line
+              x1={wallPoints[wallPoints.length - 1].x + MAP_OFFSET}
+              y1={wallPoints[wallPoints.length - 1].y + MAP_OFFSET}
+              x2={mousePos.x + MAP_OFFSET}
+              y2={mousePos.y + MAP_OFFSET}
+              stroke={WALL_COLORS[selectedWallType]}
+              strokeWidth={2}
+              strokeOpacity={0.5}
+              strokeDasharray="6 3"
+            />
+          )}
+
+          {doorPlaceMode && doorStart && mousePos && (
+            <>
+              <line
+                x1={doorStart.x + MAP_OFFSET}
+                y1={doorStart.y + MAP_OFFSET}
+                x2={mousePos.x + MAP_OFFSET}
+                y2={mousePos.y + MAP_OFFSET}
+                stroke="#ef4444"
+                strokeWidth={4}
+                strokeOpacity={0.5}
+                strokeDasharray="6 3"
+              />
+              <circle
+                cx={doorStart.x + MAP_OFFSET}
+                cy={doorStart.y + MAP_OFFSET}
+                r={5}
+                fill="#ef4444"
+                stroke="#fff"
+                strokeWidth={1.5}
+              />
+            </>
+          )}
+
+          {windowPlaceMode && windowStart && mousePos && (
+            <>
+              <line
+                x1={windowStart.x + MAP_OFFSET}
+                y1={windowStart.y + MAP_OFFSET}
+                x2={mousePos.x + MAP_OFFSET}
+                y2={mousePos.y + MAP_OFFSET}
+                stroke="#3b82f6"
+                strokeWidth={3}
+                strokeOpacity={0.5}
+                strokeDasharray="6 3"
+              />
+              <circle
+                cx={windowStart.x + MAP_OFFSET}
+                cy={windowStart.y + MAP_OFFSET}
+                r={5}
+                fill="#3b82f6"
+                stroke="#fff"
+                strokeWidth={1.5}
+              />
+            </>
+          )}
+
+          {lightPlaceMode && mousePos && (
+            <>
+              <circle
+                cx={mousePos.x + MAP_OFFSET}
+                cy={mousePos.y + MAP_OFFSET}
+                r={(lightRadius / 5) * gridSize}
+                fill={lightColor}
+                fillOpacity={0.15}
+                stroke={lightColor}
+                strokeWidth={2}
+                strokeOpacity={0.4}
+                strokeDasharray="8 4"
+              />
+              <circle
+                cx={mousePos.x + MAP_OFFSET}
+                cy={mousePos.y + MAP_OFFSET}
+                r={6}
+                fill={lightColor}
+                stroke="#fff"
+                strokeWidth={1.5}
+              />
+            </>
+          )}
+
+          {mousePos && (
+            <circle
+              cx={mousePos.x + MAP_OFFSET}
+              cy={mousePos.y + MAP_OFFSET}
+              r={3}
+              fill={previewColor}
+              fillOpacity={0.7}
+            />
+          )}
+        </>
       )}
     </svg>
   );
@@ -1825,6 +2002,416 @@ export function ZoneDrawingOverlay({
   );
 }
 
+interface FogMoveOverlayProps {
+  scene: any;
+  gridSize: number;
+  moveMode: boolean;
+  snapToGrid?: boolean;
+}
+
+export function FogMoveOverlay({ scene, gridSize, moveMode, snapToGrid: snapEnabled = true }: FogMoveOverlayProps) {
+  const queryClient = useQueryClient();
+  const sceneId = scene?.id;
+
+  const { data: walls = [] } = useQuery<any[]>({
+    queryKey: ['scene-walls', sceneId],
+    queryFn: async () => {
+      if (!sceneId) return [];
+      const res = await fetch(`/api/scenes/${sceneId}/walls`);
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!sceneId && moveMode,
+  });
+
+  const { data: doors = [] } = useQuery<any[]>({
+    queryKey: ['scene-doors', sceneId],
+    queryFn: async () => {
+      if (!sceneId) return [];
+      const res = await fetch(`/api/scenes/${sceneId}/doors`);
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!sceneId && moveMode,
+  });
+
+  const { data: windows = [] } = useQuery<any[]>({
+    queryKey: ['scene-windows', sceneId],
+    queryFn: async () => {
+      if (!sceneId) return [];
+      const res = await fetch(`/api/scenes/${sceneId}/windows`);
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!sceneId && moveMode,
+  });
+
+  const { data: lights = [] } = useQuery<any[]>({
+    queryKey: ['scene-lights', sceneId],
+    queryFn: async () => {
+      if (!sceneId) return [];
+      const res = await fetch(`/api/scenes/${sceneId}/lights`);
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!sceneId && moveMode,
+  });
+
+  const { data: visionZones = [] } = useQuery<any[]>({
+    queryKey: ['scene-vision-zones', sceneId],
+    queryFn: async () => {
+      if (!sceneId) return [];
+      const res = await fetch(`/api/scenes/${sceneId}/vision-zones`, { credentials: 'include' });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!sceneId && moveMode,
+  });
+
+  const [selectedElement, setSelectedElement] = useState<{ type: string; id: string; centerX: number; centerY: number } | null>(null);
+  const [dragState, setDragState] = useState<{ offsetX: number; offsetY: number; startX: number; startY: number } | null>(null);
+  const [mousePos, setMousePos] = useState<{ x: number; y: number } | null>(null);
+  const [hoveredElement, setHoveredElement] = useState<{ type: string; id: string } | null>(null);
+
+  const distToSegment = useCallback((px: number, py: number, x1: number, y1: number, x2: number, y2: number) => {
+    const dx = x2 - x1, dy = y2 - y1;
+    const lenSq = dx * dx + dy * dy;
+    if (lenSq === 0) return Math.hypot(px - x1, py - y1);
+    let t = ((px - x1) * dx + (py - y1) * dy) / lenSq;
+    t = Math.max(0, Math.min(1, t));
+    return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
+  }, []);
+
+  const isPointInPoly = useCallback((px: number, py: number, polygon: { x: number; y: number }[]): boolean => {
+    let inside = false;
+    for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+      const xi = polygon[i].x, yi = polygon[i].y;
+      const xj = polygon[j].x, yj = polygon[j].y;
+      if (((yi > py) !== (yj > py)) && px < (xj - xi) * (py - yi) / (yj - yi) + xi) {
+        inside = !inside;
+      }
+    }
+    return inside;
+  }, []);
+
+  const findNearestElement = useCallback((worldX: number, worldY: number) => {
+    const threshold = gridSize * 1.5;
+    let closest: { type: string; id: string; dist: number; centerX: number; centerY: number } | null = null;
+
+    for (const w of walls) {
+      const d = distToSegment(worldX, worldY, w.x1, w.y1, w.x2, w.y2);
+      const cx = (w.x1 + w.x2) / 2, cy = (w.y1 + w.y2) / 2;
+      if (d < threshold && (!closest || d < closest.dist)) closest = { type: 'wall', id: w.id, dist: d, centerX: cx, centerY: cy };
+    }
+    for (const d of doors) {
+      const dist = distToSegment(worldX, worldY, d.x1, d.y1, d.x2, d.y2);
+      const cx = (d.x1 + d.x2) / 2, cy = (d.y1 + d.y2) / 2;
+      if (dist < threshold && (!closest || dist < closest.dist)) closest = { type: 'door', id: d.id, dist, centerX: cx, centerY: cy };
+    }
+    for (const w of windows) {
+      const dist = distToSegment(worldX, worldY, w.x1, w.y1, w.x2, w.y2);
+      const cx = (w.x1 + w.x2) / 2, cy = (w.y1 + w.y2) / 2;
+      if (dist < threshold && (!closest || dist < closest.dist)) closest = { type: 'window', id: w.id, dist, centerX: cx, centerY: cy };
+    }
+    for (const l of lights) {
+      const dist = Math.hypot(worldX - l.x, worldY - l.y);
+      if (dist < threshold && (!closest || dist < closest.dist)) closest = { type: 'light', id: l.id, dist, centerX: l.x, centerY: l.y };
+    }
+    for (const zone of visionZones) {
+      const pts = (typeof zone.points === 'string' ? JSON.parse(zone.points || '[]') : zone.points) as { x: number; y: number }[];
+      if (pts && pts.length >= 3 && isPointInPoly(worldX, worldY, pts)) {
+        let cx = 0, cy = 0;
+        for (const p of pts) { cx += p.x; cy += p.y; }
+        cx /= pts.length; cy /= pts.length;
+        if (!closest || 0 < closest.dist) closest = { type: 'zone', id: zone.id, dist: 0, centerX: cx, centerY: cy };
+      }
+    }
+
+    return closest;
+  }, [walls, doors, windows, lights, visionZones, gridSize, distToSegment, isPointInPoly]);
+
+  const getWorldCoords = useCallback((e: React.PointerEvent<SVGSVGElement>) => {
+    const svg = e.currentTarget;
+    const rect = svg.getBoundingClientRect();
+    const rawX = (e.clientX - rect.left) / (rect.width / 20000);
+    const rawY = (e.clientY - rect.top) / (rect.height / 20000);
+    return { x: rawX - MAP_OFFSET, y: rawY - MAP_OFFSET };
+  }, []);
+
+  const handlePointerDown = useCallback((e: React.PointerEvent<SVGSVGElement>) => {
+    if (!moveMode) return;
+    const { x: worldX, y: worldY } = getWorldCoords(e);
+    const element = findNearestElement(worldX, worldY);
+    if (!element) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+    (e.currentTarget as SVGSVGElement).setPointerCapture(e.pointerId);
+
+    setSelectedElement({ type: element.type, id: element.id, centerX: element.centerX, centerY: element.centerY });
+    setDragState({ offsetX: worldX - element.centerX, offsetY: worldY - element.centerY, startX: element.centerX, startY: element.centerY });
+  }, [moveMode, getWorldCoords, findNearestElement]);
+
+  const handlePointerMove = useCallback((e: React.PointerEvent<SVGSVGElement>) => {
+    if (!moveMode) return;
+    const { x: worldX, y: worldY } = getWorldCoords(e);
+
+    if (dragState && selectedElement) {
+      e.preventDefault();
+      let newX = worldX - dragState.offsetX;
+      let newY = worldY - dragState.offsetY;
+      if (snapEnabled) {
+        newX = snapToGrid(newX, gridSize);
+        newY = snapToGrid(newY, gridSize);
+      }
+      setMousePos({ x: newX, y: newY });
+    } else {
+      const element = findNearestElement(worldX, worldY);
+      setHoveredElement(element ? { type: element.type, id: element.id } : null);
+    }
+  }, [moveMode, getWorldCoords, dragState, selectedElement, snapEnabled, gridSize, findNearestElement]);
+
+  const handlePointerUp = useCallback(async (e: React.PointerEvent<SVGSVGElement>) => {
+    if (!dragState || !selectedElement || !mousePos) {
+      setSelectedElement(null);
+      setDragState(null);
+      setMousePos(null);
+      return;
+    }
+    e.preventDefault();
+    (e.currentTarget as SVGSVGElement).releasePointerCapture(e.pointerId);
+
+    let dx = mousePos.x - dragState.startX;
+    let dy = mousePos.y - dragState.startY;
+
+    if (snapEnabled) {
+      dx = Math.round(dx / gridSize) * gridSize;
+      dy = Math.round(dy / gridSize) * gridSize;
+    }
+
+    if (Math.abs(dx) < 1 && Math.abs(dy) < 1) {
+      setSelectedElement(null);
+      setDragState(null);
+      setMousePos(null);
+      return;
+    }
+
+    try {
+      if (selectedElement.type === 'wall') {
+        const wall = walls.find((w: any) => w.id === selectedElement.id);
+        if (wall) {
+          await fetch(`/api/walls/${selectedElement.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ x1: wall.x1 + dx, y1: wall.y1 + dy, x2: wall.x2 + dx, y2: wall.y2 + dy }),
+          });
+          queryClient.invalidateQueries({ queryKey: ['scene-walls', sceneId] });
+        }
+      } else if (selectedElement.type === 'door') {
+        const door = doors.find((d: any) => d.id === selectedElement.id);
+        if (door) {
+          await fetch(`/api/doors/${selectedElement.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ x1: door.x1 + dx, y1: door.y1 + dy, x2: door.x2 + dx, y2: door.y2 + dy }),
+          });
+          queryClient.invalidateQueries({ queryKey: ['scene-doors', sceneId] });
+        }
+      } else if (selectedElement.type === 'window') {
+        const win = windows.find((w: any) => w.id === selectedElement.id);
+        if (win) {
+          await fetch(`/api/windows/${selectedElement.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ x1: win.x1 + dx, y1: win.y1 + dy, x2: win.x2 + dx, y2: win.y2 + dy }),
+          });
+          queryClient.invalidateQueries({ queryKey: ['scene-windows', sceneId] });
+        }
+      } else if (selectedElement.type === 'light') {
+        const light = lights.find((l: any) => l.id === selectedElement.id);
+        if (light) {
+          await fetch(`/api/lights/${selectedElement.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ x: light.x + dx, y: light.y + dy }),
+          });
+          queryClient.invalidateQueries({ queryKey: ['scene-lights', sceneId] });
+        }
+      } else if (selectedElement.type === 'zone') {
+        const zone = visionZones.find((z: any) => z.id === selectedElement.id);
+        if (zone) {
+          const pts = (typeof zone.points === 'string' ? JSON.parse(zone.points || '[]') : zone.points) as { x: number; y: number }[];
+          const newPts = pts.map(p => ({ x: p.x + dx, y: p.y + dy }));
+          await fetch(`/api/vision-zones/${selectedElement.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ points: JSON.stringify(newPts) }),
+          });
+          queryClient.invalidateQueries({ queryKey: ['scene-vision-zones', sceneId] });
+        }
+      }
+    } catch {
+      toast({ title: 'Failed to move element', variant: 'destructive' });
+    }
+
+    setSelectedElement(null);
+    setDragState(null);
+    setMousePos(null);
+  }, [dragState, selectedElement, mousePos, walls, doors, windows, lights, visionZones, sceneId, queryClient, snapEnabled, gridSize]);
+
+  if (!moveMode || !sceneId) return null;
+
+  const renderDragPreview = () => {
+    if (!selectedElement || !dragState || !mousePos) return null;
+    const dx = mousePos.x - dragState.startX;
+    const dy = mousePos.y - dragState.startY;
+
+    if (selectedElement.type === 'wall') {
+      const wall = walls.find((w: any) => w.id === selectedElement.id);
+      if (!wall) return null;
+      return (
+        <line
+          x1={wall.x1 + dx + MAP_OFFSET} y1={wall.y1 + dy + MAP_OFFSET}
+          x2={wall.x2 + dx + MAP_OFFSET} y2={wall.y2 + dy + MAP_OFFSET}
+          stroke="#f59e0b" strokeWidth={3} strokeOpacity={0.6}
+        />
+      );
+    } else if (selectedElement.type === 'door') {
+      const door = doors.find((d: any) => d.id === selectedElement.id);
+      if (!door) return null;
+      return (
+        <line
+          x1={door.x1 + dx + MAP_OFFSET} y1={door.y1 + dy + MAP_OFFSET}
+          x2={door.x2 + dx + MAP_OFFSET} y2={door.y2 + dy + MAP_OFFSET}
+          stroke="#ef4444" strokeWidth={5} strokeOpacity={0.6}
+        />
+      );
+    } else if (selectedElement.type === 'window') {
+      const win = windows.find((w: any) => w.id === selectedElement.id);
+      if (!win) return null;
+      return (
+        <line
+          x1={win.x1 + dx + MAP_OFFSET} y1={win.y1 + dy + MAP_OFFSET}
+          x2={win.x2 + dx + MAP_OFFSET} y2={win.y2 + dy + MAP_OFFSET}
+          stroke="#3b82f6" strokeWidth={3} strokeOpacity={0.6}
+        />
+      );
+    } else if (selectedElement.type === 'light') {
+      const light = lights.find((l: any) => l.id === selectedElement.id);
+      if (!light) return null;
+      return (
+        <circle
+          cx={light.x + dx + MAP_OFFSET} cy={light.y + dy + MAP_OFFSET}
+          r={6} fill={light.color || '#fbbf24'} fillOpacity={0.6}
+          stroke="#fff" strokeWidth={1.5} strokeOpacity={0.6}
+        />
+      );
+    } else if (selectedElement.type === 'zone') {
+      const zone = visionZones.find((z: any) => z.id === selectedElement.id);
+      if (!zone) return null;
+      const pts = (typeof zone.points === 'string' ? JSON.parse(zone.points || '[]') : zone.points) as { x: number; y: number }[];
+      if (pts.length < 3) return null;
+      const polyPoints = pts.map(p => `${p.x + dx + MAP_OFFSET},${p.y + dy + MAP_OFFSET}`).join(' ');
+      return (
+        <polygon
+          points={polyPoints}
+          fill={zone.mode === 'indoor' ? 'rgba(147, 51, 234, 0.15)' : 'rgba(245, 158, 11, 0.15)'}
+          stroke={zone.mode === 'indoor' ? '#9333ea' : '#f59e0b'}
+          strokeWidth={1.5} strokeOpacity={0.6}
+        />
+      );
+    }
+    return null;
+  };
+
+  const renderHighlight = () => {
+    const target = hoveredElement || (selectedElement ? { type: selectedElement.type, id: selectedElement.id } : null);
+    if (!target) return null;
+
+    if (target.type === 'wall') {
+      const wall = walls.find((w: any) => w.id === target.id);
+      if (!wall) return null;
+      return (
+        <line
+          x1={wall.x1 + MAP_OFFSET} y1={wall.y1 + MAP_OFFSET}
+          x2={wall.x2 + MAP_OFFSET} y2={wall.y2 + MAP_OFFSET}
+          stroke="#fff" strokeWidth={6} strokeOpacity={0.3} strokeLinecap="round"
+        />
+      );
+    } else if (target.type === 'door') {
+      const door = doors.find((d: any) => d.id === target.id);
+      if (!door) return null;
+      return (
+        <line
+          x1={door.x1 + MAP_OFFSET} y1={door.y1 + MAP_OFFSET}
+          x2={door.x2 + MAP_OFFSET} y2={door.y2 + MAP_OFFSET}
+          stroke="#fff" strokeWidth={8} strokeOpacity={0.3} strokeLinecap="round"
+        />
+      );
+    } else if (target.type === 'window') {
+      const win = windows.find((w: any) => w.id === target.id);
+      if (!win) return null;
+      return (
+        <line
+          x1={win.x1 + MAP_OFFSET} y1={win.y1 + MAP_OFFSET}
+          x2={win.x2 + MAP_OFFSET} y2={win.y2 + MAP_OFFSET}
+          stroke="#fff" strokeWidth={6} strokeOpacity={0.3} strokeLinecap="round"
+        />
+      );
+    } else if (target.type === 'light') {
+      const light = lights.find((l: any) => l.id === target.id);
+      if (!light) return null;
+      return (
+        <circle
+          cx={light.x + MAP_OFFSET} cy={light.y + MAP_OFFSET}
+          r={12} fill="none" stroke="#fff" strokeWidth={2} strokeOpacity={0.4}
+        />
+      );
+    } else if (target.type === 'zone') {
+      const zone = visionZones.find((z: any) => z.id === target.id);
+      if (!zone) return null;
+      const pts = (typeof zone.points === 'string' ? JSON.parse(zone.points || '[]') : zone.points) as { x: number; y: number }[];
+      if (pts.length < 3) return null;
+      const polyPoints = pts.map(p => `${p.x + MAP_OFFSET},${p.y + MAP_OFFSET}`).join(' ');
+      return (
+        <polygon
+          points={polyPoints}
+          fill="rgba(255,255,255,0.05)" stroke="#fff" strokeWidth={2} strokeOpacity={0.4}
+        />
+      );
+    }
+    return null;
+  };
+
+  return (
+    <svg
+      className="absolute inset-0"
+      style={{
+        width: 20000,
+        height: 20000,
+        left: 0,
+        top: 0,
+        overflow: 'visible',
+        zIndex: 30,
+        cursor: dragState ? 'grabbing' : 'crosshair',
+        pointerEvents: 'all',
+      }}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      data-testid="fog-move-overlay"
+    >
+      {renderHighlight()}
+      {renderDragPreview()}
+    </svg>
+  );
+}
+
 function VisionZonesList({ sceneId }: { sceneId: string }) {
   const queryClient = useQueryClient();
   const { data: zones = [] } = useQuery<Array<{ id: string; name: string; mode: string; points: string }>>({
@@ -1932,6 +2519,10 @@ interface FogToolsPanelProps {
   setZoneDrawMode?: (v: boolean) => void;
   selectedZoneMode?: 'indoor' | 'outdoor';
   setSelectedZoneMode?: (v: 'indoor' | 'outdoor') => void;
+  freeformMode?: boolean;
+  setFreeformMode?: (v: boolean) => void;
+  moveMode?: boolean;
+  setMoveMode?: (v: boolean) => void;
 }
 
 export function FogToolsPanel({
@@ -1968,6 +2559,10 @@ export function FogToolsPanel({
   setZoneDrawMode,
   selectedZoneMode,
   setSelectedZoneMode,
+  freeformMode,
+  setFreeformMode,
+  moveMode,
+  setMoveMode,
 }: FogToolsPanelProps) {
   const queryClient = useQueryClient();
   const sceneId = scene?.id;
@@ -2110,7 +2705,8 @@ export function FogToolsPanel({
     setWindowPlaceMode(false);
     setLightPlaceMode(false);
     setZoneDrawMode?.(false);
-  }, [setWallDrawMode, setDoorPlaceMode, setWindowPlaceMode, setLightPlaceMode, setZoneDrawMode]);
+    setMoveMode?.(false);
+  }, [setWallDrawMode, setDoorPlaceMode, setWindowPlaceMode, setLightPlaceMode, setZoneDrawMode, setMoveMode]);
 
   const activateWallMode = useCallback(() => {
     clearMode();
@@ -2385,6 +2981,25 @@ export function FogToolsPanel({
             <Square className="h-3 w-3 mr-1" />
             Zones
           </Button>
+          <Button
+            variant={moveMode ? 'default' : 'outline'}
+            size="sm"
+            className={moveMode
+              ? 'h-8 bg-emerald-600 hover:bg-emerald-700 text-white text-xs'
+              : 'h-8 border-stone-600 text-stone-300 hover:text-white text-xs'}
+            onClick={() => {
+              if (moveMode) {
+                setMoveMode?.(false);
+              } else {
+                clearMode();
+                setMoveMode?.(true);
+              }
+            }}
+            data-testid="toggle-move-mode"
+          >
+            <Move className="h-3 w-3 mr-1" />
+            Move
+          </Button>
         </div>
 
         {wallDrawMode && (
@@ -2407,7 +3022,32 @@ export function FogToolsPanel({
                 </Button>
               ))}
             </div>
-            <p className="text-[10px] text-stone-500 mt-1">Click twice for single wall. Hold Shift to chain walls.</p>
+            <div className="flex items-center gap-1 mt-1">
+              <span className="text-[10px] text-stone-400">Mode:</span>
+              <Button
+                variant={!freeformMode ? 'default' : 'ghost'}
+                size="sm"
+                className={!freeformMode
+                  ? 'h-5 text-[10px] bg-stone-600 text-white px-2'
+                  : 'h-5 text-[10px] text-stone-400 hover:text-white px-2'}
+                onClick={() => setFreeformMode?.(false)}
+                data-testid="wall-mode-line"
+              >
+                Line
+              </Button>
+              <Button
+                variant={freeformMode ? 'default' : 'ghost'}
+                size="sm"
+                className={freeformMode
+                  ? 'h-5 text-[10px] bg-stone-600 text-white px-2'
+                  : 'h-5 text-[10px] text-stone-400 hover:text-white px-2'}
+                onClick={() => setFreeformMode?.(true)}
+                data-testid="wall-mode-freeform"
+              >
+                Freeform
+              </Button>
+            </div>
+            <p className="text-[10px] text-stone-500 mt-1">{freeformMode ? 'Click and drag to draw freeform walls.' : 'Click twice for single wall. Hold Shift to chain walls.'}</p>
           </div>
         )}
 

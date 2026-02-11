@@ -7072,6 +7072,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(zone);
   });
 
+  app.put("/api/vision-zones/:zoneId", requireAuth, async (req, res) => {
+    try {
+      const { zoneId } = req.params;
+      const { points, mode, name } = req.body;
+      const updates: Record<string, any> = {};
+      if (points !== undefined) updates.points = points;
+      if (mode !== undefined) updates.mode = mode;
+      if (name !== undefined) updates.name = name;
+
+      const zone = await storage.updateVisionZone(zoneId, updates);
+      if (!zone) return res.status(404).json({ error: "Vision zone not found" });
+      res.json(zone);
+    } catch (e) {
+      res.status(500).json({ error: "Failed to update vision zone" });
+    }
+  });
+
   app.delete("/api/vision-zones/:zoneId", requireAuth, async (req, res) => {
     await storage.deleteSceneVisionZone(req.params.zoneId);
     res.json({ success: true });
