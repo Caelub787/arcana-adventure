@@ -284,7 +284,7 @@ interface BattleMapProps {
   scene?: Scene;
   onViewChange?: (viewState: { x: number; y: number; zoom: number }) => void;
   characters?: any[];
-  allSpecies?: { name: string; size: string }[];
+  allSpecies?: { name: string; size: string; defaultImage?: string }[];
   selectionMode?: SelectionMode;
   targetedTokenId?: string | null;
   selectedTokenId?: string | null;
@@ -1938,7 +1938,8 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
           
           const character = getCharacterForToken(token);
           // Use enriched token data for image and size (works regardless of character permissions)
-          const tokenImage = (token as any).tokenImage || character?.portrait || token.image;
+          const tokenSpeciesData = character?.race ? allSpecies.find((s: any) => s.name === character.race) : null;
+          const tokenImage = (token as any).tokenImage || character?.portrait || tokenSpeciesData?.defaultImage || token.image;
           const hpPercent = character ? (character.hp / character.maxHp) * 100 : null;
           const energyPercent = character ? (character.energy / character.maxEnergy) * 100 : null;
           const effectiveGridSize = gridSize;
@@ -7031,9 +7032,10 @@ interface InitiativeTrackerProps {
   characters?: any[];
   userId?: string;
   inline?: boolean;
+  allSpecies?: { name: string; size: string; defaultImage?: string }[];
 }
 
-export function InitiativeTracker({ open, onOpenChange, sceneId, campaignId, isGM, characters = [], userId, inline = false }: InitiativeTrackerProps) {
+export function InitiativeTracker({ open, onOpenChange, sceneId, campaignId, isGM, characters = [], userId, inline = false, allSpecies = [] }: InitiativeTrackerProps) {
   const queryClient = useQueryClient();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState<number>(0);
@@ -7108,7 +7110,12 @@ export function InitiativeTracker({ open, onOpenChange, sceneId, campaignId, isG
 
   const getCharacterPortrait = (characterId: string) => {
     const char = characters.find(c => c.id === characterId);
-    return char?.portrait;
+    if (char?.portrait) return char.portrait;
+    if (char?.race && allSpecies.length > 0) {
+      const species = allSpecies.find((s: any) => s.name === char.race);
+      if (species?.defaultImage) return species.defaultImage;
+    }
+    return undefined;
   };
 
   const handleStartCombat = async () => {
@@ -7336,9 +7343,9 @@ export function InitiativeTracker({ open, onOpenChange, sceneId, campaignId, isG
                         key={char.id}
                         className="flex items-center gap-3 p-2 bg-stone-800 border border-stone-700 rounded-lg"
                       >
-                        {char.portrait ? (
+                        {(char.portrait || allSpecies.find((s: any) => s.name === char.race)?.defaultImage) ? (
                           <img 
-                            src={char.portrait} 
+                            src={char.portrait || allSpecies.find((s: any) => s.name === char.race)?.defaultImage} 
                             alt="" 
                             className="w-8 h-8 rounded-full object-cover border border-stone-600"
                           />
@@ -9722,8 +9729,8 @@ export function CampaignMenu({ campaignId, role, inviteCode, hotbarSlots = 5, in
                             >
                               {/* Character Portrait */}
                               <div className="w-10 h-10 rounded-full overflow-hidden border-2 border-stone-700 flex-shrink-0">
-                                {char.portrait ? (
-                                  <img src={char.portrait} alt={char.name} className="w-full h-full object-cover" />
+                                {(char.portrait || allSpecies.find((s: any) => s.name === char.race)?.defaultImage) ? (
+                                  <img src={char.portrait || allSpecies.find((s: any) => s.name === char.race)?.defaultImage} alt={char.name} className="w-full h-full object-cover" />
                                 ) : (
                                   <div className="w-full h-full bg-stone-800 flex items-center justify-center">
                                     <Users className="h-5 w-5 text-stone-600" />
@@ -9785,8 +9792,8 @@ export function CampaignMenu({ campaignId, role, inviteCode, hotbarSlots = 5, in
                       >
                         {/* Character Portrait */}
                         <div className="w-10 h-10 rounded-full overflow-hidden border-2 border-stone-700 flex-shrink-0">
-                          {char.portrait ? (
-                            <img src={char.portrait} alt={char.name} className="w-full h-full object-cover" />
+                          {(char.portrait || allSpecies.find((s: any) => s.name === char.race)?.defaultImage) ? (
+                            <img src={char.portrait || allSpecies.find((s: any) => s.name === char.race)?.defaultImage} alt={char.name} className="w-full h-full object-cover" />
                           ) : (
                             <div className="w-full h-full bg-stone-800 flex items-center justify-center">
                               <Users className="h-5 w-5 text-stone-600" />
@@ -10200,8 +10207,8 @@ export function CampaignMenu({ campaignId, role, inviteCode, hotbarSlots = 5, in
                         data-testid={`import-character-${char.id}`}
                       >
                         <div className="w-10 h-10 rounded-full overflow-hidden border-2 border-stone-700 flex-shrink-0">
-                          {char.portrait ? (
-                            <img src={char.portrait} alt={char.name} className="w-full h-full object-cover" />
+                          {(char.portrait || allSpecies.find((s: any) => s.name === char.race)?.defaultImage) ? (
+                            <img src={char.portrait || allSpecies.find((s: any) => s.name === char.race)?.defaultImage} alt={char.name} className="w-full h-full object-cover" />
                           ) : (
                             <div className="w-full h-full bg-stone-800 flex items-center justify-center">
                               <User className="h-5 w-5 text-stone-600" />
@@ -13830,6 +13837,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
 
   // Get feat tree ID from the character's species (race), not from the character directly
   const characterSpecies = systemSpecies.find((s: SystemSpecies) => s.name === character?.race);
+  const effectivePortrait = liveCharacter.portrait || (characterSpecies as any)?.defaultImage || null;
   const featTreeId = characterSpecies?.featTree || character?.featTree || '';
   
   const { data: featTreeData } = useQuery({
@@ -15340,9 +15348,9 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
         <Card className="bg-stone-800 border-stone-700 max-w-md mx-auto">
           <CardHeader className="text-center">
             <div className="flex justify-center mb-4">
-              {liveCharacter.portrait ? (
+              {effectivePortrait ? (
                 <Avatar className="h-32 w-32 rounded-lg border-2 border-amber-500">
-                  <AvatarImage src={liveCharacter.portrait} alt={liveCharacter.name} className="object-cover" />
+                  <AvatarImage src={effectivePortrait} alt={liveCharacter.name} className="object-cover" />
                   <AvatarFallback className="text-2xl bg-stone-700 text-amber-500 rounded-lg">
                     {liveCharacter.name?.charAt(0) || '?'}
                   </AvatarFallback>
@@ -15537,8 +15545,8 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                 {/* TOP ROW: PFP + HP/Energy */}
                 <div className="flex gap-4">
                   <div className="w-28 h-28 rounded-lg overflow-hidden border-2 border-stone-700 shrink-0">
-                    {liveCharacter.portrait ? (
-                      <img src={liveCharacter.portrait} alt={liveCharacter.name} className="w-full h-full object-cover" data-testid="img-portrait" />
+                    {effectivePortrait ? (
+                      <img src={effectivePortrait} alt={liveCharacter.name} className="w-full h-full object-cover" data-testid="img-portrait" />
                     ) : (
                       <div className="w-full h-full bg-stone-900 flex items-center justify-center" data-testid="img-portrait-fallback">
                         <User className="h-12 w-12 text-stone-600" />

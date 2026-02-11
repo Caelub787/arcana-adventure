@@ -9737,7 +9737,7 @@ export default function Campaign() {
              scene={activeScene}
              onViewChange={setCurrentView}
              characters={characters as any[]}
-             allSpecies={[...(systemSpecies || []), ...campaignSpeciesList].map(s => ({ name: s.name, size: s.size }))}
+             allSpecies={[...(systemSpecies || []), ...campaignSpeciesList].map(s => ({ name: s.name, size: s.size, defaultImage: (s as any).defaultImage }))}
              selectionMode={selectionMode}
              targetedTokenId={targetedTokenId}
              selectedTokenId={selectedTokenId}
@@ -10009,6 +10009,7 @@ export default function Campaign() {
         isGM={role === 'gm'}
         characters={characters as any[]}
         userId={user?.id}
+        allSpecies={[...(systemSpecies || []), ...campaignSpeciesList].map(s => ({ name: s.name, size: s.size, defaultImage: (s as any).defaultImage }))}
       />
       
       {/* Unified Side Panel */}
@@ -10177,6 +10178,7 @@ export default function Campaign() {
                     characters={characters as any[]}
                     userId={user?.id}
                     inline={true}
+                    allSpecies={[...(systemSpecies || []), ...campaignSpeciesList].map(s => ({ name: s.name, size: s.size, defaultImage: (s as any).defaultImage }))}
                   />
                 </div>
               )}
