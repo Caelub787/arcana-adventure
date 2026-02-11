@@ -7,7 +7,7 @@ import { BattlemapDiceOverlay, triggerBattlemapDiceRoll } from "@/components/gam
 import { type AoeTargetState, createInitialAoeState, getTokensInAoe } from "@/lib/aoeHelpers";
 import { RollNotificationContainer, triggerInitiativeNotification, triggerEffectRollNotification, getNotificationStyle, setNotificationStyle, type NotificationStyle } from "@/components/game/RollNotification";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Loader2, Settings, Map as MapIcon, Layers, Trash2, MessageSquare, User, BarChart3, Zap, Backpack, Sparkles, Grid3X3, ScrollText, Swords, Dices, Users, Dna, Edit2, Bell, FileText, X, ChevronLeft, Network, List, BookOpen, Send, Pin, Upload, Search, Package } from "lucide-react";
+import { ArrowLeft, Loader2, Settings, Map as MapIcon, Layers, Trash2, MessageSquare, User, BarChart3, Zap, Backpack, Sparkles, Grid3X3, ScrollText, Swords, Dices, Users, Dna, Edit2, Bell, FileText, X, ChevronLeft, Network, List, BookOpen, Send, Pin, Upload, Search, Package, MapPin } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -6459,6 +6459,11 @@ export default function Campaign() {
   const [currentMap, setCurrentMap] = useState(battleMapImage1);
   const [createdCampaignId, setCreatedCampaignId] = useState<string | null>(null);
   const [currentView, setCurrentView] = useState({ x: 0, y: 0, zoom: 1 });
+  const [pinPlaceMode, setPinPlaceMode] = useState(false);
+  const [editingPin, setEditingPin] = useState<any>(null);
+  const [showPinEditor, setShowPinEditor] = useState(false);
+  const [cameraTarget, setCameraTarget] = useState<{ x: number; y: number; zoom: number } | null>(null);
+  const lastViewStateRef = useRef<{ x: number; y: number; zoom: number }>({ x: 0, y: 0, zoom: 1 });
   const [scenesManagementOpen, setScenesManagementOpen] = useState(false);
   const [newSceneName, setNewSceneName] = useState("");
   const [campaignSpeciesOpen, setCampaignSpeciesOpen] = useState(false);
@@ -6520,6 +6525,8 @@ export default function Campaign() {
   
   // GM viewing scene state (separate from active scene for players)
   const [gmViewingSceneId, setGmViewingSceneId] = useState<string | null>(null);
+  // Player temporary scene viewing (via map pin scene links)
+  const [playerViewingSceneId, setPlayerViewingSceneId] = useState<string | null>(null);
   
   // Scene folder state
   const [expandedSceneFolders, setExpandedSceneFolders] = useState<Set<string>>(new Set());
@@ -6702,6 +6709,7 @@ export default function Campaign() {
   
   // Other players' viewport states (keyed by userId) - for GM visibility
   const [fogToolActive, setFogToolActive] = useState(false);
+
   const [gridCalibrationMode, setGridCalibrationMode] = useState(false);
 
   const [otherPlayersViewports, setOtherPlayersViewports] = useState<Map<string, {
@@ -6929,6 +6937,41 @@ export default function Campaign() {
 
   // Get campaign's active scene ID (what players see)
   const campaignActiveSceneId = campaign && typeof campaign === 'object' && 'activeSceneId' in campaign ? (campaign as any).activeSceneId as string | null : null;
+
+  const handlePinClick = useCallback((pin: any) => {
+    if (role === 'gm' && showPinEditor) {
+      setEditingPin(pin);
+      return;
+    }
+    if (pin.pinType === 'scene_link' && pin.targetSceneId) {
+      if (role === 'gm') {
+        setGmViewingSceneId(pin.targetSceneId);
+      } else {
+        setPlayerViewingSceneId(pin.targetSceneId);
+      }
+      toast({ title: `Viewing: ${pin.label || 'Linked Scene'}`, description: 'Click "Return to Active Scene" to go back' });
+    } else if (pin.pinType === 'camera_zoom' && pin.cameraX != null && pin.cameraY != null && pin.cameraZoom != null) {
+      setCameraTarget({ x: pin.cameraX, y: pin.cameraY, zoom: pin.cameraZoom });
+    }
+  }, [role, showPinEditor, toast]);
+
+  const handlePinPlaced = useCallback((x: number, y: number) => {
+    setEditingPin({
+      isNew: true,
+      x,
+      y,
+      pinType: 'text_bubble',
+      label: '',
+      color: '#e74c3c',
+      textContent: '',
+      targetSceneId: null,
+      cameraX: null,
+      cameraY: null,
+      cameraZoom: null,
+    });
+    setPinPlaceMode(false);
+    setShowPinEditor(true);
+  }, []);
   const isSandbox = campaign && typeof campaign === 'object' && 'system' in campaign && (campaign as any).system === 'sandbox';
 
   const campaignDefaultPanel = campaign && typeof campaign === 'object' && 'defaultPanel' in campaign ? (campaign as any).defaultPanel : 'characters';
@@ -7057,8 +7100,10 @@ export default function Campaign() {
 
   // Determine which scene ID to use for tokens
   // For GM: use gmViewingSceneId if set, otherwise use activeSceneId
-  // For Players: always use activeSceneId
-  const sceneIdForTokens = role === 'gm' && gmViewingSceneId ? gmViewingSceneId : campaignActiveSceneId;
+  // For Players: use playerViewingSceneId (from map pin scene links) if set, otherwise activeSceneId
+  const sceneIdForTokens = role === 'gm' 
+    ? (gmViewingSceneId || campaignActiveSceneId) 
+    : (playerViewingSceneId || campaignActiveSceneId);
   
   // Load tokens for the current scene
   // Use staleTime to prevent refetch flicker - WebSocket handles real-time sync
@@ -7139,8 +7184,10 @@ export default function Campaign() {
 
   // Load active scene for the campaign
   // For GM: use gmViewingSceneId if set, otherwise fall back to activeSceneId
-  // For Players: always use activeSceneId (they only see the activated scene)
-  const effectiveSceneId = role === 'gm' && gmViewingSceneId ? gmViewingSceneId : campaignActiveSceneId;
+  // For Players: use playerViewingSceneId (map pin links) if set, otherwise activeSceneId
+  const effectiveSceneId = role === 'gm' 
+    ? (gmViewingSceneId || campaignActiveSceneId) 
+    : (playerViewingSceneId || campaignActiveSceneId);
   const { data: activeScene, isLoading: sceneLoading } = useQuery({
     queryKey: [`/api/scenes/${effectiveSceneId}`],
     queryFn: () => api.getScene(effectiveSceneId as string),
@@ -7148,6 +7195,13 @@ export default function Campaign() {
   });
 
   // Load all scenes for the campaign
+  // Map pins for current scene
+  const { data: mapPins = [] } = useQuery({
+    queryKey: ['scene-map-pins', activeScene?.id],
+    queryFn: () => api.getSceneMapPins(activeScene!.id),
+    enabled: !!activeScene?.id,
+  });
+
   const { data: allScenes } = useQuery({
     queryKey: [`/api/campaigns/${effectiveCampaignId}/scenes`],
     queryFn: () => api.getScenes(effectiveCampaignId!),
@@ -7563,6 +7617,28 @@ export default function Campaign() {
     },
     onError: (error: any) => {
       toast({ title: "Error", description: error.message || "Failed to delete folder", variant: "destructive" });
+    },
+  });
+
+  const createPinMutation = useMutation({
+    mutationFn: (data: any) => api.createSceneMapPin(activeScene!.id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['scene-map-pins', activeScene?.id] });
+    },
+  });
+
+  const updatePinMutation = useMutation({
+    mutationFn: ({ pinId, data }: { pinId: string; data: any }) => api.updateSceneMapPin(pinId, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['scene-map-pins', activeScene?.id] });
+    },
+  });
+
+  const deletePinMutation = useMutation({
+    mutationFn: (pinId: string) => api.deleteSceneMapPin(pinId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['scene-map-pins', activeScene?.id] });
+      setEditingPin(null);
     },
   });
 
@@ -8097,6 +8173,12 @@ export default function Campaign() {
         if (data.type === 'light_created') {
           queryClientRef.current.invalidateQueries({ queryKey: ['scene-lights'] });
         }
+        if (data.type === 'map_pin_created' || data.type === 'map_pin_updated' || data.type === 'map_pin_deleted') {
+          queryClientRef.current.invalidateQueries({ predicate: (query) => {
+            const key = query.queryKey;
+            return Array.isArray(key) && key[0] === 'scene-map-pins';
+          }});
+        }
         if (data.type === 'fog_state_updated' && data.sceneId) {
           queryClientRef.current.invalidateQueries({ queryKey: [`/api/scenes/${data.sceneId}`] });
         }
@@ -8135,6 +8217,9 @@ export default function Campaign() {
           
           // Refetch scenes list to update UI
           queryClientRef.current.refetchQueries({ queryKey: [`/api/campaigns/${effectiveCampaignId}/scenes`] });
+          
+          // Clear player scene override when active scene changes
+          setPlayerViewingSceneId(null);
         }
         
         // Handle chat messages - real-time chat
@@ -8993,6 +9078,27 @@ export default function Campaign() {
             </TooltipProvider>
           )}
 
+          {role === 'gm' && activeScene && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setShowPinEditor(!showPinEditor)}
+                    className={`text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto ${showPinEditor ? 'text-amber-400 bg-white/10' : ''}`}
+                    data-testid="toggle-pin-editor"
+                  >
+                    <MapPin className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="left" className="bg-stone-800 border-stone-700 text-stone-200">
+                  <p>Map Pins</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -9740,6 +9846,19 @@ export default function Campaign() {
             }
           }}
         >
+           {/* Return to Active Scene banner - shown when viewing a pin-linked scene */}
+           {playerViewingSceneId && role === 'player' && (
+             <div className="absolute top-3 left-1/2 -translate-x-1/2 z-50 bg-blue-600/90 backdrop-blur text-white px-4 py-2 rounded-lg shadow-lg flex items-center gap-3" data-testid="return-active-scene-banner">
+               <span className="text-sm font-medium">Viewing linked scene: {activeScene?.name || 'Scene'}</span>
+               <button
+                 onClick={() => setPlayerViewingSceneId(null)}
+                 className="px-3 py-1 bg-white/20 hover:bg-white/30 rounded text-sm font-medium transition-colors"
+                 data-testid="return-active-scene-btn"
+               >
+                 Return to Active Scene
+               </button>
+             </div>
+           )}
            <BattleMap 
              tokens={tokens} 
              onMoveToken={handleMoveToken} 
@@ -9751,7 +9870,7 @@ export default function Campaign() {
              gridSize={activeScene?.gridSize || 50}
              backgroundImage={currentMap}
              scene={activeScene}
-             onViewChange={setCurrentView}
+             onViewChange={(v: any) => { setCurrentView(v); lastViewStateRef.current = v; }}
              characters={characters as any[]}
              allSpecies={[...(systemSpecies || []), ...campaignSpeciesList].map(s => ({ name: s.name, size: s.size, defaultImage: (s as any).defaultImage }))}
              selectionMode={selectionMode}
@@ -9802,10 +9921,200 @@ export default function Campaign() {
                setGridCalibrationMode(false);
              }}
              onGridCalibrationCancel={() => setGridCalibrationMode(false)}
+             mapPins={mapPins as any[]}
+             pinPlaceMode={pinPlaceMode}
+             onPinClick={handlePinClick}
+             onPinPlaced={handlePinPlaced}
+             editingPinId={editingPin?.id}
+             cameraTarget={cameraTarget}
+             onCameraTargetReached={() => setCameraTarget(null)}
            />
            
            {/* Battlemap Dice Overlay for 3D dice rolling */}
            <BattlemapDiceOverlay />
+           
+           {/* Map Pin Editor - GM only */}
+           {role === 'gm' && showPinEditor && (
+             <div className="absolute top-4 left-4 z-50 bg-stone-900/95 backdrop-blur border border-stone-700 rounded-lg shadow-xl p-4 w-[320px] max-h-[500px] overflow-y-auto" data-testid="pin-editor-panel">
+               <div className="flex items-center justify-between mb-3">
+                 <h3 className="text-stone-200 font-bold text-sm">Map Pins</h3>
+                 <button onClick={() => { setShowPinEditor(false); setPinPlaceMode(false); setEditingPin(null); }} className="text-stone-400 hover:text-white">
+                   <X className="h-4 w-4" />
+                 </button>
+               </div>
+               
+               <button
+                 onClick={() => setPinPlaceMode(!pinPlaceMode)}
+                 className={`w-full mb-3 px-3 py-2 rounded text-sm font-medium transition-colors ${pinPlaceMode ? 'bg-amber-600 text-white' : 'bg-stone-700 text-stone-300 hover:bg-stone-600'}`}
+                 data-testid="toggle-pin-place-mode"
+               >
+                 {pinPlaceMode ? '📍 Click Map to Place Pin...' : '+ Add Pin'}
+               </button>
+               
+               {editingPin && (
+                 <div className="bg-stone-800 rounded-lg p-3 mb-3 border border-stone-600">
+                   <h4 className="text-stone-300 text-xs font-bold mb-2">{editingPin.isNew ? 'New Pin' : 'Edit Pin'}</h4>
+                   
+                   <label className="block text-stone-400 text-xs mb-1">Label</label>
+                   <input
+                     type="text"
+                     value={editingPin.label || ''}
+                     onChange={(e) => setEditingPin({ ...editingPin, label: e.target.value })}
+                     className="w-full px-2 py-1 rounded bg-stone-700 text-stone-200 text-sm border border-stone-600 mb-2"
+                     placeholder="Pin label..."
+                     data-testid="pin-label-input"
+                   />
+                   
+                   <label className="block text-stone-400 text-xs mb-1">Type</label>
+                   <select
+                     value={editingPin.pinType}
+                     onChange={(e) => setEditingPin({ ...editingPin, pinType: e.target.value })}
+                     className="w-full px-2 py-1 rounded bg-stone-700 text-stone-200 text-sm border border-stone-600 mb-2"
+                     data-testid="pin-type-select"
+                   >
+                     <option value="text_bubble">💬 Text Bubble</option>
+                     <option value="scene_link">🗺️ Scene Link</option>
+                     <option value="camera_zoom">🔍 Camera Zoom</option>
+                   </select>
+                   
+                   <label className="block text-stone-400 text-xs mb-1">Color</label>
+                   <input
+                     type="color"
+                     value={editingPin.color || '#e74c3c'}
+                     onChange={(e) => setEditingPin({ ...editingPin, color: e.target.value })}
+                     className="w-12 h-8 rounded border border-stone-600 mb-2 cursor-pointer"
+                     data-testid="pin-color-input"
+                   />
+                   
+                   {editingPin.pinType === 'text_bubble' && (
+                     <>
+                       <label className="block text-stone-400 text-xs mb-1">Text Content</label>
+                       <textarea
+                         value={editingPin.textContent || ''}
+                         onChange={(e) => setEditingPin({ ...editingPin, textContent: e.target.value })}
+                         className="w-full px-2 py-1 rounded bg-stone-700 text-stone-200 text-sm border border-stone-600 mb-2 min-h-[80px]"
+                         placeholder="Enter text to show when pin is clicked..."
+                         data-testid="pin-text-input"
+                       />
+                     </>
+                   )}
+                   
+                   {editingPin.pinType === 'scene_link' && (
+                     <>
+                       <label className="block text-stone-400 text-xs mb-1">Target Scene</label>
+                       <select
+                         value={editingPin.targetSceneId || ''}
+                         onChange={(e) => setEditingPin({ ...editingPin, targetSceneId: e.target.value || null })}
+                         className="w-full px-2 py-1 rounded bg-stone-700 text-stone-200 text-sm border border-stone-600 mb-2"
+                         data-testid="pin-scene-select"
+                       >
+                         <option value="">Select a scene...</option>
+                         {(allScenes as any[] || []).filter((s: any) => s.id !== activeScene?.id).map((s: any) => (
+                           <option key={s.id} value={s.id}>{s.name}</option>
+                         ))}
+                       </select>
+                     </>
+                   )}
+                   
+                   {editingPin.pinType === 'camera_zoom' && (
+                     <>
+                       <p className="text-stone-400 text-xs mb-2">
+                         Position your camera where you want players to zoom to, then click "Capture Camera".
+                       </p>
+                       <button
+                         onClick={() => {
+                           if (lastViewStateRef.current) {
+                             setEditingPin({
+                               ...editingPin,
+                               cameraX: Math.round(lastViewStateRef.current.x),
+                               cameraY: Math.round(lastViewStateRef.current.y),
+                               cameraZoom: Math.round(lastViewStateRef.current.zoom * 100) / 100,
+                             });
+                             toast({ title: 'Camera position captured!' });
+                           }
+                         }}
+                         className="w-full px-3 py-2 rounded bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium mb-2"
+                         data-testid="capture-camera-btn"
+                       >
+                         📸 Capture Current Camera Position
+                       </button>
+                       {editingPin.cameraX != null && (
+                         <p className="text-stone-500 text-xs">
+                           Saved: ({editingPin.cameraX}, {editingPin.cameraY}) zoom: {editingPin.cameraZoom}x
+                         </p>
+                       )}
+                     </>
+                   )}
+                   
+                   <div className="flex gap-2 mt-3">
+                     <button
+                       onClick={() => {
+                         const pinData = {
+                           x: editingPin.x,
+                           y: editingPin.y,
+                           pinType: editingPin.pinType,
+                           label: editingPin.label,
+                           color: editingPin.color,
+                           textContent: editingPin.textContent,
+                           targetSceneId: editingPin.targetSceneId,
+                           cameraX: editingPin.cameraX,
+                           cameraY: editingPin.cameraY,
+                           cameraZoom: editingPin.cameraZoom,
+                         };
+                         if (editingPin.isNew) {
+                           createPinMutation.mutate(pinData);
+                         } else {
+                           updatePinMutation.mutate({ pinId: editingPin.id, data: pinData });
+                         }
+                         setEditingPin(null);
+                       }}
+                       className="flex-1 px-3 py-1.5 rounded bg-green-600 hover:bg-green-500 text-white text-sm font-medium"
+                       data-testid="save-pin-btn"
+                     >
+                       Save
+                     </button>
+                     {!editingPin.isNew && (
+                       <button
+                         onClick={() => {
+                           deletePinMutation.mutate(editingPin.id);
+                         }}
+                         className="px-3 py-1.5 rounded bg-red-600 hover:bg-red-500 text-white text-sm font-medium"
+                         data-testid="delete-pin-btn"
+                       >
+                         Delete
+                       </button>
+                     )}
+                     <button
+                       onClick={() => setEditingPin(null)}
+                       className="px-3 py-1.5 rounded bg-stone-700 hover:bg-stone-600 text-stone-300 text-sm"
+                     >
+                       Cancel
+                     </button>
+                   </div>
+                 </div>
+               )}
+               
+               <div className="space-y-1">
+                 {(mapPins as any[]).map((pin: any) => (
+                   <div
+                     key={pin.id}
+                     className={`flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer hover:bg-stone-700 text-sm ${editingPin?.id === pin.id ? 'bg-stone-700' : 'bg-stone-800'}`}
+                     onClick={() => setEditingPin(pin)}
+                     data-testid={`pin-list-item-${pin.id}`}
+                   >
+                     <div className="w-4 h-4 rounded-full flex-shrink-0" style={{ backgroundColor: pin.color || '#e74c3c' }} />
+                     <span className="text-stone-300 truncate flex-1">{pin.label || 'Unnamed Pin'}</span>
+                     <span className="text-stone-500 text-xs">
+                       {pin.pinType === 'text_bubble' ? '💬' : pin.pinType === 'scene_link' ? '🗺️' : '🔍'}
+                     </span>
+                   </div>
+                 ))}
+                 {(mapPins as any[]).length === 0 && (
+                   <p className="text-stone-500 text-xs text-center py-2">No pins yet. Click "Add Pin" to create one.</p>
+                 )}
+               </div>
+             </div>
+           )}
            
            <SelectionModeButtons
              selectionMode={selectionMode}

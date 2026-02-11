@@ -1361,3 +1361,27 @@ export const insertSceneVisionZoneSchema = createInsertSchema(sceneVisionZones).
 
 export type InsertSceneVisionZone = z.infer<typeof insertSceneVisionZoneSchema>;
 export type SceneVisionZone = typeof sceneVisionZones.$inferSelect;
+
+export const sceneMapPins = pgTable("scene_map_pins", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  sceneId: varchar("scene_id").notNull().references(() => scenes.id, { onDelete: "cascade" }),
+  campaignId: varchar("campaign_id").notNull().references(() => campaigns.id, { onDelete: "cascade" }),
+  x: integer("x").notNull().default(0),
+  y: integer("y").notNull().default(0),
+  pinType: text("pin_type").notNull().default("text_bubble"),
+  label: text("label").default(""),
+  icon: text("icon").default("pin"),
+  color: text("color").default("#e74c3c"),
+  targetSceneId: varchar("target_scene_id"),
+  textContent: text("text_content").default(""),
+  cameraX: integer("camera_x"),
+  cameraY: integer("camera_y"),
+  cameraZoom: real("camera_zoom"),
+});
+
+export const insertSceneMapPinSchema = createInsertSchema(sceneMapPins).omit({
+  id: true,
+});
+
+export type InsertSceneMapPin = z.infer<typeof insertSceneMapPinSchema>;
+export type SceneMapPin = typeof sceneMapPins.$inferSelect;

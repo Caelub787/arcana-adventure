@@ -270,6 +270,87 @@ export interface OtherPlayerAoe {
 
 // getTokenGridSpan is imported from '@/lib/aoeHelpers'
 
+
+function MapPinsOverlay({ pins, isGM, gridSize, pinPlaceMode, onPinClick, onPinPlaced, onPinDragEnd, editingPinId }: {
+  pins: any[];
+  isGM: boolean;
+  gridSize: number;
+  pinPlaceMode: boolean;
+  onPinClick: (pin: any) => void;
+  onPinPlaced?: (x: number, y: number) => void;
+  onPinDragEnd?: (pinId: string, x: number, y: number) => void;
+  editingPinId?: string | null;
+}) {
+  const MAP_OFFSET = 9000;
+  const [activeBubble, setActiveBubble] = useState<string | null>(null);
+
+  const handlePinClick = (e: React.MouseEvent, pin: any) => {
+    e.stopPropagation();
+    if (pin.pinType === 'text_bubble') {
+      setActiveBubble(activeBubble === pin.id ? null : pin.id);
+    } else {
+      onPinClick(pin);
+    }
+  };
+
+  const pinTypeIcons: Record<string, string> = {
+    'scene_link': '🗺️',
+    'text_bubble': '💬',
+    'camera_zoom': '🔍',
+  };
+
+  return (
+    <>
+      {pins.map((pin) => (
+        <div key={pin.id} style={{ position: 'absolute', zIndex: 20 }}>
+          <div
+            className={`absolute flex flex-col items-center cursor-pointer select-none transition-transform hover:scale-110 ${editingPinId === pin.id ? 'ring-2 ring-yellow-400 rounded-lg' : ''}`}
+            style={{
+              left: pin.x + MAP_OFFSET - 16,
+              top: pin.y + MAP_OFFSET - 36,
+              zIndex: 20,
+              pointerEvents: 'all',
+            }}
+            onClick={(e) => handlePinClick(e, pin)}
+            data-testid={`map-pin-${pin.id}`}
+          >
+            <div
+              className="flex items-center justify-center w-8 h-8 rounded-full shadow-lg border-2 border-white/50"
+              style={{ backgroundColor: pin.color || '#e74c3c' }}
+            >
+              <span className="text-sm">{pinTypeIcons[pin.pinType] || '📍'}</span>
+            </div>
+            {pin.label && (
+              <span className="mt-0.5 px-1.5 py-0.5 text-[10px] font-bold text-white bg-black/70 rounded whitespace-nowrap max-w-[120px] truncate">
+                {pin.label}
+              </span>
+            )}
+          </div>
+
+          {pin.pinType === 'text_bubble' && activeBubble === pin.id && (
+            <div
+              className="absolute bg-stone-800 border border-stone-600 rounded-lg shadow-xl p-3 text-stone-200 text-sm max-w-[250px] z-50"
+              style={{
+                left: pin.x + MAP_OFFSET + 20,
+                top: pin.y + MAP_OFFSET - 40,
+                pointerEvents: 'all',
+              }}
+              onClick={(e) => e.stopPropagation()}
+              data-testid={`pin-bubble-${pin.id}`}
+            >
+              <button
+                className="absolute top-1 right-1 text-stone-400 hover:text-white text-xs"
+                onClick={(e) => { e.stopPropagation(); setActiveBubble(null); }}
+              >✕</button>
+              <p className="whitespace-pre-wrap pr-4">{pin.textContent || 'No content'}</p>
+            </div>
+          )}
+        </div>
+      ))}
+    </>
+  );
+}
+
 // 2. BattleMap
 interface BattleMapProps {
   tokens: Token[];
@@ -336,11 +417,18 @@ interface BattleMapProps {
   gridCalibrationMode?: boolean;
   onGridCalibrationConfirm?: (gridSize: number, offsetX: number, offsetY: number) => void;
   onGridCalibrationCancel?: () => void;
+  mapPins?: any[];
+  pinPlaceMode?: boolean;
+  onPinClick?: (pin: any) => void;
+  onPinPlaced?: (x: number, y: number) => void;
+  editingPinId?: string | null;
+  cameraTarget?: { x: number; y: number; zoom: number } | null;
+  onCameraTargetReached?: () => void;
 }
 
 
 
-export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClick, onTokenTripleClick, onDeleteToken, role, gridSize, backgroundImage, scene, onViewChange, characters = [], allSpecies = [], selectionMode = 'select', targetedTokenId, selectedTokenId, aoeTargetState, onAoeMouseMove, onAoeClick, otherPlayersAoe, myPermissions, tokenActiveEffects, allTokenEffects, onApplyEffect, onRemoveEffect, onToggleInvisibility, currentTurnCharacterId, otherPlayersTargeting, activeBeacons, onBeacon, otherPlayersViewports, thrownItems = [], onRefetchThrownItems, onDeleteThrownItem, throwableGridTarget, onGridTargetClick, notesPanelOpen = false, notesPanelWidth = 0, onNotesClick, inCombat = false, fogToolActive: fogToolActiveProp, onFogToolActiveChange, onDropCharacterOnMap, onMapClickToPlace, placingCharacterId, currentUserId, assignedCharacterId, onTokenLongPress, gridCalibrationMode, onGridCalibrationConfirm, onGridCalibrationCancel }: BattleMapProps) {
+export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClick, onTokenTripleClick, onDeleteToken, role, gridSize, backgroundImage, scene, onViewChange, characters = [], allSpecies = [], selectionMode = 'select', targetedTokenId, selectedTokenId, aoeTargetState, onAoeMouseMove, onAoeClick, otherPlayersAoe, myPermissions, tokenActiveEffects, allTokenEffects, onApplyEffect, onRemoveEffect, onToggleInvisibility, currentTurnCharacterId, otherPlayersTargeting, activeBeacons, onBeacon, otherPlayersViewports, thrownItems = [], onRefetchThrownItems, onDeleteThrownItem, throwableGridTarget, onGridTargetClick, notesPanelOpen = false, notesPanelWidth = 0, onNotesClick, inCombat = false, fogToolActive: fogToolActiveProp, onFogToolActiveChange, onDropCharacterOnMap, onMapClickToPlace, placingCharacterId, currentUserId, assignedCharacterId, onTokenLongPress, gridCalibrationMode, onGridCalibrationConfirm, onGridCalibrationCancel, mapPins = [], pinPlaceMode = false, onPinClick, onPinPlaced, editingPinId, cameraTarget, onCameraTargetReached }: BattleMapProps) {
   // Derive isGM from role prop
   const isGM = role === 'gm';
   
@@ -919,6 +1007,21 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
     previousViewportRef.current = { ...viewportSize };
     forceUpdate(n => n + 1);
   }, [viewportSize, motionX, motionY]);
+  // Camera target effect - animate to a specific position when cameraTarget is set
+  useEffect(() => {
+    if (!cameraTarget) return;
+    const { x, y, zoom } = cameraTarget;
+    const containerWidth = viewportSize.width || window.innerWidth;
+    const containerHeight = viewportSize.height || window.innerHeight;
+    const pixelOffset = worldToPixelOffset(x, y, zoom, containerWidth, containerHeight);
+    motionX.set(pixelOffset.x);
+    motionY.set(pixelOffset.y);
+    motionZoom.set(zoom);
+    panRef.current = { x: pixelOffset.x, y: pixelOffset.y };
+    zoomRef.current = zoom;
+    forceUpdate(n => n + 1);
+    if (onCameraTargetReached) onCameraTargetReached();
+  }, [cameraTarget]);
 
   // Clear delete button if token no longer exists (after successful deletion)
   useEffect(() => {
@@ -1181,7 +1284,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
     if (e.button !== 0) return;
     
     // Don't capture pointer when fog drawing tools are active - let WallDrawingOverlay handle clicks
-    if (wallDrawMode || doorPlaceMode || windowPlaceMode || lightPlaceMode || zoneDrawMode || moveMode) return;
+    if (wallDrawMode || doorPlaceMode || windowPlaceMode || lightPlaceMode || zoneDrawMode || moveMode || pinPlaceMode) return;
     
     // Don't capture pointer when placing a character token - let onClick handle it
     if (placingCharacterId) return;
@@ -1787,6 +1890,20 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
         onPointerCancel={handleMapPointerCancel}
         onClick={(e) => {
           setShowDeleteButton(null);
+          if (pinPlaceMode && onPinPlaced) {
+            const container = containerRef.current;
+            if (container) {
+              const rect = container.getBoundingClientRect();
+              const screenX = e.clientX - rect.left;
+              const screenY = e.clientY - rect.top;
+              const currentZoom = zoomRef.current;
+              const currentPan = panRef.current;
+              const worldX = ((screenX + 9000 - currentPan.x) / currentZoom) - 9000;
+              const worldY = ((screenY + 9000 - currentPan.y) / currentZoom) - 9000;
+              onPinPlaced(worldX, worldY);
+            }
+            return;
+          }
           if (placingCharacterId && onMapClickToPlace) {
             const container = containerRef.current;
             if (container) {
@@ -3540,6 +3657,17 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
           </svg>
         )}
         
+        {/* Map Pins */}
+        <MapPinsOverlay
+          pins={mapPins}
+          isGM={isGM}
+          gridSize={gridSize}
+          pinPlaceMode={pinPlaceMode}
+          onPinClick={onPinClick || (() => {})}
+          onPinPlaced={onPinPlaced}
+          editingPinId={editingPinId}
+        />
+
         {/* Fog of War Overlay - walls, doors, windows, lights, fog */}
         {scene?.id && (
           <FogOfWarOverlay

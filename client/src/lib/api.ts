@@ -2059,6 +2059,30 @@ class ApiClient {
       method: 'DELETE',
     });
   }
+
+  async getSceneMapPins(sceneId: string): Promise<any[]> {
+    return this.request(`/scenes/${sceneId}/map-pins`);
+  }
+
+  async createSceneMapPin(sceneId: string, data: any): Promise<any> {
+    return this.request(`/scenes/${sceneId}/map-pins`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateSceneMapPin(pinId: string, data: any): Promise<any> {
+    return this.request(`/scene-map-pins/${pinId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteSceneMapPin(pinId: string): Promise<any> {
+    return this.request(`/scene-map-pins/${pinId}`, {
+      method: 'DELETE',
+    });
+  }
 }
 
 export interface SandboxTemplate {

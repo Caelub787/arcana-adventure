@@ -52,7 +52,8 @@ import {
   type SceneWindow, type InsertSceneWindow,
   type SceneLight, type InsertSceneLight,
   type SceneVisionZone, type InsertSceneVisionZone,
-  users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, items, spells, characterPermissions, initiativeEntries, systemSpecies, campaignSpecies, featTemplates, featTrees, feats, featConnections, characterFeats, systemSpells, systemSkills, characterCustomSkills, systemTraits, characterTraits, characterFolders, characterTemplateFolders, sceneFolders, friendRequests, friendships, noteFolders, notes, noteReferences, noteShares, tokenEffects, spellEffects, itemEffects, tokenActiveEffects, thrownItems, adminNotifications, userNotifications, termsAndConditions, userTermsAcceptance, sandboxFolders, sandboxTemplates, sandboxActors, rollEntries, sceneWalls, sceneDoors, sceneWindows, sceneLights, sceneVisionZones
+  type SceneMapPin, type InsertSceneMapPin,
+  users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, items, spells, characterPermissions, initiativeEntries, systemSpecies, campaignSpecies, featTemplates, featTrees, feats, featConnections, characterFeats, systemSpells, systemSkills, characterCustomSkills, systemTraits, characterTraits, characterFolders, characterTemplateFolders, sceneFolders, friendRequests, friendships, noteFolders, notes, noteReferences, noteShares, tokenEffects, spellEffects, itemEffects, tokenActiveEffects, thrownItems, adminNotifications, userNotifications, termsAndConditions, userTermsAcceptance, sandboxFolders, sandboxTemplates, sandboxActors, rollEntries, sceneWalls, sceneDoors, sceneWindows, sceneLights, sceneVisionZones, sceneMapPins
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql, inArray, or, isNull } from "drizzle-orm";
@@ -479,6 +480,12 @@ export interface IStorage {
   createSandboxActor(data: InsertSandboxActor): Promise<SandboxActor>;
   updateSandboxActor(id: string, data: Partial<SandboxActor>): Promise<SandboxActor>;
   deleteSandboxActor(id: string): Promise<void>;
+
+  getSceneMapPins(sceneId: string): Promise<SceneMapPin[]>;
+  getSceneMapPin(id: string): Promise<SceneMapPin | undefined>;
+  createSceneMapPin(pin: InsertSceneMapPin): Promise<SceneMapPin>;
+  updateSceneMapPin(id: string, updates: Record<string, any>): Promise<SceneMapPin | undefined>;
+  deleteSceneMapPin(id: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -3478,6 +3485,29 @@ export class DatabaseStorage implements IStorage {
 
   async deleteSandboxActor(id: string): Promise<void> {
     await db.delete(sandboxActors).where(eq(sandboxActors.id, id));
+  }
+
+  async getSceneMapPins(sceneId: string): Promise<SceneMapPin[]> {
+    return await db.select().from(sceneMapPins).where(eq(sceneMapPins.sceneId, sceneId));
+  }
+
+  async getSceneMapPin(id: string): Promise<SceneMapPin | undefined> {
+    const [pin] = await db.select().from(sceneMapPins).where(eq(sceneMapPins.id, id));
+    return pin;
+  }
+
+  async createSceneMapPin(pin: InsertSceneMapPin): Promise<SceneMapPin> {
+    const [created] = await db.insert(sceneMapPins).values(pin).returning();
+    return created;
+  }
+
+  async updateSceneMapPin(id: string, updates: Record<string, any>): Promise<SceneMapPin | undefined> {
+    const [updated] = await db.update(sceneMapPins).set(updates).where(eq(sceneMapPins.id, id)).returning();
+    return updated;
+  }
+
+  async deleteSceneMapPin(id: string): Promise<void> {
+    await db.delete(sceneMapPins).where(eq(sceneMapPins.id, id));
   }
 }
 

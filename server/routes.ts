@@ -3655,12 +3655,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Campaign not found" });
       }
       
-      // Players can only view the active scene
+      // Players can view the active scene or scenes linked by map pins
       const isGM = await hasGmAccess(req.session.userId!, scene.campaignId, campaign.gmUserId);
       const isActiveScene = campaign.activeSceneId === scene.id;
       
       if (!isGM && !isActiveScene) {
-        return res.status(403).json({ error: "Only the GM can view non-active scenes" });
+        // Check if this scene is linked by a map pin on the active scene
+        let hasMapPinAccess = false;
+        if (campaign.activeSceneId) {
+          const pins = await storage.getSceneMapPins(campaign.activeSceneId);
+          hasMapPinAccess = pins.some(p => p.pinType === 'scene_link' && p.targetSceneId === scene.id);
+        }
+        if (!hasMapPinAccess) {
+          return res.status(403).json({ error: "Only the GM can view non-active scenes" });
+        }
       }
       
       res.json(scene);
@@ -7062,6 +7070,76 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ success: true });
     } catch (e) {
       res.status(500).json({ error: "Failed to delete light" });
+    }
+  });
+
+  // ========== Scene Map Pins ==========
+  
+  app.get("/api/scenes/:sceneId/map-pins", requireAuth, async (req, res) => {
+    try {
+      const pins = await storage.getSceneMapPins(req.params.sceneId);
+      res.json(pins);
+    } catch (e) {
+      res.status(500).json({ error: "Failed to get map pins" });
+    }
+  });
+
+  app.post("/api/scenes/:sceneId/map-pins", requireAuth, async (req, res) => {
+    try {
+      const scene = await storage.getScene(req.params.sceneId);
+      if (!scene) return res.status(404).json({ error: "Scene not found" });
+      
+      const pin = await storage.createSceneMapPin({
+        ...req.body,
+        sceneId: req.params.sceneId,
+        campaignId: scene.campaignId,
+      });
+      
+      broadcastToCampaign(scene.campaignId, {
+        type: 'map_pin_created',
+        sceneId: req.params.sceneId,
+        pin,
+      });
+      
+      res.json(pin);
+    } catch (e) {
+      res.status(500).json({ error: "Failed to create map pin" });
+    }
+  });
+
+  app.patch("/api/scene-map-pins/:pinId", requireAuth, async (req, res) => {
+    try {
+      const pin = await storage.updateSceneMapPin(req.params.pinId, req.body);
+      if (!pin) return res.status(404).json({ error: "Pin not found" });
+      
+      broadcastToCampaign(pin.campaignId, {
+        type: 'map_pin_updated',
+        sceneId: pin.sceneId,
+        pin,
+      });
+      
+      res.json(pin);
+    } catch (e) {
+      res.status(500).json({ error: "Failed to update map pin" });
+    }
+  });
+
+  app.delete("/api/scene-map-pins/:pinId", requireAuth, async (req, res) => {
+    try {
+      const pin = await storage.getSceneMapPin(req.params.pinId);
+      if (!pin) return res.status(404).json({ error: "Pin not found" });
+      
+      await storage.deleteSceneMapPin(req.params.pinId);
+      
+      broadcastToCampaign(pin.campaignId, {
+        type: 'map_pin_deleted',
+        sceneId: pin.sceneId,
+        pinId: req.params.pinId,
+      });
+      
+      res.json({ success: true });
+    } catch (e) {
+      res.status(500).json({ error: "Failed to delete map pin" });
     }
   });
 
