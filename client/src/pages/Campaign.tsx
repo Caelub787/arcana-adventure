@@ -9900,7 +9900,7 @@ export default function Campaign() {
         if (!sheetChar?.id) return null;
         return (
           <div 
-            className="fixed bottom-[105px] md:bottom-[140px] z-[60] transition-all duration-300"
+            className="fixed bottom-[105px] md:bottom-[140px] z-[35] transition-all duration-300"
             style={{ right: (sidePanelOpen && !isMobile) ? `${notesPanelWidth + 16}px` : '16px' }}
             data-testid="btn-character-overview"
           >

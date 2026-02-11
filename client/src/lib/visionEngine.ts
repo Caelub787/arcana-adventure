@@ -129,8 +129,8 @@ function castRay(
               closestX = hit.x;
               closestY = hit.y;
             }
-            continue;
           }
+          continue;
         }
 
         {

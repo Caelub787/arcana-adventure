@@ -540,7 +540,9 @@ export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToo
           }
 
           const pointDayTime = pointIsIndoor !== null ? !pointIsIndoor : isDayTime;
-          const allowedRadius = pointDayTime ? dayRadius : nightRadius;
+          const targetZoneRadius = pointDayTime ? dayRadius : nightRadius;
+          const tokenZoneRadius = effectiveDayTime ? dayRadius : nightRadius;
+          const allowedRadius = Math.min(targetZoneRadius, tokenZoneRadius);
 
           if (dist > allowedRadius + 1) {
             const angle = Math.atan2(p.y - tokenCenterY, p.x - tokenCenterX);
@@ -1745,6 +1747,23 @@ export function ZoneDrawingOverlay({
       onDoubleClick={handleDoubleClick}
       data-testid="zone-drawing-overlay"
     >
+      {existingZones.map((zone: any, idx: number) => {
+        const pts = (typeof zone.points === 'string' ? JSON.parse(zone.points || '[]') : zone.points) as { x: number; y: number }[];
+        if (pts.length < 3) return null;
+        const isIndoor = zone.mode === 'indoor';
+        return (
+          <polygon
+            key={zone.id || idx}
+            points={pts.map((p: any) => `${p.x + MAP_OFFSET},${p.y + MAP_OFFSET}`).join(' ')}
+            fill={isIndoor ? 'rgba(147, 51, 234, 0.1)' : 'rgba(245, 158, 11, 0.1)'}
+            stroke={isIndoor ? '#9333ea' : '#f59e0b'}
+            strokeWidth={1.5}
+            strokeOpacity={0.5}
+            strokeDasharray="4 2"
+          />
+        );
+      })}
+
       {points.length > 0 && (
         <polygon
           points={points.map(p => `${p.x + MAP_OFFSET},${p.y + MAP_OFFSET}`).join(' ')}
