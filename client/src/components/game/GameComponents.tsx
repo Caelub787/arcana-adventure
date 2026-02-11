@@ -3963,7 +3963,7 @@ interface HUDProps {
   onOpenChat?: () => void;
 }
 
-export function HUD({ character, onOpenChat }: HUDProps) {
+const HUDInner = function HUD({ character, onOpenChat }: HUDProps) {
   return (
     <>
       {/* Inventory Button - Middle right */}
@@ -3996,6 +3996,7 @@ export function HUD({ character, onOpenChat }: HUDProps) {
     </>
   );
 }
+export const HUD = React.memo(HUDInner);
 
 // BattleMap Hotbars - Compact display for battlemap overlay
 interface BattleMapHotbarsProps {
@@ -4044,7 +4045,7 @@ interface BattleMapHotbarSlotProps {
 // Ranged weapon categories that use ammunition
 const RANGED_WEAPON_CATEGORIES = ['bow', 'crossbow', 'sling', 'firearm'];
 
-function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHotbars, allItems, tokens, targetedTokenId, allCharacters, gridSize = 50, onEnterAoeMode, aoeTargetState, onAoeDamageRoll, sceneId, thrownItems, onRefetchThrownItems, onEnterThrowableAoeMode, throwableGridTarget, onClearThrowableGridTarget }: BattleMapHotbarSlotProps) {
+const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHotbars, allItems, tokens, targetedTokenId, allCharacters, gridSize = 50, onEnterAoeMode, aoeTargetState, onAoeDamageRoll, sceneId, thrownItems, onRefetchThrownItems, onEnterThrowableAoeMode, throwableGridTarget, onClearThrowableGridTarget }: BattleMapHotbarSlotProps) {
   const clickTimerRef = useRef<NodeJS.Timeout | null>(null);
   const clickCountRef = useRef(0);
   const queryClient = useQueryClient();
@@ -6417,13 +6418,17 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
           if (aoeTargetState?.active && aoeTargetState?.locked) {
             handleSpellDamageRoll();
           } else if (targetedTokenId) {
-            (async () => {
-              const result = await handleSpellAttackRoll();
-              if (result?.hit) {
-                await new Promise(resolve => setTimeout(resolve, 500));
-                await handleSpellDamageRoll({ critSuccess: result.critSuccess });
-              }
-            })();
+            if (spellData?.requiresSave && spellData?.saveAttribute && spellData?.saveDc) {
+              handleSpellDamageRoll();
+            } else {
+              (async () => {
+                const result = await handleSpellAttackRoll();
+                if (result?.hit) {
+                  await new Promise(resolve => setTimeout(resolve, 500));
+                  await handleSpellDamageRoll({ critSuccess: result.critSuccess });
+                }
+              })();
+            }
           } else {
             handleSpellAttackRoll();
           }
@@ -6778,8 +6783,9 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     </>
   );
 }
+const BattleMapHotbarSlot = React.memo(BattleMapHotbarSlotInner);
 
-export function BattleMapHotbars({ character, tokens, targetedTokenId, characters, gridSize, onEnterAoeMode, aoeTargetState, onAoeDamageRoll, sceneId, thrownItems, onRefetchThrownItems, onEnterThrowableAoeMode, throwableGridTarget, onClearThrowableGridTarget, notesPanelOpen = false, notesPanelWidth = 0 }: BattleMapHotbarsProps) {
+const BattleMapHotbarsInner = function BattleMapHotbars({ character, tokens, targetedTokenId, characters, gridSize, onEnterAoeMode, aoeTargetState, onAoeDamageRoll, sceneId, thrownItems, onRefetchThrownItems, onEnterThrowableAoeMode, throwableGridTarget, onClearThrowableGridTarget, notesPanelOpen = false, notesPanelWidth = 0 }: BattleMapHotbarsProps) {
   const [activeHotbar, setActiveHotbar] = useState<string>('weapons');
   
   const { data: hotbars = [], isLoading: hotbarsLoading } = useQuery({
@@ -7002,6 +7008,7 @@ export function BattleMapHotbars({ character, tokens, targetedTokenId, character
     </>
   );
 }
+export const BattleMapHotbars = React.memo(BattleMapHotbarsInner);
 
 // Selection Mode Buttons Component - Select and Target buttons stacked vertically
 interface SelectionModeButtonsProps {
@@ -7016,7 +7023,7 @@ interface SelectionModeButtonsProps {
   notesPanelWidth?: number;
 }
 
-export function SelectionModeButtons({ 
+const SelectionModeButtonsInner = function SelectionModeButtons({ 
   selectionMode, 
   onModeChange, 
   character, 
@@ -7774,6 +7781,7 @@ function SceneSettingsDialog({ open, onOpenChange, scene, onUpdateScene }: Scene
     </Dialog>
   );
 }
+export const SelectionModeButtons = React.memo(SelectionModeButtonsInner);
 
 // Initiative Tracker Component
 interface InitiativeTrackerProps {
@@ -7788,7 +7796,7 @@ interface InitiativeTrackerProps {
   allSpecies?: { name: string; size: string; defaultImage?: string }[];
 }
 
-export function InitiativeTracker({ open, onOpenChange, sceneId, campaignId, isGM, characters = [], userId, inline = false, allSpecies = [] }: InitiativeTrackerProps) {
+const InitiativeTrackerInner = function InitiativeTracker({ open, onOpenChange, sceneId, campaignId, isGM, characters = [], userId, inline = false, allSpecies = [] }: InitiativeTrackerProps) {
   const queryClient = useQueryClient();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState<number>(0);
@@ -8407,6 +8415,7 @@ function CharacterListItem({ char, role, onViewCharacter, onAssignCharacter, onD
     </div>
   );
 }
+export const InitiativeTracker = React.memo(InitiativeTrackerInner);
 
 // 5. Campaign Menu & Chat
 interface CampaignMenuProps {
@@ -8440,7 +8449,7 @@ interface CampaignMenuProps {
   charactersOnly?: boolean;
 }
 
-export function CampaignMenu({ campaignId, role, inviteCode, hotbarSlots = 5, inspectedChar, onInspectChar, onAddCharacterToken, onPlaceCharacterToken, onChangeMap, characters, members, onAddCharacter, onViewCharacter, onLevelUpAll, chatOpen = false, onChatOpenChange, onAssignCharacter, myPermissions, onOpenCampaignSpecies, isOwner = false, gmUserId, beaconColor, onChangeBeaconColor, system, defaultPanel, onDefaultPanelChange, inline = false, charactersOnly = false }: CampaignMenuProps) {
+const CampaignMenuInner = function CampaignMenu({ campaignId, role, inviteCode, hotbarSlots = 5, inspectedChar, onInspectChar, onAddCharacterToken, onPlaceCharacterToken, onChangeMap, characters, members, onAddCharacter, onViewCharacter, onLevelUpAll, chatOpen = false, onChatOpenChange, onAssignCharacter, myPermissions, onOpenCampaignSpecies, isOwner = false, gmUserId, beaconColor, onChangeBeaconColor, system, defaultPanel, onDefaultPanelChange, inline = false, charactersOnly = false }: CampaignMenuProps) {
   const { user } = useAuth();
   const setChatOpen = onChatOpenChange || (() => {});
   const [addCharacterOpen, setAddCharacterOpen] = useState(false);
@@ -23790,6 +23799,7 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
     </FloatingPanel>
   );
 }
+export const CampaignMenu = React.memo(CampaignMenuInner);
 
 // 5. GM Tools (Deprecated wrapper)
 interface GMToolsProps {

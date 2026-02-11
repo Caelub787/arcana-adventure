@@ -8463,7 +8463,7 @@ export default function Campaign() {
     toggleInvisibilityMutation.mutate({ tokenId, isInvisible });
   };
 
-  const handleTokenClick = (token: any) => {
+  const handleTokenClick = useCallback((token: any) => {
     console.log('[TokenClick] Mode:', selectionMode, 'Token:', token.id, token.characterId);
     // Handle based on current selection mode
     switch (selectionMode) {
@@ -8491,10 +8491,9 @@ export default function Campaign() {
         }
         break;
     }
-  };
-
+  }, [selectionMode, effectiveCampaignId, character, user]);
   // Handler for double-clicking a token - triggers character assignment in select mode
-  const handleTokenDoubleClick = (token: any) => {
+  const handleTokenDoubleClick = useCallback((token: any) => {
     // Only assign in select mode - double-click assigns the character
     if (selectionMode !== 'select') return;
     
@@ -8533,10 +8532,10 @@ export default function Campaign() {
       }
     }
     setSelectedTokenId(token.id);
-  };
+  }, [selectionMode, characters, role, myPermissions, user, effectiveCampaignId, toast]);
 
   // Handler for triple-clicking a token - opens character sheet WITHOUT assigning
-  const handleTokenTripleClick = (token: any) => {
+  const handleTokenTripleClick = useCallback((token: any) => {
     if (selectionMode !== 'select') return;
     
     console.log('[TokenTripleClick] Opening character sheet without assigning:', token.id, token.characterId);
@@ -8561,10 +8560,10 @@ export default function Campaign() {
         }
       }
     }
-  };
+  }, [selectionMode, characters, role, myPermissions, user]);
 
   // Handler for mode changes - clear targeting and selection when switching modes
-  const handleModeChange = (mode: SelectionMode) => {
+  const handleModeChange = useCallback((mode: SelectionMode) => {
     // Clear targeted token when switching away from Target mode
     if (selectionMode === 'target' && mode !== 'target') {
       setTargetedTokenId(null);
@@ -8577,7 +8576,7 @@ export default function Campaign() {
     // Clear selected token when switching modes for a clean slate
     setSelectedTokenId(null);
     setSelectionMode(mode);
-  };
+  }, [selectionMode, effectiveCampaignId]);
   
   // Handler for grid target click in target mode (for throwable items)
   const handleGridTargetClick = (gridX: number, gridY: number) => {
