@@ -308,6 +308,19 @@ export function calculateVisionInLight(
     ? Math.PI
     : Math.asin(Math.min(1, lightRadius / Math.max(1, distToLight)));
 
+  const snapEp = (v: number) => Math.round(v * 2) / 2;
+  const epCount = new Map<string, number>();
+  for (const seg of blockingSegments) {
+    const k1 = `${snapEp(seg.x1)},${snapEp(seg.y1)}`;
+    const k2 = `${snapEp(seg.x2)},${snapEp(seg.y2)}`;
+    epCount.set(k1, (epCount.get(k1) || 0) + 1);
+    epCount.set(k2, (epCount.get(k2) || 0) + 1);
+  }
+  const cornerEps = new Set<string>();
+  epCount.forEach((count, k) => {
+    if (count >= 2) cornerEps.add(k);
+  });
+
   const angles: number[] = [];
   const EPSILON = 0.001;
 
@@ -350,9 +363,9 @@ export function calculateVisionInLight(
     );
   }
 
-  const STEP = Math.PI / 60;
-  const sweepStart = insideLight ? -Math.PI : lightAngle - angularSpan - STEP;
-  const sweepEnd = insideLight ? Math.PI : lightAngle + angularSpan + STEP;
+  const STEP = insideLight ? Math.PI / 90 : Math.min(Math.PI / 90, angularSpan / 30);
+  const sweepStart = insideLight ? -Math.PI : lightAngle - angularSpan - STEP * 2;
+  const sweepEnd = insideLight ? Math.PI : lightAngle + angularSpan + STEP * 2;
   for (let a = sweepStart; a <= sweepEnd; a += STEP) {
     angles.push(a);
   }
@@ -361,7 +374,7 @@ export function calculateVisionInLight(
   const rayResults: RayIntersection[] = [];
 
   for (const angle of angles) {
-    const ray = castRay(tokenX, tokenY, angle, maxReach, blockingSegments);
+    const ray = castRay(tokenX, tokenY, angle, maxReach, blockingSegments, true, cornerEps);
     const wallDist = ray.dist;
 
     const crossings = clipSegmentToPolygon(tokenX, tokenY, ray.x, ray.y, lp);
