@@ -4901,8 +4901,9 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
     const isSpell = !!spellData;
     
     if (isSpell) {
-      if (spellData.requiresSave && spellData.saveDc) {
-        const dcOverride = (typeof spellData.saveDc === 'string' ? parseInt(spellData.saveDc) : spellData.saveDc) + extraModifier;
+      if (spellData.requiresSave || spellData.saveSuccessEffect) {
+        const baseDc = spellData.saveDc ? (typeof spellData.saveDc === 'string' ? parseInt(spellData.saveDc) : spellData.saveDc) : 10;
+        const dcOverride = baseDc + extraModifier;
         
         if (aoeTargetState?.active && aoeTargetState?.locked) {
           await handleSpellDamageRoll({ dcOverride });
@@ -6017,10 +6018,10 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
         : `${diceNotation} = ${aoeDiceResult}`;
       const damageTypeDisplay = spellData.damageType ? ` (${spellData.damageType})` : '';
       
-      // DC Save handling for AOE spells
-      if (spellData.requiresSave && spellData.saveAttribute && spellData.saveDc) {
-        const saveAttr = spellData.saveAttribute;
-        const saveDc = options?.dcOverride || spellData.saveDc;
+      // DC Save handling for AOE spells - damaging AOE spells always trigger saves
+      if (!isHealing && spellData.damageType !== 'Energy' && diceNotation) {
+        const saveAttr = spellData.saveAttribute || spellData.attribute || 'wit';
+        const saveDc = options?.dcOverride || spellData.saveDc || 10;
         const saveSuccessEffect = spellData.saveSuccessEffect || 'half';
         const isEnergyEffect = spellData.damageType === 'Energy';
         
@@ -6218,12 +6219,12 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
     let finalTotal = total;
     const isEnergyEffect = spellData.damageType === 'Energy';
 
-    if (spellData.requiresSave && spellData.saveAttribute && spellData.saveDc && targetedTokenId) {
-      const singleTargetDc = options?.dcOverride || spellData.saveDc;
+    if (targetedTokenId && (spellData.requiresSave || spellData.saveSuccessEffect)) {
+      const singleTargetDc = options?.dcOverride || spellData.saveDc || 10;
       const targetToken = tokens?.find((t: any) => t.id === targetedTokenId);
       const targetChar = targetToken ? allCharacters?.find((c: any) => c.id === targetToken.characterId) : null;
       if (targetChar) {
-        const saveAttr = spellData.saveAttribute;
+        const saveAttr = spellData.saveAttribute || spellData.attribute || 'wit';
         const saveSuccessEffect = spellData.saveSuccessEffect || 'half';
         const isPlayerTarget = targetChar.userId && targetChar.userId !== character.userId;
         
@@ -6418,7 +6419,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
           if (aoeTargetState?.active && aoeTargetState?.locked) {
             handleSpellDamageRoll();
           } else if (targetedTokenId) {
-            if (spellData?.requiresSave && spellData?.saveAttribute && spellData?.saveDc) {
+            if (spellData?.requiresSave || spellData?.saveSuccessEffect) {
               handleSpellDamageRoll();
             } else {
               (async () => {
