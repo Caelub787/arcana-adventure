@@ -6021,106 +6021,147 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
         const saveAttr = spellData.saveAttribute;
         const saveDc = options?.dcOverride || spellData.saveDc;
         const saveSuccessEffect = spellData.saveSuccessEffect || 'half';
-        const affectedResults: string[] = [];
         const isEnergyEffect = spellData.damageType === 'Energy';
         
-        const processTokenSaves = async () => {
+        const processAoeDcSpell = async () => {
+          // STEP 1: Process ALL token saves in order (NPC auto-roll, players get "awaiting" notification)
+          const saveResults: Array<{ token: any; targetChar: any; saved: boolean; isPlayer: boolean }> = [];
+          
           for (let i = 0; i < tokensInAoe.length; i++) {
             const token = tokensInAoe[i];
             const targetChar = allCharacters?.find((c: any) => c.id === token.characterId);
             if (!targetChar) continue;
             
-            if (i > 0) {
+            if (saveResults.length > 0) {
               await new Promise(resolve => setTimeout(resolve, 1000));
             }
             
-            const isPlayerToken = targetChar.userId && targetChar.userId !== character.userId;
+            const isPlayerToken = !!(targetChar.userId && targetChar.userId !== character.userId);
             
             if (isPlayerToken) {
-              gameWs.send({
-                type: 'dc_save_prompt',
-                campaignId,
-                targetCharacterId: targetChar.id,
-                targetUserId: targetChar.userId,
-                spellName: spellData.name,
-                saveAttribute: saveAttr,
-                saveDc: saveDc,
-                damage: total,
-                damageType: spellData.damageType || '',
-                saveSuccessEffect: saveSuccessEffect,
-                casterName: character.name,
-                isHealing: isHealing,
+              // Player token: show awaiting notification (prompt sent after damage is known)
+              saveResults.push({ token, targetChar, saved: false, isPlayer: true });
+              
+              triggerRollNotification({
+                type: 'system',
+                label: `${targetChar.name} — Awaiting ${saveAttr.charAt(0).toUpperCase() + saveAttr.slice(1)} Save (DC ${saveDc})`,
+                result: 0,
+                total: 0,
+                username: targetChar.name,
+                characterName: targetChar.name,
+                calculationBreakdown: `${targetChar.name} must roll a ${saveAttr} save vs DC ${saveDc}`,
               });
-              affectedResults.push(`${targetChar.name} (awaiting save)`);
+              if (character.campaignId) {
+                gameWs.sendChatMessage(character.userId || '', targetChar.name || 'Unknown', 
+                  `${saveAttr.charAt(0).toUpperCase() + saveAttr.slice(1)} Save vs ${spellData.name}: Awaiting roll (DC ${saveDc})`, 'roll');
+              }
               continue;
             }
             
+            // NPC auto-roll save
             const attrValue = targetChar[saveAttr] || 10;
             const attrMod = Math.floor((attrValue - 10) / 2);
             const saveRoll = rollDice('1d20');
             const saveTotal = saveRoll.result + attrMod;
             const saveSuccess = saveTotal >= saveDc;
             
-            let appliedDamage = total;
-            if (saveSuccess) {
-              if (saveSuccessEffect === 'none') {
-                appliedDamage = 0;
-              } else {
-                appliedDamage = Math.floor(total / 2);
-              }
-            }
-            
-            if (appliedDamage > 0) {
-              await applyDamageToTarget(appliedDamage, spellData.damageType || null, targetChar, isEnergyEffect ? spellData.gainEnergy : undefined);
-            }
-            
-            const saveResultText = saveSuccess 
-              ? `SAVED (${saveTotal} vs DC ${saveDc}) → ${saveSuccessEffect === 'none' ? 'No damage' : `Half damage: ${appliedDamage}`}`
-              : `FAILED (${saveTotal} vs DC ${saveDc}) → Full damage: ${appliedDamage}`;
-            affectedResults.push(`${targetChar.name}: ${saveResultText}`);
+            saveResults.push({ token, targetChar, saved: saveSuccess, isPlayer: false });
             
             triggerRollNotification({
               type: saveSuccess ? 'system' : 'attack',
               dieType: 'd20',
-              label: `${targetChar.name} ${saveAttr.charAt(0).toUpperCase() + saveAttr.slice(1)} Save vs ${spellData.name}`,
+              label: `${targetChar.name} ${saveAttr.charAt(0).toUpperCase() + saveAttr.slice(1)} Save vs ${spellData.name} — ${saveSuccess ? 'SAVED!' : 'FAILED!'}`,
               result: saveRoll.result,
               modifier: attrMod,
               total: saveTotal,
               username: targetChar.name,
               characterName: targetChar.name,
-              calculationBreakdown: `d20 (${saveRoll.result}) + ${saveAttr} (${attrMod >= 0 ? '+' : ''}${attrMod}) = ${saveTotal} vs DC ${saveDc} → ${saveSuccess ? 'SAVED' : 'FAILED'} → ${appliedDamage} damage`,
+              calculationBreakdown: `d20 (${saveRoll.result}) + ${saveAttr} (${attrMod >= 0 ? '+' : ''}${attrMod}) = ${saveTotal} vs DC ${saveDc} → ${saveSuccess ? 'SAVED' : 'FAILED'}`,
             });
             if (character.campaignId) {
-              const saveResultChat = saveSuccess 
-                ? `SAVED (${saveTotal} vs DC ${saveDc}) → ${saveSuccessEffect === 'none' ? 'No damage' : `Half damage: ${appliedDamage}`}`
-                : `FAILED (${saveTotal} vs DC ${saveDc}) → Full damage: ${appliedDamage}`;
               gameWs.sendChatMessage(character.userId || '', targetChar.name || 'Unknown', 
-                `${saveAttr.charAt(0).toUpperCase() + saveAttr.slice(1)} Save vs ${spellData.name}: d20 (${saveRoll.result}) + ${saveAttr} (${attrMod >= 0 ? '+' : ''}${attrMod}) = ${saveTotal} → ${saveResultChat}`, 'roll');
+                `${saveAttr.charAt(0).toUpperCase() + saveAttr.slice(1)} Save vs ${spellData.name}: d20 (${saveRoll.result}) + ${saveAttr} (${attrMod >= 0 ? '+' : ''}${attrMod}) = ${saveTotal} vs DC ${saveDc} → ${saveSuccess ? 'SAVED' : 'FAILED'}`, 'roll');
             }
           }
           
-          const label = `${spellData.name} AoE (DC ${saveDc} ${saveAttr.charAt(0).toUpperCase() + saveAttr.slice(1)} Save)`;
+          // STEP 2: Roll damage dice (after all saves shown)
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          
+          const { result: dmgResult, dieType: dmgDieType } = rollDice(diceNotation);
+          const critBonus = options?.critSuccess ? getMaxDice(diceNotation) : 0;
+          const mod = typeof spellData.mod === 'number' ? spellData.mod : (parseInt(spellData.mod) || 0);
+          const totalDamage = (dmgResult || 0) + critBonus + mod;
+          
+          const dmgDiceResult = critBonus > 0 ? `${dmgResult} + MAX (${critBonus})` : `${dmgResult}`;
+          const dmgBreakdown = mod !== 0 
+            ? `${diceNotation} = ${dmgDiceResult} + Mod (${mod >= 0 ? '+' : ''}${mod})`
+            : `${diceNotation} = ${dmgDiceResult}`;
+          const damageTypeDisplay = spellData.damageType ? ` (${spellData.damageType})` : '';
+          
           triggerRollNotification({
             type: 'attack',
-            dieType: 'd20' as any,
-            label,
-            result: result,
+            dieType: dmgDieType as any,
+            label: `${spellData.name} ${isHealing ? 'Healing' : 'Damage'}`,
+            result: dmgResult,
             modifier: mod,
-            total,
+            total: totalDamage,
             username: character.name || 'Unknown',
             characterName: character.name,
-            calculationBreakdown: `${diceNotation} = ${total} damage | ${affectedResults.join(' | ')}`,
+            calculationBreakdown: dmgBreakdown,
           });
-          
           if (character.campaignId) {
-            const chatText = `${label}: ${diceNotation} = ${total} | ${affectedResults.join(' | ')}`;
-            gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', chatText, 'roll');
+            gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', 
+              `${spellData.name} ${isHealing ? 'Healing' : 'Damage'}: ${dmgBreakdown} = ${totalDamage}${damageTypeDisplay}`, 'roll');
+          }
+          
+          // STEP 3: Apply damage based on save results
+          await new Promise(resolve => setTimeout(resolve, 500));
+          
+          for (const sr of saveResults) {
+            if (sr.isPlayer) {
+              // Send player save prompt with correct damage
+              gameWs.send({
+                type: 'dc_save_prompt',
+                campaignId,
+                targetCharacterId: sr.targetChar.id,
+                targetUserId: sr.targetChar.userId,
+                spellName: spellData.name,
+                saveAttribute: saveAttr,
+                saveDc: saveDc,
+                damage: totalDamage,
+                damageType: spellData.damageType || '',
+                saveSuccessEffect: saveSuccessEffect,
+                casterName: character.name,
+                isHealing: isHealing,
+              });
+              continue;
+            }
+            
+            // Apply NPC damage
+            let appliedDamage = totalDamage;
+            if (sr.saved) {
+              appliedDamage = saveSuccessEffect === 'none' ? 0 : Math.floor(totalDamage / 2);
+            }
+            
+            if (appliedDamage > 0) {
+              await applyDamageToTarget(appliedDamage, spellData.damageType || null, sr.targetChar, isEnergyEffect ? spellData.gainEnergy : undefined);
+            }
+            
+            const resultText = sr.saved
+              ? `${saveSuccessEffect === 'none' ? 'No damage (saved)' : `Half damage: ${appliedDamage} (saved)`}`
+              : `Full damage: ${appliedDamage}`;
+            
+            if (character.campaignId) {
+              gameWs.sendChatMessage(character.userId || '', sr.targetChar.name || 'Unknown', 
+                `${spellData.name} → ${sr.targetChar.name}: ${resultText}`, 'roll');
+            }
           }
         };
         
-        processTokenSaves();
+        processAoeDcSpell();
         return;
       }
+
       
       const affectedNames: string[] = [];
       const isEnergyEffect = spellData.damageType === 'Energy';
@@ -6200,63 +6241,143 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
       const targetToken = tokens?.find((t: any) => t.id === targetedTokenId);
       const targetChar = targetToken ? allCharacters?.find((c: any) => c.id === targetToken.characterId) : null;
       if (targetChar) {
+        const saveAttr = spellData.saveAttribute;
+        const saveSuccessEffect = spellData.saveSuccessEffect || 'half';
         const isPlayerTarget = targetChar.userId && targetChar.userId !== character.userId;
+        
         if (isPlayerTarget) {
+          // STEP 1: Show notification that player must roll save
+          triggerRollNotification({
+            type: 'system',
+            label: `${targetChar.name} — Awaiting ${saveAttr.charAt(0).toUpperCase() + saveAttr.slice(1)} Save (DC ${singleTargetDc})`,
+            result: 0,
+            total: 0,
+            username: targetChar.name,
+            characterName: targetChar.name,
+            calculationBreakdown: `${targetChar.name} must roll a ${saveAttr} save vs DC ${singleTargetDc}`,
+          });
+          if (character.campaignId) {
+            gameWs.sendChatMessage(character.userId || '', targetChar.name || 'Unknown', 
+              `${saveAttr.charAt(0).toUpperCase() + saveAttr.slice(1)} Save vs ${spellData.name}: Awaiting roll (DC ${singleTargetDc})`, 'roll');
+          }
+          
+          // STEP 2: Roll damage (after save notification)
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          
+          const { result: dmgResult, dieType: dmgDieType } = rollDice(diceNotation);
+          const spellCritBonus = options?.critSuccess ? getMaxDice(diceNotation) : 0;
+          const mod = typeof spellData.mod === 'number' ? spellData.mod : (parseInt(spellData.mod) || 0);
+          const totalDmg = (dmgResult || 0) + spellCritBonus + mod;
+          const dmgDiceResult = spellCritBonus > 0 ? `${dmgResult} + MAX (${spellCritBonus})` : `${dmgResult}`;
+          const dmgBreakdown = mod !== 0 
+            ? `${diceNotation} = ${dmgDiceResult} + Mod (${mod >= 0 ? '+' : ''}${mod})`
+            : `${diceNotation} = ${dmgDiceResult}`;
+          const damageTypeDisplay = spellData.damageType ? ` (${spellData.damageType})` : '';
+          
+          triggerRollNotification({
+            type: 'attack',
+            dieType: dmgDieType as any,
+            label: `${spellData.name} Damage`,
+            result: dmgResult,
+            modifier: mod,
+            total: totalDmg,
+            username: character.name || 'Unknown',
+            characterName: character.name,
+            calculationBreakdown: dmgBreakdown,
+          });
+          if (character.campaignId) {
+            gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', 
+              `${spellData.name} Damage: ${dmgBreakdown} = ${totalDmg}${damageTypeDisplay}`, 'roll');
+          }
+          
+          // STEP 3: Send save prompt with damage (player resolves asynchronously)
           gameWs.send({
             type: 'dc_save_prompt',
             campaignId,
             targetCharacterId: targetChar.id,
             targetUserId: targetChar.userId,
             spellName: spellData.name,
-            saveAttribute: spellData.saveAttribute,
+            saveAttribute: saveAttr,
             saveDc: singleTargetDc,
-            damage: total,
+            damage: totalDmg,
             damageType: spellData.damageType || '',
-            saveSuccessEffect: spellData.saveSuccessEffect || 'half',
+            saveSuccessEffect: saveSuccessEffect,
             casterName: character.name,
             isHealing: isHealing,
           });
-          triggerRollNotification({
-            type: 'system',
-            label: `${spellData.name} → ${targetChar.name} (awaiting save)`,
-            result: total,
-            total,
-            username: character.name || 'Unknown',
-            characterName: character.name,
-            calculationBreakdown: `${diceNotation} = ${total} | DC ${singleTargetDc} ${spellData.saveAttribute} save pending`,
-          });
           return;
         }
-        const attrValue = targetChar[spellData.saveAttribute] || 10;
+        
+        // NPC target: STEP 1 - Roll save
+        const attrValue = targetChar[saveAttr] || 10;
         const attrMod = Math.floor((attrValue - 10) / 2);
         const saveRoll = rollDice('1d20');
         const saveTotal = saveRoll.result + attrMod;
         const saveSuccess = saveTotal >= singleTargetDc;
-        let appliedDamage = total;
-        if (saveSuccess) {
-          appliedDamage = spellData.saveSuccessEffect === 'none' ? 0 : Math.floor(total / 2);
-        }
-        if (appliedDamage > 0) {
-          applyDamageToTarget(appliedDamage, spellData.damageType || null, targetChar, spellData.damageType === 'Energy' ? spellData.gainEnergy : undefined);
-        }
+        
         triggerRollNotification({
           type: saveSuccess ? 'system' : 'attack',
           dieType: 'd20',
-          label: `${targetChar.name} ${spellData.saveAttribute.charAt(0).toUpperCase() + spellData.saveAttribute.slice(1)} Save vs ${spellData.name}`,
+          label: `${targetChar.name} ${saveAttr.charAt(0).toUpperCase() + saveAttr.slice(1)} Save vs ${spellData.name} — ${saveSuccess ? 'SAVED!' : 'FAILED!'}`,
           result: saveRoll.result,
           modifier: attrMod,
           total: saveTotal,
           username: targetChar.name,
           characterName: targetChar.name,
-          calculationBreakdown: `d20 (${saveRoll.result}) + ${spellData.saveAttribute} (${attrMod >= 0 ? '+' : ''}${attrMod}) = ${saveTotal} vs DC ${singleTargetDc} → ${saveSuccess ? 'SAVED' : 'FAILED'} → ${appliedDamage} damage`,
+          calculationBreakdown: `d20 (${saveRoll.result}) + ${saveAttr} (${attrMod >= 0 ? '+' : ''}${attrMod}) = ${saveTotal} vs DC ${singleTargetDc} → ${saveSuccess ? 'SAVED' : 'FAILED'}`,
         });
         if (character.campaignId) {
-          const chatText = `${targetChar.name} ${spellData.saveAttribute} save vs ${spellData.name}: ${saveTotal} vs DC ${singleTargetDc} → ${saveSuccess ? 'SAVED' : 'FAILED'} → ${appliedDamage} damage`;
-          gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', chatText, 'roll');
+          gameWs.sendChatMessage(character.userId || '', targetChar.name || 'Unknown', 
+            `${saveAttr.charAt(0).toUpperCase() + saveAttr.slice(1)} Save vs ${spellData.name}: d20 (${saveRoll.result}) + ${saveAttr} (${attrMod >= 0 ? '+' : ''}${attrMod}) = ${saveTotal} vs DC ${singleTargetDc} → ${saveSuccess ? 'SAVED' : 'FAILED'}`, 'roll');
+        }
+        
+        // NPC target: STEP 2 - Roll damage (after save)
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        const { result: dmgResult, dieType: dmgDieType } = rollDice(diceNotation);
+        const spellCritBonus = options?.critSuccess ? getMaxDice(diceNotation) : 0;
+        const mod = typeof spellData.mod === 'number' ? spellData.mod : (parseInt(spellData.mod) || 0);
+        const totalDmg = (dmgResult || 0) + spellCritBonus + mod;
+        const dmgDiceResult = spellCritBonus > 0 ? `${dmgResult} + MAX (${spellCritBonus})` : `${dmgResult}`;
+        const dmgBreakdown = mod !== 0 
+          ? `${diceNotation} = ${dmgDiceResult} + Mod (${mod >= 0 ? '+' : ''}${mod})`
+          : `${diceNotation} = ${dmgDiceResult}`;
+        const damageTypeDisplay = spellData.damageType ? ` (${spellData.damageType})` : '';
+        
+        // NPC target: STEP 3 - Apply damage based on save result
+        let appliedDamage = totalDmg;
+        if (saveSuccess) {
+          appliedDamage = saveSuccessEffect === 'none' ? 0 : Math.floor(totalDmg / 2);
+        }
+        
+        const isEnergyEffect = spellData.damageType === 'Energy';
+        if (appliedDamage > 0) {
+          await applyDamageToTarget(appliedDamage, spellData.damageType || null, targetChar, isEnergyEffect ? spellData.gainEnergy : undefined);
+        }
+        
+        const resultText = saveSuccess
+          ? `${saveSuccessEffect === 'none' ? 'No damage (saved)' : `Half damage: ${appliedDamage} (saved)`}`
+          : `Full damage: ${appliedDamage}`;
+        
+        triggerRollNotification({
+          type: 'attack',
+          dieType: dmgDieType as any,
+          label: `${spellData.name} → ${targetChar.name} (${resultText})`,
+          result: dmgResult,
+          modifier: mod,
+          total: appliedDamage,
+          username: character.name || 'Unknown',
+          characterName: character.name,
+          calculationBreakdown: `${dmgBreakdown} = ${totalDmg}${damageTypeDisplay} → ${resultText}`,
+        });
+        if (character.campaignId) {
+          gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', 
+            `${spellData.name} → ${targetChar.name}: ${dmgBreakdown} = ${totalDmg}${damageTypeDisplay} → ${resultText}`, 'roll');
         }
         return;
       }
     }
+
     
     triggerRollNotification({
       type: 'attack',
