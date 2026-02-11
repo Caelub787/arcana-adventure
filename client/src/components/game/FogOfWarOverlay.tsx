@@ -498,25 +498,63 @@ export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToo
         ? (indoorOverride ? false : true)
         : isDayTime;
       
-      let visionDistFeet: number;
+      let dayVisionFeet: number;
+      let nightVisionFeet: number;
       if (token.visionOverrideDistance != null) {
-        visionDistFeet = token.visionOverrideDistance;
+        dayVisionFeet = nightVisionFeet = token.visionOverrideDistance;
       } else if (character) {
-        const baseVision = effectiveDayTime 
-          ? (character.dayVisionDistance ?? 60)
-          : (character.nightVisionDistance ?? 30);
         const traitMods = traitVisionModifiers[character.id];
-        const traitBonus = traitMods 
-          ? (effectiveDayTime ? traitMods.dayBonus : traitMods.nightBonus) 
-          : 0;
-        visionDistFeet = Math.max(0, baseVision + traitBonus);
+        dayVisionFeet = Math.max(0, (character.dayVisionDistance ?? 60) + (traitMods?.dayBonus ?? 0));
+        nightVisionFeet = Math.max(0, (character.nightVisionDistance ?? 30) + (traitMods?.nightBonus ?? 0));
       } else {
-        visionDistFeet = effectiveDayTime ? 60 : 30;
+        dayVisionFeet = 60;
+        nightVisionFeet = 30;
       }
       
-      const visionRadius = (visionDistFeet / 5) * gridSize;
+      const visionDistFeet = effectiveDayTime ? dayVisionFeet : nightVisionFeet;
+      const hasZonesWithDiffVision = visionZones.length > 0 && dayVisionFeet !== nightVisionFeet;
+      const maxVisionFeet = Math.max(dayVisionFeet, nightVisionFeet);
+      const castDistFeet = hasZonesWithDiffVision ? maxVisionFeet : visionDistFeet;
+      const castRadius = (castDistFeet / 5) * gridSize;
       
-      const poly = calculateVisionPolygon(tokenCenterX, tokenCenterY, visionRadius, blockingSegs);
+      const poly = calculateVisionPolygon(tokenCenterX, tokenCenterY, castRadius, blockingSegs);
+
+      if (hasZonesWithDiffVision) {
+        const parsedZones = visionZones.map((z: any) => ({
+          mode: z.mode as string,
+          pts: (typeof z.points === 'string' ? JSON.parse(z.points || '[]') : z.points) as Array<{x: number; y: number}>,
+        })).filter(z => z.pts.length >= 3);
+
+        const dayRadius = (dayVisionFeet / 5) * gridSize;
+        const nightRadius = (nightVisionFeet / 5) * gridSize;
+
+        poly.points = poly.points.map(p => {
+          const dist = Math.hypot(p.x - tokenCenterX, p.y - tokenCenterY);
+
+          let pointIsIndoor: boolean | null = null;
+          for (let zi = parsedZones.length - 1; zi >= 0; zi--) {
+            if (isPointInPoly(p.x, p.y, parsedZones[zi].pts)) {
+              pointIsIndoor = parsedZones[zi].mode === 'indoor';
+              break;
+            }
+          }
+
+          const pointDayTime = pointIsIndoor !== null ? !pointIsIndoor : isDayTime;
+          const allowedRadius = pointDayTime ? dayRadius : nightRadius;
+
+          if (dist > allowedRadius + 1) {
+            const angle = Math.atan2(p.y - tokenCenterY, p.x - tokenCenterX);
+            return {
+              x: tokenCenterX + Math.cos(angle) * allowedRadius,
+              y: tokenCenterY + Math.sin(angle) * allowedRadius,
+            };
+          }
+          return p;
+        });
+
+        poly.radius = (visionDistFeet / 5) * gridSize;
+      }
+
       polys.push(poly);
     }
     
