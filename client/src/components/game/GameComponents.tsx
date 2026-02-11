@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback, memo } from "react";
+import ReactDOM from 'react-dom';
 import { useLocation } from "wouter";
 import { motion, AnimatePresence, useMotionValue } from "framer-motion";
 import { useAuth } from "@/lib/AuthContext";
@@ -4050,6 +4051,8 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
   
   // Modifier popup state
   const [showModifierPopup, setShowModifierPopup] = useState(false);
+  const [popupPosition, setPopupPosition] = useState({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
+  const popupDragRef = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(null);
   const [extraModifier, setExtraModifier] = useState(0);
   const [hasAdvantage, setHasAdvantage] = useState(false);
   const [hasDisadvantage, setHasDisadvantage] = useState(false);
@@ -4928,6 +4931,33 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     setHasDisadvantage(false);
   };
 
+
+  const handlePopupDragStart = (e: React.MouseEvent) => {
+    if ((e.target as HTMLElement).closest('button, input, label, [role="checkbox"]')) return;
+    e.preventDefault();
+    popupDragRef.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      origX: popupPosition.x,
+      origY: popupPosition.y,
+    };
+    const handleMove = (ev: MouseEvent) => {
+      if (!popupDragRef.current) return;
+      const dx = ev.clientX - popupDragRef.current.startX;
+      const dy = ev.clientY - popupDragRef.current.startY;
+      setPopupPosition({
+        x: popupDragRef.current.origX + dx,
+        y: popupDragRef.current.origY + dy,
+      });
+    };
+    const handleUp = () => {
+      popupDragRef.current = null;
+      window.removeEventListener('mousemove', handleMove);
+      window.removeEventListener('mouseup', handleUp);
+    };
+    window.addEventListener('mousemove', handleMove);
+    window.addEventListener('mouseup', handleUp);
+  };
   // Skill to Attribute mapping
   const SKILL_ATTRIBUTE_MAP: Record<string, keyof typeof character> = {
     // Might (mig)
@@ -6253,6 +6283,7 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
       } else if (clickCountRef.current >= 2) {
         if (clickTimerRef.current) clearTimeout(clickTimerRef.current);
         clickCountRef.current = 0;
+        setPopupPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
         setShowModifierPopup(true);
       }
       return;
@@ -6266,6 +6297,7 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
       } else if (clickCountRef.current >= 2) {
         if (clickTimerRef.current) clearTimeout(clickTimerRef.current);
         clickCountRef.current = 0;
+        setPopupPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
         setShowModifierPopup(true);
       }
       return;
@@ -6291,6 +6323,7 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
       } else if (clickCountRef.current >= 2) {
         if (clickTimerRef.current) clearTimeout(clickTimerRef.current);
         clickCountRef.current = 0;
+        setPopupPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
         setShowModifierPopup(true);
       }
       return;
@@ -6330,11 +6363,12 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
           }
         })();
       } else {
-        setShowModifierPopup(true);
+        handleAttackRoll();
       }
     } else if (clickCountRef.current >= 2) {
       if (clickTimerRef.current) clearTimeout(clickTimerRef.current);
       clickCountRef.current = 0;
+      setPopupPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
       setShowModifierPopup(true);
     }
   };
@@ -6527,10 +6561,18 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
       </TooltipProvider>
       
       {/* Modifier Popup - Floating Panel */}
-      {showModifierPopup && (
+      {showModifierPopup && ReactDOM.createPortal(
         <>
         <div className="fixed inset-0 z-[99999] bg-black/30" onClick={() => setShowModifierPopup(false)} />
-        <div className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[100000] w-80 bg-stone-900 border border-amber-700/50 text-stone-200 p-5 rounded-xl shadow-2xl">
+        <div 
+          className="fixed z-[100000] w-80 bg-stone-900 border border-amber-700/50 text-stone-200 p-5 rounded-xl shadow-2xl cursor-move select-none"
+          style={{ 
+            left: `${popupPosition.x}px`, 
+            top: `${popupPosition.y}px`,
+            transform: 'translate(-50%, -50%)'
+          }}
+          onMouseDown={handlePopupDragStart}
+        >
           <div className="flex items-center justify-between mb-2">
             <h3 className="text-amber-500 text-lg font-semibold">{isTraitClickable ? traitData?.name : isSkillClickable ? hotbar?.skillName : spellData?.name || itemData?.name || 'Roll'} Modifiers</h3>
             <button onClick={() => setShowModifierPopup(false)} className="text-stone-400 hover:text-stone-200"><X className="h-4 w-4" /></button>
@@ -6634,7 +6676,8 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
             )}
           </div>
         </div>
-        </>
+        </>,
+        document.body
       )}
     </>
   );
