@@ -4893,6 +4893,41 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     setHasDisadvantage(false);
   };
 
+  const handleModifiedRoll = async () => {
+    const isSpell = !!spellData;
+    
+    if (isSpell) {
+      if (spellData.requiresSave && spellData.saveDc) {
+        const dcOverride = (typeof spellData.saveDc === 'string' ? parseInt(spellData.saveDc) : spellData.saveDc) + extraModifier;
+        
+        if (aoeTargetState?.active && aoeTargetState?.locked) {
+          await handleSpellDamageRoll({ dcOverride });
+        } else if (targetedTokenId) {
+          await handleSpellDamageRoll({ dcOverride });
+        } else {
+          await handleSpellAttackRoll();
+        }
+      } else {
+        const result = await handleSpellAttackRoll({ extraMod: extraModifier, advantage: hasAdvantage, disadvantage: hasDisadvantage });
+        if (result?.hit) {
+          await new Promise(resolve => setTimeout(resolve, 500));
+          await handleSpellDamageRoll({ critSuccess: result.critSuccess });
+        }
+      }
+    } else {
+      const result = await handleAttackRoll({ extraMod: extraModifier, advantage: hasAdvantage, disadvantage: hasDisadvantage });
+      if (result?.hit) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+        await handleDamageRoll({ critSuccess: result.critSuccess });
+      }
+    }
+    
+    setShowModifierPopup(false);
+    setExtraModifier(0);
+    setHasAdvantage(false);
+    setHasDisadvantage(false);
+  };
+
   // Skill to Attribute mapping
   const SKILL_ATTRIBUTE_MAP: Record<string, keyof typeof character> = {
     // Might (mig)
@@ -5680,7 +5715,7 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
   };
 
   // Handle spell attack roll (1d20 + attribute modifier)
-  const handleSpellAttackRoll = async (): Promise<{ hit: boolean } | null | undefined> => {
+  const handleSpellAttackRoll = async (options?: { extraMod?: number; advantage?: boolean; disadvantage?: boolean }): Promise<{ hit: boolean; critSuccess?: boolean } | null | undefined> => {
     if (!spellData) return null;
     
     // Check if there's a locked AoE marker on the map - validate spell matches
@@ -5750,13 +5785,32 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     
     const attrName = spellData.attribute || 'wit';
     const attrMod = getAttributeModifier(attrName);
-    const roll = Math.floor(Math.random() * 20) + 1;
-    const total = roll + attrMod;
+    const extraMod = options?.extraMod || 0;
+    const totalMod = attrMod + extraMod;
+    
+    const hasAdv = options?.advantage && !options?.disadvantage;
+    const hasDis = options?.disadvantage && !options?.advantage;
+    
+    let roll: number;
+    let rollText: string;
+    
+    if (hasAdv || hasDis) {
+      const roll1 = Math.floor(Math.random() * 20) + 1;
+      const roll2 = Math.floor(Math.random() * 20) + 1;
+      roll = hasAdv ? Math.max(roll1, roll2) : Math.min(roll1, roll2);
+      const keptLabel = hasAdv ? 'ADV' : 'DIS';
+      rollText = `2d20${keptLabel === 'ADV' ? 'kh' : 'kl'} [${roll1}, ${roll2}] = ${roll}`;
+    } else {
+      roll = Math.floor(Math.random() * 20) + 1;
+      rollText = `1d20 = ${roll}`;
+    }
+    const total = roll + totalMod;
     
     const attrDisplayName = attrName.charAt(0).toUpperCase() + attrName.slice(1);
-    const calculationBreakdown = attrMod !== 0 
-      ? `1d20 = ${roll} + ${attrDisplayName} (${attrMod >= 0 ? '+' : ''}${attrMod})`
-      : `1d20 = ${roll}`;
+    const extraModText = extraMod !== 0 ? ` + Mod (${extraMod >= 0 ? '+' : ''}${extraMod})` : '';
+    const calculationBreakdown = totalMod !== 0 
+      ? `${rollText} + ${attrDisplayName} (${attrMod >= 0 ? '+' : ''}${attrMod})${extraModText}`
+      : rollText;
     
     // Determine hit/miss status if targeting
     const isCritSuccess = roll === 20;
@@ -5831,7 +5885,7 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
   };
 
   // Handle spell damage roll (damage dice + mod) - with target application
-  const handleSpellDamageRoll = async (options?: { critSuccess?: boolean }) => {
+  const handleSpellDamageRoll = async (options?: { critSuccess?: boolean; dcOverride?: number }) => {
     if (!spellData) return;
     
     // Check if there's a locked AoE marker on the map - validate spell matches
@@ -5935,7 +5989,7 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
       // DC Save handling for AOE spells
       if (spellData.requiresSave && spellData.saveAttribute && spellData.saveDc) {
         const saveAttr = spellData.saveAttribute;
-        const saveDc = spellData.saveDc;
+        const saveDc = options?.dcOverride || spellData.saveDc;
         const saveSuccessEffect = spellData.saveSuccessEffect || 'half';
         const affectedResults: string[] = [];
         const isEnergyEffect = spellData.damageType === 'Energy';
@@ -6105,6 +6159,7 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     }
     
     if (spellData.requiresSave && spellData.saveAttribute && spellData.saveDc && targetedTokenId) {
+      const singleTargetDc = options?.dcOverride || spellData.saveDc;
       const targetToken = tokens?.find((t: any) => t.id === targetedTokenId);
       const targetChar = targetToken ? allCharacters?.find((c: any) => c.id === targetToken.characterId) : null;
       if (targetChar) {
@@ -6117,7 +6172,7 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
             targetUserId: targetChar.userId,
             spellName: spellData.name,
             saveAttribute: spellData.saveAttribute,
-            saveDc: spellData.saveDc,
+            saveDc: singleTargetDc,
             damage: total,
             damageType: spellData.damageType || '',
             saveSuccessEffect: spellData.saveSuccessEffect || 'half',
@@ -6131,7 +6186,7 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
             total,
             username: character.name || 'Unknown',
             characterName: character.name,
-            calculationBreakdown: `${diceNotation} = ${total} | DC ${spellData.saveDc} ${spellData.saveAttribute} save pending`,
+            calculationBreakdown: `${diceNotation} = ${total} | DC ${singleTargetDc} ${spellData.saveAttribute} save pending`,
           });
           return;
         }
@@ -6139,7 +6194,7 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
         const attrMod = Math.floor((attrValue - 10) / 2);
         const saveRoll = rollDice('1d20');
         const saveTotal = saveRoll.result + attrMod;
-        const saveSuccess = saveTotal >= spellData.saveDc;
+        const saveSuccess = saveTotal >= singleTargetDc;
         let appliedDamage = total;
         if (saveSuccess) {
           appliedDamage = spellData.saveSuccessEffect === 'none' ? 0 : Math.floor(total / 2);
@@ -6156,10 +6211,10 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
           total: saveTotal,
           username: targetChar.name,
           characterName: targetChar.name,
-          calculationBreakdown: `d20 (${saveRoll.result}) + ${spellData.saveAttribute} (${attrMod >= 0 ? '+' : ''}${attrMod}) = ${saveTotal} vs DC ${spellData.saveDc} → ${saveSuccess ? 'SAVED' : 'FAILED'} → ${appliedDamage} damage`,
+          calculationBreakdown: `d20 (${saveRoll.result}) + ${spellData.saveAttribute} (${attrMod >= 0 ? '+' : ''}${attrMod}) = ${saveTotal} vs DC ${singleTargetDc} → ${saveSuccess ? 'SAVED' : 'FAILED'} → ${appliedDamage} damage`,
         });
         if (character.campaignId) {
-          const chatText = `${targetChar.name} ${spellData.saveAttribute} save vs ${spellData.name}: ${saveTotal} vs DC ${spellData.saveDc} → ${saveSuccess ? 'SAVED' : 'FAILED'} → ${appliedDamage} damage`;
+          const chatText = `${targetChar.name} ${spellData.saveAttribute} save vs ${spellData.name}: ${saveTotal} vs DC ${singleTargetDc} → ${saveSuccess ? 'SAVED' : 'FAILED'} → ${appliedDamage} damage`;
           gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', chatText, 'roll');
         }
         return;
@@ -6474,16 +6529,16 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
       {/* Modifier Popup - Floating Panel */}
       {showModifierPopup && (
         <>
-        <div className="fixed inset-0 z-[10000]" onClick={() => setShowModifierPopup(false)} />
-        <div className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[10001] w-72 bg-stone-900 border border-stone-700 text-stone-200 p-4 rounded-lg shadow-2xl">
+        <div className="fixed inset-0 z-[99999] bg-black/30" onClick={() => setShowModifierPopup(false)} />
+        <div className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[100000] w-80 bg-stone-900 border border-amber-700/50 text-stone-200 p-5 rounded-xl shadow-2xl">
           <div className="flex items-center justify-between mb-2">
-            <h3 className="text-amber-500 text-lg font-semibold">{isTraitClickable ? traitData?.name : isSkillClickable ? hotbar?.skillName : itemData?.name || 'Roll'} Modifiers</h3>
+            <h3 className="text-amber-500 text-lg font-semibold">{isTraitClickable ? traitData?.name : isSkillClickable ? hotbar?.skillName : spellData?.name || itemData?.name || 'Roll'} Modifiers</h3>
             <button onClick={() => setShowModifierPopup(false)} className="text-stone-400 hover:text-stone-200"><X className="h-4 w-4" /></button>
           </div>
           <div className="space-y-4 mt-2">
             {/* Extra Modifier Input */}
             <div className="flex items-center gap-3">
-              <label className="text-sm text-stone-300 w-24">Extra Mod:</label>
+              <label className="text-sm text-stone-300 w-24">{spellData?.requiresSave && spellData?.saveDc ? 'DC Mod:' : 'Extra Mod:'}</label>
               <div className="flex items-center gap-2">
                 <Button
                   size="sm"
@@ -6513,30 +6568,32 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
               </div>
             </div>
             
-            {/* ADV/DIS Checkboxes */}
-            <div className="flex items-center gap-6">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <Checkbox
-                  checked={hasAdvantage}
-                  onCheckedChange={(checked) => setHasAdvantage(checked === true)}
-                  className="border-green-600 data-[state=checked]:bg-green-600"
-                  data-testid="checkbox-advantage"
-                />
-                <span className="text-sm text-green-400 font-medium">ADV</span>
-              </label>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <Checkbox
-                  checked={hasDisadvantage}
-                  onCheckedChange={(checked) => setHasDisadvantage(checked === true)}
-                  className="border-red-600 data-[state=checked]:bg-red-600"
-                  data-testid="checkbox-disadvantage"
-                />
-                <span className="text-sm text-red-400 font-medium">DIS</span>
-              </label>
-            </div>
+            {/* ADV/DIS Checkboxes - hidden for DC save spells since they don't use attack rolls */}
+            {!(spellData?.requiresSave && spellData?.saveDc) && (
+              <div className="flex items-center gap-6">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <Checkbox
+                    checked={hasAdvantage}
+                    onCheckedChange={(checked) => setHasAdvantage(checked === true)}
+                    className="border-green-600 data-[state=checked]:bg-green-600"
+                    data-testid="checkbox-advantage"
+                  />
+                  <span className="text-sm text-green-400 font-medium">ADV</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <Checkbox
+                    checked={hasDisadvantage}
+                    onCheckedChange={(checked) => setHasDisadvantage(checked === true)}
+                    className="border-red-600 data-[state=checked]:bg-red-600"
+                    data-testid="checkbox-disadvantage"
+                  />
+                  <span className="text-sm text-red-400 font-medium">DIS</span>
+                </label>
+              </div>
+            )}
             
             {/* Note when both are checked */}
-            {hasAdvantage && hasDisadvantage && (
+            {!(spellData?.requiresSave && spellData?.saveDc) && hasAdvantage && hasDisadvantage && (
               <p className="text-xs text-stone-400 italic">Both ADV and DIS cancel out - normal roll</p>
             )}
             
@@ -6564,22 +6621,14 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
                 </Button>
               </div>
             ) : (
-              <div className="flex gap-2 pt-2">
+              <div className="pt-2">
                 <Button
-                  onClick={handleModifiedAttackRoll}
-                  className="flex-1 bg-amber-600 hover:bg-amber-500"
-                  data-testid="button-modified-attack"
+                  onClick={handleModifiedRoll}
+                  className="w-full bg-amber-600 hover:bg-amber-500"
+                  data-testid="button-modified-roll"
                 >
                   <Sword className="h-4 w-4 mr-1" />
-                  Attack
-                </Button>
-                <Button
-                  onClick={handleModifiedDamageRoll}
-                  className="flex-1 bg-red-600 hover:bg-red-500"
-                  data-testid="button-modified-damage"
-                >
-                  <Zap className="h-4 w-4 mr-1" />
-                  Damage
+                  Roll
                 </Button>
               </div>
             )}
