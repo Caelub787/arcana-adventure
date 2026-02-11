@@ -41,7 +41,7 @@ import goblinToken from "@assets/generated_images/top_down_goblin_token.png";
 import { triggerSkillRollNotification, triggerRollNotification, triggerEffectRollNotification, getNotificationStyle, setNotificationStyle, type NotificationStyle } from './RollNotification';
 import { ImageBrowser } from '@/components/ImageBrowser';
 import { BattlemapAoeOverlay } from './BattlemapAoeOverlay';
-import { FogOfWarOverlay, WallDrawingOverlay, FogToolsPanel, FogCanvasOverlay } from './FogOfWarOverlay';
+import { FogOfWarOverlay, WallDrawingOverlay, ZoneDrawingOverlay, FogToolsPanel, FogCanvasOverlay } from './FogOfWarOverlay';
 import { type AoeTargetState, getTokensInAoe, getTokenGridSpan, getDistanceToTokenEdge, getDistanceBetweenTokensFeet, isTokenInRangeOfToken } from '@/lib/aoeHelpers';
 import { rollDice } from '../sandbox/diceEngine';
 import type { VisionPolygon } from '@/lib/visionEngine';
@@ -386,6 +386,8 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
   const [lightIntensity, setLightIntensity] = useState(1.0);
   const [showDrawingTools, setShowDrawingTools] = useState(true);
   const [fogSnapToGrid, setFogSnapToGrid] = useState(true);
+  const [zoneDrawMode, setZoneDrawMode] = useState(false);
+  const [selectedZoneMode, setSelectedZoneMode] = useState<'indoor' | 'outdoor'>('indoor');
   const campaignId = scene?.campaignId;
   const [gmSeeAsPlayer, setGmSeeAsPlayer] = useState(() => {
     try {
@@ -1145,7 +1147,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
     if (e.button !== 0) return;
     
     // Don't capture pointer when fog drawing tools are active - let WallDrawingOverlay handle clicks
-    if (wallDrawMode || doorPlaceMode || windowPlaceMode || lightPlaceMode) return;
+    if (wallDrawMode || doorPlaceMode || windowPlaceMode || lightPlaceMode || zoneDrawMode) return;
     
     // Don't capture pointer when placing a character token - let onClick handle it
     if (placingCharacterId) return;
@@ -3402,6 +3404,16 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
             snapToGrid={fogSnapToGrid}
           />
         )}
+        
+        {scene?.id && fogToolActive && isGM && zoneDrawMode && (
+          <ZoneDrawingOverlay
+            scene={scene}
+            gridSize={gridSize}
+            zoneDrawMode={zoneDrawMode}
+            selectedZoneMode={selectedZoneMode}
+            snapToGrid={fogSnapToGrid}
+          />
+        )}
       </motion.div>
 
       <FogCanvasOverlay
@@ -3452,6 +3464,10 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
           onGmSeeAllVisionChange={setGmSeeAllVision}
           snapToGrid={fogSnapToGrid}
           setSnapToGrid={setFogSnapToGrid}
+          zoneDrawMode={zoneDrawMode}
+          setZoneDrawMode={setZoneDrawMode}
+          selectedZoneMode={selectedZoneMode}
+          setSelectedZoneMode={setSelectedZoneMode}
         />
       )}
 

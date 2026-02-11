@@ -269,8 +269,8 @@ export const characters = pgTable("characters", {
   exhaustion: integer("exhaustion").notNull().default(0),
   // Vision settings
   visionType: text("vision_type").default("normal").notNull(), // "normal", "darkvision", "blindsight", "truesight", "tremorsense"
-  dayVisionDistance: integer("day_vision_distance").default(120).notNull(), // Vision distance in feet during day
-  nightVisionDistance: integer("night_vision_distance").default(60).notNull(), // Vision distance in feet during night/dark
+  dayVisionDistance: integer("day_vision_distance").default(60).notNull(), // Vision distance in feet during day
+  nightVisionDistance: integer("night_vision_distance").default(30).notNull(), // Vision distance in feet during night/dark
   specialVisionNotes: text("special_vision_notes"), // Freeform notes about special vision abilities
   // Background/notes
   nickname: text("nickname"), // Optional nickname to display on tokens instead of character name
@@ -515,8 +515,8 @@ export const systemSpecies = pgTable("system_species", {
   carryWeight: integer("carry_weight").default(50).notNull(), // Base carry weight capacity
   featTree: text("feat_tree").default(""), // Reference to the feat tree for this species
   visionType: text("vision_type").default("normal").notNull(),
-  dayVisionDistance: integer("day_vision_distance").default(120).notNull(),
-  nightVisionDistance: integer("night_vision_distance").default(60).notNull(),
+  dayVisionDistance: integer("day_vision_distance").default(60).notNull(),
+  nightVisionDistance: integer("night_vision_distance").default(30).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -550,8 +550,8 @@ export const campaignSpecies = pgTable("campaign_species", {
   carryWeight: integer("carry_weight").default(50).notNull(),
   featTree: text("feat_tree").default(""),
   visionType: text("vision_type").default("normal").notNull(),
-  dayVisionDistance: integer("day_vision_distance").default(120).notNull(),
-  nightVisionDistance: integer("night_vision_distance").default(60).notNull(),
+  dayVisionDistance: integer("day_vision_distance").default(60).notNull(),
+  nightVisionDistance: integer("night_vision_distance").default(30).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -1344,3 +1344,20 @@ export const insertSceneLightSchema = createInsertSchema(sceneLights).omit({
 });
 export type InsertSceneLight = z.infer<typeof insertSceneLightSchema>;
 export type SceneLight = typeof sceneLights.$inferSelect;
+
+export const sceneVisionZones = pgTable("scene_vision_zones", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  sceneId: varchar("scene_id").notNull().references(() => scenes.id, { onDelete: "cascade" }),
+  name: text("name").default("Zone"),
+  mode: text("mode").notNull().default("indoor"), // "indoor" or "outdoor"
+  points: text("points").notNull(), // JSON array of {x, y} points defining the polygon
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertSceneVisionZoneSchema = createInsertSchema(sceneVisionZones).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertSceneVisionZone = z.infer<typeof insertSceneVisionZoneSchema>;
+export type SceneVisionZone = typeof sceneVisionZones.$inferSelect;

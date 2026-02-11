@@ -159,6 +159,17 @@ export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToo
     enabled: !!sceneId,
   });
 
+  const { data: visionZones = [] } = useQuery<Array<{ id: string; mode: string; points: string }>>({
+    queryKey: ['scene-vision-zones', sceneId],
+    queryFn: async () => {
+      if (!sceneId) return [];
+      const res = await fetch(`/api/scenes/${sceneId}/vision-zones`);
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!sceneId,
+  });
+
   const toggleDoorMutation = useMutation({
     mutationFn: async ({ doorId, shiftKey }: { doorId: string; shiftKey: boolean }) => {
       const door = doors.find(d => d.id === doorId);
@@ -188,8 +199,21 @@ export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToo
     },
   });
 
+  const campaignId = scene?.campaignId;
   const fogEnabled = scene?.fogEnabled ?? false;
   const fogOpacity = scene?.fogOpacity ?? 0.85;
+
+  const { data: traitVisionModifiers = {} } = useQuery<Record<string, { dayBonus: number; nightBonus: number }>>({
+    queryKey: ['trait-vision-modifiers', campaignId],
+    queryFn: async () => {
+      if (!campaignId) return {};
+      const res = await fetch(`/api/campaigns/${campaignId}/trait-vision-modifiers`);
+      if (!res.ok) return {};
+      return res.json();
+    },
+    enabled: !!campaignId && fogEnabled,
+    staleTime: 30000,
+  });
 
   const renderWalls = useMemo(() => {
     if (!isGM) return null;
@@ -379,6 +403,38 @@ export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToo
     });
   }, [lights, gridSize, isGM, fogEnabled]);
 
+  function isTokenIndoor(tokenX: number, tokenY: number, zones: Array<{ mode: string; points: string }>): boolean | null {
+    for (let i = zones.length - 1; i >= 0; i--) {
+      const pts: Array<{x: number; y: number}> = JSON.parse(zones[i].points || '[]');
+      if (pts.length < 3) continue;
+      if (isPointInPoly(tokenX, tokenY, pts)) {
+        return zones[i].mode === 'indoor';
+      }
+    }
+    return null;
+  }
+
+  const renderZones = useMemo(() => {
+    if (!isGM) return null;
+    return visionZones.map((zone) => {
+      const pts: Array<{x: number; y: number}> = JSON.parse(zone.points || '[]');
+      if (pts.length < 3) return null;
+      const polyPoints = pts.map(p => `${p.x + MAP_OFFSET},${p.y + MAP_OFFSET}`).join(' ');
+      return (
+        <polygon
+          key={`zone-${zone.id}`}
+          points={polyPoints}
+          fill={zone.mode === 'indoor' ? 'rgba(147, 51, 234, 0.1)' : 'rgba(245, 158, 11, 0.1)'}
+          stroke={zone.mode === 'indoor' ? '#9333ea' : '#f59e0b'}
+          strokeWidth={1.5}
+          strokeDasharray="8 4"
+          strokeOpacity={0.5}
+          data-testid={`vision-zone-${zone.id}`}
+        />
+      );
+    });
+  }, [visionZones, isGM]);
+
   const blockingSegs = useMemo(() => {
     if (!fogEnabled) return [];
     return getBlockingSegments(
@@ -435,27 +491,37 @@ export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToo
         ? characters.find(c => c.id === token.characterId)
         : undefined;
       
+      const tokenCenterX = token.x + gridSize / 2;
+      const tokenCenterY = token.y + gridSize / 2;
+      const indoorOverride = isTokenIndoor(tokenCenterX, tokenCenterY, visionZones);
+      const effectiveDayTime = indoorOverride !== null 
+        ? (indoorOverride ? false : true)
+        : isDayTime;
+      
       let visionDistFeet: number;
       if (token.visionOverrideDistance != null) {
         visionDistFeet = token.visionOverrideDistance;
       } else if (character) {
-        visionDistFeet = isDayTime 
-          ? (character.dayVisionDistance ?? 120)
-          : (character.nightVisionDistance ?? 60);
+        const baseVision = effectiveDayTime 
+          ? (character.dayVisionDistance ?? 60)
+          : (character.nightVisionDistance ?? 30);
+        const traitMods = traitVisionModifiers[character.id];
+        const traitBonus = traitMods 
+          ? (effectiveDayTime ? traitMods.dayBonus : traitMods.nightBonus) 
+          : 0;
+        visionDistFeet = Math.max(0, baseVision + traitBonus);
       } else {
-        visionDistFeet = isDayTime ? 120 : 60;
+        visionDistFeet = effectiveDayTime ? 60 : 30;
       }
       
       const visionRadius = (visionDistFeet / 5) * gridSize;
-      const tokenCenterX = token.x + gridSize / 2;
-      const tokenCenterY = token.y + gridSize / 2;
       
       const poly = calculateVisionPolygon(tokenCenterX, tokenCenterY, visionRadius, blockingSegs);
       polys.push(poly);
     }
     
     return polys;
-  }, [fogEnabled, isGM, gmSeeAsPlayer, blockingSegs, debouncedTokenKey, characters, gridSize, scene?.isDayTime, currentUserId, selectedTokenId, gmSeeAllVision]);
+  }, [fogEnabled, isGM, gmSeeAsPlayer, blockingSegs, debouncedTokenKey, characters, gridSize, scene?.isDayTime, currentUserId, selectedTokenId, gmSeeAllVision, traitVisionModifiers, visionZones]);
 
   const cachedLightPolygons = useMemo(() => {
     if (!fogEnabled) return new Map<string, VisionPolygon>();
@@ -723,6 +789,7 @@ export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToo
       data-testid="fog-of-war-overlay"
     >
       {lightGradientDefs}
+      {showDrawingTools && renderZones}
       {showDrawingTools && renderLights}
       {showDrawingTools && renderWalls}
       {renderDoors}
@@ -1417,6 +1484,258 @@ export function WallDrawingOverlay({
   );
 }
 
+interface ZoneDrawingOverlayProps {
+  scene: any;
+  gridSize: number;
+  zoneDrawMode: boolean;
+  selectedZoneMode: 'indoor' | 'outdoor';
+  snapToGrid?: boolean;
+  onFinish?: () => void;
+}
+
+export function ZoneDrawingOverlay({
+  scene,
+  gridSize,
+  zoneDrawMode,
+  selectedZoneMode,
+  snapToGrid: snapEnabled = true,
+  onFinish,
+}: ZoneDrawingOverlayProps) {
+  const queryClient = useQueryClient();
+  const sceneId = scene?.id;
+  const [points, setPoints] = useState<{ x: number; y: number }[]>([]);
+  const [mousePos, setMousePos] = useState<{ x: number; y: number } | null>(null);
+
+  const createZoneMutation = useMutation({
+    mutationFn: async (zone: { points: string; mode: string; name: string }) => {
+      const res = await fetch(`/api/scenes/${sceneId}/vision-zones`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...zone, sceneId }),
+      });
+      if (!res.ok) throw new Error('Failed to create vision zone');
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['scene-vision-zones', sceneId] });
+      toast({ title: `${selectedZoneMode === 'indoor' ? 'Indoor' : 'Outdoor'} vision zone created` });
+    },
+  });
+
+  const handleClick = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
+    if (!zoneDrawMode) return;
+    e.stopPropagation();
+    e.preventDefault();
+
+    const svg = e.currentTarget;
+    const rect = svg.getBoundingClientRect();
+    const rawX = (e.clientX - rect.left) / (rect.width / 20000);
+    const rawY = (e.clientY - rect.top) / (rect.height / 20000);
+
+    let worldX = rawX - MAP_OFFSET;
+    let worldY = rawY - MAP_OFFSET;
+
+    if (snapEnabled) {
+      worldX = snapToGrid(worldX, gridSize);
+      worldY = snapToGrid(worldY, gridSize);
+    }
+
+    if (points.length >= 3) {
+      const firstPoint = points[0];
+      const dist = Math.hypot(worldX - firstPoint.x, worldY - firstPoint.y);
+      if (dist < gridSize * 1.5) {
+        const zonePoints = JSON.stringify(points);
+        createZoneMutation.mutate({
+          points: zonePoints,
+          mode: selectedZoneMode,
+          name: `${selectedZoneMode === 'indoor' ? 'Indoor' : 'Outdoor'} Zone`,
+        });
+        setPoints([]);
+        return;
+      }
+    }
+
+    setPoints(prev => [...prev, { x: worldX, y: worldY }]);
+  }, [zoneDrawMode, snapEnabled, gridSize, points, selectedZoneMode, createZoneMutation]);
+
+  const handleDoubleClick = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
+    if (!zoneDrawMode || points.length < 3) return;
+    e.stopPropagation();
+    e.preventDefault();
+
+    const zonePoints = JSON.stringify(points);
+    createZoneMutation.mutate({
+      points: zonePoints,
+      mode: selectedZoneMode,
+      name: `${selectedZoneMode === 'indoor' ? 'Indoor' : 'Outdoor'} Zone`,
+    });
+    setPoints([]);
+  }, [zoneDrawMode, points, selectedZoneMode, createZoneMutation]);
+
+  const handleMouseMove = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
+    if (!zoneDrawMode) return;
+    const svg = e.currentTarget;
+    const rect = svg.getBoundingClientRect();
+    const rawX = (e.clientX - rect.left) / (rect.width / 20000);
+    const rawY = (e.clientY - rect.top) / (rect.height / 20000);
+
+    let worldX = rawX - MAP_OFFSET;
+    let worldY = rawY - MAP_OFFSET;
+
+    if (snapEnabled) {
+      worldX = snapToGrid(worldX, gridSize);
+      worldY = snapToGrid(worldY, gridSize);
+    }
+
+    setMousePos({ x: worldX, y: worldY });
+  }, [zoneDrawMode, snapEnabled, gridSize]);
+
+  useEffect(() => {
+    if (!zoneDrawMode) setPoints([]);
+  }, [zoneDrawMode]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && points.length > 0) {
+        setPoints([]);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [points]);
+
+  if (!zoneDrawMode || !sceneId) return null;
+
+  return (
+    <svg
+      className="absolute inset-0"
+      style={{
+        width: 20000,
+        height: 20000,
+        left: 0,
+        top: 0,
+        overflow: 'visible',
+        zIndex: 30,
+        cursor: 'crosshair',
+        pointerEvents: 'all',
+      }}
+      onClick={handleClick}
+      onMouseMove={handleMouseMove}
+      onDoubleClick={handleDoubleClick}
+      data-testid="zone-drawing-overlay"
+    >
+      {points.length > 0 && (
+        <polygon
+          points={points.map(p => `${p.x + MAP_OFFSET},${p.y + MAP_OFFSET}`).join(' ')}
+          fill={selectedZoneMode === 'indoor' ? 'rgba(147, 51, 234, 0.15)' : 'rgba(245, 158, 11, 0.15)'}
+          stroke={selectedZoneMode === 'indoor' ? '#9333ea' : '#f59e0b'}
+          strokeWidth={2}
+          strokeDasharray="6 3"
+        />
+      )}
+
+      {points.length > 0 && mousePos && (
+        <>
+          <line
+            x1={points[points.length - 1].x + MAP_OFFSET}
+            y1={points[points.length - 1].y + MAP_OFFSET}
+            x2={mousePos.x + MAP_OFFSET}
+            y2={mousePos.y + MAP_OFFSET}
+            stroke={selectedZoneMode === 'indoor' ? '#9333ea' : '#f59e0b'}
+            strokeWidth={1.5}
+            strokeDasharray="4 2"
+            strokeOpacity={0.6}
+          />
+          <line
+            x1={mousePos.x + MAP_OFFSET}
+            y1={mousePos.y + MAP_OFFSET}
+            x2={points[0].x + MAP_OFFSET}
+            y2={points[0].y + MAP_OFFSET}
+            stroke={selectedZoneMode === 'indoor' ? '#9333ea' : '#f59e0b'}
+            strokeWidth={1}
+            strokeDasharray="4 2"
+            strokeOpacity={0.3}
+          />
+        </>
+      )}
+
+      {points.map((p, i) => (
+        <circle
+          key={i}
+          cx={p.x + MAP_OFFSET}
+          cy={p.y + MAP_OFFSET}
+          r={i === 0 ? 6 : 4}
+          fill={i === 0 ? (selectedZoneMode === 'indoor' ? '#9333ea' : '#f59e0b') : 'white'}
+          stroke={selectedZoneMode === 'indoor' ? '#9333ea' : '#f59e0b'}
+          strokeWidth={1.5}
+        />
+      ))}
+
+      {mousePos && (
+        <circle
+          cx={mousePos.x + MAP_OFFSET}
+          cy={mousePos.y + MAP_OFFSET}
+          r={3}
+          fill={selectedZoneMode === 'indoor' ? '#9333ea' : '#f59e0b'}
+          fillOpacity={0.7}
+        />
+      )}
+    </svg>
+  );
+}
+
+function VisionZonesList({ sceneId }: { sceneId: string }) {
+  const queryClient = useQueryClient();
+  const { data: zones = [] } = useQuery<Array<{ id: string; name: string; mode: string; points: string }>>({
+    queryKey: ['scene-vision-zones', sceneId],
+    queryFn: async () => {
+      const res = await fetch(`/api/scenes/${sceneId}/vision-zones`);
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!sceneId,
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (zoneId: string) => {
+      const res = await fetch(`/api/vision-zones/${zoneId}`, { method: 'DELETE', credentials: 'include' });
+      if (!res.ok) throw new Error('Failed to delete zone');
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['scene-vision-zones', sceneId] });
+    },
+  });
+
+  if (zones.length === 0) return null;
+
+  return (
+    <div className="space-y-1 border-t border-stone-700 pt-1">
+      <span className="text-[10px] text-stone-500 uppercase">Saved Zones</span>
+      {zones.map((zone) => (
+        <div key={zone.id} className="flex items-center justify-between gap-1">
+          <div className="flex items-center gap-1 min-w-0">
+            {zone.mode === 'indoor' ? (
+              <Moon className="h-3 w-3 text-purple-400 flex-shrink-0" />
+            ) : (
+              <Sun className="h-3 w-3 text-amber-400 flex-shrink-0" />
+            )}
+            <span className="text-[10px] text-stone-300 truncate">{zone.name || zone.mode}</span>
+          </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-5 w-5 text-red-400 hover:text-red-300"
+            onClick={() => deleteMutation.mutate(zone.id)}
+            data-testid={`delete-zone-${zone.id}`}
+          >
+            <Trash2 className="h-3 w-3" />
+          </Button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 interface FogToolsPanelProps {
   scene: any;
   isGM: boolean;
@@ -1447,6 +1766,10 @@ interface FogToolsPanelProps {
   onGmSeeAllVisionChange?: (val: boolean) => void;
   snapToGrid?: boolean;
   setSnapToGrid?: (v: boolean) => void;
+  zoneDrawMode?: boolean;
+  setZoneDrawMode?: (v: boolean) => void;
+  selectedZoneMode?: 'indoor' | 'outdoor';
+  setSelectedZoneMode?: (v: 'indoor' | 'outdoor') => void;
 }
 
 export function FogToolsPanel({
@@ -1479,6 +1802,10 @@ export function FogToolsPanel({
   onGmSeeAllVisionChange,
   snapToGrid: snapEnabled = true,
   setSnapToGrid,
+  zoneDrawMode,
+  setZoneDrawMode,
+  selectedZoneMode,
+  setSelectedZoneMode,
 }: FogToolsPanelProps) {
   const queryClient = useQueryClient();
   const sceneId = scene?.id;
@@ -1606,7 +1933,8 @@ export function FogToolsPanel({
     setDoorPlaceMode(false);
     setWindowPlaceMode(false);
     setLightPlaceMode(false);
-  }, [setWallDrawMode, setDoorPlaceMode, setWindowPlaceMode, setLightPlaceMode]);
+    setZoneDrawMode?.(false);
+  }, [setWallDrawMode, setDoorPlaceMode, setWindowPlaceMode, setLightPlaceMode, setZoneDrawMode]);
 
   const activateWallMode = useCallback(() => {
     clearMode();
@@ -1862,6 +2190,25 @@ export function FogToolsPanel({
             <Lightbulb className="h-3 w-3 mr-1" />
             Lights
           </Button>
+          <Button
+            variant={zoneDrawMode ? 'default' : 'outline'}
+            size="sm"
+            className={zoneDrawMode
+              ? 'h-8 bg-teal-600 hover:bg-teal-700 text-white text-xs'
+              : 'h-8 border-stone-600 text-stone-300 hover:text-white text-xs'}
+            onClick={() => {
+              if (zoneDrawMode) {
+                setZoneDrawMode?.(false);
+              } else {
+                clearMode();
+                setZoneDrawMode?.(true);
+              }
+            }}
+            data-testid="toggle-zone-draw"
+          >
+            <Square className="h-3 w-3 mr-1" />
+            Zones
+          </Button>
         </div>
 
         {wallDrawMode && (
@@ -1930,6 +2277,42 @@ export function FogToolsPanel({
               <span className="text-[10px] text-stone-500">{lightColor}</span>
             </div>
             <p className="text-[10px] text-stone-500">Click on the map to place a light source.</p>
+          </div>
+        )}
+
+        {zoneDrawMode && (
+          <div className="space-y-2 rounded border border-stone-700 bg-stone-800/50 p-2">
+            <div className="space-y-1">
+              <span className="text-xs text-stone-400">Zone Type</span>
+              <div className="grid grid-cols-2 gap-1">
+                <Button
+                  variant={selectedZoneMode === 'indoor' ? 'default' : 'ghost'}
+                  size="sm"
+                  className={selectedZoneMode === 'indoor'
+                    ? 'h-6 text-[10px] bg-purple-600 text-white'
+                    : 'h-6 text-[10px] text-stone-400 hover:text-white'}
+                  onClick={() => setSelectedZoneMode?.('indoor')}
+                  data-testid="zone-mode-indoor"
+                >
+                  <Moon className="h-3 w-3 mr-1" />
+                  Indoor
+                </Button>
+                <Button
+                  variant={selectedZoneMode === 'outdoor' ? 'default' : 'ghost'}
+                  size="sm"
+                  className={selectedZoneMode === 'outdoor'
+                    ? 'h-6 text-[10px] bg-amber-600 text-white'
+                    : 'h-6 text-[10px] text-stone-400 hover:text-white'}
+                  onClick={() => setSelectedZoneMode?.('outdoor')}
+                  data-testid="zone-mode-outdoor"
+                >
+                  <Sun className="h-3 w-3 mr-1" />
+                  Outdoor
+                </Button>
+              </div>
+            </div>
+            <p className="text-[10px] text-stone-500">Click to place points. Double-click or click near first point to close zone.</p>
+            {sceneId && <VisionZonesList sceneId={sceneId} />}
           </div>
         )}
 

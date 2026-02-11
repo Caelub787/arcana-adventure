@@ -7058,6 +7058,56 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Scene Vision Zones CRUD
+  app.get("/api/scenes/:sceneId/vision-zones", requireAuth, async (req, res) => {
+    const zones = await storage.getSceneVisionZones(req.params.sceneId);
+    res.json(zones);
+  });
+
+  app.post("/api/scenes/:sceneId/vision-zones", requireAuth, async (req, res) => {
+    const zone = await storage.createSceneVisionZone({
+      ...req.body,
+      sceneId: req.params.sceneId,
+    });
+    res.json(zone);
+  });
+
+  app.delete("/api/vision-zones/:zoneId", requireAuth, async (req, res) => {
+    await storage.deleteSceneVisionZone(req.params.zoneId);
+    res.json({ success: true });
+  });
+
+  app.get("/api/campaigns/:campaignId/trait-vision-modifiers", requireAuth, async (req, res) => {
+    try {
+      const campaignId = req.params.campaignId;
+      const chars = await storage.getCampaignCharacters(campaignId);
+      const result: Record<string, { dayBonus: number; nightBonus: number }> = {};
+      
+      for (const char of chars) {
+        const traits = await storage.getCharacterTraits(char.id);
+        let dayBonus = 0;
+        let nightBonus = 0;
+        
+        for (const trait of traits) {
+          const mod = trait.visionModifier ?? 0;
+          if (mod === 0) continue;
+          const time = trait.visionModifierTime ?? 'both';
+          if (time === 'day' || time === 'both') dayBonus += mod;
+          if (time === 'night' || time === 'both') nightBonus += mod;
+        }
+        
+        if (dayBonus !== 0 || nightBonus !== 0) {
+          result[char.id] = { dayBonus, nightBonus };
+        }
+      }
+      
+      res.json(result);
+    } catch (error) {
+      console.error('Error fetching trait vision modifiers:', error);
+      res.status(500).json({ error: 'Failed to fetch trait vision modifiers' });
+    }
+  });
+
   // Fog of War state management
   app.put("/api/scenes/:sceneId/fog-state", requireAuth, async (req, res) => {
     try {

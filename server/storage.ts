@@ -51,7 +51,8 @@ import {
   type SceneDoor, type InsertSceneDoor,
   type SceneWindow, type InsertSceneWindow,
   type SceneLight, type InsertSceneLight,
-  users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, items, spells, characterPermissions, initiativeEntries, systemSpecies, campaignSpecies, featTemplates, featTrees, feats, featConnections, characterFeats, systemSpells, systemSkills, characterCustomSkills, systemTraits, characterTraits, characterFolders, characterTemplateFolders, sceneFolders, friendRequests, friendships, noteFolders, notes, noteReferences, noteShares, tokenEffects, spellEffects, itemEffects, tokenActiveEffects, thrownItems, adminNotifications, userNotifications, termsAndConditions, userTermsAcceptance, sandboxFolders, sandboxTemplates, sandboxActors, rollEntries, sceneWalls, sceneDoors, sceneWindows, sceneLights
+  type SceneVisionZone, type InsertSceneVisionZone,
+  users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, items, spells, characterPermissions, initiativeEntries, systemSpecies, campaignSpecies, featTemplates, featTrees, feats, featConnections, characterFeats, systemSpells, systemSkills, characterCustomSkills, systemTraits, characterTraits, characterFolders, characterTemplateFolders, sceneFolders, friendRequests, friendships, noteFolders, notes, noteReferences, noteShares, tokenEffects, spellEffects, itemEffects, tokenActiveEffects, thrownItems, adminNotifications, userNotifications, termsAndConditions, userTermsAcceptance, sandboxFolders, sandboxTemplates, sandboxActors, rollEntries, sceneWalls, sceneDoors, sceneWindows, sceneLights, sceneVisionZones
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql, inArray, or, isNull } from "drizzle-orm";
@@ -215,6 +216,11 @@ export interface IStorage {
   updateSceneLight(id: string, data: Partial<InsertSceneLight>): Promise<SceneLight | undefined>;
   deleteSceneLight(id: string): Promise<void>;
   deleteSceneLights(sceneId: string): Promise<void>;
+
+  // Scene Vision Zone operations
+  getSceneVisionZones(sceneId: string): Promise<SceneVisionZone[]>;
+  createSceneVisionZone(zone: InsertSceneVisionZone): Promise<SceneVisionZone>;
+  deleteSceneVisionZone(zoneId: string): Promise<void>;
 
   // Character Permission operations
   getCharacterPermissions(characterId: string): Promise<CharacterPermission[]>;
@@ -1916,6 +1922,20 @@ export class DatabaseStorage implements IStorage {
 
   async deleteSceneLights(sceneId: string): Promise<void> {
     await db.delete(sceneLights).where(eq(sceneLights.sceneId, sceneId));
+  }
+
+  // Scene Vision Zone operations
+  async getSceneVisionZones(sceneId: string): Promise<SceneVisionZone[]> {
+    return db.select().from(sceneVisionZones).where(eq(sceneVisionZones.sceneId, sceneId));
+  }
+
+  async createSceneVisionZone(zone: InsertSceneVisionZone): Promise<SceneVisionZone> {
+    const [created] = await db.insert(sceneVisionZones).values(zone).returning();
+    return created;
+  }
+
+  async deleteSceneVisionZone(zoneId: string): Promise<void> {
+    await db.delete(sceneVisionZones).where(eq(sceneVisionZones.id, zoneId));
   }
 
   // Character Permission operations
