@@ -377,7 +377,12 @@ export function calculateVisionInLight(
     const ray = castRay(tokenX, tokenY, angle, maxReach, blockingSegments, true, cornerEps);
     const wallDist = ray.dist;
 
-    const crossings = clipSegmentToPolygon(tokenX, tokenY, ray.x, ray.y, lp);
+    const cosA = Math.cos(angle);
+    const sinA = Math.sin(angle);
+    const extDist = wallDist + 4;
+    const extX = tokenX + cosA * extDist;
+    const extY = tokenY + sinA * extDist;
+    const crossings = clipSegmentToPolygon(tokenX, tokenY, extX, extY, lp);
 
     let bestX = 0, bestY = 0, bestDist = -1;
 
@@ -389,9 +394,16 @@ export function calculateVisionInLight(
       }
     } else {
       let inside = tokenInsideLight;
+      let lastEntryDist = -1;
+      let lastEntryX = 0, lastEntryY = 0;
 
       for (const c of crossings) {
         const cDist = Math.hypot(c.x - tokenX, c.y - tokenY);
+        if (!inside) {
+          lastEntryX = c.x;
+          lastEntryY = c.y;
+          lastEntryDist = cDist;
+        }
         if (inside && cDist <= wallDist + 1) {
           if (cDist > bestDist) {
             bestX = c.x;
@@ -403,11 +415,15 @@ export function calculateVisionInLight(
       }
 
       if (inside && wallDist > bestDist) {
-        if (pointInPolygon(ray.x, ray.y, lp)) {
-          bestX = ray.x;
-          bestY = ray.y;
-          bestDist = wallDist;
-        }
+        bestX = ray.x;
+        bestY = ray.y;
+        bestDist = wallDist;
+      }
+
+      if (bestDist <= 0 && lastEntryDist > 0 && lastEntryDist <= wallDist + 1) {
+        bestX = lastEntryX;
+        bestY = lastEntryY;
+        bestDist = lastEntryDist;
       }
     }
 
