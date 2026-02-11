@@ -42,7 +42,7 @@ import { triggerSkillRollNotification, triggerRollNotification, triggerEffectRol
 import { ImageBrowser } from '@/components/ImageBrowser';
 import { BattlemapAoeOverlay } from './BattlemapAoeOverlay';
 import { FogOfWarOverlay, WallDrawingOverlay, ZoneDrawingOverlay, FogToolsPanel, FogCanvasOverlay, FogMoveOverlay } from './FogOfWarOverlay';
-import { type AoeTargetState, getTokensInAoe, getTokenGridSpan, getDistanceToTokenEdge, getDistanceBetweenTokensFeet, isTokenInRangeOfToken } from '@/lib/aoeHelpers';
+import { type AoeTargetState, getTokensInAoe, getTokenGridSpan, getDistanceToTokenEdge, getDistanceBetweenTokensFeet, isTokenInRangeOfToken, type WallSegment, type DoorSegment } from '@/lib/aoeHelpers';
 import { rollDice } from '../sandbox/diceEngine';
 import type { VisionPolygon } from '@/lib/visionEngine';
 
@@ -5880,7 +5880,11 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
                    spellData.isAoe;
     if (hasAoe && aoeTargetState?.active && aoeTargetState?.locked && tokens) {
       const casterToken = tokens.find((t: any) => t.id === aoeTargetState.casterTokenId);
-      const tokensInAoe = getTokensInAoe(tokens, aoeTargetState, gridSize, casterToken, aoeTargetState.width);
+      const cachedWalls = queryClient.getQueryData(['scene-walls', sceneId]) as any[] || [];
+      const cachedDoors = queryClient.getQueryData(['scene-doors', sceneId]) as any[] || [];
+      const wallSegments = cachedWalls.map((w: any) => ({ x1: w.x1, y1: w.y1, x2: w.x2, y2: w.y2, wallType: w.wallType }));
+      const doorSegments = cachedDoors.map((d: any) => ({ x1: d.x1, y1: d.y1, x2: d.x2, y2: d.y2, isOpen: d.isOpen }));
+      const tokensInAoe = getTokensInAoe(tokens, aoeTargetState, gridSize, casterToken, aoeTargetState.width, wallSegments, doorSegments, spellData?.passesThroughWalls);
       
       if (tokensInAoe.length === 0) {
         triggerRollNotification({
@@ -5905,6 +5909,105 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
         ? `${diceNotation} = ${aoeDiceResult} + Mod (${mod >= 0 ? '+' : ''}${mod})`
         : `${diceNotation} = ${aoeDiceResult}`;
       const damageTypeDisplay = spellData.damageType ? ` (${spellData.damageType})` : '';
+      
+      // DC Save handling for AOE spells
+      if (spellData.requiresSave && spellData.saveAttribute && spellData.saveDc) {
+        const saveAttr = spellData.saveAttribute;
+        const saveDc = spellData.saveDc;
+        const saveSuccessEffect = spellData.saveSuccessEffect || 'half';
+        const affectedResults: string[] = [];
+        const isEnergyEffect = spellData.damageType === 'Energy';
+        
+        const processTokenSaves = async () => {
+          for (let i = 0; i < tokensInAoe.length; i++) {
+            const token = tokensInAoe[i];
+            const targetChar = allCharacters?.find((c: any) => c.id === token.characterId);
+            if (!targetChar) continue;
+            
+            if (i > 0) {
+              await new Promise(resolve => setTimeout(resolve, 1000));
+            }
+            
+            const isPlayerToken = targetChar.userId && targetChar.userId !== character.userId;
+            
+            if (isPlayerToken) {
+              gameWs.send({
+                type: 'dc_save_prompt',
+                campaignId,
+                targetCharacterId: targetChar.id,
+                targetUserId: targetChar.userId,
+                spellName: spellData.name,
+                saveAttribute: saveAttr,
+                saveDc: saveDc,
+                damage: total,
+                damageType: spellData.damageType || '',
+                saveSuccessEffect: saveSuccessEffect,
+                casterName: character.name,
+                isHealing: isHealing,
+              });
+              affectedResults.push(`${targetChar.name} (awaiting save)`);
+              continue;
+            }
+            
+            const attrValue = targetChar[saveAttr] || 10;
+            const attrMod = Math.floor((attrValue - 10) / 2);
+            const saveRoll = rollDice('1d20');
+            const saveTotal = saveRoll.result + attrMod;
+            const saveSuccess = saveTotal >= saveDc;
+            
+            let appliedDamage = total;
+            if (saveSuccess) {
+              if (saveSuccessEffect === 'none') {
+                appliedDamage = 0;
+              } else {
+                appliedDamage = Math.floor(total / 2);
+              }
+            }
+            
+            if (appliedDamage > 0) {
+              await applyDamageToTarget(appliedDamage, spellData.damageType || null, targetChar, isEnergyEffect ? spellData.gainEnergy : undefined);
+            }
+            
+            const saveResultText = saveSuccess 
+              ? `SAVED (${saveTotal} vs DC ${saveDc}) → ${saveSuccessEffect === 'none' ? 'No damage' : `Half damage: ${appliedDamage}`}`
+              : `FAILED (${saveTotal} vs DC ${saveDc}) → Full damage: ${appliedDamage}`;
+            affectedResults.push(`${targetChar.name}: ${saveResultText}`);
+            
+            triggerRollNotification({
+              type: saveSuccess ? 'system' : 'attack',
+              dieType: 'd20',
+              label: `${targetChar.name} ${saveAttr.charAt(0).toUpperCase() + saveAttr.slice(1)} Save vs ${spellData.name}`,
+              result: saveRoll.result,
+              modifier: attrMod,
+              total: saveTotal,
+              username: targetChar.name,
+              characterName: targetChar.name,
+              calculationBreakdown: `d20 (${saveRoll.result}) + ${saveAttr} (${attrMod >= 0 ? '+' : ''}${attrMod}) = ${saveTotal} vs DC ${saveDc} → ${saveSuccess ? 'SAVED' : 'FAILED'} → ${appliedDamage} damage`,
+            });
+          }
+          
+          const label = `${spellData.name} AoE (DC ${saveDc} ${saveAttr.charAt(0).toUpperCase() + saveAttr.slice(1)} Save)`;
+          triggerRollNotification({
+            type: 'attack',
+            dieType: 'd20' as any,
+            label,
+            result: result,
+            modifier: mod,
+            total,
+            username: character.name || 'Unknown',
+            characterName: character.name,
+            calculationBreakdown: `${diceNotation} = ${total} damage | ${affectedResults.join(' | ')}`,
+          });
+          
+          if (character.campaignId) {
+            const chatText = `${label}: ${diceNotation} = ${total} | ${affectedResults.join(' | ')}`;
+            gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', chatText, 'roll');
+          }
+        };
+        
+        processTokenSaves();
+        return;
+      }
       
       const affectedNames: string[] = [];
       const isEnergyEffect = spellData.damageType === 'Energy';
@@ -5976,6 +6079,68 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
         label = `${spellData.name} ${spellCritPrefix}${effectLabel} → ${displayName} (-${finalDamage} HP)`;
       } else {
         label = `${spellData.name} ${spellCritPrefix}${effectLabel} → ${displayName} (-${finalDamage} HP)`;
+      }
+    }
+    
+    if (spellData.requiresSave && spellData.saveAttribute && spellData.saveDc && targetedTokenId) {
+      const targetToken = tokens?.find((t: any) => t.id === targetedTokenId);
+      const targetChar = targetToken ? allCharacters?.find((c: any) => c.id === targetToken.characterId) : null;
+      if (targetChar) {
+        const isPlayerTarget = targetChar.userId && targetChar.userId !== character.userId;
+        if (isPlayerTarget) {
+          gameWs.send({
+            type: 'dc_save_prompt',
+            campaignId,
+            targetCharacterId: targetChar.id,
+            targetUserId: targetChar.userId,
+            spellName: spellData.name,
+            saveAttribute: spellData.saveAttribute,
+            saveDc: spellData.saveDc,
+            damage: total,
+            damageType: spellData.damageType || '',
+            saveSuccessEffect: spellData.saveSuccessEffect || 'half',
+            casterName: character.name,
+            isHealing: isHealing,
+          });
+          triggerRollNotification({
+            type: 'system',
+            label: `${spellData.name} → ${targetChar.name} (awaiting save)`,
+            result: total,
+            total,
+            username: character.name || 'Unknown',
+            characterName: character.name,
+            calculationBreakdown: `${diceNotation} = ${total} | DC ${spellData.saveDc} ${spellData.saveAttribute} save pending`,
+          });
+          return;
+        }
+        const attrValue = targetChar[spellData.saveAttribute] || 10;
+        const attrMod = Math.floor((attrValue - 10) / 2);
+        const saveRoll = rollDice('1d20');
+        const saveTotal = saveRoll.result + attrMod;
+        const saveSuccess = saveTotal >= spellData.saveDc;
+        let appliedDamage = total;
+        if (saveSuccess) {
+          appliedDamage = spellData.saveSuccessEffect === 'none' ? 0 : Math.floor(total / 2);
+        }
+        if (appliedDamage > 0) {
+          applyDamageToTarget(appliedDamage, spellData.damageType || null, targetChar, spellData.damageType === 'Energy' ? spellData.gainEnergy : undefined);
+        }
+        triggerRollNotification({
+          type: saveSuccess ? 'system' : 'attack',
+          dieType: 'd20',
+          label: `${targetChar.name} ${spellData.saveAttribute.charAt(0).toUpperCase() + spellData.saveAttribute.slice(1)} Save vs ${spellData.name}`,
+          result: saveRoll.result,
+          modifier: attrMod,
+          total: saveTotal,
+          username: targetChar.name,
+          characterName: targetChar.name,
+          calculationBreakdown: `d20 (${saveRoll.result}) + ${spellData.saveAttribute} (${attrMod >= 0 ? '+' : ''}${attrMod}) = ${saveTotal} vs DC ${spellData.saveDc} → ${saveSuccess ? 'SAVED' : 'FAILED'} → ${appliedDamage} damage`,
+        });
+        if (character.campaignId) {
+          const chatText = `${targetChar.name} ${spellData.saveAttribute} save vs ${spellData.name}: ${saveTotal} vs DC ${spellData.saveDc} → ${saveSuccess ? 'SAVED' : 'FAILED'} → ${appliedDamage} damage`;
+          gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', chatText, 'roll');
+        }
+        return;
       }
     }
     
@@ -14542,6 +14707,11 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
     aoeShape: string;
     isAttack: boolean;
     gainEnergy: boolean;
+    passesThroughWalls: boolean;
+    requiresSave: boolean;
+    saveAttribute: string;
+    saveDc: number | string;
+    saveSuccessEffect: string;
   }>({
     name: '',
     description: '',
@@ -14558,6 +14728,11 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
     aoeShape: '',
     isAttack: true,
     gainEnergy: false,
+    passesThroughWalls: false,
+    requiresSave: false,
+    saveAttribute: '',
+    saveDc: '',
+    saveSuccessEffect: 'half',
   });
   
   const spellDamageTypes = ['Sharp', 'Blunt', 'Piercing', 'Flame', 'Frost', 'Storm', 'Tide', 'Stone', 'Flux', 'Light', 'Dark', 'Sound', 'Health', 'Energy'];
@@ -14594,6 +14769,11 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
         aoeShape: editSpellData.aoeShape || '',
         isAttack: editSpellData.isAttack !== false,
         gainEnergy: editSpellData.gainEnergy || false,
+        passesThroughWalls: editSpellData.passesThroughWalls || false,
+        requiresSave: editSpellData.requiresSave || false,
+        saveAttribute: editSpellData.saveAttribute || '',
+        saveDc: editSpellData.saveDc ?? '',
+        saveSuccessEffect: editSpellData.saveSuccessEffect || 'half',
       });
     } else if (showAddSpell && spellDialogTab === 'create') {
       setSpellFormData({
@@ -14612,6 +14792,11 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
         aoeShape: '',
         isAttack: true,
         gainEnergy: false,
+        passesThroughWalls: false,
+        requiresSave: false,
+        saveAttribute: '',
+        saveDc: '',
+        saveSuccessEffect: 'half',
       });
     }
   }, [editSpellData, showAddSpell, spellDialogTab]);
@@ -14653,6 +14838,11 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
       aoeShape: spellFormData.isAoe ? spellFormData.aoeShape : undefined,
       isAttack: spellFormData.isAttack,
       gainEnergy: spellFormData.damageType === 'Energy' ? spellFormData.gainEnergy : false,
+      passesThroughWalls: spellFormData.isAoe ? spellFormData.passesThroughWalls : false,
+      requiresSave: spellFormData.requiresSave,
+      saveAttribute: spellFormData.requiresSave ? normalizeNone(spellFormData.saveAttribute) : undefined,
+      saveDc: spellFormData.requiresSave ? optionalNum(spellFormData.saveDc) : undefined,
+      saveSuccessEffect: spellFormData.requiresSave ? spellFormData.saveSuccessEffect : undefined,
     };
 
     if (editSpellData) {
@@ -18201,6 +18391,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                             <Label htmlFor="spell-aoe" className="cursor-pointer">Area of Effect (AoE)</Label>
                           </div>
                           {spellFormData.isAoe && (
+                            <>
                             <div className="grid grid-cols-2 gap-3">
                               <div>
                                 <Label>AoE Shape</Label>
@@ -18235,9 +18426,80 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                                 />
                               </div>
                             </div>
+                            <div className="flex items-center gap-3 mt-2">
+                              <Checkbox
+                                id="spell-passes-walls"
+                                checked={spellFormData.passesThroughWalls}
+                                onCheckedChange={(checked) => setSpellFormData({ ...spellFormData, passesThroughWalls: checked === true })}
+                                className="border-stone-600"
+                                disabled={!isGM}
+                                data-testid="checkbox-spell-passes-walls"
+                              />
+                              <Label htmlFor="spell-passes-walls" className="cursor-pointer">Passes Through Walls</Label>
+                              <span className="text-xs text-stone-500">(AoE ignores walls/doors)</span>
+                            </div>
+                            </>
                           )}
                         </div>
                       </div>
+
+                      <div className="flex items-center gap-3">
+                        <Checkbox
+                          id="spell-requires-save"
+                          checked={spellFormData.requiresSave}
+                          onCheckedChange={(checked) => setSpellFormData({ ...spellFormData, requiresSave: checked === true })}
+                          className="border-stone-600"
+                          disabled={!isGM}
+                          data-testid="checkbox-spell-requires-save"
+                        />
+                        <Label htmlFor="spell-requires-save" className="cursor-pointer">Requires Save</Label>
+                        <span className="text-xs text-stone-500">(Targets roll to resist)</span>
+                      </div>
+                      {spellFormData.requiresSave && (
+                        <div className="space-y-3 pl-4 border-l-2 border-blue-600/30">
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <Label>Save Attribute</Label>
+                              <Select value={spellFormData.saveAttribute || '_none'} onValueChange={(v) => setSpellFormData({ ...spellFormData, saveAttribute: v === '_none' ? '' : v })} disabled={!isGM}>
+                                <SelectTrigger className={`bg-stone-800 ${isGM ? 'border-amber-700' : 'border-stone-700'}`} data-testid="select-spell-save-attribute">
+                                  <SelectValue placeholder="Select attribute" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="_none">None</SelectItem>
+                                  {spellAttributes.map((attr) => (
+                                    <SelectItem key={attr} value={attr}>{attr.charAt(0).toUpperCase() + attr.slice(1)}</SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div>
+                              <Label>Save DC</Label>
+                              <Input
+                                type="number"
+                                min="1"
+                                value={spellFormData.saveDc}
+                                onChange={(e) => handleSpellNumericChange('saveDc', e.target.value)}
+                                placeholder="e.g. 15"
+                                className={`bg-stone-800 ${isGM ? 'border-amber-700' : 'border-stone-700'}`}
+                                disabled={!isGM}
+                                data-testid="input-spell-save-dc"
+                              />
+                            </div>
+                          </div>
+                          <div>
+                            <Label>On Successful Save</Label>
+                            <Select value={spellFormData.saveSuccessEffect} onValueChange={(v) => setSpellFormData({ ...spellFormData, saveSuccessEffect: v })} disabled={!isGM}>
+                              <SelectTrigger className={`bg-stone-800 ${isGM ? 'border-amber-700' : 'border-stone-700'}`} data-testid="select-spell-save-success">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="half">Half Damage</SelectItem>
+                                <SelectItem value="none">No Damage</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                      )}
 
                       <div className="flex justify-end gap-2 pt-4">
                         <Button type="button" variant="outline" onClick={() => setShowAddSpell(false)}>

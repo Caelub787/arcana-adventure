@@ -8,6 +8,50 @@ export interface AoeTargetState {
   width?: number; // Width in feet for line/cone AOE (default 5ft = 1 grid cell)
 }
 
+export interface WallSegment {
+  x1: number; y1: number; x2: number; y2: number;
+  wallType?: string;
+}
+export interface DoorSegment {
+  x1: number; y1: number; x2: number; y2: number;
+  isOpen: boolean;
+}
+
+export function segmentsIntersect(
+  ax1: number, ay1: number, ax2: number, ay2: number,
+  bx1: number, by1: number, bx2: number, by2: number
+): boolean {
+  const d1x = ax2 - ax1, d1y = ay2 - ay1;
+  const d2x = bx2 - bx1, d2y = by2 - by1;
+  const cross = d1x * d2y - d1y * d2x;
+  if (Math.abs(cross) < 1e-10) return false;
+  const dx = bx1 - ax1, dy = by1 - ay1;
+  const t = (dx * d2y - dy * d2x) / cross;
+  const u = (dx * d1y - dy * d1x) / cross;
+  return t > 0.001 && t < 0.999 && u > 0.001 && u < 0.999;
+}
+
+export function isPathBlockedByWalls(
+  fromX: number, fromY: number,
+  toX: number, toY: number,
+  walls: WallSegment[],
+  doors: DoorSegment[]
+): boolean {
+  for (const wall of walls) {
+    if (wall.wallType === 'transparent' || wall.wallType === 'invisible') continue;
+    if (segmentsIntersect(fromX, fromY, toX, toY, wall.x1, wall.y1, wall.x2, wall.y2)) {
+      return true;
+    }
+  }
+  for (const door of doors) {
+    if (door.isOpen) continue;
+    if (segmentsIntersect(fromX, fromY, toX, toY, door.x1, door.y1, door.x2, door.y2)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export const createInitialAoeState = (): AoeTargetState => ({
   active: false,
   spell: null,
@@ -122,7 +166,10 @@ export function getTokensInAoe(
   aoeState: AoeTargetState,
   gridSize: number,
   casterToken?: { x: number; y: number; id?: string; speciesSize?: string },
-  aoeWidth?: number
+  aoeWidth?: number,
+  walls?: WallSegment[],
+  doors?: DoorSegment[],
+  passesThroughWalls?: boolean
 ): any[] {
   if (!aoeState.active || !aoeState.spell) return [];
 
@@ -170,54 +217,31 @@ export function getTokensInAoe(
     const tokenCenterX = token.x + (tokenGridSpan * gridSize) / 2;
     const tokenCenterY = token.y + (tokenGridSpan * gridSize) / 2;
 
+    let inShape = false;
     switch (aoeShape) {
       case 'circle':
-        return isTokenInCircle(
-          tokenCenterX,
-          tokenCenterY,
-          center.x,
-          center.y,
-          radiusPixels
-        );
+        inShape = isTokenInCircle(tokenCenterX, tokenCenterY, center.x, center.y, radiusPixels);
+        break;
       case 'square':
-        return isTokenInSquare(
-          tokenCenterX,
-          tokenCenterY,
-          center.x,
-          center.y,
-          radiusPixels
-        );
+        inShape = isTokenInSquare(tokenCenterX, tokenCenterY, center.x, center.y, radiusPixels);
+        break;
       case 'cone':
-        return isTokenInCone(
-          tokenCenterX,
-          tokenCenterY,
-          casterCenterX,
-          casterCenterY,
-          center.x,
-          center.y,
-          90,
-          radiusPixels
-        );
+        inShape = isTokenInCone(tokenCenterX, tokenCenterY, casterCenterX, casterCenterY, center.x, center.y, 90, radiusPixels);
+        break;
       case 'line':
-        return isTokenInLine(
-          tokenCenterX,
-          tokenCenterY,
-          casterCenterX,
-          casterCenterY,
-          center.x,
-          center.y,
-          widthPixels,
-          radiusPixels
-        );
+        inShape = isTokenInLine(tokenCenterX, tokenCenterY, casterCenterX, casterCenterY, center.x, center.y, widthPixels, radiusPixels);
+        break;
       default:
-        return isTokenInCircle(
-          tokenCenterX,
-          tokenCenterY,
-          center.x,
-          center.y,
-          radiusPixels
-        );
+        inShape = isTokenInCircle(tokenCenterX, tokenCenterY, center.x, center.y, radiusPixels);
+        break;
     }
+    if (!inShape) return false;
+    if (!passesThroughWalls && walls && walls.length > 0) {
+      if (isPathBlockedByWalls(center.x, center.y, tokenCenterX, tokenCenterY, walls, doors || [])) {
+        return false;
+      }
+    }
+    return true;
   });
 }
 

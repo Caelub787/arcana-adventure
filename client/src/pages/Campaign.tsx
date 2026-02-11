@@ -6514,6 +6514,22 @@ export default function Campaign() {
   // Dice roller state
   const [diceMenuOpen, setDiceMenuOpen] = useState(false);
   const battlemapContainerRef = useRef<HTMLDivElement>(null);
+
+  // DC save prompt popup state
+  const [dcSavePrompt, setDcSavePrompt] = useState<{
+    targetCharacterId: string;
+    spellName: string;
+    saveAttribute: string;
+    saveDc: number;
+    damage: number;
+    damageType: string;
+    saveSuccessEffect: string;
+    casterName: string;
+    isHealing: boolean;
+  } | null>(null);
+  const [dcSaveModifier, setDcSaveModifier] = useState(0);
+  const [dcSaveAdvantage, setDcSaveAdvantage] = useState(false);
+  const [dcSaveDisadvantage, setDcSaveDisadvantage] = useState(false);
   
   // Add Token dialog state
   const [addTokenDialogOpen, setAddTokenDialogOpen] = useState(false);
@@ -7927,6 +7943,19 @@ export default function Campaign() {
               );
             }
           }
+        }
+        if (data.type === 'dc_save_prompt') {
+          setDcSavePrompt({
+            targetCharacterId: data.targetCharacterId,
+            spellName: data.spellName,
+            saveAttribute: data.saveAttribute,
+            saveDc: data.saveDc,
+            damage: data.damage,
+            damageType: data.damageType,
+            saveSuccessEffect: data.saveSuccessEffect,
+            casterName: data.casterName,
+            isHealing: data.isHealing,
+          });
         }
         if (data.type === 'character_changed') {
           // Force immediate refetch for character changes
@@ -11276,6 +11305,134 @@ export default function Campaign() {
                 </div>
               </div>
               <span className="text-[10px] text-stone-500 italic">Each grid square = 5ft</span>
+            </div>
+          </div>
+        );
+      })()}
+
+      {dcSavePrompt && (() => {
+        const targetChar = (characters as any[])?.find((c: any) => c.id === dcSavePrompt.targetCharacterId);
+        const attrValue = targetChar?.[dcSavePrompt.saveAttribute] || 10;
+        const attrMod = Math.floor((attrValue - 10) / 2);
+
+        const handleDcSaveRoll = () => {
+          let roll1 = Math.floor(Math.random() * 20) + 1;
+          let roll2 = Math.floor(Math.random() * 20) + 1;
+          let finalRoll = roll1;
+          let advText = '';
+          if (dcSaveAdvantage && !dcSaveDisadvantage) {
+            finalRoll = Math.max(roll1, roll2);
+            advText = ` (Adv: ${roll1}, ${roll2})`;
+          } else if (dcSaveDisadvantage && !dcSaveAdvantage) {
+            finalRoll = Math.min(roll1, roll2);
+            advText = ` (Dis: ${roll1}, ${roll2})`;
+          }
+          const totalMod = attrMod + dcSaveModifier;
+          const saveTotal = finalRoll + totalMod;
+          const saveSuccess = saveTotal >= dcSavePrompt.saveDc;
+          let appliedDamage = dcSavePrompt.damage;
+          if (saveSuccess) {
+            appliedDamage = dcSavePrompt.saveSuccessEffect === 'none' ? 0 : Math.floor(dcSavePrompt.damage / 2);
+          }
+
+          if (targetChar && appliedDamage > 0) {
+            gameWs.send({
+              type: 'apply_combat_damage',
+              campaignId: effectiveCampaignId,
+              targetCharacterId: targetChar.id,
+              damage: appliedDamage,
+              damageType: dcSavePrompt.damageType || null,
+              isHealing: dcSavePrompt.isHealing,
+            });
+          }
+
+          const resultText = `${targetChar?.name || 'Unknown'} ${dcSavePrompt.saveAttribute} save vs ${dcSavePrompt.spellName}: d20(${finalRoll})${advText} + ${totalMod} = ${saveTotal} vs DC ${dcSavePrompt.saveDc} → ${saveSuccess ? 'SAVED' : 'FAILED'} → ${appliedDamage} damage`;
+          gameWs.sendChatMessage(user?.id || '', user?.username || '', resultText, 'roll');
+
+          toast({
+            title: saveSuccess ? `Save Succeeded!` : `Save Failed!`,
+            description: `Rolled ${saveTotal} vs DC ${dcSavePrompt.saveDc} → ${appliedDamage} damage`,
+          });
+
+          setDcSavePrompt(null);
+          setDcSaveModifier(0);
+          setDcSaveAdvantage(false);
+          setDcSaveDisadvantage(false);
+        };
+
+        return (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70" data-testid="dc-save-popup">
+            <div className="bg-stone-900 border-2 border-red-600 rounded-xl p-6 max-w-sm w-full mx-4 space-y-4 shadow-2xl">
+              <div className="text-center">
+                <h3 className="text-lg font-bold text-red-400">{dcSavePrompt.spellName}</h3>
+                <p className="text-sm text-stone-400">Cast by {dcSavePrompt.casterName}</p>
+              </div>
+
+              <div className="bg-stone-800 rounded-lg p-3 space-y-1">
+                <div className="flex justify-between text-sm">
+                  <span className="text-stone-400">Save Attribute:</span>
+                  <span className="text-amber-400 font-bold">{dcSavePrompt.saveAttribute.charAt(0).toUpperCase() + dcSavePrompt.saveAttribute.slice(1)}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-stone-400">DC:</span>
+                  <span className="text-red-400 font-bold">{dcSavePrompt.saveDc}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-stone-400">Potential Damage:</span>
+                  <span className="text-orange-400 font-bold">{dcSavePrompt.damage} {dcSavePrompt.damageType}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-stone-400">On Success:</span>
+                  <span className="text-green-400 font-bold">{dcSavePrompt.saveSuccessEffect === 'none' ? 'No Damage' : 'Half Damage'}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-stone-400">Your Modifier:</span>
+                  <span className="text-blue-400 font-bold">{attrMod >= 0 ? '+' : ''}{attrMod}</span>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <div>
+                  <label className="text-xs text-stone-400">Extra Modifier</label>
+                  <input
+                    type="number"
+                    value={dcSaveModifier}
+                    onChange={(e) => setDcSaveModifier(parseInt(e.target.value) || 0)}
+                    className="w-full bg-stone-800 border border-stone-600 rounded px-3 py-1.5 text-sm text-stone-200"
+                    data-testid="dc-save-modifier-input"
+                  />
+                </div>
+                <div className="flex gap-4">
+                  <label className="flex items-center gap-2 text-sm text-stone-300 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={dcSaveAdvantage}
+                      onChange={(e) => { setDcSaveAdvantage(e.target.checked); if (e.target.checked) setDcSaveDisadvantage(false); }}
+                      className="rounded"
+                      data-testid="dc-save-advantage-checkbox"
+                    />
+                    Advantage
+                  </label>
+                  <label className="flex items-center gap-2 text-sm text-stone-300 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={dcSaveDisadvantage}
+                      onChange={(e) => { setDcSaveDisadvantage(e.target.checked); if (e.target.checked) setDcSaveAdvantage(false); }}
+                      className="rounded"
+                      data-testid="dc-save-disadvantage-checkbox"
+                    />
+                    Disadvantage
+                  </label>
+                </div>
+              </div>
+
+              <button
+                onClick={handleDcSaveRoll}
+                className="w-full py-3 bg-red-600 hover:bg-red-500 text-white font-bold rounded-lg text-lg transition-colors"
+                data-testid="dc-save-roll-button"
+              >
+                Roll {dcSavePrompt.saveAttribute.charAt(0).toUpperCase() + dcSavePrompt.saveAttribute.slice(1)} Save
+              </button>
             </div>
           </div>
         );
