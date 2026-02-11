@@ -90,7 +90,7 @@ function lineSegmentIntersection(
   };
 }
 
-const ENDPOINT_U_MARGIN = 1e-4;
+const ENDPOINT_U_MARGIN = 5e-4;
 
 function castRay(
   originX: number,
@@ -121,7 +121,8 @@ function castRay(
         if (skipEndpointCheck && cornerEndpoints) {
           const epX = hit.u < 0.5 ? seg.x1 : seg.x2;
           const epY = hit.u < 0.5 ? seg.y1 : seg.y2;
-          const key = `${Math.round(epX)},${Math.round(epY)}`;
+          const snapEp = (v: number) => Math.round(v * 2) / 2;
+          const key = `${snapEp(epX)},${snapEp(epY)}`;
           if (cornerEndpoints.has(key)) {
             const dist = hit.t * visionRadius;
             if (dist < closestDist) {
@@ -180,10 +181,11 @@ export function calculateVisionPolygon(
 
   let cornerEndpoints: Set<string> | undefined;
   if (skipEndpointCheck) {
+    const snapEp = (v: number) => Math.round(v * 2) / 2;
     const epCount = new Map<string, number>();
     for (const seg of blockingSegments) {
-      const k1 = `${Math.round(seg.x1)},${Math.round(seg.y1)}`;
-      const k2 = `${Math.round(seg.x2)},${Math.round(seg.y2)}`;
+      const k1 = `${snapEp(seg.x1)},${snapEp(seg.y1)}`;
+      const k2 = `${snapEp(seg.x2)},${snapEp(seg.y2)}`;
       epCount.set(k1, (epCount.get(k1) || 0) + 1);
       epCount.set(k2, (epCount.get(k2) || 0) + 1);
     }
@@ -212,7 +214,7 @@ export function calculateVisionPolygon(
     angles.push(a2 - EPSILON, a2, a2 + EPSILON);
   }
 
-  const STEP = Math.PI / 90;
+  const STEP = skipEndpointCheck ? Math.PI / 180 : Math.PI / 90;
   for (let a = -Math.PI; a < Math.PI; a += STEP) {
     angles.push(a);
   }

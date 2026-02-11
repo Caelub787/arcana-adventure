@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useRef, useMemo, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { SceneWall, SceneDoor, SceneWindow, SceneLight } from '@shared/schema';
 import { Button } from '@/components/ui/button';
@@ -2089,6 +2090,20 @@ export function FogToolsPanel({
     },
   });
 
+  const clearZonesMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/scenes/${sceneId}/vision-zones`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      if (!res.ok) throw new Error('Failed to clear zones');
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['scene-vision-zones', sceneId] });
+      toast({ title: 'All vision zones cleared' });
+    },
+  });
+
   const clearMode = useCallback(() => {
     setWallDrawMode(false);
     setDoorPlaceMode(false);
@@ -2121,7 +2136,7 @@ export function FogToolsPanel({
 
   const wallTypes: WallType[] = ['solid', 'transparent', 'one_way', 'invisible'];
 
-  return (
+  return createPortal(
     <div
       ref={panelElRef}
       className="fixed z-[80] w-64 rounded-lg border border-stone-700 bg-stone-900/95 shadow-2xl backdrop-blur-sm"
@@ -2518,8 +2533,18 @@ export function FogToolsPanel({
             <Trash2 className="h-3 w-3 mr-1" />
             Clear All Lights
           </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 w-full border-red-800 text-red-400 hover:bg-red-900/30 hover:text-red-300 text-xs"
+            onClick={() => clearZonesMutation.mutate()}
+            data-testid="clear-all-zones-main"
+          >
+            <Trash2 className="h-3 w-3 mr-1" />
+            Clear All Zones
+          </Button>
         </div>
       </div>
     </div>
-  );
+  , document.body);
 }
