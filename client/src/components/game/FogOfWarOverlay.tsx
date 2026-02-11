@@ -1028,6 +1028,7 @@ interface WallDrawingOverlayProps {
   lightIntensity: number;
   onFinish?: () => void;
   snapToGrid?: boolean;
+  zoneDrawMode?: boolean;
 }
 
 export function WallDrawingOverlay({
@@ -1043,6 +1044,7 @@ export function WallDrawingOverlay({
   lightIntensity,
   onFinish,
   snapToGrid: snapEnabled = true,
+  zoneDrawMode = false,
 }: WallDrawingOverlayProps) {
   const queryClient = useQueryClient();
   const sceneId = scene?.id;
@@ -1143,6 +1145,14 @@ export function WallDrawingOverlay({
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['scene-lights', sceneId] }),
   });
 
+  const deleteZoneMutation = useMutation({
+    mutationFn: async (zoneId: string) => {
+      const res = await fetch(`/api/vision-zones/${zoneId}`, { method: 'DELETE', credentials: 'include' });
+      if (!res.ok) throw new Error('Failed to delete zone');
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['scene-vision-zones', sceneId] }),
+  });
+
   const { data: walls = [] } = useQuery<any[]>({
     queryKey: ['scene-walls', sceneId],
     queryFn: async () => {
@@ -1185,6 +1195,17 @@ export function WallDrawingOverlay({
       return res.json();
     },
     enabled: !!sceneId,
+  });
+
+  const { data: visionZones = [] } = useQuery<any[]>({
+    queryKey: ['scene-vision-zones', sceneId],
+    queryFn: async () => {
+      if (!sceneId) return [];
+      const res = await fetch(`/api/scenes/${sceneId}/vision-zones`, { credentials: 'include' });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!sceneId && zoneDrawMode,
   });
 
   useEffect(() => {
@@ -1255,6 +1276,27 @@ export function WallDrawingOverlay({
       for (const l of lightsList) {
         const dist = Math.hypot(clickX - l.x, clickY - l.y);
         if (dist < threshold && (!closest || dist < closest.dist)) closest = { type: 'light', id: l.id, dist };
+      }
+
+      if (zoneDrawMode && visionZones.length > 0) {
+        for (let zi = visionZones.length - 1; zi >= 0; zi--) {
+          const zone = visionZones[zi];
+          const pts = zone.points as { x: number; y: number }[];
+          if (pts && pts.length >= 3) {
+            let inside = false;
+            for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+              const xi = pts[i].x, yi = pts[i].y;
+              const xj = pts[j].x, yj = pts[j].y;
+              if (((yi > clickY) !== (yj > clickY)) && clickX < (xj - xi) * (clickY - yi) / (yj - yi) + xi) {
+                inside = !inside;
+              }
+            }
+            if (inside) {
+              deleteZoneMutation.mutate(zone.id);
+              return;
+            }
+          }
+        }
       }
       
       if (closest) {
@@ -1706,11 +1748,32 @@ function VisionZonesList({ sceneId }: { sceneId: string }) {
     },
   });
 
+  const clearAllMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/scenes/${sceneId}/vision-zones`, { method: 'DELETE', credentials: 'include' });
+      if (!res.ok) throw new Error('Failed to clear zones');
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['scene-vision-zones', sceneId] });
+    },
+  });
+
   if (zones.length === 0) return null;
 
   return (
     <div className="space-y-1 border-t border-stone-700 pt-1">
-      <span className="text-[10px] text-stone-500 uppercase">Saved Zones</span>
+      <div className="flex items-center justify-between">
+        <span className="text-[10px] text-stone-500 uppercase">Saved Zones</span>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-5 px-1.5 text-[10px] text-red-400 hover:text-red-300"
+          onClick={() => clearAllMutation.mutate()}
+          data-testid="clear-all-zones"
+        >
+          Clear All
+        </Button>
+      </div>
       {zones.map((zone) => (
         <div key={zone.id} className="flex items-center justify-between gap-1">
           <div className="flex items-center gap-1 min-w-0">

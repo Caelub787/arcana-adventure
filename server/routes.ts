@@ -7077,6 +7077,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ success: true });
   });
 
+  app.delete("/api/scenes/:sceneId/vision-zones", requireAuth, async (req, res) => {
+    await storage.deleteAllSceneVisionZones(req.params.sceneId);
+    res.json({ success: true });
+  });
+
   app.get("/api/campaigns/:campaignId/trait-vision-modifiers", requireAuth, async (req, res) => {
     try {
       const campaignId = req.params.campaignId;

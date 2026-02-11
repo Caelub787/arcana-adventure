@@ -221,6 +221,7 @@ export interface IStorage {
   getSceneVisionZones(sceneId: string): Promise<SceneVisionZone[]>;
   createSceneVisionZone(zone: InsertSceneVisionZone): Promise<SceneVisionZone>;
   deleteSceneVisionZone(zoneId: string): Promise<void>;
+  deleteAllSceneVisionZones(sceneId: string): Promise<void>;
 
   // Character Permission operations
   getCharacterPermissions(characterId: string): Promise<CharacterPermission[]>;
@@ -1936,6 +1937,10 @@ export class DatabaseStorage implements IStorage {
 
   async deleteSceneVisionZone(zoneId: string): Promise<void> {
     await db.delete(sceneVisionZones).where(eq(sceneVisionZones.id, zoneId));
+  }
+
+  async deleteAllSceneVisionZones(sceneId: string): Promise<void> {
+    await db.delete(sceneVisionZones).where(eq(sceneVisionZones.sceneId, sceneId));
   }
 
   // Character Permission operations

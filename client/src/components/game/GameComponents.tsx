@@ -3403,6 +3403,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
             lightColor={lightColor}
             lightIntensity={lightIntensity}
             snapToGrid={fogSnapToGrid}
+            zoneDrawMode={zoneDrawMode}
           />
         )}
         
