@@ -6215,27 +6215,8 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
     let label = isHealing ? `${spellData.name} Healing` : `${spellData.name} ${spellCritPrefix}${effectLabel}`;
     const damageTypeDisplay = spellData.damageType ? ` (${spellData.damageType})` : '';
     let finalTotal = total;
-    
-    // Apply damage/healing/energy to target if one is selected (characterId allows damage to enemies without full character data)
     const isEnergyEffect = spellData.damageType === 'Energy';
-    if (targetedTokenId && targetData?.characterId) {
-      const { finalDamage, reduction, armorName, isHealing: wasHealing, isEnergy, targetName } = await applyDamageToTarget(total, spellData.damageType || null, targetData.character, isEnergyEffect ? spellData.gainEnergy : undefined, targetData.characterId);
-      finalTotal = finalDamage;
-      const displayName = targetData.character?.name || targetData.token?.name || targetName || 'Target';
-      
-      if (isEnergy) {
-        const energyAction = spellData.gainEnergy ? '+' : '-';
-        label = `${spellData.name} Energy → ${displayName} (${energyAction}${finalDamage} Energy)`;
-      } else if (wasHealing) {
-        label = `${spellData.name} Healing → ${displayName} (+${finalDamage} HP)`;
-      } else if (reduction > 0) {
-        calculationBreakdown += ` - ${reduction} (${armorName || 'Armor'})`;
-        label = `${spellData.name} ${spellCritPrefix}${effectLabel} → ${displayName} (-${finalDamage} HP)`;
-      } else {
-        label = `${spellData.name} ${spellCritPrefix}${effectLabel} → ${displayName} (-${finalDamage} HP)`;
-      }
-    }
-    
+
     if (spellData.requiresSave && spellData.saveAttribute && spellData.saveDc && targetedTokenId) {
       const singleTargetDc = options?.dcOverride || spellData.saveDc;
       const targetToken = tokens?.find((t: any) => t.id === targetedTokenId);
@@ -6375,6 +6356,25 @@ function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHot
             `${spellData.name} → ${targetChar.name}: ${dmgBreakdown} = ${totalDmg}${damageTypeDisplay} → ${resultText}`, 'roll');
         }
         return;
+      }
+    }
+
+    // Apply damage/healing/energy to target if one is selected (characterId allows damage to enemies without full character data)
+    if (targetedTokenId && targetData?.characterId) {
+      const { finalDamage, reduction, armorName, isHealing: wasHealing, isEnergy, targetName } = await applyDamageToTarget(total, spellData.damageType || null, targetData.character, isEnergyEffect ? spellData.gainEnergy : undefined, targetData.characterId);
+      finalTotal = finalDamage;
+      const displayName = targetData.character?.name || targetData.token?.name || targetName || 'Target';
+      
+      if (isEnergy) {
+        const energyAction = spellData.gainEnergy ? '+' : '-';
+        label = `${spellData.name} Energy → ${displayName} (${energyAction}${finalDamage} Energy)`;
+      } else if (wasHealing) {
+        label = `${spellData.name} Healing → ${displayName} (+${finalDamage} HP)`;
+      } else if (reduction > 0) {
+        calculationBreakdown += ` - ${reduction} (${armorName || 'Armor'})`;
+        label = `${spellData.name} ${spellCritPrefix}${effectLabel} → ${displayName} (-${finalDamage} HP)`;
+      } else {
+        label = `${spellData.name} ${spellCritPrefix}${effectLabel} → ${displayName} (-${finalDamage} HP)`;
       }
     }
 
