@@ -10275,6 +10275,7 @@ export default function Campaign() {
                notesPanelOpen={sidePanelOpen}
                notesPanelWidth={notesPanelWidth}
                onRequestSaveRoll={handleRequestSaveRoll}
+               campaignMembers={members as any[]}
              />
            )}
           

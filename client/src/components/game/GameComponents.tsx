@@ -4028,6 +4028,7 @@ interface BattleMapHotbarsProps {
     casterName: string;
     isHealing: boolean;
   }) => Promise<{ saved: boolean; roll: number; total: number }>;
+  campaignMembers?: any[];
 }
 
 // Sub-component for individual hotbar slot
@@ -4064,12 +4065,13 @@ interface BattleMapHotbarSlotProps {
     casterName: string;
     isHealing: boolean;
   }) => Promise<{ saved: boolean; roll: number; total: number }>;
+  campaignMembers?: any[];
 }
 
 // Ranged weapon categories that use ammunition
 const RANGED_WEAPON_CATEGORIES = ['bow', 'crossbow', 'sling', 'firearm'];
 
-const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHotbars, allItems, tokens, targetedTokenId, allCharacters, gridSize = 50, onEnterAoeMode, aoeTargetState, onAoeDamageRoll, sceneId, thrownItems, onRefetchThrownItems, onEnterThrowableAoeMode, throwableGridTarget, onClearThrowableGridTarget, onRequestSaveRoll }: BattleMapHotbarSlotProps) {
+const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHotbars, allItems, tokens, targetedTokenId, allCharacters, gridSize = 50, onEnterAoeMode, aoeTargetState, onAoeDamageRoll, sceneId, thrownItems, onRefetchThrownItems, onEnterThrowableAoeMode, throwableGridTarget, onClearThrowableGridTarget, onRequestSaveRoll, campaignMembers }: BattleMapHotbarSlotProps) {
   const clickTimerRef = useRef<NodeJS.Timeout | null>(null);
   const clickCountRef = useRef(0);
   const queryClient = useQueryClient();
@@ -5982,6 +5984,32 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
       return;
     }
     
+    // Check and deduct energy cost for non-AOE save spells (AOE handles its own energy below)
+    const hasAoeCheck = (spellData.aoe && typeof spellData.aoe === 'string' && spellData.aoe.includes(':')) || spellData.isAoe;
+    if (!hasAoeCheck && (spellData.requiresSave || spellData.saveSuccessEffect)) {
+      const energyCost = spellData.energyCost || 0;
+      const currentEnergy = character.energy || 0;
+      if (energyCost > 0 && currentEnergy < energyCost) {
+        triggerRollNotification({
+          type: 'system',
+          label: `Not Enough Energy!`,
+          result: 0, total: 0,
+          username: character.name || 'Unknown',
+          characterName: character.name,
+          calculationBreakdown: `${spellData.name} requires ${energyCost} energy but you only have ${currentEnergy}.`,
+        });
+        return;
+      }
+      if (energyCost > 0) {
+        try {
+          await api.updateCharacter(character.id, { energy: currentEnergy - energyCost });
+          queryClient.invalidateQueries({ queryKey: ['character', character.id] });
+        } catch (err) {
+          console.error('Failed to deduct energy:', err);
+        }
+      }
+    }
+    
     // Handle AoE damage when AoE is locked
     // Check for aoe field (format "shape:radius" like "circle:15") OR legacy isAoe boolean
     // Also check aoeTargetState.spell.aoe since the spell data there should have it
@@ -6061,7 +6089,8 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
               await new Promise(resolve => setTimeout(resolve, 800));
             }
             
-            const isPlayerToken = !!(targetChar.userId);
+            const assignedMemberAoe = campaignMembers?.find((m: any) => m.assignedCharacterId === targetChar.id);
+            const isPlayerToken = !!(assignedMemberAoe);
             
             if (isPlayerToken && onRequestSaveRoll) {
               triggerRollNotification({
@@ -6282,7 +6311,8 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
       if (targetChar) {
         const saveAttr = spellData.saveAttribute || spellData.attribute || 'wit';
         const saveSuccessEffect = spellData.saveSuccessEffect || 'half';
-        const isPlayerTarget = !!(targetChar.userId);
+        const assignedMember = campaignMembers?.find((m: any) => m.assignedCharacterId === targetChar.id);
+        const isPlayerTarget = !!(assignedMember);
         
         if (isPlayerTarget && onRequestSaveRoll) {
           triggerRollNotification({
@@ -6922,7 +6952,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
 }
 const BattleMapHotbarSlot = React.memo(BattleMapHotbarSlotInner);
 
-const BattleMapHotbarsInner = function BattleMapHotbars({ character, tokens, targetedTokenId, characters, gridSize, onEnterAoeMode, aoeTargetState, onAoeDamageRoll, sceneId, thrownItems, onRefetchThrownItems, onEnterThrowableAoeMode, throwableGridTarget, onClearThrowableGridTarget, notesPanelOpen = false, notesPanelWidth = 0, onRequestSaveRoll }: BattleMapHotbarsProps) {
+const BattleMapHotbarsInner = function BattleMapHotbars({ character, tokens, targetedTokenId, characters, gridSize, onEnterAoeMode, aoeTargetState, onAoeDamageRoll, sceneId, thrownItems, onRefetchThrownItems, onEnterThrowableAoeMode, throwableGridTarget, onClearThrowableGridTarget, notesPanelOpen = false, notesPanelWidth = 0, onRequestSaveRoll, campaignMembers }: BattleMapHotbarsProps) {
   const [activeHotbar, setActiveHotbar] = useState<string>('weapons');
   
   const { data: hotbars = [], isLoading: hotbarsLoading } = useQuery({
@@ -7135,6 +7165,7 @@ const BattleMapHotbarsInner = function BattleMapHotbars({ character, tokens, tar
                       throwableGridTarget={throwableGridTarget}
                       onClearThrowableGridTarget={onClearThrowableGridTarget}
                       onRequestSaveRoll={onRequestSaveRoll}
+                      campaignMembers={campaignMembers}
                     />
                   );
                 })}
