@@ -18314,6 +18314,14 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                                   duration: spell.duration,
                                   attribute: spell.attribute,
                                   energyCost: spell.energyCost,
+                                  isAoe: spell.isAoe,
+                                  isAttack: spell.isAttack,
+                                  gainEnergy: spell.gainEnergy,
+                                  passesThroughWalls: spell.passesThroughWalls,
+                                  requiresSave: spell.requiresSave,
+                                  saveAttribute: spell.saveAttribute || undefined,
+                                  saveDc: spell.saveDc || undefined,
+                                  saveSuccessEffect: spell.saveSuccessEffect || undefined,
                                 });
                                 setShowAddSpell(false);
                                 setSpellLibrarySearch('');
@@ -18874,6 +18882,11 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                               aoeShape: spell.aoeShape,
                               isAttack: spell.isAttack ?? true,
                               gainEnergy: spell.gainEnergy || false,
+                              passesThroughWalls: spell.passesThroughWalls,
+                              requiresSave: spell.requiresSave,
+                              saveAttribute: spell.saveAttribute || undefined,
+                              saveDc: spell.saveDc || undefined,
+                              saveSuccessEffect: spell.saveSuccessEffect || undefined,
                             });
                             setSpellLibrarySearch('');
                           }}
@@ -19001,14 +19014,12 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                             <p className="text-sm text-stone-100">
                               {selectedSpell.saveAttribute 
                                 ? selectedSpell.saveAttribute.charAt(0).toUpperCase() + selectedSpell.saveAttribute.slice(1) 
-                                : selectedSpell.attribute 
-                                  ? selectedSpell.attribute.charAt(0).toUpperCase() + selectedSpell.attribute.slice(1) + ' (default)'
-                                  : 'Wit (default)'}
+                                : 'Not set'}
                             </p>
                           </div>
                           <div>
                             <Label className="text-xs text-stone-400">Save DC</Label>
-                            <p className="text-sm text-stone-100">{selectedSpell.saveDc || '10 (default)'}</p>
+                            <p className="text-sm text-stone-100">{selectedSpell.saveDc || 'Not set'}</p>
                           </div>
                           <div>
                             <Label className="text-xs text-stone-400">On Save</Label>
