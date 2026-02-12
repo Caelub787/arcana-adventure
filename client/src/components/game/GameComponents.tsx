@@ -6061,18 +6061,8 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
         return;
       }
       
-      const { result, dieType } = rollDice(diceNotation);
-      const critBonus = options?.critSuccess ? getMaxDice(diceNotation) : 0;
-      const mod = typeof spellData.mod === 'number' ? spellData.mod : (parseInt(spellData.mod) || 0);
-      const total = (result || 0) + critBonus + mod;
-      
-      const aoeDiceResult = critBonus > 0 ? `${result} + MAX (${critBonus})` : `${result}`;
-      let calculationBreakdown = mod !== 0 
-        ? `${diceNotation} = ${aoeDiceResult} + Mod (${mod >= 0 ? '+' : ''}${mod})`
-        : `${diceNotation} = ${aoeDiceResult}`;
-      const damageTypeDisplay = spellData.damageType ? ` (${spellData.damageType})` : '';
-      
       // DC Save handling for AOE spells - damaging AOE spells always trigger saves
+      // IMPORTANT: Don't roll damage yet for save spells - saves must complete first
       if (!isHealing && spellData.damageType !== 'Energy' && diceNotation && (spellData.requiresSave || spellData.saveSuccessEffect || spellData.saveAttribute)) {
         const saveAttr = spellData.saveAttribute || spellData.attribute || 'wit';
         const saveDc = options?.dcOverride || spellData.saveDc || 10;
@@ -6266,6 +6256,16 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
         return;
       }
 
+      const { result, dieType } = rollDice(diceNotation);
+      const critBonus = options?.critSuccess ? getMaxDice(diceNotation) : 0;
+      const mod = typeof spellData.mod === 'number' ? spellData.mod : (parseInt(spellData.mod) || 0);
+      const total = (result || 0) + critBonus + mod;
+      
+      const aoeDiceResult = critBonus > 0 ? `${result} + MAX (${critBonus})` : `${result}`;
+      let calculationBreakdown = mod !== 0 
+        ? `${diceNotation} = ${aoeDiceResult} + Mod (${mod >= 0 ? '+' : ''}${mod})`
+        : `${diceNotation} = ${aoeDiceResult}`;
+      const damageTypeDisplay = spellData.damageType ? ` (${spellData.damageType})` : '';
       
       const affectedNames: string[] = [];
       const isEnergyEffect = spellData.damageType === 'Energy';
