@@ -4029,6 +4029,7 @@ interface BattleMapHotbarsProps {
     isHealing: boolean;
   }) => Promise<{ saved: boolean; roll: number; total: number }>;
   campaignMembers?: any[];
+  currentUserId?: string;
 }
 
 // Sub-component for individual hotbar slot
@@ -4066,12 +4067,13 @@ interface BattleMapHotbarSlotProps {
     isHealing: boolean;
   }) => Promise<{ saved: boolean; roll: number; total: number }>;
   campaignMembers?: any[];
+  currentUserId?: string;
 }
 
 // Ranged weapon categories that use ammunition
 const RANGED_WEAPON_CATEGORIES = ['bow', 'crossbow', 'sling', 'firearm'];
 
-const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHotbars, allItems, tokens, targetedTokenId, allCharacters, gridSize = 50, onEnterAoeMode, aoeTargetState, onAoeDamageRoll, sceneId, thrownItems, onRefetchThrownItems, onEnterThrowableAoeMode, throwableGridTarget, onClearThrowableGridTarget, onRequestSaveRoll, campaignMembers }: BattleMapHotbarSlotProps) {
+const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHotbars, allItems, tokens, targetedTokenId, allCharacters, gridSize = 50, onEnterAoeMode, aoeTargetState, onAoeDamageRoll, sceneId, thrownItems, onRefetchThrownItems, onEnterThrowableAoeMode, throwableGridTarget, onClearThrowableGridTarget, onRequestSaveRoll, campaignMembers, currentUserId }: BattleMapHotbarSlotProps) {
   const clickTimerRef = useRef<NodeJS.Timeout | null>(null);
   const clickCountRef = useRef(0);
   const queryClient = useQueryClient();
@@ -6090,9 +6092,10 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
             }
             
             const assignedMemberAoe = campaignMembers?.find((m: any) => m.assignedCharacterId === targetChar.id);
-            const isPlayerToken = !!(assignedMemberAoe);
+            const isAssignedToMe = !!(assignedMemberAoe && assignedMemberAoe.userId === currentUserId);
+            const isAssignedToOther = !!(assignedMemberAoe && assignedMemberAoe.userId !== currentUserId);
             
-            if (isPlayerToken && onRequestSaveRoll) {
+            if (isAssignedToMe && onRequestSaveRoll) {
               triggerRollNotification({
                 type: 'system',
                 label: `${targetChar.name} — Rolling ${saveAttr.charAt(0).toUpperCase() + saveAttr.slice(1)} Save (DC ${saveDc})`,
@@ -6104,7 +6107,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
               try {
                 const result = await onRequestSaveRoll({
                   targetCharacterId: targetChar.id,
-                  targetUserId: targetChar.userId,
+                  targetUserId: assignedMemberAoe.userId,
                   spellName: spellData.name,
                   saveAttribute: saveAttr,
                   saveDc: saveDc,
@@ -6135,7 +6138,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
               continue;
             }
             
-            if (isPlayerToken && !onRequestSaveRoll) {
+            if (isAssignedToOther) {
               saveResults.push({ token, targetChar, saved: false, isPlayer: true, isRemote: true });
               triggerRollNotification({
                 type: 'system',
@@ -6143,6 +6146,20 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
                 result: 0, total: 0,
                 username: targetChar.name, characterName: targetChar.name,
                 calculationBreakdown: `${targetChar.name} must roll a ${saveAttr} save vs DC ${saveDc}`,
+              });
+              gameWs.send({
+                type: 'dc_save_prompt',
+                campaignId: character.campaignId,
+                targetCharacterId: targetChar.id,
+                targetUserId: assignedMemberAoe.userId,
+                spellName: spellData.name,
+                saveAttribute: saveAttr,
+                saveDc: saveDc,
+                damage: 0,
+                damageType: spellData.damageType || '',
+                saveSuccessEffect: saveSuccessEffect,
+                casterName: character.name,
+                isHealing: isHealing,
               });
               continue;
             }
@@ -6312,9 +6329,10 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
         const saveAttr = spellData.saveAttribute || spellData.attribute || 'wit';
         const saveSuccessEffect = spellData.saveSuccessEffect || 'half';
         const assignedMember = campaignMembers?.find((m: any) => m.assignedCharacterId === targetChar.id);
-        const isPlayerTarget = !!(assignedMember);
+        const isAssignedToMe = !!(assignedMember && assignedMember.userId === currentUserId);
+        const isAssignedToOther = !!(assignedMember && assignedMember.userId !== currentUserId);
         
-        if (isPlayerTarget && onRequestSaveRoll) {
+        if (isAssignedToMe && onRequestSaveRoll) {
           triggerRollNotification({
             type: 'system',
             label: `${targetChar.name} — Rolling ${saveAttr.charAt(0).toUpperCase() + saveAttr.slice(1)} Save (DC ${singleTargetDc})`,
@@ -6403,7 +6421,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
           return;
         }
         
-        if (isPlayerTarget && !onRequestSaveRoll) {
+        if (isAssignedToOther) {
           triggerRollNotification({
             type: 'system',
             label: `${targetChar.name} — Awaiting ${saveAttr.charAt(0).toUpperCase() + saveAttr.slice(1)} Save (DC ${singleTargetDc})`,
@@ -6960,7 +6978,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
 }
 const BattleMapHotbarSlot = React.memo(BattleMapHotbarSlotInner);
 
-const BattleMapHotbarsInner = function BattleMapHotbars({ character, tokens, targetedTokenId, characters, gridSize, onEnterAoeMode, aoeTargetState, onAoeDamageRoll, sceneId, thrownItems, onRefetchThrownItems, onEnterThrowableAoeMode, throwableGridTarget, onClearThrowableGridTarget, notesPanelOpen = false, notesPanelWidth = 0, onRequestSaveRoll, campaignMembers }: BattleMapHotbarsProps) {
+const BattleMapHotbarsInner = function BattleMapHotbars({ character, tokens, targetedTokenId, characters, gridSize, onEnterAoeMode, aoeTargetState, onAoeDamageRoll, sceneId, thrownItems, onRefetchThrownItems, onEnterThrowableAoeMode, throwableGridTarget, onClearThrowableGridTarget, notesPanelOpen = false, notesPanelWidth = 0, onRequestSaveRoll, campaignMembers, currentUserId }: BattleMapHotbarsProps) {
   const [activeHotbar, setActiveHotbar] = useState<string>('weapons');
   
   const { data: hotbars = [], isLoading: hotbarsLoading } = useQuery({
@@ -7174,6 +7192,7 @@ const BattleMapHotbarsInner = function BattleMapHotbars({ character, tokens, tar
                       onClearThrowableGridTarget={onClearThrowableGridTarget}
                       onRequestSaveRoll={onRequestSaveRoll}
                       campaignMembers={campaignMembers}
+                      currentUserId={currentUserId}
                     />
                   );
                 })}

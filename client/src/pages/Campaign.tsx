@@ -10276,6 +10276,7 @@ export default function Campaign() {
                notesPanelWidth={notesPanelWidth}
                onRequestSaveRoll={handleRequestSaveRoll}
                campaignMembers={members as any[]}
+               currentUserId={user?.id}
              />
            )}
           
