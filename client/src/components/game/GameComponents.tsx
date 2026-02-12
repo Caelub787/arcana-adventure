@@ -6043,7 +6043,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
       const damageTypeDisplay = spellData.damageType ? ` (${spellData.damageType})` : '';
       
       // DC Save handling for AOE spells - damaging AOE spells always trigger saves
-      if (!isHealing && spellData.damageType !== 'Energy' && diceNotation) {
+      if (!isHealing && spellData.damageType !== 'Energy' && diceNotation && (spellData.requiresSave || spellData.saveSuccessEffect || spellData.saveAttribute)) {
         const saveAttr = spellData.saveAttribute || spellData.attribute || 'wit';
         const saveDc = options?.dcOverride || spellData.saveDc || 10;
         const saveSuccessEffect = spellData.saveSuccessEffect || 'half';
@@ -6818,7 +6818,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
           <div className="space-y-4 mt-2">
             {/* Extra Modifier Input */}
             <div className="flex items-center gap-3">
-              <label className="text-sm text-stone-300 w-24">{spellData?.requiresSave && spellData?.saveDc ? 'DC Mod:' : 'Extra Mod:'}</label>
+              <label className="text-sm text-stone-300 w-24">{(spellData?.requiresSave || spellData?.saveSuccessEffect) ? 'DC Mod:' : 'Extra Mod:'}</label>
               <div className="flex items-center gap-2">
                 <Button
                   size="sm"
@@ -6849,7 +6849,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
             </div>
             
             {/* ADV/DIS Checkboxes - hidden for DC save spells since they don't use attack rolls */}
-            {!(spellData?.requiresSave && spellData?.saveDc) && (
+            {!(spellData?.requiresSave || spellData?.saveSuccessEffect) && (
               <div className="flex items-center gap-6">
                 <label className="flex items-center gap-2 cursor-pointer">
                   <Checkbox
@@ -6873,7 +6873,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
             )}
             
             {/* Note when both are checked */}
-            {!(spellData?.requiresSave && spellData?.saveDc) && hasAdvantage && hasDisadvantage && (
+            {!(spellData?.requiresSave || spellData?.saveSuccessEffect) && hasAdvantage && hasDisadvantage && (
               <p className="text-xs text-stone-400 italic">Both ADV and DIS cancel out - normal roll</p>
             )}
             
@@ -15076,7 +15076,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
     requiresSave: false,
     saveAttribute: '',
     saveDc: '',
-    saveSuccessEffect: 'half',
+    saveSuccessEffect: '',
   });
   
   const spellDamageTypes = ['Sharp', 'Blunt', 'Piercing', 'Flame', 'Frost', 'Storm', 'Tide', 'Stone', 'Flux', 'Light', 'Dark', 'Sound', 'Health', 'Energy'];
@@ -15117,7 +15117,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
         requiresSave: editSpellData.requiresSave || false,
         saveAttribute: editSpellData.saveAttribute || '',
         saveDc: editSpellData.saveDc ?? '',
-        saveSuccessEffect: editSpellData.saveSuccessEffect || 'half',
+        saveSuccessEffect: editSpellData.saveSuccessEffect || '',
       });
     } else if (showAddSpell && spellDialogTab === 'create') {
       setSpellFormData({
@@ -15140,7 +15140,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
         requiresSave: false,
         saveAttribute: '',
         saveDc: '',
-        saveSuccessEffect: 'half',
+        saveSuccessEffect: '',
       });
     }
   }, [editSpellData, showAddSpell, spellDialogTab]);
@@ -18993,26 +18993,33 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                         )}
                       </div>
 
-                      {(selectedSpell.saveAttribute || selectedSpell.saveSuccessEffect) && (
-                        <div className="grid grid-cols-2 gap-4">
-                          {selectedSpell.saveAttribute && (
-                            <div>
-                              <Label className="text-xs text-stone-400">Save Attribute</Label>
-                              <p className="text-sm text-stone-100">{selectedSpell.saveAttribute.charAt(0).toUpperCase() + selectedSpell.saveAttribute.slice(1)}</p>
-                            </div>
-                          )}
-                          {selectedSpell.saveDc && (
-                            <div>
-                              <Label className="text-xs text-stone-400">Save DC</Label>
-                              <p className="text-sm text-stone-100">{selectedSpell.saveDc}</p>
-                            </div>
-                          )}
-                          {selectedSpell.saveSuccessEffect && (
-                            <div>
-                              <Label className="text-xs text-stone-400">On Save</Label>
-                              <p className="text-sm text-stone-100">{selectedSpell.saveSuccessEffect === 'none' ? 'No Damage' : selectedSpell.saveSuccessEffect === 'half' ? 'Half Damage' : selectedSpell.saveSuccessEffect}</p>
-                            </div>
-                          )}
+                      {(selectedSpell.saveAttribute || selectedSpell.saveSuccessEffect || selectedSpell.requiresSave) && (
+                        <div className="grid grid-cols-2 gap-4 bg-stone-800/50 rounded-lg p-3 border border-amber-900/30">
+                          <div className="col-span-2 text-xs font-semibold text-amber-400 uppercase tracking-wider">Saving Throw</div>
+                          <div>
+                            <Label className="text-xs text-stone-400">Save Attribute</Label>
+                            <p className="text-sm text-stone-100">
+                              {selectedSpell.saveAttribute 
+                                ? selectedSpell.saveAttribute.charAt(0).toUpperCase() + selectedSpell.saveAttribute.slice(1) 
+                                : selectedSpell.attribute 
+                                  ? selectedSpell.attribute.charAt(0).toUpperCase() + selectedSpell.attribute.slice(1) + ' (default)'
+                                  : 'Wit (default)'}
+                            </p>
+                          </div>
+                          <div>
+                            <Label className="text-xs text-stone-400">Save DC</Label>
+                            <p className="text-sm text-stone-100">{selectedSpell.saveDc || '10 (default)'}</p>
+                          </div>
+                          <div>
+                            <Label className="text-xs text-stone-400">On Save</Label>
+                            <p className="text-sm text-stone-100">{selectedSpell.saveSuccessEffect === 'none' ? 'No Damage' : selectedSpell.saveSuccessEffect === 'half' ? 'Half Damage' : 'Half Damage (default)'}</p>
+                          </div>
+                        </div>
+                      )}
+                      {selectedSpell.attribute && !selectedSpell.saveAttribute && !selectedSpell.saveSuccessEffect && (
+                        <div>
+                          <Label className="text-xs text-stone-400">Casting Attribute</Label>
+                          <p className="text-sm text-stone-100">{selectedSpell.attribute.charAt(0).toUpperCase() + selectedSpell.attribute.slice(1)}</p>
                         </div>
                       )}
 

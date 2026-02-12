@@ -692,7 +692,7 @@ export const spells = pgTable("spells", {
   requiresSave: boolean("requires_save").default(false),
   saveAttribute: text("save_attribute"),
   saveDc: integer("save_dc"),
-  saveSuccessEffect: text("save_success_effect").default("half"),
+  saveSuccessEffect: text("save_success_effect"),
 });
 
 export const insertSpellSchema = createInsertSchema(spells).omit({
@@ -919,7 +919,7 @@ export const systemSpells = pgTable("system_spells", {
   requiresSave: boolean("requires_save").default(false),
   saveAttribute: text("save_attribute"),
   saveDc: integer("save_dc"),
-  saveSuccessEffect: text("save_success_effect").default("half"),
+  saveSuccessEffect: text("save_success_effect"),
   savingThrow: text("saving_throw"),
   effects: jsonb("effects").default([]).notNull(),
   isAttack: boolean("is_attack").default(true).notNull(), // If true: Attack/Damage rolls, if false: Use/Effect rolls
