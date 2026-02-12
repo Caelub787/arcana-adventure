@@ -37,25 +37,6 @@ export function ImageBrowser({ open, onOpenChange, onSelect, title = "Browse Ima
   const [isLoadingImage, setIsLoadingImage] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  const [panelPos, setPanelPos] = useState({ x: 0, y: 0 });
-  const [dragging, setDragging] = useState(false);
-  const dragRef = useRef({ startX: 0, startY: 0, posX: 0, posY: 0 });
-
-  const isMobile = typeof window !== 'undefined' && window.innerWidth < 640;
-
-  useEffect(() => {
-    if (open) {
-      if (isMobile) {
-        setPanelPos({ x: 0, y: 0 });
-      } else {
-        setPanelPos({
-          x: Math.max(20, (window.innerWidth - 600) / 2),
-          y: Math.max(20, (window.innerHeight - window.innerHeight * 0.7) / 2),
-        });
-      }
-    }
-  }, [open]);
-
   const handleRefresh = async () => {
     setIsRefreshing(true);
     try {
@@ -168,38 +149,11 @@ export function ImageBrowser({ open, onOpenChange, onSelect, title = "Browse Ima
         onClick={() => onOpenChange(false)}
       />
       <div
-        className={`fixed bg-stone-950 border border-stone-800 text-stone-200 shadow-2xl flex flex-col overflow-hidden ${
-          isMobile ? 'inset-0 rounded-none' : 'rounded-lg'
-        }`}
-        style={isMobile ? { zIndex: 10002 } : { left: panelPos.x, top: panelPos.y, width: '600px', height: '70vh', zIndex: 10002 }}
+        className="fixed inset-0 sm:inset-auto sm:left-1/2 sm:top-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2 sm:w-[600px] sm:h-[70vh] sm:rounded-lg bg-stone-950 border border-stone-800 text-stone-200 shadow-2xl flex flex-col overflow-hidden"
+        style={{ zIndex: 10002 }}
         onMouseDown={(e) => e.stopPropagation()}
       >
-        <div
-          className={`flex items-center justify-between px-4 py-2 border-b border-stone-800 bg-stone-900 select-none shrink-0 ${
-            isMobile ? '' : 'cursor-move rounded-t-lg'
-          }`}
-          onPointerDown={(e) => {
-            if (isMobile) return;
-            e.preventDefault();
-            setDragging(true);
-            dragRef.current = { startX: e.clientX, startY: e.clientY, posX: panelPos.x, posY: panelPos.y };
-            (e.target as HTMLElement).setPointerCapture(e.pointerId);
-          }}
-          onPointerMove={(e) => {
-            if (isMobile || !dragging) return;
-            setPanelPos({
-              x: dragRef.current.posX + e.clientX - dragRef.current.startX,
-              y: Math.max(0, dragRef.current.posY + e.clientY - dragRef.current.startY),
-            });
-          }}
-          onPointerUp={(e) => {
-            if (isMobile) return;
-            if (dragging) {
-              setDragging(false);
-              (e.target as HTMLElement).releasePointerCapture(e.pointerId);
-            }
-          }}
-        >
+        <div className="flex items-center justify-between px-4 py-2 border-b border-stone-800 bg-stone-900 select-none shrink-0">
           <div>
             <h2 className="text-amber-500 font-display text-lg">{title}</h2>
             <p className="text-stone-400 text-xs">Browse your Google Drive image library</p>
@@ -212,7 +166,7 @@ export function ImageBrowser({ open, onOpenChange, onSelect, title = "Browse Ima
           </button>
         </div>
 
-        <div className="flex-1 flex flex-col overflow-hidden p-4 gap-3">
+        <div className="flex-1 flex flex-col overflow-hidden p-3 sm:p-4 gap-2 sm:gap-3">
           <div className="flex gap-2">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-500" />
@@ -238,7 +192,7 @@ export function ImageBrowser({ open, onOpenChange, onSelect, title = "Browse Ima
           </div>
 
           {!searchQuery && (
-            <div className="flex items-center gap-1 text-sm overflow-x-auto">
+            <div className="flex items-center gap-1 text-sm overflow-x-auto shrink-0">
               <Button
                 variant="ghost"
                 size="sm"
@@ -274,7 +228,7 @@ export function ImageBrowser({ open, onOpenChange, onSelect, title = "Browse Ima
               variant="outline"
               size="sm"
               onClick={navigateBack}
-              className="w-fit text-stone-400 border-stone-700 hover:bg-stone-800"
+              className="w-fit text-stone-400 border-stone-700 hover:bg-stone-800 shrink-0"
               data-testid="button-nav-back"
             >
               <ArrowLeft className="h-4 w-4 mr-1" />
@@ -284,24 +238,24 @@ export function ImageBrowser({ open, onOpenChange, onSelect, title = "Browse Ima
 
           <ScrollArea className="flex-1 min-h-0">
             {isLoading ? (
-              <div className="flex items-center justify-center h-[300px]">
+              <div className="flex items-center justify-center h-[200px] sm:h-[300px]">
                 <Loader2 className="h-8 w-8 animate-spin text-amber-500" />
               </div>
             ) : (
-              <div className="space-y-4 pr-4">
+              <div className="space-y-4 pr-2 sm:pr-4">
                 {!searchQuery && folders.length > 0 && (
                   <div>
                     <h3 className="text-xs text-stone-500 uppercase tracking-wider mb-2">Folders</h3>
-                    <div className="grid grid-cols-3 sm:grid-cols-3 gap-2">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                       {folders.map((folder) => (
                         <button
                           key={folder.id}
                           onClick={() => navigateToFolder(folder)}
-                          className="flex items-center gap-2 p-3 bg-stone-900 border border-stone-800 rounded-lg hover:border-amber-600/50 transition-colors text-left"
+                          className="flex items-center gap-2 p-2 sm:p-3 bg-stone-900 border border-stone-800 rounded-lg hover:border-amber-600/50 transition-colors text-left"
                           data-testid={`button-folder-${folder.id}`}
                         >
-                          <Folder className="h-5 w-5 text-amber-600 flex-shrink-0" />
-                          <span className="text-sm text-stone-300 truncate">{folder.name}</span>
+                          <Folder className="h-4 w-4 sm:h-5 sm:w-5 text-amber-600 flex-shrink-0" />
+                          <span className="text-xs sm:text-sm text-stone-300 truncate">{folder.name}</span>
                         </button>
                       ))}
                     </div>
@@ -368,7 +322,7 @@ export function ImageBrowser({ open, onOpenChange, onSelect, title = "Browse Ima
             )}
           </ScrollArea>
 
-          <div className="flex justify-end pt-3 border-t border-stone-800">
+          <div className="flex justify-end pt-2 sm:pt-3 border-t border-stone-800 shrink-0">
             <Button
               variant="outline"
               onClick={() => onOpenChange(false)}
