@@ -6355,6 +6355,22 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
               `${saveAttr.charAt(0).toUpperCase() + saveAttr.slice(1)} Save vs ${spellData.name}: Rolled ${saveResult.total} vs DC ${singleTargetDc} → ${saveResult.saved ? 'SAVED' : 'FAILED'}`, 'roll');
           }
           
+          if (saveResult.saved && saveSuccessEffect === 'none') {
+            triggerRollNotification({
+              type: 'system',
+              label: `${spellData.name} → ${targetChar.name} — No damage (saved)`,
+              result: 0, total: 0,
+              username: character.name || 'Unknown',
+              characterName: character.name,
+              calculationBreakdown: `${targetChar.name} saved — no damage dealt`,
+            });
+            if (character.campaignId) {
+              gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', 
+                `${spellData.name} → ${targetChar.name}: No damage (saved)`, 'roll');
+            }
+            return;
+          }
+          
           await new Promise(resolve => setTimeout(resolve, 1000));
           
           const { result: dmgResult, dieType: dmgDieType } = rollDice(diceNotation);
@@ -6369,11 +6385,11 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
           
           let appliedDmg = totalDmg;
           if (saveResult.saved) {
-            appliedDmg = saveSuccessEffect === 'none' ? 0 : Math.floor(totalDmg / 2);
+            appliedDmg = Math.floor(totalDmg / 2);
           }
           
           const resultText = saveResult.saved
-            ? `${saveSuccessEffect === 'none' ? 'No damage (saved)' : `Half damage: ${appliedDmg} (saved)`}`
+            ? `Half damage: ${appliedDmg} (saved)`
             : `Full damage: ${appliedDmg}`;
           
           const isEnergyEffect = spellData.damageType === 'Energy';
@@ -6480,6 +6496,22 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
             `${saveAttr.charAt(0).toUpperCase() + saveAttr.slice(1)} Save vs ${spellData.name}: d20 (${saveRoll.result}) + ${saveAttr} (${attrMod >= 0 ? '+' : ''}${attrMod}) = ${saveTotal} vs DC ${singleTargetDc} → ${saveSuccess ? 'SAVED' : 'FAILED'}`, 'roll');
         }
         
+        if (saveSuccess && saveSuccessEffect === 'none') {
+          triggerRollNotification({
+            type: 'system',
+            label: `${spellData.name} → ${targetChar.name} — No damage (saved)`,
+            result: 0, total: 0,
+            username: character.name || 'Unknown',
+            characterName: character.name,
+            calculationBreakdown: `${targetChar.name} saved — no damage dealt`,
+          });
+          if (character.campaignId) {
+            gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', 
+              `${spellData.name} → ${targetChar.name}: No damage (saved)`, 'roll');
+          }
+          return;
+        }
+        
         // NPC target: STEP 2 - Roll damage (after save)
         await new Promise(resolve => setTimeout(resolve, 1000));
         
@@ -6496,7 +6528,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
         // NPC target: STEP 3 - Apply damage based on save result
         let appliedDamage = totalDmg;
         if (saveSuccess) {
-          appliedDamage = saveSuccessEffect === 'none' ? 0 : Math.floor(totalDmg / 2);
+          appliedDamage = Math.floor(totalDmg / 2);
         }
         
         const isEnergyEffect = spellData.damageType === 'Energy';
@@ -6505,7 +6537,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
         }
         
         const resultText = saveSuccess
-          ? `${saveSuccessEffect === 'none' ? 'No damage (saved)' : `Half damage: ${appliedDamage} (saved)`}`
+          ? `Half damage: ${appliedDamage} (saved)`
           : `Full damage: ${appliedDamage}`;
         
         triggerRollNotification({
