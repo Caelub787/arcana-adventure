@@ -41,12 +41,18 @@ export function ImageBrowser({ open, onOpenChange, onSelect, title = "Browse Ima
   const [dragging, setDragging] = useState(false);
   const dragRef = useRef({ startX: 0, startY: 0, posX: 0, posY: 0 });
 
+  const isMobile = typeof window !== 'undefined' && window.innerWidth < 640;
+
   useEffect(() => {
     if (open) {
-      setPanelPos({
-        x: Math.max(20, (window.innerWidth - 600) / 2),
-        y: Math.max(20, (window.innerHeight - window.innerHeight * 0.7) / 2),
-      });
+      if (isMobile) {
+        setPanelPos({ x: 0, y: 0 });
+      } else {
+        setPanelPos({
+          x: Math.max(20, (window.innerWidth - 600) / 2),
+          y: Math.max(20, (window.innerHeight - window.innerHeight * 0.7) / 2),
+        });
+      }
     }
   }, [open]);
 
@@ -162,26 +168,32 @@ export function ImageBrowser({ open, onOpenChange, onSelect, title = "Browse Ima
         onClick={() => onOpenChange(false)}
       />
       <div
-        className="fixed bg-stone-950 border border-stone-800 text-stone-200 rounded-lg shadow-2xl flex flex-col overflow-hidden"
-        style={{ left: panelPos.x, top: panelPos.y, width: '600px', height: '70vh', zIndex: 10002 }}
+        className={`fixed bg-stone-950 border border-stone-800 text-stone-200 shadow-2xl flex flex-col overflow-hidden ${
+          isMobile ? 'inset-0 rounded-none' : 'rounded-lg'
+        }`}
+        style={isMobile ? { zIndex: 10002 } : { left: panelPos.x, top: panelPos.y, width: '600px', height: '70vh', zIndex: 10002 }}
         onMouseDown={(e) => e.stopPropagation()}
       >
         <div
-          className="flex items-center justify-between px-4 py-2 border-b border-stone-800 bg-stone-900 rounded-t-lg cursor-move select-none shrink-0"
+          className={`flex items-center justify-between px-4 py-2 border-b border-stone-800 bg-stone-900 select-none shrink-0 ${
+            isMobile ? '' : 'cursor-move rounded-t-lg'
+          }`}
           onPointerDown={(e) => {
+            if (isMobile) return;
             e.preventDefault();
             setDragging(true);
             dragRef.current = { startX: e.clientX, startY: e.clientY, posX: panelPos.x, posY: panelPos.y };
             (e.target as HTMLElement).setPointerCapture(e.pointerId);
           }}
           onPointerMove={(e) => {
-            if (!dragging) return;
+            if (isMobile || !dragging) return;
             setPanelPos({
               x: dragRef.current.posX + e.clientX - dragRef.current.startX,
               y: Math.max(0, dragRef.current.posY + e.clientY - dragRef.current.startY),
             });
           }}
           onPointerUp={(e) => {
+            if (isMobile) return;
             if (dragging) {
               setDragging(false);
               (e.target as HTMLElement).releasePointerCapture(e.pointerId);
@@ -280,7 +292,7 @@ export function ImageBrowser({ open, onOpenChange, onSelect, title = "Browse Ima
                 {!searchQuery && folders.length > 0 && (
                   <div>
                     <h3 className="text-xs text-stone-500 uppercase tracking-wider mb-2">Folders</h3>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    <div className="grid grid-cols-3 sm:grid-cols-3 gap-2">
                       {folders.map((folder) => (
                         <button
                           key={folder.id}
@@ -301,7 +313,7 @@ export function ImageBrowser({ open, onOpenChange, onSelect, title = "Browse Ima
                     <h3 className="text-xs text-stone-500 uppercase tracking-wider mb-2">
                       {searchQuery ? 'Search Results' : 'Images'}
                     </h3>
-                    <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                    <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 pb-2">
                       {displayedImages.map((image) => (
                         <button
                           key={image.id}
