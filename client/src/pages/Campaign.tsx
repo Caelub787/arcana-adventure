@@ -6531,7 +6531,36 @@ export default function Campaign() {
   const [dcSaveModifier, setDcSaveModifier] = useState(0);
   const [dcSaveAdvantage, setDcSaveAdvantage] = useState(false);
   const [dcSaveDisadvantage, setDcSaveDisadvantage] = useState(false);
-  
+  const saveRollResolverRef = useRef<Map<string, (result: { saved: boolean; roll: number; total: number }) => void>>(new Map());
+
+  const handleRequestSaveRoll = useCallback((params: {
+    targetCharacterId: string;
+    targetUserId: string;
+    spellName: string;
+    saveAttribute: string;
+    saveDc: number;
+    damage: number;
+    damageType: string;
+    saveSuccessEffect: string;
+    casterName: string;
+    isHealing: boolean;
+  }) => {
+    return new Promise<{ saved: boolean; roll: number; total: number }>((resolve) => {
+      saveRollResolverRef.current.set(params.targetCharacterId, resolve);
+      setDcSavePrompt({
+        targetCharacterId: params.targetCharacterId,
+        spellName: params.spellName,
+        saveAttribute: params.saveAttribute,
+        saveDc: params.saveDc,
+        damage: params.damage,
+        damageType: params.damageType,
+        saveSuccessEffect: params.saveSuccessEffect,
+        casterName: params.casterName,
+        isHealing: params.isHealing,
+      });
+    });
+  }, []);
+
   // Add Token dialog state
   const [addTokenDialogOpen, setAddTokenDialogOpen] = useState(false);
   
@@ -10245,6 +10274,7 @@ export default function Campaign() {
                onClearThrowableGridTarget={() => setThrowableGridTarget(null)}
                notesPanelOpen={sidePanelOpen}
                notesPanelWidth={notesPanelWidth}
+               onRequestSaveRoll={handleRequestSaveRoll}
              />
            )}
           
@@ -11330,6 +11360,18 @@ export default function Campaign() {
           const totalMod = attrMod + dcSaveModifier;
           const saveTotal = finalRoll + totalMod;
           const saveSuccess = saveTotal >= dcSavePrompt.saveDc;
+
+          const resolver = saveRollResolverRef.current.get(dcSavePrompt.targetCharacterId);
+          if (resolver) {
+            resolver({ saved: saveSuccess, roll: finalRoll, total: saveTotal });
+            saveRollResolverRef.current.delete(dcSavePrompt.targetCharacterId);
+            setDcSavePrompt(null);
+            setDcSaveModifier(0);
+            setDcSaveAdvantage(false);
+            setDcSaveDisadvantage(false);
+            return;
+          }
+
           let appliedDamage = dcSavePrompt.damage;
           if (saveSuccess) {
             appliedDamage = dcSavePrompt.saveSuccessEffect === 'none' ? 0 : Math.floor(dcSavePrompt.damage / 2);
@@ -11377,10 +11419,18 @@ export default function Campaign() {
                   <span className="text-stone-400">DC:</span>
                   <span className="text-red-400 font-bold">{dcSavePrompt.saveDc}</span>
                 </div>
+                {dcSavePrompt.damage > 0 && (
                 <div className="flex justify-between text-sm">
                   <span className="text-stone-400">Potential Damage:</span>
                   <span className="text-orange-400 font-bold">{dcSavePrompt.damage} {dcSavePrompt.damageType}</span>
                 </div>
+                )}
+                {dcSavePrompt.damage === 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-stone-400">Damage:</span>
+                  <span className="text-stone-500 italic">Rolled after saves</span>
+                </div>
+                )}
                 <div className="flex justify-between text-sm">
                   <span className="text-stone-400">On Success:</span>
                   <span className="text-green-400 font-bold">{dcSavePrompt.saveSuccessEffect === 'none' ? 'No Damage' : 'Half Damage'}</span>

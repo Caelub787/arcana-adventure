@@ -4016,6 +4016,18 @@ interface BattleMapHotbarsProps {
   onClearThrowableGridTarget?: () => void;
   notesPanelOpen?: boolean;
   notesPanelWidth?: number;
+  onRequestSaveRoll?: (params: {
+    targetCharacterId: string;
+    targetUserId: string;
+    spellName: string;
+    saveAttribute: string;
+    saveDc: number;
+    damage: number;
+    damageType: string;
+    saveSuccessEffect: string;
+    casterName: string;
+    isHealing: boolean;
+  }) => Promise<{ saved: boolean; roll: number; total: number }>;
 }
 
 // Sub-component for individual hotbar slot
@@ -4040,12 +4052,24 @@ interface BattleMapHotbarSlotProps {
   onEnterThrowableAoeMode?: (item: any, casterToken: any) => void;
   throwableGridTarget?: { x: number; y: number } | null;
   onClearThrowableGridTarget?: () => void;
+  onRequestSaveRoll?: (params: {
+    targetCharacterId: string;
+    targetUserId: string;
+    spellName: string;
+    saveAttribute: string;
+    saveDc: number;
+    damage: number;
+    damageType: string;
+    saveSuccessEffect: string;
+    casterName: string;
+    isHealing: boolean;
+  }) => Promise<{ saved: boolean; roll: number; total: number }>;
 }
 
 // Ranged weapon categories that use ammunition
 const RANGED_WEAPON_CATEGORIES = ['bow', 'crossbow', 'sling', 'firearm'];
 
-const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHotbars, allItems, tokens, targetedTokenId, allCharacters, gridSize = 50, onEnterAoeMode, aoeTargetState, onAoeDamageRoll, sceneId, thrownItems, onRefetchThrownItems, onEnterThrowableAoeMode, throwableGridTarget, onClearThrowableGridTarget }: BattleMapHotbarSlotProps) {
+const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHotbars, allItems, tokens, targetedTokenId, allCharacters, gridSize = 50, onEnterAoeMode, aoeTargetState, onAoeDamageRoll, sceneId, thrownItems, onRefetchThrownItems, onEnterThrowableAoeMode, throwableGridTarget, onClearThrowableGridTarget, onRequestSaveRoll }: BattleMapHotbarSlotProps) {
   const clickTimerRef = useRef<NodeJS.Timeout | null>(null);
   const clickCountRef = useRef(0);
   const queryClient = useQueryClient();
@@ -6026,8 +6050,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
         const isEnergyEffect = spellData.damageType === 'Energy';
         
         const processAoeDcSpell = async () => {
-          // STEP 1: Process ALL token saves in order (NPC auto-roll, players get "awaiting" notification)
-          const saveResults: Array<{ token: any; targetChar: any; saved: boolean; isPlayer: boolean }> = [];
+          const saveResults: Array<{ token: any; targetChar: any; saved: boolean; isPlayer: boolean; isRemote: boolean }> = [];
           
           for (let i = 0; i < tokensInAoe.length; i++) {
             const token = tokensInAoe[i];
@@ -6035,28 +6058,63 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
             if (!targetChar) continue;
             
             if (saveResults.length > 0) {
-              await new Promise(resolve => setTimeout(resolve, 1000));
+              await new Promise(resolve => setTimeout(resolve, 800));
             }
             
             const isPlayerToken = !!(targetChar.userId);
             
-            if (isPlayerToken) {
-              // Player token: show awaiting notification (prompt sent after damage is known)
-              saveResults.push({ token, targetChar, saved: false, isPlayer: true });
+            if (isPlayerToken && onRequestSaveRoll) {
+              triggerRollNotification({
+                type: 'system',
+                label: `${targetChar.name} — Rolling ${saveAttr.charAt(0).toUpperCase() + saveAttr.slice(1)} Save (DC ${saveDc})`,
+                result: 0, total: 0,
+                username: targetChar.name, characterName: targetChar.name,
+                calculationBreakdown: `${targetChar.name} must roll a ${saveAttr} save vs DC ${saveDc}`,
+              });
               
+              try {
+                const result = await onRequestSaveRoll({
+                  targetCharacterId: targetChar.id,
+                  targetUserId: targetChar.userId,
+                  spellName: spellData.name,
+                  saveAttribute: saveAttr,
+                  saveDc: saveDc,
+                  damage: 0,
+                  damageType: spellData.damageType || '',
+                  saveSuccessEffect: saveSuccessEffect,
+                  casterName: character.name,
+                  isHealing: isHealing,
+                });
+                saveResults.push({ token, targetChar, saved: result.saved, isPlayer: true, isRemote: false });
+                
+                triggerRollNotification({
+                  type: result.saved ? 'system' : 'attack',
+                  dieType: 'd20',
+                  label: `${targetChar.name} ${saveAttr.charAt(0).toUpperCase() + saveAttr.slice(1)} Save — ${result.saved ? 'SAVED!' : 'FAILED!'}`,
+                  result: result.roll,
+                  total: result.total,
+                  username: targetChar.name, characterName: targetChar.name,
+                  calculationBreakdown: `Rolled ${result.total} vs DC ${saveDc} → ${result.saved ? 'SAVED' : 'FAILED'}`,
+                });
+                if (character.campaignId) {
+                  gameWs.sendChatMessage(character.userId || '', targetChar.name || 'Unknown',
+                    `${saveAttr.charAt(0).toUpperCase() + saveAttr.slice(1)} Save vs ${spellData.name}: Rolled ${result.total} vs DC ${saveDc} → ${result.saved ? 'SAVED' : 'FAILED'}`, 'roll');
+                }
+              } catch (e) {
+                saveResults.push({ token, targetChar, saved: false, isPlayer: true, isRemote: false });
+              }
+              continue;
+            }
+            
+            if (isPlayerToken && !onRequestSaveRoll) {
+              saveResults.push({ token, targetChar, saved: false, isPlayer: true, isRemote: true });
               triggerRollNotification({
                 type: 'system',
                 label: `${targetChar.name} — Awaiting ${saveAttr.charAt(0).toUpperCase() + saveAttr.slice(1)} Save (DC ${saveDc})`,
-                result: 0,
-                total: 0,
-                username: targetChar.name,
-                characterName: targetChar.name,
+                result: 0, total: 0,
+                username: targetChar.name, characterName: targetChar.name,
                 calculationBreakdown: `${targetChar.name} must roll a ${saveAttr} save vs DC ${saveDc}`,
               });
-              if (character.campaignId) {
-                gameWs.sendChatMessage(character.userId || '', targetChar.name || 'Unknown', 
-                  `${saveAttr.charAt(0).toUpperCase() + saveAttr.slice(1)} Save vs ${spellData.name}: Awaiting roll (DC ${saveDc})`, 'roll');
-              }
               continue;
             }
             
@@ -6067,7 +6125,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
             const saveTotal = saveRoll.result + attrMod;
             const saveSuccess = saveTotal >= saveDc;
             
-            saveResults.push({ token, targetChar, saved: saveSuccess, isPlayer: false });
+            saveResults.push({ token, targetChar, saved: saveSuccess, isPlayer: false, isRemote: false });
             
             triggerRollNotification({
               type: saveSuccess ? 'system' : 'attack',
@@ -6086,7 +6144,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
             }
           }
           
-          // STEP 2: Roll damage dice (after all saves shown)
+          // STEP 2: Roll damage dice (after all saves resolved)
           await new Promise(resolve => setTimeout(resolve, 1000));
           
           const { result: dmgResult, dieType: dmgDieType } = rollDice(diceNotation);
@@ -6120,8 +6178,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
           await new Promise(resolve => setTimeout(resolve, 500));
           
           for (const sr of saveResults) {
-            if (sr.isPlayer) {
-              // Send player save prompt with correct damage
+            if (sr.isRemote) {
               gameWs.send({
                 type: 'dc_save_prompt',
                 campaignId,
@@ -6139,7 +6196,6 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
               continue;
             }
             
-            // Apply NPC damage
             let appliedDamage = totalDamage;
             if (sr.saved) {
               appliedDamage = saveSuccessEffect === 'none' ? 0 : Math.floor(totalDamage / 2);
@@ -6228,15 +6284,97 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
         const saveSuccessEffect = spellData.saveSuccessEffect || 'half';
         const isPlayerTarget = !!(targetChar.userId);
         
-        if (isPlayerTarget) {
-          // STEP 1: Show notification that player must roll save
+        if (isPlayerTarget && onRequestSaveRoll) {
+          triggerRollNotification({
+            type: 'system',
+            label: `${targetChar.name} — Rolling ${saveAttr.charAt(0).toUpperCase() + saveAttr.slice(1)} Save (DC ${singleTargetDc})`,
+            result: 0, total: 0,
+            username: targetChar.name, characterName: targetChar.name,
+            calculationBreakdown: `${targetChar.name} must roll a ${saveAttr} save vs DC ${singleTargetDc}`,
+          });
+          
+          let saveResult = { saved: false, roll: 0, total: 0 };
+          try {
+            saveResult = await onRequestSaveRoll({
+              targetCharacterId: targetChar.id,
+              targetUserId: targetChar.userId,
+              spellName: spellData.name,
+              saveAttribute: saveAttr,
+              saveDc: singleTargetDc,
+              damage: 0,
+              damageType: spellData.damageType || '',
+              saveSuccessEffect: saveSuccessEffect,
+              casterName: character.name,
+              isHealing: isHealing,
+            });
+          } catch (e) {
+            saveResult = { saved: false, roll: 1, total: 1 };
+          }
+          
+          triggerRollNotification({
+            type: saveResult.saved ? 'system' : 'attack',
+            dieType: 'd20',
+            label: `${targetChar.name} ${saveAttr.charAt(0).toUpperCase() + saveAttr.slice(1)} Save — ${saveResult.saved ? 'SAVED!' : 'FAILED!'}`,
+            result: saveResult.roll,
+            total: saveResult.total,
+            username: targetChar.name, characterName: targetChar.name,
+            calculationBreakdown: `Rolled ${saveResult.total} vs DC ${singleTargetDc} → ${saveResult.saved ? 'SAVED' : 'FAILED'}`,
+          });
+          if (character.campaignId) {
+            gameWs.sendChatMessage(character.userId || '', targetChar.name || 'Unknown',
+              `${saveAttr.charAt(0).toUpperCase() + saveAttr.slice(1)} Save vs ${spellData.name}: Rolled ${saveResult.total} vs DC ${singleTargetDc} → ${saveResult.saved ? 'SAVED' : 'FAILED'}`, 'roll');
+          }
+          
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          
+          const { result: dmgResult, dieType: dmgDieType } = rollDice(diceNotation);
+          const spellCritBonus = options?.critSuccess ? getMaxDice(diceNotation) : 0;
+          const mod = typeof spellData.mod === 'number' ? spellData.mod : (parseInt(spellData.mod) || 0);
+          const totalDmg = (dmgResult || 0) + spellCritBonus + mod;
+          const dmgDiceResult = spellCritBonus > 0 ? `${dmgResult} + MAX (${spellCritBonus})` : `${dmgResult}`;
+          const dmgBreakdown = mod !== 0 
+            ? `${diceNotation} = ${dmgDiceResult} + Mod (${mod >= 0 ? '+' : ''}${mod})`
+            : `${diceNotation} = ${dmgDiceResult}`;
+          const damageTypeDisplay = spellData.damageType ? ` (${spellData.damageType})` : '';
+          
+          let appliedDmg = totalDmg;
+          if (saveResult.saved) {
+            appliedDmg = saveSuccessEffect === 'none' ? 0 : Math.floor(totalDmg / 2);
+          }
+          
+          const resultText = saveResult.saved
+            ? `${saveSuccessEffect === 'none' ? 'No damage (saved)' : `Half damage: ${appliedDmg} (saved)`}`
+            : `Full damage: ${appliedDmg}`;
+          
+          const isEnergyEffect = spellData.damageType === 'Energy';
+          if (appliedDmg > 0) {
+            await applyDamageToTarget(appliedDmg, spellData.damageType || null, targetChar, isEnergyEffect ? spellData.gainEnergy : undefined);
+          }
+          
+          triggerRollNotification({
+            type: 'attack',
+            dieType: dmgDieType as any,
+            label: `${spellData.name} → ${targetChar.name} (${resultText})`,
+            result: dmgResult,
+            modifier: mod,
+            total: appliedDmg,
+            username: character.name || 'Unknown',
+            characterName: character.name,
+            calculationBreakdown: `${dmgBreakdown} = ${totalDmg}${damageTypeDisplay} → ${resultText}`,
+          });
+          if (character.campaignId) {
+            gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', 
+              `${spellData.name} → ${targetChar.name}: ${dmgBreakdown} = ${totalDmg}${damageTypeDisplay} → ${resultText}`, 'roll');
+          }
+          return;
+        }
+        
+        if (isPlayerTarget && !onRequestSaveRoll) {
           triggerRollNotification({
             type: 'system',
             label: `${targetChar.name} — Awaiting ${saveAttr.charAt(0).toUpperCase() + saveAttr.slice(1)} Save (DC ${singleTargetDc})`,
-            result: 0,
-            total: 0,
-            username: targetChar.name,
-            characterName: targetChar.name,
+            result: 0, total: 0,
+            username: targetChar.name, characterName: targetChar.name,
             calculationBreakdown: `${targetChar.name} must roll a ${saveAttr} save vs DC ${singleTargetDc}`,
           });
           if (character.campaignId) {
@@ -6244,7 +6382,6 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
               `${saveAttr.charAt(0).toUpperCase() + saveAttr.slice(1)} Save vs ${spellData.name}: Awaiting roll (DC ${singleTargetDc})`, 'roll');
           }
           
-          // STEP 2: Roll damage (after save notification)
           await new Promise(resolve => setTimeout(resolve, 1000));
           
           const { result: dmgResult, dieType: dmgDieType } = rollDice(diceNotation);
@@ -6273,7 +6410,6 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
               `${spellData.name} Damage: ${dmgBreakdown} = ${totalDmg}${damageTypeDisplay}`, 'roll');
           }
           
-          // STEP 3: Send save prompt with damage (player resolves asynchronously)
           gameWs.send({
             type: 'dc_save_prompt',
             campaignId,
@@ -6786,7 +6922,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
 }
 const BattleMapHotbarSlot = React.memo(BattleMapHotbarSlotInner);
 
-const BattleMapHotbarsInner = function BattleMapHotbars({ character, tokens, targetedTokenId, characters, gridSize, onEnterAoeMode, aoeTargetState, onAoeDamageRoll, sceneId, thrownItems, onRefetchThrownItems, onEnterThrowableAoeMode, throwableGridTarget, onClearThrowableGridTarget, notesPanelOpen = false, notesPanelWidth = 0 }: BattleMapHotbarsProps) {
+const BattleMapHotbarsInner = function BattleMapHotbars({ character, tokens, targetedTokenId, characters, gridSize, onEnterAoeMode, aoeTargetState, onAoeDamageRoll, sceneId, thrownItems, onRefetchThrownItems, onEnterThrowableAoeMode, throwableGridTarget, onClearThrowableGridTarget, notesPanelOpen = false, notesPanelWidth = 0, onRequestSaveRoll }: BattleMapHotbarsProps) {
   const [activeHotbar, setActiveHotbar] = useState<string>('weapons');
   
   const { data: hotbars = [], isLoading: hotbarsLoading } = useQuery({
@@ -6998,6 +7134,7 @@ const BattleMapHotbarsInner = function BattleMapHotbars({ character, tokens, tar
                       onEnterThrowableAoeMode={onEnterThrowableAoeMode}
                       throwableGridTarget={throwableGridTarget}
                       onClearThrowableGridTarget={onClearThrowableGridTarget}
+                      onRequestSaveRoll={onRequestSaveRoll}
                     />
                   );
                 })}
@@ -17943,6 +18080,14 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                                   <span className="text-cyan-400 font-medium">
                                     {spell.energyCost || 0} Energy
                                   </span>
+                                  {spell.saveSuccessEffect && (
+                                    <>
+                                      <span className="text-stone-500">|</span>
+                                      <span className="text-yellow-400 font-medium">
+                                        DC {spell.saveDc || '—'} {spell.saveAttribute ? spell.saveAttribute.charAt(0).toUpperCase() + spell.saveAttribute.slice(1) : ''} Save
+                                      </span>
+                                    </>
+                                  )}
                                 </div>
                               </div>
                             </div>
@@ -18847,6 +18992,29 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                           </div>
                         )}
                       </div>
+
+                      {(selectedSpell.saveAttribute || selectedSpell.saveSuccessEffect) && (
+                        <div className="grid grid-cols-2 gap-4">
+                          {selectedSpell.saveAttribute && (
+                            <div>
+                              <Label className="text-xs text-stone-400">Save Attribute</Label>
+                              <p className="text-sm text-stone-100">{selectedSpell.saveAttribute.charAt(0).toUpperCase() + selectedSpell.saveAttribute.slice(1)}</p>
+                            </div>
+                          )}
+                          {selectedSpell.saveDc && (
+                            <div>
+                              <Label className="text-xs text-stone-400">Save DC</Label>
+                              <p className="text-sm text-stone-100">{selectedSpell.saveDc}</p>
+                            </div>
+                          )}
+                          {selectedSpell.saveSuccessEffect && (
+                            <div>
+                              <Label className="text-xs text-stone-400">On Save</Label>
+                              <p className="text-sm text-stone-100">{selectedSpell.saveSuccessEffect === 'none' ? 'No Damage' : selectedSpell.saveSuccessEffect === 'half' ? 'Half Damage' : selectedSpell.saveSuccessEffect}</p>
+                            </div>
+                          )}
+                        </div>
+                      )}
 
                       {/* Multi-Roll Entries Section */}
                       <div className="pt-4 border-t border-stone-700">
