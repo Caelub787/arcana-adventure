@@ -6356,18 +6356,6 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
           }
           
           if (saveResult.saved && saveSuccessEffect === 'none') {
-            triggerRollNotification({
-              type: 'system',
-              label: `${spellData.name} → ${targetChar.name} — No damage (saved)`,
-              result: 0, total: 0,
-              username: character.name || 'Unknown',
-              characterName: character.name,
-              calculationBreakdown: `${targetChar.name} saved — no damage dealt`,
-            });
-            if (character.campaignId) {
-              gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', 
-                `${spellData.name} → ${targetChar.name}: No damage (saved)`, 'roll');
-            }
             return;
           }
           
@@ -6497,18 +6485,6 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
         }
         
         if (saveSuccess && saveSuccessEffect === 'none') {
-          triggerRollNotification({
-            type: 'system',
-            label: `${spellData.name} → ${targetChar.name} — No damage (saved)`,
-            result: 0, total: 0,
-            username: character.name || 'Unknown',
-            characterName: character.name,
-            calculationBreakdown: `${targetChar.name} saved — no damage dealt`,
-          });
-          if (character.campaignId) {
-            gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', 
-              `${spellData.name} → ${targetChar.name}: No damage (saved)`, 'roll');
-          }
           return;
         }
         
