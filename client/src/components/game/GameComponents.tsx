@@ -2474,13 +2474,12 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
             >
               <img src={tokenImage} alt="token" className="w-full h-full object-cover pointer-events-none rounded-full" />
               
-              {/* Initiative Turn Glow - pulsing golden glow for current turn character */}
+              {/* Initiative Turn Border - yellow border for current turn character */}
               {character && currentTurnCharacterId === character.id && (
                 <div 
-                  className="absolute -inset-2 rounded-full pointer-events-none animate-pulse"
+                  className="absolute inset-0 rounded-full pointer-events-none"
                   style={{
-                    boxShadow: '0 0 20px 8px rgba(251, 191, 36, 0.9), 0 0 40px 15px rgba(251, 191, 36, 0.6), 0 0 60px 20px rgba(251, 191, 36, 0.4)',
-                    border: '4px solid rgba(251, 191, 36, 1)',
+                    border: '3px solid rgba(251, 191, 36, 1)',
                     zIndex: 10
                   }}
                 />
@@ -8058,7 +8057,22 @@ const InitiativeTrackerInner = function InitiativeTracker({ open, onOpenChange, 
   const combatMutation = useMutation({
     mutationFn: ({ inCombat, currentTurnCharacterId }: { inCombat: boolean; currentTurnCharacterId?: string }) => 
       api.updateCombatState(sceneId!, inCombat, currentTurnCharacterId),
-    onSuccess: () => {
+    onMutate: async ({ inCombat, currentTurnCharacterId }) => {
+      await queryClient.cancelQueries({ queryKey: [`/api/scenes/${sceneId}/initiative`] });
+      const previousData = queryClient.getQueryData([`/api/scenes/${sceneId}/initiative`]);
+      queryClient.setQueryData([`/api/scenes/${sceneId}/initiative`], (old: any) => ({
+        ...old,
+        inCombat,
+        currentTurnCharacterId,
+      }));
+      return { previousData };
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.previousData) {
+        queryClient.setQueryData([`/api/scenes/${sceneId}/initiative`], context.previousData);
+      }
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/scenes/${sceneId}/initiative`] });
     },
   });
@@ -8101,11 +8115,7 @@ const InitiativeTrackerInner = function InitiativeTracker({ open, onOpenChange, 
       // Process effect triggers for the first character (start of round + start of turn)
       // Visual notifications are handled via WebSocket broadcast in Campaign.tsx
       if (sceneId && firstCharacterId) {
-        try {
-          await api.processEffectTriggers(sceneId, firstCharacterId, 'start_of_turn', true);
-        } catch (err) {
-          console.error('Failed to process effect triggers:', err);
-        }
+        api.processEffectTriggers(sceneId, firstCharacterId, 'start_of_turn', true).catch(err => console.error('Failed to process effect triggers:', err));
       }
     }
   };
@@ -8118,13 +8128,12 @@ const InitiativeTrackerInner = function InitiativeTracker({ open, onOpenChange, 
     });
   };
 
-  const handleNextTurn = async () => {
+  const handleNextTurn = () => {
     const currentIndex = sortedEntries.findIndex(e => e.characterId === currentTurnCharacterId);
     const nextIndex = (currentIndex + 1) % sortedEntries.length;
     const nextCharacterId = sortedEntries[nextIndex].characterId;
     const isNewRound = nextIndex === 0;
     
-    // Update combat state first
     combatMutation.mutate({ inCombat: true, currentTurnCharacterId: nextCharacterId });
     
     toast({
@@ -8132,14 +8141,8 @@ const InitiativeTrackerInner = function InitiativeTracker({ open, onOpenChange, 
       description: `${getCharacterName(nextCharacterId)}'s turn!`,
     });
     
-    // Process effect triggers for the character whose turn is starting
-    // Visual notifications are handled via WebSocket broadcast in Campaign.tsx
     if (sceneId && nextCharacterId) {
-      try {
-        await api.processEffectTriggers(sceneId, nextCharacterId, 'start_of_turn', isNewRound);
-      } catch (err) {
-        console.error('Failed to process effect triggers:', err);
-      }
+      api.processEffectTriggers(sceneId, nextCharacterId, 'start_of_turn', isNewRound).catch(err => console.error('Failed to process effect triggers:', err));
     }
   };
 
@@ -8151,6 +8154,70 @@ const InitiativeTrackerInner = function InitiativeTracker({ open, onOpenChange, 
   const handleToggleHidden = (entry: any) => {
     updateMutation.mutate({ id: entry.id, data: { isHidden: !entry.isHidden } });
   };
+
+  const charactersWithInitiative = new Set(entries.map((e: any) => e.characterId));
+  const charactersNeedingRoll = sceneId ? characters.filter((c: any) => {
+    if (charactersWithInitiative.has(c.id)) return false;
+    if (isGM) return true;
+    return c.userId === userId;
+  }) : [];
+  const hasCurrentTurnEntry = inCombat && sortedEntries.some(e => e.characterId === currentTurnCharacterId);
+
+  const notInInitiativeSection = charactersNeedingRoll.length > 0 ? (
+    <div className="relative pt-2">
+      <button
+        onClick={() => setInactiveCollapsed(!inactiveCollapsed)}
+        className="flex items-center justify-between w-full text-left hover:bg-stone-800/50 rounded p-1 -m-1"
+        data-testid="button-toggle-inactive-characters"
+      >
+        <h4 className="text-sm font-semibold text-stone-400">
+          Not in Initiative ({charactersNeedingRoll.length})
+        </h4>
+        {inactiveCollapsed ? (
+          <ChevronRight className="w-4 h-4 text-stone-400" />
+        ) : (
+          <ChevronDown className="w-4 h-4 text-stone-400" />
+        )}
+      </button>
+      {!inactiveCollapsed && (
+        <div className="absolute left-0 right-0 top-full z-20 bg-stone-900 border border-stone-700 rounded-lg p-2 shadow-lg max-h-[200px] overflow-y-auto">
+          <div className="space-y-2">
+            {charactersNeedingRoll.map((char: any) => (
+              <div 
+                key={char.id}
+                className="flex items-center gap-3 p-2 bg-stone-800 border border-stone-700 rounded-lg"
+              >
+                {(char.portrait || allSpecies.find((s: any) => s.name === char.race)?.defaultImage) ? (
+                  <img 
+                    src={char.portrait || allSpecies.find((s: any) => s.name === char.race)?.defaultImage} 
+                    alt="" 
+                    className="w-8 h-8 rounded-full object-cover border border-stone-600"
+                  />
+                ) : (
+                  <div className="w-8 h-8 rounded-full bg-stone-700 flex items-center justify-center">
+                    <User className="w-4 h-4 text-stone-400" />
+                  </div>
+                )}
+                <span className="flex-1 text-stone-200 truncate">{char.name}</span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="border-amber-600 text-amber-500 hover:bg-amber-600/20"
+                  onClick={() => {
+                    gameWs.sendInitiativeRoll(sceneId!, char.id);
+                  }}
+                  data-testid={`button-roll-initiative-${char.id}`}
+                >
+                  <Dice5 className="w-3 h-3 mr-1" />
+                  Roll
+                </Button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  ) : null;
 
   const initiativeContent = (
         <div className={`${inline ? 'flex flex-col h-full' : 'space-y-4'}`}>
@@ -8175,8 +8242,8 @@ const InitiativeTrackerInner = function InitiativeTracker({ open, onOpenChange, 
                 const portrait = getCharacterPortrait(entry.characterId);
                 
                 return (
+                  <React.Fragment key={entry.id}>
                   <div
-                    key={entry.id}
                     className={`
                       flex items-center gap-3 p-2 rounded-lg border transition-all
                       ${isCurrentTurn 
@@ -8270,77 +8337,15 @@ const InitiativeTrackerInner = function InitiativeTracker({ open, onOpenChange, 
                       </div>
                     )}
                   </div>
+                  {isCurrentTurn && notInInitiativeSection}
+                  </React.Fragment>
                 );
               })}
             </div>
           )}
 
-          {/* Roll Initiative Section - Characters that haven't rolled yet (Collapsible) */}
-          {sceneId && (() => {
-            const charactersWithInitiative = new Set(entries.map((e: any) => e.characterId));
-            const charactersNeedingRoll = characters.filter((c: any) => {
-              if (charactersWithInitiative.has(c.id)) return false;
-              // Players can only roll for their own characters, GMs can roll for any
-              if (isGM) return true;
-              return c.userId === userId;
-            });
-            
-            if (charactersNeedingRoll.length === 0) return null;
-            
-            return (
-              <div className={`pt-4 border-t border-stone-700 ${inline ? 'shrink-0' : ''}`}>
-                <button
-                  onClick={() => setInactiveCollapsed(!inactiveCollapsed)}
-                  className="flex items-center justify-between w-full text-left mb-2 hover:bg-stone-800/50 rounded p-1 -m-1"
-                  data-testid="button-toggle-inactive-characters"
-                >
-                  <h4 className="text-sm font-semibold text-stone-400">
-                    Not in Initiative ({charactersNeedingRoll.length})
-                  </h4>
-                  {inactiveCollapsed ? (
-                    <ChevronRight className="w-4 h-4 text-stone-400" />
-                  ) : (
-                    <ChevronDown className="w-4 h-4 text-stone-400" />
-                  )}
-                </button>
-                {!inactiveCollapsed && (
-                  <div className="space-y-2 max-h-[150px] overflow-y-auto">
-                    {charactersNeedingRoll.map((char: any) => (
-                      <div 
-                        key={char.id}
-                        className="flex items-center gap-3 p-2 bg-stone-800 border border-stone-700 rounded-lg"
-                      >
-                        {(char.portrait || allSpecies.find((s: any) => s.name === char.race)?.defaultImage) ? (
-                          <img 
-                            src={char.portrait || allSpecies.find((s: any) => s.name === char.race)?.defaultImage} 
-                            alt="" 
-                            className="w-8 h-8 rounded-full object-cover border border-stone-600"
-                          />
-                        ) : (
-                          <div className="w-8 h-8 rounded-full bg-stone-700 flex items-center justify-center">
-                            <User className="w-4 h-4 text-stone-400" />
-                          </div>
-                        )}
-                        <span className="flex-1 text-stone-200 truncate">{char.name}</span>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="border-amber-600 text-amber-500 hover:bg-amber-600/20"
-                          onClick={() => {
-                            gameWs.sendInitiativeRoll(sceneId, char.id);
-                          }}
-                          data-testid={`button-roll-initiative-${char.id}`}
-                        >
-                          <Dice5 className="w-3 h-3 mr-1" />
-                          Roll
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            );
-          })()}
+          {/* Not in Initiative fallback - show at original position when no current turn entry */}
+          {!hasCurrentTurnEntry && notInInitiativeSection}
           
           {/* GM Actions */}
           {isGM && sortedEntries.length > 0 && (
