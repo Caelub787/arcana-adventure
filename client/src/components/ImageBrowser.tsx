@@ -152,6 +152,8 @@ export function ImageBrowser({ open, onOpenChange, onSelect, title = "Browse Ima
         className="fixed inset-0 sm:inset-auto sm:left-1/2 sm:top-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2 sm:w-[600px] sm:h-[70vh] sm:rounded-lg bg-stone-950 border border-stone-800 text-stone-200 shadow-2xl flex flex-col overflow-hidden"
         style={{ zIndex: 10002 }}
         onMouseDown={(e) => e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()}
+        onPointerDown={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-4 py-2 border-b border-stone-800 bg-stone-900 select-none shrink-0">
           <div>
