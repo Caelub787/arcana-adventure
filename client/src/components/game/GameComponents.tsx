@@ -7461,7 +7461,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
                       roll.rollType === 'heal' ? 'bg-green-700/50 text-green-300' :
                       roll.rollType === 'effect' ? 'bg-blue-700/50 text-blue-300' :
                       'bg-amber-700/50 text-amber-300'
-                    }`}>{roll.rollType}</span>
+                    }`}>{roll.rollType.charAt(0).toUpperCase() + roll.rollType.slice(1)}</span>
                     <span className="text-sm font-medium">{roll.name}</span>
                   </div>
                   <span className="text-xs text-stone-400">{roll.diceFormula}{roll.mod ? (roll.mod > 0 ? `+${roll.mod}` : roll.mod) : ''}</span>

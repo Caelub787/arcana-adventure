@@ -220,12 +220,12 @@ function RollForm({
         </div>
         <div>
           <Label className="text-xs text-stone-400">Damage Type</Label>
-          <Select value={form.damageType || ""} onValueChange={(v) => setForm((f) => ({ ...f, damageType: v }))}>
+          <Select value={form.damageType || "_none"} onValueChange={(v) => setForm((f) => ({ ...f, damageType: v === "_none" ? "" : v }))}>
             <SelectTrigger className="bg-stone-900 border-stone-600 h-7 text-xs" data-testid={`select-${prefix}-damageType`}>
               <SelectValue placeholder="None" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">None</SelectItem>
+              <SelectItem value="_none">None</SelectItem>
               {DAMAGE_TYPES.map((dt) => (
                 <SelectItem key={dt} value={dt}>{dt}</SelectItem>
               ))}
@@ -237,12 +237,12 @@ function RollForm({
       <div className="grid grid-cols-2 gap-2">
         <div>
           <Label className="text-xs text-stone-400">Attribute</Label>
-          <Select value={form.attribute || ""} onValueChange={(v) => setForm((f) => ({ ...f, attribute: v }))}>
+          <Select value={form.attribute || "_none"} onValueChange={(v) => setForm((f) => ({ ...f, attribute: v === "_none" ? "" : v }))}>
             <SelectTrigger className="bg-stone-900 border-stone-600 h-7 text-xs" data-testid={`select-${prefix}-attribute`}>
               <SelectValue placeholder="None" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">None</SelectItem>
+              <SelectItem value="_none">None</SelectItem>
               {ATTRIBUTE_OPTIONS.map((attr) => (
                 <SelectItem key={attr} value={attr}>
                   {attr.charAt(0).toUpperCase() + attr.slice(1)}
@@ -292,7 +292,7 @@ function RollForm({
           <div className="grid grid-cols-2 gap-2">
             <div>
               <Label className="text-xs text-stone-400">AOE Shape</Label>
-              <Select value={form.aoeShape || ""} onValueChange={(v) => setForm((f) => ({ ...f, aoeShape: v }))}>
+              <Select value={form.aoeShape || "_none"} onValueChange={(v) => setForm((f) => ({ ...f, aoeShape: v === "_none" ? "" : v }))}>
                 <SelectTrigger className="bg-stone-900 border-stone-600 h-7 text-xs" data-testid={`select-${prefix}-aoeShape`}>
                   <SelectValue placeholder="Select shape" />
                 </SelectTrigger>
@@ -334,7 +334,7 @@ function RollForm({
           <div className="grid grid-cols-2 gap-2 mt-2">
             <div>
               <Label className="text-xs text-stone-400">Save Attribute</Label>
-              <Select value={form.saveAttribute || ""} onValueChange={(v) => setForm((f) => ({ ...f, saveAttribute: v }))}>
+              <Select value={form.saveAttribute || "_none"} onValueChange={(v) => setForm((f) => ({ ...f, saveAttribute: v === "_none" ? "" : v }))}>
                 <SelectTrigger className="bg-stone-900 border-stone-600 h-7 text-xs" data-testid={`select-${prefix}-saveAttribute`}>
                   <SelectValue placeholder="Select" />
                 </SelectTrigger>
@@ -556,7 +556,7 @@ export function RollEntriesEditor({ ownerType, ownerId, canEdit, onExecuteRoll }
                     {isExpanded ? <ChevronUp className="w-3 h-3 text-stone-400 shrink-0" /> : <ChevronDown className="w-3 h-3 text-stone-400 shrink-0" />}
                     <span className="text-xs font-medium text-stone-200 truncate" data-testid={`text-roll-name-${roll.id}`}>{roll.name}</span>
                     <span className={`text-[10px] px-1.5 py-0.5 rounded ${badgeClass} shrink-0`} data-testid={`badge-roll-type-${roll.id}`}>
-                      {roll.rollType}
+                      {roll.rollType.charAt(0).toUpperCase() + roll.rollType.slice(1)}
                     </span>
                     {roll.diceFormula && (
                       <span className="text-[10px] text-stone-400 shrink-0" data-testid={`text-roll-formula-${roll.id}`}>
