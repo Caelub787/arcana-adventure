@@ -7038,7 +7038,12 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
       }
     }
 
-    if (targetedTokenId && rollEntry.applyToStat && rollEntry.applyToStat !== 'none') {
+    const shouldApplyToTarget = targetedTokenId && (
+      (rollEntry.applyToStat && rollEntry.applyToStat !== 'none') ||
+      rollEntry.rollType === 'damage' ||
+      rollEntry.rollType === 'heal'
+    );
+    if (shouldApplyToTarget) {
       const targetData = getTargetData();
       if (targetData?.characterId) {
         const isEnergyEffect = rollEntry.applyToStat === 'energy';

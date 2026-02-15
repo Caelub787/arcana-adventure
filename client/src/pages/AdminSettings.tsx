@@ -6571,13 +6571,17 @@ function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading }:
             </div>
           </div>
 
-          {initialData?.id && (
+          {initialData?.id ? (
             <div className="pt-4 border-t border-stone-700">
               <RollEntriesEditor 
                 ownerType="spell" 
                 ownerId={initialData.id} 
                 canEdit={true}
               />
+            </div>
+          ) : (
+            <div className="pt-4 border-t border-stone-700">
+              <p className="text-xs text-amber-500">Save the spell first to configure rolls</p>
             </div>
           )}
 
@@ -7353,13 +7357,17 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
               </div>
             )}
 
-            {initialData?.id && (
+            {initialData?.id ? (
               <div className="pt-4 border-t border-stone-700">
                 <RollEntriesEditor 
                   ownerType="item" 
                   ownerId={initialData.id} 
                   canEdit={true}
                 />
+              </div>
+            ) : (
+              <div className="pt-4 border-t border-stone-700">
+                <p className="text-xs text-amber-500">Save the item first to configure rolls</p>
               </div>
             )}
           </div>
