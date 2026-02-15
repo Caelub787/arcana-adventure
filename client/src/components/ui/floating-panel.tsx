@@ -30,90 +30,131 @@ export function FloatingPanel({
   onBringToFront,
 }: FloatingPanelProps) {
   const panelRef = React.useRef<HTMLDivElement>(null);
-  
+
   const computedDefaultSize = React.useMemo(() => {
     if (defaultSize) return defaultSize;
     const height = typeof window !== "undefined" ? window.innerHeight * 0.8 : 600;
     return { width: 680, height };
   }, [defaultSize]);
-  
-  const [position, setPosition] = React.useState(() => {
-    if (defaultPosition) return defaultPosition;
-    const viewportWidth = typeof window !== "undefined" ? window.innerWidth : 1200;
-    const viewportHeight = typeof window !== "undefined" ? window.innerHeight : 800;
+
+  const initialPos = React.useMemo(() => {
+    if (defaultPosition) return { ...defaultPosition };
+    const vw = typeof window !== "undefined" ? window.innerWidth : 1200;
+    const vh = typeof window !== "undefined" ? window.innerHeight : 800;
     return {
-      x: Math.max(20, (viewportWidth - computedDefaultSize.width) / 2),
-      y: Math.max(20, (viewportHeight - computedDefaultSize.height) / 2),
+      x: Math.max(20, (vw - computedDefaultSize.width) / 2),
+      y: Math.max(20, (vh - computedDefaultSize.height) / 2),
     };
-  });
-  const [size, setSize] = React.useState(computedDefaultSize);
-  const [isDragging, setIsDragging] = React.useState(false);
-  const [isResizing, setIsResizing] = React.useState<string | null>(null);
-  const [isFullscreen, setIsFullscreen] = React.useState(false);
-  const [isMinimized, setIsMinimized] = React.useState(false);
-  const savedPanelStateRef = React.useRef<{ position: { x: number; y: number }; size: { width: number; height: number } } | null>(null);
+  }, [defaultPosition, computedDefaultSize]);
+
+  const posRef = React.useRef<{ x: number; y: number }>(initialPos);
+  const sizeRef = React.useRef({ ...computedDefaultSize });
+  const isDraggingRef = React.useRef(false);
+  const isResizingRef = React.useRef<string | null>(null);
   const dragStartRef = React.useRef({ x: 0, y: 0, posX: 0, posY: 0 });
   const resizeStartRef = React.useRef({ x: 0, y: 0, width: 0, height: 0, posX: 0, posY: 0 });
+  const rafRef = React.useRef<number | null>(null);
+  const savedPanelStateRef = React.useRef<{ position: { x: number; y: number }; size: { width: number; height: number } } | null>(null);
 
-  const clampPosition = React.useCallback((x: number, y: number, width: number, height: number) => {
-    const viewportWidth = window.innerWidth;
-    const viewportHeight = window.innerHeight;
+  const [, forceRender] = React.useState(0);
+  const [isFullscreen, setIsFullscreen] = React.useState(false);
+  const [isMinimized, setIsMinimized] = React.useState(false);
+
+  const applyTransform = React.useCallback(() => {
+    const el = panelRef.current;
+    if (!el) return;
+    el.style.transform = `translate(${posRef.current.x}px, ${posRef.current.y}px)`;
+  }, []);
+
+  const applySize = React.useCallback(() => {
+    const el = panelRef.current;
+    if (!el) return;
+    const s = sizeRef.current;
+    el.style.width = `${s.width}px`;
+    el.style.height = `${s.height}px`;
+  }, []);
+
+  const clampPosition = React.useCallback((x: number, y: number, width: number, _height: number) => {
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
     const minVisible = 100;
     return {
-      x: Math.max(-width + minVisible, Math.min(viewportWidth - minVisible, x)),
-      y: Math.max(0, Math.min(viewportHeight - 40, y)),
+      x: Math.max(-width + minVisible, Math.min(vw - minVisible, x)),
+      y: Math.max(0, Math.min(vh - 40, y)),
     };
   }, []);
+
+  React.useLayoutEffect(() => {
+    applyTransform();
+  });
 
   const handleDragStart = React.useCallback((e: React.PointerEvent) => {
     if ((e.target as HTMLElement).closest('[data-no-drag]')) return;
     e.preventDefault();
-    setIsDragging(true);
-    dragStartRef.current = {
-      x: e.clientX,
-      y: e.clientY,
-      posX: position.x,
-      posY: position.y,
-    };
-    (e.target as HTMLElement).setPointerCapture(e.pointerId);
-  }, [position]);
+    isDraggingRef.current = true;
+    dragStartRef.current = { x: e.clientX, y: e.clientY, posX: posRef.current.x, posY: posRef.current.y };
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    const el = panelRef.current;
+    if (el) {
+      el.style.willChange = 'transform';
+      el.classList.add('cursor-grabbing');
+    }
+  }, []);
 
   const handleDragMove = React.useCallback((e: React.PointerEvent) => {
-    if (!isDragging) return;
+    if (!isDraggingRef.current) return;
     const dx = e.clientX - dragStartRef.current.x;
     const dy = e.clientY - dragStartRef.current.y;
+    const s = sizeRef.current;
     const newPos = clampPosition(
       dragStartRef.current.posX + dx,
       dragStartRef.current.posY + dy,
-      size.width,
-      size.height
+      s.width,
+      s.height
     );
-    setPosition(newPos);
-  }, [isDragging, size, clampPosition]);
+    posRef.current.x = newPos.x;
+    posRef.current.y = newPos.y;
+    if (rafRef.current === null) {
+      rafRef.current = requestAnimationFrame(() => {
+        rafRef.current = null;
+        applyTransform();
+      });
+    }
+  }, [clampPosition, applyTransform]);
 
   const handleDragEnd = React.useCallback((e: React.PointerEvent) => {
-    if (!isDragging) return;
-    setIsDragging(false);
-    (e.target as HTMLElement).releasePointerCapture(e.pointerId);
-  }, [isDragging]);
+    if (!isDraggingRef.current) return;
+    isDraggingRef.current = false;
+    try { (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId); } catch {}
+    const el = panelRef.current;
+    if (el) {
+      el.style.willChange = 'auto';
+      el.classList.remove('cursor-grabbing');
+    }
+    if (rafRef.current !== null) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+    applyTransform();
+  }, [applyTransform]);
 
   const handleResizeStart = React.useCallback((e: React.PointerEvent, direction: string) => {
     e.preventDefault();
     e.stopPropagation();
-    setIsResizing(direction);
+    isResizingRef.current = direction;
     resizeStartRef.current = {
-      x: e.clientX,
-      y: e.clientY,
-      width: size.width,
-      height: size.height,
-      posX: position.x,
-      posY: position.y,
+      x: e.clientX, y: e.clientY,
+      width: sizeRef.current.width, height: sizeRef.current.height,
+      posX: posRef.current.x, posY: posRef.current.y,
     };
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
-  }, [size, position]);
+    const el = panelRef.current;
+    if (el) el.style.willChange = 'transform, width, height';
+  }, []);
 
   const handleResizeMove = React.useCallback((e: React.PointerEvent) => {
-    if (!isResizing) return;
+    const dir = isResizingRef.current;
+    if (!dir) return;
     const dx = e.clientX - resizeStartRef.current.x;
     const dy = e.clientY - resizeStartRef.current.y;
     let newWidth = resizeStartRef.current.width;
@@ -121,61 +162,79 @@ export function FloatingPanel({
     let newX = resizeStartRef.current.posX;
     let newY = resizeStartRef.current.posY;
 
-    if (isResizing.includes('e')) {
-      newWidth = Math.max(minWidth, resizeStartRef.current.width + dx);
+    if (dir.includes('e')) newWidth = Math.max(minWidth, resizeStartRef.current.width + dx);
+    if (dir.includes('w')) {
+      const pw = resizeStartRef.current.width - dx;
+      if (pw >= minWidth) { newWidth = pw; newX = resizeStartRef.current.posX + dx; }
     }
-    if (isResizing.includes('w')) {
-      const potentialWidth = resizeStartRef.current.width - dx;
-      if (potentialWidth >= minWidth) {
-        newWidth = potentialWidth;
-        newX = resizeStartRef.current.posX + dx;
-      }
-    }
-    if (isResizing.includes('s')) {
-      newHeight = Math.max(minHeight, resizeStartRef.current.height + dy);
-    }
-    if (isResizing.includes('n')) {
-      const potentialHeight = resizeStartRef.current.height - dy;
-      if (potentialHeight >= minHeight) {
-        newHeight = potentialHeight;
-        newY = resizeStartRef.current.posY + dy;
-      }
+    if (dir.includes('s')) newHeight = Math.max(minHeight, resizeStartRef.current.height + dy);
+    if (dir.includes('n')) {
+      const ph = resizeStartRef.current.height - dy;
+      if (ph >= minHeight) { newHeight = ph; newY = resizeStartRef.current.posY + dy; }
     }
 
-    setSize({ width: newWidth, height: newHeight });
-    const clampedPos = clampPosition(newX, newY, newWidth, newHeight);
-    setPosition(clampedPos);
-  }, [isResizing, minWidth, minHeight, clampPosition]);
+    sizeRef.current = { width: newWidth, height: newHeight };
+    const clamped = clampPosition(newX, newY, newWidth, newHeight);
+    posRef.current.x = clamped.x;
+    posRef.current.y = clamped.y;
+
+    if (rafRef.current === null) {
+      rafRef.current = requestAnimationFrame(() => {
+        rafRef.current = null;
+        applyTransform();
+        applySize();
+      });
+    }
+  }, [minWidth, minHeight, clampPosition, applyTransform, applySize]);
 
   const handleResizeEnd = React.useCallback((e: React.PointerEvent) => {
-    if (!isResizing) return;
-    setIsResizing(null);
-    (e.target as HTMLElement).releasePointerCapture(e.pointerId);
-  }, [isResizing]);
+    if (!isResizingRef.current) return;
+    isResizingRef.current = null;
+    try { (e.target as HTMLElement).releasePointerCapture(e.pointerId); } catch {}
+    const el = panelRef.current;
+    if (el) el.style.willChange = 'auto';
+    if (rafRef.current !== null) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+    applyTransform();
+    applySize();
+    forceRender((n) => n + 1);
+  }, [applyTransform, applySize]);
 
   const toggleMinimize = React.useCallback(() => {
     setIsMinimized((prev) => !prev);
   }, []);
 
   const toggleFullscreen = React.useCallback(() => {
-    if (isFullscreen) {
-      if (savedPanelStateRef.current) {
-        setPosition(savedPanelStateRef.current.position);
-        setSize(savedPanelStateRef.current.size);
+    setIsFullscreen((prev) => {
+      if (prev) {
+        if (savedPanelStateRef.current) {
+          const sp = savedPanelStateRef.current;
+          posRef.current.x = sp.position.x;
+          posRef.current.y = sp.position.y;
+          sizeRef.current = { ...sp.size };
+        }
+        return false;
+      } else {
+        savedPanelStateRef.current = { position: { ...posRef.current }, size: { ...sizeRef.current } };
+        posRef.current.x = 0; posRef.current.y = 0;
+        sizeRef.current = { width: window.innerWidth, height: window.innerHeight };
+        setIsMinimized(false);
+        return true;
       }
-      setIsFullscreen(false);
-    } else {
-      savedPanelStateRef.current = { position, size };
-      setPosition({ x: 0, y: 0 });
-      setSize({ width: window.innerWidth, height: window.innerHeight });
-      setIsFullscreen(true);
-      setIsMinimized(false);
-    }
-  }, [isFullscreen, position, size]);
+    });
+  }, []);
 
   const handleDoubleClick = React.useCallback(() => {
     toggleMinimize();
   }, [toggleMinimize]);
+
+  React.useEffect(() => {
+    return () => {
+      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+    };
+  }, []);
 
   if (!open) return null;
 
@@ -184,20 +243,20 @@ export function FloatingPanel({
   const edgeThickness = 6;
   const headerHeight = isMinimized ? 28 : 44;
   const minimizedMaxWidth = 120;
+  const s = sizeRef.current;
 
   return (
     <div
       ref={panelRef}
       className={cn(
         "fixed bg-stone-900 border border-stone-700 rounded-lg shadow-2xl flex flex-col overflow-hidden",
-        isDragging && "cursor-grabbing",
         className
       )}
       style={{
-        left: position.x,
-        top: position.y,
-        width: isMinimized ? minimizedMaxWidth : size.width,
-        height: isMinimized ? headerHeight : size.height,
+        left: 0,
+        top: 0,
+        width: isMinimized ? minimizedMaxWidth : (isFullscreen ? window.innerWidth : s.width),
+        height: isMinimized ? headerHeight : (isFullscreen ? window.innerHeight : s.height),
         zIndex: isFullscreen ? 100 : zIndex,
       }}
       data-testid="floating-panel"
@@ -208,7 +267,6 @@ export function FloatingPanel({
         className={cn(
           "flex items-center justify-between bg-stone-800 border-b border-stone-700 cursor-grab select-none shrink-0",
           isMinimized ? "px-1.5 py-0.5 gap-0.5" : "px-4 py-2",
-          isDragging && "cursor-grabbing"
         )}
         onPointerDown={handleDragStart}
         onPointerMove={handleDragMove}
@@ -216,6 +274,7 @@ export function FloatingPanel({
         onPointerCancel={handleDragEnd}
         onDoubleClick={handleDoubleClick}
         data-testid="floating-panel-header"
+        style={{ touchAction: 'none' }}
       >
         <div className={cn(
           "flex items-center text-amber-500 font-display truncate min-w-0",
@@ -273,8 +332,8 @@ export function FloatingPanel({
           </div>
 
           <div
-            className={`${resizeHandleBase} top-0 left-${cornerSize}px right-${cornerSize}px cursor-n-resize`}
-            style={{ height: edgeThickness, left: cornerSize, right: cornerSize, top: 0 }}
+            className={`${resizeHandleBase} top-0 cursor-n-resize`}
+            style={{ height: edgeThickness, left: cornerSize, right: cornerSize, top: 0, touchAction: 'none' }}
             onPointerDown={(e) => handleResizeStart(e, 'n')}
             onPointerMove={handleResizeMove}
             onPointerUp={handleResizeEnd}
@@ -282,7 +341,7 @@ export function FloatingPanel({
           />
           <div
             className={`${resizeHandleBase} bottom-0 cursor-s-resize`}
-            style={{ height: edgeThickness, left: cornerSize, right: cornerSize, bottom: 0 }}
+            style={{ height: edgeThickness, left: cornerSize, right: cornerSize, bottom: 0, touchAction: 'none' }}
             onPointerDown={(e) => handleResizeStart(e, 's')}
             onPointerMove={handleResizeMove}
             onPointerUp={handleResizeEnd}
@@ -290,7 +349,7 @@ export function FloatingPanel({
           />
           <div
             className={`${resizeHandleBase} left-0 cursor-w-resize`}
-            style={{ width: edgeThickness, top: cornerSize, bottom: cornerSize, left: 0 }}
+            style={{ width: edgeThickness, top: cornerSize, bottom: cornerSize, left: 0, touchAction: 'none' }}
             onPointerDown={(e) => handleResizeStart(e, 'w')}
             onPointerMove={handleResizeMove}
             onPointerUp={handleResizeEnd}
@@ -298,7 +357,7 @@ export function FloatingPanel({
           />
           <div
             className={`${resizeHandleBase} right-0 cursor-e-resize`}
-            style={{ width: edgeThickness, top: cornerSize, bottom: cornerSize, right: 0 }}
+            style={{ width: edgeThickness, top: cornerSize, bottom: cornerSize, right: 0, touchAction: 'none' }}
             onPointerDown={(e) => handleResizeStart(e, 'e')}
             onPointerMove={handleResizeMove}
             onPointerUp={handleResizeEnd}
@@ -306,7 +365,7 @@ export function FloatingPanel({
           />
           <div
             className={`${resizeHandleBase} top-0 left-0 cursor-nw-resize`}
-            style={{ width: cornerSize, height: cornerSize }}
+            style={{ width: cornerSize, height: cornerSize, touchAction: 'none' }}
             onPointerDown={(e) => handleResizeStart(e, 'nw')}
             onPointerMove={handleResizeMove}
             onPointerUp={handleResizeEnd}
@@ -314,7 +373,7 @@ export function FloatingPanel({
           />
           <div
             className={`${resizeHandleBase} top-0 right-0 cursor-ne-resize`}
-            style={{ width: cornerSize, height: cornerSize }}
+            style={{ width: cornerSize, height: cornerSize, touchAction: 'none' }}
             onPointerDown={(e) => handleResizeStart(e, 'ne')}
             onPointerMove={handleResizeMove}
             onPointerUp={handleResizeEnd}
@@ -322,7 +381,7 @@ export function FloatingPanel({
           />
           <div
             className={`${resizeHandleBase} bottom-0 left-0 cursor-sw-resize`}
-            style={{ width: cornerSize, height: cornerSize }}
+            style={{ width: cornerSize, height: cornerSize, touchAction: 'none' }}
             onPointerDown={(e) => handleResizeStart(e, 'sw')}
             onPointerMove={handleResizeMove}
             onPointerUp={handleResizeEnd}
@@ -330,7 +389,7 @@ export function FloatingPanel({
           />
           <div
             className={`${resizeHandleBase} bottom-0 right-0 cursor-se-resize`}
-            style={{ width: cornerSize, height: cornerSize }}
+            style={{ width: cornerSize, height: cornerSize, touchAction: 'none' }}
             onPointerDown={(e) => handleResizeStart(e, 'se')}
             onPointerMove={handleResizeMove}
             onPointerUp={handleResizeEnd}
