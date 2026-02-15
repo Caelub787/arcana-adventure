@@ -6664,15 +6664,9 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
     damageReductionType: string;
     rationServings: number | string;
     isDamaging: boolean;
-    isThrowable: boolean;
-    throwableAoe: boolean;
-    throwableAoeShape: string;
-    throwableAoeRange: number | string;
-    throwableAoeDamage: string;
-    throwableAoeDamageType: string;
-    throwablePickup: boolean;
-    throwableBreakChance: number | string;
-    isDestructible: boolean;
+    isDetonatable: boolean;
+    detonateAoeShape: string;
+    detonateAoeRange: number | string;
     canApplyEffects: boolean;
   }>({
     name: initialData?.name || '',
@@ -6706,15 +6700,9 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
     damageReductionType: (initialData as any)?.damageReductionType || '',
     rationServings: (initialData as any)?.rationServings ?? '',
     isDamaging: (initialData as any)?.isDamaging || false,
-    isThrowable: (initialData as any)?.isThrowable || false,
-    throwableAoe: (initialData as any)?.throwableAoe || false,
-    throwableAoeShape: (initialData as any)?.throwableAoeShape || 'circle',
-    throwableAoeRange: (initialData as any)?.throwableAoeRange ?? 10,
-    throwableAoeDamage: (initialData as any)?.throwableAoeDamage || '',
-    throwableAoeDamageType: (initialData as any)?.throwableAoeDamageType || '',
-    throwablePickup: (initialData as any)?.throwablePickup || false,
-    throwableBreakChance: (initialData as any)?.throwableBreakChance ?? 10,
-    isDestructible: (initialData as any)?.isDestructible || false,
+    isDetonatable: (initialData as any)?.isDetonatable || false,
+    detonateAoeShape: (initialData as any)?.detonateAoeShape || 'circle',
+    detonateAoeRange: (initialData as any)?.detonateAoeRange ?? 10,
     canApplyEffects: (initialData as any)?.canApplyEffects || false,
   });
 
@@ -6752,15 +6740,9 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
         damageReductionType: (initialData as any)?.damageReductionType || '',
         rationServings: (initialData as any)?.rationServings ?? '',
         isDamaging: (initialData as any)?.isDamaging || false,
-        isThrowable: (initialData as any)?.isThrowable || false,
-        throwableAoe: (initialData as any)?.throwableAoe || false,
-        throwableAoeShape: (initialData as any)?.throwableAoeShape || 'circle',
-        throwableAoeRange: (initialData as any)?.throwableAoeRange ?? 10,
-        throwableAoeDamage: (initialData as any)?.throwableAoeDamage || '',
-        throwableAoeDamageType: (initialData as any)?.throwableAoeDamageType || '',
-        throwablePickup: (initialData as any)?.throwablePickup || false,
-        throwableBreakChance: (initialData as any)?.throwableBreakChance ?? 10,
-        isDestructible: (initialData as any)?.isDestructible || false,
+        isDetonatable: (initialData as any)?.isDetonatable || false,
+        detonateAoeShape: (initialData as any)?.detonateAoeShape || 'circle',
+        detonateAoeRange: (initialData as any)?.detonateAoeRange ?? 10,
         canApplyEffects: (initialData as any)?.canApplyEffects || false,
       });
     }
@@ -6816,16 +6798,10 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
       damageReductionType: formData.itemType === 'armor' ? formData.damageReductionType : undefined,
       rationServings: formData.itemType === 'consumable' ? optionalNum(formData.rationServings) : undefined,
       isDamaging: formData.itemType === 'consumable' ? formData.isDamaging : false,
-      isThrowable: formData.itemType === 'weapon' ? formData.isThrowable : false,
-      throwableAoe: formData.itemType === 'weapon' && formData.isThrowable ? formData.throwableAoe : false,
-      throwableAoeShape: formData.itemType === 'weapon' && formData.isThrowable && formData.throwableAoe ? formData.throwableAoeShape : undefined,
-      throwableAoeRange: formData.itemType === 'weapon' && formData.isThrowable && formData.throwableAoe ? optionalNum(formData.throwableAoeRange) : undefined,
-      throwableAoeDamage: formData.itemType === 'weapon' && formData.isThrowable && formData.throwableAoe ? formData.throwableAoeDamage : undefined,
-      throwableAoeDamageType: formData.itemType === 'weapon' && formData.isThrowable && formData.throwableAoe ? formData.throwableAoeDamageType : undefined,
-      throwablePickup: formData.itemType === 'weapon' && formData.isThrowable ? formData.throwablePickup : false,
-      throwableBreakChance: formData.itemType === 'weapon' && formData.isThrowable ? (formData.throwableBreakChance === '' ? 10 : Number(formData.throwableBreakChance)) : 10,
-      isDestructible: formData.itemType === 'weapon' && formData.isThrowable && formData.throwableAoe ? formData.isDestructible : false,
-      canApplyEffects: (formData.itemType === 'weapon' || (formData.itemType === 'weapon' && formData.isThrowable)) ? formData.canApplyEffects : false,
+      isDetonatable: (formData.itemType === 'weapon' || formData.itemType === 'ammunition') ? formData.isDetonatable : false,
+      detonateAoeShape: (formData.itemType === 'weapon' || formData.itemType === 'ammunition') && formData.isDetonatable ? formData.detonateAoeShape : undefined,
+      detonateAoeRange: (formData.itemType === 'weapon' || formData.itemType === 'ammunition') && formData.isDetonatable ? optionalNum(formData.detonateAoeRange) : undefined,
+      canApplyEffects: formData.itemType === 'weapon' ? formData.canApplyEffects : false,
     };
     onSave(cleanedData);
   };
@@ -7080,128 +7056,52 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
                     </div>
                     <p className="text-xs text-stone-500 mt-1">Two-handed weapons require both hands and occupy both weapon slots</p>
                   </div>
-                  <div className="col-span-2 border-t border-stone-700 pt-4 mt-2">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Checkbox
-                        checked={formData.isThrowable}
-                        onCheckedChange={(checked) => setFormData({ ...formData, isThrowable: !!checked })}
-                        data-testid="checkbox-throwable"
-                      />
-                      <Label>Is Throwable</Label>
-                    </div>
-                    <p className="text-xs text-stone-500 mb-3">Throwable weapons can be thrown onto the battle map and detonated</p>
-                    {formData.isThrowable && (
-                      <div className="space-y-3 pl-6 border-l-2 border-stone-700">
-                        <div className="flex items-center gap-2">
-                          <Checkbox
-                            checked={formData.throwableAoe}
-                            onCheckedChange={(checked) => setFormData({ ...formData, throwableAoe: !!checked })}
-                            data-testid="checkbox-throwable-aoe"
-                          />
-                          <Label>Enable AOE</Label>
-                        </div>
-                        {formData.throwableAoe && (
-                          <div className="grid grid-cols-2 gap-3">
-                            <div>
-                              <Label>AOE Shape</Label>
-                              <Select value={formData.throwableAoeShape} onValueChange={(v) => setFormData({ ...formData, throwableAoeShape: v })}>
-                                <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-throwable-aoe-shape">
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="circle">Circle</SelectItem>
-                                  <SelectItem value="cone">Cone</SelectItem>
-                                  <SelectItem value="line">Line</SelectItem>
-                                  <SelectItem value="cube">Cube</SelectItem>
-                                </SelectContent>
-                              </Select>
-                            </div>
-                            <div>
-                              <Label>AOE Diameter (ft)</Label>
-                              <Input
-                                type="number"
-                                min={5}
-                                step={5}
-                                value={formData.throwableAoeRange}
-                                onChange={(e) => setFormData({ ...formData, throwableAoeRange: e.target.value === '' ? '' : parseInt(e.target.value) })}
-                                placeholder="e.g. 30 (6 squares)"
-                                className="bg-stone-800 border-stone-700"
-                                data-testid="input-throwable-aoe-range"
-                              />
-                            </div>
-                            <div>
-                              <Label>Detonation Damage</Label>
-                              <Input
-                                value={formData.throwableAoeDamage}
-                                onChange={(e) => setFormData({ ...formData, throwableAoeDamage: e.target.value })}
-                                placeholder="e.g. 2d6"
-                                className="bg-stone-800 border-stone-700"
-                                data-testid="input-throwable-aoe-damage"
-                              />
-                            </div>
-                            <div>
-                              <Label>Detonation Damage Type</Label>
-                              <Select value={formData.throwableAoeDamageType} onValueChange={(v) => setFormData({ ...formData, throwableAoeDamageType: v })}>
-                                <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-throwable-aoe-damage-type">
-                                  <SelectValue placeholder="Select type" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="Sharp">Sharp</SelectItem>
-                                  <SelectItem value="Blunt">Blunt</SelectItem>
-                                  <SelectItem value="Piercing">Piercing</SelectItem>
-                                  <SelectItem value="Flame">Flame</SelectItem>
-                                  <SelectItem value="Frost">Frost</SelectItem>
-                                  <SelectItem value="Storm">Storm</SelectItem>
-                                  <SelectItem value="Tide">Tide</SelectItem>
-                                  <SelectItem value="Stone">Stone</SelectItem>
-                                  <SelectItem value="Flux">Flux</SelectItem>
-                                  <SelectItem value="Light">Light</SelectItem>
-                                  <SelectItem value="Dark">Dark</SelectItem>
-                                  <SelectItem value="Sound">Sound</SelectItem>
-                                </SelectContent>
-                              </Select>
-                            </div>
-                          </div>
-                        )}
-                        <div className="flex items-center gap-2">
-                          <Checkbox
-                            checked={formData.throwablePickup}
-                            onCheckedChange={(checked) => setFormData({ ...formData, throwablePickup: !!checked })}
-                            data-testid="checkbox-throwable-pickup"
-                          />
-                          <Label>Pickup Mode</Label>
-                        </div>
-                        <p className="text-xs text-stone-500">When enabled, thrown items attach to tokens or grid spaces and can be picked up</p>
-                        {formData.throwableAoe && (
-                          <div className="flex items-center gap-2 mt-2">
-                            <Checkbox
-                              checked={formData.isDestructible}
-                              onCheckedChange={(checked) => setFormData({ ...formData, isDestructible: !!checked })}
-                              data-testid="checkbox-is-destructible"
-                            />
-                            <Label>Is Destructible?</Label>
-                          </div>
-                        )}
-                        {formData.throwableAoe && formData.isDestructible && (
-                          <p className="text-xs text-stone-500">Destructible throwables can be placed on the map and detonated via the roll selector panel</p>
-                        )}
-                        <div className="mt-3">
-                          <Label>Throwable Break Chance: {formData.throwableBreakChance === '' ? 10 : Number(formData.throwableBreakChance)}%</Label>
-                          <Slider
-                            value={[formData.throwableBreakChance === '' ? 10 : Number(formData.throwableBreakChance)]}
-                            onValueChange={(v) => setFormData({ ...formData, throwableBreakChance: v[0] })}
-                            min={0}
-                            max={100}
-                            step={1}
-                            className="mt-2"
-                            data-testid="slider-throwable-break-chance"
-                          />
-                          <p className="text-xs text-stone-500 mt-1">Chance of throwable item breaking when thrown</p>
-                        </div>
-                      </div>
-                    )}
-                  </div>
                 </>
+              )}
+
+              {(formData.itemType === 'weapon' || formData.itemType === 'ammunition') && (
+                <div className="col-span-2 border-t border-stone-700 pt-4 mt-2">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Checkbox
+                      checked={formData.isDetonatable}
+                      onCheckedChange={(checked) => setFormData({ ...formData, isDetonatable: !!checked })}
+                      data-testid="checkbox-detonatable"
+                    />
+                    <Label>Is Detonatable?</Label>
+                  </div>
+                  <p className="text-xs text-stone-500 mb-3">Detonatable items can be placed on the battle map and detonated with an AOE effect</p>
+                  {formData.isDetonatable && (
+                    <div className="grid grid-cols-2 gap-3 pl-6 border-l-2 border-stone-700">
+                      <div>
+                        <Label>AOE Shape</Label>
+                        <Select value={formData.detonateAoeShape} onValueChange={(v) => setFormData({ ...formData, detonateAoeShape: v })}>
+                          <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-detonate-aoe-shape">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="circle">Circle</SelectItem>
+                            <SelectItem value="cone">Cone</SelectItem>
+                            <SelectItem value="line">Line</SelectItem>
+                            <SelectItem value="cube">Cube</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <Label>AOE Range (ft)</Label>
+                        <Input
+                          type="number"
+                          min={5}
+                          step={5}
+                          value={formData.detonateAoeRange}
+                          onChange={(e) => setFormData({ ...formData, detonateAoeRange: e.target.value === '' ? '' : parseInt(e.target.value) })}
+                          placeholder="e.g. 30 (6 squares)"
+                          className="bg-stone-800 border-stone-700"
+                          data-testid="input-detonate-aoe-range"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
               )}
 
               {formData.itemType === 'armor' && (

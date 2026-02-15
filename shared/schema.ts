@@ -461,16 +461,9 @@ export const items = pgTable("items", {
   rationServings: integer("ration_servings").default(0),
   // Damaging consumable - when true, consumable can be rolled like a weapon (attack/damage rolls)
   isDamaging: boolean("is_damaging").default(false).notNull(),
-  // Throwable item fields - items that can be thrown and placed on the battle map
-  isThrowable: boolean("is_throwable").default(false).notNull(),
-  throwableAoe: boolean("throwable_aoe").default(false).notNull(), // Enable AOE for throwable
-  throwableAoeShape: text("throwable_aoe_shape"), // circle, cone, line, cube
-  throwableAoeRange: integer("throwable_aoe_range").default(10), // AOE radius in feet
-  throwablePickup: boolean("throwable_pickup").default(false).notNull(), // If true, attaches to tokens/grid spaces when thrown
-  throwableAoeDamage: text("throwable_aoe_damage"), // Dice notation for AOE detonation damage (e.g. "2d6")
-  throwableAoeDamageType: text("throwable_aoe_damage_type"), // Damage type for AOE detonation: Sharp, Blunt, Piercing, Flame, etc.
-  throwableBreakChance: integer("throwable_break_chance").default(10).notNull(), // 0-100 percentage chance throwable breaks on use (similar to ammunition)
-  isDestructible: boolean("is_destructible").default(false).notNull(), // AOE throwable: enables detonate action (place on map, then detonate all at once)
+  isDetonatable: boolean("is_detonatable").default(false).notNull(),
+  detonateAoeShape: text("detonate_aoe_shape"),
+  detonateAoeRange: integer("detonate_aoe_range").default(15),
   // Item effect toggle - when true, allows linking token effects to this weapon/item
   canApplyEffects: boolean("can_apply_effects").default(false).notNull(), // Enables item to apply token effects on hit
 });

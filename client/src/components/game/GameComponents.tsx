@@ -403,7 +403,7 @@ interface BattleMapProps {
   thrownItems?: ThrownItem[];
   onRefetchThrownItems?: () => void;
   onDeleteThrownItem?: (thrownItemId: string) => void;
-  throwableGridTarget?: { x: number; y: number } | null;
+  detonatableGridTarget?: { x: number; y: number } | null;
   onGridTargetClick?: (gridX: number, gridY: number) => void;
   notesPanelOpen?: boolean;
   notesPanelWidth?: number;
@@ -430,7 +430,7 @@ interface BattleMapProps {
 
 
 
-export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClick, onTokenTripleClick, onDeleteToken, role, gridSize, backgroundImage, scene, onViewChange, characters = [], allSpecies = [], selectionMode = 'select', targetedTokenId, selectedTokenId, aoeTargetState, onAoeMouseMove, onAoeClick, otherPlayersAoe, myPermissions, tokenActiveEffects, allTokenEffects, onApplyEffect, onRemoveEffect, onToggleInvisibility, currentTurnCharacterId, otherPlayersTargeting, activeBeacons, onBeacon, otherPlayersViewports, thrownItems = [], onRefetchThrownItems, onDeleteThrownItem, throwableGridTarget, onGridTargetClick, notesPanelOpen = false, notesPanelWidth = 0, onNotesClick, inCombat = false, fogToolActive: fogToolActiveProp, onFogToolActiveChange, onDropCharacterOnMap, onMapClickToPlace, placingCharacterId, currentUserId, assignedCharacterId, onTokenLongPress, gridCalibrationMode, onGridCalibrationConfirm, onGridCalibrationCancel, mapPins = [], pinPlaceMode = false, onPinClick, onPinPlaced, editingPinId, cameraTarget, onCameraTargetReached }: BattleMapProps) {
+export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClick, onTokenTripleClick, onDeleteToken, role, gridSize, backgroundImage, scene, onViewChange, characters = [], allSpecies = [], selectionMode = 'select', targetedTokenId, selectedTokenId, aoeTargetState, onAoeMouseMove, onAoeClick, otherPlayersAoe, myPermissions, tokenActiveEffects, allTokenEffects, onApplyEffect, onRemoveEffect, onToggleInvisibility, currentTurnCharacterId, otherPlayersTargeting, activeBeacons, onBeacon, otherPlayersViewports, thrownItems = [], onRefetchThrownItems, onDeleteThrownItem, detonatableGridTarget, onGridTargetClick, notesPanelOpen = false, notesPanelWidth = 0, onNotesClick, inCombat = false, fogToolActive: fogToolActiveProp, onFogToolActiveChange, onDropCharacterOnMap, onMapClickToPlace, placingCharacterId, currentUserId, assignedCharacterId, onTokenLongPress, gridCalibrationMode, onGridCalibrationConfirm, onGridCalibrationCancel, mapPins = [], pinPlaceMode = false, onPinClick, onPinPlaced, editingPinId, cameraTarget, onCameraTargetReached }: BattleMapProps) {
   // Derive isGM from role prop
   const isGM = role === 'gm';
   
@@ -1428,7 +1428,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
       }
     }
     
-    // If we're in target mode and didn't drag, set the grid target for throwables
+    // If we're in target mode and didn't drag, set the grid target for detonatables
     if (selectionMode === 'target' && !didDragRef.current && onGridTargetClick) {
       const container = containerRef.current;
       if (container) {
@@ -1841,28 +1841,28 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                  });
                  if (response.ok) {
                    toast({
-                     title: "Throwables cleared",
-                     description: "All thrown items have been removed from the battlefield.",
+                     title: "Placed items cleared",
+                     description: "All placed items have been removed from the battlefield.",
                    });
                    onRefetchThrownItems?.();
                  } else {
                    const data = await response.json();
                    toast({
                      title: "Error",
-                     description: data.error || "Failed to clear throwables",
+                     description: data.error || "Failed to clear placed items",
                      variant: "destructive",
                    });
                  }
                } catch (error) {
                  toast({
                    title: "Error",
-                   description: "Failed to clear throwables",
+                   description: "Failed to clear placed items",
                    variant: "destructive",
                  });
                }
              }}
-             data-testid="button-clear-throwables"
-             title="Clear all thrown items from the battlefield"
+             data-testid="button-clear-placed-items"
+             title="Clear all placed items from the battlefield"
           >
             <Trash2 className="h-3 w-3" />
           </Button>
@@ -2701,7 +2701,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                   >
                     {attachedItems.slice(0, 3).map((thrownItem) => {
                       const item = thrownItem.item!;
-                      const hasAoe = item.throwableAoe && (item.throwableAoeRange || 0) > 0;
+                      const hasAoe = item.isDetonatable && (item.detonateAoeRange || 0) > 0;
                       
                       return (
                         <Popover key={thrownItem.id}>
@@ -2730,7 +2730,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                               <p className="text-xs text-stone-400 mb-2">{item.description}</p>
                             )}
                             {hasAoe && (
-                              <p className="text-xs text-orange-400">AOE: {item.throwableAoeRange}ft diameter</p>
+                              <p className="text-xs text-orange-400">AOE: {item.detonateAoeRange}ft diameter</p>
                             )}
                             <p className="text-xs text-stone-500 mt-1">Attached to token</p>
                             {isGM && onDeleteThrownItem && (
@@ -2776,11 +2776,11 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
           const item = thrownItem.item!;
           // AOE stat is the diameter (edge-to-edge distance), not radius
           // 30ft AOE = 6 squares diameter = 3 squares radius
-          const aoeRangeInFeet = item.throwableAoeRange || 0;
+          const aoeRangeInFeet = item.detonateAoeRange || 0;
           const aoeDiameterCells = aoeRangeInFeet / 5;
           const aoeRadiusPixels = (aoeDiameterCells / 2) * effectiveGridSize;
           
-          if (aoeRadiusPixels <= 0 || !item.throwableAoe) return null;
+          if (aoeRadiusPixels <= 0 || !item.isDetonatable) return null;
           
           const tokenDisplayPos = getTokenDisplayPosition(attachedToken);
           const tokenGridSpan = getTokenGridSpan((attachedToken as any).speciesSize);
@@ -2815,14 +2815,14 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
           
           // AOE stat is the diameter (edge-to-edge distance), not radius
           // 30ft AOE = 6 squares diameter = 3 squares radius
-          const aoeRangeInFeet = item.throwableAoeRange || 0;
+          const aoeRangeInFeet = item.detonateAoeRange || 0;
           const aoeDiameterCells = aoeRangeInFeet / 5;
           const aoeRadiusPixels = (aoeDiameterCells / 2) * effectiveGridSize;
           
           return (
             <div key={thrownItem.id} data-testid={`thrown-item-${thrownItem.id}`}>
               {/* AOE Range Circle */}
-              {item.throwableAoe && aoeRadiusPixels > 0 && (
+              {item.isDetonatable && aoeRadiusPixels > 0 && (
                 <div
                   className="absolute rounded-full border-2 border-orange-500/60 bg-orange-500/15 pointer-events-none"
                   style={{
@@ -2926,8 +2926,8 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
           );
         })}
 
-        {/* Throwable Grid Target Marker - Shows where throwable will be placed */}
-        {throwableGridTarget && selectionMode === 'target' && (() => {
+        {/* Detonatable Grid Target Marker - Shows where detonatable will be placed */}
+        {detonatableGridTarget && selectionMode === 'target' && (() => {
           const effectiveGridSize = gridSize;
           const markerSize = effectiveGridSize * 0.8;
           const markerOffset = (effectiveGridSize - markerSize) / 2;
@@ -2936,13 +2936,13 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
             <div
               className="absolute animate-pulse pointer-events-none"
               style={{
-                left: 9000 + throwableGridTarget.x * effectiveGridSize + markerOffset,
-                top: 9000 + throwableGridTarget.y * effectiveGridSize + markerOffset,
+                left: 9000 + detonatableGridTarget.x * effectiveGridSize + markerOffset,
+                top: 9000 + detonatableGridTarget.y * effectiveGridSize + markerOffset,
                 width: markerSize,
                 height: markerSize,
                 zIndex: 18,
               }}
-              data-testid="throwable-grid-target"
+              data-testid="detonatable-grid-target"
             >
               <div className="w-full h-full rounded-lg border-4 border-dashed border-orange-500 bg-orange-500/20 flex items-center justify-center">
                 <Target className="w-1/2 h-1/2 text-orange-400" />
@@ -3224,11 +3224,11 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
           );
         })()}
         
-        {/* Throwable Item AoE Targeting Overlay */}
-        {aoeTargetState?.active && aoeTargetState.throwableItem && !aoeTargetState.spell && (() => {
-          const item = aoeTargetState.throwableItem;
-          const aoeShape = (item.throwableAoeShape || 'circle').toLowerCase();
-          const aoeRangeFeet = item.throwableAoeRange || 10;
+        {/* Detonatable Item AoE Targeting Overlay */}
+        {aoeTargetState?.active && aoeTargetState.detonatableItem && !aoeTargetState.spell && (() => {
+          const item = aoeTargetState.detonatableItem;
+          const aoeShape = (item.detonateAoeShape || 'circle').toLowerCase();
+          const aoeRangeFeet = item.detonateAoeRange || 10;
           // AOE stat is the diameter (edge-to-edge distance), not radius
           // 30ft AOE = 6 squares diameter = 3 squares radius
           const effectiveGridSize = gridSize;
@@ -3251,7 +3251,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
             isInRange = distance <= throwRangePixels;
           }
           
-          // Orange colors for throwables
+          // Orange colors for detonatables
           const fillColor = isInRange 
             ? (locked ? 'rgba(251, 146, 60, 0.5)' : 'rgba(251, 146, 60, 0.3)')
             : 'rgba(239, 68, 68, 0.3)';
@@ -4008,9 +4008,9 @@ interface BattleMapHotbarsProps {
   sceneId?: string;
   thrownItems?: ThrownItem[];
   onRefetchThrownItems?: () => void;
-  onEnterThrowableAoeMode?: (item: any, casterToken: any) => void;
-  throwableGridTarget?: { x: number; y: number } | null;
-  onClearThrowableGridTarget?: () => void;
+  onEnterDetonatableAoeMode?: (item: any, casterToken: any) => void;
+  detonatableGridTarget?: { x: number; y: number } | null;
+  onClearDetonatableGridTarget?: () => void;
   notesPanelOpen?: boolean;
   notesPanelWidth?: number;
   onRequestSaveRoll?: (params: {
@@ -4049,9 +4049,9 @@ interface BattleMapHotbarSlotProps {
   sceneId?: string;
   thrownItems?: ThrownItem[];
   onRefetchThrownItems?: () => void;
-  onEnterThrowableAoeMode?: (item: any, casterToken: any) => void;
-  throwableGridTarget?: { x: number; y: number } | null;
-  onClearThrowableGridTarget?: () => void;
+  onEnterDetonatableAoeMode?: (item: any, casterToken: any) => void;
+  detonatableGridTarget?: { x: number; y: number } | null;
+  onClearDetonatableGridTarget?: () => void;
   onRequestSaveRoll?: (params: {
     targetCharacterId: string;
     targetUserId: string;
@@ -4072,7 +4072,7 @@ interface BattleMapHotbarSlotProps {
 // Ranged weapon categories that use ammunition
 const RANGED_WEAPON_CATEGORIES = ['bow', 'crossbow', 'sling', 'firearm'];
 
-const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHotbars, allItems, tokens, targetedTokenId, allCharacters, gridSize = 50, onEnterAoeMode, aoeTargetState, onAoeDamageRoll, sceneId, thrownItems, onRefetchThrownItems, onEnterThrowableAoeMode, throwableGridTarget, onClearThrowableGridTarget, onRequestSaveRoll, onClearTarget, campaignMembers, currentUserId }: BattleMapHotbarSlotProps) {
+const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHotbars, allItems, tokens, targetedTokenId, allCharacters, gridSize = 50, onEnterAoeMode, aoeTargetState, onAoeDamageRoll, sceneId, thrownItems, onRefetchThrownItems, onEnterDetonatableAoeMode, detonatableGridTarget, onClearDetonatableGridTarget, onRequestSaveRoll, onClearTarget, campaignMembers, currentUserId }: BattleMapHotbarSlotProps) {
   const queryClient = useQueryClient();
   
   // Modifier popup state
@@ -4220,45 +4220,6 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
     }
   };
 
-  // Function to check if a thrown item breaks (for throwables without pickup mode)
-  // Returns true if item broke and was deleted, false if it survived
-  const checkThrowableBreak = async (thrownItemId: string, item: any): Promise<boolean> => {
-    // Only check break chance if pickup mode is disabled
-    if (item.throwablePickup) return false;
-    
-    const breakChance = (item.breakChance ?? 10) / 100; // Convert percentage to probability
-    const breakRoll = Math.random();
-    
-    if (breakRoll < breakChance) {
-      // Item broke - delete the thrown item from the map
-      try {
-        await api.deleteThrownItem(thrownItemId);
-        onRefetchThrownItems?.();
-        
-        triggerRollNotification({
-          type: 'system',
-          label: `${item.name} Broke!`,
-          result: 0,
-          total: 0,
-          username: character.name || 'Unknown',
-          characterName: character.name,
-          calculationBreakdown: `The ${item.name} shattered on impact and cannot be recovered.`,
-        });
-        
-        if (character.campaignId) {
-          gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', 
-            `${item.name} broke on impact!`, 'system');
-        }
-        
-        return true;
-      } catch (err) {
-        console.error('Failed to delete broken thrown item:', err);
-        return false;
-      }
-    }
-    
-    return false;
-  };
 
   const getSpellLevelColor = (level: number) => {
     if (level === 0) return 'text-gray-400';
@@ -5238,25 +5199,20 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
   
   const isWeaponClickable = itemData && itemData.itemType === 'weapon';
   const isDamagingConsumableClickable = itemData && itemData.itemType === 'consumable' && itemData.isDamaging;
-  const isThrowableClickable = itemData && itemData.isThrowable;
+  const isDetonatableClickable = itemData && itemData.isDetonatable;
   const isSkillClickable = !!hotbar?.skillName;
   const isSpellClickable = !!spellData;
   const isTraitClickable = !!traitData;
-  const isClickable = isWeaponClickable || isDamagingConsumableClickable || isThrowableClickable || isSkillClickable || isSpellClickable || isTraitClickable;
+  const isClickable = isWeaponClickable || isDamagingConsumableClickable || isDetonatableClickable || isSkillClickable || isSpellClickable || isTraitClickable;
 
   // Handle throwing an item (place at AOE target location or throw to targeted token)
-  const handleThrowItem = async () => {
-    if (!itemData || !itemData.isThrowable || !sceneId) return;
+  const handlePlaceDetonatable = async () => {
+    if (!itemData || !itemData.isDetonatable || !sceneId) return;
     
-    // Get weapon range - use range field or default to 30ft for throwables
     const weaponRange = itemData.range || itemData.rangeNum || 30;
-    
-    // Get attacker token for range calculation
     const attackerToken = getAttackerToken();
     
-    // Priority 1: If a token is targeted, throw item attached to that token
     if (targetedTokenId) {
-      // Range check - validate target is within weapon range (uses edge-based distance for large tokens)
       const targetToken = tokens?.find((t: any) => t.id === targetedTokenId);
       if (attackerToken && targetToken) {
         const distanceFt = calculateTokenDistanceInFeet(
@@ -5277,7 +5233,6 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
         }
       }
       
-      // Check quantity
       if ((itemData.quantity || 0) < 1) {
         triggerRollNotification({
           type: 'system',
@@ -5286,213 +5241,58 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
           total: 0,
           username: character.name || 'Unknown',
           characterName: character.name,
-          calculationBreakdown: `You have no ${itemData.name} remaining to throw.`,
+          calculationBreakdown: `You have no ${itemData.name} remaining to place.`,
         });
         return;
       }
       
-      // Get target token for position and name (reuse from range check if available)
-      const throwTargetToken = tokens?.find((t: any) => t.id === targetedTokenId);
-      const targetCharacter = throwTargetToken?.characterId 
-        ? allCharacters?.find((c: any) => c.id === throwTargetToken.characterId)
+      const placeTargetToken = tokens?.find((t: any) => t.id === targetedTokenId);
+      const targetCharacter = placeTargetToken?.characterId 
+        ? allCharacters?.find((c: any) => c.id === placeTargetToken.characterId)
         : null;
       const targetName = targetCharacter?.name || 'target';
       
-      // Find attack roll entry if one exists, otherwise fall back to legacy logic
-      const attackRollEntry = itemRollEntries.find((re: any) => re.rollType === 'attack');
-      const attrName = attackRollEntry?.attribute || itemData.attribute || 'finesse';
-      const attrMod = getAttributeModifier(attrName);
-      const rollEntryMod = attackRollEntry?.mod || 0;
-      const totalMod = attrMod + rollEntryMod + extraModifier;
-      
-      let roll: number;
-      let rollText: string;
-      
-      if (hasAdvantage && !hasDisadvantage) {
-        const r1 = Math.floor(Math.random() * 20) + 1;
-        const r2 = Math.floor(Math.random() * 20) + 1;
-        roll = Math.max(r1, r2);
-        rollText = `2d20kh [${r1}, ${r2}] = ${roll}`;
-      } else if (hasDisadvantage && !hasAdvantage) {
-        const r1 = Math.floor(Math.random() * 20) + 1;
-        const r2 = Math.floor(Math.random() * 20) + 1;
-        roll = Math.min(r1, r2);
-        rollText = `2d20kl [${r1}, ${r2}] = ${roll}`;
-      } else {
-        roll = Math.floor(Math.random() * 20) + 1;
-        rollText = `1d20 = ${roll}`;
-      }
-      
-      const total = roll + totalMod;
-      const targetDC = targetCharacter?.armorClass || targetCharacter?.naturalArmor || 10;
-      const isCritSuccess = roll === 20;
-      const isCritFailure = roll === 1;
-      const isHit = isCritSuccess || (!isCritFailure && total >= targetDC);
-      
-      const attrDisplayName = attrName.charAt(0).toUpperCase() + attrName.slice(1);
-      const modParts: string[] = [];
-      if (attrMod !== 0) modParts.push(`${attrDisplayName} (${attrMod >= 0 ? '+' : ''}${attrMod})`);
-      if (rollEntryMod !== 0) modParts.push(`Mod (${rollEntryMod >= 0 ? '+' : ''}${rollEntryMod})`);
-      if (extraModifier !== 0) modParts.push(`Extra (${extraModifier >= 0 ? '+' : ''}${extraModifier})`);
-      const modText = modParts.length > 0 ? ` + ${modParts.join(' + ')}` : '';
-      const hitStatus = isCritSuccess ? 'CRITICAL HIT!' : isCritFailure ? 'CRITICAL MISS!' : isHit ? 'HIT!' : 'MISS!';
-      const rollLabel = attackRollEntry ? `${itemData.name} - ${attackRollEntry.name}` : `${itemData.name} Throw`;
-      
-      triggerRollNotification({
-        type: 'attack',
-        dieType: 'd20',
-        label: `${rollLabel} → ${targetName}: ${hitStatus}`,
-        result: roll,
-        modifier: totalMod,
-        total,
-        username: character.name || 'Unknown',
-        characterName: character.name,
-        calculationBreakdown: `${rollText}${modText} = ${total} vs AC ${targetDC} - ${hitStatus}`,
-        isCritSuccess,
-        isCritFailure,
-      });
-      
-      if (character.campaignId) {
-        gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', 
-          `${rollLabel} → ${targetName}: ${rollText}${modText} = ${total} vs AC ${targetDC} - ${hitStatus}`, 'roll');
-      }
-      
       try {
-        const canPlaceOnMap = itemData.isDestructible && itemData.throwableAoe;
-        
-        // Decrement item quantity
         await api.updateItem(itemData.id, { quantity: (itemData.quantity || 1) - 1 });
         queryClient.invalidateQueries({ queryKey: ['item', hotbar?.itemId] });
         queryClient.invalidateQueries({ queryKey: ['character-items', character.id] });
         
-        if (canPlaceOnMap) {
-          // Convert token pixel position to grid coordinates for miss case
-          const effectiveGridSize = gridSize || 50;
-          const gridX = Math.floor((throwTargetToken?.x ?? 0) / effectiveGridSize);
-          const gridY = Math.floor((throwTargetToken?.y ?? 0) / effectiveGridSize);
-          
-          const thrownItem = await api.createThrownItem(sceneId, {
-            itemId: itemData.id,
-            characterId: character.id,
-            x: isHit ? (throwTargetToken?.x ?? 0) : gridX,
-            y: isHit ? (throwTargetToken?.y ?? 0) : gridY,
-            attachedToTokenId: isHit ? targetedTokenId : undefined,
-          });
-          
-          gameWs.sendThrownItemPlaced(thrownItem, sceneId);
-          onRefetchThrownItems?.();
-          
-          triggerRollNotification({
-            type: 'system',
-            label: `${itemData.name} ${isHit ? 'Attached!' : 'Landed!'}`,
-            result: 0,
-            total: 0,
-            username: character.name || 'Unknown',
-            characterName: character.name,
-            calculationBreakdown: isHit ? `Attached to ${targetName} (Detonate from roll panel)` : `Missed! Landed at grid (${gridX}, ${gridY})`,
-          });
-        }
+        const thrownItem = await api.createThrownItem(sceneId, {
+          itemId: itemData.id,
+          characterId: character.id,
+          x: placeTargetToken?.x ?? 0,
+          y: placeTargetToken?.y ?? 0,
+          attachedToTokenId: targetedTokenId,
+        });
         
-        // Deal initial weapon damage on hit using roll entries or legacy fields
-        const damageRollEntry = itemRollEntries.find((re: any) => re.rollType === 'damage');
-        const dmgFormula = damageRollEntry?.diceFormula || itemData.damage;
-        if (isHit && dmgFormula && targetCharacter) {
-          if (canPlaceOnMap) await new Promise(resolve => setTimeout(resolve, 500));
-          const { result: dmgResult, dieType: dmgDieType } = rollDice(dmgFormula);
-          const dmgCritBonus = isCritSuccess ? getMaxDice(dmgFormula) : 0;
-          const dmgEntryMod = damageRollEntry?.mod || 0;
-          const dmgLegacyMod = damageRollEntry ? 0 : (itemData.mod || 0);
-          let dmgAttrMod = 0;
-          if (damageRollEntry?.attribute) {
-            dmgAttrMod = getAttributeModifier(damageRollEntry.attribute);
-          }
-          const dmgTotalMod = dmgEntryMod + dmgLegacyMod + dmgAttrMod;
-          const dmgTotal = dmgResult + dmgCritBonus + dmgTotalMod;
-          const dmgDiceResult = dmgCritBonus > 0 ? `${dmgResult} + MAX (${dmgCritBonus})` : `${dmgResult}`;
-          const dmgModParts: string[] = [];
-          if (dmgEntryMod !== 0) dmgModParts.push(`Mod (${dmgEntryMod >= 0 ? '+' : ''}${dmgEntryMod})`);
-          if (dmgLegacyMod !== 0) dmgModParts.push(`Mod (${dmgLegacyMod >= 0 ? '+' : ''}${dmgLegacyMod})`);
-          if (dmgAttrMod !== 0 && damageRollEntry?.attribute) {
-            const dmgAttrName = damageRollEntry.attribute.charAt(0).toUpperCase() + damageRollEntry.attribute.slice(1);
-            dmgModParts.push(`${dmgAttrName} (${dmgAttrMod >= 0 ? '+' : ''}${dmgAttrMod})`);
-          }
-          const dmgBreakdown = dmgModParts.length > 0
-            ? `${dmgFormula} = ${dmgDiceResult} + ${dmgModParts.join(' + ')}`
-            : `${dmgFormula} = ${dmgDiceResult}`;
-          const dmgType = damageRollEntry?.damageType || itemData.damageType || null;
-          
-          const { finalDamage, reduction, armorName, isHealing } = await applyDamageToTarget(dmgTotal, dmgType, targetCharacter);
-          const dmgRollLabel = damageRollEntry ? `${itemData.name} - ${damageRollEntry.name}` : `${itemData.name} Impact`;
-          const dmgLabel = isHealing
-            ? `${dmgRollLabel} → ${targetName}: +${finalDamage} HP`
-            : `${dmgRollLabel} ${isCritSuccess ? '(CRIT) ' : ''}→ ${targetName}: -${finalDamage} HP`;
-          const fullBreakdown = reduction > 0 ? `${dmgBreakdown} - ${reduction} (${armorName || 'Armor'})` : dmgBreakdown;
-          
-          triggerRollNotification({
-            type: 'damage',
-            dieType: dmgDieType as any,
-            label: dmgLabel,
-            result: dmgResult,
-            modifier: dmgTotalMod,
-            total: finalDamage,
-            username: character.name || 'Unknown',
-            characterName: character.name,
-            calculationBreakdown: fullBreakdown,
-          });
-          if (character.campaignId) {
-            gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown',
-              `${dmgRollLabel} → ${targetName}: ${fullBreakdown} = ${finalDamage} ${isHealing ? 'healing' : 'damage'}${dmgType ? ` (${dmgType})` : ''}`, 'roll');
-          }
-        }
+        gameWs.sendThrownItemPlaced(thrownItem, sceneId);
+        onRefetchThrownItems?.();
         
-        // For non-destructible throwables: resolve break chance immediately (no map placement)
-        if (!canPlaceOnMap) {
-          const breakRoll = Math.floor(Math.random() * 100) + 1;
-          const breakChance = itemData.throwableBreakChance ?? 10;
-          if (breakRoll <= breakChance) {
-            triggerRollNotification({
-              type: 'system',
-              label: `${itemData.name} Broke!`,
-              result: breakRoll,
-              total: breakChance,
-              username: character.name || 'Unknown',
-              characterName: character.name,
-              calculationBreakdown: `Break roll: ${breakRoll} ≤ ${breakChance}% - item destroyed`,
-            });
-            if (character.campaignId) {
-              gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown',
-                `${itemData.name} broke on impact! (${breakRoll}/${breakChance}%)`, 'action');
-            }
-          }
-        }
-      } catch (err) {
-        console.error('Failed to throw item at target:', err);
-      }
-      return;
-    }
-    
-    // Priority 2: Grid target selected in Target mode - only for destructible AOE throwables
-    if (throwableGridTarget) {
-      if (!itemData.isDestructible || !itemData.throwableAoe) {
         triggerRollNotification({
           type: 'system',
-          label: `${itemData.name} - Cannot Place!`,
+          label: `${itemData.name} Placed!`,
           result: 0,
           total: 0,
           username: character.name || 'Unknown',
           characterName: character.name,
-          calculationBreakdown: 'Only destructible AOE throwables can be placed on the map. Target a token instead.',
+          calculationBreakdown: `Attached to ${targetName} (Detonate from roll panel)`,
         });
-        onClearThrowableGridTarget?.();
-        return;
+        
+        if (character.campaignId) {
+          gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', 
+            `Placed ${itemData.name} on ${targetName}`, 'action');
+        }
+      } catch (err) {
+        console.error('Failed to place item on target:', err);
       }
-      // Range check - validate grid target is within weapon range (uses edge-based distance for large attackers)
+      return;
+    }
+    
+    if (detonatableGridTarget) {
       if (attackerToken) {
         const effectiveGridSize = gridSize || 50;
-        // Convert grid coordinates to pixel coordinates for distance calculation
-        const gridCenterX = (throwableGridTarget.x + 0.5) * effectiveGridSize;
-        const gridCenterY = (throwableGridTarget.y + 0.5) * effectiveGridSize;
-        // Use edge-based distance from attacker token to grid point
+        const gridCenterX = (detonatableGridTarget.x + 0.5) * effectiveGridSize;
+        const gridCenterY = (detonatableGridTarget.y + 0.5) * effectiveGridSize;
         const distancePixels = getDistanceToTokenEdge(
           gridCenterX, gridCenterY,
           attackerToken.x, attackerToken.y,
@@ -5514,7 +5314,6 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
         }
       }
       
-      // Check quantity
       if ((itemData.quantity || 0) < 1) {
         triggerRollNotification({
           type: 'system',
@@ -5523,7 +5322,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
           total: 0,
           username: character.name || 'Unknown',
           characterName: character.name,
-          calculationBreakdown: `You have no ${itemData.name} remaining to throw.`,
+          calculationBreakdown: `You have no ${itemData.name} remaining to place.`,
         });
         return;
       }
@@ -5532,64 +5331,40 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
         const thrownItem = await api.createThrownItem(sceneId, {
           itemId: itemData.id,
           characterId: character.id,
-          x: throwableGridTarget.x,
-          y: throwableGridTarget.y,
+          x: detonatableGridTarget.x,
+          y: detonatableGridTarget.y,
         });
         
-        // Decrement item quantity
         await api.updateItem(itemData.id, { quantity: (itemData.quantity || 1) - 1 });
         queryClient.invalidateQueries({ queryKey: ['item', hotbar?.itemId] });
         queryClient.invalidateQueries({ queryKey: ['character-items', character.id] });
         
-        // Broadcast via WebSocket
         gameWs.sendThrownItemPlaced(thrownItem, sceneId);
-        
-        // Refetch thrown items
         onRefetchThrownItems?.();
+        onClearDetonatableGridTarget?.();
         
-        // Clear the grid target after throwing
-        onClearThrowableGridTarget?.();
-        
-        // Notify
         triggerRollNotification({
           type: 'system',
-          label: `${itemData.name} Thrown!`,
+          label: `${itemData.name} Placed!`,
           result: 0,
           total: 0,
           username: character.name || 'Unknown',
           characterName: character.name,
-          calculationBreakdown: `Placed at grid position (${throwableGridTarget.x}, ${throwableGridTarget.y})`,
+          calculationBreakdown: `Placed at grid position (${detonatableGridTarget.x}, ${detonatableGridTarget.y})`,
         });
         
         if (character.campaignId) {
           gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', 
-            `Threw ${itemData.name} at grid (${throwableGridTarget.x}, ${throwableGridTarget.y})`, 'action');
+            `Placed ${itemData.name} at grid (${detonatableGridTarget.x}, ${detonatableGridTarget.y})`, 'action');
         }
-        
-        // Check if throwable breaks on impact (for items without pickup mode)
-        await checkThrowableBreak(thrownItem.id, itemData);
       } catch (err) {
-        console.error('Failed to throw item at grid target:', err);
+        console.error('Failed to place item at grid target:', err);
       }
       return;
     }
     
-    // Priority 3: Check if there's an AOE marker locked for this throwable (destructible AOE only)
-    if (aoeTargetState?.active && aoeTargetState?.locked && aoeTargetState?.throwableItem) {
-      if (!itemData.isDestructible || !itemData.throwableAoe) {
-        triggerRollNotification({
-          type: 'system',
-          label: `${itemData.name} - Cannot Place!`,
-          result: 0,
-          total: 0,
-          username: character.name || 'Unknown',
-          characterName: character.name,
-          calculationBreakdown: 'Only destructible AOE throwables can be placed on the map. Target a token instead.',
-        });
-        return;
-      }
-      // Verify it's the same throwable item
-      if (aoeTargetState.throwableItem.id !== itemData.id) {
+    if (aoeTargetState?.active && aoeTargetState?.locked && aoeTargetState?.detonatableItem) {
+      if (aoeTargetState.detonatableItem.id !== itemData.id) {
         triggerRollNotification({
           type: 'system',
           label: `Item Mismatch!`,
@@ -5597,15 +5372,13 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
           total: 0,
           username: character.name || 'Unknown',
           characterName: character.name,
-          calculationBreakdown: `Cannot throw "${itemData.name}" - AOE marker is set for "${aoeTargetState.throwableItem?.name}". Cancel the AOE or use the correct item.`,
+          calculationBreakdown: `Cannot place "${itemData.name}" - AOE marker is set for "${aoeTargetState.detonatableItem?.name}". Cancel the AOE or use the correct item.`,
         });
         return;
       }
       
-      // Range check - validate AOE target is within weapon range (uses edge-based distance for large attackers)
       if (attackerToken && aoeTargetState.center) {
         const effectiveGridSize = gridSize || 50;
-        // Use edge-based distance from attacker token to AOE center point
         const distancePixels = getDistanceToTokenEdge(
           aoeTargetState.center.x, aoeTargetState.center.y,
           attackerToken.x, attackerToken.y,
@@ -5627,7 +5400,6 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
         }
       }
       
-      // Check quantity
       if ((itemData.quantity || 0) < 1) {
         triggerRollNotification({
           type: 'system',
@@ -5636,13 +5408,11 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
           total: 0,
           username: character.name || 'Unknown',
           characterName: character.name,
-          calculationBreakdown: `You have no ${itemData.name} remaining to throw.`,
+          calculationBreakdown: `You have no ${itemData.name} remaining to place.`,
         });
         return;
       }
       
-      // Create thrown item at AOE target location
-      // Convert from world pixel coordinates to grid cell coordinates
       const effectiveGridSize = gridSize || 50;
       const gridX = Math.floor(aoeTargetState.center.x / effectiveGridSize);
       const gridY = Math.floor(aoeTargetState.center.y / effectiveGridSize);
@@ -5655,21 +5425,16 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
           y: gridY,
         });
         
-        // Decrement item quantity
         await api.updateItem(itemData.id, { quantity: (itemData.quantity || 1) - 1 });
         queryClient.invalidateQueries({ queryKey: ['item', hotbar?.itemId] });
         queryClient.invalidateQueries({ queryKey: ['character-items', character.id] });
         
-        // Broadcast via WebSocket
         gameWs.sendThrownItemPlaced(thrownItem, sceneId);
-        
-        // Refetch thrown items
         onRefetchThrownItems?.();
         
-        // Notify
         triggerRollNotification({
           type: 'system',
-          label: `${itemData.name} Thrown!`,
+          label: `${itemData.name} Placed!`,
           result: 0,
           total: 0,
           username: character.name || 'Unknown',
@@ -5679,18 +5444,14 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
         
         if (character.campaignId) {
           gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', 
-            `Threw ${itemData.name} at grid (${gridX}, ${gridY})`, 'action');
+            `Placed ${itemData.name} at grid (${gridX}, ${gridY})`, 'action');
         }
-        
-        // Check if throwable breaks on impact (for items without pickup mode)
-        await checkThrowableBreak(thrownItem.id, itemData);
       } catch (err) {
-        console.error('Failed to throw item:', err);
+        console.error('Failed to place item:', err);
       }
       return;
     }
     
-    // No target selected - notify user to select a target first using the Target button
     triggerRollNotification({
       type: 'system',
       label: `${itemData.name} - No Target!`,
@@ -5702,11 +5463,9 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
     });
   };
   
-  // Handle detonating all thrown items from this item type
-  const handleDetonateThrowables = async () => {
-    if (!itemData || !itemData.isThrowable || !sceneId || !thrownItems) return;
+  const handleDetonate = async () => {
+    if (!itemData || !itemData.isDetonatable || !sceneId || !thrownItems) return;
     
-    // Find all thrown items from this item
     const itemThrownItems = thrownItems.filter(ti => ti.itemId === itemData.id);
     
     if (itemThrownItems.length === 0) {
@@ -5717,17 +5476,13 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
         total: 0,
         username: character.name || 'Unknown',
         characterName: character.name,
-        calculationBreakdown: `There are no thrown ${itemData.name} on the battlefield.`,
+        calculationBreakdown: `There are no placed ${itemData.name} on the battlefield.`,
       });
       return;
     }
     
-    // Get the full item data from the first thrown item (includes DB fields like throwableAoeDamage)
-    // Fall back to itemData from hotbar if thrown item doesn't have full item data
-    const sourceItem = itemThrownItems[0]?.item || itemData;
-    
-    // Get AOE damage dice from item (detonation uses throwableAoeDamage)
-    const diceNotation = sourceItem.throwableAoeDamage || itemData.throwableAoeDamage;
+    const damageRollEntry = itemRollEntries.find((re: any) => re.rollType === 'damage');
+    const diceNotation = damageRollEntry?.diceFormula;
     if (!diceNotation) {
       triggerRollNotification({
         type: 'system',
@@ -5736,19 +5491,22 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
         total: 0,
         username: character.name || 'Unknown',
         characterName: character.name,
-        calculationBreakdown: `No detonation damage configured for ${itemData.name}. Set "Throwable AOE Damage" in item settings.`,
+        calculationBreakdown: `No damage roll entry configured for ${itemData.name}. Add a roll entry with type "damage" in item settings.`,
       });
       return;
     }
     
-    // Get base damage info (used per overlap)
     const { dieType } = rollDice(diceNotation);
-    const mod = sourceItem.mod || itemData.mod || 0;
+    const rollEntryMod = damageRollEntry?.mod || 0;
+    let dmgAttrMod = 0;
+    if (damageRollEntry?.attribute) {
+      dmgAttrMod = getAttributeModifier(damageRollEntry.attribute);
+    }
+    const mod = rollEntryMod + dmgAttrMod;
     
-    // Get AOE range for each thrown item
-    const aoeRange = sourceItem.throwableAoeRange || itemData.throwableAoeRange || 15;
-    const aoeShape = (sourceItem.throwableAoeShape || itemData.throwableAoeShape || 'circle').toLowerCase();
-    const aoeDamageType = sourceItem.throwableAoeDamageType || itemData.throwableAoeDamageType || 'Fire';
+    const aoeRange = itemData.detonateAoeRange || 15;
+    const aoeShape = (itemData.detonateAoeShape || 'circle').toLowerCase();
+    const aoeDamageType = damageRollEntry?.damageType || 'Fire';
     
     // Collect all affected tokens with overlap counts (for stacking damage)
     // Key: token id, Value: { token, count of overlapping AOEs }
@@ -7280,10 +7038,10 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
       </>
     );
   } else if (hotbar?.itemId && itemData) {
-    // For ammunition, consumables, and throwables, show grouped total quantity
+    // For ammunition, consumables, and detonatables, show grouped total quantity
     const displayQuantity = itemData.itemType === 'ammunition' 
       ? getTotalAmmunitionQuantity(itemData) 
-      : (itemData.isThrowable || itemData.itemType === 'consumable')
+      : (itemData.isDetonatable || itemData.itemType === 'consumable')
         ? getTotalStackedQuantity(itemData) 
         : null;
       
@@ -7322,8 +7080,8 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
         {itemData.attribute && <p className="text-sm">Attack: {itemData.attribute}</p>}
         {displayQuantity !== null && <p className="text-sm text-amber-400">Total Quantity: x{displayQuantity}</p>}
         {itemData.durability !== undefined && <p className="text-sm">Durability: {itemData.durability}/10</p>}
-        {itemData.isThrowable && itemData.throwableAoeRange && (
-          <p className="text-sm text-orange-400">AOE: {itemData.throwableAoeRange}ft diameter ({itemData.throwableAoeShape || 'circle'})</p>
+        {itemData.isDetonatable && itemData.detonateAoeRange && (
+          <p className="text-sm text-orange-400">AOE: {itemData.detonateAoeRange}ft diameter ({itemData.detonateAoeShape || 'circle'})</p>
         )}
         {isClickable && (
           <p className="text-xs text-stone-400 mt-1">Click to open roll panel</p>
@@ -7458,24 +7216,24 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
             </div>
           )}
 
-          {isThrowableClickable && itemData && (
+          {isDetonatableClickable && itemData && (
             <div className="space-y-2 mb-3">
-              <p className="text-xs text-stone-400 uppercase tracking-wider">Throwable Actions</p>
+              <p className="text-xs text-stone-400 uppercase tracking-wider">Detonatable Actions</p>
               <Button 
-                onClick={() => { setShowModifierPopup(false); handleThrowItem(); }} 
+                onClick={() => { setShowModifierPopup(false); handlePlaceDetonatable(); }} 
                 className="w-full bg-orange-600 hover:bg-orange-500"
                 disabled={(itemData.quantity || 0) <= 0}
-                data-testid="button-throw-item"
+                data-testid="button-place-detonatable"
               >
-                <ArrowUpRight className="h-4 w-4 mr-1" /> Throw {itemData.name} {itemData.quantity !== null && itemData.quantity !== undefined ? `(x${itemData.quantity})` : ''}
+                <ArrowUpRight className="h-4 w-4 mr-1" /> Place {itemData.name} {itemData.quantity !== null && itemData.quantity !== undefined ? `(x${itemData.quantity})` : ''}
               </Button>
-              {itemData.isDestructible && itemData.throwableAoe && thrownItems && thrownItems.filter(ti => ti.itemId === itemData.id).length > 0 && (
+              {thrownItems && thrownItems.filter(ti => ti.itemId === itemData.id).length > 0 && (
                 <Button 
-                  onClick={async () => { setShowModifierPopup(false); await handleDetonateThrowables(); }} 
+                  onClick={async () => { setShowModifierPopup(false); await handleDetonate(); }} 
                   className="w-full bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-500 hover:to-red-500"
-                  data-testid="button-detonate-aoe-panel"
+                  data-testid="button-detonate-panel"
                 >
-                  <Flame className="h-4 w-4 mr-1" /> Detonate AOE ({thrownItems.filter(ti => ti.itemId === itemData.id).length} on map)
+                  <Flame className="h-4 w-4 mr-1" /> Detonate ({thrownItems.filter(ti => ti.itemId === itemData.id).length} on map)
                 </Button>
               )}
             </div>
@@ -7587,7 +7345,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
 }
 const BattleMapHotbarSlot = React.memo(BattleMapHotbarSlotInner);
 
-const BattleMapHotbarsInner = function BattleMapHotbars({ character, tokens, targetedTokenId, characters, gridSize, onEnterAoeMode, aoeTargetState, onAoeDamageRoll, sceneId, thrownItems, onRefetchThrownItems, onEnterThrowableAoeMode, throwableGridTarget, onClearThrowableGridTarget, notesPanelOpen = false, notesPanelWidth = 0, onRequestSaveRoll, onClearTarget, campaignMembers, currentUserId }: BattleMapHotbarsProps) {
+const BattleMapHotbarsInner = function BattleMapHotbars({ character, tokens, targetedTokenId, characters, gridSize, onEnterAoeMode, aoeTargetState, onAoeDamageRoll, sceneId, thrownItems, onRefetchThrownItems, onEnterDetonatableAoeMode, detonatableGridTarget, onClearDetonatableGridTarget, notesPanelOpen = false, notesPanelWidth = 0, onRequestSaveRoll, onClearTarget, campaignMembers, currentUserId }: BattleMapHotbarsProps) {
   const [activeHotbar, setActiveHotbar] = useState<string>('weapons');
   
   const { data: hotbars = [], isLoading: hotbarsLoading } = useQuery({
@@ -7798,9 +7556,9 @@ const BattleMapHotbarsInner = function BattleMapHotbars({ character, tokens, tar
                       sceneId={sceneId}
                       thrownItems={thrownItems}
                       onRefetchThrownItems={onRefetchThrownItems}
-                      onEnterThrowableAoeMode={onEnterThrowableAoeMode}
-                      throwableGridTarget={throwableGridTarget}
-                      onClearThrowableGridTarget={onClearThrowableGridTarget}
+                      onEnterDetonatableAoeMode={onEnterDetonatableAoeMode}
+                      detonatableGridTarget={detonatableGridTarget}
+                      onClearDetonatableGridTarget={onClearDetonatableGridTarget}
                       onRequestSaveRoll={onRequestSaveRoll}
                       onClearTarget={onClearTarget}
                       campaignMembers={campaignMembers}
@@ -13628,8 +13386,8 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
                         x{getTotalAmmunitionQuantity(itemData)}
                       </div>
                     )}
-                    {/* Quantity badge for consumables and throwables - shows total of all matching items */}
-                    {(itemData.itemType === 'consumable' || itemData.isThrowable) && itemData.itemType !== 'ammunition' && (
+                    {/* Quantity badge for consumables and detonatables - shows total of all matching items */}
+                    {(itemData.itemType === 'consumable' || itemData.isDetonatable) && itemData.itemType !== 'ammunition' && (
                       <div className="absolute top-0 right-0 bg-stone-900/90 text-green-400 text-[8px] px-1 rounded-bl font-bold">
                         x{getTotalStackedQuantity(itemData)}
                       </div>
@@ -13668,8 +13426,8 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
                         x{getTotalAmmunitionQuantity(itemData)}
                       </div>
                     )}
-                    {/* Quantity badge for consumables and throwables - shows total of all matching items */}
-                    {(itemData.itemType === 'consumable' || itemData.isThrowable) && itemData.itemType !== 'ammunition' && (
+                    {/* Quantity badge for consumables and detonatables - shows total of all matching items */}
+                    {(itemData.itemType === 'consumable' || itemData.isDetonatable) && itemData.itemType !== 'ammunition' && (
                       <div className="absolute top-0 right-0 bg-stone-900/90 text-green-400 text-[8px] px-1 rounded-bl font-bold">
                         x{getTotalStackedQuantity(itemData)}
                       </div>
@@ -21261,15 +21019,9 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
     rationServings: number | string;
     breakChance: number | string;
     isDamaging: boolean;
-    isThrowable: boolean;
-    throwableAoe: boolean;
-    throwableAoeShape: string;
-    throwableAoeRange: number | string;
-    throwableAoeDamage: string;
-    throwableAoeDamageType: string;
-    throwablePickup: boolean;
-    throwableBreakChance: number | string;
-    isDestructible: boolean;
+    isDetonatable: boolean;
+    detonateAoeShape: string;
+    detonateAoeRange: number | string;
     canApplyEffects: boolean;
   }>({
     name: '',
@@ -21304,15 +21056,9 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
     rationServings: '',
     breakChance: 10,
     isDamaging: false,
-    isThrowable: false,
-    throwableAoe: false,
-    throwableAoeShape: '',
-    throwableAoeRange: 10,
-    throwableAoeDamage: '',
-    throwableAoeDamageType: '',
-    throwablePickup: false,
-    throwableBreakChance: 10,
-    isDestructible: false,
+    isDetonatable: false,
+    detonateAoeShape: '',
+    detonateAoeRange: 10,
     canApplyEffects: false,
   });
 
@@ -21363,15 +21109,9 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
         breakChance: template.breakChance ?? 10,
         rationServings: template.rationServings || 0,
         isDamaging: template.isDamaging || false,
-        isThrowable: template.isThrowable || false,
-        throwableAoe: template.throwableAoe || false,
-        throwableAoeShape: template.throwableAoeShape || '',
-        throwableAoeRange: template.throwableAoeRange || 10,
-        throwableAoeDamage: template.throwableAoeDamage || '',
-        throwableAoeDamageType: template.throwableAoeDamageType || '',
-        throwablePickup: template.throwablePickup || false,
-        throwableBreakChance: template.throwableBreakChance ?? 10,
-        isDestructible: template.isDestructible || false,
+        isDetonatable: template.isDetonatable || false,
+        detonateAoeShape: template.detonateAoeShape || '',
+        detonateAoeRange: template.detonateAoeRange || 10,
         canApplyEffects: template.canApplyEffects || false,
       };
       onSave(itemData);
@@ -21499,15 +21239,9 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
       rationServings: optionalNum(formData.rationServings),
       breakChance: Number(formData.breakChance) || 10,
       isDamaging: formData.isDamaging,
-      isThrowable: formData.isThrowable,
-      throwableAoe: formData.throwableAoe,
-      throwableAoeShape: formData.throwableAoeShape || undefined,
-      throwableAoeRange: optionalNum(formData.throwableAoeRange),
-      throwableAoeDamage: formData.throwableAoeDamage || undefined,
-      throwableAoeDamageType: formData.throwableAoeDamageType || undefined,
-      throwablePickup: formData.throwablePickup,
-      throwableBreakChance: formData.isThrowable ? (formData.throwableBreakChance === '' ? 10 : Number(formData.throwableBreakChance)) : 10,
-      isDestructible: formData.isThrowable && formData.throwableAoe ? formData.isDestructible : false,
+      isDetonatable: formData.isDetonatable,
+      detonateAoeShape: formData.detonateAoeShape || undefined,
+      detonateAoeRange: optionalNum(formData.detonateAoeRange),
       canApplyEffects: formData.itemType === 'weapon' ? formData.canApplyEffects : false,
     };
     onSave(cleanedData);
@@ -21544,15 +21278,9 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
       rationServings: '',
       breakChance: 10,
       isDamaging: false,
-      isThrowable: false,
-      throwableAoe: false,
-      throwableAoeShape: '',
-      throwableAoeRange: 10,
-      throwableAoeDamage: '',
-      throwableAoeDamageType: '',
-      throwablePickup: false,
-      throwableBreakChance: 10,
-      isDestructible: false,
+      isDetonatable: false,
+      detonateAoeShape: '',
+      detonateAoeRange: 10,
       canApplyEffects: false,
     });
   };
@@ -21830,7 +21558,7 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
                     ammunitionType: null, breakChance: 10,
                     rationServings: 0, isDamaging: false,
                     isContainer: v === 'container', carryCapacity: v === 'container' ? 10 : 0,
-                    isThrowable: false, throwableAoe: false, throwableAoeShape: null, throwableAoeRange: 10, throwablePickup: false, throwableAoeDamage: null, throwableAoeDamageType: null, throwableBreakChance: 10, isDestructible: false,
+                    isDetonatable: false, detonateAoeShape: null, detonateAoeRange: 10,
                   };
                   setFormData({...formData, ...clearedFields, itemType: v});
                 }}>
@@ -22099,139 +21827,43 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
                   <div className="col-span-2 border-t border-stone-600 pt-3 mt-2 space-y-3">
                     <div className="flex items-center gap-2">
                       <Checkbox 
-                        id="isThrowable" 
-                        checked={formData.isThrowable || false} 
-                        onCheckedChange={(checked) => setFormData({...formData, isThrowable: !!checked, throwableAoe: checked ? formData.throwableAoe : false})}
-                        data-testid="checkbox-is-throwable"
+                        id="isDetonatable" 
+                        checked={formData.isDetonatable || false} 
+                        onCheckedChange={(checked) => setFormData({...formData, isDetonatable: !!checked})}
+                        data-testid="checkbox-is-detonatable"
                       />
-                      <Label htmlFor="isThrowable" className="cursor-pointer">Is Throwable</Label>
+                      <Label htmlFor="isDetonatable" className="cursor-pointer">Is Detonatable</Label>
                     </div>
-                    {formData.isThrowable && (
+                    {formData.isDetonatable && (
                       <div className="pl-6 space-y-3">
-                        <div className="flex items-center gap-2">
-                          <Checkbox 
-                            id="throwableAoe" 
-                            checked={formData.throwableAoe || false} 
-                            onCheckedChange={(checked) => setFormData({...formData, throwableAoe: !!checked})}
-                            data-testid="checkbox-throwable-aoe"
-                          />
-                          <Label htmlFor="throwableAoe" className="cursor-pointer">Enable AOE</Label>
+                        <div>
+                          <Label>AOE Shape</Label>
+                          <Select value={formData.detonateAoeShape || ''} onValueChange={(v) => setFormData({...formData, detonateAoeShape: v})}>
+                            <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-detonate-aoe-shape">
+                              <SelectValue placeholder="Select shape..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="circle">Circle</SelectItem>
+                              <SelectItem value="cone">Cone</SelectItem>
+                              <SelectItem value="line">Line</SelectItem>
+                              <SelectItem value="cube">Cube</SelectItem>
+                            </SelectContent>
+                          </Select>
                         </div>
-                        {formData.throwableAoe && (
-                          <div className="pl-6 space-y-3">
-                            <div>
-                              <Label>AOE Shape</Label>
-                              <Select value={formData.throwableAoeShape || ''} onValueChange={(v) => setFormData({...formData, throwableAoeShape: v})}>
-                                <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-throwable-aoe-shape">
-                                  <SelectValue placeholder="Select shape..." />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="circle">Circle</SelectItem>
-                                  <SelectItem value="cone">Cone</SelectItem>
-                                  <SelectItem value="line">Line</SelectItem>
-                                  <SelectItem value="cube">Cube</SelectItem>
-                                </SelectContent>
-                              </Select>
-                            </div>
-                            <div>
-                              <Label>AOE Range (feet)</Label>
-                              <Input 
-                                type="number" 
-                                min="5" 
-                                step="5"
-                                value={formData.throwableAoeRange} 
-                                onChange={(e) => setFormData({...formData, throwableAoeRange: e.target.value === '' ? '' : parseInt(e.target.value)})} 
-                                className="bg-stone-800 border-stone-700"
-                                placeholder="10"
-                                data-testid="input-throwable-aoe-range"
-                              />
-                            </div>
-                            <div>
-                              <Label>Detonation Damage (e.g. 2d6)</Label>
-                              <Input 
-                                value={formData.throwableAoeDamage} 
-                                onChange={(e) => setFormData({...formData, throwableAoeDamage: e.target.value})} 
-                                className="bg-stone-800 border-stone-700"
-                                placeholder="2d6"
-                                data-testid="input-throwable-aoe-damage"
-                              />
-                            </div>
-                            <div>
-                              <Label>Detonation Damage Type</Label>
-                              <Select value={formData.throwableAoeDamageType || ''} onValueChange={(v) => setFormData({...formData, throwableAoeDamageType: v})}>
-                                <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-throwable-aoe-damage-type">
-                                  <SelectValue placeholder="Select damage type..." />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="Sharp">Sharp</SelectItem>
-                                  <SelectItem value="Blunt">Blunt</SelectItem>
-                                  <SelectItem value="Piercing">Piercing</SelectItem>
-                                  <SelectItem value="Flame">Flame</SelectItem>
-                                  <SelectItem value="Frost">Frost</SelectItem>
-                                  <SelectItem value="Storm">Storm</SelectItem>
-                                  <SelectItem value="Tide">Tide</SelectItem>
-                                  <SelectItem value="Stone">Stone</SelectItem>
-                                  <SelectItem value="Flux">Flux</SelectItem>
-                                  <SelectItem value="Light">Light</SelectItem>
-                                  <SelectItem value="Dark">Dark</SelectItem>
-                                  <SelectItem value="Sound">Sound</SelectItem>
-                                  <SelectItem value="Health">Health</SelectItem>
-                                </SelectContent>
-                              </Select>
-                            </div>
-                          </div>
-                        )}
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <div className="flex items-center gap-2">
-                                <Checkbox 
-                                  id="throwablePickup" 
-                                  checked={formData.throwablePickup || false} 
-                                  onCheckedChange={(checked) => setFormData({...formData, throwablePickup: !!checked})}
-                                  data-testid="checkbox-throwable-pickup"
-                                />
-                                <Label htmlFor="throwablePickup" className="cursor-pointer">Pickup Mode</Label>
-                              </div>
-                            </TooltipTrigger>
-                            <TooltipContent side="right" className="max-w-xs">
-                              <p>When enabled, thrown items attach to tokens or grid spaces and can be picked up by other characters.</p>
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                        {formData.throwableAoe && (
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <div className="flex items-center gap-2 mt-2">
-                                  <Checkbox 
-                                    id="isDestructible" 
-                                    checked={formData.isDestructible || false} 
-                                    onCheckedChange={(checked) => setFormData({...formData, isDestructible: !!checked})}
-                                    data-testid="checkbox-is-destructible"
-                                  />
-                                  <Label htmlFor="isDestructible" className="cursor-pointer">Is Destructible?</Label>
-                                </div>
-                              </TooltipTrigger>
-                              <TooltipContent side="right" className="max-w-xs">
-                                <p>Destructible throwables can be placed on the map and detonated via the roll selector panel.</p>
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
-                        )}
-                        <div className="mt-3">
-                          <Label>Throwable Break Chance: {formData.throwableBreakChance === '' ? 10 : Number(formData.throwableBreakChance)}%</Label>
-                          <Slider 
-                            value={[formData.throwableBreakChance === '' ? 10 : Number(formData.throwableBreakChance)]} 
-                            onValueChange={(v) => setFormData({...formData, throwableBreakChance: v[0]})} 
-                            min={0} 
-                            max={100} 
-                            step={1} 
-                            className="mt-2"
-                            data-testid="slider-throwable-break-chance"
+                        <div>
+                          <Label>AOE Range (feet)</Label>
+                          <Input 
+                            type="number" 
+                            min="5" 
+                            step="5"
+                            value={formData.detonateAoeRange} 
+                            onChange={(e) => setFormData({...formData, detonateAoeRange: e.target.value === '' ? '' : parseInt(e.target.value)})} 
+                            className="bg-stone-800 border-stone-700"
+                            placeholder="10"
+                            data-testid="input-detonate-aoe-range"
                           />
-                          <p className="text-xs text-stone-500 mt-1">Chance of throwable item breaking when thrown</p>
                         </div>
+                        <p className="text-xs text-stone-500">Detonation damage is configured via Roll Entries (add a "damage" type roll entry to this item).</p>
                       </div>
                     )}
                   </div>
@@ -22611,7 +22243,7 @@ function ManageTemplatesDialog({ open, onOpenChange, campaignId }: { open: boole
                         ammunitionType: '', breakChance: 10,
                         rationServings: 0, isDamaging: false,
                         isContainer: v === 'container', carryCapacity: v === 'container' ? 10 : 0,
-                        isThrowable: false, throwableAoe: false, throwableAoeShape: '', throwableAoeRange: 10, throwablePickup: false, throwableAoeDamage: '', throwableAoeDamageType: '', throwableBreakChance: 10, isDestructible: false,
+                        isDetonatable: false, detonateAoeShape: '', detonateAoeRange: 10,
                       };
                       setNewItem({...newItem, ...clearedFields, itemType: v});
                     }}>
@@ -23095,7 +22727,7 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
                         ammunitionType: null, breakChance: 10,
                         rationServings: 0, isDamaging: false,
                         isContainer: v === 'container', carryCapacity: v === 'container' ? 10 : 0,
-                        isThrowable: false, throwableAoe: false, throwableAoeShape: null, throwableAoeRange: 10, throwablePickup: false, throwableAoeDamage: null, throwableAoeDamageType: null, throwableBreakChance: 10, isDestructible: false,
+                        isDetonatable: false, detonateAoeShape: null, detonateAoeRange: 10,
                       };
                       setEditData({ ...editData, ...clearedFields, itemType: v });
                     }}>
@@ -23313,43 +22945,23 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
                         <Label className="text-xs text-stone-400">Two-Handed</Label>
                         <p className="text-stone-200">{currentData.isHeavy ? 'Yes' : 'No'}</p>
                       </div>
-                      {currentData.isThrowable && (
+                      {currentData.isDetonatable && (
                         <>
                           <div>
-                            <Label className="text-xs text-stone-400">Throwable</Label>
+                            <Label className="text-xs text-stone-400">Detonatable</Label>
                             <p className="text-stone-200">Yes</p>
                           </div>
-                          <div>
-                            <Label className="text-xs text-stone-400">Break Chance</Label>
-                            <p className={`${(currentData.throwableBreakChance ?? 10) > 0 ? 'text-red-400' : 'text-stone-200'}`}>
-                              {currentData.throwableBreakChance ?? 10}%
-                            </p>
-                          </div>
-                          {currentData.throwablePickup && (
+                          {currentData.detonateAoeRange && (
                             <div>
-                              <Label className="text-xs text-stone-400">Pickup Mode</Label>
-                              <p className="text-stone-200">Enabled</p>
+                              <Label className="text-xs text-stone-400">AOE Range</Label>
+                              <p className="text-stone-200">{currentData.detonateAoeRange}ft</p>
                             </div>
                           )}
-                          {currentData.isDestructible && (
+                          {currentData.detonateAoeShape && (
                             <div>
-                              <Label className="text-xs text-stone-400">Destructible</Label>
-                              <p className="text-stone-200">Enabled</p>
+                              <Label className="text-xs text-stone-400">AOE Shape</Label>
+                              <p className="text-stone-200 capitalize">{currentData.detonateAoeShape}</p>
                             </div>
-                          )}
-                          {currentData.throwableAoe && currentData.throwableAoeRange && (
-                            <>
-                              <div>
-                                <Label className="text-xs text-stone-400">AOE Range</Label>
-                                <p className="text-stone-200">{currentData.throwableAoeRange}ft</p>
-                              </div>
-                              {currentData.throwableAoeShape && (
-                                <div>
-                                  <Label className="text-xs text-stone-400">AOE Shape</Label>
-                                  <p className="text-stone-200 capitalize">{currentData.throwableAoeShape}</p>
-                                </div>
-                              )}
-                            </>
                           )}
                         </>
                       )}

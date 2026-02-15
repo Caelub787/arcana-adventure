@@ -6554,13 +6554,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
               
               await storage.updateCharacter(characterId, { hp: newHp });
               
-              // Create chat message
+              const diceText = `${numDice}d${dieSize}`;
+              const rollBreakdown = `${diceText} = [${rolls.join(', ')}]${bonus > 0 ? ` + ${bonus}` : ''} = ${total}`;
+              const effectAction = isHealing ? 'heals' : 'damages';
               const chatMessage = await storage.createChatMessage({
                 campaignId: scene.campaignId,
                 userId: req.session.userId!,
-                sender: 'System',
-                text: `**${effect.name}** ${isHealing ? 'heals' : 'damages'} ${character.name} for **${total}** ${effect.damageType || ''} (${rolls.join(' + ')}${bonus > 0 ? ` + ${bonus}` : ''})`,
-                type: 'system'
+                sender: effect.name,
+                text: `${effect.name} ${effectAction} ${character.name}: ${rollBreakdown}${effect.damageType ? ` (${effect.damageType})` : ''}`,
+                type: 'roll'
               });
               
               // Broadcast HP update with correct previous HP for this specific effect
@@ -6609,22 +6611,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
       
-      // STEP 2: Process duration countdown for ALL tokens in the scene
-      // This ensures all effects countdown each turn/round, not just the current character's effects
+      // STEP 2: Process duration countdown
+      // - durationType 'turns': only decrement on the affected token's own turn
+      // - durationType 'rounds': decrement once per new round for all tokens
       for (const token of sceneTokens) {
         const activeEffects = await storage.getTokenActiveEffects(token.id);
         const tokenCharacter = token.characterId ? await storage.getCharacter(token.characterId) : null;
         const tokenCharacterName = tokenCharacter?.name || 'Unknown';
+        const isCurrentCharacterToken = token.characterId === characterId;
         
         for (const activeEffect of activeEffects) {
           const effect = activeEffect.effect;
           
-          // Handle duration decrement and expiration for ALL effects
-          // - durationType: 'turns' = decrement every turn
-          // - durationType: 'rounds' = decrement only at start of new round
           const shouldDecrementDuration = activeEffect.duration !== null && activeEffect.duration > 0 && (
             (effect.durationType === 'rounds' && isNewRound) ||
-            (effect.durationType !== 'rounds' && timing === 'start_of_turn')
+            (effect.durationType !== 'rounds' && timing === 'start_of_turn' && isCurrentCharacterToken)
           );
           
           if (shouldDecrementDuration) {
@@ -6642,13 +6643,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 characterName: tokenCharacterName
               });
               
-              // Create chat message for effect expiration
               await storage.createChatMessage({
                 campaignId: scene.campaignId,
                 userId: req.session.userId!,
-                sender: 'System',
-                text: `**${effect.name}** effect on ${tokenCharacterName} has expired.`,
-                type: 'system'
+                sender: effect.name,
+                text: `${effect.name} on ${tokenCharacterName} has expired`,
+                type: 'roll'
               });
             } else {
               // Decrement duration
@@ -6741,9 +6741,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
               id: item.id,
               name: item.name,
               image: item.image,
-              throwableAoeRange: item.throwableAoeRange,
-              throwableAoeShape: item.throwableAoeShape,
-              throwableAoe: item.throwableAoe,
+              detonateAoeRange: item.detonateAoeRange,
+              detonateAoeShape: item.detonateAoeShape,
+              isDetonatable: item.isDetonatable,
             } : null,
           };
         })

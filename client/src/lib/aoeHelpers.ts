@@ -1,7 +1,7 @@
 export interface AoeTargetState {
   active: boolean;
   spell: any;
-  throwableItem?: any; // For throwable item AOE targeting
+  detonatableItem?: any; // For detonatable item AOE targeting
   casterTokenId: string;
   center: { x: number; y: number };
   locked: boolean;

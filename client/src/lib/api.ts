@@ -232,11 +232,9 @@ export interface Item {
   armorSlot?: string;
   damageReduction?: number;
   damageReductionType?: string;
-  isThrowable?: boolean;
-  throwableAoe?: boolean;
-  throwableAoeShape?: string;
-  throwableAoeRange?: number;
-  throwablePickup?: boolean;
+  isDetonatable?: boolean;
+  detonateAoeShape?: string;
+  detonateAoeRange?: number;
   isDamaging?: boolean;
 }
 
@@ -608,9 +606,9 @@ export interface ThrownItem {
     id: string;
     name: string;
     image?: string | null;
-    throwableAoeRange?: number | null;
-    throwableAoeShape?: string | null;
-    throwableAoe?: boolean;
+    detonateAoeRange?: number | null;
+    detonateAoeShape?: string | null;
+    isDetonatable?: boolean;
   } | null;
 }
 

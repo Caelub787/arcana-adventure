@@ -6495,7 +6495,7 @@ export default function Campaign() {
   const [selectionMode, setSelectionMode] = useState<SelectionMode>('select');
   const [targetedTokenId, setTargetedTokenId] = useState<string | null>(null);
   const [selectedTokenId, setSelectedTokenId] = useState<string | null>(null);
-  const [throwableGridTarget, setThrowableGridTarget] = useState<{ x: number; y: number } | null>(null);
+  const [detonatableGridTarget, setDetonatableGridTarget] = useState<{ x: number; y: number } | null>(null);
   
   // Active beacons state - temporary pulsating rings on grid cells
   const [activeBeacons, setActiveBeacons] = useState<Array<{
@@ -6833,8 +6833,7 @@ export default function Campaign() {
     if (casterToken) {
       const casterCenterX = casterToken.x + (activeScene?.gridSize || 50) / 2;
       const casterCenterY = casterToken.y + (activeScene?.gridSize || 50) / 2;
-      // Use spell range for spells, or item range for throwables (default 30ft for throwables)
-      const rangeVal = aoeTargetState.spell?.rangeNum || aoeTargetState.throwableItem?.range || 30;
+      const rangeVal = aoeTargetState.spell?.rangeNum || aoeTargetState.detonatableItem?.range || 30;
       const gridSizeVal = activeScene?.gridSize || 50;
       
       const dx = x - casterCenterX;
@@ -8669,11 +8668,9 @@ export default function Campaign() {
     setSelectionMode(mode);
   }, [selectionMode, effectiveCampaignId]);
   
-  // Handler for grid target click in target mode (for throwable items)
   const handleGridTargetClick = (gridX: number, gridY: number) => {
-    // Clear token target when clicking grid (mutually exclusive - only one target at a time)
     setTargetedTokenId(null);
-    setThrowableGridTarget({ x: gridX, y: gridY });
+    setDetonatableGridTarget({ x: gridX, y: gridY });
     // Clear WebSocket targeting since we're targeting a grid space, not a token
     if (effectiveCampaignId) {
       gameWs.clearTokenTargeting();
@@ -10021,7 +10018,7 @@ export default function Campaign() {
                  console.error('Failed to delete thrown item:', err);
                }
              }}
-             throwableGridTarget={throwableGridTarget}
+             detonatableGridTarget={detonatableGridTarget}
              onGridTargetClick={handleGridTargetClick}
              notesPanelOpen={sidePanelOpen}
              notesPanelWidth={notesPanelWidth}
@@ -10320,20 +10317,18 @@ export default function Campaign() {
                sceneId={activeScene?.id}
                thrownItems={thrownItems}
                onRefetchThrownItems={() => queryClient.invalidateQueries({ queryKey: ['thrown-items', activeScene?.id] })}
-               onEnterThrowableAoeMode={(item, casterToken) => {
-                 const aoeRange = item.throwableAoeRange || 15;
-                 const aoeShape = (item.throwableAoeShape || 'circle').toLowerCase();
+               onEnterDetonatableAoeMode={(item, casterToken) => {
                  setAoeTargetState({
                    active: true,
                    spell: null,
-                   throwableItem: item,
+                   detonatableItem: item,
                    casterTokenId: casterToken?.id || casterToken,
                    center: { x: casterToken?.x || 0, y: casterToken?.y || 0 },
                    locked: false,
                  });
                }}
-               throwableGridTarget={throwableGridTarget}
-               onClearThrowableGridTarget={() => setThrowableGridTarget(null)}
+               detonatableGridTarget={detonatableGridTarget}
+               onClearDetonatableGridTarget={() => setDetonatableGridTarget(null)}
                notesPanelOpen={sidePanelOpen}
                notesPanelWidth={notesPanelWidth}
                onRequestSaveRoll={handleRequestSaveRoll}
