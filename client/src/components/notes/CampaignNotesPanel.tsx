@@ -653,6 +653,8 @@ export function CampaignNotesPanel({
   const lastSentCanvasRef = useRef<string | null>(null);
 
   const lastLoadedNoteIdRef = useRef<string | null>(null);
+  const lastSavedContentRef = useRef<{ title: string; content: string } | null>(null);
+  const lastSavedCanvasRef = useRef<CanvasData | null>(null);
 
   const { data: folders = [], isLoading: foldersLoading } = useQuery<NoteFolder[]>({
     queryKey: ["/api/notes/folders", campaignId, showHiddenFolders],
@@ -709,6 +711,8 @@ export function CampaignNotesPanel({
         setNoteTitle(currentNote.title);
         setNoteContent(currentNote.content || "");
         lastLoadedNoteIdRef.current = currentNote.id;
+        lastSavedContentRef.current = null;
+        lastSavedCanvasRef.current = null;
         
         if (currentNote.type === "canvas" && currentNote.canvasData) {
           setCanvasData(currentNote.canvasData as CanvasData);
@@ -1005,9 +1009,9 @@ export function CampaignNotesPanel({
   const deleteFolderMutation = useMutation({
     mutationFn: (id: string) => api.deleteNoteFolder(id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/notes/folders"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/notes"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/notes/all"] });
+      queryClient.refetchQueries({ queryKey: ["/api/notes/folders"] });
+      queryClient.refetchQueries({ queryKey: ["/api/notes"] });
+      queryClient.refetchQueries({ queryKey: ["/api/notes/all"] });
       setDeleteFolderDialogOpen(false);
       setFolderToDelete(null);
       if (selectedFolderId === folderToDelete?.id) {
@@ -1022,9 +1026,9 @@ export function CampaignNotesPanel({
   const createNoteMutation = useMutation({
     mutationFn: (data: Partial<Note>) => api.createNote(data),
     onSuccess: (newNote) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/notes"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/notes/all"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/notes/folders"] });
+      queryClient.refetchQueries({ queryKey: ["/api/notes"] });
+      queryClient.refetchQueries({ queryKey: ["/api/notes/all"] });
+      queryClient.refetchQueries({ queryKey: ["/api/notes/folders"] });
       setSelectedNoteId(newNote.id);
       toast({ title: "Note created" });
     },
@@ -1036,9 +1040,9 @@ export function CampaignNotesPanel({
     mutationFn: ({ id, data }: { id: string; data: Partial<Note> }) =>
       api.updateNote(id, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/notes"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/notes/all"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/notes", selectedNoteId] });
+      queryClient.refetchQueries({ queryKey: ["/api/notes"] });
+      queryClient.refetchQueries({ queryKey: ["/api/notes/all"] });
+      queryClient.refetchQueries({ queryKey: ["/api/notes", selectedNoteId] });
     },
     onError: (err: any) =>
       toast({ title: "Error", description: err.message, variant: "destructive" }),
@@ -1047,9 +1051,9 @@ export function CampaignNotesPanel({
   const deleteNoteMutation = useMutation({
     mutationFn: (id: string) => api.deleteNote(id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/notes"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/notes/all"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/notes/folders"] });
+      queryClient.refetchQueries({ queryKey: ["/api/notes"] });
+      queryClient.refetchQueries({ queryKey: ["/api/notes/all"] });
+      queryClient.refetchQueries({ queryKey: ["/api/notes/folders"] });
       setDeleteNoteDialogOpen(false);
       setNoteToDelete(null);
       if (selectedNoteId) {
@@ -1181,22 +1185,41 @@ export function CampaignNotesPanel({
   };
 
   useEffect(() => {
-    if (selectedNoteId && currentNote && (debouncedTitle !== currentNote.title || debouncedContent !== currentNote.content)) {
-      updateNoteMutation.mutate({
-        id: selectedNoteId,
-        data: { title: debouncedTitle, content: debouncedContent },
-      });
+    if (!selectedNoteId || !currentNote) return;
+
+    const lastSaved = lastSavedContentRef.current;
+    if (!lastSaved && debouncedTitle === currentNote.title && debouncedContent === currentNote.content) {
+      lastSavedContentRef.current = { title: debouncedTitle, content: debouncedContent };
+      return;
     }
-  }, [debouncedTitle, debouncedContent]);
+    if (lastSaved && lastSaved.title === debouncedTitle && lastSaved.content === debouncedContent) {
+      return;
+    }
+
+    lastSavedContentRef.current = { title: debouncedTitle, content: debouncedContent };
+    updateNoteMutation.mutate({
+      id: selectedNoteId,
+      data: { title: debouncedTitle, content: debouncedContent },
+    });
+  }, [debouncedTitle, debouncedContent, selectedNoteId]);
 
   useEffect(() => {
-    if (selectedNoteId && currentNote?.type === "canvas" && !noteLoading) {
-      updateNoteMutation.mutate({
-        id: selectedNoteId,
-        data: { canvasData: debouncedCanvasData },
-      });
+    if (!selectedNoteId || currentNote?.type !== "canvas" || noteLoading) return;
+
+    if (!lastSavedCanvasRef.current) {
+      lastSavedCanvasRef.current = debouncedCanvasData;
+      return;
     }
-  }, [debouncedCanvasData]);
+    if (JSON.stringify(lastSavedCanvasRef.current) === JSON.stringify(debouncedCanvasData)) {
+      return;
+    }
+
+    lastSavedCanvasRef.current = debouncedCanvasData;
+    updateNoteMutation.mutate({
+      id: selectedNoteId,
+      data: { canvasData: debouncedCanvasData },
+    });
+  }, [debouncedCanvasData, selectedNoteId]);
 
   const resetFolderForm = () => {
     setFolderName("");
@@ -2153,7 +2176,7 @@ export function CampaignNotesPanel({
     }
     
     return (
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex-1 flex flex-col overflow-hidden min-h-0">
         <div className="flex items-center justify-between p-2 border-b border-stone-700">
           <Button
             variant="ghost"
@@ -2219,7 +2242,7 @@ export function CampaignNotesPanel({
             <Loader2 className="h-5 w-5 animate-spin text-stone-500" />
           </div>
         ) : (
-          <div className="flex-1 flex flex-col p-2 overflow-hidden min-h-0">
+          <div className="flex-1 flex flex-col p-2 overflow-hidden min-h-0 min-w-0">
             <Input
               value={noteTitle}
               onChange={(e) => setNoteTitle(e.target.value)}
@@ -2370,7 +2393,7 @@ export function CampaignNotesPanel({
         {viewMode === "graph" ? (
           renderGraphView()
         ) : (
-          <div className="flex h-full min-h-0 overflow-hidden">
+          <div className="flex h-full min-h-0 overflow-hidden w-full">
             {showSidebar && !(selectedNoteId && (currentNote?.type === "canvas" || noteMode === "edit")) && (
               <>
                 <div
@@ -2402,7 +2425,7 @@ export function CampaignNotesPanel({
                 </div>
               </>
             )}
-            <div className="flex-1 min-w-0 flex flex-col h-full">
+            <div className="flex-1 min-w-0 min-h-0 flex flex-col h-full overflow-hidden">
               {openNotes.length > 0 && (
                 <NoteTabs
                   openNotes={openNotes}
