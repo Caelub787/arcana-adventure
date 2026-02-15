@@ -617,7 +617,7 @@ export function CampaignNotesPanel({
   const [notePickerTriggeredByTyping, setNotePickerTriggeredByTyping] = useState(false);
   const [cursorPosition, setCursorPosition] = useState<number>(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const handleFormattingKeyDown = useFormattingShortcuts(textareaRef, noteContent, setNoteContent);
+  const handleFormattingKeyDown = useFormattingShortcuts(textareaRef as React.RefObject<HTMLTextAreaElement>, noteContent, setNoteContent);
 
   const [entityDialogOpen, setEntityDialogOpen] = useState(false);
   const [selectedEntityType, setSelectedEntityType] = useState<string | null>(null);
