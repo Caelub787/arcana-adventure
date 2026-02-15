@@ -2474,13 +2474,13 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
             >
               <img src={tokenImage} alt="token" className="w-full h-full object-cover pointer-events-none rounded-full" />
               
-              {/* Initiative Turn Border - yellow border for current turn character */}
+              {/* Initiative Turn Border - yellow border for current turn character (z-index 1 to sit under HP/energy bars) */}
               {character && currentTurnCharacterId === character.id && (
                 <div 
                   className="absolute inset-0 rounded-full pointer-events-none"
                   style={{
                     border: '3px solid rgba(251, 191, 36, 1)',
-                    zIndex: 10
+                    zIndex: 1
                   }}
                 />
               )}
@@ -2599,7 +2599,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
               
               {/* HP Bar - Only show if token is linked to a character and user has view/edit permission */}
               {character && hpPercent !== null && (role === 'gm' || ['view', 'edit'].includes(myPermissions?.permissions?.[character.id])) && (
-                <div className="absolute bottom-[9px] left-0.5 right-0.5 h-1.5 bg-black/50 rounded-full overflow-hidden border border-black/80">
+                <div className="absolute bottom-[9px] left-0.5 right-0.5 h-1.5 bg-black/50 rounded-full overflow-hidden border border-black/80 z-[2]">
                   <div 
                     className={`h-full transition-all duration-300 ${
                       hpPercent > 60 ? 'bg-green-500' : hpPercent > 30 ? 'bg-yellow-500' : 'bg-red-500'
@@ -2611,7 +2611,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
               
               {/* Energy Bar - Only show if token is linked to a character and user has view/edit permission */}
               {character && energyPercent !== null && (role === 'gm' || ['view', 'edit'].includes(myPermissions?.permissions?.[character.id])) && (
-                <div className="absolute bottom-0.5 left-0.5 right-0.5 h-1.5 bg-black/50 rounded-full overflow-hidden border border-black/80">
+                <div className="absolute bottom-0.5 left-0.5 right-0.5 h-1.5 bg-black/50 rounded-full overflow-hidden border border-black/80 z-[2]">
                   <div 
                     className="h-full transition-all duration-300 bg-cyan-500"
                     style={{ width: `${Math.max(0, Math.min(100, energyPercent))}%` }}
@@ -4087,6 +4087,9 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
   const clickCountRef = useRef(0);
   const queryClient = useQueryClient();
   
+  // Detonate AOE button state (shown after throwing an item with AOE)
+  const [showDetonateButton, setShowDetonateButton] = useState(false);
+
   // Modifier popup state
   const [showModifierPopup, setShowModifierPopup] = useState(false);
   const [popupPosition, setPopupPosition] = useState({ x: window.innerWidth / 2, y: window.innerHeight / 3 });
@@ -5368,6 +5371,49 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
           calculationBreakdown: isHit ? `Attached to ${targetName}` : `Missed! Landed at grid (${gridX}, ${gridY})`,
         });
         
+        // Deal initial weapon damage on hit
+        if (isHit && itemData.damage && targetCharacter) {
+          await new Promise(resolve => setTimeout(resolve, 500));
+          const { result: dmgResult, dieType: dmgDieType } = rollDice(itemData.damage);
+          const dmgCritBonus = isCritSuccess ? getMaxDice(itemData.damage) : 0;
+          const dmgMod = itemData.mod || 0;
+          const dmgTotal = dmgResult + dmgCritBonus + dmgMod;
+          const dmgDiceResult = dmgCritBonus > 0 ? `${dmgResult} + MAX (${dmgCritBonus})` : `${dmgResult}`;
+          const dmgBreakdown = dmgMod !== 0
+            ? `${itemData.damage} = ${dmgDiceResult} + Mod (${dmgMod >= 0 ? '+' : ''}${dmgMod})`
+            : `${itemData.damage} = ${dmgDiceResult}`;
+          const dmgType = itemData.damageType || null;
+          
+          const { finalDamage, reduction, armorName, isHealing } = await applyDamageToTarget(dmgTotal, dmgType, targetCharacter);
+          const dmgLabel = isHealing
+            ? `${itemData.name} Healing → ${targetName} (+${finalDamage} HP)`
+            : reduction > 0
+              ? `${itemData.name} ${isCritSuccess ? 'CRIT ' : ''}Impact → ${targetName} (-${finalDamage} HP)`
+              : `${itemData.name} ${isCritSuccess ? 'CRIT ' : ''}Impact → ${targetName} (-${finalDamage} HP)`;
+          const fullBreakdown = reduction > 0 ? `${dmgBreakdown} - ${reduction} (${armorName || 'Armor'})` : dmgBreakdown;
+          
+          triggerRollNotification({
+            type: 'attack',
+            dieType: dmgDieType as any,
+            label: dmgLabel,
+            result: dmgResult,
+            modifier: dmgMod,
+            total: finalDamage,
+            username: character.name || 'Unknown',
+            characterName: character.name,
+            calculationBreakdown: fullBreakdown,
+          });
+          if (character.campaignId) {
+            gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown',
+              `${itemData.name} Impact → ${targetName}: ${fullBreakdown} = ${finalDamage} ${isHealing ? 'healing' : 'damage'}`, 'roll');
+          }
+        }
+        
+        // Show detonate AOE button if item has AOE
+        if (itemData.throwableAoe && (itemData.throwableAoeRange || 0) > 0) {
+          setShowDetonateButton(true);
+        }
+        
         // Check if throwable breaks on impact (for items without pickup mode)
         await checkThrowableBreak(thrownItem.id, itemData);
       } catch (err) {
@@ -5560,6 +5606,11 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
         if (character.campaignId) {
           gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', 
             `Threw ${itemData.name} at grid (${gridX}, ${gridY})`, 'action');
+        }
+        
+        // Show detonate AOE button if item has AOE
+        if (itemData.throwableAoe && (itemData.throwableAoeRange || 0) > 0) {
+          setShowDetonateButton(true);
         }
         
         // Check if throwable breaks on impact (for items without pickup mode)
@@ -6982,6 +7033,31 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
           </div>
         </div>
         </>,
+        document.body
+      )}
+
+      {/* Detonate AOE Button - appears at top of screen after throwing an item with AOE */}
+      {showDetonateButton && itemData && ReactDOM.createPortal(
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[99998] animate-in fade-in slide-in-from-top-2 duration-300">
+          <button
+            onClick={async () => {
+              setShowDetonateButton(false);
+              await handleDetonateThrowables();
+            }}
+            className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-500 hover:to-red-500 text-white font-bold rounded-lg shadow-lg shadow-orange-900/50 border border-orange-400/50 transition-all hover:scale-105 active:scale-95"
+            data-testid="button-detonate-aoe"
+          >
+            <Flame className="w-5 h-5" />
+            Detonate {itemData.name} AOE
+          </button>
+          <button
+            onClick={() => setShowDetonateButton(false)}
+            className="absolute -top-2 -right-2 w-6 h-6 bg-stone-800 hover:bg-stone-700 border border-stone-600 rounded-full flex items-center justify-center text-stone-400 hover:text-white text-xs"
+            data-testid="button-dismiss-detonate"
+          >
+            X
+          </button>
+        </div>,
         document.body
       )}
     </>
