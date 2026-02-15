@@ -4963,18 +4963,10 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
           await handleSpellAttackRoll();
         }
       } else {
-        const result = await handleSpellAttackRoll({ extraMod: extraModifier, advantage: hasAdvantage, disadvantage: hasDisadvantage });
-        if (result?.hit) {
-          await new Promise(resolve => setTimeout(resolve, 500));
-          await handleSpellDamageRoll({ critSuccess: result.critSuccess });
-        }
+        await handleSpellAttackRoll({ extraMod: extraModifier, advantage: hasAdvantage, disadvantage: hasDisadvantage });
       }
     } else {
-      const result = await handleAttackRoll({ extraMod: extraModifier, advantage: hasAdvantage, disadvantage: hasDisadvantage });
-      if (result?.hit) {
-        await new Promise(resolve => setTimeout(resolve, 500));
-        await handleDamageRoll({ critSuccess: result.critSuccess });
-      }
+      await handleAttackRoll({ extraMod: extraModifier, advantage: hasAdvantage, disadvantage: hasDisadvantage });
     }
     
     setShowModifierPopup(false);
