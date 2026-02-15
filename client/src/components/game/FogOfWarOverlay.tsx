@@ -1425,6 +1425,7 @@ export function WallDrawingOverlay({
     }
 
     if (wallDrawMode) {
+      if (freeformMode) return;
       if (wallPoints.length > 0) {
         const lastPoint = wallPoints[wallPoints.length - 1];
         createWallMutation.mutate({
@@ -1482,7 +1483,7 @@ export function WallDrawingOverlay({
         color: lightColor,
       });
     }
-  }, [wallDrawMode, doorPlaceMode, windowPlaceMode, lightPlaceMode, wallPoints, doorStart, windowStart, gridSize, selectedWallType, lightRadius, lightColor, lightIntensity, createWallMutation, createDoorMutation, createWindowMutation, createLightMutation, walls, doors, windowsList, lightsList, deleteWallMutation, deleteDoorMutation, deleteWindowMutation, deleteLightMutation, snapEnabled]);
+  }, [wallDrawMode, doorPlaceMode, windowPlaceMode, lightPlaceMode, wallPoints, doorStart, windowStart, gridSize, selectedWallType, lightRadius, lightColor, lightIntensity, createWallMutation, createDoorMutation, createWindowMutation, createLightMutation, walls, doors, windowsList, lightsList, deleteWallMutation, deleteDoorMutation, deleteWindowMutation, deleteLightMutation, snapEnabled, freeformMode]);
 
   const handleMouseMove = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
     const svg = e.currentTarget;
@@ -1517,12 +1518,10 @@ export function WallDrawingOverlay({
     const rawY = (e.clientY - rect.top) / (rect.height / 20000);
     const worldX = rawX - MAP_OFFSET;
     const worldY = rawY - MAP_OFFSET;
-    const sx = snapEnabled ? snapToGrid(worldX, gridSize) : worldX;
-    const sy = snapEnabled ? snapToGrid(worldY, gridSize) : worldY;
 
-    setFreeformPoints([{ x: sx, y: sy }]);
+    setFreeformPoints([{ x: worldX, y: worldY }]);
     setIsFreeformDrawing(true);
-  }, [wallDrawMode, freeformMode, snapEnabled, gridSize]);
+  }, [wallDrawMode, freeformMode]);
 
   const handleFreeformPointerMove = useCallback((e: React.PointerEvent<SVGSVGElement>) => {
     if (!isFreeformDrawing) return;
@@ -1534,19 +1533,17 @@ export function WallDrawingOverlay({
     const rawY = (e.clientY - rect.top) / (rect.height / 20000);
     const worldX = rawX - MAP_OFFSET;
     const worldY = rawY - MAP_OFFSET;
-    const sx = snapEnabled ? snapToGrid(worldX, gridSize) : worldX;
-    const sy = snapEnabled ? snapToGrid(worldY, gridSize) : worldY;
 
     setFreeformPoints(prev => {
       const last = prev[prev.length - 1];
-      if (!last) return [{ x: sx, y: sy }];
-      const dist = Math.hypot(sx - last.x, sy - last.y);
+      if (!last) return [{ x: worldX, y: worldY }];
+      const dist = Math.hypot(worldX - last.x, worldY - last.y);
       if (dist >= 10) {
-        return [...prev, { x: sx, y: sy }];
+        return [...prev, { x: worldX, y: worldY }];
       }
       return prev;
     });
-  }, [isFreeformDrawing, snapEnabled, gridSize]);
+  }, [isFreeformDrawing]);
 
   const handleFreeformPointerUp = useCallback((e: React.PointerEvent<SVGSVGElement>) => {
     if (!isFreeformDrawing) return;
@@ -1563,7 +1560,7 @@ export function WallDrawingOverlay({
           x2: freeformPoints[i + 1].x,
           y2: freeformPoints[i + 1].y,
           wallType: selectedWallType,
-          snapToGrid: true,
+          snapToGrid: false,
           playerVisible: true,
         });
       }
