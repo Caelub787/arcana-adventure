@@ -1415,26 +1415,14 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
         const cellY = Math.floor(worldY / effectiveGridSize);
         const cellKey = `${cellX},${cellY}`;
         
-        // Check if there's a token at this position - only beacon on empty grid
-        const tokenAtCell = tokens.find(t => {
-          const tokenCellX = Math.floor(t.x / effectiveGridSize);
-          const tokenCellY = Math.floor(t.y / effectiveGridSize);
-          return tokenCellX === cellX && tokenCellY === cellY;
-        });
+        const now = Date.now();
+        const lastClick = gridDoubleClickRef.current;
         
-        if (!tokenAtCell) {
-          const now = Date.now();
-          const lastClick = gridDoubleClickRef.current;
-          
-          if (lastClick.cellKey === cellKey && now - lastClick.lastClickTime < 400) {
-            // Double-click detected - trigger beacon
-            onBeacon(cellKey);
-            // Reset to prevent triple-click from triggering another beacon
-            gridDoubleClickRef.current = { cellKey: '', lastClickTime: 0 };
-          } else {
-            // First click - record for potential double-click
-            gridDoubleClickRef.current = { cellKey, lastClickTime: now };
-          }
+        if (lastClick.cellKey === cellKey && now - lastClick.lastClickTime < 400) {
+          onBeacon(cellKey);
+          gridDoubleClickRef.current = { cellKey: '', lastClickTime: 0 };
+        } else {
+          gridDoubleClickRef.current = { cellKey, lastClickTime: now };
         }
       }
     }
@@ -8415,15 +8403,14 @@ const InitiativeTrackerInner = function InitiativeTracker({ open, onOpenChange, 
                       </div>
                     )}
                   </div>
-                  {isCurrentTurn && notInInitiativeSection}
                   </React.Fragment>
                 );
               })}
             </div>
           )}
 
-          {/* Not in Initiative fallback - show at original position when no current turn entry */}
-          {!hasCurrentTurnEntry && notInInitiativeSection}
+          {/* Not in Initiative - always show below all initiative entries */}
+          {notInInitiativeSection}
           
           {/* GM Actions */}
           {isGM && sortedEntries.length > 0 && (
