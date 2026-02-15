@@ -5298,38 +5298,63 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
         : null;
       const targetName = targetCharacter?.name || 'target';
       
-      // Perform attack roll to determine if throwable attaches to target or lands on grid
-      const attrName = itemData.attribute || 'finesse';
+      // Find attack roll entry if one exists, otherwise fall back to legacy logic
+      const attackRollEntry = itemRollEntries.find((re: any) => re.rollType === 'attack');
+      const attrName = attackRollEntry?.attribute || itemData.attribute || 'finesse';
       const attrMod = getAttributeModifier(attrName);
-      const roll = Math.floor(Math.random() * 20) + 1;
-      const total = roll + attrMod;
-      const targetDC = targetCharacter?.naturalArmor || 10;
+      const rollEntryMod = attackRollEntry?.mod || 0;
+      const totalMod = attrMod + rollEntryMod + extraModifier;
+      
+      let roll: number;
+      let rollText: string;
+      
+      if (hasAdvantage && !hasDisadvantage) {
+        const r1 = Math.floor(Math.random() * 20) + 1;
+        const r2 = Math.floor(Math.random() * 20) + 1;
+        roll = Math.max(r1, r2);
+        rollText = `2d20kh [${r1}, ${r2}] = ${roll}`;
+      } else if (hasDisadvantage && !hasAdvantage) {
+        const r1 = Math.floor(Math.random() * 20) + 1;
+        const r2 = Math.floor(Math.random() * 20) + 1;
+        roll = Math.min(r1, r2);
+        rollText = `2d20kl [${r1}, ${r2}] = ${roll}`;
+      } else {
+        roll = Math.floor(Math.random() * 20) + 1;
+        rollText = `1d20 = ${roll}`;
+      }
+      
+      const total = roll + totalMod;
+      const targetDC = targetCharacter?.armorClass || targetCharacter?.naturalArmor || 10;
       const isCritSuccess = roll === 20;
       const isCritFailure = roll === 1;
       const isHit = isCritSuccess || (!isCritFailure && total >= targetDC);
       
-      // Build attack roll display
       const attrDisplayName = attrName.charAt(0).toUpperCase() + attrName.slice(1);
-      const modText = attrMod !== 0 ? ` + ${attrDisplayName} (${attrMod >= 0 ? '+' : ''}${attrMod})` : '';
-      const hitStatus = isCritSuccess ? 'Crit Success!' : isCritFailure ? 'Crit Failure!' : isHit ? 'HIT!' : 'MISS!';
+      const modParts: string[] = [];
+      if (attrMod !== 0) modParts.push(`${attrDisplayName} (${attrMod >= 0 ? '+' : ''}${attrMod})`);
+      if (rollEntryMod !== 0) modParts.push(`Mod (${rollEntryMod >= 0 ? '+' : ''}${rollEntryMod})`);
+      if (extraModifier !== 0) modParts.push(`Extra (${extraModifier >= 0 ? '+' : ''}${extraModifier})`);
+      const modText = modParts.length > 0 ? ` + ${modParts.join(' + ')}` : '';
+      const hitStatus = isCritSuccess ? 'CRITICAL HIT!' : isCritFailure ? 'CRITICAL MISS!' : isHit ? 'HIT!' : 'MISS!';
+      const rollLabel = attackRollEntry ? `${itemData.name} - ${attackRollEntry.name}` : `${itemData.name} Throw`;
       
-      // Show attack roll notification
       triggerRollNotification({
         type: 'attack',
         dieType: 'd20',
-        label: `${itemData.name} Throw vs ${targetName}`,
+        label: `${rollLabel} → ${targetName}: ${hitStatus}`,
         result: roll,
-        modifier: attrMod,
+        modifier: totalMod,
         total,
         username: character.name || 'Unknown',
         characterName: character.name,
-        calculationBreakdown: `1d20 = ${roll}${modText} vs DC ${targetDC} - ${hitStatus}`,
+        calculationBreakdown: `${rollText}${modText} = ${total} vs AC ${targetDC} - ${hitStatus}`,
+        isCritSuccess,
+        isCritFailure,
       });
       
-      // Send attack roll to chat
       if (character.campaignId) {
         gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', 
-          `${itemData.name} Throw: 1d20 = ${roll}${modText} = ${total} vs ${targetName} (DC ${targetDC}) - ${hitStatus}`, 'roll');
+          `${rollLabel} → ${targetName}: ${rollText}${modText} = ${total} vs AC ${targetDC} - ${hitStatus}`, 'roll');
       }
       
       try {
@@ -5368,31 +5393,47 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
           });
         }
         
-        // Deal initial weapon damage on hit
-        if (isHit && itemData.damage && targetCharacter) {
+        // Deal initial weapon damage on hit using roll entries or legacy fields
+        const damageRollEntry = itemRollEntries.find((re: any) => re.rollType === 'damage');
+        const dmgFormula = damageRollEntry?.diceFormula || itemData.damage;
+        if (isHit && dmgFormula && targetCharacter) {
           if (canPlaceOnMap) await new Promise(resolve => setTimeout(resolve, 500));
-          const { result: dmgResult, dieType: dmgDieType } = rollDice(itemData.damage);
-          const dmgCritBonus = isCritSuccess ? getMaxDice(itemData.damage) : 0;
-          const dmgMod = itemData.mod || 0;
-          const dmgTotal = dmgResult + dmgCritBonus + dmgMod;
+          const { result: dmgResult, dieType: dmgDieType } = rollDice(dmgFormula);
+          const dmgCritBonus = isCritSuccess ? getMaxDice(dmgFormula) : 0;
+          const dmgEntryMod = damageRollEntry?.mod || 0;
+          const dmgLegacyMod = damageRollEntry ? 0 : (itemData.mod || 0);
+          let dmgAttrMod = 0;
+          if (damageRollEntry?.attribute) {
+            dmgAttrMod = getAttributeModifier(damageRollEntry.attribute);
+          }
+          const dmgTotalMod = dmgEntryMod + dmgLegacyMod + dmgAttrMod;
+          const dmgTotal = dmgResult + dmgCritBonus + dmgTotalMod;
           const dmgDiceResult = dmgCritBonus > 0 ? `${dmgResult} + MAX (${dmgCritBonus})` : `${dmgResult}`;
-          const dmgBreakdown = dmgMod !== 0
-            ? `${itemData.damage} = ${dmgDiceResult} + Mod (${dmgMod >= 0 ? '+' : ''}${dmgMod})`
-            : `${itemData.damage} = ${dmgDiceResult}`;
-          const dmgType = itemData.damageType || null;
+          const dmgModParts: string[] = [];
+          if (dmgEntryMod !== 0) dmgModParts.push(`Mod (${dmgEntryMod >= 0 ? '+' : ''}${dmgEntryMod})`);
+          if (dmgLegacyMod !== 0) dmgModParts.push(`Mod (${dmgLegacyMod >= 0 ? '+' : ''}${dmgLegacyMod})`);
+          if (dmgAttrMod !== 0 && damageRollEntry?.attribute) {
+            const dmgAttrName = damageRollEntry.attribute.charAt(0).toUpperCase() + damageRollEntry.attribute.slice(1);
+            dmgModParts.push(`${dmgAttrName} (${dmgAttrMod >= 0 ? '+' : ''}${dmgAttrMod})`);
+          }
+          const dmgBreakdown = dmgModParts.length > 0
+            ? `${dmgFormula} = ${dmgDiceResult} + ${dmgModParts.join(' + ')}`
+            : `${dmgFormula} = ${dmgDiceResult}`;
+          const dmgType = damageRollEntry?.damageType || itemData.damageType || null;
           
           const { finalDamage, reduction, armorName, isHealing } = await applyDamageToTarget(dmgTotal, dmgType, targetCharacter);
+          const dmgRollLabel = damageRollEntry ? `${itemData.name} - ${damageRollEntry.name}` : `${itemData.name} Impact`;
           const dmgLabel = isHealing
-            ? `${itemData.name} Healing → ${targetName} (+${finalDamage} HP)`
-            : `${itemData.name} ${isCritSuccess ? 'CRIT ' : ''}Impact → ${targetName} (-${finalDamage} HP)`;
+            ? `${dmgRollLabel} → ${targetName}: +${finalDamage} HP`
+            : `${dmgRollLabel} ${isCritSuccess ? '(CRIT) ' : ''}→ ${targetName}: -${finalDamage} HP`;
           const fullBreakdown = reduction > 0 ? `${dmgBreakdown} - ${reduction} (${armorName || 'Armor'})` : dmgBreakdown;
           
           triggerRollNotification({
-            type: 'attack',
+            type: 'damage',
             dieType: dmgDieType as any,
             label: dmgLabel,
             result: dmgResult,
-            modifier: dmgMod,
+            modifier: dmgTotalMod,
             total: finalDamage,
             username: character.name || 'Unknown',
             characterName: character.name,
@@ -5400,7 +5441,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
           });
           if (character.campaignId) {
             gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown',
-              `${itemData.name} Impact → ${targetName}: ${fullBreakdown} = ${finalDamage} ${isHealing ? 'healing' : 'damage'}`, 'roll');
+              `${dmgRollLabel} → ${targetName}: ${fullBreakdown} = ${finalDamage} ${isHealing ? 'healing' : 'damage'}${dmgType ? ` (${dmgType})` : ''}`, 'roll');
           }
         }
         
