@@ -145,12 +145,12 @@ export function ImageBrowser({ open, onOpenChange, onSelect, title = "Browse Ima
     <>
       <div
         className="fixed inset-0 bg-black/50"
-        style={{ zIndex: 10001 }}
+        style={{ zIndex: 10010 }}
         onClick={() => onOpenChange(false)}
       />
       <div
         className="fixed inset-0 sm:inset-auto sm:left-1/2 sm:top-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2 sm:w-[600px] sm:h-[70vh] sm:rounded-lg bg-stone-950 border border-stone-800 text-stone-200 shadow-2xl flex flex-col overflow-hidden"
-        style={{ zIndex: 10002 }}
+        style={{ zIndex: 10011 }}
         onMouseDown={(e) => e.stopPropagation()}
         onClick={(e) => e.stopPropagation()}
         onPointerDown={(e) => e.stopPropagation()}
