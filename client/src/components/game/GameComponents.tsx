@@ -6091,8 +6091,9 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
             }
             
             const assignedMemberAoe = campaignMembers?.find((m: any) => m.assignedCharacterId === targetChar.id);
-            const isAssignedToMe = !!(assignedMemberAoe && assignedMemberAoe.userId === currentUserId);
-            const isAssignedToOther = !!(assignedMemberAoe && assignedMemberAoe.userId !== currentUserId);
+            const ownerUserId = assignedMemberAoe?.userId || targetChar.userId;
+            const isAssignedToMe = !!(ownerUserId && ownerUserId === currentUserId);
+            const isAssignedToOther = !!(ownerUserId && ownerUserId !== currentUserId);
             
             if (isAssignedToMe && onRequestSaveRoll) {
               triggerRollNotification({
@@ -6106,7 +6107,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
               try {
                 const result = await onRequestSaveRoll({
                   targetCharacterId: targetChar.id,
-                  targetUserId: assignedMemberAoe.userId,
+                  targetUserId: ownerUserId,
                   spellName: spellData.name,
                   saveAttribute: saveAttr,
                   saveDc: saveDc,
@@ -6150,7 +6151,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
                 type: 'dc_save_prompt',
                 campaignId: character.campaignId,
                 targetCharacterId: targetChar.id,
-                targetUserId: assignedMemberAoe.userId,
+                targetUserId: ownerUserId,
                 spellName: spellData.name,
                 saveAttribute: saveAttr,
                 saveDc: saveDc,
@@ -6338,8 +6339,9 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
         const saveAttr = spellData.saveAttribute || spellData.attribute || 'wit';
         const saveSuccessEffect = spellData.saveSuccessEffect || 'half';
         const assignedMember = campaignMembers?.find((m: any) => m.assignedCharacterId === targetChar.id);
-        const isAssignedToMe = !!(assignedMember && assignedMember.userId === currentUserId);
-        const isAssignedToOther = !!(assignedMember && assignedMember.userId !== currentUserId);
+        const ownerUserId = assignedMember?.userId || targetChar.userId;
+        const isAssignedToMe = !!(ownerUserId && ownerUserId === currentUserId);
+        const isAssignedToOther = !!(ownerUserId && ownerUserId !== currentUserId);
         
         if (isAssignedToMe && onRequestSaveRoll) {
           triggerRollNotification({
