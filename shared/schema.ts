@@ -1259,6 +1259,17 @@ export const rollEntries = pgTable("roll_entries", {
   attribute: text("attribute"), // "might", "finesse", "wit", "presence", "will", "craft" - adds attribute mod
   applyToStat: text("apply_to_stat").default("none"), // "hp", "energy", "none" - what stat to affect on target
   sortOrder: integer("sort_order").default(0).notNull(),
+  range: integer("range"),
+  aoeShape: text("aoe_shape"), // "cone", "sphere", "line", "cube", "cylinder"
+  aoeRange: integer("aoe_range"),
+  requiresSave: boolean("requires_save").default(false),
+  saveAttribute: text("save_attribute"),
+  saveDc: integer("save_dc"),
+  saveSuccessEffect: text("save_success_effect"),
+  gainEnergy: boolean("gain_energy").default(false),
+  isAttack: boolean("is_attack").default(true),
+  isAoe: boolean("is_aoe").default(false),
+  passesThroughWalls: boolean("passes_through_walls").default(false),
 });
 
 export const insertRollEntrySchema = createInsertSchema(rollEntries).omit({

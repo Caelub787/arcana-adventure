@@ -20,6 +20,7 @@ import { toast } from '@/hooks/use-toast';
 import { ArrowLeft, Plus, Pencil, Trash2, Sword, Shield, Package, Sparkles, Box, Coins, Search, Users, User, GitBranch, Library, Link, X, GripVertical, Star, Zap, Heart, ShieldCheck, BookOpen, RefreshCw, ZoomIn, ZoomOut, Wand2, Save, Flame, Upload, Image as ImageIcon, Folder, FolderPlus, ChevronDown, ChevronRight, Layers, Copy, Bell, Send } from 'lucide-react';
 import { ImageBrowser } from '@/components/ImageBrowser';
 import { CharacterSheet } from '@/components/game/GameComponents';
+import { RollEntriesEditor } from '@/components/game/RollEntriesEditor';
 
 type AdminView = 'dashboard' | 'items' | 'species' | 'spells' | 'skills' | 'traits' | 'feat-trees' | 'characters' | 'token-effects' | 'notifications';
 
@@ -6365,48 +6366,6 @@ function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading }:
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <Label>Damage Dice</Label>
-                  <Input
-                    value={formData.damageDice}
-                    onChange={(e) => setFormData({ ...formData, damageDice: e.target.value })}
-                    placeholder="2d6"
-                    className="bg-stone-800 border-stone-700"
-                    data-testid="input-spell-damage-dice"
-                  />
-                </div>
-
-                <div>
-                  <Label>Damage Type</Label>
-                  <Select value={formData.damageType || '_none'} onValueChange={(v) => setFormData({ ...formData, damageType: v === '_none' ? '' : v })}>
-                    <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-spell-damage-type">
-                      <SelectValue placeholder="Select type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="_none">None</SelectItem>
-                      {spellDamageTypes.map((type) => (
-                        <SelectItem key={type} value={type}>{type}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              {formData.damageType === 'Energy' && (
-                <div className="flex items-center gap-2 p-2 bg-stone-800/50 rounded border border-cyan-800/50">
-                  <Checkbox
-                    id="gainEnergy"
-                    checked={formData.gainEnergy}
-                    onCheckedChange={(checked) => setFormData({ ...formData, gainEnergy: checked === true })}
-                    data-testid="checkbox-gain-energy"
-                  />
-                  <Label htmlFor="gainEnergy" className="text-sm text-cyan-300 cursor-pointer">
-                    Gain Energy? (If checked, roll adds energy instead of subtracting)
-                  </Label>
-                </div>
-              )}
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
                   <Label>Range (feet)</Label>
                   <Input
                     type="number"
@@ -6611,6 +6570,16 @@ function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading }:
               </div>
             </div>
           </div>
+
+          {initialData?.id && (
+            <div className="pt-4 border-t border-stone-700">
+              <RollEntriesEditor 
+                ownerType="spell" 
+                ownerId={initialData.id} 
+                canEdit={true}
+              />
+            </div>
+          )}
 
           {initialData && (
             <div className="border-t border-stone-700 pt-4 mt-4">
@@ -7007,48 +6976,6 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
               {(formData.itemType === 'weapon' || formData.itemType === 'consumable' || formData.itemType === 'ammunition') && (
                 <>
                   <div>
-                    <Label>Damage (e.g., 1d8)</Label>
-                    <Input
-                      value={formData.damage}
-                      onChange={(e) => setFormData({ ...formData, damage: e.target.value })}
-                      className="bg-stone-800 border-stone-700"
-                      data-testid="input-damage"
-                    />
-                  </div>
-                  <div>
-                    <Label>Damage Type</Label>
-                    <Select value={formData.damageType} onValueChange={(v) => setFormData({ ...formData, damageType: v })}>
-                      <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-damage-type">
-                        <SelectValue placeholder="Select type" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Sharp">Sharp</SelectItem>
-                        <SelectItem value="Blunt">Blunt</SelectItem>
-                        <SelectItem value="Piercing">Piercing</SelectItem>
-                        <SelectItem value="Flame">Flame</SelectItem>
-                        <SelectItem value="Frost">Frost</SelectItem>
-                        <SelectItem value="Storm">Storm</SelectItem>
-                        <SelectItem value="Tide">Tide</SelectItem>
-                        <SelectItem value="Stone">Stone</SelectItem>
-                        <SelectItem value="Flux">Flux</SelectItem>
-                        <SelectItem value="Light">Light</SelectItem>
-                        <SelectItem value="Dark">Dark</SelectItem>
-                        <SelectItem value="Sound">Sound</SelectItem>
-                        <SelectItem value="Health">Health</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label>Modifier</Label>
-                    <Input
-                      type="number"
-                      value={formData.mod}
-                      onChange={(e) => handleItemNumericChange('mod', e.target.value)}
-                      className="bg-stone-800 border-stone-700"
-                      data-testid="input-modifier"
-                    />
-                  </div>
-                  <div>
                     <Label>Range (ft)</Label>
                     <Input
                       type="number"
@@ -7117,24 +7044,6 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
                         <SelectItem value="thrown">Thrown</SelectItem>
                       </SelectContent>
                     </Select>
-                  </div>
-                  <div>
-                    <Label>Attack Attribute</Label>
-                    <Select value={formData.attribute || '_none'} onValueChange={(v) => setFormData({ ...formData, attribute: v === '_none' ? '' : v })}>
-                      <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-weapon-attribute">
-                        <SelectValue placeholder="None" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="_none">None</SelectItem>
-                        <SelectItem value="MIG">Might (MIG)</SelectItem>
-                        <SelectItem value="FIN">Finesse (FIN)</SelectItem>
-                        <SelectItem value="WIT">Wit (WIT)</SelectItem>
-                        <SelectItem value="WIL">Will (WIL)</SelectItem>
-                        <SelectItem value="PRE">Presence (PRE)</SelectItem>
-                        <SelectItem value="CRA">Craft (CRA)</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <p className="text-xs text-stone-500 mt-1">Adds attribute modifier to attack rolls</p>
                   </div>
                   <div>
                     <Label>Ammunition Required</Label>
@@ -7441,6 +7350,16 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
                 {formData.canApplyEffects && !initialData && (
                   <p className="text-xs text-amber-500 mt-2">Save the item first to manage effects</p>
                 )}
+              </div>
+            )}
+
+            {initialData?.id && (
+              <div className="pt-4 border-t border-stone-700">
+                <RollEntriesEditor 
+                  ownerType="item" 
+                  ownerId={initialData.id} 
+                  canEdit={true}
+                />
               </div>
             )}
           </div>
