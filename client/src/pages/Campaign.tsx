@@ -6464,6 +6464,7 @@ export default function Campaign() {
   const [showPinEditor, setShowPinEditor] = useState(false);
   const [cameraTarget, setCameraTarget] = useState<{ x: number; y: number; zoom: number } | null>(null);
   const lastViewStateRef = useRef<{ x: number; y: number; zoom: number }>({ x: 0, y: 0, zoom: 1 });
+  const fogCameraCenteredRef = useRef<string | null>(null);
   const [scenesManagementOpen, setScenesManagementOpen] = useState(false);
   const [newSceneName, setNewSceneName] = useState("");
   const [campaignSpeciesOpen, setCampaignSpeciesOpen] = useState(false);
@@ -7264,6 +7265,20 @@ export default function Campaign() {
     enabled: !!effectiveSceneId,
   });
 
+  // Center camera on assigned token when fog of war is enabled (for players)
+  useEffect(() => {
+    if (role === 'gm') return;
+    if (!activeScene?.fogEnabled) return;
+    if (!character?.id) return;
+    if (!tokens || tokens.length === 0) return;
+    const sceneKey = `${activeScene.id}_${character.id}`;
+    if (fogCameraCenteredRef.current === sceneKey) return;
+    const assignedToken = tokens.find((t: any) => t.characterId === character.id);
+    if (!assignedToken) return;
+    fogCameraCenteredRef.current = sceneKey;
+    setCameraTarget({ x: assignedToken.x, y: assignedToken.y, zoom: 1 });
+  }, [role, activeScene?.fogEnabled, activeScene?.id, character?.id, tokens]);
+
   // Load all scenes for the campaign
   // Map pins for current scene
   const { data: mapPins = [] } = useQuery({
@@ -8021,7 +8036,7 @@ export default function Campaign() {
         }
         if (data.type === 'character_changed') {
           // Force immediate refetch for character changes
-          queryClientRef.current.refetchQueries({ queryKey: [`/api/campaigns/${effectiveCampaignId}/characters`] });
+          queryClientRef.current.refetchQueries({ queryKey: [`/api/campaigns/${effectiveCampaignIdRef.current}/characters`] });
           if (data.characterId) {
             queryClientRef.current.refetchQueries({ queryKey: [`/api/characters/${data.characterId}`] });
           }
@@ -8049,7 +8064,7 @@ export default function Campaign() {
           );
           // Immediately update the characters query cache for instant UI updates
           queryClientRef.current.setQueryData(
-            [`/api/campaigns/${effectiveCampaignId}/characters`],
+            [`/api/campaigns/${effectiveCampaignIdRef.current}/characters`],
             (oldData: any[] | undefined) => {
               if (!oldData) return oldData;
               return oldData.map((c: any) => c.id === updatedChar.id ? updatedChar : c);
@@ -8065,8 +8080,8 @@ export default function Campaign() {
           console.log('Permission update received:', data);
           // Force immediate refetch for permission changes and character list
           // Characters list may change since visibility depends on permissions
-          queryClientRef.current.refetchQueries({ queryKey: [`/api/campaigns/${effectiveCampaignId}/my-permissions`] });
-          queryClientRef.current.refetchQueries({ queryKey: [`/api/campaigns/${effectiveCampaignId}/characters`] });
+          queryClientRef.current.refetchQueries({ queryKey: [`/api/campaigns/${effectiveCampaignIdRef.current}/my-permissions`] });
+          queryClientRef.current.refetchQueries({ queryKey: [`/api/campaigns/${effectiveCampaignIdRef.current}/characters`] });
           
           // Show toast only for the affected user (don't spam other users)
           if (data.targetUserId === user?.id) {
@@ -8161,7 +8176,7 @@ export default function Campaign() {
           });
           // Immediately update the characters query cache for instant HP bar updates on tokens
           queryClientRef.current.setQueryData(
-            [`/api/campaigns/${effectiveCampaignId}/characters`],
+            [`/api/campaigns/${effectiveCampaignIdRef.current}/characters`],
             (oldData: any[] | undefined) => {
               if (!oldData) return oldData;
               return oldData.map((c: any) => c.id === characterId ? { ...c, hp } : c);
@@ -8196,7 +8211,7 @@ export default function Campaign() {
           });
           // Immediately update the characters query cache
           queryClientRef.current.setQueryData(
-            [`/api/campaigns/${effectiveCampaignId}/characters`],
+            [`/api/campaigns/${effectiveCampaignIdRef.current}/characters`],
             (oldData: any[] | undefined) => {
               if (!oldData) return oldData;
               return oldData.map((c: any) => c.id === characterId ? { ...c, energy } : c);
@@ -8214,7 +8229,8 @@ export default function Campaign() {
         
         // Handle token CRUD - real-time token updates
         // Only apply updates if the token belongs to the current scene (or is legacy with null sceneId)
-        const currentSceneId = role === 'gm' && gmViewingSceneId ? gmViewingSceneId : campaignActiveSceneId;
+        // Use ref to avoid stale closure - this handler is registered once on mount
+        const currentSceneId = sceneIdForTokensRef.current;
         if (data.type === 'token_created' && data.token) {
           // Only add if token belongs to current scene or is legacy (null sceneId)
           if (data.token.sceneId === currentSceneId || !data.token.sceneId) {
@@ -8244,7 +8260,7 @@ export default function Campaign() {
             data.scene
           );
           queryClientRef.current.setQueryData(
-            [`/api/campaigns/${effectiveCampaignId}/scenes`],
+            [`/api/campaigns/${effectiveCampaignIdRef.current}/scenes`],
             (oldData: any[] | undefined) => {
               if (!oldData) return oldData;
               return oldData.map((s: any) => s.id === data.scene.id ? data.scene : s);
@@ -8274,7 +8290,7 @@ export default function Campaign() {
         }
         if (data.type === 'scene_deleted' && data.sceneId) {
           queryClientRef.current.setQueryData(
-            [`/api/campaigns/${effectiveCampaignId}/scenes`],
+            [`/api/campaigns/${effectiveCampaignIdRef.current}/scenes`],
             (oldData: any[] | undefined) => {
               if (!oldData) return oldData;
               return oldData.filter((s: any) => s.id !== data.sceneId);
@@ -8284,7 +8300,7 @@ export default function Campaign() {
         if (data.type === 'active_scene_changed') {
           // Immediately update campaign cache with new active scene ID
           queryClientRef.current.setQueryData(
-            [`/api/campaigns/${effectiveCampaignId}`],
+            [`/api/campaigns/${effectiveCampaignIdRef.current}`],
             (oldData: any) => {
               if (!oldData) return oldData;
               return { ...oldData, activeSceneId: data.sceneId };
@@ -8301,12 +8317,12 @@ export default function Campaign() {
           
           // Refetch tokens for the new active scene
           if (data.sceneId) {
-            queryClientRef.current.invalidateQueries({ queryKey: [`/api/campaigns/${effectiveCampaignId}/tokens`] });
+            queryClientRef.current.invalidateQueries({ queryKey: [`/api/campaigns/${effectiveCampaignIdRef.current}/tokens`] });
             queryClientRef.current.refetchQueries({ queryKey: [`/api/scenes/${data.sceneId}`] });
           }
           
           // Refetch scenes list to update UI
-          queryClientRef.current.refetchQueries({ queryKey: [`/api/campaigns/${effectiveCampaignId}/scenes`] });
+          queryClientRef.current.refetchQueries({ queryKey: [`/api/campaigns/${effectiveCampaignIdRef.current}/scenes`] });
           
           // Clear player scene override when active scene changes
           setPlayerViewingSceneId(null);
@@ -8316,7 +8332,7 @@ export default function Campaign() {
         if (data.type === 'chat_message' && data.message) {
           // Immediately add the new message to the cache
           queryClientRef.current.setQueryData(
-            [`/api/campaigns/${effectiveCampaignId}/messages`],
+            [`/api/campaigns/${effectiveCampaignIdRef.current}/messages`],
             (oldData: any[] | undefined) => {
               if (!oldData) return [data.message];
               // Avoid duplicates
@@ -8412,7 +8428,7 @@ export default function Campaign() {
         if (data.type === 'members_updated' && data.members) {
           // Update the members cache with the new list
           queryClientRef.current.setQueryData(
-            [`/api/campaigns/${effectiveCampaignId}/members`],
+            [`/api/campaigns/${effectiveCampaignIdRef.current}/members`],
             data.members
           );
         }
