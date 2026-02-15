@@ -6824,15 +6824,17 @@ export default function Campaign() {
     gameWs.clearAoeTargeting();
   };
   
+  const activeSceneRef = useRef<any>(null);
   const handleAoeClick = useCallback((x: number, y: number) => {
     let isLocked = true;
+    const currentScene = activeSceneRef.current;
     
     const casterToken = tokens.find((t: any) => t.id === aoeTargetState.casterTokenId);
     if (casterToken) {
-      const casterCenterX = casterToken.x + (activeScene?.gridSize || 50) / 2;
-      const casterCenterY = casterToken.y + (activeScene?.gridSize || 50) / 2;
+      const casterCenterX = casterToken.x + (currentScene?.gridSize || 50) / 2;
+      const casterCenterY = casterToken.y + (currentScene?.gridSize || 50) / 2;
       const rangeVal = aoeTargetState.spell?.rangeNum || aoeTargetState.detonatableItem?.range || 30;
-      const gridSizeVal = activeScene?.gridSize || 50;
+      const gridSizeVal = currentScene?.gridSize || 50;
       
       const dx = x - casterCenterX;
       const dy = y - casterCenterY;
@@ -6864,7 +6866,7 @@ export default function Campaign() {
     }
 
     if (isLocked && pendingSandboxAoe) {
-      const gridSize = activeScene?.gridSize || 50;
+      const gridSize = currentScene?.gridSize || 50;
       const tokensInAoe = getTokensInAoe(tokens, {
         ...aoeTargetState,
         center: { x, y },
@@ -6899,7 +6901,7 @@ export default function Campaign() {
       setPendingSandboxAoe(null);
       exitAoeMode();
     }
-  }, [tokens, aoeTargetState, activeScene, characters, pendingSandboxAoe]);
+  }, [tokens, aoeTargetState, characters, pendingSandboxAoe]);
   
   // Throttle ref for AoE updates to avoid rate limiting
   const lastAoeBroadcastRef = useRef<number>(0);
@@ -7255,6 +7257,8 @@ export default function Campaign() {
     queryFn: () => api.getScene(effectiveSceneId as string),
     enabled: !!effectiveSceneId,
   });
+
+  activeSceneRef.current = activeScene;
 
   // Center camera on assigned token when fog of war is enabled (for players)
   useEffect(() => {
