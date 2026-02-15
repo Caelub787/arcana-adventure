@@ -6519,6 +6519,7 @@ export default function Campaign() {
   // DC save prompt popup state
   const [dcSavePrompt, setDcSavePrompt] = useState<{
     targetCharacterId: string;
+    saveRequestId: string;
     spellName: string;
     saveAttribute: string;
     saveDc: number;
@@ -6546,20 +6547,43 @@ export default function Campaign() {
     isHealing: boolean;
   }) => {
     return new Promise<{ saved: boolean; roll: number; total: number }>((resolve) => {
-      saveRollResolverRef.current.set(params.targetCharacterId, resolve);
-      setDcSavePrompt({
-        targetCharacterId: params.targetCharacterId,
-        spellName: params.spellName,
-        saveAttribute: params.saveAttribute,
-        saveDc: params.saveDc,
-        damage: params.damage,
-        damageType: params.damageType,
-        saveSuccessEffect: params.saveSuccessEffect,
-        casterName: params.casterName,
-        isHealing: params.isHealing,
-      });
+      const saveRequestId = `${params.targetCharacterId}_${Date.now()}`;
+      saveRollResolverRef.current.set(saveRequestId, resolve);
+      
+      const isLocalTarget = params.targetUserId === user?.id;
+      
+      if (isLocalTarget) {
+        setDcSavePrompt({
+          targetCharacterId: params.targetCharacterId,
+          saveRequestId,
+          spellName: params.spellName,
+          saveAttribute: params.saveAttribute,
+          saveDc: params.saveDc,
+          damage: params.damage,
+          damageType: params.damageType,
+          saveSuccessEffect: params.saveSuccessEffect,
+          casterName: params.casterName,
+          isHealing: params.isHealing,
+        });
+      } else {
+        gameWs.send({
+          type: 'dc_save_prompt',
+          campaignId: effectiveCampaignId,
+          targetCharacterId: params.targetCharacterId,
+          targetUserId: params.targetUserId,
+          saveRequestId,
+          spellName: params.spellName,
+          saveAttribute: params.saveAttribute,
+          saveDc: params.saveDc,
+          damage: 0,
+          damageType: params.damageType,
+          saveSuccessEffect: params.saveSuccessEffect,
+          casterName: params.casterName,
+          isHealing: params.isHealing,
+        });
+      }
     });
-  }, []);
+  }, [user?.id, effectiveCampaignId]);
 
   // Add Token dialog state
   const [addTokenDialogOpen, setAddTokenDialogOpen] = useState(false);
@@ -7977,6 +8001,7 @@ export default function Campaign() {
         if (data.type === 'dc_save_prompt') {
           setDcSavePrompt({
             targetCharacterId: data.targetCharacterId,
+            saveRequestId: data.saveRequestId,
             spellName: data.spellName,
             saveAttribute: data.saveAttribute,
             saveDc: data.saveDc,
@@ -7986,6 +8011,13 @@ export default function Campaign() {
             casterName: data.casterName,
             isHealing: data.isHealing,
           });
+        }
+        if (data.type === 'save_roll_result') {
+          const resolver = saveRollResolverRef.current.get(data.saveRequestId);
+          if (resolver) {
+            resolver({ saved: data.saved, roll: data.roll, total: data.total });
+            saveRollResolverRef.current.delete(data.saveRequestId);
+          }
         }
         if (data.type === 'character_changed') {
           // Force immediate refetch for character changes
@@ -11363,10 +11395,10 @@ export default function Campaign() {
           const saveTotal = finalRoll + totalMod;
           const saveSuccess = saveTotal >= dcSavePrompt.saveDc;
 
-          const resolver = saveRollResolverRef.current.get(dcSavePrompt.targetCharacterId);
+          const resolver = saveRollResolverRef.current.get(dcSavePrompt.saveRequestId);
           if (resolver) {
             resolver({ saved: saveSuccess, roll: finalRoll, total: saveTotal });
-            saveRollResolverRef.current.delete(dcSavePrompt.targetCharacterId);
+            saveRollResolverRef.current.delete(dcSavePrompt.saveRequestId);
             setDcSavePrompt(null);
             setDcSaveModifier(0);
             setDcSaveAdvantage(false);
@@ -11374,34 +11406,29 @@ export default function Campaign() {
             return;
           }
 
-          let appliedDamage = dcSavePrompt.damage;
-          if (saveSuccess) {
-            appliedDamage = dcSavePrompt.saveSuccessEffect === 'none' ? 0 : Math.floor(dcSavePrompt.damage / 2);
-          }
+          gameWs.send({
+            type: 'save_roll_result',
+            campaignId: effectiveCampaignId,
+            targetCharacterId: dcSavePrompt.targetCharacterId,
+            saveRequestId: dcSavePrompt.saveRequestId,
+            saved: saveSuccess,
+            roll: finalRoll,
+            total: saveTotal,
+          });
 
-          if (targetChar && appliedDamage > 0) {
-            gameWs.send({
-              type: 'apply_combat_damage',
-              campaignId: effectiveCampaignId,
-              targetCharacterId: targetChar.id,
-              damage: appliedDamage,
-              damageType: dcSavePrompt.damageType || null,
-              isHealing: dcSavePrompt.isHealing,
-            });
-          }
-
-          const resultText = `${targetChar?.name || 'Unknown'} ${dcSavePrompt.saveAttribute} save vs ${dcSavePrompt.spellName}: d20(${finalRoll})${advText} + ${totalMod} = ${saveTotal} vs DC ${dcSavePrompt.saveDc} → ${saveSuccess ? 'SAVED' : 'FAILED'} → ${appliedDamage} damage`;
-          gameWs.sendChatMessage(user?.id || '', user?.username || '', resultText, 'roll');
+          const resultText = `${targetChar?.name || 'Unknown'} ${dcSavePrompt.saveAttribute} save vs ${dcSavePrompt.spellName}: d20(${finalRoll})${advText} + ${totalMod} = ${saveTotal} vs DC ${dcSavePrompt.saveDc} → ${saveSuccess ? 'SAVED' : 'FAILED'}`;
+          gameWs.sendChatMessage(user?.id || '', targetChar?.name || user?.username || '', resultText, 'roll');
 
           toast({
             title: saveSuccess ? `Save Succeeded!` : `Save Failed!`,
-            description: `Rolled ${saveTotal} vs DC ${dcSavePrompt.saveDc} → ${appliedDamage} damage`,
+            description: `Rolled ${saveTotal} vs DC ${dcSavePrompt.saveDc}`,
           });
 
           setDcSavePrompt(null);
           setDcSaveModifier(0);
           setDcSaveAdvantage(false);
           setDcSaveDisadvantage(false);
+          return;
         };
 
         return (

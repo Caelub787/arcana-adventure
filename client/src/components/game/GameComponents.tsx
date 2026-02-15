@@ -6471,7 +6471,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
           return;
         }
         
-        if (isAssignedToOther) {
+        if (isAssignedToOther && onRequestSaveRoll) {
           triggerRollNotification({
             type: 'system',
             label: `${targetChar.name} — Awaiting ${saveAttr.charAt(0).toUpperCase() + saveAttr.slice(1)} Save (DC ${singleTargetDc})`,
@@ -6479,53 +6479,84 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
             username: targetChar.name, characterName: targetChar.name,
             calculationBreakdown: `${targetChar.name} must roll a ${saveAttr} save vs DC ${singleTargetDc}`,
           });
+          
+          let saveResult = { saved: false, roll: 0, total: 0 };
+          try {
+            saveResult = await onRequestSaveRoll({
+              targetCharacterId: targetChar.id,
+              targetUserId: ownerUserId || targetChar.userId,
+              spellName: spellData.name,
+              saveAttribute: saveAttr,
+              saveDc: singleTargetDc,
+              damage: 0,
+              damageType: spellData.damageType || '',
+              saveSuccessEffect: saveSuccessEffect,
+              casterName: character.name,
+              isHealing: isHealing,
+            });
+          } catch (e) {
+            saveResult = { saved: false, roll: 1, total: 1 };
+          }
+          
+          triggerRollNotification({
+            type: saveResult.saved ? 'system' : 'attack',
+            dieType: 'd20',
+            label: `${targetChar.name} ${saveAttr.charAt(0).toUpperCase() + saveAttr.slice(1)} Save — ${saveResult.saved ? 'SAVED!' : 'FAILED!'}`,
+            result: saveResult.roll,
+            total: saveResult.total,
+            username: targetChar.name, characterName: targetChar.name,
+            calculationBreakdown: `Rolled ${saveResult.total} vs DC ${singleTargetDc} → ${saveResult.saved ? 'SAVED' : 'FAILED'}`,
+          });
           if (character.campaignId) {
-            gameWs.sendChatMessage(character.userId || '', targetChar.name || 'Unknown', 
-              `${saveAttr.charAt(0).toUpperCase() + saveAttr.slice(1)} Save vs ${spellData.name}: Awaiting roll (DC ${singleTargetDc})`, 'roll');
+            gameWs.sendChatMessage(character.userId || '', targetChar.name || 'Unknown',
+              `${saveAttr.charAt(0).toUpperCase() + saveAttr.slice(1)} Save vs ${spellData.name}: Rolled ${saveResult.total} vs DC ${singleTargetDc} → ${saveResult.saved ? 'SAVED' : 'FAILED'}`, 'roll');
+          }
+          
+          if (saveResult.saved && saveSuccessEffect === 'none') {
+            return;
           }
           
           await new Promise(resolve => setTimeout(resolve, 1000));
           
           const { result: dmgResult, dieType: dmgDieType } = rollDice(diceNotation);
-          const spellCritBonus = options?.critSuccess ? getMaxDice(diceNotation) : 0;
-          const mod = typeof spellData.mod === 'number' ? spellData.mod : (parseInt(spellData.mod) || 0);
-          const totalDmg = (dmgResult || 0) + spellCritBonus + mod;
-          const dmgDiceResult = spellCritBonus > 0 ? `${dmgResult} + MAX (${spellCritBonus})` : `${dmgResult}`;
-          const dmgBreakdown = mod !== 0 
-            ? `${diceNotation} = ${dmgDiceResult} + Mod (${mod >= 0 ? '+' : ''}${mod})`
+          const spellCritBonus2 = options?.critSuccess ? getMaxDice(diceNotation) : 0;
+          const mod2 = typeof spellData.mod === 'number' ? spellData.mod : (parseInt(spellData.mod) || 0);
+          const totalDmg = (dmgResult || 0) + spellCritBonus2 + mod2;
+          const dmgDiceResult = spellCritBonus2 > 0 ? `${dmgResult} + MAX (${spellCritBonus2})` : `${dmgResult}`;
+          const dmgBreakdown = mod2 !== 0 
+            ? `${diceNotation} = ${dmgDiceResult} + Mod (${mod2 >= 0 ? '+' : ''}${mod2})`
             : `${diceNotation} = ${dmgDiceResult}`;
-          const damageTypeDisplay = spellData.damageType ? ` (${spellData.damageType})` : '';
+          const damageTypeDisplay2 = spellData.damageType ? ` (${spellData.damageType})` : '';
+          
+          let appliedDmg = totalDmg;
+          if (saveResult.saved) {
+            appliedDmg = Math.floor(totalDmg / 2);
+          }
+          
+          const isEnergyEffect2 = spellData.damageType === 'Energy';
+          if (appliedDmg > 0) {
+            await applyDamageToTarget(appliedDmg, spellData.damageType || null, targetChar, isEnergyEffect2 ? spellData.gainEnergy : undefined);
+          }
+          
+          const resultText = saveResult.saved
+            ? `Half damage: ${appliedDmg} (saved)`
+            : `Full damage: ${appliedDmg}`;
           
           triggerRollNotification({
             type: 'attack',
             dieType: dmgDieType as any,
-            label: `${spellData.name} Damage`,
+            label: `${spellData.name} → ${targetChar.name} (${resultText})`,
             result: dmgResult,
-            modifier: mod,
-            total: totalDmg,
+            modifier: mod2,
+            total: appliedDmg,
             username: character.name || 'Unknown',
             characterName: character.name,
-            calculationBreakdown: dmgBreakdown,
+            calculationBreakdown: `${dmgBreakdown} = ${totalDmg}${damageTypeDisplay2} → ${resultText}`,
           });
           if (character.campaignId) {
             gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', 
-              `${spellData.name} Damage: ${dmgBreakdown} = ${totalDmg}${damageTypeDisplay}`, 'roll');
+              `${spellData.name} → ${targetChar.name}: ${dmgBreakdown} = ${totalDmg}${damageTypeDisplay2} → ${resultText}`, 'roll');
           }
-          
-          gameWs.send({
-            type: 'dc_save_prompt',
-            campaignId,
-            targetCharacterId: targetChar.id,
-            targetUserId: targetChar.userId,
-            spellName: spellData.name,
-            saveAttribute: saveAttr,
-            saveDc: singleTargetDc,
-            damage: totalDmg,
-            damageType: spellData.damageType || '',
-            saveSuccessEffect: saveSuccessEffect,
-            casterName: character.name,
-            isHealing: isHealing,
-          });
           return;
         }
         

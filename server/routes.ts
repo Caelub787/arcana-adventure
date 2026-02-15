@@ -1233,13 +1233,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
         
         if (message.type === "dc_save_prompt") {
-          const { campaignId, targetUserId, targetCharacterId, spellName, saveAttribute, saveDc, damage, damageType, saveSuccessEffect, casterName, isHealing } = message;
+          const { campaignId, targetUserId, targetCharacterId, saveRequestId, spellName, saveAttribute, saveDc, damage, damageType, saveSuccessEffect, casterName, isHealing } = message;
           const room = campaignRooms.get(campaignId);
           if (room) {
             const promptMessage = JSON.stringify({
               type: "dc_save_prompt",
               targetUserId,
               targetCharacterId,
+              saveRequestId,
               spellName,
               saveAttribute,
               saveDc,
@@ -1253,6 +1254,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
               const clientUserId = (client as any).userId;
               if (clientUserId === targetUserId && client.readyState === 1) {
                 client.send(promptMessage);
+              }
+            });
+          }
+        }
+        
+        if (message.type === "save_roll_result") {
+          const { campaignId, targetCharacterId, saveRequestId, saved, roll, total } = message;
+          const room = campaignRooms.get(campaignId);
+          if (room) {
+            const resultMessage = JSON.stringify({
+              type: "save_roll_result",
+              targetCharacterId,
+              saveRequestId,
+              saved,
+              roll,
+              total,
+            });
+            room.forEach((client) => {
+              if (client !== ws && client.readyState === 1) {
+                client.send(resultMessage);
               }
             });
           }
