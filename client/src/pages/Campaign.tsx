@@ -7323,6 +7323,21 @@ export default function Campaign() {
     enabled: !!effectiveCampaignId && !isNew,
   });
 
+  const memoizedAllSpecies = useMemo(() => {
+    return [...(systemSpecies || []), ...campaignSpeciesList].map(s => ({ name: s.name, size: s.size, defaultImage: (s as any).defaultImage }));
+  }, [systemSpecies, campaignSpeciesList]);
+
+  const handleBattleMapViewChange = useCallback((v: any) => {
+    setCurrentView(v);
+    lastViewStateRef.current = v;
+  }, []);
+
+  const handleRefetchThrownItems = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ['thrown-items', activeScene?.id] });
+  }, [queryClient, activeScene?.id]);
+
+  const handleCameraTargetReached = useCallback(() => setCameraTarget(null), []);
+
   // Load feat trees for species form (to assign racial feat trees)
   // Use public endpoint so GMs can access feat trees without admin requirement
   const { data: featTrees = [] } = useQuery<FeatTree[]>({
@@ -9975,9 +9990,9 @@ export default function Campaign() {
              gridSize={activeScene?.gridSize || 50}
              backgroundImage={currentMap}
              scene={activeScene}
-             onViewChange={(v: any) => { setCurrentView(v); lastViewStateRef.current = v; }}
+             onViewChange={handleBattleMapViewChange}
              characters={characters as any[]}
-             allSpecies={[...(systemSpecies || []), ...campaignSpeciesList].map(s => ({ name: s.name, size: s.size, defaultImage: (s as any).defaultImage }))}
+             allSpecies={memoizedAllSpecies}
              selectionMode={selectionMode}
              targetedTokenId={targetedTokenId}
              selectedTokenId={selectedTokenId}
@@ -9997,7 +10012,7 @@ export default function Campaign() {
              onBeacon={handleBeacon}
              otherPlayersViewports={otherPlayersViewports}
              thrownItems={thrownItems}
-             onRefetchThrownItems={() => queryClient.invalidateQueries({ queryKey: ['thrown-items', activeScene?.id] })}
+             onRefetchThrownItems={handleRefetchThrownItems}
              onDeleteThrownItem={async (thrownItemId) => {
                try {
                  await api.deleteThrownItem(thrownItemId);
@@ -10032,7 +10047,7 @@ export default function Campaign() {
              onPinPlaced={handlePinPlaced}
              editingPinId={editingPin?.id}
              cameraTarget={cameraTarget}
-             onCameraTargetReached={() => setCameraTarget(null)}
+             onCameraTargetReached={handleCameraTargetReached}
            />
            
            {/* Battlemap Dice Overlay for 3D dice rolling */}
