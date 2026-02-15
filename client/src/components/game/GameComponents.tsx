@@ -1885,7 +1885,6 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
           willChange: 'transform',
           backfaceVisibility: 'hidden',
           WebkitBackfaceVisibility: 'hidden',
-          contain: 'layout style paint',
         }}
         onPointerDown={handleMapPointerDown}
         onPointerMove={handleMapPointerMove}
