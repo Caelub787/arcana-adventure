@@ -10560,7 +10560,7 @@ export default function Campaign() {
                 </div>
               )}
               {activeSidePanel === 'initiative' && (
-                <div className="h-full overflow-y-auto p-3">
+                <div className="h-full flex flex-col p-3">
                   <InitiativeTracker
                     open={true}
                     onOpenChange={() => {}}

@@ -1555,24 +1555,31 @@ export function WallDrawingOverlay({
     setIsFreeformDrawing(false);
 
     if (freeformPoints.length >= 2) {
-      const mutations: Promise<any>[] = [];
+      const wallSegments = [];
       for (let i = 0; i < freeformPoints.length - 1; i++) {
-        mutations.push(
-          createWallMutation.mutateAsync({
-            x1: freeformPoints[i].x,
-            y1: freeformPoints[i].y,
-            x2: freeformPoints[i + 1].x,
-            y2: freeformPoints[i + 1].y,
-            wallType: selectedWallType,
-          })
-        );
+        wallSegments.push({
+          x1: freeformPoints[i].x,
+          y1: freeformPoints[i].y,
+          x2: freeformPoints[i + 1].x,
+          y2: freeformPoints[i + 1].y,
+          wallType: selectedWallType,
+          snapToGrid: true,
+          playerVisible: true,
+        });
       }
-      Promise.all(mutations).then(() => {
+      fetch(`/api/scenes/${sceneId}/walls/batch`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ walls: wallSegments }),
+      }).then((res) => {
+        if (!res.ok) console.error('Failed to create walls batch');
         queryClient.invalidateQueries({ queryKey: ['scene-walls', sceneId] });
+      }).catch((err) => {
+        console.error('Failed to create walls batch:', err);
       });
     }
     setFreeformPoints([]);
-  }, [isFreeformDrawing, freeformPoints, createWallMutation, selectedWallType, sceneId, queryClient]);
+  }, [isFreeformDrawing, freeformPoints, selectedWallType, sceneId, queryClient]);
 
   const isActive = wallDrawMode || doorPlaceMode || windowPlaceMode || lightPlaceMode;
   if (!sceneId) return null;
