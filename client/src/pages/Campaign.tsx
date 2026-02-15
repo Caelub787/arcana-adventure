@@ -8226,10 +8226,9 @@ export default function Campaign() {
           }
         }
         if (data.type === 'token_updated' && data.token) {
-          // Only update if token belongs to current scene or is legacy (null sceneId)
           if (data.token.sceneId === currentSceneId || !data.token.sceneId) {
             setTokens(prev => prev.map(t => 
-              t.id === data.token.id ? data.token : t
+              t.id === data.token.id ? { ...t, ...data.token } : t
             ));
           }
         }

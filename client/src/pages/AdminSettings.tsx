@@ -6854,6 +6854,7 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
   };
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="bg-stone-900 border-stone-700 text-stone-200 max-w-2xl max-h-[90vh] flex flex-col">
         <DialogHeader className="shrink-0">
@@ -6969,16 +6970,6 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
                   </div>
                 </div>
               </div>
-
-              <ImageBrowser
-                open={showImageBrowser}
-                onOpenChange={setShowImageBrowser}
-                onSelect={(imageBase64) => {
-                  setFormData({ ...formData, image: imageBase64 });
-                  setShowImageBrowser(false);
-                }}
-                title="Select Item Image"
-              />
 
               {formData.itemType === 'ammunition' && (
                 <>
@@ -7470,5 +7461,16 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+    <ImageBrowser
+      open={showImageBrowser}
+      onOpenChange={setShowImageBrowser}
+      onSelect={(imageBase64) => {
+        setFormData({ ...formData, image: imageBase64 });
+        setShowImageBrowser(false);
+      }}
+      title="Select Item Image"
+    />
+    </>
   );
 }
