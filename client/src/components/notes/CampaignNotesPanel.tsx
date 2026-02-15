@@ -2422,7 +2422,7 @@ export function CampaignNotesPanel({
           renderGraphView()
         ) : (
           <div className="flex h-full min-h-0 overflow-hidden w-full">
-            {showSidebar && !(selectedNoteId && (currentNote?.type === "canvas" || noteMode === "edit")) && (
+            {showSidebar && !(selectedNoteId && noteMode === "edit" && currentNote?.type !== "canvas") && (
               <>
                 <div
                   style={{ width: `${sidebarWidth}px`, minWidth: '120px', maxWidth: '50%' }}
