@@ -1716,7 +1716,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
   }, []);
 
   return (
-    <div className="relative h-full w-full overflow-hidden bg-black rounded-lg border border-white/10 shadow-inner group" ref={containerRef}
+    <div className="relative h-full w-full overflow-hidden bg-black rounded-lg border border-white/10 shadow-inner group" ref={containerRef} style={{ contain: 'layout paint' }}
       onDragOver={(e) => {
         if (e.dataTransfer.types.includes('application/character-id')) {
           e.preventDefault();
@@ -1745,7 +1745,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
       
       {/* Map Controls (Top Center) - shifts left when notes panel is open */}
       <div 
-        className="absolute top-4 z-30 flex gap-1 transition-all duration-300 ease-in-out"
+        className="absolute top-4 z-40 flex gap-1 transition-all duration-300 ease-in-out"
         style={{ 
           left: notesPanelOpen ? `calc(50% - ${notesPanelWidth / 2}px)` : '50%',
           transform: 'translateX(-50%)'
@@ -1884,6 +1884,9 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
           top: '-9000px',
           transformOrigin: "0 0",
           willChange: 'transform',
+          backfaceVisibility: 'hidden',
+          WebkitBackfaceVisibility: 'hidden',
+          contain: 'layout style paint',
         }}
         onPointerDown={handleMapPointerDown}
         onPointerMove={handleMapPointerMove}
@@ -1933,11 +1936,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
               const gridOffsetBase = MAP_OFFSET % effectiveGridSize;
               const userOffsetX = (scene as any)?.gridOffsetX || 0;
               const userOffsetY = (scene as any)?.gridOffsetY || 0;
-              const zoomLevel = zoomRef.current || 1;
-              let displayGridSize = effectiveGridSize;
-              while (displayGridSize * zoomLevel < 12) {
-                displayGridSize *= 2;
-              }
+              const displayGridSize = effectiveGridSize;
               const displayOffsetX = ((gridOffsetBase + userOffsetX) % displayGridSize + displayGridSize) % displayGridSize;
               const displayOffsetY = ((gridOffsetBase + userOffsetY) % displayGridSize + displayGridSize) % displayGridSize;
               
@@ -7069,7 +7068,7 @@ const BattleMapHotbarsInner = function BattleMapHotbars({ character, tokens, tar
     <>
       {/* DC, HP and Energy Bars - Bottom LEFT, stacked vertically */}
       <div 
-        className="absolute bottom-2 md:bottom-4 pointer-events-auto z-30 transition-all duration-300 ease-in-out"
+        className="absolute bottom-2 md:bottom-4 pointer-events-auto z-40 transition-all duration-300 ease-in-out"
         style={{ left: '8px' }}
         data-collision-id="hp-dc-display"
       >
@@ -7116,7 +7115,7 @@ const BattleMapHotbarsInner = function BattleMapHotbars({ character, tokens, tar
 
       {/* Hotbar Display - Bottom CENTER/RIGHT with type buttons above */}
       <div 
-        className="absolute bottom-2 md:bottom-4 pointer-events-auto z-30 transition-all duration-300 ease-in-out"
+        className="absolute bottom-2 md:bottom-4 pointer-events-auto z-40 transition-all duration-300 ease-in-out"
         style={{ right: notesPanelOpen ? `${notesPanelWidth + 16}px` : '8px' }}
         data-collision-id="character-hotbar"
       >
@@ -7273,7 +7272,7 @@ const SelectionModeButtonsInner = function SelectionModeButtons({
   return (
     <>
       <div 
-        className="absolute top-44 z-30 pointer-events-auto transition-all duration-300 ease-in-out"
+        className="absolute top-44 z-40 pointer-events-auto transition-all duration-300 ease-in-out"
         style={{ left: '8px' }}
       >
         <div className="flex flex-col gap-2">
