@@ -1761,13 +1761,24 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
              
              if (viewportSize.width > 0) {
                let pixelX: number, pixelY: number;
+               let targetZoom = defaultZoom;
                
-               if (viewVersion === 0) {
-                 // Legacy: stored values are pixel offsets
+               const fogActive = scene?.fogEnabled && !isGM;
+               const assignedToken = fogActive && assignedCharacterId 
+                 ? tokens.find(t => t.characterId === assignedCharacterId) 
+                 : null;
+               
+               if (assignedToken) {
+                 const tokenWorldX = assignedToken.x;
+                 const tokenWorldY = assignedToken.y;
+                 targetZoom = Math.max(defaultZoom, 1);
+                 const pixelOffset = worldToPixelOffset(tokenWorldX, tokenWorldY, targetZoom, viewportSize.width, viewportSize.height);
+                 pixelX = pixelOffset.x;
+                 pixelY = pixelOffset.y;
+               } else if (viewVersion === 0) {
                  pixelX = scene?.defaultViewX ?? 0;
                  pixelY = scene?.defaultViewY ?? 0;
                } else {
-                 // Version 1+: stored values are world center coordinates
                  const worldX = scene?.defaultViewX ?? 0;
                  const worldY = scene?.defaultViewY ?? 0;
                  const pixelOffset = worldToPixelOffset(worldX, worldY, defaultZoom, viewportSize.width, viewportSize.height);
@@ -1776,10 +1787,10 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                }
                
                panRef.current = { x: pixelX, y: pixelY };
-               zoomRef.current = defaultZoom;
+               zoomRef.current = targetZoom;
                motionX.set(pixelX);
                motionY.set(pixelY);
-               motionZoom.set(defaultZoom);
+               motionZoom.set(targetZoom);
                notifyViewChange();
              }
            }}
