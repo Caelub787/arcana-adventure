@@ -8153,9 +8153,9 @@ const InitiativeTrackerInner = function InitiativeTracker({ open, onOpenChange, 
   };
 
   const initiativeContent = (
-        <div className="space-y-4">
+        <div className={`${inline ? 'flex flex-col h-full' : 'space-y-4'}`}>
           {inCombat && (
-            <div className="bg-red-900/50 border border-red-700 rounded-lg p-3 text-center">
+            <div className={`bg-red-900/50 border border-red-700 rounded-lg p-3 text-center ${inline ? 'shrink-0 mb-4' : ''}`}>
               <span className="text-red-300 font-semibold">Combat Active</span>
             </div>
           )}
@@ -8169,7 +8169,7 @@ const InitiativeTrackerInner = function InitiativeTracker({ open, onOpenChange, 
               <p className="text-xs mt-1">Characters can roll initiative from their character sheet</p>
             </div>
           ) : (
-            <div className="space-y-2 max-h-[50vh] overflow-y-auto">
+            <div className={`space-y-2 ${inline ? 'flex-1 min-h-0 overflow-y-auto' : 'max-h-[50vh] overflow-y-auto'}`}>
               {sortedEntries.map((entry, index) => {
                 const isCurrentTurn = inCombat && entry.characterId === currentTurnCharacterId;
                 const portrait = getCharacterPortrait(entry.characterId);
@@ -8288,7 +8288,7 @@ const InitiativeTrackerInner = function InitiativeTracker({ open, onOpenChange, 
             if (charactersNeedingRoll.length === 0) return null;
             
             return (
-              <div className="pt-4 border-t border-stone-700">
+              <div className={`pt-4 border-t border-stone-700 ${inline ? 'shrink-0' : ''}`}>
                 <button
                   onClick={() => setInactiveCollapsed(!inactiveCollapsed)}
                   className="flex items-center justify-between w-full text-left mb-2 hover:bg-stone-800/50 rounded p-1 -m-1"
@@ -8344,7 +8344,7 @@ const InitiativeTrackerInner = function InitiativeTracker({ open, onOpenChange, 
           
           {/* GM Actions */}
           {isGM && sortedEntries.length > 0 && (
-            <div className="flex flex-col gap-2 pt-4 border-t border-stone-700">
+            <div className={`flex flex-col gap-2 pt-4 border-t border-stone-700 ${inline ? 'shrink-0 mt-4' : ''}`}>
               {!inCombat ? (
                 <Button
                   onClick={handleStartCombat}
