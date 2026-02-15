@@ -1257,15 +1257,23 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
     }
   };
 
-  /**
-   * getCharacterForToken - Retrieves character data linked to a token
-   * Used for displaying HP bars and character portraits on tokens.
-   * Returns undefined if token has no associated character.
-   */
-  const getCharacterForToken = (token: Token) => {
-    if (!token.characterId || !characters) return undefined;
-    return characters.find((c: any) => c.id === token.characterId);
-  };
+  const characterMap = useMemo(() => {
+    if (!characters) return new Map();
+    const map = new Map();
+    characters.forEach((c: any) => map.set(c.id, c));
+    return map;
+  }, [characters]);
+
+  const getCharacterForToken = useCallback((token: Token) => {
+    if (!token.characterId) return undefined;
+    return characterMap.get(token.characterId);
+  }, [characterMap]);
+
+  const speciesMap = useMemo(() => {
+    const map = new Map();
+    allSpecies.forEach((s: any) => map.set(s.name, s));
+    return map;
+  }, [allSpecies]);
 
   // Track if a drag occurred (for distinguishing click from pan)
   const didDragRef = useRef(false);
@@ -1275,7 +1283,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
    * This gives us full control over when panning is allowed and prevents teleportation bugs.
    * In AoE targeting mode, panning still works - click without drag locks the AoE.
    */
-  const handleMapPointerDown = (e: React.PointerEvent) => {
+  const handleMapPointerDown = useCallback((e: React.PointerEvent) => {
     // If in calibration mode, don't do normal panning
     if (gridCalibrationMode) return;
     // Don't start panning if locked, pinching, or dragging a token
@@ -1310,9 +1318,9 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
     
     // Capture pointer for reliable tracking
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-  };
+  }, [gridCalibrationMode, selectionMode, wallDrawMode, doorPlaceMode, windowPlaceMode, lightPlaceMode, zoneDrawMode, moveMode, pinPlaceMode, placingCharacterId, thrownItemDeleteMode]);
   
-  const handleMapPointerMove = (e: React.PointerEvent) => {
+  const handleMapPointerMove = useCallback((e: React.PointerEvent) => {
     // Handle calibration drag
     if (gridCalibrationMode && calibDragRef.current) {
       const container = containerRef.current;
@@ -1370,9 +1378,9 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
     panRef.current = { x: newX, y: newY };
     motionX.set(newX);
     motionY.set(newY);
-  };
+  }, [gridCalibrationMode]);
   
-  const handleMapPointerUp = (e: React.PointerEvent) => {
+  const handleMapPointerUp = useCallback((e: React.PointerEvent) => {
     if (gridCalibrationMode && calibDragRef.current) {
       calibDragRef.current = null;
       setCalibDrag(null);
@@ -1458,7 +1466,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
     panPointerIdRef.current = null;
     panStartRef.current = null;
     notifyViewChange();
-  };
+  }, [selectionMode, aoeTargetState, gridSize, onAoeClick, onBeacon, onGridTargetClick, onMapClickToPlace, placingCharacterId, gridCalibrationMode, pinPlaceMode, onPinPlaced]);
   
   const handleMapPointerCancel = (e: React.PointerEvent) => {
     if (gestureModeRef.current === 'panning' && panPointerIdRef.current === e.pointerId) {
@@ -1703,6 +1711,22 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
       container.removeEventListener('touchcancel', handleTouchEnd);
     };
   }, []);
+
+  const visibleTokens = useMemo(() => {
+    if ((!isGM || gmSeeAsPlayer) && scene?.fogEnabled) {
+      if (visionPolygons && visionPolygons.length > 0) {
+        return tokens.filter(token => {
+          const tokenCenterX = token.x + gridSize / 2;
+          const tokenCenterY = token.y + gridSize / 2;
+          return visionPolygons.some(poly => 
+            isPointInPolygon(tokenCenterX, tokenCenterY, poly.points)
+          );
+        });
+      }
+      return [];
+    }
+    return tokens;
+  }, [tokens, isGM, gmSeeAsPlayer, scene?.fogEnabled, visionPolygons, gridSize]);
 
   return (
     <div className="relative h-full w-full overflow-hidden bg-black rounded-lg border border-white/10 shadow-inner group" ref={containerRef} style={{ contain: 'layout paint' }}
@@ -2092,6 +2116,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
               const y = beacon.gridY * effectiveGridSize + MAP_OFFSET;
               const centerX = x + effectiveGridSize / 2;
               const centerY = y + effectiveGridSize / 2;
+              const color = beacon.beaconColor || '#FBB524';
               return (
                 <div
                   key={beacon.id}
@@ -2103,44 +2128,17 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                   }}
                   data-testid={`beacon-${beacon.id}`}
                 >
-                  {(() => {
-                    const color = beacon.beaconColor || '#FBB524';
-                    const hexToRgba = (hex: string, alpha: number) => {
-                      const r = parseInt(hex.slice(1, 3), 16);
-                      const g = parseInt(hex.slice(3, 5), 16);
-                      const b = parseInt(hex.slice(5, 7), 16);
-                      return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-                    };
-                    return (
-                      <div 
-                        className="rounded-full"
-                        style={{
-                          width: effectiveGridSize * 0.8,
-                          height: effectiveGridSize * 0.8,
-                          animation: `beacon-pulse-${beacon.id} 1.5s ease-out forwards`,
-                          border: `4px solid ${color}`,
-                          boxShadow: `0 0 30px 8px ${hexToRgba(color, 1)}, inset 0 0 15px ${hexToRgba(color, 0.6)}`,
-                        }}
-                      />
-                    );
-                  })()}
-                  <style>{`
-                    @keyframes beacon-pulse-${beacon.id} {
-                      0% {
-                        transform: scale(0.5);
-                        opacity: 1;
-                        border-width: 8px;
-                      }
-                      70% {
-                        opacity: 0.75;
-                      }
-                      100% {
-                        transform: scale(2.5);
-                        opacity: 0.65;
-                        border-width: 4px;
-                      }
-                    }
-                  `}</style>
+                  <div 
+                    className="rounded-full"
+                    style={{
+                      width: effectiveGridSize * 0.8,
+                      height: effectiveGridSize * 0.8,
+                      animation: 'beacon-pulse 1.5s ease-out forwards',
+                      border: `4px solid ${color}`,
+                      boxShadow: `0 0 30px 8px ${color}, inset 0 0 15px ${color}99`,
+                      willChange: 'transform, opacity',
+                    }}
+                  />
                 </div>
               );
             })}
@@ -2207,16 +2205,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
         })()}
 
         {/* Tokens - Keep original coordinate system */}
-        {(((!isGM || gmSeeAsPlayer) && scene?.fogEnabled)
-          ? (visionPolygons && visionPolygons.length > 0 ? tokens.filter(token => {
-              const tokenCenterX = token.x + (gridSize) / 2;
-              const tokenCenterY = token.y + (gridSize) / 2;
-              return visionPolygons.some(poly => 
-                isPointInPolygon(tokenCenterX, tokenCenterY, poly.points)
-              );
-            }) : [])
-          : tokens
-        ).map((token) => {
+        {visibleTokens.map((token) => {
           // Invisible tokens: GMs see at 40% opacity, non-GMs can't see at all
           const isInvisible = (token as any).isInvisible === true;
           if (isInvisible && role !== 'gm') {
@@ -2225,7 +2214,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
           
           const character = getCharacterForToken(token);
           // Use enriched token data for image and size (works regardless of character permissions)
-          const tokenSpeciesData = character?.race ? allSpecies.find((s: any) => s.name === character.race) : null;
+          const tokenSpeciesData = character?.race ? speciesMap.get(character.race) : null;
           const tokenImage = (token as any).tokenImage || character?.portrait || tokenSpeciesData?.defaultImage || token.image;
           const hpPercent = character ? (character.hp / character.maxHp) * 100 : null;
           const energyPercent = character ? (character.energy / character.maxEnergy) * 100 : null;
@@ -8454,7 +8443,7 @@ const InitiativeTrackerInner = function InitiativeTracker({ open, onOpenChange, 
     const char = characters.find(c => c.id === characterId);
     if (char?.portrait) return char.portrait;
     if (char?.race && allSpecies.length > 0) {
-      const species = allSpecies.find((s: any) => s.name === char.race);
+      const species = speciesMap.get(char.race);
       if (species?.defaultImage) return species.defaultImage;
     }
     return undefined;
@@ -8548,9 +8537,9 @@ const InitiativeTrackerInner = function InitiativeTracker({ open, onOpenChange, 
                 key={char.id}
                 className="flex items-center gap-3 p-2 bg-stone-800 border border-stone-700 rounded-lg"
               >
-                {(char.portrait || allSpecies.find((s: any) => s.name === char.race)?.defaultImage) ? (
+                {(char.portrait || speciesMap.get(char.race)?.defaultImage) ? (
                   <img 
-                    src={char.portrait || allSpecies.find((s: any) => s.name === char.race)?.defaultImage} 
+                    src={char.portrait || speciesMap.get(char.race)?.defaultImage} 
                     alt="" 
                     className="w-8 h-8 rounded-full object-cover border border-stone-600"
                   />

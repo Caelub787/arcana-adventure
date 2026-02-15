@@ -202,6 +202,12 @@
     animation: pulse-warning 2s ease-in-out infinite;
   }
 
+  @keyframes beacon-pulse {
+    0% { transform: scale(0.5); opacity: 1; border-width: 8px; }
+    70% { opacity: 0.75; }
+    100% { transform: scale(2.5); opacity: 0.65; border-width: 4px; }
+  }
+
   /* Shimmer Loading Effect */
   @keyframes shimmer {
     0% {

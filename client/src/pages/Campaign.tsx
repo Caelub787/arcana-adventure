@@ -6824,11 +6824,9 @@ export default function Campaign() {
     gameWs.clearAoeTargeting();
   };
   
-  // Helper function to handle AoE click - updates position and validates range
-  const handleAoeClick = (x: number, y: number) => {
+  const handleAoeClick = useCallback((x: number, y: number) => {
     let isLocked = true;
     
-    // Then check range if we have caster token info
     const casterToken = tokens.find((t: any) => t.id === aoeTargetState.casterTokenId);
     if (casterToken) {
       const casterCenterX = casterToken.x + (activeScene?.gridSize || 50) / 2;
@@ -6841,20 +6839,17 @@ export default function Campaign() {
       const distancePixels = Math.sqrt(dx * dx + dy * dy);
       const distanceFeet = (distancePixels / gridSizeVal) * 5;
       
-      // If out of range, unlock so user can reposition
       if (distanceFeet > rangeVal) {
         isLocked = false;
       }
     }
     
-    // Update position
     setAoeTargetState(prev => ({
       ...prev,
       center: { x, y },
       locked: isLocked,
     }));
     
-    // Broadcast the locked position to other players (only for spells, not throwables)
     if (aoeTargetState.spell) {
       const casterChar = characters && casterToken ? (characters as any[]).find((c: any) => c.id === casterToken.characterId) : null;
       gameWs.sendAoeTargeting({
@@ -6904,22 +6899,19 @@ export default function Campaign() {
       setPendingSandboxAoe(null);
       exitAoeMode();
     }
-  };
+  }, [tokens, aoeTargetState, activeScene, characters, pendingSandboxAoe]);
   
   // Throttle ref for AoE updates to avoid rate limiting
   const lastAoeBroadcastRef = useRef<number>(0);
   
-  // Helper function to update AoE center position (when hovering)
-  const updateAoeCenter = (x: number, y: number) => {
+  const updateAoeCenter = useCallback((x: number, y: number) => {
     if (!aoeTargetState.locked) {
       setAoeTargetState(prev => ({ ...prev, center: { x, y } }));
       
-      // Throttle broadcasts to ~20 updates per second to avoid rate limiting
       const now = Date.now();
       if (now - lastAoeBroadcastRef.current >= 50) {
         lastAoeBroadcastRef.current = now;
         
-        // Broadcast the moving position to other players
         const casterToken = tokens.find((t: any) => t.id === aoeTargetState.casterTokenId);
         const casterChar = characters && casterToken ? (characters as any[]).find((c: any) => c.id === casterToken.characterId) : null;
         gameWs.sendAoeTargeting({
@@ -6933,7 +6925,7 @@ export default function Campaign() {
         });
       }
     }
-  };
+  }, [aoeTargetState, tokens, characters]);
   
   // Escape key handler to cancel AoE mode
   useEffect(() => {
@@ -7880,9 +7872,9 @@ export default function Campaign() {
     setShowCampaignDialog(false);
   };
 
-  const handleDeleteToken = (tokenId: string) => {
+  const handleDeleteToken = useCallback((tokenId: string) => {
     deleteTokenMutation.mutate(tokenId);
-  };
+  }, []);
 
   // Load tokens from API
   useEffect(() => {
@@ -8532,14 +8524,10 @@ export default function Campaign() {
     toast({ title: "Character Assigned", description: `${char.name} is now your active character` });
   };
 
-  const handleMoveToken = (id: string, x: number, y: number) => {
-    // Update locally first for immediate feedback
+  const handleMoveToken = useCallback((id: string, x: number, y: number) => {
     setTokens(prev => prev.map(t => t.id === id ? { ...t, x, y } : t));
-    
-    // Send to WebSocket only - it handles both DB save and broadcast to all clients
-    // This is faster than using REST API which adds network round-trip delay
     gameWs.sendTokenMove(id, x, y);
-  };
+  }, []);
 
   const handleApplyEffect = (tokenId: string, effectId: string) => {
     applyEffectMutation.mutate({ tokenId, effectId });
@@ -8668,29 +8656,26 @@ export default function Campaign() {
     setSelectionMode(mode);
   }, [selectionMode, effectiveCampaignId]);
   
-  const handleGridTargetClick = (gridX: number, gridY: number) => {
+  const handleGridTargetClick = useCallback((gridX: number, gridY: number) => {
     setTargetedTokenId(null);
     setDetonatableGridTarget({ x: gridX, y: gridY });
-    // Clear WebSocket targeting since we're targeting a grid space, not a token
-    if (effectiveCampaignId) {
+    if (effectiveCampaignIdRef.current) {
       gameWs.clearTokenTargeting();
     }
-  };
+  }, []);
   
   // Throttle beacon sending to prevent spam
   const lastBeaconRef = useRef<number>(0);
   
   // Handler for creating a beacon at a grid cell
-  const handleBeacon = (cellKey: string) => {
-    // Throttle beacons to max 1 per 300ms
+  const handleBeacon = useCallback((cellKey: string) => {
     const now = Date.now();
     if (now - lastBeaconRef.current < 300) return;
     lastBeaconRef.current = now;
     
     const [gridX, gridY] = cellKey.split(',').map(Number);
-    // Send beacon via WebSocket - the server will broadcast to all players including self
     gameWs.sendBeacon({ gridX, gridY });
-  };
+  }, []);
 
   // GM Actions
   const handleAddCharacterToken = (character: any) => {
