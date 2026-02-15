@@ -24,7 +24,7 @@ import {
   Users, User, Plus, Minus, LogOut, Menu, ChevronRight, ChevronLeft, ChevronDown, ChevronUp,
   Heart, Zap, Backpack, Sparkles, Dice5, MessageSquare, RefreshCw, X, Trash2, Package, FolderOpen, Folder, FolderPlus, GripVertical, Lock, Unlock, Camera,
   BarChart3, Grid3X3, ScrollText, Upload, Image as ImageIcon, Layers, Search, TrendingUp, UserMinus, Ban,
-  MousePointer, Target, UserCheck, Swords, ArrowRight, ArrowLeft, Eye, EyeOff, Check, Moon, Coffee, AlertTriangle, GitBranch, Star, BookOpen, Pencil, Dna, Type, Library, Filter, MoreVertical, Flame, Highlighter, Bell, BellOff, FileText, Download, Loader2, Beaker, Coins, Dices, Edit3
+  MousePointer, Target, UserCheck, Swords, ArrowRight, ArrowLeft, ArrowUpRight, Eye, EyeOff, Check, Moon, Coffee, AlertTriangle, GitBranch, Star, BookOpen, Pencil, Dna, Type, Library, Filter, MoreVertical, Flame, Highlighter, Bell, BellOff, FileText, Download, Loader2, Beaker, Coins, Dices, Edit3
 } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useForm } from "react-hook-form";
@@ -4073,13 +4073,8 @@ interface BattleMapHotbarSlotProps {
 const RANGED_WEAPON_CATEGORIES = ['bow', 'crossbow', 'sling', 'firearm'];
 
 const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHotbars, allItems, tokens, targetedTokenId, allCharacters, gridSize = 50, onEnterAoeMode, aoeTargetState, onAoeDamageRoll, sceneId, thrownItems, onRefetchThrownItems, onEnterThrowableAoeMode, throwableGridTarget, onClearThrowableGridTarget, onRequestSaveRoll, onClearTarget, campaignMembers, currentUserId }: BattleMapHotbarSlotProps) {
-  const clickTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const clickCountRef = useRef(0);
   const queryClient = useQueryClient();
   
-  // Detonate AOE button state (shown after throwing an item with AOE)
-  const [showDetonateButton, setShowDetonateButton] = useState(false);
-
   // Modifier popup state
   const [showModifierPopup, setShowModifierPopup] = useState(false);
   const [popupPosition, setPopupPosition] = useState({ x: window.innerWidth / 2, y: window.innerHeight / 3 });
@@ -5338,46 +5333,44 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
       }
       
       try {
-        // Convert token pixel position to grid coordinates for miss case
-        const effectiveGridSize = gridSize || 50;
-        const gridX = Math.floor((throwTargetToken?.x ?? 0) / effectiveGridSize);
-        const gridY = Math.floor((throwTargetToken?.y ?? 0) / effectiveGridSize);
-        
-        const thrownItem = await api.createThrownItem(sceneId, {
-          itemId: itemData.id,
-          characterId: character.id,
-          // If hit: use token pixel position; if miss: use grid coordinates
-          x: isHit ? (throwTargetToken?.x ?? 0) : gridX,
-          y: isHit ? (throwTargetToken?.y ?? 0) : gridY,
-          // Only attach to token if hit
-          attachedToTokenId: isHit ? targetedTokenId : undefined,
-        });
+        const canPlaceOnMap = itemData.isDestructible && itemData.throwableAoe;
         
         // Decrement item quantity
         await api.updateItem(itemData.id, { quantity: (itemData.quantity || 1) - 1 });
         queryClient.invalidateQueries({ queryKey: ['item', hotbar?.itemId] });
         queryClient.invalidateQueries({ queryKey: ['character-items', character.id] });
         
-        // Broadcast via WebSocket
-        gameWs.sendThrownItemPlaced(thrownItem, sceneId);
-        
-        // Refetch thrown items
-        onRefetchThrownItems?.();
-        
-        // Notify placement result
-        triggerRollNotification({
-          type: 'system',
-          label: `${itemData.name} ${isHit ? 'Attached!' : 'Landed!'}`,
-          result: 0,
-          total: 0,
-          username: character.name || 'Unknown',
-          characterName: character.name,
-          calculationBreakdown: isHit ? `Attached to ${targetName}` : `Missed! Landed at grid (${gridX}, ${gridY})`,
-        });
+        if (canPlaceOnMap) {
+          // Convert token pixel position to grid coordinates for miss case
+          const effectiveGridSize = gridSize || 50;
+          const gridX = Math.floor((throwTargetToken?.x ?? 0) / effectiveGridSize);
+          const gridY = Math.floor((throwTargetToken?.y ?? 0) / effectiveGridSize);
+          
+          const thrownItem = await api.createThrownItem(sceneId, {
+            itemId: itemData.id,
+            characterId: character.id,
+            x: isHit ? (throwTargetToken?.x ?? 0) : gridX,
+            y: isHit ? (throwTargetToken?.y ?? 0) : gridY,
+            attachedToTokenId: isHit ? targetedTokenId : undefined,
+          });
+          
+          gameWs.sendThrownItemPlaced(thrownItem, sceneId);
+          onRefetchThrownItems?.();
+          
+          triggerRollNotification({
+            type: 'system',
+            label: `${itemData.name} ${isHit ? 'Attached!' : 'Landed!'}`,
+            result: 0,
+            total: 0,
+            username: character.name || 'Unknown',
+            characterName: character.name,
+            calculationBreakdown: isHit ? `Attached to ${targetName} (Detonate from roll panel)` : `Missed! Landed at grid (${gridX}, ${gridY})`,
+          });
+        }
         
         // Deal initial weapon damage on hit
         if (isHit && itemData.damage && targetCharacter) {
-          await new Promise(resolve => setTimeout(resolve, 500));
+          if (canPlaceOnMap) await new Promise(resolve => setTimeout(resolve, 500));
           const { result: dmgResult, dieType: dmgDieType } = rollDice(itemData.damage);
           const dmgCritBonus = isCritSuccess ? getMaxDice(itemData.damage) : 0;
           const dmgMod = itemData.mod || 0;
@@ -5391,9 +5384,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
           const { finalDamage, reduction, armorName, isHealing } = await applyDamageToTarget(dmgTotal, dmgType, targetCharacter);
           const dmgLabel = isHealing
             ? `${itemData.name} Healing → ${targetName} (+${finalDamage} HP)`
-            : reduction > 0
-              ? `${itemData.name} ${isCritSuccess ? 'CRIT ' : ''}Impact → ${targetName} (-${finalDamage} HP)`
-              : `${itemData.name} ${isCritSuccess ? 'CRIT ' : ''}Impact → ${targetName} (-${finalDamage} HP)`;
+            : `${itemData.name} ${isCritSuccess ? 'CRIT ' : ''}Impact → ${targetName} (-${finalDamage} HP)`;
           const fullBreakdown = reduction > 0 ? `${dmgBreakdown} - ${reduction} (${armorName || 'Armor'})` : dmgBreakdown;
           
           triggerRollNotification({
@@ -5413,21 +5404,47 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
           }
         }
         
-        // Show detonate AOE button if item has AOE
-        if (itemData.throwableAoe && (itemData.throwableAoeRange || 0) > 0) {
-          setShowDetonateButton(true);
+        // For non-destructible throwables: resolve break chance immediately (no map placement)
+        if (!canPlaceOnMap) {
+          const breakRoll = Math.floor(Math.random() * 100) + 1;
+          const breakChance = itemData.throwableBreakChance ?? 10;
+          if (breakRoll <= breakChance) {
+            triggerRollNotification({
+              type: 'system',
+              label: `${itemData.name} Broke!`,
+              result: breakRoll,
+              total: breakChance,
+              username: character.name || 'Unknown',
+              characterName: character.name,
+              calculationBreakdown: `Break roll: ${breakRoll} ≤ ${breakChance}% - item destroyed`,
+            });
+            if (character.campaignId) {
+              gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown',
+                `${itemData.name} broke on impact! (${breakRoll}/${breakChance}%)`, 'action');
+            }
+          }
         }
-        
-        // Check if throwable breaks on impact (for items without pickup mode)
-        await checkThrowableBreak(thrownItem.id, itemData);
       } catch (err) {
         console.error('Failed to throw item at target:', err);
       }
       return;
     }
     
-    // Priority 2: Grid target selected in Target mode - throw to that location
+    // Priority 2: Grid target selected in Target mode - only for destructible AOE throwables
     if (throwableGridTarget) {
+      if (!itemData.isDestructible || !itemData.throwableAoe) {
+        triggerRollNotification({
+          type: 'system',
+          label: `${itemData.name} - Cannot Place!`,
+          result: 0,
+          total: 0,
+          username: character.name || 'Unknown',
+          characterName: character.name,
+          calculationBreakdown: 'Only destructible AOE throwables can be placed on the map. Target a token instead.',
+        });
+        onClearThrowableGridTarget?.();
+        return;
+      }
       // Range check - validate grid target is within weapon range (uses edge-based distance for large attackers)
       if (attackerToken) {
         const effectiveGridSize = gridSize || 50;
@@ -5516,8 +5533,20 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
       return;
     }
     
-    // Priority 3: Check if there's an AOE marker locked for this throwable
+    // Priority 3: Check if there's an AOE marker locked for this throwable (destructible AOE only)
     if (aoeTargetState?.active && aoeTargetState?.locked && aoeTargetState?.throwableItem) {
+      if (!itemData.isDestructible || !itemData.throwableAoe) {
+        triggerRollNotification({
+          type: 'system',
+          label: `${itemData.name} - Cannot Place!`,
+          result: 0,
+          total: 0,
+          username: character.name || 'Unknown',
+          characterName: character.name,
+          calculationBreakdown: 'Only destructible AOE throwables can be placed on the map. Target a token instead.',
+        });
+        return;
+      }
       // Verify it's the same throwable item
       if (aoeTargetState.throwableItem.id !== itemData.id) {
         triggerRollNotification({
@@ -5610,11 +5639,6 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
         if (character.campaignId) {
           gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', 
             `Threw ${itemData.name} at grid (${gridX}, ${gridY})`, 'action');
-        }
-        
-        // Show detonate AOE button if item has AOE
-        if (itemData.throwableAoe && (itemData.throwableAoeRange || 0) > 0) {
-          setShowDetonateButton(true);
         }
         
         // Check if throwable breaks on impact (for items without pickup mode)
@@ -5750,6 +5774,16 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
       }
     }
     
+    // Find the roll entry that defines save behavior for detonation
+    // Priority: 1) AOE roll entry with requiresSave, 2) any roll entry with requiresSave, 3) any entry with saveSuccessEffect
+    const aoeRollWithSave = itemRollEntries.find((re: any) => re.isAoe && (re.requiresSave || re.saveSuccessEffect));
+    const anyRollWithSave = itemRollEntries.find((re: any) => re.requiresSave || re.saveSuccessEffect);
+    const saveRollEntry = aoeRollWithSave || anyRollWithSave;
+    const hasSave = !!(saveRollEntry && (saveRollEntry.requiresSave || saveRollEntry.saveSuccessEffect) && onRequestSaveRoll);
+    const saveDc = saveRollEntry?.saveDc || 10;
+    const saveAttr = saveRollEntry?.saveAttribute || saveRollEntry?.attribute || 'wit';
+    const saveSuccessEffect = saveRollEntry?.saveSuccessEffect || 'half';
+    
     // Apply damage based on overlap count - multiple overlapping AOEs stack damage
     // Track total damage dealt for notification
     let totalDamageDealt = 0;
@@ -5757,6 +5791,56 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
     
     for (const [tokenId, { token, count, targetChar }] of tokenOverlapCounts) {
       if (targetChar) {
+        // If item has a save requirement, request save roll for this target first
+        let saved = false;
+        if (hasSave) {
+          const assignedMember = campaignMembers?.find((m: any) => m.assignedCharacterId === targetChar.id);
+          const ownerUserId = assignedMember?.userId || targetChar.userId;
+          
+          try {
+            const saveResult = await onRequestSaveRoll!({
+              targetCharacterId: targetChar.id,
+              targetUserId: ownerUserId || targetChar.userId,
+              spellName: itemData.name,
+              saveAttribute: saveAttr,
+              saveDc: saveDc,
+              damage: 0,
+              damageType: saveRollEntry?.damageType || aoeDamageType,
+              saveSuccessEffect: saveSuccessEffect,
+              casterName: character.name,
+              isHealing: false,
+            });
+            
+            saved = saveResult.saved;
+            
+            triggerRollNotification({
+              type: saved ? 'system' : 'attack',
+              dieType: 'd20' as any,
+              label: `${targetChar.name} ${saveAttr.charAt(0).toUpperCase() + saveAttr.slice(1)} Save (DC ${saveDc}) — ${saved ? 'SAVED!' : 'FAILED!'}`,
+              result: saveResult.roll,
+              total: saveResult.total,
+              username: targetChar.name,
+              characterName: targetChar.name,
+              calculationBreakdown: `d20 = ${saveResult.roll} → Total: ${saveResult.total} vs DC ${saveDc}`,
+            });
+            
+            if (character.campaignId) {
+              gameWs.sendChatMessage(character.userId || '', targetChar.name || 'Unknown',
+                `${saveAttr.charAt(0).toUpperCase() + saveAttr.slice(1)} Save vs ${itemData.name} Detonation: Rolled ${saveResult.total} vs DC ${saveDc} → ${saved ? 'SAVED' : 'FAILED'}`, 'roll');
+            }
+            
+            if (saved && saveSuccessEffect === 'none') {
+              affectedNames.push(targetChar.name);
+              targetDamageDetails.push(`${targetChar.name}: 0 (saved)`);
+              continue;
+            }
+          } catch (e) {
+            saved = false;
+          }
+          
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+        
         // Roll damage once per overlap - stacking AOEs means rolling multiple times
         // Note: mod is applied per roll (each explosion deals its own damage)
         let stackedDamage = 0;
@@ -5768,16 +5852,24 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
           stackedDamage += baseRoll + mod;
         }
         
+        // Apply save reduction if target saved
+        if (saved && saveSuccessEffect === 'half') {
+          stackedDamage = Math.floor(stackedDamage / 2);
+        }
+        
         totalDamageDealt += stackedDamage;
         
-        // Build readable damage string: "Goblin: 8 (2x)" or "Goblin: 4"
+        // Build readable damage string: "Goblin: 8 (2x)" or "Goblin: 4 (saved, half)"
         const stackSuffix = count > 1 ? ` (${count}x)` : '';
-        targetDamageDetails.push(`${targetChar.name}: ${stackedDamage}${stackSuffix}`);
+        const saveSuffix = saved ? ' (saved, half)' : '';
+        targetDamageDetails.push(`${targetChar.name}: ${stackedDamage}${stackSuffix}${saveSuffix}`);
         affectedNames.push(targetChar.name);
         
         // Send combat damage via WebSocket
-        gameWs.sendCombatDamage(targetChar.id, stackedDamage, aoeDamageType, character.name);
-        queryClient.invalidateQueries({ queryKey: ['character', targetChar.id] });
+        if (stackedDamage > 0) {
+          gameWs.sendCombatDamage(targetChar.id, stackedDamage, aoeDamageType, character.name);
+          queryClient.invalidateQueries({ queryKey: ['character', targetChar.id] });
+        }
       } else if (token.name) {
         affectedNames.push(token.name);
       }
@@ -7100,36 +7192,8 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
 
   // Handle click with single/double/triple click detection
   const handleClick = () => {
-    clickCountRef.current += 1;
-
-    if (clickCountRef.current === 1) {
-      clickTimerRef.current = setTimeout(() => {
-        clickCountRef.current = 0;
-
-        if (isThrowableClickable) {
-          handleThrowItem();
-          return;
-        }
-
-        setPopupPosition({ x: window.innerWidth / 2, y: window.innerHeight / 3 });
-        setShowModifierPopup(true);
-      }, 300);
-    } else if (clickCountRef.current === 2) {
-      if (isThrowableClickable) {
-        if (clickTimerRef.current) clearTimeout(clickTimerRef.current);
-        clickTimerRef.current = setTimeout(() => { clickCountRef.current = 0; }, 500);
-        handleDamageRoll();
-      } else {
-        if (clickTimerRef.current) clearTimeout(clickTimerRef.current);
-        clickCountRef.current = 0;
-      }
-    } else if (clickCountRef.current >= 3) {
-      if (clickTimerRef.current) clearTimeout(clickTimerRef.current);
-      clickCountRef.current = 0;
-      if (isThrowableClickable) {
-        handleDetonateThrowables();
-      }
-    }
+    setPopupPosition({ x: window.innerWidth / 2, y: window.innerHeight / 3 });
+    setShowModifierPopup(true);
   };
 
 
@@ -7220,9 +7284,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
         {itemData.isThrowable && itemData.throwableAoeRange && (
           <p className="text-sm text-orange-400">AOE: {itemData.throwableAoeRange}ft diameter ({itemData.throwableAoeShape || 'circle'})</p>
         )}
-        {isThrowableClickable ? (
-          <p className="text-xs text-stone-400 mt-1">Click: Throw | 2x: Damage | 3x: Detonate AOE</p>
-        ) : isClickable && (
+        {isClickable && (
           <p className="text-xs text-stone-400 mt-1">Click to open roll panel</p>
         )}
       </>
@@ -7313,7 +7375,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
           {tooltipContent && (
             <TooltipContent>
               {tooltipContent}
-              {isClickable && !isThrowableClickable && <p className="text-xs text-stone-400 mt-1">Click to open roll panel</p>}
+              {isClickable && <p className="text-xs text-stone-400 mt-1">Click to open roll panel</p>}
             </TooltipContent>
           )}
         </Tooltip>
@@ -7352,6 +7414,29 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
                 </div>
               ))}
               <p className="text-[10px] text-purple-300 mt-1 italic">Roll damage to apply with save modifiers</p>
+            </div>
+          )}
+
+          {isThrowableClickable && itemData && (
+            <div className="space-y-2 mb-3">
+              <p className="text-xs text-stone-400 uppercase tracking-wider">Throwable Actions</p>
+              <Button 
+                onClick={() => { setShowModifierPopup(false); handleThrowItem(); }} 
+                className="w-full bg-orange-600 hover:bg-orange-500"
+                disabled={(itemData.quantity || 0) <= 0}
+                data-testid="button-throw-item"
+              >
+                <ArrowUpRight className="h-4 w-4 mr-1" /> Throw {itemData.name} {itemData.quantity !== null && itemData.quantity !== undefined ? `(x${itemData.quantity})` : ''}
+              </Button>
+              {itemData.isDestructible && itemData.throwableAoe && thrownItems && thrownItems.filter(ti => ti.itemId === itemData.id).length > 0 && (
+                <Button 
+                  onClick={async () => { setShowModifierPopup(false); await handleDetonateThrowables(); }} 
+                  className="w-full bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-500 hover:to-red-500"
+                  data-testid="button-detonate-aoe-panel"
+                >
+                  <Flame className="h-4 w-4 mr-1" /> Detonate AOE ({thrownItems.filter(ti => ti.itemId === itemData.id).length} on map)
+                </Button>
+              )}
             </div>
           )}
 
@@ -7456,30 +7541,6 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
         document.body
       )}
 
-      {/* Detonate AOE Button - appears at top of screen after throwing an item with AOE */}
-      {showDetonateButton && itemData && ReactDOM.createPortal(
-        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[99998] animate-in fade-in slide-in-from-top-2 duration-300">
-          <button
-            onClick={async () => {
-              setShowDetonateButton(false);
-              await handleDetonateThrowables();
-            }}
-            className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-500 hover:to-red-500 text-white font-bold rounded-lg shadow-lg shadow-orange-900/50 border border-orange-400/50 transition-all hover:scale-105 active:scale-95"
-            data-testid="button-detonate-aoe"
-          >
-            <Flame className="w-5 h-5" />
-            Detonate {itemData.name} AOE
-          </button>
-          <button
-            onClick={() => setShowDetonateButton(false)}
-            className="absolute -top-2 -right-2 w-6 h-6 bg-stone-800 hover:bg-stone-700 border border-stone-600 rounded-full flex items-center justify-center text-stone-400 hover:text-white text-xs"
-            data-testid="button-dismiss-detonate"
-          >
-            X
-          </button>
-        </div>,
-        document.body
-      )}
     </>
   );
 }
@@ -21167,6 +21228,7 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
     throwableAoeDamageType: string;
     throwablePickup: boolean;
     throwableBreakChance: number | string;
+    isDestructible: boolean;
     canApplyEffects: boolean;
   }>({
     name: '',
@@ -21209,6 +21271,7 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
     throwableAoeDamageType: '',
     throwablePickup: false,
     throwableBreakChance: 10,
+    isDestructible: false,
     canApplyEffects: false,
   });
 
@@ -21267,6 +21330,7 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
         throwableAoeDamageType: template.throwableAoeDamageType || '',
         throwablePickup: template.throwablePickup || false,
         throwableBreakChance: template.throwableBreakChance ?? 10,
+        isDestructible: template.isDestructible || false,
         canApplyEffects: template.canApplyEffects || false,
       };
       onSave(itemData);
@@ -21402,6 +21466,7 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
       throwableAoeDamageType: formData.throwableAoeDamageType || undefined,
       throwablePickup: formData.throwablePickup,
       throwableBreakChance: formData.isThrowable ? (formData.throwableBreakChance === '' ? 10 : Number(formData.throwableBreakChance)) : 10,
+      isDestructible: formData.isThrowable && formData.throwableAoe ? formData.isDestructible : false,
       canApplyEffects: formData.itemType === 'weapon' ? formData.canApplyEffects : false,
     };
     onSave(cleanedData);
@@ -21446,6 +21511,7 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
       throwableAoeDamageType: '',
       throwablePickup: false,
       throwableBreakChance: 10,
+      isDestructible: false,
       canApplyEffects: false,
     });
   };
@@ -21723,7 +21789,7 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
                     ammunitionType: null, breakChance: 10,
                     rationServings: 0, isDamaging: false,
                     isContainer: v === 'container', carryCapacity: v === 'container' ? 10 : 0,
-                    isThrowable: false, throwableAoe: false, throwableAoeShape: null, throwableAoeRange: 10, throwablePickup: false, throwableAoeDamage: null, throwableAoeDamageType: null, throwableBreakChance: 10,
+                    isThrowable: false, throwableAoe: false, throwableAoeShape: null, throwableAoeRange: 10, throwablePickup: false, throwableAoeDamage: null, throwableAoeDamageType: null, throwableBreakChance: 10, isDestructible: false,
                   };
                   setFormData({...formData, ...clearedFields, itemType: v});
                 }}>
@@ -22092,6 +22158,26 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
                             </TooltipContent>
                           </Tooltip>
                         </TooltipProvider>
+                        {formData.throwableAoe && (
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <div className="flex items-center gap-2 mt-2">
+                                  <Checkbox 
+                                    id="isDestructible" 
+                                    checked={formData.isDestructible || false} 
+                                    onCheckedChange={(checked) => setFormData({...formData, isDestructible: !!checked})}
+                                    data-testid="checkbox-is-destructible"
+                                  />
+                                  <Label htmlFor="isDestructible" className="cursor-pointer">Is Destructible?</Label>
+                                </div>
+                              </TooltipTrigger>
+                              <TooltipContent side="right" className="max-w-xs">
+                                <p>Destructible throwables can be placed on the map and detonated via the roll selector panel.</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        )}
                         <div className="mt-3">
                           <Label>Throwable Break Chance: {formData.throwableBreakChance === '' ? 10 : Number(formData.throwableBreakChance)}%</Label>
                           <Slider 
@@ -22484,7 +22570,7 @@ function ManageTemplatesDialog({ open, onOpenChange, campaignId }: { open: boole
                         ammunitionType: '', breakChance: 10,
                         rationServings: 0, isDamaging: false,
                         isContainer: v === 'container', carryCapacity: v === 'container' ? 10 : 0,
-                        isThrowable: false, throwableAoe: false, throwableAoeShape: '', throwableAoeRange: 10, throwablePickup: false, throwableAoeDamage: '', throwableAoeDamageType: '', throwableBreakChance: 10,
+                        isThrowable: false, throwableAoe: false, throwableAoeShape: '', throwableAoeRange: 10, throwablePickup: false, throwableAoeDamage: '', throwableAoeDamageType: '', throwableBreakChance: 10, isDestructible: false,
                       };
                       setNewItem({...newItem, ...clearedFields, itemType: v});
                     }}>
@@ -22968,7 +23054,7 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
                         ammunitionType: null, breakChance: 10,
                         rationServings: 0, isDamaging: false,
                         isContainer: v === 'container', carryCapacity: v === 'container' ? 10 : 0,
-                        isThrowable: false, throwableAoe: false, throwableAoeShape: null, throwableAoeRange: 10, throwablePickup: false, throwableAoeDamage: null, throwableAoeDamageType: null, throwableBreakChance: 10,
+                        isThrowable: false, throwableAoe: false, throwableAoeShape: null, throwableAoeRange: 10, throwablePickup: false, throwableAoeDamage: null, throwableAoeDamageType: null, throwableBreakChance: 10, isDestructible: false,
                       };
                       setEditData({ ...editData, ...clearedFields, itemType: v });
                     }}>
@@ -23201,6 +23287,12 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
                           {currentData.throwablePickup && (
                             <div>
                               <Label className="text-xs text-stone-400">Pickup Mode</Label>
+                              <p className="text-stone-200">Enabled</p>
+                            </div>
+                          )}
+                          {currentData.isDestructible && (
+                            <div>
+                              <Label className="text-xs text-stone-400">Destructible</Label>
                               <p className="text-stone-200">Enabled</p>
                             </div>
                           )}

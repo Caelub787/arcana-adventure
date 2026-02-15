@@ -6672,6 +6672,7 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
     throwableAoeDamageType: string;
     throwablePickup: boolean;
     throwableBreakChance: number | string;
+    isDestructible: boolean;
     canApplyEffects: boolean;
   }>({
     name: initialData?.name || '',
@@ -6713,6 +6714,7 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
     throwableAoeDamageType: (initialData as any)?.throwableAoeDamageType || '',
     throwablePickup: (initialData as any)?.throwablePickup || false,
     throwableBreakChance: (initialData as any)?.throwableBreakChance ?? 10,
+    isDestructible: (initialData as any)?.isDestructible || false,
     canApplyEffects: (initialData as any)?.canApplyEffects || false,
   });
 
@@ -6758,6 +6760,7 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
         throwableAoeDamageType: (initialData as any)?.throwableAoeDamageType || '',
         throwablePickup: (initialData as any)?.throwablePickup || false,
         throwableBreakChance: (initialData as any)?.throwableBreakChance ?? 10,
+        isDestructible: (initialData as any)?.isDestructible || false,
         canApplyEffects: (initialData as any)?.canApplyEffects || false,
       });
     }
@@ -6821,6 +6824,7 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
       throwableAoeDamageType: formData.itemType === 'weapon' && formData.isThrowable && formData.throwableAoe ? formData.throwableAoeDamageType : undefined,
       throwablePickup: formData.itemType === 'weapon' && formData.isThrowable ? formData.throwablePickup : false,
       throwableBreakChance: formData.itemType === 'weapon' && formData.isThrowable ? (formData.throwableBreakChance === '' ? 10 : Number(formData.throwableBreakChance)) : 10,
+      isDestructible: formData.itemType === 'weapon' && formData.isThrowable && formData.throwableAoe ? formData.isDestructible : false,
       canApplyEffects: (formData.itemType === 'weapon' || (formData.itemType === 'weapon' && formData.isThrowable)) ? formData.canApplyEffects : false,
     };
     onSave(cleanedData);
@@ -7168,6 +7172,19 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
                           <Label>Pickup Mode</Label>
                         </div>
                         <p className="text-xs text-stone-500">When enabled, thrown items attach to tokens or grid spaces and can be picked up</p>
+                        {formData.throwableAoe && (
+                          <div className="flex items-center gap-2 mt-2">
+                            <Checkbox
+                              checked={formData.isDestructible}
+                              onCheckedChange={(checked) => setFormData({ ...formData, isDestructible: !!checked })}
+                              data-testid="checkbox-is-destructible"
+                            />
+                            <Label>Is Destructible?</Label>
+                          </div>
+                        )}
+                        {formData.throwableAoe && formData.isDestructible && (
+                          <p className="text-xs text-stone-500">Destructible throwables can be placed on the map and detonated via the roll selector panel</p>
+                        )}
                         <div className="mt-3">
                           <Label>Throwable Break Chance: {formData.throwableBreakChance === '' ? 10 : Number(formData.throwableBreakChance)}%</Label>
                           <Slider
