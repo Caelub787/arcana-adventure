@@ -428,6 +428,7 @@ export function RollEntriesEditor({ ownerType, ownerId, canEdit, onExecuteRoll }
     queryKey,
     queryFn: () => (ownerType === "item" ? api.getItemRolls(ownerId) : api.getSpellRolls(ownerId)),
     enabled: !!ownerId,
+    staleTime: 5 * 60 * 1000,
   });
 
   const createMutation = useMutation({

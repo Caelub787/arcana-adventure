@@ -4128,12 +4128,14 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
     queryKey: ['rollEntries', 'item', hotbar?.itemId],
     queryFn: () => api.getItemRolls(hotbar!.itemId!),
     enabled: !!hotbar?.itemId,
+    staleTime: 5 * 60 * 1000,
   });
 
   const { data: spellRollEntries = [] } = useQuery({
     queryKey: ['rollEntries', 'spell', hotbar?.spellId],
     queryFn: () => api.getSpellRolls(hotbar!.spellId!),
     enabled: !!hotbar?.spellId,
+    staleTime: 5 * 60 * 1000,
   });
 
   // Function to check if ammunition breaks (configurable chance) and update quantity
