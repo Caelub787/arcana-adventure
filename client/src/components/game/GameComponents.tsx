@@ -1811,6 +1811,45 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
         >
           <RefreshCw className="h-3 w-3" />
         </Button>
+        {assignedCharacterId && (
+          <Button 
+             size="sm" 
+             variant="secondary" 
+             className="bg-black/50 hover:bg-black/80 text-xs border border-white/10 backdrop-blur-sm"
+             onClick={() => {
+               const assignedToken = tokens.find(t => t.characterId === assignedCharacterId);
+               if (!assignedToken || viewportSize.width <= 0) return;
+               
+               const character = characterMap.get(assignedCharacterId);
+               const dayVision = character?.dayVisionDistance ?? 60;
+               const nightVision = character?.nightVisionDistance ?? 30;
+               const maxVisionFeet = Math.max(dayVision, nightVision);
+               const visionPixels = (maxVisionFeet / 5) * gridSize;
+               
+               const visionDiameter = visionPixels * 2;
+               const padding = 1.15;
+               const fitWidth = viewportSize.width / (visionDiameter * padding);
+               const fitHeight = viewportSize.height / (visionDiameter * padding);
+               const targetZoom = Math.min(fitWidth, fitHeight);
+               const clampedZoom = Math.max(0.1, Math.min(targetZoom, 3));
+               
+               const tokenWorldX = assignedToken.x + gridSize / 2;
+               const tokenWorldY = assignedToken.y + gridSize / 2;
+               const pixelOffset = worldToPixelOffset(tokenWorldX, tokenWorldY, clampedZoom, viewportSize.width, viewportSize.height);
+               
+               panRef.current = { x: pixelOffset.x, y: pixelOffset.y };
+               zoomRef.current = clampedZoom;
+               motionX.set(pixelOffset.x);
+               motionY.set(pixelOffset.y);
+               motionZoom.set(clampedZoom);
+               notifyViewChange();
+             }}
+             data-testid="button-center-token"
+             title="Center on my token (fit vision range)"
+          >
+            <Target className="h-3 w-3" />
+          </Button>
+        )}
         <Button 
            size="sm" 
            variant="secondary" 
