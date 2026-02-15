@@ -2589,7 +2589,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
               {character && hpPercent !== null && (role === 'gm' || ['view', 'edit'].includes(myPermissions?.permissions?.[character.id])) && (
                 <div className="absolute bottom-[9px] left-0.5 right-0.5 h-1.5 bg-black/50 rounded-full overflow-hidden border border-black/80 z-[2]">
                   <div 
-                    className={`h-full transition-all duration-300 ${
+                    className={`h-full transition-all duration-700 ease-in-out ${
                       hpPercent > 60 ? 'bg-green-500' : hpPercent > 30 ? 'bg-yellow-500' : 'bg-red-500'
                     }`}
                     style={{ width: `${Math.max(0, Math.min(100, hpPercent))}%` }}
@@ -2601,7 +2601,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
               {character && energyPercent !== null && (role === 'gm' || ['view', 'edit'].includes(myPermissions?.permissions?.[character.id])) && (
                 <div className="absolute bottom-0.5 left-0.5 right-0.5 h-1.5 bg-black/50 rounded-full overflow-hidden border border-black/80 z-[2]">
                   <div 
-                    className="h-full transition-all duration-300 bg-cyan-500"
+                    className="h-full transition-all duration-700 ease-in-out bg-cyan-500"
                     style={{ width: `${Math.max(0, Math.min(100, energyPercent))}%` }}
                   />
                 </div>
@@ -4979,7 +4979,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
 
 
   const handlePopupDragStart = (e: React.MouseEvent) => {
-    if ((e.target as HTMLElement).closest('button, input, label, [role="checkbox"]')) return;
+    if ((e.target as HTMLElement).closest('button, input, label, select, [role="checkbox"], [data-testid]')) return;
     e.preventDefault();
     popupDragRef.current = {
       startX: e.clientX,
@@ -7598,8 +7598,9 @@ const BattleMapHotbarsInner = function BattleMapHotbars({ character, tokens, tar
             <div className="h-1.5 md:h-2 bg-black/50 rounded-full overflow-hidden">
               <motion.div 
                 className="h-full bg-gradient-to-r from-red-700 to-red-500"
-                initial={{ width: 0 }}
+                initial={false}
                 animate={{ width: `${Math.min(100, ((character.hp ?? 10) / effectiveMaxHp) * 100)}%` }}
+                transition={{ duration: 0.8, ease: "easeInOut" }}
               />
             </div>
           </div>
@@ -7613,8 +7614,9 @@ const BattleMapHotbarsInner = function BattleMapHotbars({ character, tokens, tar
             <div className="h-1.5 md:h-2 bg-black/50 rounded-full overflow-hidden">
               <motion.div 
                 className="h-full bg-gradient-to-r from-blue-700 to-blue-500"
-                initial={{ width: 0 }}
+                initial={false}
                 animate={{ width: `${Math.min(100, ((character.energy ?? 10) / effectiveMaxEnergy) * 100)}%` }}
+                transition={{ duration: 0.8, ease: "easeInOut" }}
               />
             </div>
           </div>
