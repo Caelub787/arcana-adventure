@@ -1,0 +1,16 @@
+
+Something went wrong
+Cannot access 'characters' before initialization
+
+ReferenceError: Cannot access 'characters' before initialization
+    at Campaign (https://cb80b64d-1290-45a6-8456-75a00836b8e0-00-3cwrcr16ysu2j.picard.replit.dev/src/pages/Campaign.tsx:12160:31)
+    at Object.react_stack_bottom_frame (https://cb80b64d-1290-45a6-8456-75a00836b8e0-00-3cwrcr16ysu2j.picard.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/react-dom_client.js?v=4b948d85:18509:20)
+    at renderWithHooks (https://cb80b64d-1290-45a6-8456-75a00836b8e0-00-3cwrcr16ysu2j.picard.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/react-dom_client.js?v=4b948d85:5654:24)
+    at updateFunctionComponent (https://cb80b64d-1290-45a6-8456-75a00836b8e0-00-3cwrcr16ysu2j.picard.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/react-dom_client.js?v=4b948d85:7475:21)
+    at beginWork (https://cb80b64d-1290-45a6-8456-75a00836b8e0-00-3cwrcr16ysu2j.picard.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/react-dom_client.js?v=4b948d85:8525:20)
+    at runWithFiberInDEV (https://cb80b64d-1290-45a6-8456-75a00836b8e0-00-3cwrcr16ysu2j.picard.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/react-dom_client.js?v=4b948d85:997:72)
+    at performUnitOfWork (https://cb80b64d-1290-45a6-8456-75a00836b8e0-00-3cwrcr16ysu2j.picard.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/react-dom_client.js?v=4b948d85:12561:98)
+    at workLoopSync (https://cb80b64d-1290-45a6-8456-75a00836b8e0-00-3cwrcr16ysu2j.picard.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/react-dom_client.js?v=4b948d85:12424:43)
+    at renderRootSync (https://cb80b64d-1290-45a6-8456-75a00836b8e0-00-3cwrcr16ysu2j.picard.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/react-dom_client.js?v=4b948d85:12408:13)
+    at performWorkOnRoot (https://cb80b64d-1290-45a6-8456-75a00836b8e0-00-3cwrcr16ysu2j.picard.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/react-dom_client.js?v=4b948d85:11827:37)
+Reload Page

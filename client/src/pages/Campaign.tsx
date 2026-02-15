@@ -6824,110 +6824,8 @@ export default function Campaign() {
     gameWs.clearAoeTargeting();
   };
   
-  const activeSceneRef = useRef<any>(null);
-  const handleAoeClick = useCallback((x: number, y: number) => {
-    let isLocked = true;
-    const currentScene = activeSceneRef.current;
-    
-    const casterToken = tokens.find((t: any) => t.id === aoeTargetState.casterTokenId);
-    if (casterToken) {
-      const casterCenterX = casterToken.x + (currentScene?.gridSize || 50) / 2;
-      const casterCenterY = casterToken.y + (currentScene?.gridSize || 50) / 2;
-      const rangeVal = aoeTargetState.spell?.rangeNum || aoeTargetState.detonatableItem?.range || 30;
-      const gridSizeVal = currentScene?.gridSize || 50;
-      
-      const dx = x - casterCenterX;
-      const dy = y - casterCenterY;
-      const distancePixels = Math.sqrt(dx * dx + dy * dy);
-      const distanceFeet = (distancePixels / gridSizeVal) * 5;
-      
-      if (distanceFeet > rangeVal) {
-        isLocked = false;
-      }
-    }
-    
-    setAoeTargetState(prev => ({
-      ...prev,
-      center: { x, y },
-      locked: isLocked,
-    }));
-    
-    if (aoeTargetState.spell) {
-      const casterChar = characters && casterToken ? (characters as any[]).find((c: any) => c.id === casterToken.characterId) : null;
-      gameWs.sendAoeTargeting({
-        active: true,
-        spellName: aoeTargetState.spell?.name,
-        spellAoe: aoeTargetState.spell?.aoe,
-        casterTokenId: aoeTargetState.casterTokenId,
-        casterName: casterChar?.name || 'Unknown',
-        center: { x, y },
-        locked: isLocked,
-      });
-    }
-
-    if (isLocked && pendingSandboxAoe) {
-      const gridSize = currentScene?.gridSize || 50;
-      const tokensInAoe = getTokensInAoe(tokens, {
-        ...aoeTargetState,
-        center: { x, y },
-        locked: true,
-      }, gridSize, tokens.find((t: any) => t.id === aoeTargetState.casterTokenId));
-
-      let damageText = '';
-      if (pendingSandboxAoe.damageFormula) {
-        const dmgResult = rollDice(pendingSandboxAoe.damageFormula, pendingSandboxAoe.context);
-        damageText = ` | Damage: ${formatRollResult(dmgResult)}`;
-      }
-
-      const mainResult = rollDice(pendingSandboxAoe.rollFormula, pendingSandboxAoe.context);
-
-      let resultMsg = `🎯 ${pendingSandboxAoe.buttonLabel}: ${formatRollResult(mainResult)}${damageText}`;
-
-      if (tokensInAoe.length > 0) {
-        resultMsg += `\n📍 Targets hit (${tokensInAoe.length}): ${tokensInAoe.map((t: any) => t.name || 'Token').join(', ')}`;
-
-        if (pendingSandboxAoe.hitFormula) {
-          const hitResults = tokensInAoe.map((t: any) => {
-            const hitResult = rollDice(pendingSandboxAoe.hitFormula!, pendingSandboxAoe.context);
-            return `${t.name || 'Token'}: ${formatRollResult(hitResult)}`;
-          });
-          resultMsg += `\n⚔️ Hit rolls: ${hitResults.join(' | ')}`;
-        }
-      } else {
-        resultMsg += '\n📍 No targets in area';
-      }
-
-      gameWs.sendChatMessage('', pendingSandboxAoe.actorName, resultMsg, 'roll');
-      setPendingSandboxAoe(null);
-      exitAoeMode();
-    }
-  }, [tokens, aoeTargetState, characters, pendingSandboxAoe]);
-  
   // Throttle ref for AoE updates to avoid rate limiting
   const lastAoeBroadcastRef = useRef<number>(0);
-  
-  const updateAoeCenter = useCallback((x: number, y: number) => {
-    if (!aoeTargetState.locked) {
-      setAoeTargetState(prev => ({ ...prev, center: { x, y } }));
-      
-      const now = Date.now();
-      if (now - lastAoeBroadcastRef.current >= 50) {
-        lastAoeBroadcastRef.current = now;
-        
-        const casterToken = tokens.find((t: any) => t.id === aoeTargetState.casterTokenId);
-        const casterChar = characters && casterToken ? (characters as any[]).find((c: any) => c.id === casterToken.characterId) : null;
-        gameWs.sendAoeTargeting({
-          active: true,
-          spellName: aoeTargetState.spell?.name,
-          spellAoe: aoeTargetState.spell?.aoe,
-          casterTokenId: aoeTargetState.casterTokenId,
-          casterName: casterChar?.name || 'Unknown',
-          center: { x, y },
-          locked: false,
-        });
-      }
-    }
-  }, [aoeTargetState, tokens, characters]);
   
   // Escape key handler to cancel AoE mode
   useEffect(() => {
@@ -7258,8 +7156,6 @@ export default function Campaign() {
     enabled: !!effectiveSceneId,
   });
 
-  activeSceneRef.current = activeScene;
-
   // Center camera on assigned token when fog of war is enabled (for players)
   useEffect(() => {
     if (role === 'gm') return;
@@ -7273,6 +7169,106 @@ export default function Campaign() {
     fogCameraCenteredRef.current = sceneKey;
     setCameraTarget({ x: assignedToken.x, y: assignedToken.y, zoom: 1 });
   }, [role, activeScene?.fogEnabled, activeScene?.id, character?.id, tokens]);
+
+  const handleAoeClick = (x: number, y: number) => {
+    let isLocked = true;
+    
+    const casterToken = tokens.find((t: any) => t.id === aoeTargetState.casterTokenId);
+    if (casterToken) {
+      const casterCenterX = casterToken.x + (activeScene?.gridSize || 50) / 2;
+      const casterCenterY = casterToken.y + (activeScene?.gridSize || 50) / 2;
+      const rangeVal = aoeTargetState.spell?.rangeNum || aoeTargetState.detonatableItem?.range || 30;
+      const gridSizeVal = activeScene?.gridSize || 50;
+      
+      const dx = x - casterCenterX;
+      const dy = y - casterCenterY;
+      const distancePixels = Math.sqrt(dx * dx + dy * dy);
+      const distanceFeet = (distancePixels / gridSizeVal) * 5;
+      
+      if (distanceFeet > rangeVal) {
+        isLocked = false;
+      }
+    }
+    
+    setAoeTargetState(prev => ({
+      ...prev,
+      center: { x, y },
+      locked: isLocked,
+    }));
+    
+    if (aoeTargetState.spell) {
+      const casterChar = characters && casterToken ? (characters as any[]).find((c: any) => c.id === casterToken.characterId) : null;
+      gameWs.sendAoeTargeting({
+        active: true,
+        spellName: aoeTargetState.spell?.name,
+        spellAoe: aoeTargetState.spell?.aoe,
+        casterTokenId: aoeTargetState.casterTokenId,
+        casterName: casterChar?.name || 'Unknown',
+        center: { x, y },
+        locked: isLocked,
+      });
+    }
+
+    if (isLocked && pendingSandboxAoe) {
+      const gridSize = activeScene?.gridSize || 50;
+      const tokensInAoe = getTokensInAoe(tokens, {
+        ...aoeTargetState,
+        center: { x, y },
+        locked: true,
+      }, gridSize, tokens.find((t: any) => t.id === aoeTargetState.casterTokenId));
+
+      let damageText = '';
+      if (pendingSandboxAoe.damageFormula) {
+        const dmgResult = rollDice(pendingSandboxAoe.damageFormula, pendingSandboxAoe.context);
+        damageText = ` | Damage: ${formatRollResult(dmgResult)}`;
+      }
+
+      const mainResult = rollDice(pendingSandboxAoe.rollFormula, pendingSandboxAoe.context);
+
+      let resultMsg = `🎯 ${pendingSandboxAoe.buttonLabel}: ${formatRollResult(mainResult)}${damageText}`;
+
+      if (tokensInAoe.length > 0) {
+        resultMsg += `\n📍 Targets hit (${tokensInAoe.length}): ${tokensInAoe.map((t: any) => t.name || 'Token').join(', ')}`;
+
+        if (pendingSandboxAoe.hitFormula) {
+          const hitResults = tokensInAoe.map((t: any) => {
+            const hitResult = rollDice(pendingSandboxAoe.hitFormula!, pendingSandboxAoe.context);
+            return `${t.name || 'Token'}: ${formatRollResult(hitResult)}`;
+          });
+          resultMsg += `\n⚔️ Hit rolls: ${hitResults.join(' | ')}`;
+        }
+      } else {
+        resultMsg += '\n📍 No targets in area';
+      }
+
+      gameWs.sendChatMessage('', pendingSandboxAoe.actorName, resultMsg, 'roll');
+      setPendingSandboxAoe(null);
+      exitAoeMode();
+    }
+  };
+
+  const updateAoeCenter = (x: number, y: number) => {
+    if (!aoeTargetState.locked) {
+      setAoeTargetState(prev => ({ ...prev, center: { x, y } }));
+      
+      const now = Date.now();
+      if (now - lastAoeBroadcastRef.current >= 50) {
+        lastAoeBroadcastRef.current = now;
+        
+        const casterToken = tokens.find((t: any) => t.id === aoeTargetState.casterTokenId);
+        const casterChar = characters && casterToken ? (characters as any[]).find((c: any) => c.id === casterToken.characterId) : null;
+        gameWs.sendAoeTargeting({
+          active: true,
+          spellName: aoeTargetState.spell?.name,
+          spellAoe: aoeTargetState.spell?.aoe,
+          casterTokenId: aoeTargetState.casterTokenId,
+          casterName: casterChar?.name || 'Unknown',
+          center: { x, y },
+          locked: false,
+        });
+      }
+    }
+  };
 
   // Load all scenes for the campaign
   // Map pins for current scene
