@@ -89,7 +89,7 @@ import { ReferencePicker, NoteOnlyPicker } from "@/components/notes/ReferencePic
 import { CanvasEditor, CanvasData } from "@/components/notes/CanvasEditor";
 import { NotesGraph } from "@/components/notes/NotesGraph";
 import { NoteTabs, useNoteTabs, OpenNote } from "@/components/notes/NoteTabs";
-import { FormattingToolbar, renderFormattedText, getFontClass, type NoteFont } from "@/components/notes/FormattingToolbar";
+import { FormattingToolbar, useFormattingShortcuts, renderFormattedText, getFontClass, type NoteFont } from "@/components/notes/FormattingToolbar";
 import type { SearchableEntity } from "@/lib/api";
 
 interface CampaignNotesPanelProps {
@@ -617,6 +617,7 @@ export function CampaignNotesPanel({
   const [notePickerTriggeredByTyping, setNotePickerTriggeredByTyping] = useState(false);
   const [cursorPosition, setCursorPosition] = useState<number>(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const handleFormattingKeyDown = useFormattingShortcuts(textareaRef, noteContent, setNoteContent);
 
   const [entityDialogOpen, setEntityDialogOpen] = useState(false);
   const [selectedEntityType, setSelectedEntityType] = useState<string | null>(null);
@@ -1566,11 +1567,7 @@ export function CampaignNotesPanel({
     }
   };
 
-  const formatEntityReferences = (content: string): React.ReactNode[] => {
-    // Match: 
-    // 1. Entity refs: [[type:id|name]]
-    // 2. Note links: //note name//
-    // 3. New note creation: (/note name/)
+  const formatInlineReferences = (content: string, keyPrefix: string): React.ReactNode[] => {
     const combinedRegex = /\[\[([^:]+):([^\|]+)\|([^\]]+)\]\]|\/\/([^\/]+)\/\/|\(\/([^\/]+)\/\)/g;
     const parts: React.ReactNode[] = [];
     let lastIndex = 0;
@@ -1579,7 +1576,7 @@ export function CampaignNotesPanel({
     while ((match = combinedRegex.exec(content)) !== null) {
       if (match.index > lastIndex) {
         const plainText = content.slice(lastIndex, match.index);
-        parts.push(...renderFormattedText(plainText, `panel-plain-${lastIndex}`));
+        parts.push(...renderFormattedText(plainText, `${keyPrefix}-plain-${lastIndex}`));
       }
       
       if (match[1] && match[2] && match[3]) {
@@ -1588,7 +1585,7 @@ export function CampaignNotesPanel({
         const displayName = match[3];
         parts.push(
           <span
-            key={match.index}
+            key={`${keyPrefix}-${match.index}`}
             className="text-amber-500 cursor-pointer hover:text-amber-400 hover:underline transition-colors font-medium"
             onClick={() => handleEntityClick(entityType, entityId)}
             data-testid={`panel-entity-ref-${entityType}-${entityId}`}
@@ -1597,11 +1594,10 @@ export function CampaignNotesPanel({
           </span>
         );
       } else if (match[4]) {
-        // Note link: //note name//
         const noteName = match[4];
         parts.push(
           <span
-            key={match.index}
+            key={`${keyPrefix}-${match.index}`}
             className="text-cyan-400 cursor-pointer hover:text-cyan-300 hover:underline transition-colors font-medium"
             onClick={() => handleNoteReferenceClick(noteName, false)}
             data-testid={`panel-note-ref-${noteName}`}
@@ -1610,11 +1606,10 @@ export function CampaignNotesPanel({
           </span>
         );
       } else if (match[5]) {
-        // New note creation: (/note name/)
         const noteName = match[5];
         parts.push(
           <span
-            key={match.index}
+            key={`${keyPrefix}-${match.index}`}
             className="text-cyan-400 cursor-pointer hover:text-cyan-300 hover:underline transition-colors italic font-medium"
             onClick={() => handleNoteReferenceClick(noteName, true)}
             data-testid={`panel-note-create-ref-${noteName}`}
@@ -1628,10 +1623,62 @@ export function CampaignNotesPanel({
 
     if (lastIndex < content.length) {
       const plainText = content.slice(lastIndex);
-      parts.push(...renderFormattedText(plainText, `panel-plain-${lastIndex}`));
+      parts.push(...renderFormattedText(plainText, `${keyPrefix}-plain-${lastIndex}`));
     }
 
-    return parts.length > 0 ? parts : renderFormattedText(content, "panel-content");
+    return parts.length > 0 ? parts : renderFormattedText(content, keyPrefix);
+  };
+
+  const formatEntityReferences = (content: string): React.ReactNode => {
+    const lines = content.split('\n');
+    
+    return (
+      <div className="space-y-1">
+        {lines.map((line, lineIndex) => {
+          const bulletMatch = line.match(/^(\s*)(-|\*)\s+(.*)$/);
+          if (bulletMatch) {
+            const [, indent, , text] = bulletMatch;
+            const indentLevel = Math.floor(indent.length / 2);
+            return (
+              <div 
+                key={lineIndex} 
+                className="flex items-start gap-2"
+                style={{ paddingLeft: `${indentLevel * 16}px` }}
+              >
+                <span className="text-amber-500 mt-0.5">•</span>
+                <span>{formatInlineReferences(text, `line-${lineIndex}`)}</span>
+              </div>
+            );
+          }
+          
+          const numberedMatch = line.match(/^(\s*)(\d+)\.\s+(.*)$/);
+          if (numberedMatch) {
+            const [, indent, num, text] = numberedMatch;
+            const indentLevel = Math.floor(indent.length / 2);
+            return (
+              <div 
+                key={lineIndex} 
+                className="flex items-start gap-2"
+                style={{ paddingLeft: `${indentLevel * 16}px` }}
+              >
+                <span className="text-amber-500 font-medium min-w-[1.5rem]">{num}.</span>
+                <span>{formatInlineReferences(text, `line-${lineIndex}`)}</span>
+              </div>
+            );
+          }
+          
+          if (line.trim() === '') {
+            return <div key={lineIndex} className="h-4" />;
+          }
+          
+          return (
+            <div key={lineIndex}>
+              {formatInlineReferences(line, `line-${lineIndex}`)}
+            </div>
+          );
+        })}
+      </div>
+    );
   };
 
   const rootFolders = folders
@@ -2292,26 +2339,7 @@ export function CampaignNotesPanel({
                 ref={textareaRef}
                 value={noteContent}
                 onChange={handleContentChange}
-                onKeyDown={(e) => {
-                  if ((e.ctrlKey || e.metaKey) && ['b', 'i', 'u'].includes(e.key.toLowerCase())) {
-                    e.preventDefault();
-                    const textarea = textareaRef.current;
-                    if (!textarea) return;
-                    const start = textarea.selectionStart;
-                    const end = textarea.selectionEnd;
-                    const selectedText = noteContent.slice(start, end);
-                    if (selectedText) {
-                      const prefix = e.key.toLowerCase() === 'b' ? '**' : e.key.toLowerCase() === 'i' ? '*' : '__';
-                      const suffix = prefix;
-                      const newContent = noteContent.slice(0, start) + prefix + selectedText + suffix + noteContent.slice(end);
-                      setNoteContent(newContent);
-                      setTimeout(() => {
-                        textarea.focus();
-                        textarea.setSelectionRange(start + prefix.length, end + prefix.length);
-                      }, 0);
-                    }
-                  }
-                }}
+                onKeyDown={handleFormattingKeyDown}
                 placeholder="Start writing... Type [[ to link entities, // to link notes"
                 className={`flex-1 resize-none border-stone-800 bg-stone-900/30 text-sm h-full w-full ${getFontClass(noteFont)}`}
                 data-testid="panel-textarea-note-content"
