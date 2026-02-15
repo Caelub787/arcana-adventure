@@ -6568,7 +6568,7 @@ export default function Campaign() {
       } else {
         gameWs.send({
           type: 'dc_save_prompt',
-          campaignId: effectiveCampaignId,
+          campaignId: campaignId,
           targetCharacterId: params.targetCharacterId,
           targetUserId: params.targetUserId,
           saveRequestId,
@@ -6583,7 +6583,7 @@ export default function Campaign() {
         });
       }
     });
-  }, [user?.id, effectiveCampaignId]);
+  }, [user?.id, campaignId]);
 
   // Add Token dialog state
   const [addTokenDialogOpen, setAddTokenDialogOpen] = useState(false);
