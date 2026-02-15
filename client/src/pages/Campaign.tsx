@@ -10322,6 +10322,12 @@ export default function Campaign() {
                notesPanelOpen={sidePanelOpen}
                notesPanelWidth={notesPanelWidth}
                onRequestSaveRoll={handleRequestSaveRoll}
+               onClearTarget={() => {
+                 setTargetedTokenId(null);
+                 if (effectiveCampaignId) {
+                   gameWs.clearTokenTargeting();
+                 }
+               }}
                campaignMembers={members as any[]}
                currentUserId={user?.id}
              />
