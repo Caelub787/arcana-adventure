@@ -1908,8 +1908,6 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
           top: '-9000px',
           transformOrigin: "0 0",
           willChange: 'transform',
-          backfaceVisibility: 'hidden',
-          WebkitBackfaceVisibility: 'hidden',
         }}
         onPointerDown={handleMapPointerDown}
         onPointerMove={handleMapPointerMove}
@@ -2442,14 +2440,13 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                 top: displayY + 9000 + tokenOffset,
                 opacity: isInvisible ? 0.4 : 1,
                 willChange: isDragging ? 'transform' : 'auto',
-                transform: isDragging ? 'scale(1.1)' : undefined,
-                contain: 'layout style'
+                transform: isDragging ? 'scale(1.1)' : undefined
               }}
               aria-label={`${token.type} token`}
               role="button"
               tabIndex={0}
             >
-              <img src={tokenImage} alt="token" className="w-full h-full object-cover pointer-events-none rounded-full" />
+              <img src={tokenImage} alt="token" className="w-full h-full object-cover pointer-events-none rounded-full" decoding="sync" loading="eager" style={{ imageRendering: 'auto' }} />
               
               {/* Initiative Turn Border - yellow border for current turn character (z-index 1 to sit under HP/energy bars) */}
               {character && currentTurnCharacterId === character.id && (
