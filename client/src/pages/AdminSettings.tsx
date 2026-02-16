@@ -205,6 +205,7 @@ export default function AdminSettings() {
     mutationFn: ({ id, data }: { id: string; data: Partial<Item> }) => api.updateSystemItem(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['system-items'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-archived-items'] });
       setEditingItem(null);
       toast({ title: 'Item Updated', description: 'System item updated successfully' });
     },
@@ -275,6 +276,7 @@ export default function AdminSettings() {
     mutationFn: ({ id, data }: { id: string; data: Partial<SystemSpell> }) => api.updateSystemSpell(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['system-spells'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-archived-spells'] });
       setEditingSpell(null);
       toast({ title: 'Spell Updated', description: 'Spell updated successfully' });
     },
@@ -818,11 +820,20 @@ export default function AdminSettings() {
         )}
 
         {currentView === 'archived-items' && (
-          <ArchivedItemsView onNavigateBack={() => setCurrentView('items')} />
+          <ArchivedItemsView 
+            onNavigateBack={() => setCurrentView('items')} 
+            onEditItem={async (itemId) => {
+              const fullItem = await api.getSystemItem(itemId);
+              setEditingItem(fullItem);
+            }}
+          />
         )}
 
         {currentView === 'archived-spells' && (
-          <ArchivedSpellsView onNavigateBack={() => setCurrentView('spells')} />
+          <ArchivedSpellsView 
+            onNavigateBack={() => setCurrentView('spells')} 
+            onEditSpell={setEditingSpell}
+          />
         )}
 
         <ItemFormDialog
@@ -983,7 +994,7 @@ export default function AdminSettings() {
   );
 }
 
-function ArchivedItemsView({ onNavigateBack }: { onNavigateBack: () => void }) {
+function ArchivedItemsView({ onNavigateBack, onEditItem }: { onNavigateBack: () => void; onEditItem: (itemId: string) => void }) {
   const queryClient = useQueryClient();
   const { data: archivedItems = [], isLoading } = useQuery({
     queryKey: ['admin-archived-items'],
@@ -1021,7 +1032,7 @@ function ArchivedItemsView({ onNavigateBack }: { onNavigateBack: () => void }) {
         )}
         <div className="space-y-2">
           {archivedItems.map((item: any) => (
-            <div key={item.id} className="flex items-center justify-between p-2 bg-stone-800 rounded-lg border border-stone-700">
+            <div key={item.id} className="flex items-center justify-between p-2 bg-stone-800 rounded-lg border border-stone-700 cursor-pointer hover:border-stone-600" onClick={() => onEditItem(item.id)}>
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 rounded bg-stone-700 flex items-center justify-center">
                   <Package className="h-4 w-4 text-stone-500" />
@@ -1031,17 +1042,19 @@ function ArchivedItemsView({ onNavigateBack }: { onNavigateBack: () => void }) {
                   <p className="text-xs text-stone-400 capitalize">{item.itemType} · {item.rarity}</p>
                 </div>
               </div>
-              <Button
-                size="sm"
-                variant="outline"
-                className="border-stone-600 text-emerald-400 hover:text-emerald-300"
-                onClick={() => restoreMutation.mutate(item.id)}
-                disabled={restoreMutation.isPending}
-                data-testid={`button-restore-item-${item.id}`}
-              >
-                <RotateCcw className="h-3 w-3 mr-1" />
-                Restore
-              </Button>
+              <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="border-stone-600 text-emerald-400 hover:text-emerald-300"
+                  onClick={() => restoreMutation.mutate(item.id)}
+                  disabled={restoreMutation.isPending}
+                  data-testid={`button-restore-item-${item.id}`}
+                >
+                  <RotateCcw className="h-3 w-3 mr-1" />
+                  Restore
+                </Button>
+              </div>
             </div>
           ))}
         </div>
@@ -1050,7 +1063,7 @@ function ArchivedItemsView({ onNavigateBack }: { onNavigateBack: () => void }) {
   );
 }
 
-function ArchivedSpellsView({ onNavigateBack }: { onNavigateBack: () => void }) {
+function ArchivedSpellsView({ onNavigateBack, onEditSpell }: { onNavigateBack: () => void; onEditSpell: (spell: any) => void }) {
   const queryClient = useQueryClient();
   const { data: archivedSpells = [], isLoading } = useQuery({
     queryKey: ['admin-archived-spells'],
@@ -1087,7 +1100,7 @@ function ArchivedSpellsView({ onNavigateBack }: { onNavigateBack: () => void }) 
         )}
         <div className="space-y-2">
           {archivedSpells.map((spell: any) => (
-            <div key={spell.id} className="flex items-center justify-between p-2 bg-stone-800 rounded-lg border border-stone-700">
+            <div key={spell.id} className="flex items-center justify-between p-2 bg-stone-800 rounded-lg border border-stone-700 cursor-pointer hover:border-stone-600" onClick={() => onEditSpell(spell)}>
               <div className="flex items-center gap-3">
                 {spell.icon ? (
                   <img src={spell.icon} alt={spell.name} className="w-8 h-8 rounded object-cover" />
@@ -1101,17 +1114,19 @@ function ArchivedSpellsView({ onNavigateBack }: { onNavigateBack: () => void }) 
                   <p className="text-xs text-stone-400 capitalize">{spell.school} · Level {spell.level}</p>
                 </div>
               </div>
-              <Button
-                size="sm"
-                variant="outline"
-                className="border-stone-600 text-emerald-400 hover:text-emerald-300"
-                onClick={() => restoreMutation.mutate(spell.id)}
-                disabled={restoreMutation.isPending}
-                data-testid={`button-restore-spell-${spell.id}`}
-              >
-                <RotateCcw className="h-3 w-3 mr-1" />
-                Restore
-              </Button>
+              <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="border-stone-600 text-emerald-400 hover:text-emerald-300"
+                  onClick={() => restoreMutation.mutate(spell.id)}
+                  disabled={restoreMutation.isPending}
+                  data-testid={`button-restore-spell-${spell.id}`}
+                >
+                  <RotateCcw className="h-3 w-3 mr-1" />
+                  Restore
+                </Button>
+              </div>
             </div>
           ))}
         </div>
