@@ -371,7 +371,7 @@ function RollForm({
           <input
             type="color"
             className="w-7 h-7 bg-stone-900 border border-stone-600 rounded cursor-pointer p-0"
-            value={form.primaryColor || "#ff8800"}
+            value={form.primaryColor || "#0ea5e9"}
             onChange={(e) => setForm((f) => ({ ...f, primaryColor: e.target.value }))}
             data-testid={`input-${prefix}-primaryColor`}
           />
