@@ -1,4 +1,5 @@
 import * as React from "react";
+import { createPortal } from "react-dom";
 import { X, GripHorizontal, Minus, Maximize2, Minimize2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -246,7 +247,7 @@ export function FloatingPanel({
   const minimizedMaxWidth = 120;
   const s = sizeRef.current;
 
-  return (
+  const panelContent = (
     <div
       ref={panelRef}
       className={cn(
@@ -261,6 +262,7 @@ export function FloatingPanel({
         zIndex: isFullscreen ? Math.max(zIndex, 100) : zIndex,
       }}
       data-testid="floating-panel"
+      data-floating-panel
       onMouseDown={onBringToFront}
       onPointerDown={onBringToFront}
     >
@@ -400,4 +402,6 @@ export function FloatingPanel({
       )}
     </div>
   );
+
+  return createPortal(panelContent, document.body);
 }

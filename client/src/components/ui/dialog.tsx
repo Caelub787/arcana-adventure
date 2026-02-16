@@ -37,21 +37,21 @@ const DialogContent = React.forwardRef<
       ref={ref}
       onInteractOutside={(e) => {
         const target = e.target as HTMLElement;
-        if (target?.closest?.('[data-image-browser-overlay]') || target?.closest?.('[data-image-browser-content]')) {
+        if (target?.closest?.('[data-image-browser-overlay]') || target?.closest?.('[data-image-browser-content]') || target?.closest?.('[data-floating-panel]')) {
           e.preventDefault();
         }
         onInteractOutside?.(e);
       }}
       onPointerDownOutside={(e) => {
         const target = e.target as HTMLElement;
-        if (target?.closest?.('[data-image-browser-overlay]') || target?.closest?.('[data-image-browser-content]')) {
+        if (target?.closest?.('[data-image-browser-overlay]') || target?.closest?.('[data-image-browser-content]') || target?.closest?.('[data-floating-panel]')) {
           e.preventDefault();
         }
         onPointerDownOutside?.(e);
       }}
       onFocusOutside={(e) => {
         const target = e.target as HTMLElement;
-        if (target?.closest?.('[data-image-browser-content]')) {
+        if (target?.closest?.('[data-image-browser-content]') || target?.closest?.('[data-floating-panel]')) {
           e.preventDefault();
         }
       }}
