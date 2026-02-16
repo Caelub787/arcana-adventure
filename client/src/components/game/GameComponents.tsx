@@ -13842,9 +13842,10 @@ interface InventoryItemRowProps {
   onDeleteItem?: (itemId: string) => void;
   onUpdateQuantity?: (itemId: string, quantityChange: number) => void;
   onDeleteMultiple?: (itemIds: string[]) => void;
+  bringToFront?: (panelKey: string) => void;
 }
 
-function InventoryItemRow({ item, depth, expandedContainers, toggleContainer, setSelectedItem, setShowItemDetail, canEdit, moveItemToContainer, onDeleteItem, onUpdateQuantity, onDeleteMultiple }: InventoryItemRowProps) {
+function InventoryItemRow({ item, depth, expandedContainers, toggleContainer, setSelectedItem, setShowItemDetail, canEdit, moveItemToContainer, onDeleteItem, onUpdateQuantity, onDeleteMultiple, bringToFront }: InventoryItemRowProps) {
   const [isDragOver, setIsDragOver] = useState(false);
   const [showQuantityDialog, setShowQuantityDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
@@ -14204,6 +14205,7 @@ function InventoryItemRow({ item, depth, expandedContainers, toggleContainer, se
               onDeleteItem={onDeleteItem}
               onUpdateQuantity={onUpdateQuantity}
               onDeleteMultiple={onDeleteMultiple}
+              bringToFront={bringToFront}
             />
           ))}
         </div>
@@ -18373,6 +18375,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                           onDeleteMultiple={(itemIds) => {
                             Promise.all(itemIds.map(id => deleteItemMutation.mutateAsync(id)));
                           }}
+                          bringToFront={bringToFront}
                         />
                       ))}
                     </div>
