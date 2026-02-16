@@ -274,6 +274,7 @@ export const characters = pgTable("characters", {
   specialVisionNotes: text("special_vision_notes"), // Freeform notes about special vision abilities
   // Background/notes
   nickname: text("nickname"), // Optional nickname to display on tokens instead of character name
+  hasMotivation: boolean("has_motivation").default(false).notNull(),
   biography: text("biography"),
   gmNotes: text("gm_notes"),
   // Folder organization
@@ -1264,6 +1265,7 @@ export const rollEntries = pgTable("roll_entries", {
   isAttack: boolean("is_attack").default(true),
   isAoe: boolean("is_aoe").default(false),
   passesThroughWalls: boolean("passes_through_walls").default(false),
+  primaryColor: text("primary_color"),
 });
 
 export const insertRollEntrySchema = createInsertSchema(rollEntries).omit({
