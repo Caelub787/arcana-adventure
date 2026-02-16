@@ -684,12 +684,6 @@ export default function AdminSettings() {
                 archiveItemMutation.mutate(id);
               }
             }}
-            onArchiveAll={() => {
-              if (confirm('Archive ALL system items? They will be removed from campaign item lists but remain on character sheets.')) {
-                archiveAllItemsMutation.mutate();
-              }
-            }}
-            onNavigateToArchive={() => setCurrentView('archived-items')}
           />
         )}
 
@@ -727,12 +721,6 @@ export default function AdminSettings() {
                 archiveSpellMutation.mutate(id);
               }
             }}
-            onArchiveAll={() => {
-              if (confirm('Archive ALL system spells? They will be removed from campaign spell lists but remain on character sheets.')) {
-                archiveAllSpellsMutation.mutate();
-              }
-            }}
-            onNavigateToArchive={() => setCurrentView('archived-spells')}
           />
         )}
 
@@ -1492,34 +1480,14 @@ interface ItemsViewProps {
   onDeleteItem: (id: string) => void;
   onDuplicateItem: (itemId: string) => void;
   onArchiveItem: (id: string) => void;
-  onNavigateToArchive: () => void;
-  onArchiveAll: () => void;
 }
 
-function ItemsView({ items, isLoading, searchQuery, setSearchQuery, typeFilter, setTypeFilter, onAddItem, onEditItem, onDeleteItem, onDuplicateItem, onArchiveItem, onNavigateToArchive, onArchiveAll }: ItemsViewProps) {
+function ItemsView({ items, isLoading, searchQuery, setSearchQuery, typeFilter, setTypeFilter, onAddItem, onEditItem, onDeleteItem, onDuplicateItem, onArchiveItem }: ItemsViewProps) {
   return (
     <Card className="bg-stone-900 border-stone-700 flex-1 flex flex-col min-h-0">
       <CardHeader className="flex flex-row items-center justify-between shrink-0">
         <CardTitle className="text-amber-500">System Items</CardTitle>
         <div className="flex gap-2">
-          <Button
-            onClick={onArchiveAll}
-            variant="outline"
-            className="border-stone-600 text-stone-300"
-            data-testid="button-archive-all-items"
-          >
-            <Archive className="h-4 w-4 mr-2" />
-            Archive All
-          </Button>
-          <Button
-            onClick={onNavigateToArchive}
-            variant="outline"
-            className="border-stone-600 text-stone-300"
-            data-testid="button-view-archived-items"
-          >
-            <Archive className="h-4 w-4 mr-2" />
-            View Archives
-          </Button>
           <Button
             onClick={onAddItem}
             className="bg-amber-700 hover:bg-amber-600"
@@ -1746,35 +1714,15 @@ interface SpellsViewProps {
   onEditSpell: (spell: SystemSpell) => void;
   onDeleteSpell: (id: string) => void;
   onArchiveSpell: (id: string) => void;
-  onNavigateToArchive: () => void;
-  onArchiveAll: () => void;
 }
 
 
-function SpellsView({ spells, isLoading, searchQuery, setSearchQuery, onAddSpell, onEditSpell, onDeleteSpell, onArchiveSpell, onNavigateToArchive, onArchiveAll }: SpellsViewProps) {
+function SpellsView({ spells, isLoading, searchQuery, setSearchQuery, onAddSpell, onEditSpell, onDeleteSpell, onArchiveSpell }: SpellsViewProps) {
   return (
     <Card className="bg-stone-900 border-stone-700 flex-1 flex flex-col min-h-0">
       <CardHeader className="flex flex-row items-center justify-between shrink-0">
         <CardTitle className="text-blue-500">System Spells</CardTitle>
         <div className="flex gap-2">
-          <Button
-            onClick={onArchiveAll}
-            variant="outline"
-            className="border-stone-600 text-stone-300"
-            data-testid="button-archive-all-spells"
-          >
-            <Archive className="h-4 w-4 mr-2" />
-            Archive All
-          </Button>
-          <Button
-            onClick={onNavigateToArchive}
-            variant="outline"
-            className="border-stone-600 text-stone-300"
-            data-testid="button-view-archived-spells"
-          >
-            <Archive className="h-4 w-4 mr-2" />
-            View Archives
-          </Button>
           <Button
             onClick={onAddSpell}
             className="bg-blue-700 hover:bg-blue-600"
