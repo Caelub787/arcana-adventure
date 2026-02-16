@@ -7958,13 +7958,15 @@ export default function Campaign() {
   const sceneIdForTokensRef = useRef(sceneIdForTokens);
   const effectiveCampaignIdRef = useRef(effectiveCampaignId);
   const membersRef = useRef(members);
+  const incognitoFlagRef = useRef(isIncognitoMode && isAdmin);
   useEffect(() => {
     queryClientRef.current = queryClient;
     toastRef.current = toast;
     sceneIdForTokensRef.current = sceneIdForTokens;
     effectiveCampaignIdRef.current = effectiveCampaignId;
     membersRef.current = members;
-  }, [queryClient, toast, sceneIdForTokens, effectiveCampaignId, members]);
+    incognitoFlagRef.current = isIncognitoMode && isAdmin;
+  }, [queryClient, toast, sceneIdForTokens, effectiveCampaignId, members, isIncognitoMode, isAdmin]);
 
   // Helper function to get display name (username)
   const getDisplayName = (userId: string, fallbackUsername: string): string => {
@@ -8081,6 +8083,22 @@ export default function Campaign() {
             [`/api/characters/${updatedChar.id}`],
             updatedChar
           );
+          // Also set data under the ['character', id] key used by GameComponents
+          queryClientRef.current.setQueryData(
+            ['character', updatedChar.id],
+            updatedChar
+          );
+          // Invalidate all character-related query keys to ensure fresh data
+          // GameComponents uses ['character', id] while Campaign uses ['/api/characters/${id}']
+          queryClientRef.current.invalidateQueries({ queryKey: [`/api/characters/${updatedChar.id}`] });
+          queryClientRef.current.invalidateQueries({ queryKey: ['character', updatedChar.id] });
+          queryClientRef.current.invalidateQueries({ queryKey: [`/api/campaigns/${effectiveCampaignIdRef.current}/characters`] });
+          queryClientRef.current.invalidateQueries({ queryKey: ['items', updatedChar.id] });
+          queryClientRef.current.invalidateQueries({ queryKey: ['spells', updatedChar.id] });
+          queryClientRef.current.invalidateQueries({ queryKey: ['hotbars', updatedChar.id] });
+          queryClientRef.current.invalidateQueries({ queryKey: ['character-feats', updatedChar.id] });
+          queryClientRef.current.invalidateQueries({ queryKey: ['character-traits', updatedChar.id] });
+          queryClientRef.current.invalidateQueries({ queryKey: ['character-custom-skills', updatedChar.id] });
         }
         if (data.type === 'permission_update') {
           console.log('Permission update received:', data);
@@ -8249,9 +8267,14 @@ export default function Campaign() {
         }
         if (data.type === 'token_updated' && data.token) {
           if (data.token.sceneId === currentSceneId || !data.token.sceneId) {
-            setTokens(prev => prev.map(t => 
-              t.id === data.token.id ? { ...t, ...data.token } : t
-            ));
+            setTokens(prev => {
+              const exists = prev.some(t => t.id === data.token.id);
+              if (exists) {
+                return prev.map(t => t.id === data.token.id ? { ...t, ...data.token } : t);
+              } else {
+                return [...prev, data.token];
+              }
+            });
           }
         }
         if (data.type === 'token_deleted' && data.tokenId) {
@@ -8305,8 +8328,9 @@ export default function Campaign() {
         }
         if (data.type === 'active_scene_changed') {
           // Immediately update campaign cache with new active scene ID
+          // Must match the exact query key used by useQuery, which includes the incognito flag
           queryClientRef.current.setQueryData(
-            [`/api/campaigns/${effectiveCampaignIdRef.current}`],
+            [`/api/campaigns/${effectiveCampaignIdRef.current}`, incognitoFlagRef.current],
             (oldData: any) => {
               if (!oldData) return oldData;
               return { ...oldData, activeSceneId: data.sceneId };

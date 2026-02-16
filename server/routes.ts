@@ -4525,6 +4525,78 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.post("/api/admin/system-items/:id/archive", requireAdmin, async (req, res) => {
+    try {
+      const item = await storage.updateItem(req.params.id, { isArchived: true });
+      res.json(item);
+    } catch (err) {
+      res.status(400).json({ error: "Failed to archive item" });
+    }
+  });
+
+  app.post("/api/admin/system-items/:id/restore", requireAdmin, async (req, res) => {
+    try {
+      const item = await storage.updateItem(req.params.id, { isArchived: false });
+      res.json(item);
+    } catch (err) {
+      res.status(400).json({ error: "Failed to restore item" });
+    }
+  });
+
+  app.post("/api/admin/system-items/archive-all", requireAdmin, async (req, res) => {
+    try {
+      await storage.archiveAllSystemItems();
+      res.json({ success: true });
+    } catch (err) {
+      res.status(400).json({ error: "Failed to archive all items" });
+    }
+  });
+
+  app.get("/api/admin/archived-items", requireAdmin, async (req, res) => {
+    try {
+      const archivedItems = await storage.getArchivedSystemItems();
+      res.json(archivedItems);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch archived items" });
+    }
+  });
+
+  app.post("/api/admin/system-spells/:id/archive", requireAdmin, async (req, res) => {
+    try {
+      const spell = await storage.updateSystemSpell(req.params.id, { isArchived: true });
+      res.json(spell);
+    } catch (err) {
+      res.status(400).json({ error: "Failed to archive spell" });
+    }
+  });
+
+  app.post("/api/admin/system-spells/:id/restore", requireAdmin, async (req, res) => {
+    try {
+      const spell = await storage.updateSystemSpell(req.params.id, { isArchived: false });
+      res.json(spell);
+    } catch (err) {
+      res.status(400).json({ error: "Failed to restore spell" });
+    }
+  });
+
+  app.post("/api/admin/system-spells/archive-all", requireAdmin, async (req, res) => {
+    try {
+      await storage.archiveAllSystemSpells();
+      res.json({ success: true });
+    } catch (err) {
+      res.status(400).json({ error: "Failed to archive all spells" });
+    }
+  });
+
+  app.get("/api/admin/archived-spells", requireAdmin, async (req, res) => {
+    try {
+      const archivedSpells = await storage.getArchivedSystemSpells();
+      res.json(archivedSpells);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch archived spells" });
+    }
+  });
+
   // Admin system species routes
   app.get("/api/admin/system-species", requireAdmin, async (req, res) => {
     try {

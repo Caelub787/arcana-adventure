@@ -1086,6 +1086,38 @@ class ApiClient {
     return this.request(`/admin/system-items/${id}`, { method: 'DELETE' });
   }
 
+  async archiveSystemItem(id: string): Promise<any> {
+    return this.request(`/admin/system-items/${id}/archive`, { method: 'POST' });
+  }
+
+  async restoreSystemItem(id: string): Promise<any> {
+    return this.request(`/admin/system-items/${id}/restore`, { method: 'POST' });
+  }
+
+  async archiveAllSystemItems(): Promise<void> {
+    return this.request('/admin/system-items/archive-all', { method: 'POST' });
+  }
+
+  async getArchivedItems(): Promise<any[]> {
+    return this.request('/admin/archived-items');
+  }
+
+  async archiveSystemSpell(id: string): Promise<any> {
+    return this.request(`/admin/system-spells/${id}/archive`, { method: 'POST' });
+  }
+
+  async restoreSystemSpell(id: string): Promise<any> {
+    return this.request(`/admin/system-spells/${id}/restore`, { method: 'POST' });
+  }
+
+  async archiveAllSystemSpells(): Promise<void> {
+    return this.request('/admin/system-spells/archive-all', { method: 'POST' });
+  }
+
+  async getArchivedSpells(): Promise<any[]> {
+    return this.request('/admin/archived-spells');
+  }
+
   // Admin System Species
   async getSystemSpecies(systemName?: string): Promise<SystemSpecies[]> {
     const params = systemName ? `?system=${encodeURIComponent(systemName)}` : '';

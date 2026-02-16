@@ -7711,7 +7711,7 @@ const SelectionModeButtonsInner = function SelectionModeButtons({
   return (
     <>
       <div 
-        className="absolute top-44 z-40 pointer-events-auto transition-all duration-300 ease-in-out"
+        className="absolute top-44 z-50 pointer-events-auto transition-all duration-300 ease-in-out"
         style={{ left: '8px' }}
       >
         <div className="flex flex-col gap-2">
@@ -17272,11 +17272,10 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                         checked={liveCharacter.hasMotivation || false}
                         onChange={() => updateCharacterMutation.mutate({ hasMotivation: !liveCharacter.hasMotivation })}
                         className="w-4 h-4 rounded border-stone-600 bg-stone-900 text-amber-500 focus:ring-amber-500"
-                        data-testid="checkbox-motivation"
+                        data-testid="checkbox-hero-token"
                       />
                       <span className="text-xs text-stone-400 group-hover:text-stone-300 flex items-center gap-1">
-                        <Flame className="h-3 w-3 text-orange-500" />
-                        Motivated?
+                        Hero Token
                       </span>
                     </label>
                   </div>
@@ -21121,6 +21120,8 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
     detonateAoeShape: string;
     detonateAoeRange: number | string;
     canApplyEffects: boolean;
+    grantsDcBonus: boolean;
+    dcBonusValue: number | string;
   }>({
     name: '',
     image: '',
@@ -21158,6 +21159,8 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
     detonateAoeShape: '',
     detonateAoeRange: 10,
     canApplyEffects: false,
+    grantsDcBonus: false,
+    dcBonusValue: 0,
   });
 
   const [showImageCrop, setShowImageCrop] = useState(false);
@@ -21210,6 +21213,8 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
         isDetonatable: template.isDetonatable || false,
         detonateAoeShape: template.detonateAoeShape || '',
         detonateAoeRange: template.detonateAoeRange || 10,
+        grantsDcBonus: template.grantsDcBonus || false,
+        dcBonusValue: template.dcBonusValue || 0,
         canApplyEffects: template.canApplyEffects || false,
       };
       onSave(itemData);
@@ -21341,6 +21346,8 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
       detonateAoeShape: formData.detonateAoeShape || undefined,
       detonateAoeRange: optionalNum(formData.detonateAoeRange),
       canApplyEffects: formData.itemType === 'weapon' ? formData.canApplyEffects : false,
+      grantsDcBonus: formData.grantsDcBonus,
+      dcBonusValue: formData.grantsDcBonus ? (Number(formData.dcBonusValue) || 0) : 0,
     };
     onSave(cleanedData);
     setFormData({
@@ -21380,6 +21387,8 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
       detonateAoeShape: '',
       detonateAoeRange: 10,
       canApplyEffects: false,
+      grantsDcBonus: false,
+      dcBonusValue: 0,
     });
   };
 
@@ -21657,6 +21666,7 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
                     rationServings: 0, isDamaging: false,
                     isContainer: v === 'container', carryCapacity: v === 'container' ? 10 : 0,
                     isDetonatable: false, detonateAoeShape: null, detonateAoeRange: 10,
+                    grantsDcBonus: false, dcBonusValue: 0,
                   };
                   setFormData({...formData, ...clearedFields, itemType: v});
                 }}>
@@ -22051,6 +22061,31 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
                 </div>
               </div>
             )}
+            <div className="border-t border-stone-700 pt-4">
+              <h3 className="text-sm font-bold text-stone-300 mb-3">DC Bonus</h3>
+              <div className="flex items-center gap-2 mb-3">
+                <Checkbox
+                  id="grantsDcBonus"
+                  checked={formData.grantsDcBonus || false}
+                  onCheckedChange={(checked) => setFormData({...formData, grantsDcBonus: !!checked})}
+                  data-testid="checkbox-grants-dc-bonus"
+                />
+                <Label htmlFor="grantsDcBonus" className="cursor-pointer">Grants DC Bonus</Label>
+              </div>
+              {formData.grantsDcBonus && (
+                <div>
+                  <Label>DC Bonus Value</Label>
+                  <Input
+                    type="number"
+                    value={formData.dcBonusValue}
+                    onChange={(e) => setFormData({...formData, dcBonusValue: e.target.value === '' ? '' : parseInt(e.target.value)})}
+                    className="bg-stone-800 border-stone-700"
+                    placeholder="0"
+                    data-testid="input-dc-bonus-value"
+                  />
+                </div>
+              )}
+            </div>
             <div className="flex gap-2 pt-4 pb-4">
               <Button onClick={handleSubmit} disabled={!formData.name} data-testid="button-create-item">Add Item</Button>
               <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
@@ -22313,6 +22348,7 @@ function ManageTemplatesDialog({ open, onOpenChange, campaignId }: { open: boole
                         rationServings: 0, isDamaging: false,
                         isContainer: v === 'container', carryCapacity: v === 'container' ? 10 : 0,
                         isDetonatable: false, detonateAoeShape: '', detonateAoeRange: 10,
+                        grantsDcBonus: false, dcBonusValue: 0,
                       };
                       setNewItem({...newItem, ...clearedFields, itemType: v});
                     }}>
@@ -22877,6 +22913,7 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
                         rationServings: 0, isDamaging: false,
                         isContainer: v === 'container', carryCapacity: v === 'container' ? 10 : 0,
                         isDetonatable: false, detonateAoeShape: null, detonateAoeRange: 10,
+                        grantsDcBonus: false, dcBonusValue: 0,
                       };
                       setEditData({ ...editData, ...clearedFields, itemType: v });
                     }}>
@@ -23290,6 +23327,42 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
                 </div>
               </div>
             )}
+
+            <div className="pt-4 border-t border-stone-700">
+              <h3 className="text-sm font-bold text-stone-300 mb-2">DC Bonus</h3>
+              {isEditing && canEditAllFields ? (
+                <>
+                  <div className="flex items-center gap-2 mb-3">
+                    <Checkbox
+                      id="editGrantsDcBonus"
+                      checked={currentData.grantsDcBonus || false}
+                      onCheckedChange={(checked) => setEditData({ ...editData, grantsDcBonus: !!checked })}
+                      data-testid="checkbox-edit-grants-dc-bonus"
+                    />
+                    <Label htmlFor="editGrantsDcBonus" className="cursor-pointer">Grants DC Bonus</Label>
+                  </div>
+                  {currentData.grantsDcBonus && (
+                    <div>
+                      <Label>DC Bonus Value</Label>
+                      <Input
+                        type="number"
+                        value={currentData.dcBonusValue ?? 0}
+                        onChange={(e) => setEditData({ ...editData, dcBonusValue: parseInt(e.target.value) || 0 })}
+                        className="bg-stone-800 border-amber-700"
+                        data-testid="input-edit-dc-bonus-value"
+                      />
+                    </div>
+                  )}
+                </>
+              ) : (
+                currentData.grantsDcBonus && (
+                  <div>
+                    <Label className="text-xs text-stone-400">DC Bonus</Label>
+                    <p className="text-stone-200">+{currentData.dcBonusValue || 0}</p>
+                  </div>
+                )
+              )}
+            </div>
 
             <div className="pt-4 border-t border-stone-700">
               <h3 className="text-sm font-bold text-stone-300 mb-2">Physical</h3>

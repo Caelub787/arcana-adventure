@@ -17,12 +17,12 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Slider } from '@/components/ui/slider';
 import { toast } from '@/hooks/use-toast';
-import { ArrowLeft, Plus, Pencil, Trash2, Sword, Shield, Package, Sparkles, Box, Coins, Search, Users, User, GitBranch, Library, Link, X, GripVertical, Star, Zap, Heart, ShieldCheck, BookOpen, RefreshCw, ZoomIn, ZoomOut, Wand2, Save, Flame, Upload, Image as ImageIcon, Folder, FolderPlus, ChevronDown, ChevronRight, Layers, Copy, Bell, Send } from 'lucide-react';
+import { ArrowLeft, Plus, Pencil, Trash2, Sword, Shield, Package, Sparkles, Box, Coins, Search, Users, User, GitBranch, Library, Link, X, GripVertical, Star, Zap, Heart, ShieldCheck, BookOpen, RefreshCw, ZoomIn, ZoomOut, Wand2, Save, Flame, Upload, Image as ImageIcon, Folder, FolderPlus, ChevronDown, ChevronRight, Layers, Copy, Bell, Send, Archive, RotateCcw } from 'lucide-react';
 import { ImageBrowser } from '@/components/ImageBrowser';
 import { CharacterSheet } from '@/components/game/GameComponents';
 import { RollEntriesEditor } from '@/components/game/RollEntriesEditor';
 
-type AdminView = 'dashboard' | 'items' | 'species' | 'spells' | 'skills' | 'traits' | 'feat-trees' | 'characters' | 'token-effects' | 'notifications';
+type AdminView = 'dashboard' | 'items' | 'species' | 'spells' | 'skills' | 'traits' | 'feat-trees' | 'characters' | 'token-effects' | 'notifications' | 'archived-items' | 'archived-spells';
 
 // Lazy-loading item image component for admin list view
 function LazyAdminItemImage({ itemId, itemType }: { itemId: string; itemType: string }) {
@@ -494,6 +494,40 @@ export default function AdminSettings() {
     },
   });
 
+  const archiveItemMutation = useMutation({
+    mutationFn: (id: string) => api.archiveSystemItem(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['system-items-summary'] });
+      queryClient.invalidateQueries({ queryKey: ['system-items'] });
+      toast({ title: 'Item Archived' });
+    },
+  });
+
+  const archiveAllItemsMutation = useMutation({
+    mutationFn: () => api.archiveAllSystemItems(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['system-items-summary'] });
+      queryClient.invalidateQueries({ queryKey: ['system-items'] });
+      toast({ title: 'All Items Archived' });
+    },
+  });
+
+  const archiveSpellMutation = useMutation({
+    mutationFn: (id: string) => api.archiveSystemSpell(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['system-spells'] });
+      toast({ title: 'Spell Archived' });
+    },
+  });
+
+  const archiveAllSpellsMutation = useMutation({
+    mutationFn: () => api.archiveAllSystemSpells(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['system-spells'] });
+      toast({ title: 'All Spells Archived' });
+    },
+  });
+
   if (!isAdmin) {
     return (
       <div className="min-h-screen bg-stone-950 text-stone-200 flex items-center justify-center">
@@ -598,7 +632,9 @@ export default function AdminSettings() {
                currentView === 'traits' ? 'Traits' : 
                currentView === 'characters' ? 'Character Templates' : 
                currentView === 'token-effects' ? 'Token Effects' : 
-               currentView === 'notifications' ? 'Push Notifications' : 'Feat Trees'}
+               currentView === 'notifications' ? 'Push Notifications' :
+               currentView === 'archived-items' ? 'Archived Items' :
+               currentView === 'archived-spells' ? 'Archived Spells' : 'Feat Trees'}
             </p>
           </div>
           <div className="w-[200px]">
@@ -643,6 +679,17 @@ export default function AdminSettings() {
               setDuplicatingItem(fullItem);
               setShowAddItem(true);
             }}
+            onArchiveItem={(id) => {
+              if (confirm('Archive this item? It will be removed from campaign item lists but remain on character sheets.')) {
+                archiveItemMutation.mutate(id);
+              }
+            }}
+            onArchiveAll={() => {
+              if (confirm('Archive ALL system items? They will be removed from campaign item lists but remain on character sheets.')) {
+                archiveAllItemsMutation.mutate();
+              }
+            }}
+            onNavigateToArchive={() => setCurrentView('archived-items')}
           />
         )}
 
@@ -675,6 +722,17 @@ export default function AdminSettings() {
                 deleteSpellMutation.mutate(id);
               }
             }}
+            onArchiveSpell={(id) => {
+              if (confirm('Archive this spell? It will be removed from campaign spell lists but remain on character sheets.')) {
+                archiveSpellMutation.mutate(id);
+              }
+            }}
+            onArchiveAll={() => {
+              if (confirm('Archive ALL system spells? They will be removed from campaign spell lists but remain on character sheets.')) {
+                archiveAllSpellsMutation.mutate();
+              }
+            }}
+            onNavigateToArchive={() => setCurrentView('archived-spells')}
           />
         )}
 
@@ -769,6 +827,14 @@ export default function AdminSettings() {
 
         {currentView === 'notifications' && (
           <NotificationsView />
+        )}
+
+        {currentView === 'archived-items' && (
+          <ArchivedItemsView onNavigateBack={() => setCurrentView('items')} />
+        )}
+
+        {currentView === 'archived-spells' && (
+          <ArchivedSpellsView onNavigateBack={() => setCurrentView('spells')} />
         )}
 
         <ItemFormDialog
@@ -929,6 +995,147 @@ export default function AdminSettings() {
   );
 }
 
+function ArchivedItemsView({ onNavigateBack }: { onNavigateBack: () => void }) {
+  const queryClient = useQueryClient();
+  const { data: archivedItems = [], isLoading } = useQuery({
+    queryKey: ['admin-archived-items'],
+    queryFn: () => api.getArchivedItems(),
+  });
+  
+  const restoreMutation = useMutation({
+    mutationFn: (id: string) => api.restoreSystemItem(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-archived-items'] });
+      queryClient.invalidateQueries({ queryKey: ['system-items-summary'] });
+      queryClient.invalidateQueries({ queryKey: ['system-items'] });
+      toast({ title: 'Item Restored', description: 'Item has been moved back to active items' });
+    },
+  });
+
+  return (
+    <Card className="bg-stone-900 border-stone-700">
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-amber-500">Archived Items</CardTitle>
+          <Button size="sm" variant="outline" onClick={onNavigateBack} className="border-stone-600 text-stone-300">
+            <ArrowLeft className="h-4 w-4 mr-1" />
+            Back to Items
+          </Button>
+        </div>
+        <CardDescription className="text-stone-400">
+          Archived items are not available for use in campaigns but can be referenced.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {isLoading && <p className="text-stone-400 text-sm">Loading...</p>}
+        {!isLoading && archivedItems.length === 0 && (
+          <p className="text-stone-400 text-sm italic">No archived items</p>
+        )}
+        <div className="space-y-2">
+          {archivedItems.map((item: any) => (
+            <div key={item.id} className="flex items-center justify-between p-2 bg-stone-800 rounded-lg border border-stone-700">
+              <div className="flex items-center gap-3">
+                {item.image ? (
+                  <img src={item.image} alt={item.name} className="w-8 h-8 rounded object-cover" />
+                ) : (
+                  <div className="w-8 h-8 rounded bg-stone-700 flex items-center justify-center">
+                    <Package className="h-4 w-4 text-stone-500" />
+                  </div>
+                )}
+                <div>
+                  <p className="text-sm font-medium text-stone-200">{item.name}</p>
+                  <p className="text-xs text-stone-400 capitalize">{item.itemType} · {item.rarity}</p>
+                </div>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                className="border-stone-600 text-emerald-400 hover:text-emerald-300"
+                onClick={() => restoreMutation.mutate(item.id)}
+                disabled={restoreMutation.isPending}
+                data-testid={`button-restore-item-${item.id}`}
+              >
+                <RotateCcw className="h-3 w-3 mr-1" />
+                Restore
+              </Button>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function ArchivedSpellsView({ onNavigateBack }: { onNavigateBack: () => void }) {
+  const queryClient = useQueryClient();
+  const { data: archivedSpells = [], isLoading } = useQuery({
+    queryKey: ['admin-archived-spells'],
+    queryFn: () => api.getArchivedSpells(),
+  });
+  
+  const restoreMutation = useMutation({
+    mutationFn: (id: string) => api.restoreSystemSpell(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-archived-spells'] });
+      queryClient.invalidateQueries({ queryKey: ['system-spells'] });
+      toast({ title: 'Spell Restored', description: 'Spell has been moved back to active spells' });
+    },
+  });
+
+  return (
+    <Card className="bg-stone-900 border-stone-700">
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-blue-500">Archived Spells</CardTitle>
+          <Button size="sm" variant="outline" onClick={onNavigateBack} className="border-stone-600 text-stone-300">
+            <ArrowLeft className="h-4 w-4 mr-1" />
+            Back to Spells
+          </Button>
+        </div>
+        <CardDescription className="text-stone-400">
+          Archived spells are not available for use in campaigns but can be referenced.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {isLoading && <p className="text-stone-400 text-sm">Loading...</p>}
+        {!isLoading && archivedSpells.length === 0 && (
+          <p className="text-stone-400 text-sm italic">No archived spells</p>
+        )}
+        <div className="space-y-2">
+          {archivedSpells.map((spell: any) => (
+            <div key={spell.id} className="flex items-center justify-between p-2 bg-stone-800 rounded-lg border border-stone-700">
+              <div className="flex items-center gap-3">
+                {spell.icon ? (
+                  <img src={spell.icon} alt={spell.name} className="w-8 h-8 rounded object-cover" />
+                ) : (
+                  <div className="w-8 h-8 rounded bg-stone-700 flex items-center justify-center">
+                    <Sparkles className="h-4 w-4 text-stone-500" />
+                  </div>
+                )}
+                <div>
+                  <p className="text-sm font-medium text-stone-200">{spell.name}</p>
+                  <p className="text-xs text-stone-400 capitalize">{spell.school} · Level {spell.level}</p>
+                </div>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                className="border-stone-600 text-emerald-400 hover:text-emerald-300"
+                onClick={() => restoreMutation.mutate(spell.id)}
+                disabled={restoreMutation.isPending}
+                data-testid={`button-restore-spell-${spell.id}`}
+              >
+                <RotateCcw className="h-3 w-3 mr-1" />
+                Restore
+              </Button>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 function DashboardView({ onNavigate }: { onNavigate: (view: AdminView) => void }) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -1056,6 +1263,38 @@ function DashboardView({ onNavigate }: { onNavigate: (view: AdminView) => void }
           <CardTitle className="text-purple-500">Feat Trees</CardTitle>
           <CardDescription className="text-stone-400">
             Create and manage feat progression trees for characters
+          </CardDescription>
+        </CardHeader>
+      </Card>
+
+      <Card 
+        className="bg-stone-900 border-stone-700 cursor-pointer hover:border-stone-500 transition-colors"
+        onClick={() => onNavigate('archived-items')}
+        data-testid="card-archived-items"
+      >
+        <CardHeader>
+          <div className="h-12 w-12 rounded-lg bg-stone-700/20 flex items-center justify-center mb-2">
+            <Archive className="h-6 w-6 text-stone-400" />
+          </div>
+          <CardTitle className="text-stone-400">Archived Items</CardTitle>
+          <CardDescription className="text-stone-500">
+            View and restore archived items that are no longer active
+          </CardDescription>
+        </CardHeader>
+      </Card>
+
+      <Card 
+        className="bg-stone-900 border-stone-700 cursor-pointer hover:border-stone-500 transition-colors"
+        onClick={() => onNavigate('archived-spells')}
+        data-testid="card-archived-spells"
+      >
+        <CardHeader>
+          <div className="h-12 w-12 rounded-lg bg-stone-700/20 flex items-center justify-center mb-2">
+            <Archive className="h-6 w-6 text-stone-400" />
+          </div>
+          <CardTitle className="text-stone-400">Archived Spells</CardTitle>
+          <CardDescription className="text-stone-500">
+            View and restore archived spells that are no longer active
           </CardDescription>
         </CardHeader>
       </Card>
@@ -1252,21 +1491,44 @@ interface ItemsViewProps {
   onEditItem: (itemId: string) => void;
   onDeleteItem: (id: string) => void;
   onDuplicateItem: (itemId: string) => void;
+  onArchiveItem: (id: string) => void;
+  onNavigateToArchive: () => void;
+  onArchiveAll: () => void;
 }
 
-function ItemsView({ items, isLoading, searchQuery, setSearchQuery, typeFilter, setTypeFilter, onAddItem, onEditItem, onDeleteItem, onDuplicateItem }: ItemsViewProps) {
+function ItemsView({ items, isLoading, searchQuery, setSearchQuery, typeFilter, setTypeFilter, onAddItem, onEditItem, onDeleteItem, onDuplicateItem, onArchiveItem, onNavigateToArchive, onArchiveAll }: ItemsViewProps) {
   return (
     <Card className="bg-stone-900 border-stone-700 flex-1 flex flex-col min-h-0">
       <CardHeader className="flex flex-row items-center justify-between shrink-0">
         <CardTitle className="text-amber-500">System Items</CardTitle>
-        <Button
-          onClick={onAddItem}
-          className="bg-amber-700 hover:bg-amber-600"
-          data-testid="button-add-system-item"
-        >
-          <Plus className="h-4 w-4 mr-2" />
-          Add Item
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            onClick={onArchiveAll}
+            variant="outline"
+            className="border-stone-600 text-stone-300"
+            data-testid="button-archive-all-items"
+          >
+            <Archive className="h-4 w-4 mr-2" />
+            Archive All
+          </Button>
+          <Button
+            onClick={onNavigateToArchive}
+            variant="outline"
+            className="border-stone-600 text-stone-300"
+            data-testid="button-view-archived-items"
+          >
+            <Archive className="h-4 w-4 mr-2" />
+            View Archives
+          </Button>
+          <Button
+            onClick={onAddItem}
+            className="bg-amber-700 hover:bg-amber-600"
+            data-testid="button-add-system-item"
+          >
+            <Plus className="h-4 w-4 mr-2" />
+            Add Item
+          </Button>
+        </div>
       </CardHeader>
       <CardContent className="flex-1 flex flex-col min-h-0">
         <div className="flex gap-4 mb-4 shrink-0">
@@ -1344,6 +1606,16 @@ function ItemsView({ items, isLoading, searchQuery, setSearchQuery, typeFilter, 
                         data-testid={`button-edit-${item.id}`}
                       >
                         <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => onArchiveItem(item.id)}
+                        className="text-stone-400 hover:text-stone-300 h-8 w-8 sm:h-10 sm:w-10"
+                        data-testid={`button-archive-${item.id}`}
+                        title="Archive item"
+                      >
+                        <Archive className="h-4 w-4" />
                       </Button>
                       <Button
                         variant="ghost"
@@ -1473,22 +1745,45 @@ interface SpellsViewProps {
   onAddSpell: () => void;
   onEditSpell: (spell: SystemSpell) => void;
   onDeleteSpell: (id: string) => void;
+  onArchiveSpell: (id: string) => void;
+  onNavigateToArchive: () => void;
+  onArchiveAll: () => void;
 }
 
 
-function SpellsView({ spells, isLoading, searchQuery, setSearchQuery, onAddSpell, onEditSpell, onDeleteSpell }: SpellsViewProps) {
+function SpellsView({ spells, isLoading, searchQuery, setSearchQuery, onAddSpell, onEditSpell, onDeleteSpell, onArchiveSpell, onNavigateToArchive, onArchiveAll }: SpellsViewProps) {
   return (
     <Card className="bg-stone-900 border-stone-700 flex-1 flex flex-col min-h-0">
       <CardHeader className="flex flex-row items-center justify-between shrink-0">
         <CardTitle className="text-blue-500">System Spells</CardTitle>
-        <Button
-          onClick={onAddSpell}
-          className="bg-blue-700 hover:bg-blue-600"
-          data-testid="button-add-spell"
-        >
-          <Plus className="h-4 w-4 mr-2" />
-          Add Spell
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            onClick={onArchiveAll}
+            variant="outline"
+            className="border-stone-600 text-stone-300"
+            data-testid="button-archive-all-spells"
+          >
+            <Archive className="h-4 w-4 mr-2" />
+            Archive All
+          </Button>
+          <Button
+            onClick={onNavigateToArchive}
+            variant="outline"
+            className="border-stone-600 text-stone-300"
+            data-testid="button-view-archived-spells"
+          >
+            <Archive className="h-4 w-4 mr-2" />
+            View Archives
+          </Button>
+          <Button
+            onClick={onAddSpell}
+            className="bg-blue-700 hover:bg-blue-600"
+            data-testid="button-add-spell"
+          >
+            <Plus className="h-4 w-4 mr-2" />
+            Add Spell
+          </Button>
+        </div>
       </CardHeader>
       <CardContent className="flex-1 flex flex-col min-h-0">
         <div className="mb-4 shrink-0">
@@ -1552,6 +1847,16 @@ function SpellsView({ spells, isLoading, searchQuery, setSearchQuery, onAddSpell
                       data-testid={`button-edit-spell-${spell.id}`}
                     >
                       <Pencil className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => onArchiveSpell(spell.id)}
+                      className="text-stone-400 hover:text-stone-300 h-8 w-8 sm:h-10 sm:w-10"
+                      data-testid={`button-archive-spell-${spell.id}`}
+                      title="Archive spell"
+                    >
+                      <Archive className="h-4 w-4" />
                     </Button>
                     <Button
                       variant="ghost"
@@ -6668,6 +6973,8 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
     detonateAoeShape: string;
     detonateAoeRange: number | string;
     canApplyEffects: boolean;
+    grantsDcBonus: boolean;
+    dcBonusValue: number | string;
   }>({
     name: initialData?.name || '',
     image: initialData?.image || '',
@@ -6704,6 +7011,8 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
     detonateAoeShape: (initialData as any)?.detonateAoeShape || 'circle',
     detonateAoeRange: (initialData as any)?.detonateAoeRange ?? 10,
     canApplyEffects: (initialData as any)?.canApplyEffects || false,
+    grantsDcBonus: (initialData as any)?.grantsDcBonus || false,
+    dcBonusValue: (initialData as any)?.dcBonusValue ?? 0,
   });
 
   useEffect(() => {
@@ -6744,6 +7053,8 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
         detonateAoeShape: (initialData as any)?.detonateAoeShape || 'circle',
         detonateAoeRange: (initialData as any)?.detonateAoeRange ?? 10,
         canApplyEffects: (initialData as any)?.canApplyEffects || false,
+        grantsDcBonus: (initialData as any)?.grantsDcBonus || false,
+        dcBonusValue: (initialData as any)?.dcBonusValue ?? 0,
       });
     }
   }, [open, initialData]);
@@ -6802,6 +7113,8 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
       detonateAoeShape: (formData.itemType === 'weapon' || formData.itemType === 'ammunition') && formData.isDetonatable ? formData.detonateAoeShape : undefined,
       detonateAoeRange: (formData.itemType === 'weapon' || formData.itemType === 'ammunition') && formData.isDetonatable ? optionalNum(formData.detonateAoeRange) : undefined,
       canApplyEffects: formData.itemType === 'weapon' ? formData.canApplyEffects : false,
+      grantsDcBonus: formData.grantsDcBonus,
+      dcBonusValue: formData.grantsDcBonus ? (Number(formData.dcBonusValue) || 0) : 0,
     };
     onSave(cleanedData);
   };
@@ -7141,6 +7454,31 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
                   </div>
                 </>
               )}
+
+              <div className="col-span-2 border-t border-stone-700 pt-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <Checkbox
+                    checked={formData.grantsDcBonus}
+                    onCheckedChange={(checked) => setFormData({ ...formData, grantsDcBonus: !!checked })}
+                    data-testid="checkbox-grants-dc-bonus"
+                  />
+                  <Label>Grants DC Bonus</Label>
+                </div>
+                {formData.grantsDcBonus && (
+                  <div>
+                    <Label>DC Bonus Value</Label>
+                    <Input
+                      type="number"
+                      value={formData.dcBonusValue}
+                      onChange={(e) => handleItemNumericChange('dcBonusValue', e.target.value)}
+                      className="bg-stone-800 border-stone-700"
+                      placeholder="0"
+                      data-testid="input-dc-bonus-value"
+                    />
+                    <p className="text-xs text-stone-500 mt-1">Added to character's DC when this item is equipped</p>
+                  </div>
+                )}
+              </div>
 
               <div>
                 <Label>Weight (lbs)</Label>

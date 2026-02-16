@@ -451,6 +451,8 @@ export const items = pgTable("items", {
   armorBonus: integer("armor_bonus").default(0), // Bonus to DC when equipped
   damageReduction: integer("damage_reduction").default(0), // Amount of damage reduction
   damageReductionType: text("damage_reduction_type"), // Damage type reduced: Sharp, Blunt, Piercing, Flame, Frost, Storm, Tide, Stone, Flux, Light, Dark, Sound
+  grantsDcBonus: boolean("grants_dc_bonus").default(false).notNull(),
+  dcBonusValue: integer("dc_bonus_value").default(0),
   // Legacy price fields (kept for backward compatibility)
   priceCopper: integer("price_copper").default(0).notNull(),
   priceSilver: integer("price_silver").default(0).notNull(),
@@ -467,6 +469,7 @@ export const items = pgTable("items", {
   detonateAoeRange: integer("detonate_aoe_range").default(15),
   // Item effect toggle - when true, allows linking token effects to this weapon/item
   canApplyEffects: boolean("can_apply_effects").default(false).notNull(), // Enables item to apply token effects on hit
+  isArchived: boolean("is_archived").default(false).notNull(),
 });
 
 export const insertItemSchema = createInsertSchema(items).omit({
@@ -918,6 +921,7 @@ export const systemSpells = pgTable("system_spells", {
   savingThrow: text("saving_throw"),
   effects: jsonb("effects").default([]).notNull(),
   isAttack: boolean("is_attack").default(true).notNull(), // If true: Attack/Damage rolls, if false: Use/Effect rolls
+  isArchived: boolean("is_archived").default(false).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

@@ -174,6 +174,10 @@ export interface IStorage {
   getItem(id: string): Promise<Item | undefined>;
   moveItemToContainer(itemId: string, containerId: string | null): Promise<Item | undefined>;
   getContainerItems(containerId: string): Promise<Item[]>;
+  getArchivedSystemItems(): Promise<Item[]>;
+  getArchivedSystemSpells(): Promise<SystemSpell[]>;
+  archiveAllSystemItems(): Promise<void>;
+  archiveAllSystemSpells(): Promise<void>;
 
   // Spell operations
   getSpellsByCharacter(characterId: string): Promise<Spell[]>;
@@ -1692,6 +1696,7 @@ export class DatabaseStorage implements IStorage {
       .from(items)
       .where(and(
         eq(items.isTemplate, true),
+        eq(items.isArchived, false),
         sql`${items.characterId} IS NULL`,
         sql`${items.campaignId} IS NULL`
       )) as Item[];
@@ -1727,6 +1732,7 @@ export class DatabaseStorage implements IStorage {
       .from(items)
       .where(and(
         eq(items.isTemplate, true),
+        eq(items.isArchived, false),
         sql`${items.characterId} IS NULL`,
         sql`${items.campaignId} IS NULL`
       ));
@@ -2416,6 +2422,7 @@ export class DatabaseStorage implements IStorage {
   async getSystemSpells(): Promise<SystemSpell[]> {
     return await db.select()
       .from(systemSpells)
+      .where(eq(systemSpells.isArchived, false))
       .orderBy(systemSpells.level, systemSpells.name);
   }
 
@@ -2442,6 +2449,42 @@ export class DatabaseStorage implements IStorage {
 
   async deleteSystemSpell(id: string): Promise<void> {
     await db.delete(systemSpells).where(eq(systemSpells.id, id));
+  }
+
+  async getArchivedSystemItems(): Promise<Item[]> {
+    const result = await db.select()
+      .from(items)
+      .where(and(
+        eq(items.isTemplate, true),
+        eq(items.isArchived, true),
+        sql`${items.characterId} IS NULL`,
+        sql`${items.campaignId} IS NULL`
+      )) as Item[];
+    return result.map(item => this.convertLegacyItemPrice(item));
+  }
+
+  async getArchivedSystemSpells(): Promise<SystemSpell[]> {
+    return await db.select()
+      .from(systemSpells)
+      .where(eq(systemSpells.isArchived, true))
+      .orderBy(systemSpells.level, systemSpells.name);
+  }
+
+  async archiveAllSystemItems(): Promise<void> {
+    await db.update(items)
+      .set({ isArchived: true })
+      .where(and(
+        eq(items.isTemplate, true),
+        eq(items.isArchived, false),
+        sql`${items.characterId} IS NULL`,
+        sql`${items.campaignId} IS NULL`
+      ));
+  }
+
+  async archiveAllSystemSpells(): Promise<void> {
+    await db.update(systemSpells)
+      .set({ isArchived: true })
+      .where(eq(systemSpells.isArchived, false));
   }
 
   // System Skill operations (admin-defined custom skills)
