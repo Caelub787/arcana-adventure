@@ -21877,7 +21877,7 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
                       <Label htmlFor="isDetonatable" className="cursor-pointer">Is Detonatable</Label>
                     </div>
                     {formData.isDetonatable && (
-                      <p className="text-xs text-amber-400 pl-6 border-l-2 border-stone-600">Configure detonation settings in the Rolls section below.</p>
+                      <p className="text-xs text-amber-400 pl-6 border-l-2 border-stone-600">A "Detonate" roll entry will be auto-created when this item is saved. You can configure it afterwards in the item details.</p>
                     )}
                   </div>
                 </div>
@@ -22944,6 +22944,40 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
                           data-testid="checkbox-edit-is-heavy"
                         />
                         <Label htmlFor="editIsHeavy" className="cursor-pointer">Two-Handed Weapon (blocks right hand slot)</Label>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Checkbox 
+                          id="editIsDetonatable" 
+                          checked={currentData.isDetonatable || false} 
+                          onCheckedChange={async (checked) => {
+                            const newVal = !!checked;
+                            setEditData({ ...editData, isDetonatable: newVal });
+                            try {
+                              await api.updateItem(item.id, { isDetonatable: newVal });
+                              queryClient.invalidateQueries({ queryKey: ['rollEntries', 'item', item.id] });
+                              queryClient.invalidateQueries({ queryKey: ['items', character.id] });
+                              queryClient.invalidateQueries({ queryKey: ['character-items', character.id] });
+                            } catch (e) {
+                              console.error('Failed to toggle detonatable:', e);
+                              setEditData((prev: any) => ({ ...prev, isDetonatable: !newVal }));
+                              toast({ title: 'Error', description: 'Failed to toggle detonatable', variant: 'destructive' });
+                            }
+                          }}
+                          data-testid="checkbox-edit-is-detonatable"
+                        />
+                        <Label htmlFor="editIsDetonatable" className="cursor-pointer">Is Detonatable</Label>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Checkbox 
+                          id="editCanApplyEffects" 
+                          checked={currentData.canApplyEffects || false} 
+                          onCheckedChange={(checked) => setEditData({ ...editData, canApplyEffects: !!checked })}
+                          data-testid="checkbox-edit-can-apply-effects"
+                        />
+                        <Label htmlFor="editCanApplyEffects" className="cursor-pointer flex items-center gap-2">
+                          <Flame className="h-4 w-4 text-violet-400" />
+                          Can Apply Effects on Hit
+                        </Label>
                       </div>
                     </>
                   ) : (
