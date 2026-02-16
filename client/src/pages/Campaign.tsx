@@ -8640,18 +8640,15 @@ export default function Campaign() {
     }
   }, [selectionMode, characters, role, myPermissions, user]);
 
-  // Handler for mode changes - clear targeting and selection when switching modes
   const handleModeChange = useCallback((mode: SelectionMode) => {
-    // Clear targeted token when switching away from Target mode
     if (selectionMode === 'target' && mode !== 'target') {
       setTargetedTokenId(null);
       setThrowableGridTarget(null);
-      // Broadcast that we're no longer targeting
+      setDetonatableGridTarget(null);
       if (effectiveCampaignId) {
         gameWs.clearTokenTargeting();
       }
     }
-    // Clear selected token when switching modes for a clean slate
     setSelectedTokenId(null);
     setSelectionMode(mode);
   }, [selectionMode, effectiveCampaignId]);

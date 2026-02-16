@@ -7719,6 +7719,7 @@ const SelectionModeButtonsInner = function SelectionModeButtons({
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
+                  onPointerDown={(e) => e.stopPropagation()}
                   onClick={() => onModeChange('select')}
                   className={`
                     w-9 h-9 md:w-10 md:h-10 rounded-lg border-2 flex items-center justify-center
@@ -7745,6 +7746,7 @@ const SelectionModeButtonsInner = function SelectionModeButtons({
               <Tooltip>
                 <TooltipTrigger asChild>
                   <button
+                    onPointerDown={(e) => e.stopPropagation()}
                     onClick={() => onModeChange('target')}
                     className={`
                       w-9 h-9 md:w-10 md:h-10 rounded-lg border-2 flex items-center justify-center
@@ -7772,6 +7774,7 @@ const SelectionModeButtonsInner = function SelectionModeButtons({
               <Tooltip>
                 <TooltipTrigger asChild>
                   <button
+                    onPointerDown={(e) => e.stopPropagation()}
                     onClick={() => setShowSpellPicker(true)}
                     className={`
                       w-9 h-9 md:w-10 md:h-10 rounded-lg border-2 flex items-center justify-center
