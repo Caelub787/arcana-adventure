@@ -19396,7 +19396,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                 defaultSize={{ width: 600, height: 500 }}
                 minWidth={350}
                 minHeight={300}
-                zIndex={floatingZIndices?.['spell-detail'] || 55}
+                zIndex={floatingZIndices?.['spell-detail'] || 10050}
                 onBringToFront={() => bringToFront?.('spell-detail')}
               >
                     <div className="p-4 space-y-4">
@@ -19977,7 +19977,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
           defaultSize={{ width: 320, height: 340 }}
           minWidth={280}
           minHeight={250}
-          zIndex={floatingZIndices?.['roll-modifier'] || 55}
+          zIndex={floatingZIndices?.['roll-modifier'] || 10050}
           onBringToFront={() => bringToFront?.('roll-modifier')}
         >
           <div className="p-4 space-y-4">
@@ -22679,7 +22679,7 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
       defaultSize={{ width: 600, height: 500 }}
       minWidth={350}
       minHeight={300}
-      zIndex={floatingZIndices?.['item-detail'] || 55}
+      zIndex={floatingZIndices?.['item-detail'] || 10050}
       onBringToFront={() => bringToFront?.('item-detail')}
     >
       <div className="p-4">
