@@ -1821,14 +1821,17 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                if (!assignedToken) return;
                
                const targetZoom = Math.max(zoomRef.current, 1);
-               const containerWidth = viewportSize.width || window.innerWidth;
-               const containerHeight = viewportSize.height || window.innerHeight;
-               const pixelOffset = worldToPixelOffset(assignedToken.x, assignedToken.y, targetZoom, containerWidth, containerHeight);
+               const vpW = viewportSize.width || window.innerWidth;
+               const vpH = viewportSize.height || window.innerHeight;
+               const tokenContainerX = assignedToken.x + MAP_OFFSET;
+               const tokenContainerY = assignedToken.y + MAP_OFFSET;
+               const panX = vpW / 2 + MAP_OFFSET - tokenContainerX * targetZoom;
+               const panY = vpH / 2 + MAP_OFFSET - tokenContainerY * targetZoom;
                
-               motionX.set(pixelOffset.x);
-               motionY.set(pixelOffset.y);
+               motionX.set(panX);
+               motionY.set(panY);
                motionZoom.set(targetZoom);
-               panRef.current = { x: pixelOffset.x, y: pixelOffset.y };
+               panRef.current = { x: panX, y: panY };
                zoomRef.current = targetZoom;
                forceUpdate(n => n + 1);
                notifyViewChange();
