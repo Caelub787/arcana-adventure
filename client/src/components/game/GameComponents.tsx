@@ -574,6 +574,39 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
       }
     };
   }, []);
+
+  useEffect(() => {
+    const handleWASD = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName;
+      const isEditable = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (e.target as HTMLElement)?.isContentEditable;
+      if (isEditable) return;
+
+      const key = e.key.toLowerCase();
+      let dx = 0, dy = 0;
+      if (key === 'w' || key === 'arrowup') dy = -1;
+      else if (key === 's' || key === 'arrowdown') dy = 1;
+      else if (key === 'a' || key === 'arrowleft') dx = -1;
+      else if (key === 'd' || key === 'arrowright') dx = 1;
+      else return;
+
+      e.preventDefault();
+
+      const myToken = assignedCharacterId
+        ? tokens.find(t => t.characterId === assignedCharacterId)
+        : null;
+      if (!myToken) return;
+
+      const isCombatWithActiveTurn = inCombat && currentTurnCharacterId;
+      if (isCombatWithActiveTurn && myToken.characterId !== currentTurnCharacterId) return;
+
+      const newX = myToken.x + dx * gridSize;
+      const newY = myToken.y + dy * gridSize;
+      onMoveToken(myToken.id, newX, newY);
+    };
+
+    window.addEventListener('keydown', handleWASD);
+    return () => window.removeEventListener('keydown', handleWASD);
+  }, [tokens, assignedCharacterId, gridSize, onMoveToken, inCombat, currentTurnCharacterId]);
   
   // Track token being dragged with its current visual position
   const [draggingToken, setDraggingToken] = useState<{ 
