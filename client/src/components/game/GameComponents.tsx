@@ -575,6 +575,17 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
     };
   }, []);
 
+  const wasdPosRef = useRef<{ id: string; x: number; y: number } | null>(null);
+  useEffect(() => {
+    if (!assignedCharacterId) { wasdPosRef.current = null; return; }
+    const t = tokens.find(t => t.characterId === assignedCharacterId);
+    if (t) wasdPosRef.current = { id: t.id, x: t.x, y: t.y };
+    else wasdPosRef.current = null;
+  }, [tokens, assignedCharacterId]);
+
+  const wasdDepsRef = useRef({ gridSize, onMoveToken, inCombat, currentTurnCharacterId, assignedCharacterId });
+  wasdDepsRef.current = { gridSize, onMoveToken, inCombat, currentTurnCharacterId, assignedCharacterId };
+
   useEffect(() => {
     const handleWASD = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName;
@@ -591,22 +602,23 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
 
       e.preventDefault();
 
-      const myToken = assignedCharacterId
-        ? tokens.find(t => t.characterId === assignedCharacterId)
-        : null;
-      if (!myToken) return;
+      const pos = wasdPosRef.current;
+      if (!pos) return;
 
-      const isCombatWithActiveTurn = inCombat && currentTurnCharacterId;
-      if (isCombatWithActiveTurn && myToken.characterId !== currentTurnCharacterId) return;
+      const deps = wasdDepsRef.current;
+      const isCombatWithActiveTurn = deps.inCombat && deps.currentTurnCharacterId;
+      if (isCombatWithActiveTurn && deps.assignedCharacterId !== deps.currentTurnCharacterId) return;
 
-      const newX = myToken.x + dx * gridSize;
-      const newY = myToken.y + dy * gridSize;
-      onMoveToken(myToken.id, newX, newY);
+      const newX = pos.x + dx * deps.gridSize;
+      const newY = pos.y + dy * deps.gridSize;
+      pos.x = newX;
+      pos.y = newY;
+      deps.onMoveToken(pos.id, newX, newY);
     };
 
     window.addEventListener('keydown', handleWASD);
     return () => window.removeEventListener('keydown', handleWASD);
-  }, [tokens, assignedCharacterId, gridSize, onMoveToken, inCombat, currentTurnCharacterId]);
+  }, []);
   
   // Track token being dragged with its current visual position
   const [draggingToken, setDraggingToken] = useState<{ 
