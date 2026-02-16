@@ -22658,8 +22658,83 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
     return slots;
   };
 
-  const executeRoll = (rollEntry: any) => {
+  const executeRoll = async (rollEntry: any) => {
+    const energyCost = rollEntry.requiresEnergy ? (rollEntry.energyCost || 0) : 0;
+    const currentEnergy = character?.energy || 0;
+
+    if (energyCost > 0 && currentEnergy < energyCost) {
+      triggerRollNotification({
+        type: 'system',
+        label: `Not Enough Energy!`,
+        result: 0,
+        total: 0,
+        username: character?.name || 'Unknown',
+        characterName: character?.name,
+        calculationBreakdown: `${item.name} - ${rollEntry.name} requires ${energyCost} energy but you only have ${currentEnergy}.`,
+      });
+      return;
+    }
+
+    if (rollEntry.noRoll) {
+      if (energyCost > 0 && character?.id) {
+        try {
+          await api.updateCharacter(character.id, { energy: currentEnergy - energyCost });
+          queryClient.invalidateQueries({ queryKey: ['character', character.id] });
+        } catch (err) {
+          console.error('Failed to deduct energy:', err);
+        }
+      }
+
+      const flatValue = rollEntry.mod || 0;
+      triggerRollNotification({
+        type: rollEntry.rollType === 'heal' ? 'heal' : rollEntry.rollType === 'attack' ? 'attack' : 'damage',
+        dieType: 'd20',
+        label: `${item.name} - ${rollEntry.name}`,
+        result: flatValue,
+        modifier: 0,
+        total: flatValue,
+        username: character?.name || 'Unknown',
+        characterName: character?.name,
+        calculationBreakdown: `Effect applied (no roll)${flatValue ? ` | Value: ${flatValue}` : ''}${energyCost > 0 ? ` | -${energyCost} Energy` : ''}`,
+        isHealing: rollEntry.rollType === 'heal',
+      });
+
+      if (rollEntry.applyToStat && rollEntry.applyToStat !== 'none' && character?.id) {
+        const isHeal = rollEntry.rollType === 'heal';
+        if (rollEntry.applyToStat === 'hp') {
+          gameWs.sendCombatDamage(
+            character.id,
+            flatValue,
+            rollEntry.damageType || undefined,
+            character?.name || 'Unknown',
+            isHeal
+          );
+        } else if (rollEntry.applyToStat === 'energy') {
+          gameWs.sendCombatEnergy(
+            character.id,
+            flatValue,
+            character?.name || 'Unknown',
+            isHeal
+          );
+        }
+      }
+
+      if (rollEntry.enableChatMessage && rollEntry.chatMessage && character) {
+        gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', rollEntry.chatMessage, 'roll');
+      }
+      return;
+    }
+
     if (!rollEntry.diceFormula) return;
+
+    if (energyCost > 0 && character?.id) {
+      try {
+        await api.updateCharacter(character.id, { energy: currentEnergy - energyCost });
+        queryClient.invalidateQueries({ queryKey: ['character', character.id] });
+      } catch (err) {
+        console.error('Failed to deduct energy:', err);
+      }
+    }
     
     const formulaParts: string[] = [rollEntry.diceFormula];
     
@@ -22684,6 +22759,7 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
       rollEntry.mod ? `Mod: ${rollEntry.mod > 0 ? '+' : ''}${rollEntry.mod}` : null,
       rollEntry.attribute ? `${rollEntry.attribute.charAt(0).toUpperCase() + rollEntry.attribute.slice(1)}: ${attrMod >= 0 ? '+' : ''}${attrMod}` : null,
       rollEntry.damageType ? `Type: ${rollEntry.damageType}` : null,
+      energyCost > 0 ? `Energy: -${energyCost}` : null,
     ].filter(Boolean).join(' | ');
     
     triggerRollNotification({
@@ -22717,6 +22793,10 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
           isHeal
         );
       }
+    }
+
+    if (rollEntry.enableChatMessage && rollEntry.chatMessage && character) {
+      gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', rollEntry.chatMessage, 'roll');
     }
   };
 
