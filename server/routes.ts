@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertUserSchema, insertCampaignSchema, insertCharacterSchema, insertTokenSchema, insertChatMessageSchema, insertSceneSchema, insertHotbarSchema, insertItemSchema, insertSpellSchema, initiativeEntries, insertTokenEffectSchema, insertTokenActiveEffectSchema, rollEntries, insertRollEntrySchema } from "@shared/schema";
+import { insertUserSchema, insertCampaignSchema, insertCharacterSchema, insertTokenSchema, insertChatMessageSchema, insertSceneSchema, insertHotbarSchema, insertItemSchema, insertSpellSchema, initiativeEntries, insertTokenEffectSchema, insertTokenActiveEffectSchema, rollEntries, insertRollEntrySchema, items } from "@shared/schema";
 import bcrypt from "bcryptjs";
 import { WebSocketServer } from "ws";
 import { sendPasswordResetEmail } from "./email";
@@ -3215,6 +3215,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.delete("/api/roll-entries/:id", requireAuth, async (req, res) => {
     try {
+      const entry = await db.select().from(rollEntries).where(eq(rollEntries.id, req.params.id)).then(r => r[0]);
+      if (entry && entry.name === 'Detonate') {
+        const ownerItems = await db.select().from(items).where(eq(items.id, entry.ownerId)).then(r => r[0]);
+        if (ownerItems && ownerItems.isDetonatable) {
+          return res.status(400).json({ error: "Cannot delete Detonate roll while item is detonatable. Uncheck 'Is Detonatable' first." });
+        }
+      }
       await storage.deleteRollEntry(req.params.id);
       res.json({ success: true });
     } catch (err) {
@@ -4458,6 +4465,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         campaignId: null
       });
       const item = await storage.createItem(itemData);
+      
+      if (item.isDetonatable) {
+        const existingRolls = await storage.getRollEntries('item', item.id);
+        const hasDetonateRoll = existingRolls.some(r => r.name === 'Detonate');
+        if (!hasDetonateRoll) {
+          await storage.createRollEntry({
+            ownerType: 'item', ownerId: item.id, name: 'Detonate',
+            rollType: 'damage', isAoe: true, aoeShape: 'sphere', aoeRange: 15,
+            diceFormula: '1d6', sortOrder: 0,
+          } as any);
+        }
+      }
+      
       res.json(item);
     } catch (err) {
       res.status(400).json({ error: "Failed to create system item" });
@@ -4471,6 +4491,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "System item not found" });
       }
       const updatedItem = await storage.updateItem(req.params.id, req.body);
+      
+      if (updatedItem) {
+        const existingRolls = await storage.getRollEntries('item', updatedItem.id);
+        const detonateRoll = existingRolls.find(r => r.name === 'Detonate');
+        if (updatedItem.isDetonatable && !detonateRoll) {
+          await storage.createRollEntry({
+            ownerType: 'item', ownerId: updatedItem.id, name: 'Detonate',
+            rollType: 'damage', isAoe: true, aoeShape: 'sphere', aoeRange: 15,
+            diceFormula: '1d6', sortOrder: 0,
+          } as any);
+        } else if (!updatedItem.isDetonatable && detonateRoll) {
+          await storage.deleteRollEntry(detonateRoll.id);
+        }
+      }
+      
       res.json(updatedItem);
     } catch (err) {
       res.status(400).json({ error: "Failed to update system item" });
@@ -5829,6 +5864,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         createdByUserId: req.session.userId, // Track which GM created this item
       });
       const item = await storage.createItem(itemData);
+      
+      if (item.isDetonatable) {
+        const existingRolls = await storage.getRollEntries('item', item.id);
+        const hasDetonateRoll = existingRolls.some(r => r.name === 'Detonate');
+        if (!hasDetonateRoll) {
+          await storage.createRollEntry({
+            ownerType: 'item', ownerId: item.id, name: 'Detonate',
+            rollType: 'damage', isAoe: true, aoeShape: 'sphere', aoeRange: 15,
+            diceFormula: '1d6', sortOrder: 0,
+          } as any);
+        }
+      }
+      
       res.json(item);
     } catch (err) {
       res.status(400).json({ error: "Failed to create campaign item" });
@@ -5851,6 +5899,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       const updatedItem = await storage.updateItem(req.params.id, req.body);
+      
+      if (updatedItem) {
+        const existingRolls = await storage.getRollEntries('item', updatedItem.id);
+        const detonateRoll = existingRolls.find(r => r.name === 'Detonate');
+        if (updatedItem.isDetonatable && !detonateRoll) {
+          await storage.createRollEntry({
+            ownerType: 'item', ownerId: updatedItem.id, name: 'Detonate',
+            rollType: 'damage', isAoe: true, aoeShape: 'sphere', aoeRange: 15,
+            diceFormula: '1d6', sortOrder: 0,
+          } as any);
+        } else if (!updatedItem.isDetonatable && detonateRoll) {
+          await storage.deleteRollEntry(detonateRoll.id);
+        }
+      }
+      
       res.json(updatedItem);
     } catch (err) {
       res.status(400).json({ error: "Failed to update campaign item" });
@@ -5922,6 +5985,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       const item = await storage.createItem(itemData);
+      
+      if (item.isDetonatable) {
+        const existingRolls = await storage.getRollEntries('item', item.id);
+        const hasDetonateRoll = existingRolls.some(r => r.name === 'Detonate');
+        if (!hasDetonateRoll) {
+          await storage.createRollEntry({
+            ownerType: 'item', ownerId: item.id, name: 'Detonate',
+            rollType: 'damage', isAoe: true, aoeShape: 'sphere', aoeRange: 15,
+            diceFormula: '1d6', sortOrder: 0,
+          } as any);
+        }
+      }
       
       if (access.character?.campaignId) {
         broadcastToCampaign(access.character.campaignId, {
@@ -6004,6 +6079,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const updatedItem = await storage.updateItem(req.params.id, req.body);
       if (!updatedItem) {
         return res.status(404).json({ error: "Item not found" });
+      }
+
+      const existingRolls = await storage.getRollEntries('item', updatedItem.id);
+      const detonateRoll = existingRolls.find(r => r.name === 'Detonate');
+      if (updatedItem.isDetonatable && !detonateRoll) {
+        await storage.createRollEntry({
+          ownerType: 'item', ownerId: updatedItem.id, name: 'Detonate',
+          rollType: 'damage', isAoe: true, aoeShape: 'sphere', aoeRange: 15,
+          diceFormula: '1d6', sortOrder: 0,
+        } as any);
+      } else if (!updatedItem.isDetonatable && detonateRoll) {
+        await storage.deleteRollEntry(detonateRoll.id);
       }
 
       if (access.character?.campaignId) {

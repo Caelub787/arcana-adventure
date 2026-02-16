@@ -7071,35 +7071,7 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
                   </div>
                   <p className="text-xs text-stone-500 mb-3">Detonatable items can be placed on the battle map and detonated with an AOE effect</p>
                   {formData.isDetonatable && (
-                    <div className="grid grid-cols-2 gap-3 pl-6 border-l-2 border-stone-700">
-                      <div>
-                        <Label>AOE Shape</Label>
-                        <Select value={formData.detonateAoeShape} onValueChange={(v) => setFormData({ ...formData, detonateAoeShape: v })}>
-                          <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-detonate-aoe-shape">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="circle">Circle</SelectItem>
-                            <SelectItem value="cone">Cone</SelectItem>
-                            <SelectItem value="line">Line</SelectItem>
-                            <SelectItem value="cube">Cube</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div>
-                        <Label>AOE Range (ft)</Label>
-                        <Input
-                          type="number"
-                          min={5}
-                          step={5}
-                          value={formData.detonateAoeRange}
-                          onChange={(e) => setFormData({ ...formData, detonateAoeRange: e.target.value === '' ? '' : parseInt(e.target.value) })}
-                          placeholder="e.g. 30 (6 squares)"
-                          className="bg-stone-800 border-stone-700"
-                          data-testid="input-detonate-aoe-range"
-                        />
-                      </div>
-                    </div>
+                    <p className="text-xs text-amber-400 pl-6 border-l-2 border-stone-700">Configure detonation settings in the Rolls section below.</p>
                   )}
                 </div>
               )}

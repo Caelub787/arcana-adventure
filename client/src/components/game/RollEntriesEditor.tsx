@@ -169,32 +169,15 @@ function RollForm({
 
   return (
     <div className="space-y-2" data-testid={isNew ? "form-new-roll" : `form-edit-roll-${form.id}`}>
-      <div className="grid grid-cols-2 gap-2">
-        <div>
-          <Label className="text-xs text-stone-400">Name</Label>
-          <Input
-            className="bg-stone-900 border-stone-600 h-7 text-xs"
-            value={form.name || ""}
-            onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-            placeholder="Roll name"
-            data-testid={`input-${prefix}-name`}
-          />
-        </div>
-        <div>
-          <Label className="text-xs text-stone-400">Roll Type</Label>
-          <Select value={form.rollType || "damage"} onValueChange={(v) => setForm((f) => ({ ...f, rollType: v }))}>
-            <SelectTrigger className="bg-stone-900 border-stone-600 h-7 text-xs" data-testid={`select-${prefix}-rollType`}>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {ROLL_TYPE_OPTIONS.map((opt) => (
-                <SelectItem key={opt} value={opt}>
-                  {opt.charAt(0).toUpperCase() + opt.slice(1)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+      <div>
+        <Label className="text-xs text-stone-400">Name</Label>
+        <Input
+          className="bg-stone-900 border-stone-600 h-7 text-xs"
+          value={form.name || ""}
+          onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+          placeholder="Roll name"
+          data-testid={`input-${prefix}-name`}
+        />
       </div>
 
       <div className="grid grid-cols-3 gap-2">
@@ -371,23 +354,6 @@ function RollForm({
         )}
       </CollapsibleSection>
 
-      <CollapsibleSection title="Flags" testId={`section-${prefix}-flags`}>
-        <div className="flex gap-2 flex-wrap">
-          <ToggleButton
-            active={!!form.isAttack}
-            onClick={() => setForm((f) => ({ ...f, isAttack: !f.isAttack }))}
-            label="Is Attack"
-            testId={`toggle-${prefix}-isAttack`}
-          />
-          <ToggleButton
-            active={!!form.gainEnergy}
-            onClick={() => setForm((f) => ({ ...f, gainEnergy: !f.gainEnergy }))}
-            label="Gain Energy"
-            testId={`toggle-${prefix}-gainEnergy`}
-          />
-        </div>
-      </CollapsibleSection>
-
       <div className="flex gap-2 pt-1">
         <Button
           size="sm"
@@ -555,9 +521,6 @@ export function RollEntriesEditor({ ownerType, ownerId, canEdit, onExecuteRoll }
                   >
                     {isExpanded ? <ChevronUp className="w-3 h-3 text-stone-400 shrink-0" /> : <ChevronDown className="w-3 h-3 text-stone-400 shrink-0" />}
                     <span className="text-xs font-medium text-stone-200 truncate" data-testid={`text-roll-name-${roll.id}`}>{roll.name}</span>
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded ${badgeClass} shrink-0`} data-testid={`badge-roll-type-${roll.id}`}>
-                      {roll.rollType.charAt(0).toUpperCase() + roll.rollType.slice(1)}
-                    </span>
                     {roll.diceFormula && (
                       <span className="text-[10px] text-stone-400 shrink-0" data-testid={`text-roll-formula-${roll.id}`}>
                         {roll.diceFormula}{roll.mod && roll.mod !== 0 ? (roll.mod > 0 ? `+${roll.mod}` : roll.mod) : ""}
@@ -587,15 +550,17 @@ export function RollEntriesEditor({ ownerType, ownerId, canEdit, onExecuteRoll }
                         >
                           <Pencil className="w-3 h-3" />
                         </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-6 w-6 p-0 border-stone-600 text-red-400 hover:text-red-300"
-                          onClick={() => handleDelete(roll.id)}
-                          data-testid={`button-delete-roll-${roll.id}`}
-                        >
-                          <Trash2 className="w-3 h-3" />
-                        </Button>
+                        {roll.name !== 'Detonate' && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-6 w-6 p-0 border-stone-600 text-red-400 hover:text-red-300"
+                            onClick={() => handleDelete(roll.id)}
+                            data-testid={`button-delete-roll-${roll.id}`}
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </Button>
+                        )}
                       </>
                     )}
                   </div>

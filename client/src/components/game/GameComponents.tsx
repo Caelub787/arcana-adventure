@@ -5496,7 +5496,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
       return;
     }
     
-    const damageRollEntry = itemRollEntries.find((re: any) => re.rollType === 'damage');
+    const damageRollEntry = itemRollEntries.find((re: any) => re.name === 'Detonate');
     const diceNotation = damageRollEntry?.diceFormula;
     if (!diceNotation) {
       triggerRollNotification({
@@ -5506,7 +5506,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
         total: 0,
         username: character.name || 'Unknown',
         characterName: character.name,
-        calculationBreakdown: `No damage roll entry configured for ${itemData.name}. Add a roll entry with type "damage" in item settings.`,
+        calculationBreakdown: `No "Detonate" roll entry configured for ${itemData.name}. Add a roll entry named "Detonate" in item settings.`,
       });
       return;
     }
@@ -5519,8 +5519,8 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
     }
     const mod = rollEntryMod + dmgAttrMod;
     
-    const aoeRange = itemData.detonateAoeRange || 15;
-    const aoeShape = (itemData.detonateAoeShape || 'circle').toLowerCase();
+    const aoeRange = damageRollEntry?.aoeRange || itemData.detonateAoeRange || 15;
+    const aoeShape = (damageRollEntry?.aoeShape || itemData.detonateAoeShape || 'sphere').toLowerCase();
     const aoeDamageType = damageRollEntry?.damageType || 'Fire';
     
     // Collect all affected tokens with overlap counts (for stacking damage)
@@ -7095,9 +7095,12 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
         {itemData.attribute && <p className="text-sm">Attack: {itemData.attribute}</p>}
         {displayQuantity !== null && <p className="text-sm text-amber-400">Total Quantity: x{displayQuantity}</p>}
         {itemData.durability !== undefined && <p className="text-sm">Durability: {itemData.durability}/10</p>}
-        {itemData.isDetonatable && itemData.detonateAoeRange && (
-          <p className="text-sm text-orange-400">AOE: {itemData.detonateAoeRange}ft diameter ({itemData.detonateAoeShape || 'circle'})</p>
-        )}
+        {itemData.isDetonatable && (() => {
+          const detRoll = itemRollEntries.find((re: any) => re.name === 'Detonate');
+          const aoeR = detRoll?.aoeRange || itemData.detonateAoeRange;
+          const aoeS = detRoll?.aoeShape || itemData.detonateAoeShape || 'sphere';
+          return aoeR ? <p className="text-sm text-orange-400">AOE: {aoeR}ft diameter ({aoeS})</p> : null;
+        })()}
         {isClickable && (
           <p className="text-xs text-stone-400 mt-1">Click to open roll panel</p>
         )}
@@ -21850,36 +21853,7 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
                       <Label htmlFor="isDetonatable" className="cursor-pointer">Is Detonatable</Label>
                     </div>
                     {formData.isDetonatable && (
-                      <div className="pl-6 space-y-3">
-                        <div>
-                          <Label>AOE Shape</Label>
-                          <Select value={formData.detonateAoeShape || ''} onValueChange={(v) => setFormData({...formData, detonateAoeShape: v})}>
-                            <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-detonate-aoe-shape">
-                              <SelectValue placeholder="Select shape..." />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="circle">Circle</SelectItem>
-                              <SelectItem value="cone">Cone</SelectItem>
-                              <SelectItem value="line">Line</SelectItem>
-                              <SelectItem value="cube">Cube</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <div>
-                          <Label>AOE Range (feet)</Label>
-                          <Input 
-                            type="number" 
-                            min="5" 
-                            step="5"
-                            value={formData.detonateAoeRange} 
-                            onChange={(e) => setFormData({...formData, detonateAoeRange: e.target.value === '' ? '' : parseInt(e.target.value)})} 
-                            className="bg-stone-800 border-stone-700"
-                            placeholder="10"
-                            data-testid="input-detonate-aoe-range"
-                          />
-                        </div>
-                        <p className="text-xs text-stone-500">Detonation damage is configured via Roll Entries (add a "damage" type roll entry to this item).</p>
-                      </div>
+                      <p className="text-xs text-amber-400 pl-6 border-l-2 border-stone-600">Configure detonation settings in the Rolls section below.</p>
                     )}
                   </div>
                 </div>
