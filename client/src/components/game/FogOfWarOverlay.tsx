@@ -674,17 +674,53 @@ export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToo
     }
   }, [visionPolygons, lightVisionPolygons]);
 
-  const [exploredCells, setExploredCells] = useState<Set<string>>(new Set());
+  const exploredStorageKey = sceneId && currentUserId ? `explored-${sceneId}-${currentUserId}` : null;
+
+  const [exploredCells, setExploredCells] = useState<Set<string>>(() => {
+    if (!exploredStorageKey) return new Set();
+    try {
+      const saved = localStorage.getItem(exploredStorageKey);
+      if (saved) return new Set(JSON.parse(saved));
+    } catch {}
+    return new Set();
+  });
 
   const fogExploredMemoryEnabled = scene?.fogExploredMemory ?? false;
+  const prevSceneIdRef = useRef(sceneId);
   useEffect(() => {
-    setExploredCells(new Set());
-  }, [sceneId]);
+    if (sceneId !== prevSceneIdRef.current) {
+      prevSceneIdRef.current = sceneId;
+      if (!exploredStorageKey) {
+        setExploredCells(new Set());
+        return;
+      }
+      try {
+        const saved = localStorage.getItem(exploredStorageKey);
+        if (saved) {
+          setExploredCells(new Set(JSON.parse(saved)));
+          return;
+        }
+      } catch {}
+      setExploredCells(new Set());
+    }
+  }, [sceneId, exploredStorageKey]);
+
   useEffect(() => {
     if (!fogExploredMemoryEnabled) {
       setExploredCells(new Set());
+      if (exploredStorageKey) {
+        try { localStorage.removeItem(exploredStorageKey); } catch {}
+      }
     }
-  }, [fogExploredMemoryEnabled]);
+  }, [fogExploredMemoryEnabled, exploredStorageKey]);
+
+  useEffect(() => {
+    if (!exploredStorageKey || !fogExploredMemoryEnabled) return;
+    if (exploredCells.size === 0) return;
+    try {
+      localStorage.setItem(exploredStorageKey, JSON.stringify(Array.from(exploredCells)));
+    } catch {}
+  }, [exploredCells, exploredStorageKey, fogExploredMemoryEnabled]);
 
   function isPointInPoly(px: number, py: number, polygon: { x: number; y: number }[]): boolean {
     let inside = false;
