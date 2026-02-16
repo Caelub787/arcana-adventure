@@ -6644,7 +6644,7 @@ export default function Campaign() {
   const [hotbarConfigSlot, setHotbarConfigSlot] = useState<number | null>(null);
 
   // Floating panel z-index management (bring to front on click)
-  const floatingZCounterRef = useRef(50);
+  const floatingZCounterRef = useRef(10100);
   const [floatingZIndices, setFloatingZIndices] = useState<Record<string, number>>({});
   const bringToFront = useCallback((panelKey: string) => {
     floatingZCounterRef.current += 1;
