@@ -98,8 +98,9 @@ export function FloatingPanel({
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     const el = panelRef.current;
     if (el) {
-      el.style.willChange = 'transform';
       el.classList.add('cursor-grabbing');
+      const content = el.querySelector('[data-panel-content]') as HTMLElement;
+      if (content) content.style.pointerEvents = 'none';
     }
   }, []);
 
@@ -130,8 +131,9 @@ export function FloatingPanel({
     try { (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId); } catch {}
     const el = panelRef.current;
     if (el) {
-      el.style.willChange = 'auto';
       el.classList.remove('cursor-grabbing');
+      const content = el.querySelector('[data-panel-content]') as HTMLElement;
+      if (content) content.style.pointerEvents = '';
     }
     if (rafRef.current !== null) {
       cancelAnimationFrame(rafRef.current);
@@ -151,7 +153,10 @@ export function FloatingPanel({
     };
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
     const el = panelRef.current;
-    if (el) el.style.willChange = 'transform, width, height';
+    if (el) {
+      const content = el.querySelector('[data-panel-content]') as HTMLElement;
+      if (content) content.style.pointerEvents = 'none';
+    }
   }, []);
 
   const handleResizeMove = React.useCallback((e: React.PointerEvent) => {
@@ -194,7 +199,10 @@ export function FloatingPanel({
     isResizingRef.current = null;
     try { (e.target as HTMLElement).releasePointerCapture(e.pointerId); } catch {}
     const el = panelRef.current;
-    if (el) el.style.willChange = 'auto';
+    if (el) {
+      const content = el.querySelector('[data-panel-content]') as HTMLElement;
+      if (content) content.style.pointerEvents = '';
+    }
     if (rafRef.current !== null) {
       cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
@@ -260,6 +268,9 @@ export function FloatingPanel({
         width: isMinimized ? minimizedMaxWidth : (isFullscreen ? window.innerWidth : s.width),
         height: isMinimized ? headerHeight : (isFullscreen ? window.innerHeight : s.height),
         zIndex: isFullscreen ? Math.max(zIndex, 100) : zIndex,
+        willChange: 'transform',
+        contain: 'layout style paint',
+        backfaceVisibility: 'hidden' as const,
       }}
       data-testid="floating-panel"
       data-floating-panel
@@ -336,7 +347,7 @@ export function FloatingPanel({
 
       {!isMinimized && (
         <>
-          <div className="flex-1 overflow-y-auto overflow-x-hidden">
+          <div className="flex-1 overflow-y-auto overflow-x-hidden" data-panel-content>
             {children}
           </div>
 
