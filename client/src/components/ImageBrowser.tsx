@@ -36,6 +36,7 @@ export function ImageBrowser({ open, onOpenChange, onSelect, title = "Browse Ima
   const [selectedImageId, setSelectedImageId] = useState<string | null>(null);
   const [isLoadingImage, setIsLoadingImage] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
@@ -156,6 +157,9 @@ export function ImageBrowser({ open, onOpenChange, onSelect, title = "Browse Ima
         onMouseDown={(e) => e.stopPropagation()}
         onClick={(e) => e.stopPropagation()}
         onPointerDown={(e) => e.stopPropagation()}
+        onWheel={(e) => e.stopPropagation()}
+        onFocusCapture={(e) => e.stopPropagation()}
+        onBlurCapture={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-4 py-2 border-b border-stone-800 bg-stone-900 select-none shrink-0">
           <div>
@@ -175,9 +179,14 @@ export function ImageBrowser({ open, onOpenChange, onSelect, title = "Browse Ima
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-500" />
               <Input
+                ref={searchInputRef}
                 placeholder="Search images..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
+                onPointerDown={(e) => {
+                  e.stopPropagation();
+                  requestAnimationFrame(() => searchInputRef.current?.focus());
+                }}
                 className="pl-10 bg-stone-900 border-stone-700 text-stone-200"
                 data-testid="input-image-search"
               />
