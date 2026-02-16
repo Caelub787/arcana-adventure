@@ -6906,11 +6906,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const isGm = await storage.isGM(req.session.userId!, scene.campaignId);
       if (!isGm) return res.status(403).json({ error: "Only GMs can manage walls" });
       
-      const walls = [];
-      for (const wallData of req.body.walls) {
-        const wall = await storage.createSceneWall({ ...wallData, sceneId: req.params.sceneId });
-        walls.push(wall);
-      }
+      const wallValues = req.body.walls.map((w: any) => ({ ...w, sceneId: req.params.sceneId }));
+      const walls = await storage.createSceneWallsBatch(wallValues);
       broadcastToCampaign(scene.campaignId, { type: "walls_batch_created", walls });
       res.json(walls);
     } catch (e) {

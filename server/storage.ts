@@ -192,6 +192,7 @@ export interface IStorage {
   // Scene Wall operations
   getSceneWalls(sceneId: string): Promise<SceneWall[]>;
   createSceneWall(wall: InsertSceneWall): Promise<SceneWall>;
+  createSceneWallsBatch(walls: InsertSceneWall[]): Promise<SceneWall[]>;
   updateSceneWall(id: string, data: Partial<InsertSceneWall>): Promise<SceneWall | undefined>;
   deleteSceneWall(id: string): Promise<void>;
   deleteSceneWalls(sceneId: string): Promise<void>;
@@ -1845,6 +1846,11 @@ export class DatabaseStorage implements IStorage {
   async createSceneWall(wall: InsertSceneWall): Promise<SceneWall> {
     const [newWall] = await db.insert(sceneWalls).values(wall).returning();
     return newWall;
+  }
+
+  async createSceneWallsBatch(walls: InsertSceneWall[]): Promise<SceneWall[]> {
+    if (walls.length === 0) return [];
+    return await db.insert(sceneWalls).values(walls).returning();
   }
 
   async updateSceneWall(id: string, data: Partial<InsertSceneWall>): Promise<SceneWall | undefined> {

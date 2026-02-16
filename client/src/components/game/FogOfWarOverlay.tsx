@@ -1028,6 +1028,41 @@ interface WallDrawingOverlayProps {
   freeformMode: boolean;
 }
 
+function simplifyLine(points: { x: number; y: number }[], epsilon: number): { x: number; y: number }[] {
+  if (points.length <= 2) return points;
+
+  let maxDist = 0;
+  let maxIdx = 0;
+  const start = points[0];
+  const end = points[points.length - 1];
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const lenSq = dx * dx + dy * dy;
+
+  for (let i = 1; i < points.length - 1; i++) {
+    let dist: number;
+    if (lenSq === 0) {
+      dist = Math.hypot(points[i].x - start.x, points[i].y - start.y);
+    } else {
+      const t = Math.max(0, Math.min(1, ((points[i].x - start.x) * dx + (points[i].y - start.y) * dy) / lenSq));
+      const projX = start.x + t * dx;
+      const projY = start.y + t * dy;
+      dist = Math.hypot(points[i].x - projX, points[i].y - projY);
+    }
+    if (dist > maxDist) {
+      maxDist = dist;
+      maxIdx = i;
+    }
+  }
+
+  if (maxDist > epsilon) {
+    const left = simplifyLine(points.slice(0, maxIdx + 1), epsilon);
+    const right = simplifyLine(points.slice(maxIdx), epsilon);
+    return [...left.slice(0, -1), ...right];
+  }
+  return [start, end];
+}
+
 export function WallDrawingOverlay({
   scene,
   gridSize,
@@ -1452,7 +1487,7 @@ export function WallDrawingOverlay({
       const last = prev[prev.length - 1];
       if (!last) return [{ x: worldX, y: worldY }];
       const dist = Math.hypot(worldX - last.x, worldY - last.y);
-      if (dist >= 10) {
+      if (dist >= 4) {
         return [...prev, { x: worldX, y: worldY }];
       }
       return prev;
@@ -1466,28 +1501,32 @@ export function WallDrawingOverlay({
     setIsFreeformDrawing(false);
 
     if (freeformPoints.length >= 2) {
+      const simplified = simplifyLine(freeformPoints, 8);
+
       const wallSegments = [];
-      for (let i = 0; i < freeformPoints.length - 1; i++) {
+      for (let i = 0; i < simplified.length - 1; i++) {
         wallSegments.push({
-          x1: freeformPoints[i].x,
-          y1: freeformPoints[i].y,
-          x2: freeformPoints[i + 1].x,
-          y2: freeformPoints[i + 1].y,
+          x1: simplified[i].x,
+          y1: simplified[i].y,
+          x2: simplified[i + 1].x,
+          y2: simplified[i + 1].y,
           wallType: selectedWallType,
           snapToGrid: false,
           playerVisible: true,
         });
       }
-      fetch(`/api/scenes/${sceneId}/walls/batch`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ walls: wallSegments }),
-      }).then((res) => {
-        if (!res.ok) console.error('Failed to create walls batch');
-        queryClient.invalidateQueries({ queryKey: ['scene-walls', sceneId] });
-      }).catch((err) => {
-        console.error('Failed to create walls batch:', err);
-      });
+      if (wallSegments.length > 0) {
+        fetch(`/api/scenes/${sceneId}/walls/batch`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ walls: wallSegments }),
+        }).then((res) => {
+          if (!res.ok) console.error('Failed to create walls batch');
+          queryClient.invalidateQueries({ queryKey: ['scene-walls', sceneId] });
+        }).catch((err) => {
+          console.error('Failed to create walls batch:', err);
+        });
+      }
     }
     setFreeformPoints([]);
   }, [isFreeformDrawing, freeformPoints, selectedWallType, sceneId, queryClient]);
