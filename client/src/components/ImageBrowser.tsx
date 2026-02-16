@@ -33,10 +33,12 @@ export function ImageBrowser({ open, onOpenChange, onSelect, title = "Browse Ima
     { id: undefined, name: 'Image Library' }
   ]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [selectedImageId, setSelectedImageId] = useState<string | null>(null);
   const [isLoadingImage, setIsLoadingImage] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
@@ -78,16 +80,30 @@ export function ImageBrowser({ open, onOpenChange, onSelect, title = "Browse Ima
     enabled: open && !searchQuery,
   });
 
+  useEffect(() => {
+    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    if (searchQuery.length < 2) {
+      setDebouncedSearch('');
+      return;
+    }
+    debounceTimerRef.current = setTimeout(() => {
+      setDebouncedSearch(searchQuery);
+    }, 400);
+    return () => {
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    };
+  }, [searchQuery]);
+
   const { data: searchResults = [], isLoading: searchLoading } = useQuery({
-    queryKey: ['drive-search', searchQuery, currentFolderId],
+    queryKey: ['drive-search', debouncedSearch, currentFolderId],
     queryFn: async () => {
-      const params = new URLSearchParams({ q: searchQuery });
+      const params = new URLSearchParams({ q: debouncedSearch });
       if (currentFolderId) params.set('folderId', currentFolderId);
       const res = await fetch(`/api/drive/search?${params}`, { credentials: 'include' });
       if (!res.ok) throw new Error('Failed to search images');
       return res.json() as Promise<DriveImage[]>;
     },
-    enabled: open && searchQuery.length >= 2,
+    enabled: open && debouncedSearch.length >= 2,
   });
 
   const navigateToFolder = (folder: DriveFolder) => {
@@ -147,12 +163,14 @@ export function ImageBrowser({ open, onOpenChange, onSelect, title = "Browse Ima
   useEffect(() => {
     if (!open) {
       setSearchQuery('');
+      setDebouncedSearch('');
       setSelectedImageId(null);
     }
   }, [open]);
 
-  const displayedImages = searchQuery.length >= 2 ? searchResults : images;
-  const isLoading = foldersLoading || imagesLoading || searchLoading;
+  const isSearching = debouncedSearch.length >= 2;
+  const displayedImages = isSearching ? searchResults : images;
+  const isLoading = foldersLoading || imagesLoading || (searchQuery.length >= 2 && (searchLoading || searchQuery !== debouncedSearch));
 
   if (!open) return null;
 
@@ -218,7 +236,7 @@ export function ImageBrowser({ open, onOpenChange, onSelect, title = "Browse Ima
             </Button>
           </div>
 
-          {!searchQuery && (
+          {!isSearching && (
             <div className="flex items-center gap-1 text-sm overflow-x-auto shrink-0">
               <Button
                 variant="ghost"
@@ -250,7 +268,7 @@ export function ImageBrowser({ open, onOpenChange, onSelect, title = "Browse Ima
             </div>
           )}
 
-          {!searchQuery && folderStack.length > 1 && (
+          {!isSearching && folderStack.length > 1 && (
             <Button
               variant="outline"
               size="sm"
@@ -270,7 +288,7 @@ export function ImageBrowser({ open, onOpenChange, onSelect, title = "Browse Ima
               </div>
             ) : (
               <div className="space-y-4 pr-2 sm:pr-4">
-                {!searchQuery && folders.length > 0 && (
+                {!isSearching && folders.length > 0 && (
                   <div>
                     <h3 className="text-xs text-stone-500 uppercase tracking-wider mb-2">Folders</h3>
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
@@ -292,7 +310,7 @@ export function ImageBrowser({ open, onOpenChange, onSelect, title = "Browse Ima
                 {displayedImages.length > 0 && (
                   <div>
                     <h3 className="text-xs text-stone-500 uppercase tracking-wider mb-2">
-                      {searchQuery ? 'Search Results' : 'Images'}
+                      {isSearching ? 'Search Results' : 'Images'}
                     </h3>
                     <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 pb-2">
                       {displayedImages.map((image) => (
@@ -339,7 +357,7 @@ export function ImageBrowser({ open, onOpenChange, onSelect, title = "Browse Ima
                   <div className="flex flex-col items-center justify-center h-[200px] text-stone-500">
                     <Image className="h-12 w-12 mb-2" />
                     <p>
-                      {searchQuery 
+                      {isSearching 
                         ? 'No images found for your search' 
                         : 'No images or folders in this location'}
                     </p>

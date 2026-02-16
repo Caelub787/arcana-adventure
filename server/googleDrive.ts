@@ -236,27 +236,32 @@ export async function getImageBase64(fileId: string): Promise<string> {
   return `data:${mimeType};base64,${base64}`;
 }
 
-// Get all folder IDs recursively under a parent folder (for recursive search)
 async function getAllFolderIds(parentId: string): Promise<string[]> {
   const drive = await getGoogleDriveClient();
   const allFolderIds: string[] = [parentId];
-  const foldersToProcess: string[] = [parentId];
+  let currentLevel: string[] = [parentId];
   
-  while (foldersToProcess.length > 0) {
-    const currentFolder = foldersToProcess.pop()!;
-    const response = await drive.files.list({
-      q: `mimeType='application/vnd.google-apps.folder' and trashed=false and '${currentFolder}' in parents`,
-      fields: 'files(id)',
-      pageSize: 100,
-    });
+  while (currentLevel.length > 0) {
+    const responses = await Promise.all(
+      currentLevel.map(folderId =>
+        drive.files.list({
+          q: `mimeType='application/vnd.google-apps.folder' and trashed=false and '${folderId}' in parents`,
+          fields: 'files(id)',
+          pageSize: 100,
+        })
+      )
+    );
     
-    const subfolders = response.data.files || [];
-    for (const folder of subfolders) {
-      if (folder.id) {
-        allFolderIds.push(folder.id);
-        foldersToProcess.push(folder.id);
+    const nextLevel: string[] = [];
+    for (const response of responses) {
+      for (const folder of response.data.files || []) {
+        if (folder.id) {
+          allFolderIds.push(folder.id);
+          nextLevel.push(folder.id);
+        }
       }
     }
+    currentLevel = nextLevel;
   }
   
   return allFolderIds;
@@ -309,39 +314,31 @@ export async function searchImages(searchTerm: string, folderId?: string): Promi
     }));
   }
   
-  // No folder specified - search recursively in all allowed folders
-  // allowedFolderIds already fetched above
-  
-  // Build query with all allowed folder IDs (OR conditions)
-  // Google Drive API has query length limits, so we batch if needed
   const MAX_FOLDERS_PER_QUERY = 20;
-  const allResults: { id: string; name: string; thumbnailLink?: string; }[] = [];
-  
+  const batches: string[][] = [];
   for (let i = 0; i < allowedFolderIds.length; i += MAX_FOLDERS_PER_QUERY) {
-    const folderBatch = allowedFolderIds.slice(i, i + MAX_FOLDERS_PER_QUERY);
+    batches.push(allowedFolderIds.slice(i, i + MAX_FOLDERS_PER_QUERY));
+  }
+
+  const escapedTerm = searchTerm.replace(/'/g, "\\'");
+  const batchPromises = batches.map(async (folderBatch) => {
     const parentsClauses = folderBatch.map(id => `'${id}' in parents`).join(' or ');
-    const query = `(mimeType contains 'image/') and trashed=false and name contains '${searchTerm.replace(/'/g, "\\'")}' and (${parentsClauses})`;
-    
+    const query = `(mimeType contains 'image/') and trashed=false and name contains '${escapedTerm}' and (${parentsClauses})`;
     const response = await drive.files.list({
       q: query,
       fields: 'files(id, name, thumbnailLink)',
       orderBy: 'name',
       pageSize: 50,
     });
-
-    const batchResults = (response.data.files || []).map(file => ({
+    return (response.data.files || []).map(file => ({
       id: file.id!,
       name: file.name!,
       thumbnailLink: file.thumbnailLink || undefined,
     }));
-    
-    allResults.push(...batchResults);
-    
-    // Stop if we have enough results
-    if (allResults.length >= 50) break;
-  }
-  
-  // Dedupe and limit results
+  });
+
+  const batchResults = await Promise.all(batchPromises);
+  const allResults = batchResults.flat();
   const uniqueResults = Array.from(new Map(allResults.map(r => [r.id, r])).values());
   return uniqueResults.slice(0, 50);
 }
