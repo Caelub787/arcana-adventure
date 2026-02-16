@@ -6683,6 +6683,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
         calculationBreakdown,
         isCritSuccess,
         isCritFailure,
+        customColor: rollEntry.primaryColor || undefined,
       });
 
       if (character.campaignId) {
@@ -6736,6 +6737,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
           username: character?.name || 'Unknown',
           characterName: character?.name,
           calculationBreakdown: 'Select a target or lock an AOE area first',
+          customColor: rollEntry.primaryColor || undefined,
         });
         return;
       }
@@ -6777,6 +6779,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
               username: targetChar.name,
               characterName: targetChar.name,
               calculationBreakdown: `d20 = ${result.roll} → Total: ${result.total} vs DC ${saveDc}`,
+              customColor: rollEntry.primaryColor || undefined,
             });
           } catch (e) {
             newSaveResults.push({
@@ -6874,6 +6877,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
         characterName: character?.name,
         calculationBreakdown,
         isHealing,
+        customColor: rollEntry.primaryColor || undefined,
       });
 
       if (character.campaignId) {
@@ -6930,6 +6934,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
           characterName: character?.name,
           calculationBreakdown,
           isHealing,
+          customColor: rollEntry.primaryColor || undefined,
         });
 
         if (character.campaignId) {
@@ -6990,6 +6995,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
       characterName: character?.name,
       calculationBreakdown,
       isHealing,
+      customColor: rollEntry.primaryColor || undefined,
     });
 
     if (character.campaignId) {
@@ -17202,6 +17208,24 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                     })()}
                   </div>
                 </div>
+
+                {(isOwner || isGM) && (
+                  <div className="flex items-center gap-2 mt-2">
+                    <label className="flex items-center gap-2 cursor-pointer group">
+                      <input
+                        type="checkbox"
+                        checked={liveCharacter.hasMotivation || false}
+                        onChange={() => updateCharacterMutation.mutate({ hasMotivation: !liveCharacter.hasMotivation })}
+                        className="w-4 h-4 rounded border-stone-600 bg-stone-900 text-amber-500 focus:ring-amber-500"
+                        data-testid="checkbox-motivation"
+                      />
+                      <span className="text-xs text-stone-400 group-hover:text-stone-300 flex items-center gap-1">
+                        <Flame className="h-3 w-3 text-orange-500" />
+                        Motivated?
+                      </span>
+                    </label>
+                  </div>
+                )}
 
                 {/* Edit Mode Buttons */}
                 {editingOverview && (

@@ -30,6 +30,7 @@ interface RollEntry {
   isAttack?: boolean;
   isAoe?: boolean;
   passesThroughWalls?: boolean;
+  primaryColor?: string | null;
 }
 
 interface RollEntriesEditorProps {
@@ -83,6 +84,7 @@ function emptyFormData(ownerType: string, ownerId: string): Partial<RollEntry> {
     isAttack: false,
     isAoe: false,
     passesThroughWalls: false,
+    primaryColor: null,
   };
 }
 
@@ -353,6 +355,40 @@ function RollForm({
           </div>
         )}
       </CollapsibleSection>
+
+      <div>
+        <Label className="text-xs text-stone-400">Notification Color</Label>
+        <div className="flex items-center gap-2 mt-1">
+          {form.primaryColor ? (
+            <div
+              className="w-5 h-5 rounded-full border border-stone-600 shrink-0"
+              style={{ backgroundColor: form.primaryColor }}
+              data-testid={`preview-${prefix}-primaryColor`}
+            />
+          ) : (
+            <span className="text-xs text-stone-500" data-testid={`text-${prefix}-primaryColor-default`}>Default</span>
+          )}
+          <input
+            type="color"
+            className="w-7 h-7 bg-stone-900 border border-stone-600 rounded cursor-pointer p-0"
+            value={form.primaryColor || "#ff8800"}
+            onChange={(e) => setForm((f) => ({ ...f, primaryColor: e.target.value }))}
+            data-testid={`input-${prefix}-primaryColor`}
+          />
+          {form.primaryColor && (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="h-6 text-[10px] border-stone-600 text-stone-400"
+              onClick={() => setForm((f) => ({ ...f, primaryColor: null }))}
+              data-testid={`button-${prefix}-resetColor`}
+            >
+              Reset
+            </Button>
+          )}
+        </div>
+      </div>
 
       <div className="flex gap-2 pt-1">
         <Button

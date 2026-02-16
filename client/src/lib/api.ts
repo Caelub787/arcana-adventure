@@ -2444,6 +2444,7 @@ export class GameWebSocket {
     characterName?: string;
     calculationBreakdown?: string;
     isHealing?: boolean;
+    customColor?: string;
   }) {
     if (!this.campaignId) {
       return;

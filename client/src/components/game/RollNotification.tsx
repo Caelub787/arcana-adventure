@@ -32,6 +32,15 @@ export interface RollNotification {
   calculationBreakdown?: string;
   duration?: number;
   isHealing?: boolean;
+  customColor?: string;
+}
+
+function darkenColor(hex: string): string {
+  const h = hex.replace('#', '');
+  const r = Math.round(parseInt(h.substring(0, 2), 16) * 0.65);
+  const g = Math.round(parseInt(h.substring(2, 4), 16) * 0.65);
+  const b = Math.round(parseInt(h.substring(4, 6), 16) * 0.65);
+  return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
 }
 
 const ROLL_ICONS = {
@@ -105,6 +114,10 @@ function CompactRollCard({ notification, onComplete }: { notification: RollNotif
     ? DIE_COLORS[notification.dieType] || ROLL_COLORS[notification.type]
     : (notification.type === 'effect' ? effectColor : ROLL_COLORS[notification.type]);
   
+  const customStyle = notification.customColor
+    ? { background: `linear-gradient(to right, ${notification.customColor}, ${darkenColor(notification.customColor)})` }
+    : undefined;
+
   return (
     <motion.div
       initial={{ opacity: 0, x: -50, scale: 0.9 }}
@@ -115,11 +128,11 @@ function CompactRollCard({ notification, onComplete }: { notification: RollNotif
     >
       <div className={`
         relative overflow-hidden rounded-lg shadow-lg
-        bg-gradient-to-r ${colorClass}
+        ${customStyle ? '' : `bg-gradient-to-r ${colorClass}`}
         border border-white/20
         ${isNat20 ? 'ring-2 ring-yellow-400' : ''}
         ${isNat1 ? 'ring-2 ring-red-500' : ''}
-      `}>
+      `} style={customStyle}>
         <div className="absolute inset-0 bg-black/20" />
         <div className="relative px-3 py-1.5 flex items-center gap-2">
           <span className={`font-bold text-lg text-white drop-shadow ${isNat20 ? 'text-yellow-200' : ''} ${isNat1 ? 'text-red-200' : ''}`}>
@@ -156,6 +169,10 @@ function RollCard({ notification, onComplete }: { notification: RollNotification
     ? DIE_COLORS[notification.dieType] || ROLL_COLORS[notification.type]
     : (notification.type === 'effect' ? effectColor : ROLL_COLORS[notification.type]);
   
+  const customStyle = notification.customColor
+    ? { background: `linear-gradient(to right, ${notification.customColor}, ${darkenColor(notification.customColor)})` }
+    : undefined;
+
   const notificationDuration = notification.duration ?? (notification.type === 'system' ? 2000 : 3500);
   
   useEffect(() => {
@@ -195,11 +212,11 @@ function RollCard({ notification, onComplete }: { notification: RollNotification
     >
       <div className={`
         relative overflow-hidden rounded-xl shadow-2xl
-        bg-gradient-to-r ${colorClass}
+        ${customStyle ? '' : `bg-gradient-to-r ${colorClass}`}
         border border-white/20
         ${isNat20 ? 'ring-4 ring-yellow-400 ring-opacity-75' : ''}
         ${isNat1 ? 'ring-4 ring-red-900 ring-opacity-75' : ''}
-      `}>
+      `} style={customStyle}>
         <div className="absolute inset-0 bg-black/20" />
         
         <div className="relative px-5 py-3 flex items-center gap-4">
@@ -406,6 +423,7 @@ export function triggerRollNotification(notification: Omit<RollNotification, 'id
       characterName: notification.characterName,
       calculationBreakdown: notification.calculationBreakdown,
       isHealing: notification.isHealing,
+      customColor: notification.customColor,
     });
   }
 }
@@ -481,7 +499,8 @@ export function triggerEffectRollNotification(
   damageType: string,
   isHealing: boolean,
   characterName: string,
-  broadcast: boolean = true
+  broadcast: boolean = true,
+  customColor?: string
 ) {
   const rollsText = rolls.join(' + ') + (bonus > 0 ? ` + ${bonus}` : '');
   const actionText = isHealing ? 'heals' : 'takes';
@@ -496,5 +515,6 @@ export function triggerEffectRollNotification(
     characterName,
     calculationBreakdown: `${characterName} ${actionText} ${total} ${damageType || ''} (${rollsText})`,
     isHealing,
+    customColor,
   }, broadcast);
 }
