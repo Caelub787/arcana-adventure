@@ -1266,6 +1266,11 @@ export const rollEntries = pgTable("roll_entries", {
   isAoe: boolean("is_aoe").default(false),
   passesThroughWalls: boolean("passes_through_walls").default(false),
   primaryColor: text("primary_color"),
+  requiresEnergy: boolean("requires_energy").default(false),
+  energyCost: integer("energy_cost"),
+  noRoll: boolean("no_roll").default(false),
+  enableChatMessage: boolean("enable_chat_message").default(false),
+  chatMessage: text("chat_message"),
 });
 
 export const insertRollEntrySchema = createInsertSchema(rollEntries).omit({
