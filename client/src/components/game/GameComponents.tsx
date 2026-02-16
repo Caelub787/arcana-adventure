@@ -1823,9 +1823,10 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                const targetZoom = Math.max(zoomRef.current, 1);
                const vpW = viewportSize.width || window.innerWidth;
                const vpH = viewportSize.height || window.innerHeight;
+               const visibleCenterX = notesPanelOpen ? (vpW - notesPanelWidth) / 2 : vpW / 2;
                const tokenContainerX = assignedToken.x + MAP_OFFSET;
                const tokenContainerY = assignedToken.y + MAP_OFFSET;
-               const panX = vpW / 2 + MAP_OFFSET - tokenContainerX * targetZoom;
+               const panX = visibleCenterX + MAP_OFFSET - tokenContainerX * targetZoom;
                const panY = vpH / 2 + MAP_OFFSET - tokenContainerY * targetZoom;
                
                motionX.set(panX);
@@ -1926,7 +1927,6 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
 
       {/* Draggable World Container - Large scrollable space beyond image bounds */}
       {/* Using custom pointer handlers instead of Framer Motion drag for stability */}
-      {/* GPU-accelerated with will-change and translateZ(0) for smooth pan/zoom performance */}
       <motion.div 
         className={`absolute ${aoeTargetState?.active ? 'cursor-crosshair' : (isMapLocked || draggingToken ? 'cursor-default' : 'cursor-grab active:cursor-grabbing')} touch-none`}
         style={{ 
@@ -1938,7 +1938,6 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
           left: '-9000px',
           top: '-9000px',
           transformOrigin: "0 0",
-          willChange: 'transform',
         }}
         onPointerDown={handleMapPointerDown}
         onPointerMove={handleMapPointerMove}
@@ -2175,7 +2174,6 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
         )}
 
         {/* Map Background - Positioned in the space, displays full image at natural aspect ratio */}
-        {/* GPU-accelerated with will-change and translateZ for smooth pan/zoom performance */}
         <img 
           src={scene?.backgroundImage || backgroundImage || battleMapImage1}
           alt="Battle map background"

@@ -1063,6 +1063,26 @@ function simplifyLine(points: { x: number; y: number }[], epsilon: number): { x:
   return [start, end];
 }
 
+function mergeCollinearSegments(points: { x: number; y: number }[], angleTolerance = 0.15): { x: number; y: number }[] {
+  if (points.length <= 2) return points;
+  const merged: { x: number; y: number }[] = [points[0]];
+  let currentAngle = Math.atan2(points[1].y - points[0].y, points[1].x - points[0].x);
+
+  for (let i = 2; i < points.length; i++) {
+    const nextAngle = Math.atan2(points[i].y - points[i - 1].y, points[i].x - points[i - 1].x);
+    let diff = Math.abs(nextAngle - currentAngle);
+    if (diff > Math.PI) diff = 2 * Math.PI - diff;
+    if (diff > angleTolerance) {
+      merged.push(points[i - 1]);
+      currentAngle = nextAngle;
+    } else {
+      currentAngle = Math.atan2(points[i].y - merged[merged.length - 1].y, points[i].x - merged[merged.length - 1].x);
+    }
+  }
+  merged.push(points[points.length - 1]);
+  return merged;
+}
+
 export function WallDrawingOverlay({
   scene,
   gridSize,
@@ -1501,7 +1521,7 @@ export function WallDrawingOverlay({
     setIsFreeformDrawing(false);
 
     if (freeformPoints.length >= 2) {
-      const simplified = simplifyLine(freeformPoints, 8);
+      const simplified = mergeCollinearSegments(simplifyLine(freeformPoints, 8));
 
       const wallSegments = [];
       for (let i = 0; i < simplified.length - 1; i++) {
