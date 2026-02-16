@@ -8641,17 +8641,15 @@ export default function Campaign() {
   }, [selectionMode, characters, role, myPermissions, user]);
 
   const handleModeChange = useCallback((mode: SelectionMode) => {
-    if (selectionMode === 'target' && mode !== 'target') {
-      setTargetedTokenId(null);
-      setThrowableGridTarget(null);
-      setDetonatableGridTarget(null);
-      if (effectiveCampaignId) {
-        gameWs.clearTokenTargeting();
-      }
-    }
+    setTargetedTokenId(null);
+    setThrowableGridTarget(null);
+    setDetonatableGridTarget(null);
     setSelectedTokenId(null);
+    if (effectiveCampaignIdRef.current) {
+      gameWs.clearTokenTargeting();
+    }
     setSelectionMode(mode);
-  }, [selectionMode, effectiveCampaignId]);
+  }, []);
   
   const handleGridTargetClick = useCallback((gridX: number, gridY: number) => {
     setTargetedTokenId(null);

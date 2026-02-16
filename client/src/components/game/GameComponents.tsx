@@ -7720,7 +7720,9 @@ const SelectionModeButtonsInner = function SelectionModeButtons({
               <TooltipTrigger asChild>
                 <button
                   onPointerDown={(e) => e.stopPropagation()}
-                  onClick={() => onModeChange('select')}
+                  onPointerUp={(e) => { e.stopPropagation(); onModeChange('select'); }}
+                  onClick={(e) => e.stopPropagation()}
+                  style={{ touchAction: 'manipulation' }}
                   className={`
                     w-9 h-9 md:w-10 md:h-10 rounded-lg border-2 flex items-center justify-center
                     transition-all duration-200 shadow-lg backdrop-blur-sm
@@ -7747,7 +7749,9 @@ const SelectionModeButtonsInner = function SelectionModeButtons({
                 <TooltipTrigger asChild>
                   <button
                     onPointerDown={(e) => e.stopPropagation()}
-                    onClick={() => onModeChange('target')}
+                    onPointerUp={(e) => { e.stopPropagation(); onModeChange('target'); }}
+                    onClick={(e) => e.stopPropagation()}
+                    style={{ touchAction: 'manipulation' }}
                     className={`
                       w-9 h-9 md:w-10 md:h-10 rounded-lg border-2 flex items-center justify-center
                       transition-all duration-200 shadow-lg backdrop-blur-sm
@@ -7775,7 +7779,9 @@ const SelectionModeButtonsInner = function SelectionModeButtons({
                 <TooltipTrigger asChild>
                   <button
                     onPointerDown={(e) => e.stopPropagation()}
-                    onClick={() => setShowSpellPicker(true)}
+                    onPointerUp={(e) => { e.stopPropagation(); setShowSpellPicker(true); }}
+                    onClick={(e) => e.stopPropagation()}
+                    style={{ touchAction: 'manipulation' }}
                     className={`
                       w-9 h-9 md:w-10 md:h-10 rounded-lg border-2 flex items-center justify-center
                       transition-all duration-200 shadow-lg backdrop-blur-sm
