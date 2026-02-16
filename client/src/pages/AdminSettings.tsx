@@ -1023,13 +1023,9 @@ function ArchivedItemsView({ onNavigateBack }: { onNavigateBack: () => void }) {
           {archivedItems.map((item: any) => (
             <div key={item.id} className="flex items-center justify-between p-2 bg-stone-800 rounded-lg border border-stone-700">
               <div className="flex items-center gap-3">
-                {item.image ? (
-                  <img src={item.image} alt={item.name} className="w-8 h-8 rounded object-cover" />
-                ) : (
-                  <div className="w-8 h-8 rounded bg-stone-700 flex items-center justify-center">
-                    <Package className="h-4 w-4 text-stone-500" />
-                  </div>
-                )}
+                <div className="w-8 h-8 rounded bg-stone-700 flex items-center justify-center">
+                  <Package className="h-4 w-4 text-stone-500" />
+                </div>
                 <div>
                   <p className="text-sm font-medium text-stone-200">{item.name}</p>
                   <p className="text-xs text-stone-400 capitalize">{item.itemType} · {item.rarity}</p>

@@ -4556,7 +4556,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const archivedItems = await storage.getArchivedSystemItems();
       res.json(archivedItems);
-    } catch (err) {
+    } catch (err: any) {
+      console.error("Failed to fetch archived items:", err?.message || err);
       res.status(500).json({ error: "Failed to fetch archived items" });
     }
   });

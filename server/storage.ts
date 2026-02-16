@@ -174,7 +174,7 @@ export interface IStorage {
   getItem(id: string): Promise<Item | undefined>;
   moveItemToContainer(itemId: string, containerId: string | null): Promise<Item | undefined>;
   getContainerItems(containerId: string): Promise<Item[]>;
-  getArchivedSystemItems(): Promise<Item[]>;
+  getArchivedSystemItems(): Promise<{ id: string; name: string; itemType: string; rarity: string }[]>;
   getArchivedSystemSpells(): Promise<SystemSpell[]>;
   archiveAllSystemItems(): Promise<void>;
   archiveAllSystemSpells(): Promise<void>;
@@ -2451,16 +2451,20 @@ export class DatabaseStorage implements IStorage {
     await db.delete(systemSpells).where(eq(systemSpells.id, id));
   }
 
-  async getArchivedSystemItems(): Promise<Item[]> {
-    const result = await db.select()
+  async getArchivedSystemItems(): Promise<{ id: string; name: string; itemType: string; rarity: string }[]> {
+    return await db.select({
+      id: items.id,
+      name: items.name,
+      itemType: items.itemType,
+      rarity: items.rarity,
+    })
       .from(items)
       .where(and(
         eq(items.isTemplate, true),
         eq(items.isArchived, true),
         sql`${items.characterId} IS NULL`,
         sql`${items.campaignId} IS NULL`
-      )) as Item[];
-    return result.map(item => this.convertLegacyItemPrice(item));
+      ));
   }
 
   async getArchivedSystemSpells(): Promise<SystemSpell[]> {
