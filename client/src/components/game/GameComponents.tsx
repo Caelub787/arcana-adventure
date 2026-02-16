@@ -1822,8 +1822,8 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                
                const targetZoom = Math.max(zoomRef.current, 1);
                
-               const tokenWorldX = assignedToken.x + gridSize / 2;
-               const tokenWorldY = assignedToken.y + gridSize / 2;
+               const tokenWorldX = assignedToken.x;
+               const tokenWorldY = assignedToken.y;
                const pixelOffset = worldToPixelOffset(tokenWorldX, tokenWorldY, targetZoom, viewportSize.width, viewportSize.height);
                
                panRef.current = { x: pixelOffset.x, y: pixelOffset.y };
