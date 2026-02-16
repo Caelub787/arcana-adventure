@@ -212,9 +212,13 @@ export function FogOfWarOverlay({ scene, isGM, gridSize, fogToolActive, onFogToo
     enabled: !!sceneId,
   });
 
+  const doorsRef = useRef(doors);
+  doorsRef.current = doors;
+
   const toggleDoorMutation = useMutation({
     mutationFn: async ({ doorId, shiftKey }: { doorId: string; shiftKey: boolean }) => {
-      const door = doors.find(d => d.id === doorId);
+      const currentDoors = doorsRef.current;
+      const door = currentDoors.find(d => d.id === doorId);
       if (!door) return;
       if (shiftKey) {
         const res = await fetch(`/api/doors/${doorId}/toggle`, {
