@@ -2238,17 +2238,20 @@ export class GameWebSocket {
   // Throttle token moves per token to prevent flooding
   private tokenMoveTimestamps: Map<string, number> = new Map();
   
-  sendTokenMove(tokenId: string, x: number, y: number) {
+  sendTokenMove(tokenId: string, x: number, y: number, force = false) {
     if (!this.campaignId) {
       console.error('Cannot send token move: not connected to a campaign');
       return;
     }
     
-    // Throttle to max 1 move per 50ms per token for smoother performance
-    const now = Date.now();
-    const lastMove = this.tokenMoveTimestamps.get(tokenId) || 0;
-    if (now - lastMove < 50) return;
-    this.tokenMoveTimestamps.set(tokenId, now);
+    if (!force) {
+      const now = Date.now();
+      const lastMove = this.tokenMoveTimestamps.get(tokenId) || 0;
+      if (now - lastMove < 50) return;
+      this.tokenMoveTimestamps.set(tokenId, now);
+    } else {
+      this.tokenMoveTimestamps.set(tokenId, Date.now());
+    }
     
     this.send({ type: 'token_move', campaignId: this.campaignId, tokenId, x, y });
   }

@@ -8524,9 +8524,9 @@ export default function Campaign() {
     toast({ title: "Character Assigned", description: `${char.name} is now your active character` });
   };
 
-  const handleMoveToken = useCallback((id: string, x: number, y: number) => {
+  const handleMoveToken = useCallback((id: string, x: number, y: number, force = false) => {
     setTokens(prev => prev.map(t => t.id === id ? { ...t, x, y } : t));
-    gameWs.sendTokenMove(id, x, y);
+    gameWs.sendTokenMove(id, x, y, force);
   }, []);
 
   const handleApplyEffect = (tokenId: string, effectId: string) => {

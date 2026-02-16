@@ -356,7 +356,7 @@ function MapPinsOverlay({ pins, isGM, gridSize, pinPlaceMode, onPinClick, onPinP
 // 2. BattleMap
 interface BattleMapProps {
   tokens: Token[];
-  onMoveToken: (id: string, x: number, y: number) => void;
+  onMoveToken: (id: string, x: number, y: number, force?: boolean) => void;
   onTokenClick?: (token: Token) => void;
   onTokenDoubleClick?: (token: Token) => void;
   onTokenTripleClick?: (token: Token) => void;
@@ -1288,9 +1288,8 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
       }
       
       if (!hasCollision) {
-        // No collision - save final positions for all moved tokens
         tokensToMove.forEach(t => {
-          onMoveToken(t.id, t.visualX, t.visualY);
+          onMoveToken(t.id, t.visualX, t.visualY, true);
         });
       }
     } finally {
