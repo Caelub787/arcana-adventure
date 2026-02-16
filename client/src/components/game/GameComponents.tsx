@@ -7720,8 +7720,8 @@ const SelectionModeButtonsInner = function SelectionModeButtons({
               <TooltipTrigger asChild>
                 <button
                   onPointerDown={(e) => e.stopPropagation()}
-                  onPointerUp={(e) => { e.stopPropagation(); onModeChange('select'); }}
-                  onClick={(e) => e.stopPropagation()}
+                  onPointerUp={(e) => e.stopPropagation()}
+                  onClick={(e) => { e.stopPropagation(); onModeChange('select'); }}
                   style={{ touchAction: 'manipulation' }}
                   className={`
                     w-9 h-9 md:w-10 md:h-10 rounded-lg border-2 flex items-center justify-center
@@ -7749,8 +7749,8 @@ const SelectionModeButtonsInner = function SelectionModeButtons({
                 <TooltipTrigger asChild>
                   <button
                     onPointerDown={(e) => e.stopPropagation()}
-                    onPointerUp={(e) => { e.stopPropagation(); onModeChange('target'); }}
-                    onClick={(e) => e.stopPropagation()}
+                    onPointerUp={(e) => e.stopPropagation()}
+                    onClick={(e) => { e.stopPropagation(); onModeChange('target'); }}
                     style={{ touchAction: 'manipulation' }}
                     className={`
                       w-9 h-9 md:w-10 md:h-10 rounded-lg border-2 flex items-center justify-center
@@ -7779,8 +7779,8 @@ const SelectionModeButtonsInner = function SelectionModeButtons({
                 <TooltipTrigger asChild>
                   <button
                     onPointerDown={(e) => e.stopPropagation()}
-                    onPointerUp={(e) => { e.stopPropagation(); setShowSpellPicker(true); }}
-                    onClick={(e) => e.stopPropagation()}
+                    onPointerUp={(e) => e.stopPropagation()}
+                    onClick={(e) => { e.stopPropagation(); setShowSpellPicker(true); }}
                     style={{ touchAction: 'manipulation' }}
                     className={`
                       w-9 h-9 md:w-10 md:h-10 rounded-lg border-2 flex items-center justify-center
