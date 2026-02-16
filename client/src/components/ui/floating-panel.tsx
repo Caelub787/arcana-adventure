@@ -263,8 +263,14 @@ export function FloatingPanel({
       }}
       data-testid="floating-panel"
       data-floating-panel
-      onMouseDown={onBringToFront}
-      onPointerDown={onBringToFront}
+      onMouseDown={(e) => {
+        e.stopPropagation();
+        onBringToFront?.();
+      }}
+      onPointerDown={(e) => {
+        e.stopPropagation();
+        onBringToFront?.();
+      }}
     >
       <div
         className={cn(
