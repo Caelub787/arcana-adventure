@@ -47,8 +47,9 @@ export function FloatingPanel({
     };
   }, [defaultPosition, computedDefaultSize]);
 
-  const posRef = React.useRef<{ x: number; y: number }>(initialPos);
-  const sizeRef = React.useRef({ ...computedDefaultSize });
+  const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
+  const posRef = React.useRef<{ x: number; y: number }>(isMobile ? { x: 0, y: 0 } : initialPos);
+  const sizeRef = React.useRef(isMobile ? { width: window.innerWidth, height: window.innerHeight } : { ...computedDefaultSize });
   const isDraggingRef = React.useRef(false);
   const isResizingRef = React.useRef<string | null>(null);
   const dragStartRef = React.useRef({ x: 0, y: 0, posX: 0, posY: 0 });
@@ -57,7 +58,7 @@ export function FloatingPanel({
   const savedPanelStateRef = React.useRef<{ position: { x: number; y: number }; size: { width: number; height: number } } | null>(null);
 
   const [, forceRender] = React.useState(0);
-  const [isFullscreen, setIsFullscreen] = React.useState(false);
+  const [isFullscreen, setIsFullscreen] = React.useState(isMobile);
   const [isMinimized, setIsMinimized] = React.useState(false);
 
   const applyTransform = React.useCallback(() => {
@@ -257,7 +258,7 @@ export function FloatingPanel({
         top: 0,
         width: isMinimized ? minimizedMaxWidth : (isFullscreen ? window.innerWidth : s.width),
         height: isMinimized ? headerHeight : (isFullscreen ? window.innerHeight : s.height),
-        zIndex: isFullscreen ? 100 : zIndex,
+        zIndex: isFullscreen ? Math.max(zIndex, 100) : zIndex,
       }}
       data-testid="floating-panel"
       onMouseDown={onBringToFront}
