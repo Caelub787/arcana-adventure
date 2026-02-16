@@ -31,6 +31,11 @@ interface RollEntry {
   isAoe?: boolean;
   passesThroughWalls?: boolean;
   primaryColor?: string | null;
+  requiresEnergy?: boolean;
+  energyCost?: number;
+  noRoll?: boolean;
+  enableChatMessage?: boolean;
+  chatMessage?: string;
 }
 
 interface RollEntriesEditorProps {
@@ -85,6 +90,11 @@ function emptyFormData(ownerType: string, ownerId: string): Partial<RollEntry> {
     isAoe: false,
     passesThroughWalls: false,
     primaryColor: null,
+    requiresEnergy: false,
+    energyCost: undefined,
+    noRoll: false,
+    enableChatMessage: false,
+    chatMessage: "",
   };
 }
 
@@ -93,6 +103,8 @@ function getRollSummary(roll: RollEntry): string {
   const formula = roll.diceFormula || "";
   const modStr = roll.mod && roll.mod !== 0 ? (roll.mod > 0 ? `+${roll.mod}` : `${roll.mod}`) : "";
   const diceStr = formula ? `${formula}${modStr}` : modStr || "";
+
+  if (roll.noRoll) parts.push("[No Roll]");
 
   if (roll.rollType === "attack") {
     const attrStr = roll.attribute ? ` (${roll.attribute.charAt(0).toUpperCase() + roll.attribute.slice(1)})` : "";
@@ -115,6 +127,9 @@ function getRollDetails(roll: RollEntry): string[] {
   if (roll.isAoe && roll.aoeRange && roll.aoeShape) details.push(`AOE: ${roll.aoeRange}ft ${roll.aoeShape}`);
   if (roll.requiresSave && roll.saveDc && roll.saveAttribute) {
     details.push(`DC ${roll.saveDc} ${roll.saveAttribute.charAt(0).toUpperCase() + roll.saveAttribute.slice(1)} save`);
+  }
+  if (roll.requiresEnergy && roll.energyCost) {
+    details.push(`Energy Cost: ${roll.energyCost}`);
   }
   return details;
 }
@@ -352,6 +367,56 @@ function RollForm({
                 data-testid={`input-${prefix}-saveSuccessEffect`}
               />
             </div>
+          </div>
+        )}
+      </CollapsibleSection>
+
+      <ToggleButton
+        active={!!form.noRoll}
+        onClick={() => setForm((f) => ({ ...f, noRoll: !f.noRoll }))}
+        label="No Roll (apply effect only)"
+        testId={`toggle-${prefix}-noRoll`}
+      />
+
+      <CollapsibleSection title="Energy Cost" testId={`section-${prefix}-energy-cost`}>
+        <ToggleButton
+          active={!!form.requiresEnergy}
+          onClick={() => setForm((f) => ({ ...f, requiresEnergy: !f.requiresEnergy }))}
+          label="Require Energy"
+          testId={`toggle-${prefix}-requiresEnergy`}
+        />
+        {form.requiresEnergy && (
+          <div className="mt-2">
+            <Label className="text-xs text-stone-400">Energy Cost</Label>
+            <Input
+              className="bg-stone-900 border-stone-600 h-7 text-xs"
+              type="number"
+              value={form.energyCost ?? ""}
+              onChange={(e) => setForm((f) => ({ ...f, energyCost: e.target.value ? parseInt(e.target.value) : undefined }))}
+              placeholder="Energy cost"
+              data-testid={`input-${prefix}-energyCost`}
+            />
+          </div>
+        )}
+      </CollapsibleSection>
+
+      <CollapsibleSection title="Chat Message" testId={`section-${prefix}-chat-message`}>
+        <ToggleButton
+          active={!!form.enableChatMessage}
+          onClick={() => setForm((f) => ({ ...f, enableChatMessage: !f.enableChatMessage }))}
+          label="Enable Chat Message"
+          testId={`toggle-${prefix}-enableChatMessage`}
+        />
+        {form.enableChatMessage && (
+          <div className="mt-2">
+            <Label className="text-xs text-stone-400">Chat Message</Label>
+            <textarea
+              className="bg-stone-900 border border-stone-600 rounded-md text-xs text-stone-200 w-full p-2 min-h-[60px] resize-y"
+              value={form.chatMessage || ""}
+              onChange={(e) => setForm((f) => ({ ...f, chatMessage: e.target.value }))}
+              placeholder="Message to display in chat with the roll..."
+              data-testid={`textarea-${prefix}-chatMessage`}
+            />
           </div>
         )}
       </CollapsibleSection>
@@ -614,6 +679,9 @@ export function RollEntriesEditor({ ownerType, ownerId, canEdit, onExecuteRoll }
                     {roll.isAttack && <p className="text-[10px] text-stone-400">⚔️ Attack roll</p>}
                     {roll.gainEnergy && <p className="text-[10px] text-stone-400">⚡ Gains energy</p>}
                     {roll.passesThroughWalls && <p className="text-[10px] text-stone-400">🔮 Passes through walls</p>}
+                    {roll.noRoll && <span className="text-[10px] text-purple-400">No Roll</span>}
+                    {roll.requiresEnergy && roll.energyCost && <span className="text-[10px] text-cyan-400">⚡ {roll.energyCost} Energy</span>}
+                    {roll.enableChatMessage && <span className="text-[10px] text-emerald-400">💬 Chat Message</span>}
                     {roll.applyToStat && roll.applyToStat !== "none" && (
                       <p className="text-[10px] text-stone-400">
                         Applies to: {roll.applyToStat === "hp" ? "HP" : "Energy"}
