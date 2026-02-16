@@ -131,6 +131,20 @@ export function ImageBrowser({ open, onOpenChange, onSelect, title = "Browse Ima
   };
 
   useEffect(() => {
+    if (!open) return;
+    const handleFocusIn = (e: FocusEvent) => {
+      const target = e.target as HTMLElement;
+      if (target?.closest?.('[data-image-browser-content]')) {
+        e.stopImmediatePropagation();
+      }
+    };
+    document.addEventListener('focusin', handleFocusIn, true);
+    return () => {
+      document.removeEventListener('focusin', handleFocusIn, true);
+    };
+  }, [open]);
+
+  useEffect(() => {
     if (!open) {
       setSearchQuery('');
       setSelectedImageId(null);
