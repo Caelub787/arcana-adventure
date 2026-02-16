@@ -1818,19 +1818,19 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
              className="bg-black/50 hover:bg-black/80 text-xs border border-white/10 backdrop-blur-sm"
              onClick={() => {
                const assignedToken = tokens.find(t => t.characterId === assignedCharacterId);
-               if (!assignedToken || viewportSize.width <= 0) return;
+               if (!assignedToken) return;
                
                const targetZoom = Math.max(zoomRef.current, 1);
+               const containerWidth = viewportSize.width || window.innerWidth;
+               const containerHeight = viewportSize.height || window.innerHeight;
+               const pixelOffset = worldToPixelOffset(assignedToken.x, assignedToken.y, targetZoom, containerWidth, containerHeight);
                
-               const tokenWorldX = assignedToken.x;
-               const tokenWorldY = assignedToken.y;
-               const pixelOffset = worldToPixelOffset(tokenWorldX, tokenWorldY, targetZoom, viewportSize.width, viewportSize.height);
-               
-               panRef.current = { x: pixelOffset.x, y: pixelOffset.y };
-               zoomRef.current = targetZoom;
                motionX.set(pixelOffset.x);
                motionY.set(pixelOffset.y);
                motionZoom.set(targetZoom);
+               panRef.current = { x: pixelOffset.x, y: pixelOffset.y };
+               zoomRef.current = targetZoom;
+               forceUpdate(n => n + 1);
                notifyViewChange();
              }}
              data-testid="button-center-token"
