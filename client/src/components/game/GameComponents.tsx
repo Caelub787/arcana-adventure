@@ -1820,28 +1820,17 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                const assignedToken = tokens.find(t => t.characterId === assignedCharacterId);
                if (!assignedToken || viewportSize.width <= 0) return;
                
-               const character = characterMap.get(assignedCharacterId);
-               const dayVision = character?.dayVisionDistance ?? 60;
-               const nightVision = character?.nightVisionDistance ?? 30;
-               const maxVisionFeet = Math.max(dayVision, nightVision);
-               const visionPixels = (maxVisionFeet / 5) * gridSize;
-               
-               const visionDiameter = visionPixels * 2;
-               const padding = 1.15;
-               const fitWidth = viewportSize.width / (visionDiameter * padding);
-               const fitHeight = viewportSize.height / (visionDiameter * padding);
-               const targetZoom = Math.min(fitWidth, fitHeight);
-               const clampedZoom = Math.max(0.1, Math.min(targetZoom, 3));
+               const targetZoom = Math.max(zoomRef.current, 1);
                
                const tokenWorldX = assignedToken.x + gridSize / 2;
                const tokenWorldY = assignedToken.y + gridSize / 2;
-               const pixelOffset = worldToPixelOffset(tokenWorldX, tokenWorldY, clampedZoom, viewportSize.width, viewportSize.height);
+               const pixelOffset = worldToPixelOffset(tokenWorldX, tokenWorldY, targetZoom, viewportSize.width, viewportSize.height);
                
                panRef.current = { x: pixelOffset.x, y: pixelOffset.y };
-               zoomRef.current = clampedZoom;
+               zoomRef.current = targetZoom;
                motionX.set(pixelOffset.x);
                motionY.set(pixelOffset.y);
-               motionZoom.set(clampedZoom);
+               motionZoom.set(targetZoom);
                notifyViewChange();
              }}
              data-testid="button-center-token"
