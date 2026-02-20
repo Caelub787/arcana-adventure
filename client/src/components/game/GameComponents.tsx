@@ -4714,9 +4714,11 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
     let traitName: string | null = null;
     
     try {
-      const targetItems = await api.getItems(charId);
-      const targetHotbars = await api.getHotbars(charId);
-      const targetTraits = await api.getCharacterTraits(charId);
+      const [targetItems, targetHotbars, targetTraits] = await Promise.all([
+        api.getItems(charId),
+        api.getHotbars(charId),
+        api.getCharacterTraits(charId),
+      ]);
       
       // Find equipped armor items (from armor hotbar slots 0-4: helm, chest, arm, legs, boots)
       const equippedArmorIds = targetHotbars
@@ -6960,7 +6962,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
 
     if (pendingSaveResults.length > 0) {
       const affectedNames: string[] = [];
-      const isEnergyEffect = rollEntry.applyToStat === 'energy';
+      const saveApplyStat = rollEntry.applyToStat || 'none';
       
       for (const saveResult of pendingSaveResults) {
         const targetChar = allCharacters?.find((c: any) => c.id === saveResult.characterId);
@@ -6971,7 +6973,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
         if (saveResult.saved) {
           if (saveResult.saveSuccessEffect === 'none') {
             damageToApply = 0;
-            saveNote = ' (Saved - No damage)';
+            saveNote = ' (Saved - No effect)';
           } else {
             damageToApply = Math.floor(total / 2);
             saveNote = ' (Saved - Half)';
@@ -6980,16 +6982,26 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
           saveNote = ' (Failed save)';
         }
 
-        if (damageToApply > 0) {
-          await applyDamageToTarget(
-            damageToApply,
-            rollEntry.damageType || null,
-            targetChar,
-            isEnergyEffect ? rollEntry.gainEnergy : (isHealing ? true : undefined)
-          );
+        if (damageToApply > 0 && saveApplyStat !== 'none') {
+          if (saveApplyStat === 'energy') {
+            gameWs.sendCombatEnergy(
+              targetChar.id,
+              damageToApply,
+              character?.name || 'Unknown',
+              isHealing || rollEntry.gainEnergy || false
+            );
+          } else if (saveApplyStat === 'hp') {
+            await applyDamageToTarget(
+              damageToApply,
+              rollEntry.damageType || null,
+              targetChar,
+              isHealing ? true : undefined
+            );
+          }
         }
         
-        const dmgText = isHealing ? `+${damageToApply} HP` : `-${damageToApply} HP`;
+        const statLabel = saveApplyStat === 'energy' ? 'Energy' : (saveApplyStat === 'hp' ? 'HP' : '');
+        const dmgText = saveApplyStat === 'none' ? `${damageToApply}` : (isHealing ? `+${damageToApply} ${statLabel}` : `-${damageToApply} ${statLabel}`);
         affectedNames.push(`${saveResult.characterName}: ${dmgText}${saveNote}`);
       }
 
@@ -7033,17 +7045,26 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
 
       if (tokensInAoe.length > 0) {
         const affectedNames: string[] = [];
-        const isEnergyEffect = rollEntry.applyToStat === 'energy';
+        const aoeApplyStat = rollEntry.applyToStat || 'none';
 
         for (const token of tokensInAoe) {
           const targetChar = allCharacters?.find((c: any) => c.id === token.characterId);
           if (targetChar) {
-            await applyDamageToTarget(
-              total,
-              rollEntry.damageType || null,
-              targetChar,
-              isEnergyEffect ? rollEntry.gainEnergy : (isHealing ? true : undefined)
-            );
+            if (aoeApplyStat === 'energy') {
+              gameWs.sendCombatEnergy(
+                targetChar.id,
+                total,
+                character?.name || 'Unknown',
+                isHealing || rollEntry.gainEnergy || false
+              );
+            } else if (aoeApplyStat === 'hp') {
+              await applyDamageToTarget(
+                total,
+                rollEntry.damageType || null,
+                targetChar,
+                isHealing ? true : undefined
+              );
+            }
             affectedNames.push(targetChar.name);
           }
         }
@@ -7081,48 +7102,31 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
     }
 
     const applyStat = rollEntry.applyToStat || 'none';
-    const shouldApplyToTarget = targetedTokenId && applyStat !== 'none';
-    if (shouldApplyToTarget) {
+    if (targetedTokenId) {
       const targetData = getTargetData();
-      if (targetData?.characterId) {
-        const isEnergyEffect = applyStat === 'energy';
-        const isHpEffect = applyStat === 'hp';
-        if (isEnergyEffect) {
+      if (targetData) {
+        const displayName = targetData.character?.name || targetData.token?.name || 'Target';
+        if (applyStat === 'energy' && targetData.characterId) {
           gameWs.sendCombatEnergy(
             targetData.characterId,
             total,
             character?.name || 'Unknown',
             isHealing || rollEntry.gainEnergy || false
           );
-          finalTotal = total;
-          const displayName = targetData.character?.name || targetData.token?.name || 'Target';
           const energyAction = (isHealing || rollEntry.gainEnergy) ? '+' : '-';
           label = `${itemOrSpellName} - ${rollEntry.name} → ${displayName} (${energyAction}${total} Energy)`;
-        } else if (isHpEffect) {
-          const { finalDamage, reduction, armorName } = await applyDamageToTarget(
+        } else if (applyStat === 'hp' && targetData.characterId) {
+          label = `${itemOrSpellName} - ${rollEntry.name} → ${displayName} (${isHealing ? '+' : '-'}${total} HP)`;
+          applyDamageToTarget(
             total,
             rollEntry.damageType || null,
             targetData.character,
             isHealing ? true : undefined,
             targetData.characterId
-          );
-          finalTotal = finalDamage;
-          const displayName = targetData.character?.name || targetData.token?.name || 'Target';
-          if (isHealing) {
-            label = `${itemOrSpellName} - ${rollEntry.name} → ${displayName} (+${finalDamage} HP)`;
-          } else if (reduction > 0) {
-            calculationBreakdown += ` - ${reduction} (${armorName || 'Armor'})`;
-            label = `${itemOrSpellName} - ${rollEntry.name} → ${displayName} (-${finalDamage} HP)`;
-          } else {
-            label = `${itemOrSpellName} - ${rollEntry.name} → ${displayName} (-${finalDamage} HP)`;
-          }
+          ).catch(err => console.error('Failed to apply damage:', err));
+        } else {
+          label = `${itemOrSpellName} - ${rollEntry.name} → ${displayName}`;
         }
-      }
-    } else if (targetedTokenId && applyStat === 'none') {
-      const targetData = getTargetData();
-      if (targetData) {
-        const displayName = targetData.character?.name || targetData.token?.name || 'Target';
-        label = `${itemOrSpellName} - ${rollEntry.name} → ${displayName}`;
       }
     }
 
@@ -7132,7 +7136,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
       label,
       result,
       modifier: totalMod,
-      total: finalTotal,
+      total,
       username: character?.name || 'Unknown',
       characterName: character?.name,
       calculationBreakdown,
@@ -7141,7 +7145,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
     });
 
     if (character.campaignId) {
-      const chatText = `${label}: ${calculationBreakdown} = ${finalTotal}${rollEntry.damageType ? ` (${rollEntry.damageType})` : ''}`;
+      const chatText = `${label}: ${calculationBreakdown} = ${total}${rollEntry.damageType ? ` (${rollEntry.damageType})` : ''}`;
       gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', chatText, 'roll');
     }
 
