@@ -7080,38 +7080,49 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
       }
     }
 
-    const shouldApplyToTarget = targetedTokenId && (
-      (rollEntry.applyToStat && rollEntry.applyToStat !== 'none') ||
-      rollEntry.rollType === 'damage' ||
-      rollEntry.rollType === 'heal'
-    );
-    console.log('[RollEntry] shouldApplyToTarget:', shouldApplyToTarget, 'targetedTokenId:', targetedTokenId, 'applyToStat:', rollEntry.applyToStat, 'rollType:', rollEntry.rollType);
+    const applyStat = rollEntry.applyToStat || 'none';
+    const shouldApplyToTarget = targetedTokenId && applyStat !== 'none';
     if (shouldApplyToTarget) {
       const targetData = getTargetData();
-      console.log('[RollEntry] getTargetData:', targetData);
       if (targetData?.characterId) {
-        const isEnergyEffect = rollEntry.applyToStat === 'energy';
-        const { finalDamage, reduction, armorName } = await applyDamageToTarget(
-          total,
-          rollEntry.damageType || null,
-          targetData.character,
-          isEnergyEffect ? rollEntry.gainEnergy : (isHealing ? true : undefined),
-          targetData.characterId
-        );
-        finalTotal = finalDamage;
-        const displayName = targetData.character?.name || targetData.token?.name || 'Target';
-
+        const isEnergyEffect = applyStat === 'energy';
+        const isHpEffect = applyStat === 'hp';
         if (isEnergyEffect) {
-          const energyAction = rollEntry.gainEnergy ? '+' : '-';
-          label = `${itemOrSpellName} - ${rollEntry.name} → ${displayName} (${energyAction}${finalDamage} Energy)`;
-        } else if (isHealing) {
-          label = `${itemOrSpellName} - ${rollEntry.name} → ${displayName} (+${finalDamage} HP)`;
-        } else if (reduction > 0) {
-          calculationBreakdown += ` - ${reduction} (${armorName || 'Armor'})`;
-          label = `${itemOrSpellName} - ${rollEntry.name} → ${displayName} (-${finalDamage} HP)`;
-        } else {
-          label = `${itemOrSpellName} - ${rollEntry.name} → ${displayName} (-${finalDamage} HP)`;
+          gameWs.sendCombatEnergy(
+            targetData.characterId,
+            total,
+            character?.name || 'Unknown',
+            isHealing || rollEntry.gainEnergy || false
+          );
+          finalTotal = total;
+          const displayName = targetData.character?.name || targetData.token?.name || 'Target';
+          const energyAction = (isHealing || rollEntry.gainEnergy) ? '+' : '-';
+          label = `${itemOrSpellName} - ${rollEntry.name} → ${displayName} (${energyAction}${total} Energy)`;
+        } else if (isHpEffect) {
+          const { finalDamage, reduction, armorName } = await applyDamageToTarget(
+            total,
+            rollEntry.damageType || null,
+            targetData.character,
+            isHealing ? true : undefined,
+            targetData.characterId
+          );
+          finalTotal = finalDamage;
+          const displayName = targetData.character?.name || targetData.token?.name || 'Target';
+          if (isHealing) {
+            label = `${itemOrSpellName} - ${rollEntry.name} → ${displayName} (+${finalDamage} HP)`;
+          } else if (reduction > 0) {
+            calculationBreakdown += ` - ${reduction} (${armorName || 'Armor'})`;
+            label = `${itemOrSpellName} - ${rollEntry.name} → ${displayName} (-${finalDamage} HP)`;
+          } else {
+            label = `${itemOrSpellName} - ${rollEntry.name} → ${displayName} (-${finalDamage} HP)`;
+          }
         }
+      }
+    } else if (targetedTokenId && applyStat === 'none') {
+      const targetData = getTargetData();
+      if (targetData) {
+        const displayName = targetData.character?.name || targetData.token?.name || 'Target';
+        label = `${itemOrSpellName} - ${rollEntry.name} → ${displayName}`;
       }
     }
 
@@ -7145,8 +7156,20 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
     setHasDisadvantage(false);
   };
 
-  // Handle click with single/double/triple click detection
   const handleClick = () => {
+    if (targetedTokenId) {
+      const allRolls = spellData ? spellRollEntries : itemRollEntries;
+      const visibleRolls = allRolls.filter((roll: any) => {
+        if (!roll.isHidden) return true;
+        if (!roll.requiredSkillId) return false;
+        const matchingSkill = customSkills.find((cs: any) => cs.systemSkillId === roll.requiredSkillId);
+        return matchingSkill && matchingSkill.value >= (roll.requiredSkillValue || 1);
+      });
+      if (visibleRolls.length === 1) {
+        handleRollEntryExecution(visibleRolls[0]);
+        return;
+      }
+    }
     setPopupPosition({ x: window.innerWidth / 2, y: window.innerHeight / 3 });
     setShowModifierPopup(true);
   };
