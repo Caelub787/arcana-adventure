@@ -8610,7 +8610,7 @@ export default function Campaign() {
       case 'target':
         // Target mode: add red outline to selected token (only one at a time)
         // Clear grid target when clicking a token (mutually exclusive)
-        setThrowableGridTarget(null);
+        setDetonatableGridTarget(null);
         setTargetedTokenId(token.id);
         setSelectedTokenId(token.id);
         // Broadcast targeting to other players so GM can see who is targeting what
@@ -8698,7 +8698,6 @@ export default function Campaign() {
   const handleModeChange = useCallback((mode: SelectionMode) => {
     setSelectionMode(mode);
     setTargetedTokenId(null);
-    setThrowableGridTarget(null);
     setDetonatableGridTarget(null);
     setSelectedTokenId(null);
     if (effectiveCampaignIdRef.current) {
