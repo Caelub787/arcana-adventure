@@ -18867,19 +18867,22 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
               </CardContent>
             </Card>
 
-            {/* Add/Edit Spell Dialog */}
-            <Dialog open={showAddSpell} onOpenChange={(open) => {
-              setShowAddSpell(open);
-              if (!open) {
+            {/* Add/Edit Spell Floating Panel */}
+            {showAddSpell && (
+            <FloatingPanel
+              open={showAddSpell}
+              onClose={() => {
+                setShowAddSpell(false);
                 setSpellDialogTab('library');
-              }
-            }}>
-              <DialogContent key={editSpellData?.id || 'new'} className="max-w-2xl bg-stone-900 border-stone-700 max-h-[90vh] flex flex-col">
-                <DialogHeader>
-                  <DialogTitle className="text-purple-400">
-                    {editSpellData ? 'Edit Spell' : 'Add Magic'}
-                  </DialogTitle>
-                </DialogHeader>
+              }}
+              title={<span className="text-purple-400">{editSpellData ? 'Edit Spell' : 'Add Magic'}</span>}
+              defaultSize={{ width: Math.min(650, window.innerWidth - 40), height: Math.min(600, window.innerHeight - 40) }}
+              minWidth={350}
+              minHeight={300}
+              zIndex={floatingZIndices?.['add-spell'] || 10100}
+              onBringToFront={() => bringToFront?.('add-spell')}
+            >
+              <div className="flex flex-col h-full overflow-hidden">
                 
                 {/* Show tabs only when creating, not editing */}
                 {!editSpellData && (
@@ -18911,7 +18914,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                   </div>
                 )}
                 
-                <ScrollArea className="flex-1 min-h-0 overflow-y-auto" style={{ maxHeight: 'calc(90vh - 140px)' }}>
+                <ScrollArea className="flex-1 min-h-0 overflow-y-auto">
                   {/* Library Tab - only show when not editing */}
                   {!editSpellData && spellDialogTab === 'library' && (
                     <div className="space-y-4">
@@ -19587,8 +19590,9 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                     </div>
                   )}
                 </ScrollArea>
-              </DialogContent>
-            </Dialog>
+              </div>
+            </FloatingPanel>
+            )}
 
             {/* Spell Library Dialog - REMOVED - Now integrated into Add Magic dialog */}
             {/* Keeping showSpellLibrary for backward compat but it's no longer used */}
@@ -20263,13 +20267,15 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
         floatingZIndices={floatingZIndices}
       />
 
-      {/* Add/Edit Item Dialog */}
+      {/* Add/Edit Item Floating Panel */}
       <AddItemDialog 
         open={showAddItem}
         onOpenChange={setShowAddItem}
         onSave={(itemData) => createItemMutation.mutate(itemData)}
         isGM={isGM}
         campaignId={campaignId}
+        bringToFront={bringToFront}
+        floatingZIndices={floatingZIndices}
       />
 
       {/* Manage Templates Dialog (GM Only) */}
@@ -20611,20 +20617,27 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
         </DialogContent>
       </Dialog>
 
-      {/* Feat Tree Viewer Dialog */}
-      <Dialog open={showFeatTreeViewer} onOpenChange={setShowFeatTreeViewer}>
-        <DialogContent className="w-[95vw] max-w-[95vw] h-[90vh] max-h-[90vh] sm:w-[90vw] sm:max-w-[90vw] bg-stone-900 border-stone-700 overflow-hidden flex flex-col p-3 sm:p-6">
-          <DialogHeader className="shrink-0">
-            <DialogTitle className="text-purple-400 flex items-center gap-2 text-base sm:text-lg">
-              <GitBranch className="h-4 w-4 sm:h-5 sm:w-5" />
+      {/* Feat Tree Viewer Floating Panel */}
+      {showFeatTreeViewer && (
+        <FloatingPanel
+          open={showFeatTreeViewer}
+          onClose={() => setShowFeatTreeViewer(false)}
+          title={
+            <span className="text-purple-400 flex items-center gap-2">
+              <GitBranch className="h-4 w-4" />
               {featTreeData?.tree?.name || 'Feat Tree'}
-            </DialogTitle>
+            </span>
+          }
+          defaultSize={{ width: Math.min(900, window.innerWidth - 40), height: Math.min(700, window.innerHeight - 40) }}
+          minWidth={350}
+          minHeight={300}
+          zIndex={floatingZIndices?.['feat-tree-viewer'] || 10100}
+          onBringToFront={() => bringToFront?.('feat-tree-viewer')}
+        >
+          <div className="flex-1 min-h-0 overflow-hidden h-full">
             {featTreeData?.tree?.description && (
-              <DialogDescription className="text-xs sm:text-sm">{featTreeData.tree.description}</DialogDescription>
+              <p className="text-xs text-stone-400 px-3 pt-2 pb-1">{featTreeData.tree.description}</p>
             )}
-          </DialogHeader>
-          
-          <div className="flex-1 min-h-0 overflow-hidden">
             {!featTreeData ? (
               <div className="text-center py-12 text-stone-400">
                 <GitBranch className="h-12 w-12 mx-auto mb-3 opacity-50" />
@@ -20647,8 +20660,8 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
               />
             )}
           </div>
-        </DialogContent>
-      </Dialog>
+        </FloatingPanel>
+      )}
     </div>
   );
 }
@@ -21266,7 +21279,7 @@ function LazyItemImage({ itemId, itemType }: { itemId: string; itemType: string 
 }
 
 // Add Item Dialog Component
-function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open: boolean; onOpenChange: (open: boolean) => void; onSave: (data: any) => void; isGM: boolean; campaignId?: string }) {
+function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId, bringToFront, floatingZIndices }: { open: boolean; onOpenChange: (open: boolean) => void; onSave: (data: any) => void; isGM: boolean; campaignId?: string; bringToFront?: (key: string) => void; floatingZIndices?: Record<string, number> }) {
   const [activeTab, setActiveTab] = useState<'templates' | 'create'>('templates');
   const [templateSearch, setTemplateSearch] = useState('');
   const [templateTypeFilter, setTemplateTypeFilter] = useState('all');
@@ -21655,14 +21668,19 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-stone-900 border-stone-700 max-w-3xl max-h-[90vh] flex flex-col">
-        <DialogHeader>
-          <DialogTitle className="text-amber-500">Add Item</DialogTitle>
-        </DialogHeader>
-        
+    <FloatingPanel
+      open={open}
+      onClose={() => onOpenChange(false)}
+      title={<span className="text-amber-500">Add Item</span>}
+      defaultSize={{ width: Math.min(700, window.innerWidth - 40), height: Math.min(600, window.innerHeight - 40) }}
+      minWidth={350}
+      minHeight={300}
+      zIndex={floatingZIndices?.['add-item'] || 10100}
+      onBringToFront={() => bringToFront?.('add-item')}
+    >
+      <div className="flex flex-col h-full overflow-hidden">
         {/* Tabs */}
-        <div className="flex border-b border-stone-700 mb-4">
+        <div className="flex border-b border-stone-700 mb-4 px-4 pt-2 shrink-0">
           <button
             onClick={() => setActiveTab('templates')}
             className={`px-4 py-2 font-medium transition-colors ${
@@ -21687,7 +21705,7 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
           </button>
         </div>
 
-        <ScrollArea className="flex-1 min-h-0 overflow-y-auto" style={{ maxHeight: 'calc(90vh - 140px)' }}>
+        <ScrollArea className="flex-1 min-h-0 overflow-y-auto">
           {activeTab === 'templates' ? (
             <div className="space-y-4">
               {/* Search and Filter */}
@@ -22355,7 +22373,6 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
           </div>
         )}
         </ScrollArea>
-      </DialogContent>
 
       {/* Image Cropping Dialog */}
       <Dialog open={showImageCrop} onOpenChange={setShowImageCrop}>
@@ -22425,7 +22442,8 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId }: { open:
           )}
         </DialogContent>
       </Dialog>
-    </Dialog>
+      </div>
+    </FloatingPanel>
   );
 }
 
