@@ -6677,8 +6677,25 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
   };
 
   const handleRollEntryExecution = async (rollEntry: any) => {
+    console.log('[RollEntry] Executing:', rollEntry.name, 'Type:', rollEntry.rollType, 'TargetId:', targetedTokenId, 'Formula:', rollEntry.diceFormula);
     const isHealing = rollEntry.rollType === 'heal';
     const isAttackRoll = rollEntry.rollType === 'attack';
+
+    if (rollEntry.requiresEnergy && rollEntry.energyCost > 0) {
+      const currentEnergy = character?.currentEnergy ?? 0;
+      if (currentEnergy < rollEntry.energyCost) {
+        triggerRollNotification({
+          type: 'system',
+          label: `${spellData?.name || itemData?.name || 'Roll'} - ${rollEntry.name}: Not enough energy!`,
+          result: 0,
+          total: 0,
+          username: character?.name || 'Unknown',
+          characterName: character?.name,
+          calculationBreakdown: `Requires ${rollEntry.energyCost} energy, you have ${currentEnergy}`,
+        });
+        return;
+      }
+    }
 
     if (!rollEntry.diceFormula && !isAttackRoll) return;
 
@@ -6795,6 +6812,10 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
         gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', chatText, 'roll');
       }
 
+      if (rollEntry.requiresEnergy && rollEntry.energyCost > 0 && character?.id) {
+        gameWs.sendCombatEnergy(character.id, rollEntry.energyCost, character.name || 'Unknown', false);
+      }
+
       onClearTarget?.();
       setShowModifierPopup(false);
       setExtraModifier(0);
@@ -6895,6 +6916,10 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
             });
           }
         }
+      }
+
+      if (rollEntry.requiresEnergy && rollEntry.energyCost > 0 && character?.id) {
+        gameWs.sendCombatEnergy(character.id, rollEntry.energyCost, character.name || 'Unknown', false);
       }
 
       setPendingSaveResults(newSaveResults);
@@ -7060,8 +7085,10 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
       rollEntry.rollType === 'damage' ||
       rollEntry.rollType === 'heal'
     );
+    console.log('[RollEntry] shouldApplyToTarget:', shouldApplyToTarget, 'targetedTokenId:', targetedTokenId, 'applyToStat:', rollEntry.applyToStat, 'rollType:', rollEntry.rollType);
     if (shouldApplyToTarget) {
       const targetData = getTargetData();
+      console.log('[RollEntry] getTargetData:', targetData);
       if (targetData?.characterId) {
         const isEnergyEffect = rollEntry.applyToStat === 'energy';
         const { finalDamage, reduction, armorName } = await applyDamageToTarget(
@@ -7105,6 +7132,10 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
     if (character.campaignId) {
       const chatText = `${label}: ${calculationBreakdown} = ${finalTotal}${rollEntry.damageType ? ` (${rollEntry.damageType})` : ''}`;
       gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', chatText, 'roll');
+    }
+
+    if (rollEntry.requiresEnergy && rollEntry.energyCost > 0 && character?.id) {
+      gameWs.sendCombatEnergy(character.id, rollEntry.energyCost, character.name || 'Unknown', false);
     }
 
     onClearTarget?.();
@@ -7402,12 +7433,13 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
                   <button
                     key={roll.id}
                     onClick={() => handleRollEntryExecution(roll)}
-                    className="w-full flex items-center justify-between p-2 rounded-lg border border-stone-600 bg-stone-800/50 hover:bg-stone-700/50 transition-colors"
+                    className={`w-full flex items-center justify-between p-2 rounded-lg border transition-colors ${roll.primaryColor ? 'border-white/20 text-white hover:brightness-110' : 'border-stone-600 bg-stone-800/50 hover:bg-stone-700/50'}`}
+                    style={roll.primaryColor ? { backgroundColor: roll.primaryColor } : undefined}
                     data-testid={`button-roll-entry-${roll.id}`}
                   >
-                    <span className="text-sm font-medium text-stone-200">{roll.name}</span>
+                    <span className="text-sm font-medium text-white">{roll.name}</span>
                     {stats.length > 0 && (
-                      <span className="text-xs text-stone-400">{stats.join(' · ')}</span>
+                      <span className={`text-xs ${roll.primaryColor ? 'text-white/70' : 'text-stone-400'}`}>{stats.join(' · ')}</span>
                     )}
                   </button>
                 );

@@ -7052,13 +7052,44 @@ export default function Campaign() {
 
       const result = rollDice(slot.rollFormula, context);
       const rollText = formatRollResult(result);
+
+      if (targetedTokenId) {
+        const targetToken = tokens?.find((t: any) => t.id === targetedTokenId);
+        if (targetToken && targetToken.characterId) {
+          const targetChar = (characters as any[])?.find((c: any) => c.id === targetToken.characterId) || 
+                             sandboxActorsForHotbar?.find((a: any) => a.id === targetToken.characterId);
+          const targetName = targetChar?.name || targetToken?.name || 'Target';
+
+          gameWs.sendCombatDamage(
+            targetToken.characterId,
+            result.total,
+            undefined,
+            slot.actorName || 'Actor',
+            false
+          );
+
+          const label = slot.embeddedItemName
+            ? `${slot.embeddedItemName}: ${slot.buttonLabel || 'Roll'}`
+            : (slot.buttonLabel || 'Roll');
+
+          gameWs.sendChatMessage('', slot.actorName || 'Actor', `🎲 ${label}: ${rollText} → ${targetName} (-${result.total} HP)`, 'roll');
+          toast({ title: `${label}: ${result.total} → ${targetName}`, description: `${rollText} (-${result.total} HP)` });
+
+          setTargetedTokenId(null);
+          if (effectiveCampaignIdRef.current) {
+            gameWs.clearTokenTargeting();
+          }
+          return;
+        }
+      }
+
       const label = slot.embeddedItemName
         ? `${slot.embeddedItemName}: ${slot.buttonLabel || 'Roll'}`
         : (slot.buttonLabel || 'Roll');
       gameWs.sendChatMessage('', slot.actorName || 'Actor', `🎲 ${label}: ${rollText}`, 'roll');
       toast({ title: `${label}: ${result.total}`, description: rollText });
     }
-  }, [sandboxActorsForHotbar, sandboxTemplatesForHotbar, toast]);
+  }, [sandboxActorsForHotbar, sandboxTemplatesForHotbar, toast, targetedTokenId, tokens, characters, effectiveCampaignId]);
 
   // Determine which scene ID to use for tokens
   // For GM: use gmViewingSceneId if set, otherwise use activeSceneId
