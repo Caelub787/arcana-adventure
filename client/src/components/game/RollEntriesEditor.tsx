@@ -36,13 +36,18 @@ interface RollEntry {
   noRoll?: boolean;
   enableChatMessage?: boolean;
   chatMessage?: string;
+  applyTokenEffects?: boolean;
+  tokenEffectIds?: string[];
+  effectTriggerCondition?: string;
 }
 
 interface RollEntriesEditorProps {
   ownerType: "item" | "spell";
-  ownerId: string;
+  ownerId?: string;
   canEdit: boolean;
   onExecuteRoll?: (roll: any) => void;
+  draftRolls?: Partial<RollEntry>[];
+  onDraftRollsChange?: (rolls: Partial<RollEntry>[]) => void;
 }
 
 const ATTRIBUTE_OPTIONS = ["might", "finesse", "wit", "presence", "will", "craft"];
@@ -95,6 +100,9 @@ function emptyFormData(ownerType: string, ownerId: string): Partial<RollEntry> {
     noRoll: false,
     enableChatMessage: false,
     chatMessage: "",
+    applyTokenEffects: false,
+    tokenEffectIds: [],
+    effectTriggerCondition: "always",
   };
 }
 
@@ -130,6 +138,12 @@ function getRollDetails(roll: RollEntry): string[] {
   }
   if (roll.requiresEnergy && roll.energyCost) {
     details.push(`Energy Cost: ${roll.energyCost}`);
+  }
+  if (roll.applyTokenEffects) {
+    const trigger = roll.effectTriggerCondition === 'success' ? 'on success' : 
+                    roll.effectTriggerCondition === 'fail' ? 'on fail' : 'always';
+    const count = (roll.tokenEffectIds || []).length;
+    details.push(`Applies ${count} effect${count !== 1 ? 's' : ''} (${trigger})`);
   }
   return details;
 }
@@ -174,6 +188,7 @@ function RollForm({
   onCancel,
   saving,
   isNew,
+  availableEffects = [],
 }: {
   form: Partial<RollEntry>;
   setForm: React.Dispatch<React.SetStateAction<Partial<RollEntry>>>;
@@ -181,6 +196,7 @@ function RollForm({
   onCancel: () => void;
   saving: boolean;
   isNew: boolean;
+  availableEffects?: any[];
 }) {
   const prefix = isNew ? "new-roll" : `edit-roll-${form.id}`;
 
@@ -421,6 +437,64 @@ function RollForm({
         )}
       </CollapsibleSection>
 
+      <CollapsibleSection title="Token Effects" testId={`${prefix}-token-effects`}>
+        <ToggleButton
+          active={!!form.applyTokenEffects}
+          onClick={() => setForm(f => ({ ...f, applyTokenEffects: !f.applyTokenEffects, tokenEffectIds: !f.applyTokenEffects ? f.tokenEffectIds : [] }))}
+          label="Apply Token Effects"
+          testId={`toggle-${prefix}-apply-effects`}
+        />
+        {form.applyTokenEffects && (
+          <div className="space-y-2 mt-2">
+            <div>
+              <Label className="text-xs text-stone-400">Trigger Condition</Label>
+              <Select value={form.effectTriggerCondition || "always"} onValueChange={(v) => setForm(f => ({ ...f, effectTriggerCondition: v }))}>
+                <SelectTrigger className="bg-stone-900 border-stone-600 h-7 text-xs" data-testid={`select-${prefix}-effect-trigger`}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="always">Always</SelectItem>
+                  <SelectItem value="success">On Success</SelectItem>
+                  <SelectItem value="fail">On Fail</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="text-xs text-stone-400">Effects to Apply</Label>
+              <div className="space-y-1 mt-1">
+                {availableEffects.map((effect: any) => {
+                  const isSelected = (form.tokenEffectIds || []).includes(effect.id);
+                  return (
+                    <label key={effect.id} className="flex items-center gap-2 text-xs text-stone-300 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => {
+                          const current = form.tokenEffectIds || [];
+                          setForm(f => ({
+                            ...f,
+                            tokenEffectIds: isSelected
+                              ? current.filter((id: string) => id !== effect.id)
+                              : [...current, effect.id]
+                          }));
+                        }}
+                        className="rounded border-stone-600"
+                        data-testid={`checkbox-${prefix}-effect-${effect.id}`}
+                      />
+                      <span>{effect.name}</span>
+                      {effect.imageUrl && <img src={effect.imageUrl} alt="" className="w-4 h-4 rounded" />}
+                    </label>
+                  );
+                })}
+                {availableEffects.length === 0 && (
+                  <p className="text-xs text-stone-500 italic">No token effects defined. Create them in admin settings.</p>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+      </CollapsibleSection>
+
       <div>
         <Label className="text-xs text-stone-400">Notification Color</Label>
         <div className="flex items-center gap-2 mt-1">
@@ -481,29 +555,41 @@ function RollForm({
   );
 }
 
-export function RollEntriesEditor({ ownerType, ownerId, canEdit, onExecuteRoll }: RollEntriesEditorProps) {
+export function RollEntriesEditor({ ownerType, ownerId, canEdit, onExecuteRoll, draftRolls, onDraftRollsChange }: RollEntriesEditorProps) {
   const queryClient = useQueryClient();
   const [addingNew, setAddingNew] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [newForm, setNewForm] = useState<Partial<RollEntry>>(() => emptyFormData(ownerType, ownerId));
+  const [newForm, setNewForm] = useState<Partial<RollEntry>>(() => emptyFormData(ownerType, ownerId || ''));
   const [editForm, setEditForm] = useState<Partial<RollEntry>>({});
+
+  const { data: availableEffects = [] } = useQuery({
+    queryKey: ['token-effects-list'],
+    queryFn: () => api.getTokenEffects(),
+    enabled: canEdit,
+  });
+
+  const isDraftMode = !ownerId;
+  const draftRollsData = draftRolls || [];
 
   const queryKey = ownerType === "item" ? ["rollEntries", "item", ownerId] : ["rollEntries", "spell", ownerId];
 
-  const { data: rolls = [], isLoading } = useQuery({
+  const { data: apiRolls = [], isLoading: apiLoading } = useQuery({
     queryKey,
-    queryFn: () => (ownerType === "item" ? api.getItemRolls(ownerId) : api.getSpellRolls(ownerId)),
-    enabled: !!ownerId,
+    queryFn: () => (ownerType === "item" ? api.getItemRolls(ownerId!) : api.getSpellRolls(ownerId!)),
+    enabled: !isDraftMode && !!ownerId,
     staleTime: 5 * 60 * 1000,
   });
+
+  const rolls = isDraftMode ? draftRollsData : apiRolls;
+  const isLoading = isDraftMode ? false : apiLoading;
 
   const createMutation = useMutation({
     mutationFn: (data: Partial<RollEntry>) => api.createRollEntry(data as any),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey });
       setAddingNew(false);
-      setNewForm(emptyFormData(ownerType, ownerId));
+      setNewForm(emptyFormData(ownerType, ownerId || ''));
     },
   });
 
@@ -530,21 +616,43 @@ export function RollEntriesEditor({ ownerType, ownerId, canEdit, onExecuteRoll }
   };
 
   const handleSaveNew = () => {
+    if (isDraftMode) {
+      const newRoll = {
+        ...newForm,
+        id: `draft-${Date.now()}`,
+        sortOrder: draftRollsData.length,
+      };
+      onDraftRollsChange?.([...draftRollsData, newRoll]);
+      setAddingNew(false);
+      setNewForm(emptyFormData(ownerType, ownerId || ''));
+      return;
+    }
     const maxSort = rolls.length > 0 ? Math.max(...rolls.map((r: any) => r.sortOrder ?? 0)) : -1;
     createMutation.mutate({ ...newForm, ownerType, ownerId, sortOrder: maxSort + 1 });
   };
 
   const handleSaveEdit = () => {
     if (!editingId) return;
+    if (isDraftMode) {
+      const updated = draftRollsData.map(r => r.id === editingId ? { ...r, ...editForm } : r);
+      onDraftRollsChange?.(updated);
+      setEditingId(null);
+      setEditForm({});
+      return;
+    }
     const { id, ...data } = editForm as RollEntry;
     updateMutation.mutate({ id: editingId, data });
   };
 
   const handleDelete = (id: string) => {
+    if (isDraftMode) {
+      onDraftRollsChange?.(draftRollsData.filter(r => r.id !== id));
+      return;
+    }
     deleteMutation.mutate(id);
   };
 
-  const sortedRolls = [...(rolls as RollEntry[])].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+  const sortedRolls = [...(rolls as RollEntry[])].sort((a, b) => ((a as any).sortOrder ?? 0) - ((b as any).sortOrder ?? 0));
 
   return (
     <div className="space-y-2" data-testid="roll-entries-editor">
@@ -561,7 +669,7 @@ export function RollEntriesEditor({ ownerType, ownerId, canEdit, onExecuteRoll }
             onClick={() => {
               setAddingNew(true);
               setEditingId(null);
-              setNewForm(emptyFormData(ownerType, ownerId));
+              setNewForm(emptyFormData(ownerType, ownerId || ''));
             }}
             data-testid="button-add-roll"
           >
@@ -578,8 +686,9 @@ export function RollEntriesEditor({ ownerType, ownerId, canEdit, onExecuteRoll }
             setForm={setNewForm}
             onSave={handleSaveNew}
             onCancel={() => setAddingNew(false)}
-            saving={createMutation.isPending}
+            saving={isDraftMode ? false : createMutation.isPending}
             isNew
+            availableEffects={availableEffects}
           />
         </div>
       )}
@@ -609,8 +718,9 @@ export function RollEntriesEditor({ ownerType, ownerId, canEdit, onExecuteRoll }
                 setForm={setEditForm}
                 onSave={handleSaveEdit}
                 onCancel={() => { setEditingId(null); setEditForm({}); }}
-                saving={updateMutation.isPending}
+                saving={isDraftMode ? false : updateMutation.isPending}
                 isNew={false}
+                availableEffects={availableEffects}
               />
             ) : (
               <div>
@@ -682,6 +792,11 @@ export function RollEntriesEditor({ ownerType, ownerId, canEdit, onExecuteRoll }
                     {roll.noRoll && <span className="text-[10px] text-purple-400">No Roll</span>}
                     {roll.requiresEnergy && roll.energyCost && <span className="text-[10px] text-cyan-400">⚡ {roll.energyCost} Energy</span>}
                     {roll.enableChatMessage && <span className="text-[10px] text-emerald-400">💬 Chat Message</span>}
+                    {roll.applyTokenEffects && (
+                      <p className="text-[10px] text-violet-400">
+                        Applies effects ({roll.effectTriggerCondition || 'always'})
+                      </p>
+                    )}
                     {roll.applyToStat && roll.applyToStat !== "none" && (
                       <p className="text-[10px] text-stone-400">
                         Applies to: {roll.applyToStat === "hp" ? "HP" : "Energy"}

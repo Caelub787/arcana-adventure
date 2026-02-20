@@ -1275,6 +1275,9 @@ export const rollEntries = pgTable("roll_entries", {
   noRoll: boolean("no_roll").default(false),
   enableChatMessage: boolean("enable_chat_message").default(false),
   chatMessage: text("chat_message"),
+  applyTokenEffects: boolean("apply_token_effects").default(false),
+  tokenEffectIds: text("token_effect_ids").array(),
+  effectTriggerCondition: text("effect_trigger_condition").default("always"),
 });
 
 export const insertRollEntrySchema = createInsertSchema(rollEntries).omit({

@@ -4149,6 +4149,40 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
     saved: boolean;
     saveSuccessEffect: string;
   }>>([]);
+
+  const [showInfoPanel, setShowInfoPanel] = useState(false);
+  const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const isLongPressRef = useRef(false);
+
+  useEffect(() => {
+    return () => {
+      if (longPressTimerRef.current) {
+        clearTimeout(longPressTimerRef.current);
+      }
+    };
+  }, []);
+
+  const handlePointerDown = (e: React.PointerEvent) => {
+    isLongPressRef.current = false;
+    longPressTimerRef.current = setTimeout(() => {
+      isLongPressRef.current = true;
+      setShowInfoPanel(true);
+    }, 500);
+  };
+
+  const handlePointerUp = () => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  };
+
+  const handlePointerCancel = () => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  };
   
   // Fetch item data if itemId exists (same pattern as HotbarSlot)
   const { data: itemData } = useQuery({
@@ -7219,8 +7253,12 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
         <Tooltip>
           <TooltipTrigger asChild>
             <div
-              onClick={isClickable ? handleClick : undefined}
+              onClick={isClickable ? (e) => { if (isLongPressRef.current) { isLongPressRef.current = false; return; } handleClick(e); } : undefined}
               onContextMenu={(e) => e.preventDefault()}
+              onPointerDown={handlePointerDown}
+              onPointerUp={handlePointerUp}
+              onPointerCancel={handlePointerCancel}
+              onPointerLeave={handlePointerCancel}
               className={`
                 w-11 h-11 md:w-16 md:h-16 rounded border flex items-center justify-center text-[9px] md:text-[12px]
                 ${content 
@@ -7404,6 +7442,203 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
             )}
           </div>
         </div>
+        </>,
+        document.body
+      )}
+
+      {showInfoPanel && ReactDOM.createPortal(
+        <>
+          <div className="fixed inset-0 z-[99999] bg-black/40" onClick={() => setShowInfoPanel(false)} />
+          <div 
+            className="fixed z-[100000] w-80 max-h-[70vh] overflow-y-auto bg-stone-900 border border-stone-600 text-stone-200 p-4 rounded-xl shadow-2xl"
+            style={{ 
+              left: '50%', 
+              top: '50%',
+              transform: 'translate(-50%, -50%)'
+            }}
+          >
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-amber-400 text-lg font-bold">
+                {traitData?.name || hotbar?.skillName || spellData?.name || itemData?.name || 'Details'}
+              </h3>
+              <button onClick={() => setShowInfoPanel(false)} className="text-stone-400 hover:text-stone-200">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            
+            {traitData && (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <Star className="h-4 w-4 text-cyan-400" />
+                  <span className="text-sm text-cyan-400 font-medium">Trait</span>
+                </div>
+                {traitData.description && (
+                  <p className="text-sm text-stone-300 leading-relaxed">{traitData.description}</p>
+                )}
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  {traitData.attribute && (
+                    <div className="bg-stone-800 rounded p-2">
+                      <span className="text-stone-500 block">Attribute</span>
+                      <span className="text-stone-200 capitalize">{traitData.attribute}</span>
+                    </div>
+                  )}
+                  {traitData.diceFormula && (
+                    <div className="bg-stone-800 rounded p-2">
+                      <span className="text-stone-500 block">Dice</span>
+                      <span className="text-stone-200">{traitData.diceFormula}</span>
+                    </div>
+                  )}
+                  <div className="bg-stone-800 rounded p-2">
+                    <span className="text-stone-500 block">Uses</span>
+                    <span className="text-stone-200">{traitData.currentUses || 0} / {traitData.usesPerLongRest || '∞'}</span>
+                  </div>
+                  {traitData.restType && (
+                    <div className="bg-stone-800 rounded p-2">
+                      <span className="text-stone-500 block">Recharges</span>
+                      <span className="text-stone-200 capitalize">{traitData.restType} Rest</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {hotbar?.skillName && !traitData && (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <Dice5 className="h-4 w-4 text-blue-400" />
+                  <span className="text-sm text-blue-400 font-medium">Skill</span>
+                </div>
+                {(() => {
+                  const SKILL_ATTRIBUTE_MAP_INFO: Record<string, string> = {
+                    'Strength': 'might', 'Agility': 'finesse', 'Sleight of Hand': 'finesse',
+                    'Stealth': 'finesse', 'Arcana': 'wit', 'History': 'wit',
+                    'Investigation': 'wit', 'Perception': 'wit', 'Wisdom': 'wit', 'Culture': 'wit',
+                    'Charisma': 'presence', 'Deception': 'presence', 'Intimidation': 'presence',
+                    'Medicine': 'craft', 'Concentration': 'will', 'Survival': 'will', 'Beast Handling': 'will',
+                  };
+                  const skillName = hotbar.skillName;
+                  const attrKey = SKILL_ATTRIBUTE_MAP_INFO[skillName];
+                  const skillValue = (character as any)?.[`skill${skillName.replace(/\s/g, '')}`] || 0;
+                  const attrValue = attrKey ? (character as any)?.[attrKey] || 0 : 0;
+                  return (
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      {attrKey && (
+                        <div className="bg-stone-800 rounded p-2">
+                          <span className="text-stone-500 block">Attribute</span>
+                          <span className="text-stone-200 capitalize">{attrKey} ({attrValue >= 0 ? '+' : ''}{attrValue})</span>
+                        </div>
+                      )}
+                      <div className="bg-stone-800 rounded p-2">
+                        <span className="text-stone-500 block">Skill Bonus</span>
+                        <span className="text-stone-200">{skillValue >= 0 ? '+' : ''}{skillValue}</span>
+                      </div>
+                      <div className="bg-stone-800 rounded p-2">
+                        <span className="text-stone-500 block">Die</span>
+                        <span className="text-stone-200">{attrValue >= 5 ? 'd30' : 'd20'}</span>
+                      </div>
+                      <div className="bg-stone-800 rounded p-2">
+                        <span className="text-stone-500 block">Total Modifier</span>
+                        <span className="text-stone-200">{(skillValue + attrValue) >= 0 ? '+' : ''}{skillValue + attrValue}</span>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
+
+            {itemData && !traitData && !hotbar?.skillName && (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <Sword className="h-4 w-4 text-amber-400" />
+                  <span className="text-sm text-amber-400 font-medium capitalize">{itemData.itemType || 'Item'}</span>
+                  {itemData.rarity && <span className="text-xs text-stone-400">({itemData.rarity})</span>}
+                </div>
+                {itemData.description && (
+                  <p className="text-sm text-stone-300 leading-relaxed">{itemData.description}</p>
+                )}
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  {itemData.damage && (
+                    <div className="bg-stone-800 rounded p-2">
+                      <span className="text-stone-500 block">Damage</span>
+                      <span className="text-stone-200">{itemData.damage} {itemData.damageType || ''}</span>
+                    </div>
+                  )}
+                  {itemData.range && (
+                    <div className="bg-stone-800 rounded p-2">
+                      <span className="text-stone-500 block">Range</span>
+                      <span className="text-stone-200">{itemData.range}ft</span>
+                    </div>
+                  )}
+                  {itemData.attribute && (
+                    <div className="bg-stone-800 rounded p-2">
+                      <span className="text-stone-500 block">Attribute</span>
+                      <span className="text-stone-200 capitalize">{itemData.attribute}</span>
+                    </div>
+                  )}
+                  {itemData.quantity != null && (
+                    <div className="bg-stone-800 rounded p-2">
+                      <span className="text-stone-500 block">Quantity</span>
+                      <span className="text-stone-200">x{itemData.quantity}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {spellData && !traitData && !hotbar?.skillName && (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="h-4 w-4 text-purple-400" />
+                  <span className="text-sm text-purple-400 font-medium">Spell</span>
+                </div>
+                {spellData.description && (
+                  <p className="text-sm text-stone-300 leading-relaxed">{spellData.description}</p>
+                )}
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  {spellData.damage && (
+                    <div className="bg-stone-800 rounded p-2">
+                      <span className="text-stone-500 block">Damage</span>
+                      <span className="text-stone-200">{spellData.damage} {spellData.damageType || ''}</span>
+                    </div>
+                  )}
+                  {spellData.energyCost && (
+                    <div className="bg-stone-800 rounded p-2">
+                      <span className="text-stone-500 block">Energy Cost</span>
+                      <span className="text-stone-200">{spellData.energyCost}</span>
+                    </div>
+                  )}
+                  {spellData.attribute && (
+                    <div className="bg-stone-800 rounded p-2">
+                      <span className="text-stone-500 block">Attribute</span>
+                      <span className="text-stone-200 capitalize">{spellData.attribute}</span>
+                    </div>
+                  )}
+                  {spellData.rangeNum && (
+                    <div className="bg-stone-800 rounded p-2">
+                      <span className="text-stone-500 block">Range</span>
+                      <span className="text-stone-200">{spellData.rangeNum}ft</span>
+                    </div>
+                  )}
+                  {spellData.castingTime && (
+                    <div className="bg-stone-800 rounded p-2">
+                      <span className="text-stone-500 block">Casting Time</span>
+                      <span className="text-stone-200">{spellData.castingTime}</span>
+                    </div>
+                  )}
+                  {spellData.aoe && (
+                    <div className="bg-stone-800 rounded p-2">
+                      <span className="text-stone-500 block">AoE</span>
+                      <span className="text-stone-200">{spellData.aoe}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            <div className="mt-3 pt-2 border-t border-stone-700">
+              <p className="text-[10px] text-stone-500 text-center">Long-press to view details · Tap to roll</p>
+            </div>
+          </div>
         </>,
         document.body
       )}

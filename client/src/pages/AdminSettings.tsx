@@ -189,7 +189,20 @@ export default function AdminSettings() {
   });
 
   const createItemMutation = useMutation({
-    mutationFn: (item: Partial<Item>) => api.createSystemItem(item),
+    mutationFn: async ({ item, draftRolls }: { item: Partial<Item>; draftRolls?: any[] }) => {
+      const created = await api.createSystemItem(item);
+      if (draftRolls && draftRolls.length > 0) {
+        for (const roll of draftRolls) {
+          const { id, ...rollData } = roll;
+          await api.createRollEntry({
+            ...rollData,
+            ownerType: 'item',
+            ownerId: created.id,
+          });
+        }
+      }
+      return created;
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['system-items'] });
       setShowAddItem(false);
@@ -261,7 +274,20 @@ export default function AdminSettings() {
   });
 
   const createSpellMutation = useMutation({
-    mutationFn: (spell: Partial<SystemSpell>) => api.createSystemSpell(spell),
+    mutationFn: async ({ spell, draftRolls }: { spell: Partial<SystemSpell>; draftRolls?: any[] }) => {
+      const created = await api.createSystemSpell(spell);
+      if (draftRolls && draftRolls.length > 0) {
+        for (const roll of draftRolls) {
+          const { id, ...rollData } = roll;
+          await api.createRollEntry({
+            ...rollData,
+            ownerType: 'spell',
+            ownerId: created.id,
+          });
+        }
+      }
+      return created;
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['system-spells'] });
       setShowAddSpell(false);
@@ -842,7 +868,7 @@ export default function AdminSettings() {
             setShowAddItem(open);
             if (!open) setDuplicatingItem(null);
           }}
-          onSave={(data) => createItemMutation.mutate(data)}
+          onSave={(data, draftRolls) => createItemMutation.mutate({ item: data, draftRolls })}
           initialData={duplicatingItem ? { ...duplicatingItem, name: `${duplicatingItem.name} (Copy)` } : undefined}
           isLoading={createItemMutation.isPending}
         />
@@ -851,7 +877,7 @@ export default function AdminSettings() {
           <ItemFormDialog
             open={!!editingItem}
             onOpenChange={() => setEditingItem(null)}
-            onSave={(data) => updateItemMutation.mutate({ id: editingItem.id, data })}
+            onSave={(data, _draftRolls) => updateItemMutation.mutate({ id: editingItem.id, data })}
             initialData={editingItem}
             isLoading={updateItemMutation.isPending}
           />
@@ -879,7 +905,7 @@ export default function AdminSettings() {
         <SpellFormDialog
           open={showAddSpell}
           onOpenChange={setShowAddSpell}
-          onSave={(data) => createSpellMutation.mutate(data)}
+          onSave={(data, draftRolls) => createSpellMutation.mutate({ spell: data, draftRolls })}
           isLoading={createSpellMutation.isPending}
         />
 
@@ -887,7 +913,7 @@ export default function AdminSettings() {
           <SpellFormDialog
             open={!!editingSpell}
             onOpenChange={() => setEditingSpell(null)}
-            onSave={(data) => updateSpellMutation.mutate({ id: editingSpell.id, data })}
+            onSave={(data, _draftRolls) => updateSpellMutation.mutate({ id: editingSpell.id, data })}
             initialData={editingSpell}
             isLoading={updateSpellMutation.isPending}
           />
@@ -4147,9 +4173,9 @@ function FeatTreesView() {
     feats.forEach((f: Feat) => featById.set(f.id, f));
 
     return (
-      <div className="space-y-3">
+      <div className="flex flex-col flex-1 min-h-0 gap-3">
         {/* Toolbar - moved outside canvas */}
-        <div className="flex flex-wrap gap-2 items-center">
+        <div className="flex flex-wrap gap-2 items-center shrink-0">
           <Button 
             size="sm" 
             onClick={handleAddFeat}
@@ -4236,10 +4262,12 @@ function FeatTreesView() {
         {/* Canvas container */}
         <div 
           ref={canvasContainerRef}
-          className={`relative w-full h-[600px] overflow-hidden rounded-lg border border-stone-700 ${
+          className={`relative w-full overflow-hidden rounded-lg border border-stone-700 ${
             connectionMode ? 'cursor-crosshair' : 'cursor-grab active:cursor-grabbing'
           }`}
           style={{ 
+            height: 'calc(100vh - 280px)',
+            minHeight: '400px',
             touchAction: 'none',
             background: 'radial-gradient(ellipse at center, #1c1917 0%, #0c0a09 100%)',
             userSelect: 'none',
@@ -4637,8 +4665,8 @@ function FeatTreesView() {
   }
 
   return (
-    <Card className="bg-stone-900 border-stone-700">
-      <CardHeader className="flex flex-row items-center gap-4">
+    <Card className="bg-stone-900 border-stone-700 flex flex-col flex-1 min-h-0">
+      <CardHeader className="flex flex-row items-center gap-4 shrink-0">
         <Button
           variant="ghost"
           size="icon"
@@ -4661,12 +4689,12 @@ function FeatTreesView() {
           Edit Tree
         </Button>
       </CardHeader>
-      <CardContent className="p-0 sm:p-2">
+      <CardContent className="p-0 sm:p-2 flex-1 flex flex-col min-h-0">
         {treeDataLoading ? (
           <div className="text-center py-12 text-stone-400">Loading tree...</div>
         ) : (
-          <div className="space-y-2">
-            <div className="px-4 py-2 text-xs text-stone-500 border-b border-stone-800">
+          <div className="flex flex-col flex-1 min-h-0">
+            <div className="px-4 py-2 text-xs text-stone-500 border-b border-stone-800 shrink-0">
               <span className="font-medium">Tips:</span> Drag nodes to reposition • Double-click to edit • Right-click for menu • Scroll to zoom • Drag canvas to pan
             </div>
             {renderSkillTree()}
@@ -6367,7 +6395,7 @@ function ItemEffectsSection({ itemId }: { itemId: string }) {
 interface SpellFormDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSave: (data: Partial<SystemSpell>) => void;
+  onSave: (data: Partial<SystemSpell>, draftRolls?: any[]) => void;
   initialData?: SystemSpell;
   isLoading?: boolean;
 }
@@ -6376,6 +6404,8 @@ const spellDamageTypes = ['Sharp', 'Blunt', 'Piercing', 'Flame', 'Frost', 'Storm
 const spellAttributes = ['might', 'finesse', 'wit', 'presence', 'will', 'craft'];
 
 function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: SpellFormDialogProps) {
+  const [draftRolls, setDraftRolls] = useState<any[]>([]);
+
   // Normalize castingTime to new action format
   const normalizeCastingTime = (ct: string | undefined | null): string => {
     if (!ct) return 'action';
@@ -6498,6 +6528,7 @@ function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading }:
         saveSuccessEffect: 'half',
       });
     }
+    setDraftRolls([]);
   }, [initialData, open]);
 
   const handleNumericChange = (field: string, value: string) => {
@@ -6541,7 +6572,7 @@ function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading }:
       saveAttribute: formData.requiresSave ? normalizeNone(formData.saveAttribute) : undefined,
       saveDc: formData.requiresSave ? optionalNum(formData.saveDc) : undefined,
       saveSuccessEffect: formData.requiresSave ? formData.saveSuccessEffect : undefined,
-    });
+    }, !initialData ? draftRolls : undefined);
   };
 
   return (
@@ -6835,19 +6866,15 @@ function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading }:
             </div>
           </div>
 
-          {initialData?.id ? (
-            <div className="pt-4 border-t border-stone-700">
-              <RollEntriesEditor 
-                ownerType="spell" 
-                ownerId={initialData.id} 
-                canEdit={true}
-              />
-            </div>
-          ) : (
-            <div className="pt-4 border-t border-stone-700">
-              <p className="text-xs text-amber-500">Save the spell first to configure rolls</p>
-            </div>
-          )}
+          <div className="pt-4 border-t border-stone-700">
+            <RollEntriesEditor 
+              ownerType="spell" 
+              ownerId={initialData?.id}
+              canEdit={true}
+              draftRolls={!initialData?.id ? draftRolls : undefined}
+              onDraftRollsChange={!initialData?.id ? setDraftRolls : undefined}
+            />
+          </div>
 
           {initialData && (
             <div className="border-t border-stone-700 pt-4 mt-4">
@@ -6890,12 +6917,14 @@ function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading }:
 interface ItemFormDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSave: (data: Partial<Item>) => void;
+  onSave: (data: Partial<Item>, draftRolls?: any[]) => void;
   initialData?: Item;
   isLoading?: boolean;
 }
 
 function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: ItemFormDialogProps) {
+  const [draftRolls, setDraftRolls] = useState<any[]>([]);
+
   const [formData, setFormData] = useState<{
     name: string;
     image: string;
@@ -7015,6 +7044,7 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
         grantsDcBonus: (initialData as any)?.grantsDcBonus || false,
         dcBonusValue: (initialData as any)?.dcBonusValue ?? 0,
       });
+      setDraftRolls([]);
     }
   }, [open, initialData]);
   
@@ -7075,7 +7105,7 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
       grantsDcBonus: formData.grantsDcBonus,
       dcBonusValue: formData.grantsDcBonus ? (Number(formData.dcBonusValue) || 0) : 0,
     };
-    onSave(cleanedData);
+    onSave(cleanedData, !initialData ? draftRolls : undefined);
   };
 
   return (
@@ -7543,19 +7573,15 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
               </div>
             )}
 
-            {initialData?.id ? (
-              <div className="pt-4 border-t border-stone-700">
-                <RollEntriesEditor 
-                  ownerType="item" 
-                  ownerId={initialData.id} 
-                  canEdit={true}
-                />
-              </div>
-            ) : (
-              <div className="pt-4 border-t border-stone-700">
-                <p className="text-xs text-amber-500">Save the item first to configure rolls</p>
-              </div>
-            )}
+            <div className="pt-4 border-t border-stone-700">
+              <RollEntriesEditor 
+                ownerType="item" 
+                ownerId={initialData?.id}
+                canEdit={true}
+                draftRolls={!initialData?.id ? draftRolls : undefined}
+                onDraftRollsChange={!initialData?.id ? setDraftRolls : undefined}
+              />
+            </div>
           </div>
         </div>
 
