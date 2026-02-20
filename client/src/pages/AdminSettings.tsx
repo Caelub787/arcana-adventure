@@ -7259,7 +7259,7 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
                 </>
               )}
 
-              {(formData.itemType === 'weapon' || formData.itemType === 'consumable' || formData.itemType === 'ammunition') && (
+              {(formData.itemType === 'consumable' || formData.itemType === 'ammunition') && (
                 <>
                   <div>
                     <Label>Range (ft)</Label>
