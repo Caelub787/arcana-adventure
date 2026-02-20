@@ -7371,10 +7371,18 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
             </div>
           )}
 
-          {!isTraitClickable && !isSkillClickable && (itemRollEntries.length > 0 || spellRollEntries.length > 0) && (
+          {!isTraitClickable && !isSkillClickable && (itemRollEntries.length > 0 || spellRollEntries.length > 0) && (() => {
+            const allRolls = spellData ? spellRollEntries : itemRollEntries;
+            const visibleRolls = allRolls.filter((roll: any) => {
+              if (!roll.isHidden) return true;
+              if (!roll.requiredSkillId) return false;
+              const matchingSkill = customSkills.find((cs: any) => cs.systemSkillId === roll.requiredSkillId);
+              return matchingSkill && matchingSkill.value >= (roll.requiredSkillValue || 1);
+            });
+            return visibleRolls.length > 0 ? (
             <div className="space-y-2 mb-3">
               <p className="text-xs text-stone-400 uppercase tracking-wider">Rolls</p>
-              {(spellData ? spellRollEntries : itemRollEntries).map((roll: any) => (
+              {visibleRolls.map((roll: any) => (
                 <button
                   key={roll.id}
                   onClick={() => handleRollEntryExecution(roll)}
@@ -7399,7 +7407,8 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
                 </button>
               ))}
             </div>
-          )}
+          ) : null;
+          })()}
 
           {!isTraitClickable && !isSkillClickable && itemRollEntries.length === 0 && spellRollEntries.length === 0 && (
             <div className="mb-3">

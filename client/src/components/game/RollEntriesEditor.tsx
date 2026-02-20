@@ -39,6 +39,9 @@ interface RollEntry {
   applyTokenEffects?: boolean;
   tokenEffectIds?: string[];
   effectTriggerCondition?: string;
+  isHidden?: boolean;
+  requiredSkillId?: string;
+  requiredSkillValue?: number;
 }
 
 interface RollEntriesEditorProps {
@@ -103,6 +106,9 @@ function emptyFormData(ownerType: string, ownerId: string): Partial<RollEntry> {
     applyTokenEffects: false,
     tokenEffectIds: [],
     effectTriggerCondition: "always",
+    isHidden: false,
+    requiredSkillId: undefined,
+    requiredSkillValue: 1,
   };
 }
 
@@ -145,6 +151,9 @@ function getRollDetails(roll: RollEntry): string[] {
     const count = (roll.tokenEffectIds || []).length;
     details.push(`Applies ${count} effect${count !== 1 ? 's' : ''} (${trigger})`);
   }
+  if (roll.isHidden) {
+    details.push(`Hidden (requires skill lvl ${roll.requiredSkillValue || 1}+)`);
+  }
   return details;
 }
 
@@ -177,6 +186,123 @@ function CollapsibleSection({ title, children, testId }: { title: string; childr
         {open ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
       </button>
       {open && <div className="p-2 pt-1 space-y-2 border-t border-stone-700">{children}</div>}
+    </div>
+  );
+}
+
+function HiddenRollSkillPicker({
+  prefix,
+  selectedSkillId,
+  requiredValue,
+  onSkillChange,
+  onValueChange,
+}: {
+  prefix: string;
+  selectedSkillId?: string;
+  requiredValue: number;
+  onSkillChange: (skillId: string | undefined) => void;
+  onValueChange: (value: number) => void;
+}) {
+  const [skillSearch, setSkillSearch] = useState("");
+  const { data: systemSkills = [] } = useQuery({
+    queryKey: ['system-skills'],
+    queryFn: () => api.getPublicSkills(),
+  });
+
+  const filteredSkills = systemSkills.filter((s: any) =>
+    s.name.toLowerCase().includes(skillSearch.toLowerCase())
+  );
+
+  const selectedSkill = systemSkills.find((s: any) => s.id === selectedSkillId);
+
+  return (
+    <div className="space-y-2">
+      <div>
+        <Label className="text-xs text-stone-400">Required Custom Skill</Label>
+        {selectedSkill ? (
+          <div className="flex items-center gap-2 mt-1">
+            <div className="flex-1 bg-stone-800 border border-stone-600 rounded px-2 py-1 text-xs text-stone-200 flex items-center justify-between">
+              <span>{selectedSkill.name}</span>
+              <button
+                type="button"
+                onClick={() => onSkillChange(undefined)}
+                className="text-stone-500 hover:text-red-400"
+                data-testid={`button-${prefix}-clearSkill`}
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="mt-1 space-y-1">
+            <Input
+              className="bg-stone-900 border-stone-600 h-7 text-xs"
+              placeholder="Search skills..."
+              value={skillSearch}
+              onChange={(e) => setSkillSearch(e.target.value)}
+              data-testid={`input-${prefix}-skillSearch`}
+            />
+            {skillSearch && (
+              <div className="max-h-28 overflow-y-auto border border-stone-700 rounded bg-stone-800">
+                {filteredSkills.length === 0 ? (
+                  <p className="text-xs text-stone-500 p-2 italic">No skills found</p>
+                ) : (
+                  filteredSkills.map((skill: any) => (
+                    <button
+                      key={skill.id}
+                      type="button"
+                      className="w-full text-left px-2 py-1 text-xs text-stone-300 hover:bg-stone-700 transition-colors"
+                      onClick={() => {
+                        onSkillChange(skill.id);
+                        setSkillSearch("");
+                      }}
+                      data-testid={`button-${prefix}-selectSkill-${skill.id}`}
+                    >
+                      {skill.name}
+                      <span className="text-stone-500 ml-1">({skill.parentAttribute})</span>
+                    </button>
+                  ))
+                )}
+              </div>
+            )}
+            {!skillSearch && systemSkills.length > 0 && (
+              <div className="max-h-28 overflow-y-auto border border-stone-700 rounded bg-stone-800">
+                {systemSkills.map((skill: any) => (
+                  <button
+                    key={skill.id}
+                    type="button"
+                    className="w-full text-left px-2 py-1 text-xs text-stone-300 hover:bg-stone-700 transition-colors"
+                    onClick={() => onSkillChange(skill.id)}
+                    data-testid={`button-${prefix}-selectSkill-${skill.id}`}
+                  >
+                    {skill.name}
+                    <span className="text-stone-500 ml-1">({skill.parentAttribute})</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+      <div>
+        <Label className="text-xs text-stone-400">Required Skill Value (1-5)</Label>
+        <Select
+          value={String(requiredValue)}
+          onValueChange={(v) => onValueChange(Number(v))}
+        >
+          <SelectTrigger className="bg-stone-900 border-stone-600 h-7 text-xs" data-testid={`select-${prefix}-requiredSkillValue`}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {[1, 2, 3, 4, 5].map((v) => (
+              <SelectItem key={v} value={String(v)}>{v}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <p className="text-[10px] text-stone-500 italic">
+        Characters must have this skill at the required value or higher to see this roll.
+      </p>
     </div>
   );
 }
@@ -495,6 +621,30 @@ function RollForm({
         )}
       </CollapsibleSection>
 
+      <CollapsibleSection title="Hidden Roll" testId={`section-${prefix}-hidden`}>
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={form.isHidden || false}
+              onChange={(e) => setForm(f => ({ ...f, isHidden: e.target.checked, requiredSkillId: e.target.checked ? f.requiredSkillId : undefined, requiredSkillValue: e.target.checked ? (f.requiredSkillValue || 1) : 1 }))}
+              className="rounded border-stone-600"
+              data-testid={`checkbox-${prefix}-isHidden`}
+            />
+            <Label className="text-xs text-stone-300">Hide this roll (requires custom skill)</Label>
+          </div>
+          {form.isHidden && (
+            <HiddenRollSkillPicker
+              prefix={prefix}
+              selectedSkillId={form.requiredSkillId}
+              requiredValue={form.requiredSkillValue || 1}
+              onSkillChange={(skillId) => setForm(f => ({ ...f, requiredSkillId: skillId }))}
+              onValueChange={(val) => setForm(f => ({ ...f, requiredSkillValue: val }))}
+            />
+          )}
+        </div>
+      </CollapsibleSection>
+
       <div>
         <Label className="text-xs text-stone-400">Notification Color</Label>
         <div className="flex items-center gap-2 mt-1">
@@ -534,7 +684,7 @@ function RollForm({
           size="sm"
           className="h-7 text-xs bg-amber-700 hover:bg-amber-600"
           onClick={onSave}
-          disabled={saving || !form.name?.trim()}
+          disabled={saving || !form.name?.trim() || (form.isHidden && !form.requiredSkillId)}
           data-testid={`button-${prefix}-save`}
         >
           <Save className="w-3 h-3 mr-1" />

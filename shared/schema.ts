@@ -1278,6 +1278,9 @@ export const rollEntries = pgTable("roll_entries", {
   applyTokenEffects: boolean("apply_token_effects").default(false),
   tokenEffectIds: text("token_effect_ids").array(),
   effectTriggerCondition: text("effect_trigger_condition").default("always"),
+  isHidden: boolean("is_hidden").default(false),
+  requiredSkillId: varchar("required_skill_id"),
+  requiredSkillValue: integer("required_skill_value").default(1),
 });
 
 export const insertRollEntrySchema = createInsertSchema(rollEntries).omit({
