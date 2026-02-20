@@ -3077,12 +3077,59 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ error: "Only the character owner or GM can add spells" });
       }
 
+      const sourceTemplateId = req.body.sourceTemplateId;
+
       const spellData = insertSpellSchema.parse({
         ...req.body,
         characterId: req.params.characterId
       });
 
       const spell = await storage.createSpell(spellData);
+
+      if (sourceTemplateId) {
+        try {
+          const templateRolls = await storage.getRollEntries('spell', sourceTemplateId);
+          for (const roll of templateRolls) {
+            await storage.createRollEntry({
+              ownerType: 'spell',
+              ownerId: spell.id,
+              name: roll.name,
+              rollType: roll.rollType,
+              diceFormula: roll.diceFormula,
+              mod: roll.mod,
+              damageType: roll.damageType,
+              attribute: roll.attribute,
+              applyToStat: roll.applyToStat,
+              sortOrder: roll.sortOrder,
+              range: roll.range,
+              aoeShape: roll.aoeShape,
+              aoeRange: roll.aoeRange,
+              requiresSave: roll.requiresSave,
+              saveAttribute: roll.saveAttribute,
+              saveDc: roll.saveDc,
+              saveSuccessEffect: roll.saveSuccessEffect,
+              gainEnergy: roll.gainEnergy,
+              isAttack: roll.isAttack,
+              isAoe: roll.isAoe,
+              passesThroughWalls: roll.passesThroughWalls,
+              primaryColor: roll.primaryColor,
+              requiresEnergy: roll.requiresEnergy,
+              energyCost: roll.energyCost,
+              noRoll: roll.noRoll,
+              enableChatMessage: roll.enableChatMessage,
+              chatMessage: roll.chatMessage,
+              applyTokenEffects: roll.applyTokenEffects,
+              tokenEffectIds: roll.tokenEffectIds,
+              effectTriggerCondition: roll.effectTriggerCondition,
+              isHidden: roll.isHidden,
+              requiredSkillId: roll.requiredSkillId,
+              requiredSkillValue: roll.requiredSkillValue,
+            } as any);
+          }
+        } catch (rollErr) {
+          console.error('Failed to copy roll entries from template spell:', rollErr);
+        }
+      }
       
       if (access.character?.campaignId) {
         broadcastToCampaign(access.character.campaignId, {
@@ -6052,12 +6099,59 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ error: "Only the character owner or GM can add items" });
       }
 
+      const sourceTemplateId = req.body.sourceTemplateId;
+
       const itemData = insertItemSchema.parse({
         ...req.body,
         characterId: req.params.characterId
       });
 
       const item = await storage.createItem(itemData);
+
+      if (sourceTemplateId) {
+        try {
+          const templateRolls = await storage.getRollEntries('item', sourceTemplateId);
+          for (const roll of templateRolls) {
+            await storage.createRollEntry({
+              ownerType: 'item',
+              ownerId: item.id,
+              name: roll.name,
+              rollType: roll.rollType,
+              diceFormula: roll.diceFormula,
+              mod: roll.mod,
+              damageType: roll.damageType,
+              attribute: roll.attribute,
+              applyToStat: roll.applyToStat,
+              sortOrder: roll.sortOrder,
+              range: roll.range,
+              aoeShape: roll.aoeShape,
+              aoeRange: roll.aoeRange,
+              requiresSave: roll.requiresSave,
+              saveAttribute: roll.saveAttribute,
+              saveDc: roll.saveDc,
+              saveSuccessEffect: roll.saveSuccessEffect,
+              gainEnergy: roll.gainEnergy,
+              isAttack: roll.isAttack,
+              isAoe: roll.isAoe,
+              passesThroughWalls: roll.passesThroughWalls,
+              primaryColor: roll.primaryColor,
+              requiresEnergy: roll.requiresEnergy,
+              energyCost: roll.energyCost,
+              noRoll: roll.noRoll,
+              enableChatMessage: roll.enableChatMessage,
+              chatMessage: roll.chatMessage,
+              applyTokenEffects: roll.applyTokenEffects,
+              tokenEffectIds: roll.tokenEffectIds,
+              effectTriggerCondition: roll.effectTriggerCondition,
+              isHidden: roll.isHidden,
+              requiredSkillId: roll.requiredSkillId,
+              requiredSkillValue: roll.requiredSkillValue,
+            } as any);
+          }
+        } catch (rollErr) {
+          console.error('Failed to copy roll entries from template item:', rollErr);
+        }
+      }
       
       if (item.isDetonatable) {
         const existingRolls = await storage.getRollEntries('item', item.id);

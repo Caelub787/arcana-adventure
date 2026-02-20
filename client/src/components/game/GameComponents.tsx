@@ -19098,6 +19098,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                                   saveAttribute: spell.saveAttribute || undefined,
                                   saveDc: spell.saveDc || undefined,
                                   saveSuccessEffect: spell.saveSuccessEffect || undefined,
+                                  sourceTemplateId: spell.id,
                                 });
                                 setShowAddSpell(false);
                                 setSpellLibrarySearch('');
@@ -19664,6 +19665,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                               saveAttribute: spell.saveAttribute || undefined,
                               saveDc: spell.saveDc || undefined,
                               saveSuccessEffect: spell.saveSuccessEffect || undefined,
+                              sourceTemplateId: spell.id,
                             });
                             setSpellLibrarySearch('');
                           }}
@@ -21497,6 +21499,7 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId, bringToFr
         grantsDcBonus: template.grantsDcBonus || false,
         dcBonusValue: template.dcBonusValue || 0,
         canApplyEffects: template.canApplyEffects || false,
+        sourceTemplateId: template.id,
       };
       onSave(itemData);
     } catch (error) {
