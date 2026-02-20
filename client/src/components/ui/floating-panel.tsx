@@ -268,7 +268,6 @@ export function FloatingPanel({
         width: isMinimized ? minimizedMaxWidth : (isFullscreen ? window.innerWidth : s.width),
         height: isMinimized ? headerHeight : (isFullscreen ? window.innerHeight : s.height),
         zIndex: isFullscreen ? Math.max(zIndex, 100) : zIndex,
-        willChange: 'transform',
         backfaceVisibility: 'hidden' as const,
       }}
       data-testid="floating-panel"

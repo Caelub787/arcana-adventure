@@ -7382,30 +7382,36 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
             return visibleRolls.length > 0 ? (
             <div className="space-y-2 mb-3">
               <p className="text-xs text-stone-400 uppercase tracking-wider">Rolls</p>
-              {visibleRolls.map((roll: any) => (
-                <button
-                  key={roll.id}
-                  onClick={() => handleRollEntryExecution(roll)}
-                  className={`w-full flex items-center justify-between p-2 rounded-lg border transition-colors ${
-                    roll.rollType === 'attack' ? 'border-red-700/50 bg-red-900/20 hover:bg-red-900/40' :
-                    roll.rollType === 'heal' ? 'border-green-700/50 bg-green-900/20 hover:bg-green-900/40' :
-                    roll.rollType === 'effect' ? 'border-blue-700/50 bg-blue-900/20 hover:bg-blue-900/40' :
-                    'border-amber-700/50 bg-amber-900/20 hover:bg-amber-900/40'
-                  }`}
-                  data-testid={`button-roll-entry-${roll.id}`}
-                >
-                  <div className="flex items-center gap-2">
-                    <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${
-                      roll.rollType === 'attack' ? 'bg-red-700/50 text-red-300' :
-                      roll.rollType === 'heal' ? 'bg-green-700/50 text-green-300' :
-                      roll.rollType === 'effect' ? 'bg-blue-700/50 text-blue-300' :
-                      'bg-amber-700/50 text-amber-300'
-                    }`}>{roll.rollType.charAt(0).toUpperCase() + roll.rollType.slice(1)}</span>
-                    <span className="text-sm font-medium">{roll.name}</span>
-                  </div>
-                  <span className="text-xs text-stone-400">{roll.diceFormula}{roll.mod ? (roll.mod > 0 ? `+${roll.mod}` : roll.mod) : ''}</span>
-                </button>
-              ))}
+              {visibleRolls.map((roll: any) => {
+                const stats: string[] = [];
+                if (roll.diceFormula) {
+                  let diceStr = roll.diceFormula;
+                  if (roll.mod && roll.mod !== 0) diceStr += roll.mod > 0 ? `+${roll.mod}` : `${roll.mod}`;
+                  stats.push(diceStr);
+                }
+                if (roll.requiresSave && roll.saveAttribute) {
+                  stats.push(`DC ${roll.saveDc || 10}`);
+                }
+                if (roll.requiresEnergy && roll.energyCost) {
+                  stats.push(`${roll.energyCost} Energy`);
+                }
+                if (roll.range) {
+                  stats.push(`${roll.range}ft`);
+                }
+                return (
+                  <button
+                    key={roll.id}
+                    onClick={() => handleRollEntryExecution(roll)}
+                    className="w-full flex items-center justify-between p-2 rounded-lg border border-stone-600 bg-stone-800/50 hover:bg-stone-700/50 transition-colors"
+                    data-testid={`button-roll-entry-${roll.id}`}
+                  >
+                    <span className="text-sm font-medium text-stone-200">{roll.name}</span>
+                    {stats.length > 0 && (
+                      <span className="text-xs text-stone-400">{stats.join(' · ')}</span>
+                    )}
+                  </button>
+                );
+              })}
             </div>
           ) : null;
           })()}

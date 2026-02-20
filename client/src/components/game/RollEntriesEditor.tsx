@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
-import { Plus, Dices, Pencil, Trash2, ChevronDown, ChevronUp, Save, X } from "lucide-react";
+import { Plus, Dices, Pencil, Trash2, ChevronDown, ChevronUp, Save, X, ArrowUp, ArrowDown } from "lucide-react";
 
 interface RollEntry {
   id: string;
@@ -804,6 +804,31 @@ export function RollEntriesEditor({ ownerType, ownerId, canEdit, onExecuteRoll, 
 
   const sortedRolls = [...(rolls as RollEntry[])].sort((a, b) => ((a as any).sortOrder ?? 0) - ((b as any).sortOrder ?? 0));
 
+  const handleReorder = async (rollId: string, direction: 'up' | 'down') => {
+    const idx = sortedRolls.findIndex(r => r.id === rollId);
+    if (idx < 0) return;
+    const targetIdx = direction === 'up' ? idx - 1 : idx + 1;
+    if (targetIdx < 0 || targetIdx >= sortedRolls.length) return;
+
+    const current = sortedRolls[idx];
+    const target = sortedRolls[targetIdx];
+
+    if (isDraftMode) {
+      const updated = draftRollsData.map(r => {
+        if (r.id === current.id) return { ...r, sortOrder: target.sortOrder ?? 0 };
+        if (r.id === target.id) return { ...r, sortOrder: current.sortOrder ?? 0 };
+        return r;
+      });
+      onDraftRollsChange?.(updated);
+      return;
+    }
+
+    await api.updateRollEntry(current.id, { sortOrder: target.sortOrder ?? 0 });
+    await api.updateRollEntry(target.id, { sortOrder: current.sortOrder ?? 0 });
+    queryClient.invalidateQueries({ queryKey });
+  };
+
+
   return (
     <div className="space-y-2" data-testid="roll-entries-editor">
       <div className="flex items-center justify-between">
@@ -902,6 +927,26 @@ export function RollEntriesEditor({ ownerType, ownerId, canEdit, onExecuteRoll, 
                     )}
                     {canEdit && (
                       <>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-6 w-6 p-0 border-stone-600 text-stone-300"
+                          onClick={() => handleReorder(roll.id, 'up')}
+                          disabled={sortedRolls.indexOf(roll) === 0}
+                          data-testid={`button-move-roll-up-${roll.id}`}
+                        >
+                          <ArrowUp className="w-3 h-3" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-6 w-6 p-0 border-stone-600 text-stone-300"
+                          onClick={() => handleReorder(roll.id, 'down')}
+                          disabled={sortedRolls.indexOf(roll) === sortedRolls.length - 1}
+                          data-testid={`button-move-roll-down-${roll.id}`}
+                        >
+                          <ArrowDown className="w-3 h-3" />
+                        </Button>
                         <Button
                           size="sm"
                           variant="outline"
