@@ -18378,27 +18378,39 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
             </Card>
 
             {/* Add Custom Skill Dialog */}
-            <Dialog open={showAddCustomSkill} onOpenChange={setShowAddCustomSkill}>
-              <DialogContent className="bg-stone-900 border-stone-700 max-w-xl max-h-[85vh] overflow-hidden flex flex-col">
-                <DialogHeader>
-                  <DialogTitle className="text-cyan-500">Add Custom Skill</DialogTitle>
-                </DialogHeader>
+            <FloatingPanel
+              open={showAddCustomSkill}
+              onClose={() => setShowAddCustomSkill(false)}
+              title={<span className="text-cyan-500">Add Custom Skill</span>}
+              zIndex={floatingZIndices?.['skill-add'] || 10200}
+              onBringToFront={() => bringToFront?.('skill-add')}
+              defaultSize={{ width: 500, height: 500 }}
+              minWidth={350}
+              minHeight={300}
+            >
+              <div className="p-4">
                 <CustomSkillForm
                   systemSkills={systemSkills}
                   existingSkillIds={characterCustomSkills.map((cs: CharacterCustomSkill) => cs.systemSkillId).filter(Boolean)}
                   onSave={(data) => addCustomSkillMutation.mutate(data)}
                   isLoading={addCustomSkillMutation.isPending}
                 />
-              </DialogContent>
-            </Dialog>
+              </div>
+            </FloatingPanel>
 
             {/* Edit Custom Skill Dialog */}
             {editingCustomSkill && (
-              <Dialog open={!!editingCustomSkill} onOpenChange={() => setEditingCustomSkill(null)}>
-                <DialogContent className="bg-stone-900 border-stone-700 max-w-md">
-                  <DialogHeader>
-                    <DialogTitle className="text-cyan-500">Edit Custom Skill</DialogTitle>
-                  </DialogHeader>
+              <FloatingPanel
+                open={!!editingCustomSkill}
+                onClose={() => setEditingCustomSkill(null)}
+                title={<span className="text-cyan-500">Edit Custom Skill</span>}
+                zIndex={floatingZIndices?.['skill-edit'] || 10200}
+                onBringToFront={() => bringToFront?.('skill-edit')}
+                defaultSize={{ width: 500, height: 500 }}
+                minWidth={350}
+                minHeight={300}
+              >
+                <div className="p-4">
                   <CustomSkillEditForm
                     skill={editingCustomSkill}
                     onSave={(data) => updateCustomSkillMutation.mutate({ skillId: editingCustomSkill.id, data })}
@@ -18409,8 +18421,8 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                     }}
                     isLoading={updateCustomSkillMutation.isPending}
                   />
-                </DialogContent>
-              </Dialog>
+                </div>
+              </FloatingPanel>
             )}
 
             {/* Traits Section */}
@@ -18551,27 +18563,39 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
             </Card>
 
             {/* Add Trait Dialog */}
-            <Dialog open={showAddTrait} onOpenChange={setShowAddTrait}>
-              <DialogContent className="bg-stone-900 border-stone-700 max-w-xl max-h-[85vh] overflow-hidden flex flex-col">
-                <DialogHeader>
-                  <DialogTitle className="text-rose-500">Add Trait</DialogTitle>
-                </DialogHeader>
+            <FloatingPanel
+              open={showAddTrait}
+              onClose={() => setShowAddTrait(false)}
+              title={<span className="text-rose-500">Add Trait</span>}
+              zIndex={floatingZIndices?.['trait-add'] || 10200}
+              onBringToFront={() => bringToFront?.('trait-add')}
+              defaultSize={{ width: 500, height: 500 }}
+              minWidth={350}
+              minHeight={300}
+            >
+              <div className="p-4">
                 <TraitForm
                   systemTraits={systemTraits}
                   existingTraitIds={characterTraits.map((ct: CharacterTrait) => ct.systemTraitId).filter(Boolean)}
                   onSave={(data) => addTraitMutation.mutate(data)}
                   isLoading={addTraitMutation.isPending}
                 />
-              </DialogContent>
-            </Dialog>
+              </div>
+            </FloatingPanel>
 
             {/* Edit Trait Dialog */}
             {editingTrait && (
-              <Dialog open={!!editingTrait} onOpenChange={() => setEditingTrait(null)}>
-                <DialogContent className="bg-stone-900 border-stone-700 max-w-md">
-                  <DialogHeader>
-                    <DialogTitle className="text-rose-500">Edit Trait</DialogTitle>
-                  </DialogHeader>
+              <FloatingPanel
+                open={!!editingTrait}
+                onClose={() => setEditingTrait(null)}
+                title={<span className="text-rose-500">Edit Trait</span>}
+                zIndex={floatingZIndices?.['trait-edit'] || 10200}
+                onBringToFront={() => bringToFront?.('trait-edit')}
+                defaultSize={{ width: 500, height: 500 }}
+                minWidth={350}
+                minHeight={300}
+              >
+                <div className="p-4">
                   <TraitEditForm
                     trait={editingTrait}
                     onSave={(data) => updateTraitMutation.mutate({ traitId: editingTrait.id, data })}
@@ -18582,8 +18606,8 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                     }}
                     isLoading={updateTraitMutation.isPending}
                   />
-                </DialogContent>
-              </Dialog>
+                </div>
+              </FloatingPanel>
             )}
           </TabsContent>
 

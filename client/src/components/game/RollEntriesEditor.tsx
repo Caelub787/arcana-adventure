@@ -647,35 +647,60 @@ function RollForm({
 
       <div>
         <Label className="text-xs text-stone-400">Notification Color</Label>
-        <div className="flex items-center gap-2 mt-1">
-          {form.primaryColor ? (
+        <div className="flex flex-col gap-2 mt-1">
+          <div className="flex flex-wrap gap-1.5">
+            {[
+              { color: "#ef4444", label: "Red" },
+              { color: "#f97316", label: "Orange" },
+              { color: "#eab308", label: "Yellow" },
+              { color: "#22c55e", label: "Green" },
+              { color: "#06b6d4", label: "Cyan" },
+              { color: "#3b82f6", label: "Blue" },
+              { color: "#8b5cf6", label: "Purple" },
+              { color: "#ec4899", label: "Pink" },
+              { color: "#f43f5e", label: "Rose" },
+              { color: "#14b8a6", label: "Teal" },
+              { color: "#a855f7", label: "Violet" },
+              { color: "#ffffff", label: "White" },
+            ].map((preset) => (
+              <button
+                key={preset.color}
+                type="button"
+                title={preset.label}
+                className={`w-6 h-6 rounded-full border-2 transition-all hover:scale-110 ${form.primaryColor === preset.color ? 'border-amber-400 ring-1 ring-amber-400' : 'border-stone-600 hover:border-stone-400'}`}
+                style={{ backgroundColor: preset.color }}
+                onClick={() => setForm((f) => ({ ...f, primaryColor: preset.color }))}
+                data-testid={`button-${prefix}-color-${preset.label.toLowerCase()}`}
+              />
+            ))}
+          </div>
+          <div className="flex items-center gap-2">
             <div
               className="w-5 h-5 rounded-full border border-stone-600 shrink-0"
-              style={{ backgroundColor: form.primaryColor }}
+              style={{ backgroundColor: form.primaryColor || '#0ea5e9' }}
               data-testid={`preview-${prefix}-primaryColor`}
             />
-          ) : (
-            <span className="text-xs text-stone-500" data-testid={`text-${prefix}-primaryColor-default`}>Default</span>
-          )}
-          <input
-            type="color"
-            className="w-7 h-7 bg-stone-900 border border-stone-600 rounded cursor-pointer p-0"
-            value={form.primaryColor || "#0ea5e9"}
-            onChange={(e) => setForm((f) => ({ ...f, primaryColor: e.target.value }))}
-            data-testid={`input-${prefix}-primaryColor`}
-          />
-          {form.primaryColor && (
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              className="h-6 text-[10px] border-stone-600 text-stone-400"
-              onClick={() => setForm((f) => ({ ...f, primaryColor: null }))}
-              data-testid={`button-${prefix}-resetColor`}
-            >
-              Reset
-            </Button>
-          )}
+            <input
+              type="color"
+              className="w-7 h-7 bg-stone-900 border border-stone-600 rounded cursor-pointer p-0"
+              value={form.primaryColor || "#0ea5e9"}
+              onChange={(e) => setForm((f) => ({ ...f, primaryColor: e.target.value }))}
+              data-testid={`input-${prefix}-primaryColor`}
+            />
+            <span className="text-[10px] text-stone-500">{form.primaryColor ? form.primaryColor : 'Default'}</span>
+            {form.primaryColor && (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-6 text-[10px] border-stone-600 text-stone-400"
+                onClick={() => setForm((f) => ({ ...f, primaryColor: null }))}
+                data-testid={`button-${prefix}-resetColor`}
+              >
+                Reset
+              </Button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -906,6 +931,9 @@ export function RollEntriesEditor({ ownerType, ownerId, canEdit, onExecuteRoll, 
                     data-testid={`button-toggle-roll-${roll.id}`}
                   >
                     {isExpanded ? <ChevronUp className="w-3 h-3 text-stone-400 shrink-0" /> : <ChevronDown className="w-3 h-3 text-stone-400 shrink-0" />}
+                    {roll.primaryColor && (
+                      <div className="w-3 h-3 rounded-full shrink-0 border border-white/20" style={{ backgroundColor: roll.primaryColor }} />
+                    )}
                     <span className="text-xs font-medium text-stone-200 truncate" data-testid={`text-roll-name-${roll.id}`}>{roll.name}</span>
                     {roll.diceFormula && (
                       <span className="text-[10px] text-stone-400 shrink-0" data-testid={`text-roll-formula-${roll.id}`}>
