@@ -4209,7 +4209,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
   const { data: customSkills = [] } = useQuery({
     queryKey: ['character-custom-skills', character.id],
     queryFn: () => api.getCharacterCustomSkills(character.id),
-    enabled: !!character.id && !!hotbar?.skillName
+    enabled: !!character.id,
   });
 
   const { data: itemRollEntries = [] } = useQuery({
@@ -7412,10 +7412,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
 
           {!isTraitClickable && !isSkillClickable && itemRollEntries.length === 0 && spellRollEntries.length === 0 && (
             <div className="mb-3">
-              <p className="text-xs text-stone-500 italic mb-2">No rolls configured for this {spellData ? 'spell' : 'item'}</p>
-              <Button onClick={handleModifiedRoll} className="w-full bg-amber-600 hover:bg-amber-500" data-testid="button-legacy-roll">
-                <Sword className="h-4 w-4 mr-1" /> Roll (Legacy)
-              </Button>
+              <p className="text-xs text-stone-500 italic">No rolls configured for this {spellData ? 'spell' : 'item'}</p>
             </div>
           )}
 
