@@ -8665,6 +8665,7 @@ export default function Campaign() {
   }, [selectionMode, characters, role, myPermissions, user]);
 
   const handleModeChange = useCallback((mode: SelectionMode) => {
+    setSelectionMode(mode);
     setTargetedTokenId(null);
     setThrowableGridTarget(null);
     setDetonatableGridTarget(null);
@@ -8672,7 +8673,6 @@ export default function Campaign() {
     if (effectiveCampaignIdRef.current) {
       gameWs.clearTokenTargeting();
     }
-    setSelectionMode(mode);
   }, []);
   
   const handleGridTargetClick = useCallback((gridX: number, gridY: number) => {

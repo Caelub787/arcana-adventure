@@ -8698,7 +8698,7 @@ function SceneSettingsDialog({ open, onOpenChange, scene, onUpdateScene }: Scene
     </Dialog>
   );
 }
-export const SelectionModeButtons = React.memo(SelectionModeButtonsInner);
+export const SelectionModeButtons = SelectionModeButtonsInner;
 
 // Initiative Tracker Component
 interface InitiativeTrackerProps {
