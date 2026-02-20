@@ -7056,8 +7056,7 @@ export default function Campaign() {
       if (targetedTokenId) {
         const targetToken = tokens?.find((t: any) => t.id === targetedTokenId);
         if (targetToken && targetToken.characterId) {
-          const targetChar = (characters as any[])?.find((c: any) => c.id === targetToken.characterId) || 
-                             sandboxActorsForHotbar?.find((a: any) => a.id === targetToken.characterId);
+          const targetChar = sandboxActorsForHotbar?.find((a: any) => a.id === targetToken.characterId);
           const targetName = targetChar?.name || targetToken?.name || 'Target';
 
           gameWs.sendCombatDamage(
@@ -7089,7 +7088,7 @@ export default function Campaign() {
       gameWs.sendChatMessage('', slot.actorName || 'Actor', `🎲 ${label}: ${rollText}`, 'roll');
       toast({ title: `${label}: ${result.total}`, description: rollText });
     }
-  }, [sandboxActorsForHotbar, sandboxTemplatesForHotbar, toast, targetedTokenId, tokens, characters, effectiveCampaignId]);
+  }, [sandboxActorsForHotbar, sandboxTemplatesForHotbar, toast, targetedTokenId, tokens, effectiveCampaignId]);
 
   // Determine which scene ID to use for tokens
   // For GM: use gmViewingSceneId if set, otherwise use activeSceneId
