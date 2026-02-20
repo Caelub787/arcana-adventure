@@ -6682,6 +6682,32 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
 
     if (!rollEntry.diceFormula && !isAttackRoll) return;
 
+    if (targetedTokenId && rollEntry.range) {
+      const attackerToken = getAttackerToken();
+      const targetToken = tokens?.find((t: any) => t.id === targetedTokenId);
+      if (attackerToken && targetToken) {
+        const distanceFt = calculateTokenDistanceInFeet(
+          attackerToken.x, attackerToken.y, (attackerToken as any).speciesSize,
+          targetToken.x, targetToken.y, (targetToken as any).speciesSize
+        );
+        if (distanceFt > rollEntry.range) {
+          const targetChar = allCharacters?.find((c: any) => c.id === targetToken.characterId);
+          const targetName = targetChar?.name || targetToken?.name || 'Target';
+          const itemOrSpellName = spellData?.name || itemData?.name || 'Roll';
+          triggerRollNotification({
+            type: 'system',
+            label: `${itemOrSpellName} - ${rollEntry.name}: Out of Range!`,
+            result: 0,
+            total: 0,
+            username: character?.name || 'Unknown',
+            characterName: character?.name,
+            calculationBreakdown: `${targetName} is ${Math.floor(distanceFt)}ft away. ${rollEntry.name} has a range of ${rollEntry.range}ft.`,
+          });
+          return;
+        }
+      }
+    }
+
     if (isAttackRoll) {
       const attrName = rollEntry.attribute || 'might';
       const attrMod = getAttributeModifier(attrName);
