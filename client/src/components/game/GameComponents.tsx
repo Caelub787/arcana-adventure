@@ -7448,7 +7448,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
 
       {showInfoPanel && ReactDOM.createPortal(
         <>
-          <div className="fixed inset-0 z-[99999] bg-black/40" onClick={() => setShowInfoPanel(false)} />
+          <div className="fixed inset-0 z-[99999] bg-black/40" onClick={() => setShowInfoPanel(false)} data-testid="overlay-info-panel" />
           <div 
             className="fixed z-[100000] w-80 max-h-[70vh] overflow-y-auto bg-stone-900 border border-stone-600 text-stone-200 p-4 rounded-xl shadow-2xl"
             style={{ 
@@ -7456,12 +7456,13 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
               top: '50%',
               transform: 'translate(-50%, -50%)'
             }}
+            data-testid="panel-info-details"
           >
             <div className="flex items-center justify-between mb-3">
-              <h3 className="text-amber-400 text-lg font-bold">
+              <h3 className="text-amber-400 text-lg font-bold" data-testid="text-info-panel-title">
                 {traitData?.name || hotbar?.skillName || spellData?.name || itemData?.name || 'Details'}
               </h3>
-              <button onClick={() => setShowInfoPanel(false)} className="text-stone-400 hover:text-stone-200">
+              <button onClick={() => setShowInfoPanel(false)} className="text-stone-400 hover:text-stone-200" data-testid="button-close-info-panel">
                 <X className="h-4 w-4" />
               </button>
             </div>
