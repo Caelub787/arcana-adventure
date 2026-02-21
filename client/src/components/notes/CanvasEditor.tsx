@@ -580,10 +580,10 @@ export function CanvasEditor({
     const resizeObserver = new ResizeObserver(() => {
       clearTimeout(resizeTimeout);
       resizeTimeout = setTimeout(() => {
-        // Reset view if: canvas is empty, user hasn't interacted, or content is clipped
+        if (resizeStartRef.current || dragStartRef.current || labelResizeStartRef.current) return;
         if (canvasData.nodes.length === 0 || !userInteractedRef.current || isContentClipped()) {
           resetView();
-          userInteractedRef.current = false; // Reset after auto-fit so future resizes can trigger
+          userInteractedRef.current = false;
         }
       }, 100);
     });
@@ -599,7 +599,9 @@ export function CanvasEditor({
   useEffect(() => {
     const newSignature = JSON.stringify(canvasData.nodes.map(n => n.id));
     if (newSignature !== nodesSignatureRef.current) {
-      userInteractedRef.current = false;
+      if (!resizeStartRef.current && !dragStartRef.current) {
+        userInteractedRef.current = false;
+      }
       nodesSignatureRef.current = newSignature;
     }
   }, [canvasData.nodes]);
