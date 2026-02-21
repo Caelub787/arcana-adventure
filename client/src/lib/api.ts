@@ -1114,6 +1114,30 @@ class ApiClient {
     return this.request('/admin/system-spells/archive-all', { method: 'POST' });
   }
 
+  async bulkArchiveItems(ids: string[]): Promise<void> {
+    await fetch('/api/admin/system-items/bulk-archive', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids }), credentials: 'include' });
+  }
+
+  async bulkRestoreItems(ids: string[]): Promise<void> {
+    await fetch('/api/admin/system-items/bulk-restore', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids }), credentials: 'include' });
+  }
+
+  async bulkDeleteItems(ids: string[]): Promise<void> {
+    await fetch('/api/admin/system-items/bulk-delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids }), credentials: 'include' });
+  }
+
+  async bulkArchiveSpells(ids: string[]): Promise<void> {
+    await fetch('/api/admin/system-spells/bulk-archive', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids }), credentials: 'include' });
+  }
+
+  async bulkRestoreSpells(ids: string[]): Promise<void> {
+    await fetch('/api/admin/system-spells/bulk-restore', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids }), credentials: 'include' });
+  }
+
+  async bulkDeleteSpells(ids: string[]): Promise<void> {
+    await fetch('/api/admin/system-spells/bulk-delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids }), credentials: 'include' });
+  }
+
   async getArchivedSpells(): Promise<any[]> {
     return this.request('/admin/archived-spells');
   }

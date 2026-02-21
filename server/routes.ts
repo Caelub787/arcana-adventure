@@ -4645,6 +4645,85 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Bulk item operations
+  app.post("/api/admin/system-items/bulk-archive", requireAdmin, async (req, res) => {
+    try {
+      const { ids } = req.body;
+      if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: "No item IDs provided" });
+      for (const id of ids) {
+        await storage.updateItem(id, { isArchived: true });
+      }
+      res.json({ success: true, count: ids.length });
+    } catch (err) {
+      res.status(400).json({ error: "Failed to bulk archive items" });
+    }
+  });
+
+  app.post("/api/admin/system-items/bulk-restore", requireAdmin, async (req, res) => {
+    try {
+      const { ids } = req.body;
+      if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: "No item IDs provided" });
+      for (const id of ids) {
+        await storage.updateItem(id, { isArchived: false });
+      }
+      res.json({ success: true, count: ids.length });
+    } catch (err) {
+      res.status(400).json({ error: "Failed to bulk restore items" });
+    }
+  });
+
+  app.post("/api/admin/system-items/bulk-delete", requireAdmin, async (req, res) => {
+    try {
+      const { ids } = req.body;
+      if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: "No item IDs provided" });
+      for (const id of ids) {
+        await storage.deleteItem(id);
+      }
+      res.json({ success: true, count: ids.length });
+    } catch (err) {
+      res.status(400).json({ error: "Failed to bulk delete items" });
+    }
+  });
+
+  app.post("/api/admin/system-spells/bulk-archive", requireAdmin, async (req, res) => {
+    try {
+      const { ids } = req.body;
+      if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: "No spell IDs provided" });
+      for (const id of ids) {
+        await storage.updateSystemSpell(id, { isArchived: true });
+      }
+      res.json({ success: true, count: ids.length });
+    } catch (err) {
+      res.status(400).json({ error: "Failed to bulk archive spells" });
+    }
+  });
+
+  app.post("/api/admin/system-spells/bulk-restore", requireAdmin, async (req, res) => {
+    try {
+      const { ids } = req.body;
+      if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: "No spell IDs provided" });
+      for (const id of ids) {
+        await storage.updateSystemSpell(id, { isArchived: false });
+      }
+      res.json({ success: true, count: ids.length });
+    } catch (err) {
+      res.status(400).json({ error: "Failed to bulk restore spells" });
+    }
+  });
+
+  app.post("/api/admin/system-spells/bulk-delete", requireAdmin, async (req, res) => {
+    try {
+      const { ids } = req.body;
+      if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: "No spell IDs provided" });
+      for (const id of ids) {
+        await storage.deleteSystemSpell(id);
+      }
+      res.json({ success: true, count: ids.length });
+    } catch (err) {
+      res.status(400).json({ error: "Failed to bulk delete spells" });
+    }
+  });
+
   // Admin system species routes
   app.get("/api/admin/system-species", requireAdmin, async (req, res) => {
     try {
