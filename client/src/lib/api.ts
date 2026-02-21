@@ -1682,12 +1682,12 @@ class ApiClient {
   }
 
   // Initiative Tracking
-  async getSceneInitiative(sceneId: string): Promise<InitiativeData> {
-    return this.request(`/scenes/${sceneId}/initiative`);
+  async getCampaignInitiative(campaignId: string): Promise<InitiativeData> {
+    return this.request(`/campaigns/${campaignId}/initiative`);
   }
 
-  async rollInitiative(sceneId: string, characterId: string, value: number, isHidden?: boolean): Promise<InitiativeEntry> {
-    return this.request(`/scenes/${sceneId}/initiative`, {
+  async rollInitiative(campaignId: string, characterId: string, value: number, isHidden?: boolean): Promise<InitiativeEntry> {
+    return this.request(`/campaigns/${campaignId}/initiative`, {
       method: 'POST',
       body: JSON.stringify({ characterId, value, isHidden }),
     });
@@ -1704,12 +1704,12 @@ class ApiClient {
     return this.request(`/initiative/${id}`, { method: 'DELETE' });
   }
 
-  async clearSceneInitiative(sceneId: string): Promise<void> {
-    return this.request(`/scenes/${sceneId}/initiative`, { method: 'DELETE' });
+  async clearCampaignInitiative(campaignId: string): Promise<void> {
+    return this.request(`/campaigns/${campaignId}/initiative`, { method: 'DELETE' });
   }
 
-  async updateCombatState(sceneId: string, inCombat: boolean, currentTurnCharacterId?: string): Promise<Scene> {
-    return this.request(`/scenes/${sceneId}/combat`, {
+  async updateCombatState(campaignId: string, inCombat: boolean, currentTurnCharacterId?: string): Promise<any> {
+    return this.request(`/campaigns/${campaignId}/combat`, {
       method: 'POST',
       body: JSON.stringify({ inCombat, currentTurnCharacterId }),
     });

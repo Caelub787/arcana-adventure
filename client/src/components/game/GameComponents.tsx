@@ -8779,9 +8779,9 @@ const InitiativeTrackerInner = function InitiativeTracker({ open, onOpenChange, 
   const [inactiveCollapsed, setInactiveCollapsed] = useState(true);
 
   const { data: initiativeData, isLoading } = useQuery({
-    queryKey: [`/api/scenes/${sceneId}/initiative`],
-    queryFn: () => api.getSceneInitiative(sceneId!),
-    enabled: !!sceneId && open,
+    queryKey: [`/api/campaigns/${campaignId}/initiative`],
+    queryFn: () => api.getCampaignInitiative(campaignId!),
+    enabled: !!campaignId && open,
     refetchInterval: open ? 3000 : false,
     staleTime: 2000, // Cache for 2s to prevent flash re-fetches
   });
@@ -8800,9 +8800,9 @@ const InitiativeTrackerInner = function InitiativeTracker({ open, onOpenChange, 
     mutationFn: ({ id, data }: { id: string; data: { value?: number; isHidden?: boolean } }) => 
       api.updateInitiativeEntry(id, data),
     onMutate: async ({ id, data }) => {
-      await queryClient.cancelQueries({ queryKey: [`/api/scenes/${sceneId}/initiative`] });
-      const previousData = queryClient.getQueryData([`/api/scenes/${sceneId}/initiative`]);
-      queryClient.setQueryData([`/api/scenes/${sceneId}/initiative`], (old: any) => ({
+      await queryClient.cancelQueries({ queryKey: [`/api/campaigns/${campaignId}/initiative`] });
+      const previousData = queryClient.getQueryData([`/api/campaigns/${campaignId}/initiative`]);
+      queryClient.setQueryData([`/api/campaigns/${campaignId}/initiative`], (old: any) => ({
         ...old,
         entries: old?.entries?.map((e: any) => e.id === id ? { ...e, ...data } : e) || []
       }));
@@ -8810,28 +8810,28 @@ const InitiativeTrackerInner = function InitiativeTracker({ open, onOpenChange, 
     },
     onError: (_, __, context) => {
       if (context?.previousData) {
-        queryClient.setQueryData([`/api/scenes/${sceneId}/initiative`], context.previousData);
+        queryClient.setQueryData([`/api/campaigns/${campaignId}/initiative`], context.previousData);
       }
     },
     onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/scenes/${sceneId}/initiative`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${campaignId}/initiative`] });
     },
   });
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => api.deleteInitiativeEntry(id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/scenes/${sceneId}/initiative`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${campaignId}/initiative`] });
     },
   });
 
   const combatMutation = useMutation({
     mutationFn: ({ inCombat, currentTurnCharacterId }: { inCombat: boolean; currentTurnCharacterId?: string }) => 
-      api.updateCombatState(sceneId!, inCombat, currentTurnCharacterId),
+      api.updateCombatState(campaignId!, inCombat, currentTurnCharacterId),
     onMutate: async ({ inCombat, currentTurnCharacterId }) => {
-      await queryClient.cancelQueries({ queryKey: [`/api/scenes/${sceneId}/initiative`] });
-      const previousData = queryClient.getQueryData([`/api/scenes/${sceneId}/initiative`]);
-      queryClient.setQueryData([`/api/scenes/${sceneId}/initiative`], (old: any) => ({
+      await queryClient.cancelQueries({ queryKey: [`/api/campaigns/${campaignId}/initiative`] });
+      const previousData = queryClient.getQueryData([`/api/campaigns/${campaignId}/initiative`]);
+      queryClient.setQueryData([`/api/campaigns/${campaignId}/initiative`], (old: any) => ({
         ...old,
         inCombat,
         currentTurnCharacterId,
@@ -8840,18 +8840,18 @@ const InitiativeTrackerInner = function InitiativeTracker({ open, onOpenChange, 
     },
     onError: (_err, _vars, context) => {
       if (context?.previousData) {
-        queryClient.setQueryData([`/api/scenes/${sceneId}/initiative`], context.previousData);
+        queryClient.setQueryData([`/api/campaigns/${campaignId}/initiative`], context.previousData);
       }
     },
     onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/scenes/${sceneId}/initiative`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${campaignId}/initiative`] });
     },
   });
 
   const clearMutation = useMutation({
-    mutationFn: () => api.clearSceneInitiative(sceneId!),
+    mutationFn: () => api.clearCampaignInitiative(campaignId!),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/scenes/${sceneId}/initiative`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${campaignId}/initiative`] });
     },
   });
 
@@ -8927,7 +8927,7 @@ const InitiativeTrackerInner = function InitiativeTracker({ open, onOpenChange, 
   };
 
   const charactersWithInitiative = new Set(entries.map((e: any) => e.characterId));
-  const charactersNeedingRoll = sceneId ? characters.filter((c: any) => {
+  const charactersNeedingRoll = campaignId ? characters.filter((c: any) => {
     if (charactersWithInitiative.has(c.id)) return false;
     if (isGM) return true;
     return c.userId === userId;
@@ -9777,9 +9777,7 @@ const CampaignMenuInner = function CampaignMenu({ campaignId, role, inviteCode, 
       
       // Initiative operations
       if (data.type === 'initiative_changed') {
-        if (data.sceneId) {
-          queryClient.invalidateQueries({ queryKey: [`/api/scenes/${data.sceneId}/initiative`] });
-        }
+        queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${campaignId}/initiative`] });
       }
     });
     

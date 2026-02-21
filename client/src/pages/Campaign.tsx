@@ -7397,9 +7397,9 @@ export default function Campaign() {
 
   // Initiative data query for current turn tracking
   const { data: initiativeData } = useQuery({
-    queryKey: [`/api/scenes/${activeScene?.id}/initiative`],
-    queryFn: () => api.getSceneInitiative(activeScene!.id),
-    enabled: !!activeScene?.id,
+    queryKey: [`/api/campaigns/${effectiveCampaignId}/initiative`],
+    queryFn: () => api.getCampaignInitiative(effectiveCampaignId!),
+    enabled: !!effectiveCampaignId,
   });
   const currentTurnCharacterId = initiativeData?.inCombat ? initiativeData?.currentTurnCharacterId : undefined;
 
@@ -8151,8 +8151,8 @@ export default function Campaign() {
         }
         if (data.type === 'initiative_update' || data.type === 'combat_update') {
           // Force immediate refetch for initiative/combat updates
-          if (data.sceneId) {
-            queryClientRef.current.refetchQueries({ queryKey: [`/api/scenes/${data.sceneId}/initiative`] });
+          if (data.campaignId) {
+            queryClientRef.current.refetchQueries({ queryKey: [`/api/campaigns/${data.campaignId}/initiative`] });
           }
         }
         if (data.type === 'dice_roll' && data.roll) {

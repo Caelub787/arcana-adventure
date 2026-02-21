@@ -85,6 +85,8 @@ export const campaigns = pgTable("campaigns", {
   hotbarSlots: integer("hotbar_slots").default(5).notNull(), // Number of slots per hotbar (default 5)
   system: text("system").notNull().default("arcana-adventure"),
   defaultPanel: text("default_panel").default("characters"),
+  inCombat: boolean("in_combat").default(false).notNull(),
+  currentTurnCharacterId: varchar("current_turn_character_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   lastPlayed: timestamp("last_played").defaultNow().notNull(),
 });
@@ -753,14 +755,15 @@ export type CharacterPermission = typeof characterPermissions.$inferSelect;
 // Initiative Entries table (for combat initiative tracking)
 export const initiativeEntries = pgTable("initiative_entries", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  sceneId: varchar("scene_id").notNull().references(() => scenes.id, { onDelete: "cascade" }),
+  campaignId: varchar("campaign_id").notNull().references(() => campaigns.id, { onDelete: "cascade" }),
+  sceneId: varchar("scene_id").references(() => scenes.id, { onDelete: "cascade" }),
   characterId: varchar("character_id").notNull().references(() => characters.id, { onDelete: "cascade" }),
   value: integer("value").notNull(), // Initiative roll result (1d20 + Finesse)
   isHidden: boolean("is_hidden").default(false).notNull(), // GM can hide characters from players
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => ({
-  uniqueSceneCharacter: uniqueIndex("initiative_entries_scene_char_unique").on(
-    table.sceneId,
+  uniqueCampaignCharacter: uniqueIndex("initiative_entries_campaign_char_unique").on(
+    table.campaignId,
     table.characterId
   ),
 }));

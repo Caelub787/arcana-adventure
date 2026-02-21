@@ -249,12 +249,12 @@ export interface IStorage {
   isUserBanned(campaignId: string, userId: string): Promise<boolean>;
 
   // Initiative Tracking operations
-  getSceneInitiative(sceneId: string): Promise<InitiativeEntry[]>;
+  getCampaignInitiative(campaignId: string): Promise<InitiativeEntry[]>;
   createInitiativeEntry(entry: InsertInitiativeEntry): Promise<InitiativeEntry>;
   updateInitiativeEntry(id: string, data: Partial<InitiativeEntry>): Promise<InitiativeEntry | undefined>;
   deleteInitiativeEntry(id: string): Promise<void>;
-  clearSceneInitiative(sceneId: string): Promise<void>;
-  getInitiativeEntryByCharacter(sceneId: string, characterId: string): Promise<InitiativeEntry | undefined>;
+  clearCampaignInitiative(campaignId: string): Promise<void>;
+  getInitiativeEntryByCharacter(campaignId: string, characterId: string): Promise<InitiativeEntry | undefined>;
 
   // System Species operations
   getSystemSpecies(systemName?: string): Promise<SystemSpecies[]>;
@@ -2135,10 +2135,10 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Initiative Tracking operations
-  async getSceneInitiative(sceneId: string): Promise<InitiativeEntry[]> {
+  async getCampaignInitiative(campaignId: string): Promise<InitiativeEntry[]> {
     return await db.select()
       .from(initiativeEntries)
-      .where(eq(initiativeEntries.sceneId, sceneId))
+      .where(eq(initiativeEntries.campaignId, campaignId))
       .orderBy(desc(initiativeEntries.value), initiativeEntries.id);
   }
 
@@ -2146,7 +2146,7 @@ export class DatabaseStorage implements IStorage {
     const [created] = await db.insert(initiativeEntries)
       .values(entry)
       .onConflictDoUpdate({
-        target: [initiativeEntries.sceneId, initiativeEntries.characterId],
+        target: [initiativeEntries.campaignId, initiativeEntries.characterId],
         set: { value: entry.value, isHidden: entry.isHidden ?? false }
       })
       .returning();
@@ -2165,15 +2165,15 @@ export class DatabaseStorage implements IStorage {
     await db.delete(initiativeEntries).where(eq(initiativeEntries.id, id));
   }
 
-  async clearSceneInitiative(sceneId: string): Promise<void> {
-    await db.delete(initiativeEntries).where(eq(initiativeEntries.sceneId, sceneId));
+  async clearCampaignInitiative(campaignId: string): Promise<void> {
+    await db.delete(initiativeEntries).where(eq(initiativeEntries.campaignId, campaignId));
   }
 
-  async getInitiativeEntryByCharacter(sceneId: string, characterId: string): Promise<InitiativeEntry | undefined> {
+  async getInitiativeEntryByCharacter(campaignId: string, characterId: string): Promise<InitiativeEntry | undefined> {
     const [entry] = await db.select()
       .from(initiativeEntries)
       .where(and(
-        eq(initiativeEntries.sceneId, sceneId),
+        eq(initiativeEntries.campaignId, campaignId),
         eq(initiativeEntries.characterId, characterId)
       ))
       .limit(1);

@@ -970,6 +970,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           
           // Create initiative entry
           const entry = await storage.createInitiativeEntry({
+            campaignId,
             sceneId,
             characterId,
             value: total,
@@ -6626,28 +6627,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Initiative Tracking routes
-  app.get("/api/scenes/:sceneId/initiative", requireAuth, async (req, res) => {
+  app.get("/api/campaigns/:campaignId/initiative", requireAuth, async (req, res) => {
     try {
-      const scene = await storage.getScene(req.params.sceneId);
-      if (!scene) {
-        return res.status(404).json({ error: "Scene not found" });
-      }
-      
-      const campaign = await storage.getCampaign(scene.campaignId);
+      const campaign = await storage.getCampaign(req.params.campaignId);
       if (!campaign) {
         return res.status(404).json({ error: "Campaign not found" });
       }
       
-      const isGM = await hasGmAccess(req.session.userId!, scene.campaignId, campaign.gmUserId);
-      const entries = await storage.getSceneInitiative(req.params.sceneId);
+      const isGM = await hasGmAccess(req.session.userId!, req.params.campaignId, campaign.gmUserId);
+      const entries = await storage.getCampaignInitiative(req.params.campaignId);
       
       // If not GM, filter out hidden entries
       const visibleEntries = isGM ? entries : entries.filter(e => !e.isHidden);
       
       res.json({
         entries: visibleEntries,
-        inCombat: scene.inCombat,
-        currentTurnCharacterId: scene.currentTurnCharacterId
+        inCombat: campaign.inCombat,
+        currentTurnCharacterId: campaign.currentTurnCharacterId
       });
     } catch (e) {
       console.error("Failed to get initiative:", e);
@@ -6655,13 +6651,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/scenes/:sceneId/initiative", requireAuth, async (req, res) => {
+  app.post("/api/campaigns/:campaignId/initiative", requireAuth, async (req, res) => {
     try {
       const { characterId, value, isHidden } = req.body;
       
-      const scene = await storage.getScene(req.params.sceneId);
-      if (!scene) {
-        return res.status(404).json({ error: "Scene not found" });
+      const campaign = await storage.getCampaign(req.params.campaignId);
+      if (!campaign) {
+        return res.status(404).json({ error: "Campaign not found" });
       }
       
       const character = await storage.getCharacter(characterId);
@@ -6669,8 +6665,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Character not found" });
       }
       
-      const campaign = await storage.getCampaign(scene.campaignId);
-      const isGM = campaign?.gmUserId === req.session.userId || await storage.isGM(req.session.userId!, scene.campaignId);
+      const isGM = campaign.gmUserId === req.session.userId || await storage.isGM(req.session.userId!, req.params.campaignId);
       const isOwner = character.userId === req.session.userId;
       const editPermission = await storage.getCharacterPermission(characterId, req.session.userId!);
       const hasEditAccess = editPermission?.accessLevel === 'edit';
@@ -6681,19 +6676,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       const entry = await storage.createInitiativeEntry({
-        sceneId: req.params.sceneId,
+        campaignId: req.params.campaignId,
         characterId,
         value,
         isHidden: isHidden ?? false
       });
       
       // Broadcast initiative update to campaign room
-      const room = campaignRooms.get(scene.campaignId);
+      const room = campaignRooms.get(req.params.campaignId);
       if (room) {
         const initiativeMessage = JSON.stringify({
           type: 'initiative_update',
-          sceneId: req.params.sceneId,
-          campaignId: scene.campaignId
+          campaignId: req.params.campaignId
         });
         
         const clients = Array.from(room);
@@ -6715,19 +6709,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { value, isHidden } = req.body;
       
-      // Get the initiative entry to find the scene
+      // Get the initiative entry to find the campaign
       const entries = await db.select().from(initiativeEntries).where(eq(initiativeEntries.id, req.params.id)).limit(1);
       const entry = entries[0];
       if (!entry) {
         return res.status(404).json({ error: "Initiative entry not found" });
       }
       
-      const scene = await storage.getScene(entry.sceneId);
-      if (!scene) {
-        return res.status(404).json({ error: "Scene not found" });
-      }
-      
-      const campaign = await storage.getCampaign(scene.campaignId);
+      const campaign = await storage.getCampaign(entry.campaignId);
       if (!campaign || campaign.gmUserId !== req.session.userId) {
         return res.status(403).json({ error: "Only GMs can edit initiative values" });
       }
@@ -6735,12 +6724,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const updated = await storage.updateInitiativeEntry(req.params.id, { value, isHidden });
       
       // Broadcast initiative update
-      const room = campaignRooms.get(scene.campaignId);
+      const room = campaignRooms.get(entry.campaignId);
       if (room) {
         const initiativeMessage = JSON.stringify({
           type: 'initiative_update',
-          sceneId: entry.sceneId,
-          campaignId: scene.campaignId
+          campaignId: entry.campaignId
         });
         
         const clients = Array.from(room);
@@ -6760,19 +6748,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.delete("/api/initiative/:id", requireAuth, async (req, res) => {
     try {
-      // Get the initiative entry to find the scene
+      // Get the initiative entry to find the campaign
       const entries = await db.select().from(initiativeEntries).where(eq(initiativeEntries.id, req.params.id)).limit(1);
       const entry = entries[0];
       if (!entry) {
         return res.status(404).json({ error: "Initiative entry not found" });
       }
       
-      const scene = await storage.getScene(entry.sceneId);
-      if (!scene) {
-        return res.status(404).json({ error: "Scene not found" });
-      }
-      
-      const campaign = await storage.getCampaign(scene.campaignId);
+      const campaign = await storage.getCampaign(entry.campaignId);
       if (!campaign || campaign.gmUserId !== req.session.userId) {
         return res.status(403).json({ error: "Only GMs can remove initiative entries" });
       }
@@ -6780,12 +6763,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       await storage.deleteInitiativeEntry(req.params.id);
       
       // Broadcast initiative update
-      const room = campaignRooms.get(scene.campaignId);
+      const room = campaignRooms.get(entry.campaignId);
       if (room) {
         const initiativeMessage = JSON.stringify({
           type: 'initiative_update',
-          sceneId: entry.sceneId,
-          campaignId: scene.campaignId
+          campaignId: entry.campaignId
         });
         
         const clients = Array.from(room);
@@ -6804,32 +6786,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Start/stop combat
-  app.post("/api/scenes/:sceneId/combat", requireAuth, async (req, res) => {
+  app.post("/api/campaigns/:campaignId/combat", requireAuth, async (req, res) => {
     try {
       const { inCombat, currentTurnCharacterId } = req.body;
       
-      const scene = await storage.getScene(req.params.sceneId);
-      if (!scene) {
-        return res.status(404).json({ error: "Scene not found" });
-      }
-      
-      const campaign = await storage.getCampaign(scene.campaignId);
+      const campaign = await storage.getCampaign(req.params.campaignId);
       if (!campaign || campaign.gmUserId !== req.session.userId) {
         return res.status(403).json({ error: "Only GMs can start/stop combat" });
       }
       
-      const updated = await storage.updateScene(req.params.sceneId, { 
+      const updated = await storage.updateCampaign(req.params.campaignId, { 
         inCombat, 
         currentTurnCharacterId 
       });
       
       // Broadcast combat state update
-      const room = campaignRooms.get(scene.campaignId);
+      const room = campaignRooms.get(req.params.campaignId);
       if (room) {
         const combatMessage = JSON.stringify({
           type: 'combat_update',
-          sceneId: req.params.sceneId,
-          campaignId: scene.campaignId,
+          campaignId: req.params.campaignId,
           inCombat,
           currentTurnCharacterId
         });
@@ -7051,34 +7027,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Clear all initiative entries for a scene
-  app.delete("/api/scenes/:sceneId/initiative", requireAuth, async (req, res) => {
+  // Clear all initiative entries for a campaign
+  app.delete("/api/campaigns/:campaignId/initiative", requireAuth, async (req, res) => {
     try {
-      const scene = await storage.getScene(req.params.sceneId);
-      if (!scene) {
-        return res.status(404).json({ error: "Scene not found" });
-      }
-      
-      const campaign = await storage.getCampaign(scene.campaignId);
+      const campaign = await storage.getCampaign(req.params.campaignId);
       if (!campaign || campaign.gmUserId !== req.session.userId) {
         return res.status(403).json({ error: "Only GMs can clear initiative" });
       }
       
-      await storage.clearSceneInitiative(req.params.sceneId);
+      await storage.clearCampaignInitiative(req.params.campaignId);
       
-      // Also reset combat state
-      await storage.updateScene(req.params.sceneId, { 
+      // Also reset combat state on campaign
+      await storage.updateCampaign(req.params.campaignId, { 
         inCombat: false, 
         currentTurnCharacterId: null 
       });
       
       // Broadcast initiative clear
-      const room = campaignRooms.get(scene.campaignId);
+      const room = campaignRooms.get(req.params.campaignId);
       if (room) {
         const clearMessage = JSON.stringify({
           type: 'initiative_update',
-          sceneId: req.params.sceneId,
-          campaignId: scene.campaignId
+          campaignId: req.params.campaignId
         });
         
         const clients = Array.from(room);
