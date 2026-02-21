@@ -9760,6 +9760,16 @@ const CampaignMenuInner = function CampaignMenu({ campaignId, role, inviteCode, 
         queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${campaignId}/scenes`] });
       }
       
+      // Active scene changed - reload campaign data and scene for all users
+      if (data.type === 'active_scene_changed') {
+        queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${campaignId}`] });
+        queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${campaignId}/scenes`] });
+        if (data.sceneId) {
+          queryClient.invalidateQueries({ queryKey: [`/api/scenes/${data.sceneId}`] });
+          queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${campaignId}/tokens`] });
+        }
+      }
+      
       // Character folder operations
       if (data.type === 'character_folder_changed') {
         queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${campaignId}/characters`] });
