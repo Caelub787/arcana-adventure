@@ -906,18 +906,56 @@ export function FogCanvasOverlay({
   containerWidthRef.current = containerWidth;
   containerHeightRef.current = containerHeight;
 
+  const dataVersionRef = useRef(0);
+  useEffect(() => { dataVersionRef.current++; }, [visionPolygons, lightVisionPolygons, exploredCells, fogEnabled, scene, containerWidth, containerHeight, isGM, gmSeeAsPlayer]);
+
   useEffect(() => {
     let rafId: number;
+    let lastPanX = -Infinity;
+    let lastPanY = -Infinity;
+    let lastZoom = -Infinity;
+    let lastDataVersion = -1;
 
     function draw() {
+      const currentFogEnabled = fogEnabledRef.current;
+      const currentScene = sceneRef.current;
+      const isDayTime = currentScene?.isDayTime ?? true;
+
+      if (!currentFogEnabled && isDayTime) {
+        const canvas = canvasRef.current;
+        if (canvas && canvas.width > 0) {
+          const ctx = canvas.getContext('2d');
+          if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
+          canvas.width = 0;
+          canvas.height = 0;
+        }
+        rafId = requestAnimationFrame(draw);
+        return;
+      }
+
+      const panX = motionX.get();
+      const panY = motionY.get();
+      const zoom = motionZoom.get();
+      const curDataVersion = dataVersionRef.current;
+
+      const viewUnchanged = Math.abs(panX - lastPanX) < 0.1 && Math.abs(panY - lastPanY) < 0.1 && Math.abs(zoom - lastZoom) < 0.0001;
+      if (viewUnchanged && curDataVersion === lastDataVersion) {
+        rafId = requestAnimationFrame(draw);
+        return;
+      }
+      lastPanX = panX;
+      lastPanY = panY;
+      lastZoom = zoom;
+      lastDataVersion = curDataVersion;
+
       const canvas = canvasRef.current;
-      if (!canvas) return;
+      if (!canvas) { rafId = requestAnimationFrame(draw); return; }
       const ctx = canvas.getContext('2d');
-      if (!ctx) return;
+      if (!ctx) { rafId = requestAnimationFrame(draw); return; }
 
       const width = containerWidthRef.current;
       const height = containerHeightRef.current;
-      if (width === 0 || height === 0) return;
+      if (width === 0 || height === 0) { rafId = requestAnimationFrame(draw); return; }
 
       if (canvas.width !== width || canvas.height !== height) {
         canvas.width = width;
@@ -926,17 +964,8 @@ export function FogCanvasOverlay({
         ctx.clearRect(0, 0, width, height);
       }
 
-      const currentFogEnabled = fogEnabledRef.current;
       const currentIsGM = isGMRef.current;
       const currentGmSeeAsPlayer = gmSeeAsPlayerRef.current;
-      const currentScene = sceneRef.current;
-      const isDayTime = currentScene?.isDayTime ?? true;
-
-      if (!currentFogEnabled && isDayTime) return;
-
-      const panX = motionX.get();
-      const panY = motionY.get();
-      const zoom = motionZoom.get();
 
       function worldToScreenX(wx: number): number {
         return panX + (wx + 9000) * zoom - 9000;
