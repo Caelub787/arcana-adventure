@@ -17,7 +17,7 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Slider } from '@/components/ui/slider';
 import { toast } from '@/hooks/use-toast';
-import { ArrowLeft, Plus, Pencil, Trash2, Sword, Shield, Package, Sparkles, Box, Coins, Search, Users, User, GitBranch, Library, Link, X, GripVertical, Star, Zap, Heart, ShieldCheck, BookOpen, RefreshCw, ZoomIn, ZoomOut, Wand2, Save, Flame, Upload, Image as ImageIcon, Folder, FolderPlus, ChevronDown, ChevronRight, Layers, Copy, Bell, Send, Archive, RotateCcw } from 'lucide-react';
+import { ArrowLeft, Plus, Pencil, Trash2, Sword, Shield, Package, Sparkles, Box, CheckSquare, Coins, Search, Users, User, GitBranch, Library, Link, X, GripVertical, Star, Square, Zap, Heart, ShieldCheck, BookOpen, RefreshCw, ZoomIn, ZoomOut, Wand2, Save, Flame, Upload, Image as ImageIcon, Folder, FolderPlus, ChevronDown, ChevronRight, Layers, Copy, Bell, Send, Archive, RotateCcw } from 'lucide-react';
 import { ImageBrowser } from '@/components/ImageBrowser';
 import { CharacterSheet } from '@/components/game/GameComponents';
 import { RollEntriesEditor } from '@/components/game/RollEntriesEditor';
@@ -1022,6 +1022,7 @@ export default function AdminSettings() {
 
 function ArchivedItemsView({ onNavigateBack, onEditItem }: { onNavigateBack: () => void; onEditItem: (itemId: string) => void }) {
   const queryClient = useQueryClient();
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const { data: archivedItems = [], isLoading } = useQuery({
     queryKey: ['admin-archived-items'],
     queryFn: () => api.getArchivedItems(),
@@ -1037,14 +1038,53 @@ function ArchivedItemsView({ onNavigateBack, onEditItem }: { onNavigateBack: () 
     },
   });
 
+  const bulkRestoreMutation = useMutation({
+    mutationFn: (ids: string[]) => api.bulkRestoreItems(ids),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-archived-items'] });
+      queryClient.invalidateQueries({ queryKey: ['system-items-summary'] });
+      queryClient.invalidateQueries({ queryKey: ['system-items'] });
+      setSelectedIds(new Set());
+      toast({ title: `${selectedIds.size} items restored` });
+    },
+  });
+
+  const bulkDeleteMutation = useMutation({
+    mutationFn: (ids: string[]) => api.bulkDeleteItems(ids),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-archived-items'] });
+      queryClient.invalidateQueries({ queryKey: ['system-items-summary'] });
+      setSelectedIds(new Set());
+      toast({ title: 'Items deleted' });
+    },
+  });
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAll = () => {
+    if (selectedIds.size === archivedItems.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(archivedItems.map((i: any) => i.id)));
+    }
+  };
+
+  const allSelected = archivedItems.length > 0 && selectedIds.size === archivedItems.length;
+  const someSelected = selectedIds.size > 0;
+
   return (
     <Card className="bg-stone-900 border-stone-700">
       <CardHeader>
         <div className="flex items-center justify-between">
           <CardTitle className="text-amber-500">Archived Items</CardTitle>
           <Button size="sm" variant="outline" onClick={onNavigateBack} className="border-stone-600 text-stone-300">
-            <ArrowLeft className="h-4 w-4 mr-1" />
-            Back to Items
+            <ArrowLeft className="h-4 w-4 mr-1" /> Back to Items
           </Button>
         </div>
         <CardDescription className="text-stone-400">
@@ -1056,10 +1096,24 @@ function ArchivedItemsView({ onNavigateBack, onEditItem }: { onNavigateBack: () 
         {!isLoading && archivedItems.length === 0 && (
           <p className="text-stone-400 text-sm italic">No archived items</p>
         )}
+
+        {archivedItems.length > 0 && (
+          <div className="flex items-center gap-3 mb-3">
+            <button onClick={toggleAll} className="flex items-center gap-2 text-xs text-stone-400 hover:text-stone-200 transition-colors" data-testid="button-select-all-archived-items">
+              {allSelected ? <CheckSquare className="h-4 w-4 text-amber-400" /> : <Square className="h-4 w-4" />}
+              {allSelected ? 'Deselect All' : 'Select All'}
+            </button>
+            {someSelected && <span className="text-xs text-amber-400">{selectedIds.size} selected</span>}
+          </div>
+        )}
+
         <div className="space-y-2">
           {archivedItems.map((item: any) => (
-            <div key={item.id} className="flex items-center justify-between p-2 bg-stone-800 rounded-lg border border-stone-700 cursor-pointer hover:border-stone-600" onClick={() => onEditItem(item.id)}>
+            <div key={item.id} className={`flex items-center justify-between p-2 bg-stone-800 rounded-lg border ${selectedIds.has(item.id) ? 'border-amber-500/50 bg-amber-900/10' : 'border-stone-700'} cursor-pointer hover:border-stone-600`} onClick={() => onEditItem(item.id)}>
               <div className="flex items-center gap-3">
+                <button onClick={(e) => { e.stopPropagation(); toggleSelect(item.id); }} className="shrink-0" data-testid={`checkbox-archived-item-${item.id}`}>
+                  {selectedIds.has(item.id) ? <CheckSquare className="h-5 w-5 text-amber-400" /> : <Square className="h-5 w-5 text-stone-500 hover:text-stone-300" />}
+                </button>
                 <div className="w-8 h-8 rounded bg-stone-700 flex items-center justify-center">
                   <Package className="h-4 w-4 text-stone-500" />
                 </div>
@@ -1069,21 +1123,28 @@ function ArchivedItemsView({ onNavigateBack, onEditItem }: { onNavigateBack: () 
                 </div>
               </div>
               <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="border-stone-600 text-emerald-400 hover:text-emerald-300"
-                  onClick={() => restoreMutation.mutate(item.id)}
-                  disabled={restoreMutation.isPending}
-                  data-testid={`button-restore-item-${item.id}`}
-                >
-                  <RotateCcw className="h-3 w-3 mr-1" />
-                  Restore
+                <Button size="sm" variant="outline" className="border-stone-600 text-emerald-400 hover:text-emerald-300" onClick={() => restoreMutation.mutate(item.id)} disabled={restoreMutation.isPending} data-testid={`button-restore-item-${item.id}`}>
+                  <RotateCcw className="h-3 w-3 mr-1" /> Restore
                 </Button>
               </div>
             </div>
           ))}
         </div>
+
+        {someSelected && (
+          <div className="mt-3 flex items-center gap-2 p-3 bg-stone-800 border border-stone-600 rounded-lg">
+            <span className="text-xs text-stone-300 mr-auto">{selectedIds.size} selected</span>
+            <Button size="sm" variant="outline" className="h-7 text-xs border-emerald-800 text-emerald-400 hover:text-emerald-300" onClick={() => { if (confirm(`Restore ${selectedIds.size} items?`)) bulkRestoreMutation.mutate(Array.from(selectedIds)); }} disabled={bulkRestoreMutation.isPending} data-testid="button-bulk-restore-items">
+              <RotateCcw className="h-3 w-3 mr-1" /> Restore
+            </Button>
+            <Button size="sm" variant="outline" className="h-7 text-xs border-red-800 text-red-400 hover:text-red-300 hover:bg-red-900/30" onClick={() => { if (confirm(`Permanently delete ${selectedIds.size} items?`)) bulkDeleteMutation.mutate(Array.from(selectedIds)); }} disabled={bulkDeleteMutation.isPending} data-testid="button-bulk-delete-archived-items">
+              <Trash2 className="h-3 w-3 mr-1" /> Delete
+            </Button>
+            <Button size="sm" variant="ghost" className="h-7 text-xs text-stone-500" onClick={() => setSelectedIds(new Set())} data-testid="button-clear-selection-archived-items">
+              <X className="h-3 w-3" />
+            </Button>
+          </div>
+        )}
       </CardContent>
     </Card>
   );
@@ -1091,6 +1152,7 @@ function ArchivedItemsView({ onNavigateBack, onEditItem }: { onNavigateBack: () 
 
 function ArchivedSpellsView({ onNavigateBack, onEditSpell }: { onNavigateBack: () => void; onEditSpell: (spell: any) => void }) {
   const queryClient = useQueryClient();
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const { data: archivedSpells = [], isLoading } = useQuery({
     queryKey: ['admin-archived-spells'],
     queryFn: () => api.getArchivedSpells(),
@@ -1105,14 +1167,51 @@ function ArchivedSpellsView({ onNavigateBack, onEditSpell }: { onNavigateBack: (
     },
   });
 
+  const bulkRestoreMutation = useMutation({
+    mutationFn: (ids: string[]) => api.bulkRestoreSpells(ids),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-archived-spells'] });
+      queryClient.invalidateQueries({ queryKey: ['system-spells'] });
+      setSelectedIds(new Set());
+      toast({ title: `${selectedIds.size} spells restored` });
+    },
+  });
+
+  const bulkDeleteMutation = useMutation({
+    mutationFn: (ids: string[]) => api.bulkDeleteSpells(ids),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-archived-spells'] });
+      setSelectedIds(new Set());
+      toast({ title: 'Spells deleted' });
+    },
+  });
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAll = () => {
+    if (selectedIds.size === archivedSpells.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(archivedSpells.map((s: any) => s.id)));
+    }
+  };
+
+  const allSelected = archivedSpells.length > 0 && selectedIds.size === archivedSpells.length;
+  const someSelected = selectedIds.size > 0;
+
   return (
     <Card className="bg-stone-900 border-stone-700">
       <CardHeader>
         <div className="flex items-center justify-between">
           <CardTitle className="text-blue-500">Archived Spells</CardTitle>
           <Button size="sm" variant="outline" onClick={onNavigateBack} className="border-stone-600 text-stone-300">
-            <ArrowLeft className="h-4 w-4 mr-1" />
-            Back to Spells
+            <ArrowLeft className="h-4 w-4 mr-1" /> Back to Spells
           </Button>
         </div>
         <CardDescription className="text-stone-400">
@@ -1124,10 +1223,24 @@ function ArchivedSpellsView({ onNavigateBack, onEditSpell }: { onNavigateBack: (
         {!isLoading && archivedSpells.length === 0 && (
           <p className="text-stone-400 text-sm italic">No archived spells</p>
         )}
+
+        {archivedSpells.length > 0 && (
+          <div className="flex items-center gap-3 mb-3">
+            <button onClick={toggleAll} className="flex items-center gap-2 text-xs text-stone-400 hover:text-stone-200 transition-colors" data-testid="button-select-all-archived-spells">
+              {allSelected ? <CheckSquare className="h-4 w-4 text-blue-400" /> : <Square className="h-4 w-4" />}
+              {allSelected ? 'Deselect All' : 'Select All'}
+            </button>
+            {someSelected && <span className="text-xs text-blue-400">{selectedIds.size} selected</span>}
+          </div>
+        )}
+
         <div className="space-y-2">
           {archivedSpells.map((spell: any) => (
-            <div key={spell.id} className="flex items-center justify-between p-2 bg-stone-800 rounded-lg border border-stone-700 cursor-pointer hover:border-stone-600" onClick={() => onEditSpell(spell)}>
+            <div key={spell.id} className={`flex items-center justify-between p-2 bg-stone-800 rounded-lg border ${selectedIds.has(spell.id) ? 'border-blue-500/50 bg-blue-900/10' : 'border-stone-700'} cursor-pointer hover:border-stone-600`} onClick={() => onEditSpell(spell)}>
               <div className="flex items-center gap-3">
+                <button onClick={(e) => { e.stopPropagation(); toggleSelect(spell.id); }} className="shrink-0" data-testid={`checkbox-archived-spell-${spell.id}`}>
+                  {selectedIds.has(spell.id) ? <CheckSquare className="h-5 w-5 text-blue-400" /> : <Square className="h-5 w-5 text-stone-500 hover:text-stone-300" />}
+                </button>
                 {spell.icon ? (
                   <img src={spell.icon} alt={spell.name} className="w-8 h-8 rounded object-cover" />
                 ) : (
@@ -1141,21 +1254,28 @@ function ArchivedSpellsView({ onNavigateBack, onEditSpell }: { onNavigateBack: (
                 </div>
               </div>
               <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="border-stone-600 text-emerald-400 hover:text-emerald-300"
-                  onClick={() => restoreMutation.mutate(spell.id)}
-                  disabled={restoreMutation.isPending}
-                  data-testid={`button-restore-spell-${spell.id}`}
-                >
-                  <RotateCcw className="h-3 w-3 mr-1" />
-                  Restore
+                <Button size="sm" variant="outline" className="border-stone-600 text-emerald-400 hover:text-emerald-300" onClick={() => restoreMutation.mutate(spell.id)} disabled={restoreMutation.isPending} data-testid={`button-restore-spell-${spell.id}`}>
+                  <RotateCcw className="h-3 w-3 mr-1" /> Restore
                 </Button>
               </div>
             </div>
           ))}
         </div>
+
+        {someSelected && (
+          <div className="mt-3 flex items-center gap-2 p-3 bg-stone-800 border border-stone-600 rounded-lg">
+            <span className="text-xs text-stone-300 mr-auto">{selectedIds.size} selected</span>
+            <Button size="sm" variant="outline" className="h-7 text-xs border-emerald-800 text-emerald-400 hover:text-emerald-300" onClick={() => { if (confirm(`Restore ${selectedIds.size} spells?`)) bulkRestoreMutation.mutate(Array.from(selectedIds)); }} disabled={bulkRestoreMutation.isPending} data-testid="button-bulk-restore-spells">
+              <RotateCcw className="h-3 w-3 mr-1" /> Restore
+            </Button>
+            <Button size="sm" variant="outline" className="h-7 text-xs border-red-800 text-red-400 hover:text-red-300 hover:bg-red-900/30" onClick={() => { if (confirm(`Permanently delete ${selectedIds.size} spells?`)) bulkDeleteMutation.mutate(Array.from(selectedIds)); }} disabled={bulkDeleteMutation.isPending} data-testid="button-bulk-delete-archived-spells">
+              <Trash2 className="h-3 w-3 mr-1" /> Delete
+            </Button>
+            <Button size="sm" variant="ghost" className="h-7 text-xs text-stone-500" onClick={() => setSelectedIds(new Set())} data-testid="button-clear-selection-archived-spells">
+              <X className="h-3 w-3" />
+            </Button>
+          </div>
+        )}
       </CardContent>
     </Card>
   );
@@ -1520,18 +1640,56 @@ interface ItemsViewProps {
 }
 
 function ItemsView({ items, isLoading, searchQuery, setSearchQuery, typeFilter, setTypeFilter, onAddItem, onEditItem, onDeleteItem, onDuplicateItem, onArchiveItem }: ItemsViewProps) {
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const queryClient = useQueryClient();
+  
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+  
+  const toggleAll = () => {
+    if (selectedIds.size === items.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(items.map((i: any) => i.id)));
+    }
+  };
+
+  const bulkArchiveMutation = useMutation({
+    mutationFn: (ids: string[]) => api.bulkArchiveItems(ids),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['system-items-summary'] });
+      queryClient.invalidateQueries({ queryKey: ['system-items'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-archived-items'] });
+      setSelectedIds(new Set());
+      toast({ title: `${selectedIds.size} items archived` });
+    },
+  });
+
+  const bulkDeleteMutation = useMutation({
+    mutationFn: (ids: string[]) => api.bulkDeleteItems(ids),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['system-items-summary'] });
+      queryClient.invalidateQueries({ queryKey: ['system-items'] });
+      setSelectedIds(new Set());
+      toast({ title: `Items deleted` });
+    },
+  });
+
+  const allSelected = items.length > 0 && selectedIds.size === items.length;
+  const someSelected = selectedIds.size > 0;
+
   return (
     <Card className="bg-stone-900 border-stone-700 flex-1 flex flex-col min-h-0">
       <CardHeader className="flex flex-row items-center justify-between shrink-0">
         <CardTitle className="text-amber-500">System Items</CardTitle>
         <div className="flex gap-2">
-          <Button
-            onClick={onAddItem}
-            className="bg-amber-700 hover:bg-amber-600"
-            data-testid="button-add-system-item"
-          >
-            <Plus className="h-4 w-4 mr-2" />
-            Add Item
+          <Button onClick={onAddItem} className="bg-amber-700 hover:bg-amber-600" data-testid="button-add-system-item">
+            <Plus className="h-4 w-4 mr-2" /> Add Item
           </Button>
         </div>
       </CardHeader>
@@ -1539,13 +1697,7 @@ function ItemsView({ items, isLoading, searchQuery, setSearchQuery, typeFilter, 
         <div className="flex gap-4 mb-4 shrink-0">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-500" />
-            <Input
-              placeholder="Search items..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-9 bg-stone-800 border-stone-700"
-              data-testid="input-search-items"
-            />
+            <Input placeholder="Search items..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-9 bg-stone-800 border-stone-700" data-testid="input-search-items" />
           </div>
           <Select value={typeFilter} onValueChange={setTypeFilter}>
             <SelectTrigger className="w-[180px] bg-stone-800 border-stone-700" data-testid="select-type-filter">
@@ -1563,6 +1715,16 @@ function ItemsView({ items, isLoading, searchQuery, setSearchQuery, typeFilter, 
           </Select>
         </div>
 
+        {items.length > 0 && (
+          <div className="flex items-center gap-3 mb-3 shrink-0">
+            <button onClick={toggleAll} className="flex items-center gap-2 text-xs text-stone-400 hover:text-stone-200 transition-colors" data-testid="button-select-all-items">
+              {allSelected ? <CheckSquare className="h-4 w-4 text-amber-400" /> : <Square className="h-4 w-4" />}
+              {allSelected ? 'Deselect All' : 'Select All'}
+            </button>
+            {someSelected && <span className="text-xs text-amber-400">{selectedIds.size} selected</span>}
+          </div>
+        )}
+
         {isLoading ? (
           <div className="text-center py-12 text-stone-400">Loading items...</div>
         ) : items.length === 0 ? (
@@ -1575,67 +1737,57 @@ function ItemsView({ items, isLoading, searchQuery, setSearchQuery, typeFilter, 
           <ScrollArea className="flex-1 min-h-0">
             <div className="space-y-2">
               {items.map((item: any) => (
-                  <div
-                    key={item.id}
-                    className="flex flex-wrap items-center gap-2 sm:gap-4 p-3 rounded-lg bg-stone-800 border border-stone-700 hover:border-stone-600"
-                    data-testid={`item-row-${item.id}`}
-                  >
-                    <LazyAdminItemImage itemId={item.id} itemType={item.itemType} />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-medium truncate text-sm sm:text-base">{item.name}</span>
-                        <Badge className={`${rarityColors[item.rarity]} text-xs`}>
-                          {item.rarity}
-                        </Badge>
-                      </div>
-                      <div className="text-xs sm:text-sm text-stone-400 flex items-center gap-2">
-                        <span className="capitalize">{item.itemType}</span>
-                      </div>
+                <div
+                  key={item.id}
+                  className={`flex flex-wrap items-center gap-2 sm:gap-4 p-3 rounded-lg bg-stone-800 border ${selectedIds.has(item.id) ? 'border-amber-500/50 bg-amber-900/10' : 'border-stone-700 hover:border-stone-600'}`}
+                  data-testid={`item-row-${item.id}`}
+                >
+                  <button onClick={() => toggleSelect(item.id)} className="shrink-0" data-testid={`checkbox-item-${item.id}`}>
+                    {selectedIds.has(item.id) ? <CheckSquare className="h-5 w-5 text-amber-400" /> : <Square className="h-5 w-5 text-stone-500 hover:text-stone-300" />}
+                  </button>
+                  <LazyAdminItemImage itemId={item.id} itemType={item.itemType} />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-medium truncate text-sm sm:text-base">{item.name}</span>
+                      <Badge className={`${rarityColors[item.rarity]} text-xs`}>{item.rarity}</Badge>
                     </div>
-                    <div className="flex gap-1 sm:gap-2 shrink-0">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => onDuplicateItem(item.id)}
-                        className="text-stone-400 hover:text-blue-500 h-8 w-8 sm:h-10 sm:w-10"
-                        data-testid={`button-duplicate-${item.id}`}
-                        title="Duplicate item"
-                      >
-                        <Copy className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => onEditItem(item.id)}
-                        className="text-stone-400 hover:text-amber-500 h-8 w-8 sm:h-10 sm:w-10"
-                        data-testid={`button-edit-${item.id}`}
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => onArchiveItem(item.id)}
-                        className="text-stone-400 hover:text-stone-300 h-8 w-8 sm:h-10 sm:w-10"
-                        data-testid={`button-archive-${item.id}`}
-                        title="Archive item"
-                      >
-                        <Archive className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => onDeleteItem(item.id)}
-                        className="text-stone-400 hover:text-red-500 h-8 w-8 sm:h-10 sm:w-10"
-                        data-testid={`button-delete-${item.id}`}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                    <div className="text-xs sm:text-sm text-stone-400 flex items-center gap-2">
+                      <span className="capitalize">{item.itemType}</span>
                     </div>
                   </div>
-                ))}
+                  <div className="flex gap-1 sm:gap-2 shrink-0">
+                    <Button variant="ghost" size="icon" onClick={() => onDuplicateItem(item.id)} className="text-stone-400 hover:text-blue-500 h-8 w-8 sm:h-10 sm:w-10" data-testid={`button-duplicate-${item.id}`} title="Duplicate item">
+                      <Copy className="h-4 w-4" />
+                    </Button>
+                    <Button variant="ghost" size="icon" onClick={() => onEditItem(item.id)} className="text-stone-400 hover:text-amber-500 h-8 w-8 sm:h-10 sm:w-10" data-testid={`button-edit-${item.id}`}>
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                    <Button variant="ghost" size="icon" onClick={() => onArchiveItem(item.id)} className="text-stone-400 hover:text-stone-300 h-8 w-8 sm:h-10 sm:w-10" data-testid={`button-archive-${item.id}`} title="Archive item">
+                      <Archive className="h-4 w-4" />
+                    </Button>
+                    <Button variant="ghost" size="icon" onClick={() => onDeleteItem(item.id)} className="text-stone-400 hover:text-red-500 h-8 w-8 sm:h-10 sm:w-10" data-testid={`button-delete-${item.id}`}>
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
             </div>
           </ScrollArea>
+        )}
+
+        {someSelected && (
+          <div className="shrink-0 mt-3 flex items-center gap-2 p-3 bg-stone-800 border border-stone-600 rounded-lg">
+            <span className="text-xs text-stone-300 mr-auto">{selectedIds.size} selected</span>
+            <Button size="sm" variant="outline" className="h-7 text-xs border-stone-600 text-stone-300 hover:text-stone-100" onClick={() => { if (confirm(`Archive ${selectedIds.size} items?`)) bulkArchiveMutation.mutate(Array.from(selectedIds)); }} disabled={bulkArchiveMutation.isPending} data-testid="button-bulk-archive-items">
+              <Archive className="h-3 w-3 mr-1" /> Archive
+            </Button>
+            <Button size="sm" variant="outline" className="h-7 text-xs border-red-800 text-red-400 hover:text-red-300 hover:bg-red-900/30" onClick={() => { if (confirm(`Permanently delete ${selectedIds.size} items?`)) bulkDeleteMutation.mutate(Array.from(selectedIds)); }} disabled={bulkDeleteMutation.isPending} data-testid="button-bulk-delete-items">
+              <Trash2 className="h-3 w-3 mr-1" /> Delete
+            </Button>
+            <Button size="sm" variant="ghost" className="h-7 text-xs text-stone-500" onClick={() => setSelectedIds(new Set())} data-testid="button-clear-selection-items">
+              <X className="h-3 w-3" />
+            </Button>
+          </div>
         )}
       </CardContent>
     </Card>
@@ -1755,18 +1907,54 @@ interface SpellsViewProps {
 
 
 function SpellsView({ spells, isLoading, searchQuery, setSearchQuery, onAddSpell, onEditSpell, onDeleteSpell, onArchiveSpell }: SpellsViewProps) {
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const queryClient = useQueryClient();
+  
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+  
+  const toggleAll = () => {
+    if (selectedIds.size === spells.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(spells.map(s => s.id)));
+    }
+  };
+
+  const bulkArchiveMutation = useMutation({
+    mutationFn: (ids: string[]) => api.bulkArchiveSpells(ids),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['system-spells'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-archived-spells'] });
+      setSelectedIds(new Set());
+      toast({ title: `${selectedIds.size} spells archived` });
+    },
+  });
+
+  const bulkDeleteMutation = useMutation({
+    mutationFn: (ids: string[]) => api.bulkDeleteSpells(ids),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['system-spells'] });
+      setSelectedIds(new Set());
+      toast({ title: `Spells deleted` });
+    },
+  });
+
+  const allSelected = spells.length > 0 && selectedIds.size === spells.length;
+  const someSelected = selectedIds.size > 0;
+
   return (
     <Card className="bg-stone-900 border-stone-700 flex-1 flex flex-col min-h-0">
       <CardHeader className="flex flex-row items-center justify-between shrink-0">
         <CardTitle className="text-blue-500">System Spells</CardTitle>
         <div className="flex gap-2">
-          <Button
-            onClick={onAddSpell}
-            className="bg-blue-700 hover:bg-blue-600"
-            data-testid="button-add-spell"
-          >
-            <Plus className="h-4 w-4 mr-2" />
-            Add Spell
+          <Button onClick={onAddSpell} className="bg-blue-700 hover:bg-blue-600" data-testid="button-add-spell">
+            <Plus className="h-4 w-4 mr-2" /> Add Spell
           </Button>
         </div>
       </CardHeader>
@@ -1774,15 +1962,19 @@ function SpellsView({ spells, isLoading, searchQuery, setSearchQuery, onAddSpell
         <div className="mb-4 shrink-0">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-500" />
-            <Input
-              placeholder="Search spells..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-9 bg-stone-800 border-stone-700"
-              data-testid="input-search-spells"
-            />
+            <Input placeholder="Search spells..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-9 bg-stone-800 border-stone-700" data-testid="input-search-spells" />
           </div>
         </div>
+
+        {spells.length > 0 && (
+          <div className="flex items-center gap-3 mb-3 shrink-0">
+            <button onClick={toggleAll} className="flex items-center gap-2 text-xs text-stone-400 hover:text-stone-200 transition-colors" data-testid="button-select-all-spells">
+              {allSelected ? <CheckSquare className="h-4 w-4 text-blue-400" /> : <Square className="h-4 w-4" />}
+              {allSelected ? 'Deselect All' : 'Select All'}
+            </button>
+            {someSelected && <span className="text-xs text-blue-400">{selectedIds.size} selected</span>}
+          </div>
+        )}
 
         {isLoading ? (
           <div className="text-center py-12 text-stone-400">Loading spells...</div>
@@ -1798,9 +1990,12 @@ function SpellsView({ spells, isLoading, searchQuery, setSearchQuery, onAddSpell
               {spells.map((spell: SystemSpell) => (
                 <div
                   key={spell.id}
-                  className="flex flex-wrap items-center gap-2 sm:gap-4 p-3 rounded-lg bg-stone-800 border border-stone-700 hover:border-stone-600"
+                  className={`flex flex-wrap items-center gap-2 sm:gap-4 p-3 rounded-lg bg-stone-800 border ${selectedIds.has(spell.id) ? 'border-blue-500/50 bg-blue-900/10' : 'border-stone-700 hover:border-stone-600'}`}
                   data-testid={`spell-row-${spell.id}`}
                 >
+                  <button onClick={() => toggleSelect(spell.id)} className="shrink-0" data-testid={`checkbox-spell-${spell.id}`}>
+                    {selectedIds.has(spell.id) ? <CheckSquare className="h-5 w-5 text-blue-400" /> : <Square className="h-5 w-5 text-stone-500 hover:text-stone-300" />}
+                  </button>
                   <div className="h-10 w-10 sm:h-12 sm:w-12 rounded bg-stone-700 flex items-center justify-center overflow-hidden shrink-0">
                     {spell.icon ? (
                       <img src={spell.icon} alt={spell.name} className="h-full w-full object-cover" />
@@ -1824,32 +2019,13 @@ function SpellsView({ spells, isLoading, searchQuery, setSearchQuery, onAddSpell
                     </div>
                   </div>
                   <div className="flex gap-1 sm:gap-2 shrink-0">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => onEditSpell(spell)}
-                      className="text-stone-400 hover:text-blue-500 h-8 w-8 sm:h-10 sm:w-10"
-                      data-testid={`button-edit-spell-${spell.id}`}
-                    >
+                    <Button variant="ghost" size="icon" onClick={() => onEditSpell(spell)} className="text-stone-400 hover:text-blue-500 h-8 w-8 sm:h-10 sm:w-10" data-testid={`button-edit-spell-${spell.id}`}>
                       <Pencil className="h-4 w-4" />
                     </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => onArchiveSpell(spell.id)}
-                      className="text-stone-400 hover:text-stone-300 h-8 w-8 sm:h-10 sm:w-10"
-                      data-testid={`button-archive-spell-${spell.id}`}
-                      title="Archive spell"
-                    >
+                    <Button variant="ghost" size="icon" onClick={() => onArchiveSpell(spell.id)} className="text-stone-400 hover:text-stone-300 h-8 w-8 sm:h-10 sm:w-10" data-testid={`button-archive-spell-${spell.id}`} title="Archive spell">
                       <Archive className="h-4 w-4" />
                     </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => onDeleteSpell(spell.id)}
-                      className="text-stone-400 hover:text-red-500 h-8 w-8 sm:h-10 sm:w-10"
-                      data-testid={`button-delete-spell-${spell.id}`}
-                    >
+                    <Button variant="ghost" size="icon" onClick={() => onDeleteSpell(spell.id)} className="text-stone-400 hover:text-red-500 h-8 w-8 sm:h-10 sm:w-10" data-testid={`button-delete-spell-${spell.id}`}>
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   </div>
@@ -1857,6 +2033,21 @@ function SpellsView({ spells, isLoading, searchQuery, setSearchQuery, onAddSpell
               ))}
             </div>
           </ScrollArea>
+        )}
+
+        {someSelected && (
+          <div className="shrink-0 mt-3 flex items-center gap-2 p-3 bg-stone-800 border border-stone-600 rounded-lg">
+            <span className="text-xs text-stone-300 mr-auto">{selectedIds.size} selected</span>
+            <Button size="sm" variant="outline" className="h-7 text-xs border-stone-600 text-stone-300 hover:text-stone-100" onClick={() => { if (confirm(`Archive ${selectedIds.size} spells?`)) bulkArchiveMutation.mutate(Array.from(selectedIds)); }} disabled={bulkArchiveMutation.isPending} data-testid="button-bulk-archive-spells">
+              <Archive className="h-3 w-3 mr-1" /> Archive
+            </Button>
+            <Button size="sm" variant="outline" className="h-7 text-xs border-red-800 text-red-400 hover:text-red-300 hover:bg-red-900/30" onClick={() => { if (confirm(`Permanently delete ${selectedIds.size} spells?`)) bulkDeleteMutation.mutate(Array.from(selectedIds)); }} disabled={bulkDeleteMutation.isPending} data-testid="button-bulk-delete-spells">
+              <Trash2 className="h-3 w-3 mr-1" /> Delete
+            </Button>
+            <Button size="sm" variant="ghost" className="h-7 text-xs text-stone-500" onClick={() => setSelectedIds(new Set())} data-testid="button-clear-selection-spells">
+              <X className="h-3 w-3" />
+            </Button>
+          </div>
         )}
       </CardContent>
     </Card>
