@@ -2862,7 +2862,6 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getUserNoteFolders(userId: string, campaignId?: string, showHidden?: boolean): Promise<NoteFolder[]> {
-    // Get folders that contain notes shared with this user
     const sharedFolderRows = await db.selectDistinct({ folderId: notes.folderId })
       .from(noteShares)
       .innerJoin(notes, eq(noteShares.noteId, notes.id))
@@ -2872,75 +2871,72 @@ export class DatabaseStorage implements IStorage {
       ));
     const sharedFolderIds = sharedFolderRows.map(r => r.folderId).filter(Boolean) as string[];
 
-    if (campaignId) {
-      if (showHidden) {
-        const ownedFolders = await db.select()
-          .from(noteFolders)
-          .where(eq(noteFolders.userId, userId))
-          .orderBy(noteFolders.sortOrder);
-        
-        if (sharedFolderIds.length > 0) {
-          const sharedFolders = await db.select()
-            .from(noteFolders)
-            .where(and(
-              inArray(noteFolders.id, sharedFolderIds),
-              sql`${noteFolders.userId} != ${userId}`
-            ));
-          const allFolders = [...ownedFolders];
-          for (const sf of sharedFolders) {
-            if (!allFolders.some(f => f.id === sf.id)) allFolders.push(sf);
-          }
-          return allFolders;
-        }
-        return ownedFolders;
-      } else {
-        const ownedFolders = await db.select()
-          .from(noteFolders)
-          .where(and(
-            eq(noteFolders.userId, userId),
-            or(
-              eq(noteFolders.campaignId, campaignId),
-              isNull(noteFolders.campaignId)
-            )
-          ))
-          .orderBy(noteFolders.sortOrder);
-        
-        if (sharedFolderIds.length > 0) {
-          const sharedFolders = await db.select()
-            .from(noteFolders)
-            .where(and(
-              inArray(noteFolders.id, sharedFolderIds),
-              sql`${noteFolders.userId} != ${userId}`,
-              eq(noteFolders.campaignId, campaignId)
-            ));
-          const allFolders = [...ownedFolders];
-          for (const sf of sharedFolders) {
-            if (!allFolders.some(f => f.id === sf.id)) allFolders.push(sf);
-          }
-          return allFolders;
-        }
-        return ownedFolders;
-      }
-    }
-    const ownedFolders = await db.select()
-      .from(noteFolders)
-      .where(eq(noteFolders.userId, userId))
-      .orderBy(noteFolders.sortOrder);
-    
-    if (sharedFolderIds.length > 0) {
-      const sharedFolders = await db.select()
+    let ownedFolders: NoteFolder[];
+    if (campaignId && !showHidden) {
+      ownedFolders = await db.select()
         .from(noteFolders)
         .where(and(
-          inArray(noteFolders.id, sharedFolderIds),
-          sql`${noteFolders.userId} != ${userId}`
-        ));
-      const allFolders = [...ownedFolders];
-      for (const sf of sharedFolders) {
-        if (!allFolders.some(f => f.id === sf.id)) allFolders.push(sf);
-      }
-      return allFolders;
+          eq(noteFolders.userId, userId),
+          or(
+            eq(noteFolders.campaignId, campaignId),
+            isNull(noteFolders.campaignId)
+          )
+        ))
+        .orderBy(noteFolders.sortOrder);
+    } else {
+      ownedFolders = await db.select()
+        .from(noteFolders)
+        .where(eq(noteFolders.userId, userId))
+        .orderBy(noteFolders.sortOrder);
     }
-    return ownedFolders;
+
+    if (sharedFolderIds.length === 0) return ownedFolders;
+
+    let sharedFolderConditions: any[] = [
+      inArray(noteFolders.id, sharedFolderIds),
+      sql`${noteFolders.userId} != ${userId}`
+    ];
+    if (campaignId && !showHidden) {
+      sharedFolderConditions.push(
+        or(
+          eq(noteFolders.campaignId, campaignId),
+          isNull(noteFolders.campaignId)
+        )
+      );
+    }
+    const sharedFolders = await db.select()
+      .from(noteFolders)
+      .where(and(...sharedFolderConditions));
+
+    const allFolders = [...ownedFolders];
+    for (const sf of sharedFolders) {
+      if (!allFolders.some(f => f.id === sf.id)) allFolders.push(sf);
+    }
+
+    const collectAncestorIds = (folders: NoteFolder[]): string[] => {
+      const knownIds = new Set(allFolders.map(f => f.id));
+      const missingParentIds: string[] = [];
+      for (const f of folders) {
+        if (f.parentId && !knownIds.has(f.parentId)) {
+          missingParentIds.push(f.parentId);
+          knownIds.add(f.parentId);
+        }
+      }
+      return missingParentIds;
+    };
+
+    let missingIds = collectAncestorIds(sharedFolders);
+    while (missingIds.length > 0) {
+      const ancestorFolders = await db.select()
+        .from(noteFolders)
+        .where(inArray(noteFolders.id, missingIds));
+      for (const af of ancestorFolders) {
+        if (!allFolders.some(f => f.id === af.id)) allFolders.push(af);
+      }
+      missingIds = collectAncestorIds(ancestorFolders);
+    }
+
+    return allFolders;
   }
 
   async updateNoteFolder(id: string, data: Partial<NoteFolder>): Promise<NoteFolder | undefined> {
