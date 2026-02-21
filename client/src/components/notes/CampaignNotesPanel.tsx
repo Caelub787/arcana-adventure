@@ -208,6 +208,7 @@ interface FolderTreeItemProps {
   dropTargetIndex: number | null;
   setDropTargetIndex: (index: number | null) => void;
   currentCampaignId?: string;
+  currentUserId?: string;
   sortMode: FolderSortMode;
   expandedFolderIds: Set<string>;
   setExpandedFolderIds: (ids: Set<string>) => void;
@@ -238,6 +239,7 @@ function FolderTreeItem({
   dropTargetIndex,
   setDropTargetIndex,
   currentCampaignId,
+  currentUserId,
   sortMode,
   expandedFolderIds,
   setExpandedFolderIds,
@@ -275,6 +277,7 @@ function FolderTreeItem({
   // Determine visibility status
   const isGlobal = !folder.campaignId;
   const isOtherCampaign = folder.campaignId && folder.campaignId !== currentCampaignId;
+  const isSharedFolder = currentUserId && folder.userId !== currentUserId;
 
   const isDescendant = (parentId: string, childId: string): boolean => {
     const child = folders.find(f => f.id === childId);
@@ -403,6 +406,11 @@ function FolderTreeItem({
             <Network className="h-2.5 w-2.5 text-stone-500" />
           </span>
         )}
+        {isSharedFolder && (
+          <span title="Shared with you">
+            <Users className="h-2.5 w-2.5 text-blue-400" />
+          </span>
+        )}
         {isOtherCampaign && (
           <span title="Other campaign">
             <EyeOff className="h-2.5 w-2.5 text-purple-400" />
@@ -476,6 +484,7 @@ function FolderTreeItem({
               dropTargetIndex={dropTargetIndex}
               setDropTargetIndex={setDropTargetIndex}
               currentCampaignId={currentCampaignId}
+              currentUserId={currentUserId}
               sortMode={sortMode}
               expandedFolderIds={expandedFolderIds}
               setExpandedFolderIds={setExpandedFolderIds}
@@ -1880,6 +1889,7 @@ export function CampaignNotesPanel({
                 dropTargetIndex={dropTargetIndex}
                 setDropTargetIndex={setDropTargetIndex}
                 currentCampaignId={campaignId}
+                currentUserId={user?.id}
                 sortMode={folderSortMode}
                 expandedFolderIds={expandedFolderIds}
                 setExpandedFolderIds={setExpandedFolderIds}

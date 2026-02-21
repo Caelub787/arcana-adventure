@@ -219,6 +219,7 @@ interface FolderTreeItemProps {
   sortMode: FolderSortMode;
   expandedFolderIds: Set<string>;
   setExpandedFolderIds: (ids: Set<string>) => void;
+  currentUserId?: string;
 }
 
 function FolderTreeItem({
@@ -248,6 +249,7 @@ function FolderTreeItem({
   sortMode,
   expandedFolderIds,
   setExpandedFolderIds,
+  currentUserId,
 }: FolderTreeItemProps) {
   const expanded = expandedFolderIds.has(folder.id);
   const setExpanded = (isExpanded: boolean) => {
@@ -278,6 +280,7 @@ function FolderTreeItem({
   const isSelected = selectedFolderId === folder.id;
   const hasChildren = children.length > 0;
   const hasContent = hasChildren || folderNotes.length > 0;
+  const isSharedFolder = currentUserId && folder.userId !== currentUserId;
 
   const isDescendant = (parentId: string, childId: string): boolean => {
     const child = folders.find(f => f.id === childId);
@@ -400,6 +403,11 @@ function FolderTreeItem({
           <Folder className={`h-4 w-4 ${getFolderColorClass(folder.color)}`} />
         )}
         <span className="flex-1 truncate text-sm">{folder.name}</span>
+        {isSharedFolder && (
+          <span title="Shared with you">
+            <Users className="h-2.5 w-2.5 text-blue-400" />
+          </span>
+        )}
       </div>
         </ContextMenuTrigger>
         <ContextMenuContent className="bg-stone-900 border-stone-700">
@@ -470,6 +478,7 @@ function FolderTreeItem({
               sortMode={sortMode}
               expandedFolderIds={expandedFolderIds}
               setExpandedFolderIds={setExpandedFolderIds}
+              currentUserId={currentUserId}
             />
           ))}
           {folderNotes.map((note) => (
@@ -1965,6 +1974,7 @@ export default function Notes() {
                 sortMode={folderSortMode}
                 expandedFolderIds={expandedFolderIds}
                 setExpandedFolderIds={setExpandedFolderIds}
+                currentUserId={user?.id}
               />
             ))
           )}

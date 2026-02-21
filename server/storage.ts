@@ -2862,16 +2862,39 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getUserNoteFolders(userId: string, campaignId?: string, showHidden?: boolean): Promise<NoteFolder[]> {
+    // Get folders that contain notes shared with this user
+    const sharedFolderRows = await db.selectDistinct({ folderId: notes.folderId })
+      .from(noteShares)
+      .innerJoin(notes, eq(noteShares.noteId, notes.id))
+      .where(and(
+        eq(noteShares.sharedWithId, userId),
+        sql`${notes.folderId} IS NOT NULL`
+      ));
+    const sharedFolderIds = sharedFolderRows.map(r => r.folderId).filter(Boolean) as string[];
+
     if (campaignId) {
       if (showHidden) {
-        // Show all folders for the user (including those from other campaigns)
-        return await db.select()
+        const ownedFolders = await db.select()
           .from(noteFolders)
           .where(eq(noteFolders.userId, userId))
           .orderBy(noteFolders.sortOrder);
+        
+        if (sharedFolderIds.length > 0) {
+          const sharedFolders = await db.select()
+            .from(noteFolders)
+            .where(and(
+              inArray(noteFolders.id, sharedFolderIds),
+              sql`${noteFolders.userId} != ${userId}`
+            ));
+          const allFolders = [...ownedFolders];
+          for (const sf of sharedFolders) {
+            if (!allFolders.some(f => f.id === sf.id)) allFolders.push(sf);
+          }
+          return allFolders;
+        }
+        return ownedFolders;
       } else {
-        // Show folders for this campaign OR global folders (null campaignId)
-        return await db.select()
+        const ownedFolders = await db.select()
           .from(noteFolders)
           .where(and(
             eq(noteFolders.userId, userId),
@@ -2881,13 +2904,43 @@ export class DatabaseStorage implements IStorage {
             )
           ))
           .orderBy(noteFolders.sortOrder);
+        
+        if (sharedFolderIds.length > 0) {
+          const sharedFolders = await db.select()
+            .from(noteFolders)
+            .where(and(
+              inArray(noteFolders.id, sharedFolderIds),
+              sql`${noteFolders.userId} != ${userId}`,
+              eq(noteFolders.campaignId, campaignId)
+            ));
+          const allFolders = [...ownedFolders];
+          for (const sf of sharedFolders) {
+            if (!allFolders.some(f => f.id === sf.id)) allFolders.push(sf);
+          }
+          return allFolders;
+        }
+        return ownedFolders;
       }
     }
-    // No campaign context (main notes page) - show ALL folders including campaign-specific ones
-    return await db.select()
+    const ownedFolders = await db.select()
       .from(noteFolders)
       .where(eq(noteFolders.userId, userId))
       .orderBy(noteFolders.sortOrder);
+    
+    if (sharedFolderIds.length > 0) {
+      const sharedFolders = await db.select()
+        .from(noteFolders)
+        .where(and(
+          inArray(noteFolders.id, sharedFolderIds),
+          sql`${noteFolders.userId} != ${userId}`
+        ));
+      const allFolders = [...ownedFolders];
+      for (const sf of sharedFolders) {
+        if (!allFolders.some(f => f.id === sf.id)) allFolders.push(sf);
+      }
+      return allFolders;
+    }
+    return ownedFolders;
   }
 
   async updateNoteFolder(id: string, data: Partial<NoteFolder>): Promise<NoteFolder | undefined> {

@@ -1,0 +1,16 @@
+
+Something went wrong
+Maximum update depth exceeded. This can happen when a component repeatedly calls setState inside componentWillUpdate or componentDidUpdate. React limits the number of nested updates to prevent infinite loops.
+
+Error: Maximum update depth exceeded. This can happen when a component repeatedly calls setState inside componentWillUpdate or componentDidUpdate. React limits the number of nested updates to prevent infinite loops.
+    at getRootForUpdatedFiber (https://cb80b64d-1290-45a6-8456-75a00836b8e0-00-3cwrcr16ysu2j.picard.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/react-dom_client.js?v=75fa15c3:3526:128)
+    at enqueueConcurrentHookUpdate (https://cb80b64d-1290-45a6-8456-75a00836b8e0-00-3cwrcr16ysu2j.picard.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/react-dom_client.js?v=75fa15c3:3510:16)
+    at dispatchSetStateInternal (https://cb80b64d-1290-45a6-8456-75a00836b8e0-00-3cwrcr16ysu2j.picard.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/react-dom_client.js?v=75fa15c3:6832:20)
+    at dispatchSetState (https://cb80b64d-1290-45a6-8456-75a00836b8e0-00-3cwrcr16ysu2j.picard.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/react-dom_client.js?v=75fa15c3:6803:9)
+    at https://cb80b64d-1290-45a6-8456-75a00836b8e0-00-3cwrcr16ysu2j.picard.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@radix-ui_react-slider.js?v=75fa15c3:500:66
+    at setRef (https://cb80b64d-1290-45a6-8456-75a00836b8e0-00-3cwrcr16ysu2j.picard.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-WGRQAFEQ.js?v=75fa15c3:12:12)
+    at https://cb80b64d-1290-45a6-8456-75a00836b8e0-00-3cwrcr16ysu2j.picard.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-WGRQAFEQ.js?v=75fa15c3:21:23
+    at Array.map (<anonymous>)
+    at https://cb80b64d-1290-45a6-8456-75a00836b8e0-00-3cwrcr16ysu2j.picard.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-WGRQAFEQ.js?v=75fa15c3:20:27
+    at setRef (https://cb80b64d-1290-45a6-8456-75a00836b8e0-00-3cwrcr16ysu2j.picard.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-WGRQAFEQ.js?v=75fa15c3:12:12)
+Reload Page
