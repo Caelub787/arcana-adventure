@@ -43,6 +43,8 @@ export interface Campaign {
   currentMap?: string;
   activeSceneId?: string;
   system: string;
+  inCombat?: boolean;
+  currentTurnCharacterId?: string | null;
   createdAt: string;
   lastPlayed: string;
 }
@@ -173,7 +175,8 @@ export interface Scene {
 
 export interface InitiativeEntry {
   id: string;
-  sceneId: string;
+  campaignId: string;
+  sceneId?: string;
   characterId: string;
   value: number;
   isHidden: boolean;
