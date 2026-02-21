@@ -1589,7 +1589,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
    * 
    * Zoom Math:
    * 1. Convert screen coordinates to world coordinates accounting for current pan and zoom
-   * 2. Calculate new zoom level (clamped 0.2x to 3x)
+   * 2. Calculate new zoom level (multiplicative, no limits)
    * 3. Adjust pan so the world point stays under the cursor position
    * 4. This creates a "zoom toward cursor" effect instead of zooming to center
    */
@@ -1611,8 +1611,8 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
       const mouseX = e.clientX - rect.left;
       const mouseY = e.clientY - rect.top;
       
-      const delta = -e.deltaY * 0.002; // Slightly smoother zoom
-      const newZoom = Math.max(0.2, Math.min(3, currentZoom + delta));
+      const zoomFactor = Math.exp(-e.deltaY * 0.002);
+      const newZoom = currentZoom * zoomFactor;
       
       if (Math.abs(newZoom - currentZoom) > 0.001) {
         // Account for the 9000px world offset when calculating world position
@@ -1703,8 +1703,8 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
         const centerY = ((touch1.clientY + touch2.clientY) / 2) - rect.top;
 
         if (lastTouchDistanceRef.current !== null) {
-          const delta = (distance - lastTouchDistanceRef.current) * 0.01;
-          const newZoom = Math.max(0.2, Math.min(3, currentZoom + delta));
+          const zoomFactor = distance / lastTouchDistanceRef.current;
+          const newZoom = currentZoom * zoomFactor;
           
           if (Math.abs(newZoom - currentZoom) > 0.001) {
             // Account for the 9000px world offset when calculating world position
