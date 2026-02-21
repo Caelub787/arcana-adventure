@@ -3,7 +3,6 @@ import { createPortal } from 'react-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { SceneWall, SceneDoor, SceneWindow, SceneLight } from '@shared/schema';
 import { Button } from '@/components/ui/button';
-import { Slider } from '@/components/ui/slider';
 import { toast } from '@/hooks/use-toast';
 import {
   Layers, Eye, EyeOff, Lock, Unlock, DoorOpen, DoorClosed,
@@ -2627,6 +2626,7 @@ export function FogToolsPanel({
   useEffect(() => { setLocalFogOpacity(fogOpacity); }, [fogOpacity]);
   useEffect(() => { setLocalFogExploredDimness(fogExploredDimness); }, [fogExploredDimness]);
 
+
   const updateSceneMutation = useMutation({
     mutationFn: async (updates: Record<string, any>) => {
       const res = await fetch(`/api/scenes/${sceneId}`, {
@@ -2883,13 +2883,16 @@ export function FogToolsPanel({
             <span className="text-xs text-stone-300">Fog Opacity</span>
             <span className="text-xs text-stone-500">{Math.round(localFogOpacity * 100)}%</span>
           </div>
-          <Slider
-            value={[localFogOpacity * 100]}
+          <input
+            type="range"
+            value={Math.round(localFogOpacity * 100)}
             min={10}
             max={100}
             step={5}
-            onValueChange={(v) => setLocalFogOpacity(v[0] / 100)}
-            onValueCommit={(v) => updateSceneMutation.mutate({ fogOpacity: v[0] / 100 })}
+            onChange={(e) => setLocalFogOpacity(Number(e.target.value) / 100)}
+            onMouseUp={(e) => updateSceneMutation.mutate({ fogOpacity: Number((e.target as HTMLInputElement).value) / 100 })}
+            onTouchEnd={(e) => updateSceneMutation.mutate({ fogOpacity: Number((e.target as HTMLInputElement).value) / 100 })}
+            className="w-full h-1.5 bg-stone-700 rounded-full appearance-none cursor-pointer accent-orange-500"
             data-testid="slider-fog-opacity"
           />
         </div>
@@ -2899,13 +2902,16 @@ export function FogToolsPanel({
             <span className="text-xs text-stone-300">Explored Dimness</span>
             <span className="text-xs text-stone-500">{Math.round(localFogExploredDimness * 100)}%</span>
           </div>
-          <Slider
-            value={[localFogExploredDimness * 100]}
+          <input
+            type="range"
+            value={Math.round(localFogExploredDimness * 100)}
             min={0}
             max={100}
             step={5}
-            onValueChange={(v) => setLocalFogExploredDimness(v[0] / 100)}
-            onValueCommit={(v) => updateSceneMutation.mutate({ fogExploredDimness: v[0] / 100 })}
+            onChange={(e) => setLocalFogExploredDimness(Number(e.target.value) / 100)}
+            onMouseUp={(e) => updateSceneMutation.mutate({ fogExploredDimness: Number((e.target as HTMLInputElement).value) / 100 })}
+            onTouchEnd={(e) => updateSceneMutation.mutate({ fogExploredDimness: Number((e.target as HTMLInputElement).value) / 100 })}
+            className="w-full h-1.5 bg-stone-700 rounded-full appearance-none cursor-pointer accent-orange-500"
             data-testid="slider-explored-dimness"
           />
         </div>
@@ -3075,12 +3081,14 @@ export function FogToolsPanel({
                 <span className="text-xs text-stone-400">Light Radius</span>
                 <span className="text-xs text-stone-500">{lightRadius}ft</span>
               </div>
-              <Slider
-                value={[lightRadius]}
+              <input
+                type="range"
+                value={lightRadius}
                 min={5}
                 max={120}
                 step={5}
-                onValueChange={(v) => setLightRadius(v[0])}
+                onChange={(e) => setLightRadius(Number(e.target.value))}
+                className="w-full h-1.5 bg-stone-700 rounded-full appearance-none cursor-pointer accent-orange-500"
                 data-testid="slider-light-radius"
               />
             </div>
@@ -3089,12 +3097,14 @@ export function FogToolsPanel({
                 <span className="text-xs text-stone-400">Brightness</span>
                 <span className="text-xs text-stone-500">{Math.round(lightIntensity * 100)}%</span>
               </div>
-              <Slider
-                value={[lightIntensity * 100]}
+              <input
+                type="range"
+                value={Math.round(lightIntensity * 100)}
                 min={10}
                 max={200}
                 step={10}
-                onValueChange={(v) => setLightIntensity(v[0] / 100)}
+                onChange={(e) => setLightIntensity(Number(e.target.value) / 100)}
+                className="w-full h-1.5 bg-stone-700 rounded-full appearance-none cursor-pointer accent-orange-500"
                 data-testid="slider-light-intensity"
               />
             </div>
