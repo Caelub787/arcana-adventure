@@ -22,11 +22,12 @@ interface DriveImage {
 interface ImageBrowserProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSelect: (imageBase64: string) => void;
+  onSelect: (imageData: string) => void;
   title?: string;
+  saveToFile?: boolean;
 }
 
-export function ImageBrowser({ open, onOpenChange, onSelect, title = "Browse Image Library" }: ImageBrowserProps) {
+export function ImageBrowser({ open, onOpenChange, onSelect, title = "Browse Image Library", saveToFile = false }: ImageBrowserProps) {
   const queryClient = useQueryClient();
   const [currentFolderId, setCurrentFolderId] = useState<string | undefined>(undefined);
   const [folderStack, setFolderStack] = useState<{ id: string | undefined; name: string }[]>([
@@ -133,10 +134,17 @@ export function ImageBrowser({ open, onOpenChange, onSelect, title = "Browse Ima
     setIsLoadingImage(true);
     
     try {
-      const res = await fetch(`/api/drive/image/${image.id}`, { credentials: 'include' });
-      if (!res.ok) throw new Error('Failed to load image');
-      const { data } = await res.json();
-      onSelect(data);
+      if (saveToFile) {
+        const res = await fetch(`/api/drive/image/${image.id}/save`, { method: 'POST', credentials: 'include' });
+        if (!res.ok) throw new Error('Failed to save image');
+        const { url } = await res.json();
+        onSelect(url);
+      } else {
+        const res = await fetch(`/api/drive/image/${image.id}`, { credentials: 'include' });
+        if (!res.ok) throw new Error('Failed to load image');
+        const { data } = await res.json();
+        onSelect(data);
+      }
       onOpenChange(false);
     } catch (error) {
       console.error('Failed to load image:', error);

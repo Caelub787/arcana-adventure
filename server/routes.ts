@@ -10,6 +10,20 @@ import { db } from "./db";
 import { eq } from "drizzle-orm";
 import { createRollResult, createWebSocketDiceRollMessage, type RollRequest } from "./dice/serverRollHandler";
 import { listFolders, listImages, getImageBase64, searchImages, getGoogleDriveStatus } from "./googleDrive";
+import multer from "multer";
+import sharp from "sharp";
+import fs from "fs";
+import path from "path";
+
+const UPLOADS_DIR = path.resolve(import.meta.dirname, '..', 'uploads', 'scene-backgrounds');
+if (!fs.existsSync(UPLOADS_DIR)) {
+  fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+}
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 50 * 1024 * 1024 },
+});
 
 declare module "express-session" {
   interface SessionData {
@@ -7748,6 +7762,80 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (e) {
       console.error("Failed to search Drive images:", e);
       res.status(500).json({ error: "Failed to search images in Google Drive" });
+    }
+  });
+
+  // ======== IMAGE UPLOAD ROUTES ========
+
+  async function processAndSaveImage(buffer: Buffer, originalName: string): Promise<string> {
+    const id = crypto.randomUUID().replace(/-/g, '').substring(0, 16);
+    const filename = `${id}.webp`;
+    const filepath = path.join(UPLOADS_DIR, filename);
+
+    const metadata = await sharp(buffer).metadata();
+    const width = metadata.width || 0;
+    const height = metadata.height || 0;
+
+    let pipeline = sharp(buffer);
+    const MAX_DIM = 4096;
+    if (width > MAX_DIM || height > MAX_DIM) {
+      pipeline = pipeline.resize({
+        width: width > height ? MAX_DIM : undefined,
+        height: height >= width ? MAX_DIM : undefined,
+        fit: 'inside',
+        withoutEnlargement: true,
+      });
+    }
+
+    await pipeline.webp({ quality: 82 }).toFile(filepath);
+    return `/uploads/scene-backgrounds/${filename}`;
+  }
+
+  app.post("/api/upload/image", requireAuth, upload.single('image'), async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: "No image file provided" });
+      }
+      const url = await processAndSaveImage(req.file.buffer, req.file.originalname);
+      res.json({ url });
+    } catch (e: any) {
+      console.error("Failed to upload image:", e);
+      res.status(500).json({ error: "Failed to upload image: " + (e.message || "Unknown error") });
+    }
+  });
+
+  app.post("/api/upload/base64", requireAuth, async (req, res) => {
+    try {
+      const { data } = req.body;
+      if (!data || typeof data !== 'string') {
+        return res.status(400).json({ error: "No image data provided" });
+      }
+      const matches = data.match(/^data:([^;]+);base64,(.+)$/);
+      if (!matches) {
+        return res.status(400).json({ error: "Invalid base64 image data" });
+      }
+      const buffer = Buffer.from(matches[2], 'base64');
+      const url = await processAndSaveImage(buffer, 'image');
+      res.json({ url });
+    } catch (e: any) {
+      console.error("Failed to upload base64 image:", e);
+      res.status(500).json({ error: "Failed to upload image: " + (e.message || "Unknown error") });
+    }
+  });
+
+  app.post("/api/drive/image/:fileId/save", requireAuth, async (req, res) => {
+    try {
+      const base64Data = await getImageBase64(req.params.fileId);
+      const matches = base64Data.match(/^data:([^;]+);base64,(.+)$/);
+      if (!matches) {
+        return res.status(500).json({ error: "Invalid image data from Google Drive" });
+      }
+      const buffer = Buffer.from(matches[2], 'base64');
+      const url = await processAndSaveImage(buffer, req.params.fileId);
+      res.json({ url });
+    } catch (e: any) {
+      console.error("Failed to save Drive image:", e);
+      res.status(500).json({ error: "Failed to save image: " + (e.message || "Unknown error") });
     }
   });
 

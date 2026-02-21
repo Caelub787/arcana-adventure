@@ -82,15 +82,31 @@ function SceneSettingsForm({ scene, onUpdateScene, onCalibrateGrid }: { scene: S
     }
   };
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const [isUploading, setIsUploading] = useState(false);
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const base64 = reader.result as string;
-        updateSetting('backgroundImage', base64);
-      };
-      reader.readAsDataURL(file);
+    if (!file) return;
+    setIsUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('image', file);
+      const res = await fetch('/api/upload/image', {
+        method: 'POST',
+        credentials: 'include',
+        body: formData,
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Upload failed' }));
+        throw new Error(err.error || 'Upload failed');
+      }
+      const { url } = await res.json();
+      updateSetting('backgroundImage', url);
+    } catch (error: any) {
+      console.error('Image upload failed:', error);
+    } finally {
+      setIsUploading(false);
+      if (e.target) e.target.value = '';
     }
   };
 
@@ -296,9 +312,9 @@ function SceneSettingsForm({ scene, onUpdateScene, onCalibrateGrid }: { scene: S
           <div className="flex gap-2">
             <label 
               htmlFor="bg-image" 
-              className="flex-1 bg-stone-800 border border-stone-700 text-stone-200 rounded px-3 py-2 text-sm cursor-pointer hover:bg-stone-700 transition-colors text-center"
+              className={`flex-1 bg-stone-800 border border-stone-700 text-stone-200 rounded px-3 py-2 text-sm cursor-pointer hover:bg-stone-700 transition-colors text-center ${isUploading ? 'opacity-50 pointer-events-none' : ''}`}
             >
-              Change Background
+              {isUploading ? 'Uploading...' : 'Change Background'}
             </label>
             <input
               type="file"
@@ -306,6 +322,7 @@ function SceneSettingsForm({ scene, onUpdateScene, onCalibrateGrid }: { scene: S
               accept="image/*"
               onChange={handleImageUpload}
               className="hidden"
+              disabled={isUploading}
               data-testid="input-background-image"
             />
             <Button
@@ -331,9 +348,10 @@ function SceneSettingsForm({ scene, onUpdateScene, onCalibrateGrid }: { scene: S
       <ImageBrowser
         open={showImageBrowser}
         onOpenChange={setShowImageBrowser}
-        onSelect={(imageBase64) => {
-          updateSetting('backgroundImage', imageBase64);
+        onSelect={(imageUrl) => {
+          updateSetting('backgroundImage', imageUrl);
         }}
+        saveToFile={true}
         title="Select Background Image"
       />
     </div>

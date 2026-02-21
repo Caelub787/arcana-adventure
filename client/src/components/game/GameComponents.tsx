@@ -8561,15 +8561,28 @@ function SceneSettingsDialog({ open, onOpenChange, scene, onUpdateScene }: Scene
     }
   }, [scene, open]);
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const [isUploading, setIsUploading] = useState(false);
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const base64 = reader.result as string;
-        setLocalSettings(prev => ({ ...prev, backgroundImage: base64 }));
-      };
-      reader.readAsDataURL(file);
+    if (!file) return;
+    setIsUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('image', file);
+      const res = await fetch('/api/upload/image', {
+        method: 'POST',
+        credentials: 'include',
+        body: formData,
+      });
+      if (!res.ok) throw new Error('Upload failed');
+      const { url } = await res.json();
+      setLocalSettings(prev => ({ ...prev, backgroundImage: url }));
+    } catch (error) {
+      console.error('Image upload failed:', error);
+    } finally {
+      setIsUploading(false);
+      if (e.target) e.target.value = '';
     }
   };
 
@@ -8697,12 +8710,19 @@ function SceneSettingsDialog({ open, onOpenChange, scene, onUpdateScene }: Scene
           <div className="space-y-2">
             <Label htmlFor="bg-image" className="text-stone-300">Background Image</Label>
             <div className="flex gap-2">
+              <label 
+                htmlFor="bg-image"
+                className={`flex-1 bg-stone-800 border border-stone-700 text-stone-200 rounded px-3 py-2 text-sm cursor-pointer hover:bg-stone-700 transition-colors text-center ${isUploading ? 'opacity-50 pointer-events-none' : ''}`}
+              >
+                {isUploading ? 'Uploading...' : 'Change Background'}
+              </label>
               <input
                 type="file"
                 id="bg-image"
                 accept="image/*"
                 onChange={handleImageUpload}
-                className="flex-1 bg-stone-800 border border-stone-700 text-stone-200 rounded px-3 py-2 text-sm"
+                className="hidden"
+                disabled={isUploading}
                 data-testid="input-background-image"
               />
               <Button
@@ -8727,9 +8747,10 @@ function SceneSettingsDialog({ open, onOpenChange, scene, onUpdateScene }: Scene
           <ImageBrowser
             open={showImageBrowser}
             onOpenChange={setShowImageBrowser}
-            onSelect={(imageBase64) => {
-              setLocalSettings(prev => ({ ...prev, backgroundImage: imageBase64 }));
+            onSelect={(imageUrl) => {
+              setLocalSettings(prev => ({ ...prev, backgroundImage: imageUrl }));
             }}
+            saveToFile={true}
             title="Select Background Image"
           />
 

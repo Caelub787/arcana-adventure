@@ -74,6 +74,13 @@ app.use(express.urlencoded({ extended: false, limit: '100mb' }));
 const attachedAssetsPath = path.resolve(import.meta.dirname, '..', 'attached_assets');
 app.use('/attached_assets', express.static(attachedAssetsPath));
 
+// Serve uploads directory for user-uploaded images (scene backgrounds, etc.)
+const uploadsPath = path.resolve(import.meta.dirname, '..', 'uploads');
+app.use('/uploads', express.static(uploadsPath, {
+  maxAge: '7d',
+  immutable: true,
+}));
+
 app.use((req, res, next) => {
   const start = Date.now();
   const path = req.path;
