@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { SceneWall, SceneDoor, SceneWindow, SceneLight } from '@shared/schema';
 import { Button } from '@/components/ui/button';
+import { Slider } from '@/components/ui/slider';
 import { toast } from '@/hooks/use-toast';
 import {
   Layers, Eye, EyeOff, Lock, Unlock, DoorOpen, DoorClosed,
@@ -906,56 +907,18 @@ export function FogCanvasOverlay({
   containerWidthRef.current = containerWidth;
   containerHeightRef.current = containerHeight;
 
-  const dataVersionRef = useRef(0);
-  useEffect(() => { dataVersionRef.current++; }, [visionPolygons, lightVisionPolygons, exploredCells, fogEnabled, scene, containerWidth, containerHeight, isGM, gmSeeAsPlayer]);
-
   useEffect(() => {
     let rafId: number;
-    let lastPanX = -Infinity;
-    let lastPanY = -Infinity;
-    let lastZoom = -Infinity;
-    let lastDataVersion = -1;
 
     function draw() {
-      const currentFogEnabled = fogEnabledRef.current;
-      const currentScene = sceneRef.current;
-      const isDayTime = currentScene?.isDayTime ?? true;
-
-      if (!currentFogEnabled && isDayTime) {
-        const canvas = canvasRef.current;
-        if (canvas && canvas.width > 0) {
-          const ctx = canvas.getContext('2d');
-          if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
-          canvas.width = 0;
-          canvas.height = 0;
-        }
-        rafId = requestAnimationFrame(draw);
-        return;
-      }
-
-      const panX = motionX.get();
-      const panY = motionY.get();
-      const zoom = motionZoom.get();
-      const curDataVersion = dataVersionRef.current;
-
-      const viewUnchanged = Math.abs(panX - lastPanX) < 0.1 && Math.abs(panY - lastPanY) < 0.1 && Math.abs(zoom - lastZoom) < 0.0001;
-      if (viewUnchanged && curDataVersion === lastDataVersion) {
-        rafId = requestAnimationFrame(draw);
-        return;
-      }
-      lastPanX = panX;
-      lastPanY = panY;
-      lastZoom = zoom;
-      lastDataVersion = curDataVersion;
-
       const canvas = canvasRef.current;
-      if (!canvas) { rafId = requestAnimationFrame(draw); return; }
+      if (!canvas) return;
       const ctx = canvas.getContext('2d');
-      if (!ctx) { rafId = requestAnimationFrame(draw); return; }
+      if (!ctx) return;
 
       const width = containerWidthRef.current;
       const height = containerHeightRef.current;
-      if (width === 0 || height === 0) { rafId = requestAnimationFrame(draw); return; }
+      if (width === 0 || height === 0) return;
 
       if (canvas.width !== width || canvas.height !== height) {
         canvas.width = width;
@@ -964,8 +927,17 @@ export function FogCanvasOverlay({
         ctx.clearRect(0, 0, width, height);
       }
 
+      const currentFogEnabled = fogEnabledRef.current;
       const currentIsGM = isGMRef.current;
       const currentGmSeeAsPlayer = gmSeeAsPlayerRef.current;
+      const currentScene = sceneRef.current;
+      const isDayTime = currentScene?.isDayTime ?? true;
+
+      if (!currentFogEnabled && isDayTime) return;
+
+      const panX = motionX.get();
+      const panY = motionY.get();
+      const zoom = motionZoom.get();
 
       function worldToScreenX(wx: number): number {
         return panX + (wx + 9000) * zoom - 9000;
@@ -2655,7 +2627,6 @@ export function FogToolsPanel({
   useEffect(() => { setLocalFogOpacity(fogOpacity); }, [fogOpacity]);
   useEffect(() => { setLocalFogExploredDimness(fogExploredDimness); }, [fogExploredDimness]);
 
-
   const updateSceneMutation = useMutation({
     mutationFn: async (updates: Record<string, any>) => {
       const res = await fetch(`/api/scenes/${sceneId}`, {
@@ -2912,16 +2883,13 @@ export function FogToolsPanel({
             <span className="text-xs text-stone-300">Fog Opacity</span>
             <span className="text-xs text-stone-500">{Math.round(localFogOpacity * 100)}%</span>
           </div>
-          <input
-            type="range"
-            value={Math.round(localFogOpacity * 100)}
+          <Slider
+            value={[localFogOpacity * 100]}
             min={10}
             max={100}
             step={5}
-            onChange={(e) => setLocalFogOpacity(Number(e.target.value) / 100)}
-            onMouseUp={(e) => updateSceneMutation.mutate({ fogOpacity: Number((e.target as HTMLInputElement).value) / 100 })}
-            onTouchEnd={(e) => updateSceneMutation.mutate({ fogOpacity: Number((e.target as HTMLInputElement).value) / 100 })}
-            className="w-full h-1.5 bg-stone-700 rounded-full appearance-none cursor-pointer accent-orange-500"
+            onValueChange={(v) => setLocalFogOpacity(v[0] / 100)}
+            onValueCommit={(v) => updateSceneMutation.mutate({ fogOpacity: v[0] / 100 })}
             data-testid="slider-fog-opacity"
           />
         </div>
@@ -2931,16 +2899,13 @@ export function FogToolsPanel({
             <span className="text-xs text-stone-300">Explored Dimness</span>
             <span className="text-xs text-stone-500">{Math.round(localFogExploredDimness * 100)}%</span>
           </div>
-          <input
-            type="range"
-            value={Math.round(localFogExploredDimness * 100)}
+          <Slider
+            value={[localFogExploredDimness * 100]}
             min={0}
             max={100}
             step={5}
-            onChange={(e) => setLocalFogExploredDimness(Number(e.target.value) / 100)}
-            onMouseUp={(e) => updateSceneMutation.mutate({ fogExploredDimness: Number((e.target as HTMLInputElement).value) / 100 })}
-            onTouchEnd={(e) => updateSceneMutation.mutate({ fogExploredDimness: Number((e.target as HTMLInputElement).value) / 100 })}
-            className="w-full h-1.5 bg-stone-700 rounded-full appearance-none cursor-pointer accent-orange-500"
+            onValueChange={(v) => setLocalFogExploredDimness(v[0] / 100)}
+            onValueCommit={(v) => updateSceneMutation.mutate({ fogExploredDimness: v[0] / 100 })}
             data-testid="slider-explored-dimness"
           />
         </div>
@@ -3110,14 +3075,12 @@ export function FogToolsPanel({
                 <span className="text-xs text-stone-400">Light Radius</span>
                 <span className="text-xs text-stone-500">{lightRadius}ft</span>
               </div>
-              <input
-                type="range"
-                value={lightRadius}
+              <Slider
+                value={[lightRadius]}
                 min={5}
                 max={120}
                 step={5}
-                onChange={(e) => setLightRadius(Number(e.target.value))}
-                className="w-full h-1.5 bg-stone-700 rounded-full appearance-none cursor-pointer accent-orange-500"
+                onValueChange={(v) => setLightRadius(v[0])}
                 data-testid="slider-light-radius"
               />
             </div>
@@ -3126,14 +3089,12 @@ export function FogToolsPanel({
                 <span className="text-xs text-stone-400">Brightness</span>
                 <span className="text-xs text-stone-500">{Math.round(lightIntensity * 100)}%</span>
               </div>
-              <input
-                type="range"
-                value={Math.round(lightIntensity * 100)}
+              <Slider
+                value={[lightIntensity * 100]}
                 min={10}
                 max={200}
                 step={10}
-                onChange={(e) => setLightIntensity(Number(e.target.value) / 100)}
-                className="w-full h-1.5 bg-stone-700 rounded-full appearance-none cursor-pointer accent-orange-500"
+                onValueChange={(v) => setLightIntensity(v[0] / 100)}
                 data-testid="slider-light-intensity"
               />
             </div>

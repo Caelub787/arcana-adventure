@@ -717,26 +717,6 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
   const motionX = useMotionValue(0);
   const motionY = useMotionValue(0);
   const motionZoom = useMotionValue(1);
-
-  // Viewport culling: track visible world bounds for token filtering
-  const [viewportBounds, setViewportBounds] = useState<{ minX: number; minY: number; maxX: number; maxY: number } | null>(null);
-  const viewportBoundsTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const updateViewportBounds = useCallback(() => {
-    if (viewportBoundsTimerRef.current) return;
-    viewportBoundsTimerRef.current = setTimeout(() => {
-      viewportBoundsTimerRef.current = null;
-      const vw = viewportSize.width || 1280;
-      const vh = viewportSize.height || 720;
-      const zoom = zoomRef.current;
-      const pan = panRef.current;
-      const padding = 500;
-      const minX = ((0 + 9000 - pan.x) / zoom) - 9000 - padding;
-      const minY = ((0 + 9000 - pan.y) / zoom) - 9000 - padding;
-      const maxX = ((vw + 9000 - pan.x) / zoom) - 9000 + padding;
-      const maxY = ((vh + 9000 - pan.y) / zoom) - 9000 + padding;
-      setViewportBounds({ minX, minY, maxX, maxY });
-    }, 150);
-  }, [viewportSize]);
   
   // Conversion functions for viewport-independent view storage
   // World coordinates = point on the map that should be at viewport center
@@ -1037,14 +1017,13 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
       
       initializedSceneRef.current = scene.id;
       forceUpdate(n => n + 1);
-      updateViewportBounds();
       
       // Notify parent with world coordinates (for consistent save)
       if (onViewChange) {
         onViewChange({ x: worldX, y: worldY, zoom: defaultZoom });
       }
     }
-  }, [scene, motionX, motionY, motionZoom, onViewChange, viewportSize, updateViewportBounds]);
+  }, [scene, motionX, motionY, motionZoom, onViewChange, viewportSize]);
   
   // Recalculate pan when viewport changes for version-1 scenes (keeps center consistent)
   const previousViewportRef = useRef<{ width: number; height: number } | null>(null);
@@ -1444,8 +1423,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
     panRef.current = { x: newX, y: newY };
     motionX.set(newX);
     motionY.set(newY);
-    updateViewportBounds();
-  }, [gridCalibrationMode, updateViewportBounds]);
+  }, [gridCalibrationMode]);
   
   const handleMapPointerUp = useCallback((e: React.PointerEvent) => {
     if (gridCalibrationMode && calibDragRef.current) {
@@ -1533,8 +1511,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
     panPointerIdRef.current = null;
     panStartRef.current = null;
     notifyViewChange();
-    updateViewportBounds();
-  }, [selectionMode, aoeTargetState, gridSize, onAoeClick, onBeacon, onGridTargetClick, onMapClickToPlace, placingCharacterId, gridCalibrationMode, pinPlaceMode, onPinPlaced, updateViewportBounds]);
+  }, [selectionMode, aoeTargetState, gridSize, onAoeClick, onBeacon, onGridTargetClick, onMapClickToPlace, placingCharacterId, gridCalibrationMode, pinPlaceMode, onPinPlaced]);
   
   const handleMapPointerCancel = (e: React.PointerEvent) => {
     if (gestureModeRef.current === 'panning' && panPointerIdRef.current === e.pointerId) {
@@ -1612,7 +1589,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
    * 
    * Zoom Math:
    * 1. Convert screen coordinates to world coordinates accounting for current pan and zoom
-   * 2. Calculate new zoom level (multiplicative, no limits)
+   * 2. Calculate new zoom level (clamped 0.2x to 3x)
    * 3. Adjust pan so the world point stays under the cursor position
    * 4. This creates a "zoom toward cursor" effect instead of zooming to center
    */
@@ -1634,8 +1611,8 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
       const mouseX = e.clientX - rect.left;
       const mouseY = e.clientY - rect.top;
       
-      const zoomFactor = Math.exp(-e.deltaY * 0.002);
-      const newZoom = currentZoom * zoomFactor;
+      const delta = -e.deltaY * 0.002; // Slightly smoother zoom
+      const newZoom = Math.max(0.2, Math.min(3, currentZoom + delta));
       
       if (Math.abs(newZoom - currentZoom) > 0.001) {
         // Account for the 9000px world offset when calculating world position
@@ -1655,7 +1632,6 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
         motionY.set(newPan.y);
         motionZoom.set(newZoom);
         notifyViewChange();
-        updateViewportBounds();
       }
     };
 
@@ -1727,8 +1703,8 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
         const centerY = ((touch1.clientY + touch2.clientY) / 2) - rect.top;
 
         if (lastTouchDistanceRef.current !== null) {
-          const zoomFactor = distance / lastTouchDistanceRef.current;
-          const newZoom = currentZoom * zoomFactor;
+          const delta = (distance - lastTouchDistanceRef.current) * 0.01;
+          const newZoom = Math.max(0.2, Math.min(3, currentZoom + delta));
           
           if (Math.abs(newZoom - currentZoom) > 0.001) {
             // Account for the 9000px world offset when calculating world position
@@ -1748,7 +1724,6 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
             motionY.set(newPan.y);
             motionZoom.set(newZoom);
             notifyViewChange();
-            updateViewportBounds();
           }
         }
 
@@ -1783,34 +1758,20 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
   }, []);
 
   const visibleTokens = useMemo(() => {
-    let filtered = tokens;
     if ((!isGM || gmSeeAsPlayer) && scene?.fogEnabled) {
       if (visionPolygons && visionPolygons.length > 0) {
-        filtered = tokens.filter(token => {
+        return tokens.filter(token => {
           const tokenCenterX = token.x + gridSize / 2;
           const tokenCenterY = token.y + gridSize / 2;
           return visionPolygons.some(poly => 
             isPointInPolygon(tokenCenterX, tokenCenterY, poly.points)
           );
         });
-      } else {
-        return [];
       }
+      return [];
     }
-    if (viewportBounds) {
-      filtered = filtered.filter(token => {
-        const span = getTokenGridSpan((token as any).speciesSize);
-        const size = gridSize * span;
-        return (
-          token.x + size >= viewportBounds.minX &&
-          token.x <= viewportBounds.maxX &&
-          token.y + size >= viewportBounds.minY &&
-          token.y <= viewportBounds.maxY
-        );
-      });
-    }
-    return filtered;
-  }, [tokens, isGM, gmSeeAsPlayer, scene?.fogEnabled, visionPolygons, gridSize, viewportBounds]);
+    return tokens;
+  }, [tokens, isGM, gmSeeAsPlayer, scene?.fogEnabled, visionPolygons, gridSize]);
 
   return (
     <div className="relative h-full w-full overflow-hidden bg-black rounded-lg border border-white/10 shadow-inner group" ref={containerRef} style={{ contain: 'layout paint' }}
@@ -2022,9 +1983,6 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
           left: '-9000px',
           top: '-9000px',
           transformOrigin: "0 0",
-          willChange: 'transform',
-          contain: 'layout style paint',
-          backfaceVisibility: 'hidden',
         }}
         onPointerDown={handleMapPointerDown}
         onPointerMove={handleMapPointerMove}
@@ -2264,7 +2222,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
         <img 
           src={scene?.backgroundImage || backgroundImage || battleMapImage1}
           alt="Battle map background"
-          className="absolute max-w-none"
+          className="absolute opacity-80 max-w-none"
           loading="lazy"
           decoding="async"
           style={{ 
