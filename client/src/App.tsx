@@ -54,6 +54,27 @@ function SiteUpdateBanner() {
             setMessage(data.message || "App updated, please refresh to continue using. Failure to do so may cause issues with syncing or other.");
             setShowBanner(true);
           }
+          if (data.type === 'admin_data_changed') {
+            const entityQueryMap: Record<string, string[][]> = {
+              'system-items': [['system-items-summary'], ['system-items'], ['admin-archived-items']],
+              'system-spells': [['system-spells'], ['admin-archived-spells']],
+              'system-species': [['system-species'], ['species']],
+              'feat-templates': [['feat-templates']],
+              'feat-trees': [['feat-trees']],
+              'feats': [['feat-trees']],
+              'feat-connections': [['feat-trees']],
+              'skills': [['system-skills']],
+              'character-templates': [['character-templates'], ['admin-character-templates']],
+              'character-template-folders': [['character-template-folders']],
+              'token-effects': [['token-effects']],
+              'spell-effects': [['system-spells'], ['token-effects']],
+              'item-effects': [['system-items'], ['system-items-summary'], ['token-effects']],
+            };
+            const keys = entityQueryMap[data.entity];
+            if (keys) {
+              keys.forEach(key => queryClient.invalidateQueries({ queryKey: key }));
+            }
+          }
         } catch (e) {
           console.error('Error parsing WebSocket message:', e);
         }

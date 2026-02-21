@@ -770,6 +770,14 @@ export default function Notes() {
           setLocation("/notes");
         }
       }
+      if (data.type === 'note_created' || data.type === 'note_changed') {
+        queryClient.invalidateQueries({ queryKey: ["/api/notes"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/notes/all"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/notes/folders"] });
+      }
+      if (data.type === 'note_folder_changed') {
+        queryClient.invalidateQueries({ queryKey: ["/api/notes/folders"] });
+      }
     };
     const unsubscribe = gameWs.onMessage(handleDeleteMessage);
     return () => { unsubscribe(); };

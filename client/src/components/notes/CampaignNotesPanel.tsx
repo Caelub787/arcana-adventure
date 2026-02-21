@@ -744,17 +744,18 @@ export function CampaignNotesPanel({
       // Handle note creation/deletion events for this campaign
       if (data.campaignId !== campaignId) return;
 
-      if (data.type === 'note_created' || data.type === 'note_deleted') {
-        // Invalidate notes queries to refresh the list
+      if (data.type === 'note_created' || data.type === 'note_deleted' || data.type === 'note_changed') {
         queryClient.invalidateQueries({ queryKey: ["/api/notes"] });
         queryClient.invalidateQueries({ queryKey: ["/api/notes/all"] });
         queryClient.invalidateQueries({ queryKey: ["/api/notes/folders"] });
         
-        // If a note we're viewing was deleted, clear selection
         if (data.type === 'note_deleted' && data.noteId === selectedNoteId) {
           setSelectedNoteId(null);
           setShowHomeView(true);
         }
+      }
+      if (data.type === 'note_folder_changed') {
+        queryClient.invalidateQueries({ queryKey: ["/api/notes/folders"] });
       }
     };
 

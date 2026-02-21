@@ -9725,6 +9725,52 @@ const CampaignMenuInner = function CampaignMenu({ campaignId, role, inviteCode, 
           queryClient.invalidateQueries({ queryKey: ['character-traits', data.characterId] });
         }
       }
+      
+      // Scene folder operations
+      if (data.type === 'scene_folder_changed') {
+        queryClient.invalidateQueries({ queryKey: ['scene-folders', campaignId] });
+        queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${campaignId}/scenes`] });
+      }
+      
+      // Vision zone operations
+      if (data.type === 'vision_zone_changed') {
+        if (data.sceneId) {
+          queryClient.invalidateQueries({ queryKey: ['scene-vision-zones', data.sceneId] });
+        }
+      }
+      
+      // Sandbox operations
+      if (data.type === 'sandbox_changed') {
+        queryClient.invalidateQueries({ queryKey: ['sandbox-templates', campaignId] });
+        queryClient.invalidateQueries({ queryKey: ['sandbox-actors', campaignId] });
+        queryClient.invalidateQueries({ queryKey: ['sandbox-folders', campaignId] });
+      }
+      
+      // Note/folder operations within campaign
+      if (data.type === 'note_changed' || data.type === 'note_folder_changed') {
+        queryClient.invalidateQueries({ queryKey: ['/api/notes/folders'] });
+        queryClient.invalidateQueries({ queryKey: ['/api/notes'] });
+        queryClient.invalidateQueries({ queryKey: ['/api/notes/all'] });
+        queryClient.invalidateQueries({ queryKey: ['note-folders', campaignId] });
+        queryClient.invalidateQueries({ queryKey: ['campaign-folders', campaignId] });
+      }
+      
+      // Scene update/delete operations  
+      if (data.type === 'scene_updated' || data.type === 'scene_deleted') {
+        queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${campaignId}/scenes`] });
+      }
+      
+      // Character folder operations
+      if (data.type === 'character_folder_changed') {
+        queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${campaignId}/characters`] });
+      }
+      
+      // Initiative operations
+      if (data.type === 'initiative_changed') {
+        if (data.sceneId) {
+          queryClient.invalidateQueries({ queryKey: [`/api/scenes/${data.sceneId}/initiative`] });
+        }
+      }
     });
     
     return () => { unsubscribe(); };

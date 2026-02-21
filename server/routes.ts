@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertUserSchema, insertCampaignSchema, insertCharacterSchema, insertTokenSchema, insertChatMessageSchema, insertSceneSchema, insertHotbarSchema, insertItemSchema, insertSpellSchema, initiativeEntries, insertTokenEffectSchema, insertTokenActiveEffectSchema, rollEntries, insertRollEntrySchema, items } from "@shared/schema";
+import { insertUserSchema, insertCampaignSchema, insertCharacterSchema, insertTokenSchema, insertChatMessageSchema, insertSceneSchema, insertHotbarSchema, insertItemSchema, insertSpellSchema, initiativeEntries, insertTokenEffectSchema, insertTokenActiveEffectSchema, rollEntries, insertRollEntrySchema, items, sceneVisionZones } from "@shared/schema";
 import bcrypt from "bcryptjs";
 import { WebSocketServer } from "ws";
 import { sendPasswordResetEmail } from "./email";
@@ -4082,6 +4082,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const updated = await storage.updateCharacter(req.params.characterId, { folderId: folderId || null });
+      broadcastToCampaign(character.campaignId, { type: 'character_updated', characterId: req.params.characterId });
       res.json(updated);
     } catch (err) {
       res.status(400).json({ error: "Failed to move character to folder" });
@@ -4117,6 +4118,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         name: name || "New Folder",
         sortOrder: sortOrder || 0
       });
+      broadcastToCampaign(req.params.campaignId, { type: 'scene_folder_changed' });
       res.json(folder);
     } catch (err) {
       res.status(400).json({ error: "Failed to create scene folder" });
@@ -4143,6 +4145,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const updated = await storage.updateSceneFolder(req.params.folderId, req.body);
+      broadcastToCampaign(req.params.campaignId, { type: 'scene_folder_changed' });
       res.json(updated);
     } catch (err) {
       res.status(400).json({ error: "Failed to update scene folder" });
@@ -4169,6 +4172,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       await storage.deleteSceneFolder(req.params.folderId);
+      broadcastToCampaign(req.params.campaignId, { type: 'scene_folder_changed' });
       res.json({ success: true });
     } catch (err) {
       res.status(400).json({ error: "Failed to delete scene folder" });
@@ -4200,6 +4204,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const updated = await storage.updateScene(req.params.sceneId, { folderId: folderId || null });
+      broadcastToCampaign(scene.campaignId, { type: 'scene_folder_changed' });
       res.json(updated);
     } catch (err) {
       res.status(400).json({ error: "Failed to move scene to folder" });
@@ -4525,6 +4530,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
       
+      broadcastToAllClients({ type: 'admin_data_changed', entity: 'system-items' });
       res.json(item);
     } catch (err) {
       res.status(400).json({ error: "Failed to create system item" });
@@ -4553,6 +4559,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
       
+      broadcastToAllClients({ type: 'admin_data_changed', entity: 'system-items' });
       res.json(updatedItem);
     } catch (err) {
       res.status(400).json({ error: "Failed to update system item" });
@@ -4566,6 +4573,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "System item not found" });
       }
       await storage.deleteItem(req.params.id);
+      broadcastToAllClients({ type: 'admin_data_changed', entity: 'system-items' });
       res.json({ success: true });
     } catch (err) {
       res.status(400).json({ error: "Failed to delete system item" });
@@ -4575,6 +4583,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/admin/system-items/:id/archive", requireAdmin, async (req, res) => {
     try {
       const item = await storage.updateItem(req.params.id, { isArchived: true });
+      broadcastToAllClients({ type: 'admin_data_changed', entity: 'system-items' });
       res.json(item);
     } catch (err) {
       res.status(400).json({ error: "Failed to archive item" });
@@ -4584,6 +4593,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/admin/system-items/:id/restore", requireAdmin, async (req, res) => {
     try {
       const item = await storage.updateItem(req.params.id, { isArchived: false });
+      broadcastToAllClients({ type: 'admin_data_changed', entity: 'system-items' });
       res.json(item);
     } catch (err) {
       res.status(400).json({ error: "Failed to restore item" });
@@ -4593,6 +4603,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/admin/system-items/archive-all", requireAdmin, async (req, res) => {
     try {
       await storage.archiveAllSystemItems();
+      broadcastToAllClients({ type: 'admin_data_changed', entity: 'system-items' });
       res.json({ success: true });
     } catch (err) {
       res.status(400).json({ error: "Failed to archive all items" });
@@ -4612,6 +4623,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/admin/system-spells/:id/archive", requireAdmin, async (req, res) => {
     try {
       const spell = await storage.updateSystemSpell(req.params.id, { isArchived: true });
+      broadcastToAllClients({ type: 'admin_data_changed', entity: 'system-spells' });
       res.json(spell);
     } catch (err) {
       res.status(400).json({ error: "Failed to archive spell" });
@@ -4621,6 +4633,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/admin/system-spells/:id/restore", requireAdmin, async (req, res) => {
     try {
       const spell = await storage.updateSystemSpell(req.params.id, { isArchived: false });
+      broadcastToAllClients({ type: 'admin_data_changed', entity: 'system-spells' });
       res.json(spell);
     } catch (err) {
       res.status(400).json({ error: "Failed to restore spell" });
@@ -4630,6 +4643,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/admin/system-spells/archive-all", requireAdmin, async (req, res) => {
     try {
       await storage.archiveAllSystemSpells();
+      broadcastToAllClients({ type: 'admin_data_changed', entity: 'system-spells' });
       res.json({ success: true });
     } catch (err) {
       res.status(400).json({ error: "Failed to archive all spells" });
@@ -4653,6 +4667,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       for (const id of ids) {
         await storage.updateItem(id, { isArchived: true });
       }
+      broadcastToAllClients({ type: 'admin_data_changed', entity: 'system-items' });
       res.json({ success: true, count: ids.length });
     } catch (err) {
       res.status(400).json({ error: "Failed to bulk archive items" });
@@ -4666,6 +4681,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       for (const id of ids) {
         await storage.updateItem(id, { isArchived: false });
       }
+      broadcastToAllClients({ type: 'admin_data_changed', entity: 'system-items' });
       res.json({ success: true, count: ids.length });
     } catch (err) {
       res.status(400).json({ error: "Failed to bulk restore items" });
@@ -4679,6 +4695,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       for (const id of ids) {
         await storage.deleteItem(id);
       }
+      broadcastToAllClients({ type: 'admin_data_changed', entity: 'system-items' });
       res.json({ success: true, count: ids.length });
     } catch (err) {
       res.status(400).json({ error: "Failed to bulk delete items" });
@@ -4692,6 +4709,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       for (const id of ids) {
         await storage.updateSystemSpell(id, { isArchived: true });
       }
+      broadcastToAllClients({ type: 'admin_data_changed', entity: 'system-spells' });
       res.json({ success: true, count: ids.length });
     } catch (err) {
       res.status(400).json({ error: "Failed to bulk archive spells" });
@@ -4705,6 +4723,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       for (const id of ids) {
         await storage.updateSystemSpell(id, { isArchived: false });
       }
+      broadcastToAllClients({ type: 'admin_data_changed', entity: 'system-spells' });
       res.json({ success: true, count: ids.length });
     } catch (err) {
       res.status(400).json({ error: "Failed to bulk restore spells" });
@@ -4718,6 +4737,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       for (const id of ids) {
         await storage.deleteSystemSpell(id);
       }
+      broadcastToAllClients({ type: 'admin_data_changed', entity: 'system-spells' });
       res.json({ success: true, count: ids.length });
     } catch (err) {
       res.status(400).json({ error: "Failed to bulk delete spells" });
@@ -4738,6 +4758,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/admin/system-species", requireAdmin, async (req, res) => {
     try {
       const species = await storage.createSystemSpecies(req.body);
+      broadcastToAllClients({ type: 'admin_data_changed', entity: 'system-species' });
       res.json(species);
     } catch (err) {
       res.status(400).json({ error: "Failed to create species" });
@@ -4751,6 +4772,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Species not found" });
       }
       const updated = await storage.updateSystemSpecies(req.params.id, req.body);
+      broadcastToAllClients({ type: 'admin_data_changed', entity: 'system-species' });
       res.json(updated);
     } catch (err) {
       res.status(400).json({ error: "Failed to update species" });
@@ -4764,6 +4786,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Species not found" });
       }
       await storage.deleteSystemSpecies(req.params.id);
+      broadcastToAllClients({ type: 'admin_data_changed', entity: 'system-species' });
       res.json({ success: true });
     } catch (err) {
       res.status(400).json({ error: "Failed to delete species" });
@@ -4810,6 +4833,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/admin/feat-templates", requireAdmin, async (req, res) => {
     try {
       const template = await storage.createFeatTemplate(req.body);
+      broadcastToAllClients({ type: 'admin_data_changed', entity: 'feat-templates' });
       res.json(template);
     } catch (err) {
       res.status(400).json({ error: "Failed to create feat template" });
@@ -4824,6 +4848,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Feat template not found" });
       }
       const updated = await storage.updateFeatTemplate(req.params.id, req.body);
+      broadcastToAllClients({ type: 'admin_data_changed', entity: 'feat-templates' });
       res.json(updated);
     } catch (err) {
       res.status(400).json({ error: "Failed to update feat template" });
@@ -4838,6 +4863,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Feat template not found" });
       }
       await storage.deleteFeatTemplate(req.params.id);
+      broadcastToAllClients({ type: 'admin_data_changed', entity: 'feat-templates' });
       res.json({ success: true });
     } catch (err) {
       res.status(400).json({ error: "Failed to delete feat template" });
@@ -4877,6 +4903,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/admin/feat-trees", requireAdmin, async (req, res) => {
     try {
       const tree = await storage.createFeatTree(req.body);
+      broadcastToAllClients({ type: 'admin_data_changed', entity: 'feat-trees' });
       res.json(tree);
     } catch (err) {
       res.status(400).json({ error: "Failed to create feat tree" });
@@ -4891,6 +4918,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Feat tree not found" });
       }
       const updated = await storage.updateFeatTree(req.params.id, req.body);
+      broadcastToAllClients({ type: 'admin_data_changed', entity: 'feat-trees' });
       res.json(updated);
     } catch (err) {
       res.status(400).json({ error: "Failed to update feat tree" });
@@ -4905,6 +4933,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Feat tree not found" });
       }
       await storage.deleteFeatTree(req.params.id);
+      broadcastToAllClients({ type: 'admin_data_changed', entity: 'feat-trees' });
       res.json({ success: true });
     } catch (err) {
       res.status(400).json({ error: "Failed to delete feat tree" });
@@ -4940,6 +4969,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.log("Auto-template creation skipped:", templateErr);
       }
       
+      broadcastToAllClients({ type: 'admin_data_changed', entity: 'feats' });
       res.json(feat);
     } catch (err) {
       res.status(400).json({ error: "Failed to create feat" });
@@ -4954,6 +4984,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Feat not found" });
       }
       const updated = await storage.updateFeat(req.params.id, req.body);
+      broadcastToAllClients({ type: 'admin_data_changed', entity: 'feats' });
       res.json(updated);
     } catch (err) {
       res.status(400).json({ error: "Failed to update feat" });
@@ -4970,6 +5001,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Delete connections first, then the feat
       await storage.deleteFeatConnectionsByFeat(req.params.id);
       await storage.deleteFeat(req.params.id);
+      broadcastToAllClients({ type: 'admin_data_changed', entity: 'feats' });
       res.json({ success: true });
     } catch (err) {
       res.status(400).json({ error: "Failed to delete feat" });
@@ -4987,6 +5019,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ...req.body, 
         treeId: req.params.treeId 
       });
+      broadcastToAllClients({ type: 'admin_data_changed', entity: 'feat-connections' });
       res.json(connection);
     } catch (err) {
       res.status(400).json({ error: "Failed to create connection" });
@@ -4997,6 +5030,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete("/api/admin/feat-connections/:id", requireAdmin, async (req, res) => {
     try {
       await storage.deleteFeatConnection(req.params.id);
+      broadcastToAllClients({ type: 'admin_data_changed', entity: 'feat-connections' });
       res.json({ success: true });
     } catch (err) {
       res.status(400).json({ error: "Failed to delete connection" });
@@ -5338,6 +5372,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/admin/skills", requireAdmin, async (req, res) => {
     try {
       const skill = await storage.createSystemSkill(req.body);
+      broadcastToAllClients({ type: 'admin_data_changed', entity: 'skills' });
       res.json(skill);
     } catch (err) {
       res.status(400).json({ error: "Failed to create skill" });
@@ -5350,6 +5385,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!skill) {
         return res.status(404).json({ error: "Skill not found" });
       }
+      broadcastToAllClients({ type: 'admin_data_changed', entity: 'skills' });
       res.json(skill);
     } catch (err) {
       res.status(400).json({ error: "Failed to update skill" });
@@ -5359,6 +5395,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete("/api/admin/skills/:id", requireAdmin, async (req, res) => {
     try {
       await storage.deleteSystemSkill(req.params.id);
+      broadcastToAllClients({ type: 'admin_data_changed', entity: 'skills' });
       res.json({ success: true });
     } catch (err) {
       res.status(400).json({ error: "Failed to delete skill" });
@@ -5390,6 +5427,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/admin/character-templates", requireAdmin, async (req, res) => {
     try {
       const template = await storage.createCharacterTemplate(req.body);
+      broadcastToAllClients({ type: 'admin_data_changed', entity: 'character-templates' });
       res.json(template);
     } catch (err) {
       res.status(400).json({ error: "Failed to create character template" });
@@ -5402,6 +5440,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!template) {
         return res.status(404).json({ error: "Character template not found" });
       }
+      broadcastToAllClients({ type: 'admin_data_changed', entity: 'character-templates' });
       res.json(template);
     } catch (err) {
       res.status(400).json({ error: "Failed to update character template" });
@@ -5411,6 +5450,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete("/api/admin/character-templates/:id", requireAdmin, async (req, res) => {
     try {
       await storage.deleteCharacterTemplate(req.params.id);
+      broadcastToAllClients({ type: 'admin_data_changed', entity: 'character-templates' });
       res.json({ success: true });
     } catch (err) {
       res.status(400).json({ error: "Failed to delete character template" });
@@ -5422,6 +5462,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { folderId } = req.body;
       const template = await storage.copyCharacterToAdminLibrary(req.params.characterId, folderId || null);
+      broadcastToAllClients({ type: 'admin_data_changed', entity: 'character-templates' });
       res.json(template);
     } catch (err: any) {
       console.error('[Admin] Failed to copy character to library:', err);
@@ -5442,6 +5483,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/admin/character-template-folders", requireAdmin, async (req, res) => {
     try {
       const folder = await storage.createCharacterTemplateFolder(req.body);
+      broadcastToAllClients({ type: 'admin_data_changed', entity: 'character-template-folders' });
       res.json(folder);
     } catch (err) {
       res.status(400).json({ error: "Failed to create character template folder" });
@@ -5454,6 +5496,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!folder) {
         return res.status(404).json({ error: "Character template folder not found" });
       }
+      broadcastToAllClients({ type: 'admin_data_changed', entity: 'character-template-folders' });
       res.json(folder);
     } catch (err) {
       res.status(400).json({ error: "Failed to update character template folder" });
@@ -5463,6 +5506,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete("/api/admin/character-template-folders/:id", requireAdmin, async (req, res) => {
     try {
       await storage.deleteCharacterTemplateFolder(req.params.id);
+      broadcastToAllClients({ type: 'admin_data_changed', entity: 'character-template-folders' });
       res.json({ success: true });
     } catch (err) {
       res.status(400).json({ error: "Failed to delete character template folder" });
@@ -7540,6 +7584,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       ...req.body,
       sceneId: req.params.sceneId,
     });
+    const scene = await storage.getScene(req.params.sceneId);
+    if (scene) {
+      broadcastToCampaign(scene.campaignId, { type: 'vision_zone_changed', sceneId: req.params.sceneId });
+    }
     res.json(zone);
   });
 
@@ -7554,6 +7602,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const zone = await storage.updateVisionZone(zoneId, updates);
       if (!zone) return res.status(404).json({ error: "Vision zone not found" });
+      const scene = await storage.getScene(zone.sceneId);
+      if (scene) {
+        broadcastToCampaign(scene.campaignId, { type: 'vision_zone_changed', sceneId: zone.sceneId });
+      }
       res.json(zone);
     } catch (e) {
       res.status(500).json({ error: "Failed to update vision zone" });
@@ -7561,12 +7613,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.delete("/api/vision-zones/:zoneId", requireAuth, async (req, res) => {
+    const [zone] = await db.select().from(sceneVisionZones).where(eq(sceneVisionZones.id, req.params.zoneId));
+    if (zone) {
+      const scene = await storage.getScene(zone.sceneId);
+      if (scene) {
+        broadcastToCampaign(scene.campaignId, { type: 'vision_zone_changed', sceneId: zone.sceneId });
+      }
+    }
     await storage.deleteSceneVisionZone(req.params.zoneId);
     res.json({ success: true });
   });
 
   app.delete("/api/scenes/:sceneId/vision-zones", requireAuth, async (req, res) => {
     await storage.deleteAllSceneVisionZones(req.params.sceneId);
+    const scene = await storage.getScene(req.params.sceneId);
+    if (scene) {
+      broadcastToCampaign(scene.campaignId, { type: 'vision_zone_changed', sceneId: req.params.sceneId });
+    }
     res.json({ success: true });
   });
 
@@ -8051,6 +8114,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ...req.body,
         userId: req.session.userId!,
       });
+      if (folder.campaignId) {
+        broadcastToCampaign(folder.campaignId, { type: 'note_folder_changed', campaignId: folder.campaignId });
+      }
       res.status(201).json(folder);
     } catch (e) {
       console.error("Failed to create note folder:", e);
@@ -8068,6 +8134,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ error: "Not authorized to update this folder" });
       }
       const updated = await storage.updateNoteFolder(req.params.id, req.body);
+      if (updated?.campaignId) {
+        broadcastToCampaign(updated.campaignId, { type: 'note_folder_changed', campaignId: updated.campaignId });
+      }
       res.json(updated);
     } catch (e) {
       console.error("Failed to update note folder:", e);
@@ -8085,6 +8154,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ error: "Not authorized to delete this folder" });
       }
       await storage.deleteNoteFolder(req.params.id);
+      if (folder.campaignId) {
+        broadcastToCampaign(folder.campaignId, { type: 'note_folder_changed', campaignId: folder.campaignId });
+      }
       res.json({ success: true });
     } catch (e) {
       console.error("Failed to delete note folder:", e);
@@ -8113,6 +8185,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Update all folder orders
       await storage.reorderNoteFolders(folderOrders);
+      const firstFolder = folderOrders.length > 0 ? await storage.getNoteFolder(folderOrders[0].id) : null;
+      if (firstFolder?.campaignId) {
+        broadcastToCampaign(firstFolder.campaignId, { type: 'note_folder_changed', campaignId: firstFolder.campaignId });
+      }
       res.json({ success: true });
     } catch (e) {
       console.error("Failed to reorder note folders:", e);
@@ -8292,6 +8368,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ error: "Edit permission required" });
       }
       const updated = await storage.updateNote(req.params.id, req.body);
+      if (updated?.campaignId) {
+        broadcastToCampaign(updated.campaignId, { type: 'note_changed', noteId: req.params.id, campaignId: updated.campaignId });
+      }
       res.json(updated);
     } catch (e) {
       console.error("Failed to update note:", e);
@@ -8535,6 +8614,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const effectData = insertTokenEffectSchema.parse(req.body);
       const effect = await storage.createTokenEffect(effectData);
+      broadcastToAllClients({ type: 'admin_data_changed', entity: 'token-effects' });
       res.status(201).json(effect);
     } catch (err) {
       console.error("Failed to create token effect:", err);
@@ -8576,6 +8656,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Token effect not found" });
       }
       await storage.deleteTokenEffect(req.params.id);
+      broadcastToAllClients({ type: 'admin_data_changed', entity: 'token-effects' });
       res.json({ success: true });
     } catch (err) {
       console.error("Failed to delete token effect:", err);
@@ -8609,6 +8690,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         effectId,
         triggerCondition || "always"
       );
+      broadcastToAllClients({ type: 'admin_data_changed', entity: 'spell-effects' });
       res.status(201).json(spellEffect);
     } catch (err) {
       console.error("Failed to add spell effect:", err);
@@ -8619,6 +8701,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete("/api/admin/spell-effects/:id", requireAdmin, async (req, res) => {
     try {
       await storage.removeSpellEffect(req.params.id);
+      broadcastToAllClients({ type: 'admin_data_changed', entity: 'spell-effects' });
       res.json({ success: true });
     } catch (err) {
       console.error("Failed to remove spell effect:", err);
@@ -8652,6 +8735,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         effectId,
         triggerCondition || "always"
       );
+      broadcastToAllClients({ type: 'admin_data_changed', entity: 'item-effects' });
       res.status(201).json(itemEffect);
     } catch (err) {
       console.error("Failed to add item effect:", err);
@@ -8662,6 +8746,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete("/api/admin/item-effects/:id", requireAdmin, async (req, res) => {
     try {
       await storage.removeItemEffect(req.params.id);
+      broadcastToAllClients({ type: 'admin_data_changed', entity: 'item-effects' });
       res.json({ success: true });
     } catch (err) {
       console.error("Failed to remove item effect:", err);
@@ -8736,6 +8821,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         sourceId: sourceId || null,
         duration: effectDuration,
       });
+      broadcastToCampaign(token.campaignId, { type: 'token_updated' });
       res.status(201).json(activeEffect);
     } catch (err) {
       console.error("Failed to apply token effect:", err);
@@ -8767,6 +8853,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       await storage.removeTokenActiveEffect(req.params.id);
+      broadcastToCampaign(token.campaignId, { type: 'token_updated' });
       res.json({ success: true });
     } catch (err) {
       console.error("Failed to remove token active effect:", err);
@@ -8940,6 +9027,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         parentId: req.body.parentId || null,
         sortOrder: req.body.sortOrder || 0,
       });
+      broadcastToCampaign(req.params.campaignId, { type: 'sandbox_changed' });
       res.json(folder);
     } catch (e) {
       console.error("Failed to create sandbox folder:", e);
@@ -8959,6 +9047,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (req.body.sortOrder !== undefined) allowedFields.sortOrder = req.body.sortOrder;
       if (req.body.color !== undefined) allowedFields.color = req.body.color;
       const folder = await storage.updateSandboxFolder(req.params.folderId, allowedFields);
+      broadcastToCampaign(req.params.campaignId, { type: 'sandbox_changed' });
       res.json(folder);
     } catch (e) {
       console.error("Failed to update sandbox folder:", e);
@@ -8973,6 +9062,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const isGM = await hasGmAccess(req.session.userId!, req.params.campaignId, campaign.gmUserId);
       if (!isGM) return res.status(403).json({ error: "Only GMs can manage folders" });
       await storage.deleteSandboxFolder(req.params.folderId);
+      broadcastToCampaign(req.params.campaignId, { type: 'sandbox_changed' });
       res.json({ success: true });
     } catch (e) {
       console.error("Failed to delete sandbox folder:", e);
@@ -9040,6 +9130,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         folderId: req.body.folderId || null,
         data: JSON.stringify(defaultData),
       });
+      broadcastToCampaign(req.params.campaignId, { type: 'sandbox_changed' });
       res.json(template);
     } catch (e) {
       console.error("Failed to create sandbox template:", e);
@@ -9091,6 +9182,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const isGM = await hasGmAccess(req.session.userId!, req.params.campaignId, campaign.gmUserId);
       if (!isGM) return res.status(403).json({ error: "Only GMs can manage templates" });
       const template = await storage.updateSandboxTemplate(req.params.templateId, req.body);
+      broadcastToCampaign(req.params.campaignId, { type: 'sandbox_changed' });
       res.json(template);
     } catch (e) {
       console.error("Failed to update sandbox template:", e);
@@ -9105,6 +9197,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const isGM = await hasGmAccess(req.session.userId!, req.params.campaignId, campaign.gmUserId);
       if (!isGM) return res.status(403).json({ error: "Only GMs can manage templates" });
       await storage.deleteSandboxTemplate(req.params.templateId);
+      broadcastToCampaign(req.params.campaignId, { type: 'sandbox_changed' });
       res.json({ success: true });
     } catch (e) {
       console.error("Failed to delete sandbox template:", e);
@@ -9136,6 +9229,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         folderId: req.body.folderId || null,
         data: "{}",
       });
+      broadcastToCampaign(req.params.campaignId, { type: 'sandbox_changed' });
       res.json(actor);
     } catch (e) {
       console.error("Failed to create sandbox actor:", e);
@@ -9155,6 +9249,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (req.body.data !== undefined) allowedFields.data = req.body.data;
       if (req.body.folderId !== undefined) allowedFields.folderId = req.body.folderId;
       const actor = await storage.updateSandboxActor(req.params.actorId, allowedFields);
+      broadcastToCampaign(req.params.campaignId, { type: 'sandbox_changed' });
       res.json(actor);
     } catch (e) {
       console.error("Failed to update sandbox actor:", e);
@@ -9169,6 +9264,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const isGM = await hasGmAccess(req.session.userId!, req.params.campaignId, campaign.gmUserId);
       if (!isGM) return res.status(403).json({ error: "Only GMs can manage actors" });
       await storage.deleteSandboxActor(req.params.actorId);
+      broadcastToCampaign(req.params.campaignId, { type: 'sandbox_changed' });
       res.json({ success: true });
     } catch (e) {
       console.error("Failed to delete sandbox actor:", e);
