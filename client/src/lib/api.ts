@@ -165,9 +165,16 @@ export interface Scene {
   gridColor: string;
   gridThickness: number;
   gridOpacity: number;
+  gridOffsetX?: number;
+  gridOffsetY?: number;
   defaultViewX: number;
   defaultViewY: number;
   defaultViewZoom: number;
+  fogEnabled: boolean;
+  fogExploredMemory: boolean;
+  fogOpacity: number;
+  fogExploredDimness: number;
+  isDayTime: boolean;
   inCombat: boolean;
   currentTurnCharacterId?: string;
   createdAt: string;

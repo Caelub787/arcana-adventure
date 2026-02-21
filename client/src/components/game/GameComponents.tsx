@@ -415,6 +415,7 @@ interface BattleMapProps {
   onMapClickToPlace?: (gridX: number, gridY: number) => void;
   placingCharacterId?: string | null;
   currentUserId?: string | null;
+  assignedCharacterId?: string | null;
   onTokenLongPress?: (token: any) => void;
   gridCalibrationMode?: boolean;
   onGridCalibrationConfirm?: (gridSize: number, offsetX: number, offsetY: number) => void;
