@@ -983,6 +983,7 @@ export function CanvasEditor({
 
   const handleConnectionHandlePointerDown = (e: React.PointerEvent, node: CanvasNode, side: ConnectionSide) => {
     e.stopPropagation();
+    e.preventDefault();
     if (readOnly) return;
     
     userInteractedRef.current = true; // Mark as user interaction to prevent view reset
@@ -1826,7 +1827,7 @@ export function CanvasEditor({
           <div className="flex-1 relative overflow-hidden min-h-[300px]">
             <div
               ref={containerRef}
-              className="w-full h-full cursor-grab active:cursor-grabbing touch-none"
+              className={`w-full h-full cursor-grab active:cursor-grabbing touch-none ${isConnecting || isDragging || isResizing ? 'select-none' : ''}`}
               onPointerDown={handleCanvasPointerDown}
               onPointerMove={handleCanvasPointerMove}
               onPointerUp={handleCanvasPointerUp}
