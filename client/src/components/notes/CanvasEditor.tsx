@@ -149,6 +149,15 @@ export function CanvasEditor({
   const [showDeleteNodeId, setShowDeleteNodeId] = useState<string | null>(null); // Long-press delete
   const nodeLongPressTimerRef = useRef<NodeJS.Timeout | null>(null);
   
+  const [selectedNodeIds, setSelectedNodeIds] = useState<Set<string>>(new Set());
+  const [isBoxSelecting, setIsBoxSelecting] = useState(false);
+  const [selectionBox, setSelectionBox] = useState<{ startX: number; startY: number; endX: number; endY: number } | null>(null);
+  const multiDragStartsRef = useRef<{ nodeId: string; nodeX: number; nodeY: number }[] | null>(null);
+  
+  const canvasHistoryRef = useRef<CanvasData[]>([]);
+  const canvasHistoryIndexRef = useRef(-1);
+  const isUndoRedoRef = useRef(false);
+  
   const [isDragging, setIsDragging] = useState(false);
   const [isPanning, setIsPanning] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
@@ -216,6 +225,21 @@ export function CanvasEditor({
       }
     };
   }, [longPressTimer]);
+
+  useEffect(() => {
+    if (isUndoRedoRef.current) {
+      isUndoRedoRef.current = false;
+      return;
+    }
+    const history = canvasHistoryRef.current;
+    const index = canvasHistoryIndexRef.current;
+    canvasHistoryRef.current = [...history.slice(0, index + 1), canvasData];
+    canvasHistoryIndexRef.current = canvasHistoryRef.current.length - 1;
+    if (canvasHistoryRef.current.length > 50) {
+      canvasHistoryRef.current = canvasHistoryRef.current.slice(-50);
+      canvasHistoryIndexRef.current = canvasHistoryRef.current.length - 1;
+    }
+  }, [canvasData]);
 
   // Get user's notes when search is empty, otherwise search
   const { data: searchedNotes = [], isLoading: notesLoading } = useQuery({
@@ -314,6 +338,17 @@ export function CanvasEditor({
     onChange({ nodes: newNodes, connections: newConnections });
     if (selectedNodeId === nodeId) setSelectedNodeId(null);
   }, [canvasData, onChange, selectedNodeId, readOnly]);
+
+  const deleteNodes = useCallback((nodeIds: Set<string>) => {
+    if (readOnly) return;
+    const newNodes = canvasData.nodes.filter(n => !nodeIds.has(n.id));
+    const newConnections = canvasData.connections.filter(
+      c => !nodeIds.has(c.fromNodeId) && !nodeIds.has(c.toNodeId)
+    );
+    onChange({ nodes: newNodes, connections: newConnections });
+    setSelectedNodeIds(new Set());
+    setSelectedNodeId(null);
+  }, [canvasData, onChange, readOnly]);
 
   const deleteConnection = useCallback((connectionId: string) => {
     if (readOnly) return;
@@ -471,11 +506,34 @@ export function CanvasEditor({
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Delete" || e.key === "Backspace") {
-        if (document.activeElement?.tagName === "INPUT" || document.activeElement?.tagName === "TEXTAREA") {
-          return;
+      const isInput = document.activeElement?.tagName === "INPUT" || document.activeElement?.tagName === "TEXTAREA";
+      
+      if ((e.ctrlKey || e.metaKey) && e.key === "z" && !e.shiftKey) {
+        if (isInput) return;
+        e.preventDefault();
+        if (canvasHistoryIndexRef.current > 0) {
+          canvasHistoryIndexRef.current--;
+          isUndoRedoRef.current = true;
+          onChange(canvasHistoryRef.current[canvasHistoryIndexRef.current]);
         }
-        if (selectedNodeId) {
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && ((e.key === "z" && e.shiftKey) || e.key === "y")) {
+        if (isInput) return;
+        e.preventDefault();
+        if (canvasHistoryIndexRef.current < canvasHistoryRef.current.length - 1) {
+          canvasHistoryIndexRef.current++;
+          isUndoRedoRef.current = true;
+          onChange(canvasHistoryRef.current[canvasHistoryIndexRef.current]);
+        }
+        return;
+      }
+      
+      if (e.key === "Delete" || e.key === "Backspace") {
+        if (isInput) return;
+        if (selectedNodeIds.size > 0) {
+          deleteNodes(selectedNodeIds);
+        } else if (selectedNodeId) {
           deleteNode(selectedNodeId);
         } else if (selectedConnectionId) {
           deleteConnection(selectedConnectionId);
@@ -487,6 +545,8 @@ export function CanvasEditor({
           setConnectionStart(null);
           setConnectionEnd(null);
           setHoveredDropTarget(null);
+        } else if (selectedNodeIds.size > 0) {
+          setSelectedNodeIds(new Set());
         } else if (selectedNodeId || selectedConnectionId) {
           setSelectedNodeId(null);
           setSelectedConnectionId(null);
@@ -498,7 +558,7 @@ export function CanvasEditor({
     
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [selectedNodeId, selectedConnectionId, deleteNode, deleteConnection, isConnecting, onClose]);
+  }, [selectedNodeId, selectedNodeIds, selectedConnectionId, deleteNode, deleteNodes, deleteConnection, isConnecting, onClose, onChange]);
 
   // Track if user has manually interacted with the canvas (panned/zoomed)
   const userInteractedRef = useRef(false);
@@ -689,10 +749,22 @@ export function CanvasEditor({
       setHoveredDropSide(null);
     }
     
-    setSelectedNodeId(null);
     setSelectedConnectionId(null);
-    setEditingNodeId(null); // Clear editing when clicking canvas background
-    setShowDeleteNodeId(null); // Hide delete button when clicking canvas background
+    setEditingNodeId(null);
+    setShowDeleteNodeId(null);
+    
+    if (e.shiftKey && e.pointerType === "mouse") {
+      e.preventDefault();
+      const world = screenToWorld(e.clientX, e.clientY);
+      setIsBoxSelecting(true);
+      setSelectionBox({ startX: world.x, startY: world.y, endX: world.x, endY: world.y });
+      setSelectedNodeId(null);
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+      return;
+    }
+    
+    setSelectedNodeId(null);
+    setSelectedNodeIds(new Set());
     
     setIsPanning(true);
     panStartRef.current = {
@@ -766,6 +838,12 @@ export function CanvasEditor({
       }
     }
     
+    if (isBoxSelecting && selectionBox) {
+      const world = screenToWorld(e.clientX, e.clientY);
+      setSelectionBox({ ...selectionBox, endX: world.x, endY: world.y });
+      return;
+    }
+    
     if (isPanning && panStartRef.current && !draggingLabel && !resizingLabelId) {
       userInteractedRef.current = true; // User panned manually
       const deltaX = e.clientX - panStartRef.current.pointerX;
@@ -787,10 +865,21 @@ export function CanvasEditor({
       const deltaX = world.x - dragStartRef.current.startX;
       const deltaY = world.y - dragStartRef.current.startY;
       
-      updateNode(dragStartRef.current.nodeId, {
-        x: dragStartRef.current.nodeX + deltaX,
-        y: dragStartRef.current.nodeY + deltaY,
-      });
+      if (multiDragStartsRef.current && multiDragStartsRef.current.length > 0) {
+        const newNodes = canvasData.nodes.map(n => {
+          const dragInfo = multiDragStartsRef.current!.find(d => d.nodeId === n.id);
+          if (dragInfo) {
+            return { ...n, x: dragInfo.nodeX + deltaX, y: dragInfo.nodeY + deltaY };
+          }
+          return n;
+        });
+        onChange({ ...canvasData, nodes: newNodes });
+      } else {
+        updateNode(dragStartRef.current.nodeId, {
+          x: dragStartRef.current.nodeX + deltaX,
+          y: dragStartRef.current.nodeY + deltaY,
+        });
+      }
     }
     
     if (isResizing && resizeStartRef.current) {
@@ -818,6 +907,30 @@ export function CanvasEditor({
     
     // If still have one finger, don't reset pan state (could continue panning)
     if (activePointersRef.current.size >= 1) {
+      return;
+    }
+    
+    if (isBoxSelecting && selectionBox) {
+      const minX = Math.min(selectionBox.startX, selectionBox.endX);
+      const maxX = Math.max(selectionBox.startX, selectionBox.endX);
+      const minY = Math.min(selectionBox.startY, selectionBox.endY);
+      const maxY = Math.max(selectionBox.startY, selectionBox.endY);
+      
+      const intersecting = new Set<string>();
+      canvasData.nodes.forEach(node => {
+        const nodeRight = node.x + node.width;
+        const nodeBottom = node.y + node.height;
+        if (node.x < maxX && nodeRight > minX && node.y < maxY && nodeBottom > minY) {
+          intersecting.add(node.id);
+        }
+      });
+      
+      setSelectedNodeIds(intersecting);
+      setIsBoxSelecting(false);
+      setSelectionBox(null);
+      try {
+        (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+      } catch {}
       return;
     }
     
@@ -912,6 +1025,7 @@ export function CanvasEditor({
     panStartRef.current = null;
     dragStartRef.current = null;
     resizeStartRef.current = null;
+    multiDragStartsRef.current = null;
   };
 
   const handleNodePointerDown = (e: React.PointerEvent, node: CanvasNode) => {
@@ -933,20 +1047,40 @@ export function CanvasEditor({
       setShowDeleteNodeId(node.id);
     }, 700);
     
-    setSelectedNodeId(node.id);
     setSelectedConnectionId(null);
-    if (editingNodeId !== node.id) setEditingNodeId(null); // Clear editing when selecting different node
-    setShowDeleteNodeId(null); // Hide delete button on new selection
+    if (editingNodeId !== node.id) setEditingNodeId(null);
+    setShowDeleteNodeId(null);
     
-    setIsDragging(true);
-    const world = screenToWorld(e.clientX, e.clientY);
-    dragStartRef.current = {
-      nodeId: node.id,
-      startX: world.x,
-      startY: world.y,
-      nodeX: node.x,
-      nodeY: node.y,
-    };
+    const isMultiSelected = selectedNodeIds.has(node.id);
+    
+    if (isMultiSelected) {
+      setIsDragging(true);
+      const world = screenToWorld(e.clientX, e.clientY);
+      dragStartRef.current = {
+        nodeId: node.id,
+        startX: world.x,
+        startY: world.y,
+        nodeX: node.x,
+        nodeY: node.y,
+      };
+      multiDragStartsRef.current = canvasData.nodes
+        .filter(n => selectedNodeIds.has(n.id))
+        .map(n => ({ nodeId: n.id, nodeX: n.x, nodeY: n.y }));
+    } else {
+      setSelectedNodeId(node.id);
+      setSelectedNodeIds(new Set());
+      
+      setIsDragging(true);
+      const world = screenToWorld(e.clientX, e.clientY);
+      dragStartRef.current = {
+        nodeId: node.id,
+        startX: world.x,
+        startY: world.y,
+        nodeX: node.x,
+        nodeY: node.y,
+      };
+      multiDragStartsRef.current = null;
+    }
     
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
   };
@@ -1282,6 +1416,7 @@ export function CanvasEditor({
 
   const renderNode = (node: CanvasNode) => {
     const isSelected = selectedNodeId === node.id;
+    const isMultiSelected = selectedNodeIds.has(node.id);
     const isDropTarget = hoveredDropTarget === node.id;
     
     const getDefaultTitle = () => {
@@ -1301,7 +1436,9 @@ export function CanvasEditor({
             ? "border-green-400 shadow-lg shadow-green-400/30" 
             : isSelected 
               ? "border-indigo-500 shadow-lg shadow-indigo-500/20" 
-              : "border-stone-600 hover:border-stone-500"
+              : isMultiSelected
+                ? "border-blue-500 shadow-lg shadow-blue-500/20 ring-2 ring-blue-500/40"
+                : "border-stone-600 hover:border-stone-500"
         }`}
         style={{
           left: node.x,
@@ -1375,7 +1512,7 @@ export function CanvasEditor({
                 >{node.title || getDefaultTitle()}</span>
               )}
             </div>
-            {!readOnly && (selectedNodeId === node.id || showDeleteNodeId === node.id) && (
+            {!readOnly && (selectedNodeId === node.id || isMultiSelected || showDeleteNodeId === node.id) && (
               <Button
                 variant="ghost"
                 size="icon"
@@ -1827,7 +1964,7 @@ export function CanvasEditor({
           <div className="flex-1 relative overflow-hidden min-h-[300px]">
             <div
               ref={containerRef}
-              className={`w-full h-full cursor-grab active:cursor-grabbing touch-none ${isConnecting || isDragging || isResizing ? 'select-none' : ''}`}
+              className={`w-full h-full cursor-grab active:cursor-grabbing touch-none ${isConnecting || isDragging || isResizing || isBoxSelecting ? 'select-none' : ''}`}
               onPointerDown={handleCanvasPointerDown}
               onPointerMove={handleCanvasPointerMove}
               onPointerUp={handleCanvasPointerUp}
@@ -2158,6 +2295,18 @@ export function CanvasEditor({
                 style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transformOrigin: "0 0" }}
               >
                 {canvasData.nodes.map(renderNode)}
+                {isBoxSelecting && selectionBox && (
+                  <div
+                    className="absolute pointer-events-none border-2 border-dashed border-blue-500 bg-blue-500/10"
+                    style={{
+                      left: Math.min(selectionBox.startX, selectionBox.endX),
+                      top: Math.min(selectionBox.startY, selectionBox.endY),
+                      width: Math.abs(selectionBox.endX - selectionBox.startX),
+                      height: Math.abs(selectionBox.endY - selectionBox.startY),
+                    }}
+                    data-testid="selection-box"
+                  />
+                )}
               </div>
               
               {connectionDropMenu && connectionDropMenu.visible && (

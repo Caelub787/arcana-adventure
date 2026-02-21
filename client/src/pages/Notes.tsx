@@ -563,6 +563,57 @@ export default function Notes() {
   const debouncedContent = useDebouncedValue(noteContent, 1000);
   const debouncedCanvasData = useDebouncedValue(canvasData, 1000);
 
+  const contentHistoryRef = React.useRef<string[]>([]);
+  const contentHistoryIndexRef = React.useRef(-1);
+  const isContentUndoRedoRef = React.useRef(false);
+  const contentHistoryTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const pushContentHistory = React.useCallback((content: string) => {
+    if (isContentUndoRedoRef.current) return;
+    const history = contentHistoryRef.current;
+    const index = contentHistoryIndexRef.current;
+    if (history[index] === content) return;
+    contentHistoryRef.current = [...history.slice(0, index + 1), content];
+    contentHistoryIndexRef.current = contentHistoryRef.current.length - 1;
+    if (contentHistoryRef.current.length > 100) {
+      contentHistoryRef.current = contentHistoryRef.current.slice(-100);
+      contentHistoryIndexRef.current = contentHistoryRef.current.length - 1;
+    }
+  }, []);
+
+  const handleContentUndo = React.useCallback(() => {
+    if (contentHistoryTimerRef.current) {
+      clearTimeout(contentHistoryTimerRef.current);
+      contentHistoryTimerRef.current = null;
+    }
+    const history = contentHistoryRef.current;
+    const index = contentHistoryIndexRef.current;
+    if (history[index] !== noteContent) {
+      history.splice(index + 1);
+      history.push(noteContent);
+      contentHistoryIndexRef.current = history.length - 1;
+    }
+    if (contentHistoryIndexRef.current > 0) {
+      contentHistoryIndexRef.current--;
+      isContentUndoRedoRef.current = true;
+      setNoteContent(contentHistoryRef.current[contentHistoryIndexRef.current]);
+      setTimeout(() => { isContentUndoRedoRef.current = false; }, 0);
+    }
+  }, [noteContent]);
+
+  const handleContentRedo = React.useCallback(() => {
+    if (contentHistoryTimerRef.current) {
+      clearTimeout(contentHistoryTimerRef.current);
+      contentHistoryTimerRef.current = null;
+    }
+    if (contentHistoryIndexRef.current < contentHistoryRef.current.length - 1) {
+      contentHistoryIndexRef.current++;
+      isContentUndoRedoRef.current = true;
+      setNoteContent(contentHistoryRef.current[contentHistoryIndexRef.current]);
+      setTimeout(() => { isContentUndoRedoRef.current = false; }, 0);
+    }
+  }, []);
+
   const [referencePickerOpen, setReferencePickerOpen] = useState(false);
   const [notePickerOpen, setNotePickerOpen] = useState(false);
   const [notePickerInitialSearch, setNotePickerInitialSearch] = useState("");
@@ -690,6 +741,8 @@ export default function Notes() {
         setNoteTitle(currentNote.title);
         setNoteContent(currentNote.content || "");
         lastLoadedNoteIdRef.current = currentNote.id;
+        contentHistoryRef.current = [currentNote.content || ""];
+        contentHistoryIndexRef.current = 0;
         
         if (currentNote.type === "canvas" && currentNote.canvasData) {
           setCanvasData(currentNote.canvasData as CanvasData);
@@ -1357,6 +1410,10 @@ export default function Notes() {
   const handleContentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const newContent = e.target.value;
     const pos = e.target.selectionStart;
+    if (contentHistoryTimerRef.current) clearTimeout(contentHistoryTimerRef.current);
+    contentHistoryTimerRef.current = setTimeout(() => {
+      pushContentHistory(newContent);
+    }, 300);
     setNoteContent(newContent);
     setCursorPosition(pos);
 
@@ -2383,6 +2440,16 @@ export default function Notes() {
               value={noteContent}
               onChange={handleContentChange}
               onKeyDown={(e) => {
+                if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !e.shiftKey) {
+                  e.preventDefault();
+                  handleContentUndo();
+                  return;
+                }
+                if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'z' && e.shiftKey || e.key.toLowerCase() === 'y')) {
+                  e.preventDefault();
+                  handleContentRedo();
+                  return;
+                }
                 if ((e.ctrlKey || e.metaKey) && ['b', 'i', 'u'].includes(e.key.toLowerCase())) {
                   e.preventDefault();
                   const textarea = textareaRef.current;
