@@ -856,9 +856,12 @@ interface FogCanvasOverlayProps {
   fogEnabled: boolean;
   isGM: boolean;
   gmSeeAsPlayer: boolean;
-  visionPolygons: VisionPolygon[];
-  lightVisionPolygons: VisionPolygon[];
-  exploredCells: Set<string>;
+  fogRenderDataRef: React.RefObject<{
+    visionPolygons: VisionPolygon[];
+    lightVisionPolygons: VisionPolygon[];
+    exploredCells: Set<string>;
+  }>;
+  fogRenderDirtyRef: React.RefObject<number>;
   gridSize: number;
   scene: any;
   motionX: MotionValue<number>;
@@ -872,9 +875,8 @@ export function FogCanvasOverlay({
   fogEnabled,
   isGM,
   gmSeeAsPlayer,
-  visionPolygons,
-  lightVisionPolygons,
-  exploredCells,
+  fogRenderDataRef,
+  fogRenderDirtyRef,
   gridSize,
   scene,
   motionX,
@@ -888,9 +890,6 @@ export function FogCanvasOverlay({
   const fogEnabledRef = useRef(fogEnabled);
   const isGMRef = useRef(isGM);
   const gmSeeAsPlayerRef = useRef(gmSeeAsPlayer);
-  const visionPolygonsRef = useRef(visionPolygons);
-  const lightVisionPolygonsRef = useRef(lightVisionPolygons);
-  const exploredCellsRef = useRef(exploredCells);
   const gridSizeRef = useRef(gridSize);
   const sceneRef = useRef(scene);
   const containerWidthRef = useRef(containerWidth);
@@ -899,9 +898,6 @@ export function FogCanvasOverlay({
   fogEnabledRef.current = fogEnabled;
   isGMRef.current = isGM;
   gmSeeAsPlayerRef.current = gmSeeAsPlayer;
-  visionPolygonsRef.current = visionPolygons;
-  lightVisionPolygonsRef.current = lightVisionPolygons;
-  exploredCellsRef.current = exploredCells;
   gridSizeRef.current = gridSize;
   sceneRef.current = scene;
   containerWidthRef.current = containerWidth;
@@ -952,9 +948,9 @@ export function FogCanvasOverlay({
       }
 
       if (currentFogEnabled) {
-        const currentVisionPolygons = visionPolygonsRef.current;
-        const currentLightVisionPolygons = lightVisionPolygonsRef.current;
-        const currentExploredCells = exploredCellsRef.current;
+        const currentVisionPolygons = fogRenderDataRef.current.visionPolygons;
+        const currentLightVisionPolygons = fogRenderDataRef.current.lightVisionPolygons;
+        const currentExploredCells = fogRenderDataRef.current.exploredCells;
         const currentGridSize = gridSizeRef.current;
 
         if (currentIsGM && !currentGmSeeAsPlayer) {
@@ -1033,10 +1029,22 @@ export function FogCanvasOverlay({
     const unsubY = motionY.on('change', () => { cancelAnimationFrame(rafId); rafId = requestAnimationFrame(draw); });
     const unsubZ = motionZoom.on('change', () => { cancelAnimationFrame(rafId); rafId = requestAnimationFrame(draw); });
 
+    let lastDirty = -1;
+    let pollId: number;
+    function poll() {
+      const currentDirty = fogRenderDirtyRef.current;
+      if (currentDirty !== lastDirty) {
+        lastDirty = currentDirty;
+        draw();
+      }
+      pollId = requestAnimationFrame(poll);
+    }
+    pollId = requestAnimationFrame(poll);
+
     draw();
 
-    return () => { unsubX(); unsubY(); unsubZ(); cancelAnimationFrame(rafId); };
-  }, [motionX, motionY, motionZoom, fogEnabled, visionPolygons, lightVisionPolygons, exploredCells, gridSize, scene?.isDayTime, scene?.fogExploredMemory, scene?.fogOpacity, scene?.fogExploredDimness, isGM, gmSeeAsPlayer, containerWidth, containerHeight]);
+    return () => { unsubX(); unsubY(); unsubZ(); cancelAnimationFrame(rafId); cancelAnimationFrame(pollId); };
+  }, [motionX, motionY, motionZoom]);
 
   const isDayTime = scene?.isDayTime ?? true;
   if (!fogEnabled && isDayTime) return null;

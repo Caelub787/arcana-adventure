@@ -488,11 +488,16 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
   const [fogToolActiveInternal, setFogToolActiveInternal] = useState(false);
   const fogToolActive = fogToolActiveProp ?? fogToolActiveInternal;
   const [visionPolygons, setVisionPolygons] = useState<VisionPolygon[]>([]);
-  const [fogRenderData, setFogRenderData] = useState<{
+  const fogRenderDataRef = useRef<{
     visionPolygons: VisionPolygon[];
     lightVisionPolygons: VisionPolygon[];
     exploredCells: Set<string>;
   }>({ visionPolygons: [], lightVisionPolygons: [], exploredCells: new Set() });
+  const fogRenderDirtyRef = useRef(0);
+  const handleFogRenderData = useCallback((data: { visionPolygons: VisionPolygon[]; lightVisionPolygons: VisionPolygon[]; exploredCells: Set<string> }) => {
+    fogRenderDataRef.current = data;
+    fogRenderDirtyRef.current++;
+  }, []);
   const setFogToolActive = useCallback((v: boolean) => {
     setFogToolActiveInternal(v);
     onFogToolActiveChange?.(v);
@@ -3742,7 +3747,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
             gmSeeAsPlayer={gmSeeAsPlayer}
             selectedTokenId={selectedVisionTokenId}
             gmSeeAllVision={gmSeeAllVision}
-            onFogRenderData={setFogRenderData}
+            onFogRenderData={handleFogRenderData}
           />
         )}
         
@@ -3789,9 +3794,8 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
         fogEnabled={scene?.fogEnabled ?? false}
         isGM={isGM}
         gmSeeAsPlayer={gmSeeAsPlayer}
-        visionPolygons={fogRenderData.visionPolygons}
-        lightVisionPolygons={fogRenderData.lightVisionPolygons}
-        exploredCells={fogRenderData.exploredCells}
+        fogRenderDataRef={fogRenderDataRef}
+        fogRenderDirtyRef={fogRenderDirtyRef}
         gridSize={gridSize}
         scene={scene}
         motionX={motionX}
