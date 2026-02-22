@@ -8800,6 +8800,12 @@ const InitiativeTrackerInner = function InitiativeTracker({ open, onOpenChange, 
   const [editValue, setEditValue] = useState<number>(0);
   const [inactiveCollapsed, setInactiveCollapsed] = useState(true);
 
+  const speciesMap = useMemo(() => {
+    const map = new Map();
+    allSpecies.forEach((s: any) => map.set(s.name, s));
+    return map;
+  }, [allSpecies]);
+
   const { data: initiativeData, isLoading } = useQuery({
     queryKey: [`/api/campaigns/${campaignId}/initiative`],
     queryFn: () => api.getCampaignInitiative(campaignId!),
