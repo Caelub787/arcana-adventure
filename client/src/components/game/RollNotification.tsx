@@ -364,7 +364,7 @@ export function RollNotificationContainer() {
     return (
       <div
         ref={containerRef}
-        className="fixed bottom-44 left-2 md:left-4 z-[10003] flex flex-col-reverse gap-1 pointer-events-none items-start"
+        className="fixed bottom-44 left-2 md:left-4 z-[200000] flex flex-col-reverse gap-1 pointer-events-none items-start"
         style={{ maxWidth: '200px' }}
       >
         <AnimatePresence mode="popLayout">
@@ -383,7 +383,7 @@ export function RollNotificationContainer() {
   return (
     <div
       ref={containerRef}
-      className="fixed top-4 left-1/2 -translate-x-1/2 z-[10003] flex flex-col gap-2 pointer-events-none w-[calc(100vw-2rem)] max-w-sm"
+      className="fixed top-4 left-1/2 -translate-x-1/2 z-[200000] flex flex-col gap-2 pointer-events-none w-[calc(100vw-2rem)] max-w-sm"
     >
       <AnimatePresence mode="popLayout">
         {notifications.map(notification => (
