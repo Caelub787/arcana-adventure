@@ -9720,7 +9720,7 @@ export default function Campaign() {
           isMobile={isMobile}
           templates={sandboxTemplatesList as any[]}
           role={role}
-          zIndex={floatingZIndices[`sandbox-${sheet.id}`] || 45}
+          zIndex={floatingZIndices[`sandbox-${sheet.id}`] || 10500}
           onBringToFront={() => bringToFront(`sandbox-${sheet.id}`)}
           enterAoeMode={enterAoeMode}
           tokens={tokens}
@@ -9750,7 +9750,7 @@ export default function Campaign() {
               openCharacterSheet(character);
             }
           }}
-          zIndex={floatingZIndices['notes'] || 45}
+          zIndex={floatingZIndices['notes'] || 10500}
           onBringToFront={() => bringToFront('notes')}
         />
       )}
@@ -10478,7 +10478,7 @@ export default function Campaign() {
             defaultPosition={{ x: 100 + (index * 30), y: 50 + (index * 30) }}
             minWidth={400}
             minHeight={400}
-            zIndex={floatingZIndices[`char-${sheet.id}`] || (40 + index)}
+            zIndex={floatingZIndices[`char-${sheet.id}`] || (10500 + index)}
             onBringToFront={() => bringToFront(`char-${sheet.id}`)}
           >
             <CharacterSheet

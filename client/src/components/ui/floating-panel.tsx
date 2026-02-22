@@ -27,7 +27,7 @@ export function FloatingPanel({
   minWidth = 400,
   minHeight = 400,
   className,
-  zIndex = 40,
+  zIndex = 10500,
   onBringToFront,
 }: FloatingPanelProps) {
   const panelRef = React.useRef<HTMLDivElement>(null);
@@ -267,7 +267,7 @@ export function FloatingPanel({
         top: 0,
         width: isMinimized ? minimizedMaxWidth : (isFullscreen ? window.innerWidth : s.width),
         height: isMinimized ? headerHeight : (isFullscreen ? window.innerHeight : s.height),
-        zIndex: isFullscreen ? Math.max(zIndex, 100) : zIndex,
+        zIndex: isFullscreen ? Math.max(zIndex, 10500) : zIndex,
         backfaceVisibility: 'hidden' as const,
       }}
       data-testid="floating-panel"
