@@ -2236,6 +2236,13 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
             transformOrigin: 'top left',
           }}
           draggable={false}
+          onError={(e) => {
+            const img = e.currentTarget;
+            if (!img.dataset.triedFallback) {
+              img.dataset.triedFallback = '1';
+              img.src = battleMapImage1;
+            }
+          }}
         />
 
         {/* Ghost Token - Shows starting position during combat turn */}
