@@ -55,7 +55,12 @@ import {
   type SceneMapPin, type InsertSceneMapPin,
   type Entity, type InsertEntity,
   type EntityLink, type InsertEntityLink,
-  users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, items, spells, characterPermissions, initiativeEntries, systemSpecies, campaignSpecies, featTemplates, featTrees, feats, featConnections, characterFeats, systemSpells, systemSkills, characterCustomSkills, systemTraits, characterTraits, characterFolders, characterTemplateFolders, sceneFolders, friendRequests, friendships, noteFolders, notes, noteReferences, noteShares, tokenEffects, spellEffects, itemEffects, tokenActiveEffects, thrownItems, adminNotifications, userNotifications, termsAndConditions, userTermsAcceptance, sandboxFolders, sandboxTemplates, sandboxActors, rollEntries, sceneWalls, sceneDoors, sceneWindows, sceneLights, sceneVisionZones, sceneMapPins, entities, entityLinks
+  type WorldShareLink, type InsertWorldShareLink,
+  type WorldMap, type InsertWorldMap,
+  type WorldMapPin, type InsertWorldMapPin,
+  type WorldCalendar, type InsertWorldCalendar,
+  type WorldTimelineEvent, type InsertWorldTimelineEvent,
+  users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, items, spells, characterPermissions, initiativeEntries, systemSpecies, campaignSpecies, featTemplates, featTrees, feats, featConnections, characterFeats, systemSpells, systemSkills, characterCustomSkills, systemTraits, characterTraits, characterFolders, characterTemplateFolders, sceneFolders, friendRequests, friendships, noteFolders, notes, noteReferences, noteShares, tokenEffects, spellEffects, itemEffects, tokenActiveEffects, thrownItems, adminNotifications, userNotifications, termsAndConditions, userTermsAcceptance, sandboxFolders, sandboxTemplates, sandboxActors, rollEntries, sceneWalls, sceneDoors, sceneWindows, sceneLights, sceneVisionZones, sceneMapPins, entities, entityLinks, worldShareLinks, worldMaps, worldMapPins, worldCalendars, worldTimelineEvents
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql, inArray, or, isNull } from "drizzle-orm";
@@ -513,6 +518,40 @@ export interface IStorage {
   updateEntityLink(id: string, data: Partial<EntityLink>): Promise<EntityLink | undefined>;
   deleteEntityLink(id: string): Promise<void>;
   getEntityReferences(entityId: string): Promise<{ links: EntityLink[]; noteReferences: any[]; }>;
+
+  // World Share Link operations
+  getWorldShareLink(campaignId: string): Promise<WorldShareLink | undefined>;
+  getWorldShareLinkByToken(token: string): Promise<WorldShareLink | undefined>;
+  createWorldShareLink(link: InsertWorldShareLink): Promise<WorldShareLink>;
+  deleteWorldShareLink(id: string): Promise<void>;
+
+  // World Map operations
+  getWorldMaps(campaignId: string): Promise<WorldMap[]>;
+  getWorldMap(id: string): Promise<WorldMap | undefined>;
+  createWorldMap(map: InsertWorldMap): Promise<WorldMap>;
+  updateWorldMap(id: string, data: Partial<WorldMap>): Promise<WorldMap | undefined>;
+  deleteWorldMap(id: string): Promise<void>;
+
+  // World Map Pin operations
+  getWorldMapPins(mapId: string): Promise<WorldMapPin[]>;
+  getWorldMapPin(id: string): Promise<WorldMapPin | undefined>;
+  createWorldMapPin(pin: InsertWorldMapPin): Promise<WorldMapPin>;
+  updateWorldMapPin(id: string, data: Partial<WorldMapPin>): Promise<WorldMapPin | undefined>;
+  deleteWorldMapPin(id: string): Promise<void>;
+
+  // World Calendar operations
+  getWorldCalendars(campaignId: string): Promise<WorldCalendar[]>;
+  getWorldCalendar(id: string): Promise<WorldCalendar | undefined>;
+  createWorldCalendar(calendar: InsertWorldCalendar): Promise<WorldCalendar>;
+  updateWorldCalendar(id: string, data: Partial<WorldCalendar>): Promise<WorldCalendar | undefined>;
+  deleteWorldCalendar(id: string): Promise<void>;
+
+  // World Timeline Event operations
+  getWorldTimelineEvents(campaignId: string): Promise<WorldTimelineEvent[]>;
+  getWorldTimelineEvent(id: string): Promise<WorldTimelineEvent | undefined>;
+  createWorldTimelineEvent(event: InsertWorldTimelineEvent): Promise<WorldTimelineEvent>;
+  updateWorldTimelineEvent(id: string, data: Partial<WorldTimelineEvent>): Promise<WorldTimelineEvent | undefined>;
+  deleteWorldTimelineEvent(id: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -3749,6 +3788,154 @@ export class DatabaseStorage implements IStorage {
       and(eq(noteReferences.entityType, 'entity'), eq(noteReferences.entityId, entityId))
     );
     return { links, noteReferences: backlinks };
+  }
+
+  // ============================================
+  // WORLD SHARE LINK OPERATIONS
+  // ============================================
+
+  async getWorldShareLink(campaignId: string): Promise<WorldShareLink | undefined> {
+    const [link] = await db.select().from(worldShareLinks)
+      .where(and(eq(worldShareLinks.campaignId, campaignId), eq(worldShareLinks.isActive, true)))
+      .limit(1);
+    return link;
+  }
+
+  async getWorldShareLinkByToken(token: string): Promise<WorldShareLink | undefined> {
+    const [link] = await db.select().from(worldShareLinks)
+      .where(and(eq(worldShareLinks.token, token), eq(worldShareLinks.isActive, true)))
+      .limit(1);
+    return link;
+  }
+
+  async createWorldShareLink(link: InsertWorldShareLink): Promise<WorldShareLink> {
+    const [created] = await db.insert(worldShareLinks).values(link).returning();
+    return created;
+  }
+
+  async deleteWorldShareLink(id: string): Promise<void> {
+    await db.delete(worldShareLinks).where(eq(worldShareLinks.id, id));
+  }
+
+  // ============================================
+  // WORLD MAP OPERATIONS
+  // ============================================
+
+  async getWorldMaps(campaignId: string): Promise<WorldMap[]> {
+    return await db.select().from(worldMaps)
+      .where(eq(worldMaps.campaignId, campaignId))
+      .orderBy(worldMaps.sortOrder);
+  }
+
+  async getWorldMap(id: string): Promise<WorldMap | undefined> {
+    const [map] = await db.select().from(worldMaps).where(eq(worldMaps.id, id));
+    return map;
+  }
+
+  async createWorldMap(map: InsertWorldMap): Promise<WorldMap> {
+    const [created] = await db.insert(worldMaps).values(map).returning();
+    return created;
+  }
+
+  async updateWorldMap(id: string, data: Partial<WorldMap>): Promise<WorldMap | undefined> {
+    const [updated] = await db.update(worldMaps)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(worldMaps.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteWorldMap(id: string): Promise<void> {
+    await db.delete(worldMaps).where(eq(worldMaps.id, id));
+  }
+
+  // ============================================
+  // WORLD MAP PIN OPERATIONS
+  // ============================================
+
+  async getWorldMapPins(mapId: string): Promise<WorldMapPin[]> {
+    return await db.select().from(worldMapPins).where(eq(worldMapPins.mapId, mapId));
+  }
+
+  async getWorldMapPin(id: string): Promise<WorldMapPin | undefined> {
+    const [pin] = await db.select().from(worldMapPins).where(eq(worldMapPins.id, id));
+    return pin;
+  }
+
+  async createWorldMapPin(pin: InsertWorldMapPin): Promise<WorldMapPin> {
+    const [created] = await db.insert(worldMapPins).values(pin).returning();
+    return created;
+  }
+
+  async updateWorldMapPin(id: string, data: Partial<WorldMapPin>): Promise<WorldMapPin | undefined> {
+    const [updated] = await db.update(worldMapPins).set(data).where(eq(worldMapPins.id, id)).returning();
+    return updated;
+  }
+
+  async deleteWorldMapPin(id: string): Promise<void> {
+    await db.delete(worldMapPins).where(eq(worldMapPins.id, id));
+  }
+
+  // ============================================
+  // WORLD CALENDAR OPERATIONS
+  // ============================================
+
+  async getWorldCalendars(campaignId: string): Promise<WorldCalendar[]> {
+    return await db.select().from(worldCalendars).where(eq(worldCalendars.campaignId, campaignId));
+  }
+
+  async getWorldCalendar(id: string): Promise<WorldCalendar | undefined> {
+    const [calendar] = await db.select().from(worldCalendars).where(eq(worldCalendars.id, id));
+    return calendar;
+  }
+
+  async createWorldCalendar(calendar: InsertWorldCalendar): Promise<WorldCalendar> {
+    const [created] = await db.insert(worldCalendars).values(calendar).returning();
+    return created;
+  }
+
+  async updateWorldCalendar(id: string, data: Partial<WorldCalendar>): Promise<WorldCalendar | undefined> {
+    const [updated] = await db.update(worldCalendars)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(worldCalendars.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteWorldCalendar(id: string): Promise<void> {
+    await db.delete(worldCalendars).where(eq(worldCalendars.id, id));
+  }
+
+  // ============================================
+  // WORLD TIMELINE EVENT OPERATIONS
+  // ============================================
+
+  async getWorldTimelineEvents(campaignId: string): Promise<WorldTimelineEvent[]> {
+    return await db.select().from(worldTimelineEvents)
+      .where(eq(worldTimelineEvents.campaignId, campaignId))
+      .orderBy(worldTimelineEvents.sortOrder);
+  }
+
+  async getWorldTimelineEvent(id: string): Promise<WorldTimelineEvent | undefined> {
+    const [event] = await db.select().from(worldTimelineEvents).where(eq(worldTimelineEvents.id, id));
+    return event;
+  }
+
+  async createWorldTimelineEvent(event: InsertWorldTimelineEvent): Promise<WorldTimelineEvent> {
+    const [created] = await db.insert(worldTimelineEvents).values(event).returning();
+    return created;
+  }
+
+  async updateWorldTimelineEvent(id: string, data: Partial<WorldTimelineEvent>): Promise<WorldTimelineEvent | undefined> {
+    const [updated] = await db.update(worldTimelineEvents)
+      .set(data)
+      .where(eq(worldTimelineEvents.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteWorldTimelineEvent(id: string): Promise<void> {
+    await db.delete(worldTimelineEvents).where(eq(worldTimelineEvents.id, id));
   }
 }
 

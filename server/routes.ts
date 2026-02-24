@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertUserSchema, insertCampaignSchema, insertCharacterSchema, insertTokenSchema, insertChatMessageSchema, insertSceneSchema, insertHotbarSchema, insertItemSchema, insertSpellSchema, initiativeEntries, insertTokenEffectSchema, insertTokenActiveEffectSchema, rollEntries, insertRollEntrySchema, items, sceneVisionZones, insertEntitySchema, insertEntityLinkSchema } from "@shared/schema";
+import { insertUserSchema, insertCampaignSchema, insertCharacterSchema, insertTokenSchema, insertChatMessageSchema, insertSceneSchema, insertHotbarSchema, insertItemSchema, insertSpellSchema, initiativeEntries, insertTokenEffectSchema, insertTokenActiveEffectSchema, rollEntries, insertRollEntrySchema, items, sceneVisionZones, insertEntitySchema, insertEntityLinkSchema, insertWorldMapSchema, insertWorldMapPinSchema, insertWorldCalendarSchema, insertWorldTimelineEventSchema } from "@shared/schema";
 import bcrypt from "bcryptjs";
 import { WebSocketServer } from "ws";
 import { sendPasswordResetEmail } from "./email";
@@ -9585,6 +9585,444 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (e) {
       console.error("Failed to delete entity link:", e);
       res.status(500).json({ error: "Failed to delete entity link" });
+    }
+  });
+
+  // ==================== WORLD SHARE LINK ROUTES ====================
+
+  app.post("/api/campaigns/:campaignId/share-link", requireAuth, async (req, res) => {
+    try {
+      const { campaignId } = req.params;
+      const campaign = await storage.getCampaign(campaignId);
+      if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId);
+      if (!isGM) return res.status(403).json({ error: "Only GMs can create share links" });
+      const existing = await storage.getWorldShareLink(campaignId);
+      if (existing) return res.status(400).json({ error: "Share link already exists", link: existing });
+      const shareToken = crypto.randomBytes(24).toString('hex');
+      const link = await storage.createWorldShareLink({
+        campaignId,
+        token: shareToken,
+        createdBy: req.session.userId!,
+        isActive: true,
+      });
+      broadcastToCampaign(campaignId, { type: "world_share_link_created", link });
+      res.status(201).json(link);
+    } catch (e) {
+      console.error("Failed to create share link:", e);
+      res.status(500).json({ error: "Failed to create share link" });
+    }
+  });
+
+  app.get("/api/campaigns/:campaignId/share-link", requireAuth, async (req, res) => {
+    try {
+      const { campaignId } = req.params;
+      const campaign = await storage.getCampaign(campaignId);
+      if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId);
+      if (!isGM) return res.status(403).json({ error: "Only GMs can view share links" });
+      const link = await storage.getWorldShareLink(campaignId);
+      res.json(link || null);
+    } catch (e) {
+      console.error("Failed to get share link:", e);
+      res.status(500).json({ error: "Failed to get share link" });
+    }
+  });
+
+  app.delete("/api/campaigns/:campaignId/share-link/:linkId", requireAuth, async (req, res) => {
+    try {
+      const { campaignId, linkId } = req.params;
+      const campaign = await storage.getCampaign(campaignId);
+      if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId);
+      if (!isGM) return res.status(403).json({ error: "Only GMs can delete share links" });
+      await storage.deleteWorldShareLink(linkId);
+      broadcastToCampaign(campaignId, { type: "world_share_link_deleted", linkId });
+      res.json({ success: true });
+    } catch (e) {
+      console.error("Failed to delete share link:", e);
+      res.status(500).json({ error: "Failed to delete share link" });
+    }
+  });
+
+  // ==================== PUBLIC SHARED WORLD VIEW (NO AUTH) ====================
+
+  app.get("/api/shared/:token", async (req, res) => {
+    try {
+      const { token } = req.params;
+      const shareLink = await storage.getWorldShareLinkByToken(token);
+      if (!shareLink) return res.status(404).json({ error: "Share link not found or inactive" });
+      const campaign = await storage.getCampaign(shareLink.campaignId);
+      if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+      const allEntities = await storage.getEntitiesByCampaign(shareLink.campaignId);
+      const visibleEntities = allEntities.filter(e => e.visibility === 'player_visible' || e.visibility === 'shared');
+      const allMaps = await storage.getWorldMaps(shareLink.campaignId);
+      const visibleMaps = allMaps.filter(m => m.visibility !== 'gm_only');
+      const mapPinsMap: Record<string, any[]> = {};
+      for (const map of visibleMaps) {
+        mapPinsMap[map.id] = await storage.getWorldMapPins(map.id);
+      }
+      const calendars = await storage.getWorldCalendars(shareLink.campaignId);
+      const allTimelineEvents = await storage.getWorldTimelineEvents(shareLink.campaignId);
+      const visibleTimelineEvents = allTimelineEvents.filter(e => e.visibility !== 'gm_only');
+      const entityLinks = await storage.getEntityLinksByCampaign(shareLink.campaignId);
+      const visibleEntityIds = new Set(visibleEntities.map(e => e.id));
+      const visibleLinks = entityLinks.filter(l => visibleEntityIds.has(l.fromEntityId) && visibleEntityIds.has(l.toEntityId));
+      res.json({
+        campaignName: campaign.name,
+        entities: visibleEntities,
+        entityLinks: visibleLinks,
+        maps: visibleMaps,
+        mapPins: mapPinsMap,
+        calendars,
+        timelineEvents: visibleTimelineEvents,
+      });
+    } catch (e) {
+      console.error("Failed to get shared world:", e);
+      res.status(500).json({ error: "Failed to get shared world" });
+    }
+  });
+
+  // ==================== WORLD MAP ROUTES ====================
+
+  app.get("/api/campaigns/:campaignId/world-maps", requireAuth, async (req, res) => {
+    try {
+      const { campaignId } = req.params;
+      const campaign = await storage.getCampaign(campaignId);
+      if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+      const isMember = await storage.isCampaignMember(campaignId, req.session.userId!);
+      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId);
+      if (!isMember && !isGM) return res.status(403).json({ error: "Not a campaign member" });
+      const maps = await storage.getWorldMaps(campaignId);
+      const filtered = isGM ? maps : maps.filter(m => m.visibility !== 'gm_only');
+      res.json(filtered);
+    } catch (e) {
+      console.error("Failed to get world maps:", e);
+      res.status(500).json({ error: "Failed to get world maps" });
+    }
+  });
+
+  app.get("/api/campaigns/:campaignId/world-maps/:mapId", requireAuth, async (req, res) => {
+    try {
+      const { campaignId, mapId } = req.params;
+      const campaign = await storage.getCampaign(campaignId);
+      if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+      const isMember = await storage.isCampaignMember(campaignId, req.session.userId!);
+      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId);
+      if (!isMember && !isGM) return res.status(403).json({ error: "Not a campaign member" });
+      const map = await storage.getWorldMap(mapId);
+      if (!map || map.campaignId !== campaignId) return res.status(404).json({ error: "Map not found" });
+      if (!isGM && map.visibility === 'gm_only') return res.status(404).json({ error: "Map not found" });
+      res.json(map);
+    } catch (e) {
+      console.error("Failed to get world map:", e);
+      res.status(500).json({ error: "Failed to get world map" });
+    }
+  });
+
+  app.post("/api/campaigns/:campaignId/world-maps", requireAuth, async (req, res) => {
+    try {
+      const { campaignId } = req.params;
+      const campaign = await storage.getCampaign(campaignId);
+      if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId);
+      if (!isGM) return res.status(403).json({ error: "Only GMs can create maps" });
+      const parsed = insertWorldMapSchema.parse({ ...req.body, campaignId });
+      const map = await storage.createWorldMap(parsed);
+      broadcastToCampaign(campaignId, { type: "world_map_created", map });
+      res.status(201).json(map);
+    } catch (e) {
+      console.error("Failed to create world map:", e);
+      res.status(500).json({ error: "Failed to create world map" });
+    }
+  });
+
+  app.patch("/api/campaigns/:campaignId/world-maps/:mapId", requireAuth, async (req, res) => {
+    try {
+      const { campaignId, mapId } = req.params;
+      const campaign = await storage.getCampaign(campaignId);
+      if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId);
+      if (!isGM) return res.status(403).json({ error: "Only GMs can update maps" });
+      const existing = await storage.getWorldMap(mapId);
+      if (!existing || existing.campaignId !== campaignId) return res.status(404).json({ error: "Map not found" });
+      const map = await storage.updateWorldMap(mapId, req.body);
+      broadcastToCampaign(campaignId, { type: "world_map_updated", map });
+      res.json(map);
+    } catch (e) {
+      console.error("Failed to update world map:", e);
+      res.status(500).json({ error: "Failed to update world map" });
+    }
+  });
+
+  app.delete("/api/campaigns/:campaignId/world-maps/:mapId", requireAuth, async (req, res) => {
+    try {
+      const { campaignId, mapId } = req.params;
+      const campaign = await storage.getCampaign(campaignId);
+      if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId);
+      if (!isGM) return res.status(403).json({ error: "Only GMs can delete maps" });
+      const existing = await storage.getWorldMap(mapId);
+      if (!existing || existing.campaignId !== campaignId) return res.status(404).json({ error: "Map not found" });
+      await storage.deleteWorldMap(mapId);
+      broadcastToCampaign(campaignId, { type: "world_map_deleted", mapId });
+      res.json({ success: true });
+    } catch (e) {
+      console.error("Failed to delete world map:", e);
+      res.status(500).json({ error: "Failed to delete world map" });
+    }
+  });
+
+  // ==================== WORLD MAP PIN ROUTES ====================
+
+  app.get("/api/campaigns/:campaignId/world-maps/:mapId/pins", requireAuth, async (req, res) => {
+    try {
+      const { campaignId, mapId } = req.params;
+      const campaign = await storage.getCampaign(campaignId);
+      if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+      const isMember = await storage.isCampaignMember(campaignId, req.session.userId!);
+      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId);
+      if (!isMember && !isGM) return res.status(403).json({ error: "Not a campaign member" });
+      const map = await storage.getWorldMap(mapId);
+      if (!map || map.campaignId !== campaignId) return res.status(404).json({ error: "Map not found" });
+      const pins = await storage.getWorldMapPins(mapId);
+      res.json(pins);
+    } catch (e) {
+      console.error("Failed to get map pins:", e);
+      res.status(500).json({ error: "Failed to get map pins" });
+    }
+  });
+
+  app.post("/api/campaigns/:campaignId/world-maps/:mapId/pins", requireAuth, async (req, res) => {
+    try {
+      const { campaignId, mapId } = req.params;
+      const campaign = await storage.getCampaign(campaignId);
+      if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId);
+      if (!isGM) return res.status(403).json({ error: "Only GMs can create pins" });
+      const map = await storage.getWorldMap(mapId);
+      if (!map || map.campaignId !== campaignId) return res.status(404).json({ error: "Map not found" });
+      const parsed = insertWorldMapPinSchema.parse({ ...req.body, mapId });
+      const pin = await storage.createWorldMapPin(parsed);
+      broadcastToCampaign(campaignId, { type: "world_map_pin_created", pin, mapId });
+      res.status(201).json(pin);
+    } catch (e) {
+      console.error("Failed to create map pin:", e);
+      res.status(500).json({ error: "Failed to create map pin" });
+    }
+  });
+
+  app.patch("/api/campaigns/:campaignId/world-maps/:mapId/pins/:pinId", requireAuth, async (req, res) => {
+    try {
+      const { campaignId, mapId, pinId } = req.params;
+      const campaign = await storage.getCampaign(campaignId);
+      if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId);
+      if (!isGM) return res.status(403).json({ error: "Only GMs can update pins" });
+      const existing = await storage.getWorldMapPin(pinId);
+      if (!existing || existing.mapId !== mapId) return res.status(404).json({ error: "Pin not found" });
+      const pin = await storage.updateWorldMapPin(pinId, req.body);
+      broadcastToCampaign(campaignId, { type: "world_map_pin_updated", pin, mapId });
+      res.json(pin);
+    } catch (e) {
+      console.error("Failed to update map pin:", e);
+      res.status(500).json({ error: "Failed to update map pin" });
+    }
+  });
+
+  app.delete("/api/campaigns/:campaignId/world-maps/:mapId/pins/:pinId", requireAuth, async (req, res) => {
+    try {
+      const { campaignId, mapId, pinId } = req.params;
+      const campaign = await storage.getCampaign(campaignId);
+      if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId);
+      if (!isGM) return res.status(403).json({ error: "Only GMs can delete pins" });
+      const existing = await storage.getWorldMapPin(pinId);
+      if (!existing || existing.mapId !== mapId) return res.status(404).json({ error: "Pin not found" });
+      await storage.deleteWorldMapPin(pinId);
+      broadcastToCampaign(campaignId, { type: "world_map_pin_deleted", pinId, mapId });
+      res.json({ success: true });
+    } catch (e) {
+      console.error("Failed to delete map pin:", e);
+      res.status(500).json({ error: "Failed to delete map pin" });
+    }
+  });
+
+  // ==================== WORLD CALENDAR ROUTES ====================
+
+  app.get("/api/campaigns/:campaignId/calendars", requireAuth, async (req, res) => {
+    try {
+      const { campaignId } = req.params;
+      const campaign = await storage.getCampaign(campaignId);
+      if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+      const isMember = await storage.isCampaignMember(campaignId, req.session.userId!);
+      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId);
+      if (!isMember && !isGM) return res.status(403).json({ error: "Not a campaign member" });
+      const calendars = await storage.getWorldCalendars(campaignId);
+      res.json(calendars);
+    } catch (e) {
+      console.error("Failed to get calendars:", e);
+      res.status(500).json({ error: "Failed to get calendars" });
+    }
+  });
+
+  app.get("/api/campaigns/:campaignId/calendars/:calendarId", requireAuth, async (req, res) => {
+    try {
+      const { campaignId, calendarId } = req.params;
+      const campaign = await storage.getCampaign(campaignId);
+      if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+      const isMember = await storage.isCampaignMember(campaignId, req.session.userId!);
+      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId);
+      if (!isMember && !isGM) return res.status(403).json({ error: "Not a campaign member" });
+      const calendar = await storage.getWorldCalendar(calendarId);
+      if (!calendar || calendar.campaignId !== campaignId) return res.status(404).json({ error: "Calendar not found" });
+      res.json(calendar);
+    } catch (e) {
+      console.error("Failed to get calendar:", e);
+      res.status(500).json({ error: "Failed to get calendar" });
+    }
+  });
+
+  app.post("/api/campaigns/:campaignId/calendars", requireAuth, async (req, res) => {
+    try {
+      const { campaignId } = req.params;
+      const campaign = await storage.getCampaign(campaignId);
+      if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId);
+      if (!isGM) return res.status(403).json({ error: "Only GMs can create calendars" });
+      const parsed = insertWorldCalendarSchema.parse({ ...req.body, campaignId });
+      const calendar = await storage.createWorldCalendar(parsed);
+      broadcastToCampaign(campaignId, { type: "world_calendar_created", calendar });
+      res.status(201).json(calendar);
+    } catch (e) {
+      console.error("Failed to create calendar:", e);
+      res.status(500).json({ error: "Failed to create calendar" });
+    }
+  });
+
+  app.patch("/api/campaigns/:campaignId/calendars/:calendarId", requireAuth, async (req, res) => {
+    try {
+      const { campaignId, calendarId } = req.params;
+      const campaign = await storage.getCampaign(campaignId);
+      if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId);
+      if (!isGM) return res.status(403).json({ error: "Only GMs can update calendars" });
+      const existing = await storage.getWorldCalendar(calendarId);
+      if (!existing || existing.campaignId !== campaignId) return res.status(404).json({ error: "Calendar not found" });
+      const calendar = await storage.updateWorldCalendar(calendarId, req.body);
+      broadcastToCampaign(campaignId, { type: "world_calendar_updated", calendar });
+      res.json(calendar);
+    } catch (e) {
+      console.error("Failed to update calendar:", e);
+      res.status(500).json({ error: "Failed to update calendar" });
+    }
+  });
+
+  app.delete("/api/campaigns/:campaignId/calendars/:calendarId", requireAuth, async (req, res) => {
+    try {
+      const { campaignId, calendarId } = req.params;
+      const campaign = await storage.getCampaign(campaignId);
+      if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId);
+      if (!isGM) return res.status(403).json({ error: "Only GMs can delete calendars" });
+      const existing = await storage.getWorldCalendar(calendarId);
+      if (!existing || existing.campaignId !== campaignId) return res.status(404).json({ error: "Calendar not found" });
+      await storage.deleteWorldCalendar(calendarId);
+      broadcastToCampaign(campaignId, { type: "world_calendar_deleted", calendarId });
+      res.json({ success: true });
+    } catch (e) {
+      console.error("Failed to delete calendar:", e);
+      res.status(500).json({ error: "Failed to delete calendar" });
+    }
+  });
+
+  // ==================== WORLD TIMELINE EVENT ROUTES ====================
+
+  app.get("/api/campaigns/:campaignId/timeline-events", requireAuth, async (req, res) => {
+    try {
+      const { campaignId } = req.params;
+      const campaign = await storage.getCampaign(campaignId);
+      if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+      const isMember = await storage.isCampaignMember(campaignId, req.session.userId!);
+      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId);
+      if (!isMember && !isGM) return res.status(403).json({ error: "Not a campaign member" });
+      const events = await storage.getWorldTimelineEvents(campaignId);
+      const filtered = isGM ? events : events.filter(e => e.visibility !== 'gm_only');
+      res.json(filtered);
+    } catch (e) {
+      console.error("Failed to get timeline events:", e);
+      res.status(500).json({ error: "Failed to get timeline events" });
+    }
+  });
+
+  app.get("/api/campaigns/:campaignId/timeline-events/:eventId", requireAuth, async (req, res) => {
+    try {
+      const { campaignId, eventId } = req.params;
+      const campaign = await storage.getCampaign(campaignId);
+      if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+      const isMember = await storage.isCampaignMember(campaignId, req.session.userId!);
+      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId);
+      if (!isMember && !isGM) return res.status(403).json({ error: "Not a campaign member" });
+      const event = await storage.getWorldTimelineEvent(eventId);
+      if (!event || event.campaignId !== campaignId) return res.status(404).json({ error: "Event not found" });
+      if (!isGM && event.visibility === 'gm_only') return res.status(404).json({ error: "Event not found" });
+      res.json(event);
+    } catch (e) {
+      console.error("Failed to get timeline event:", e);
+      res.status(500).json({ error: "Failed to get timeline event" });
+    }
+  });
+
+  app.post("/api/campaigns/:campaignId/timeline-events", requireAuth, async (req, res) => {
+    try {
+      const { campaignId } = req.params;
+      const campaign = await storage.getCampaign(campaignId);
+      if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId);
+      if (!isGM) return res.status(403).json({ error: "Only GMs can create timeline events" });
+      const parsed = insertWorldTimelineEventSchema.parse({ ...req.body, campaignId });
+      const event = await storage.createWorldTimelineEvent(parsed);
+      broadcastToCampaign(campaignId, { type: "world_timeline_event_created", event });
+      res.status(201).json(event);
+    } catch (e) {
+      console.error("Failed to create timeline event:", e);
+      res.status(500).json({ error: "Failed to create timeline event" });
+    }
+  });
+
+  app.patch("/api/campaigns/:campaignId/timeline-events/:eventId", requireAuth, async (req, res) => {
+    try {
+      const { campaignId, eventId } = req.params;
+      const campaign = await storage.getCampaign(campaignId);
+      if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId);
+      if (!isGM) return res.status(403).json({ error: "Only GMs can update timeline events" });
+      const existing = await storage.getWorldTimelineEvent(eventId);
+      if (!existing || existing.campaignId !== campaignId) return res.status(404).json({ error: "Event not found" });
+      const event = await storage.updateWorldTimelineEvent(eventId, req.body);
+      broadcastToCampaign(campaignId, { type: "world_timeline_event_updated", event });
+      res.json(event);
+    } catch (e) {
+      console.error("Failed to update timeline event:", e);
+      res.status(500).json({ error: "Failed to update timeline event" });
+    }
+  });
+
+  app.delete("/api/campaigns/:campaignId/timeline-events/:eventId", requireAuth, async (req, res) => {
+    try {
+      const { campaignId, eventId } = req.params;
+      const campaign = await storage.getCampaign(campaignId);
+      if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId);
+      if (!isGM) return res.status(403).json({ error: "Only GMs can delete timeline events" });
+      const existing = await storage.getWorldTimelineEvent(eventId);
+      if (!existing || existing.campaignId !== campaignId) return res.status(404).json({ error: "Event not found" });
+      await storage.deleteWorldTimelineEvent(eventId);
+      broadcastToCampaign(campaignId, { type: "world_timeline_event_deleted", eventId });
+      res.json({ success: true });
+    } catch (e) {
+      console.error("Failed to delete timeline event:", e);
+      res.status(500).json({ error: "Failed to delete timeline event" });
     }
   });
 

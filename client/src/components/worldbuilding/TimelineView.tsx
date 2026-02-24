@@ -1,127 +1,684 @@
-import React, { useMemo } from "react";
-import { type Entity, ENTITY_TYPE_CONFIG } from "@/lib/worldbuilding-api";
+import React, { useMemo, useState } from "react";
+import {
+  type Entity,
+  type WorldTimelineEvent,
+  type WorldCalendar,
+  ENTITY_TYPE_CONFIG,
+  useTimelineEvents,
+  useCreateTimelineEvent,
+  useUpdateTimelineEvent,
+  useDeleteTimelineEvent,
+  useCalendars,
+  useEntities,
+} from "@/lib/worldbuilding-api";
 import { Badge } from "@/components/ui/badge";
-import { Clock, Calendar, ChevronRight } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Clock, Calendar, ChevronRight, Plus, Edit2, Trash2, Link2, Eye, EyeOff, Loader2 } from "lucide-react";
 
 interface TimelineViewProps {
-  entities: Entity[];
-  onSelectEntity: (entityId: string) => void;
+  campaignId: string;
+  isGM: boolean;
+  onSelectEntity?: (entityId: string) => void;
 }
 
-interface TimelineEvent {
-  entity: Entity;
+const ERA_COLORS: Record<string, string> = {
+  "Ancient": "#90a4ae",
+  "Classical": "#a1887f",
+  "Medieval": "#81c784",
+  "Renaissance": "#64b5f6",
+  "Modern": "#ce93d8",
+  "Future": "#4db6ac",
+};
+
+const DEFAULT_COLORS = [
+  "#e57373", "#81c784", "#64b5f6", "#ffb74d", "#ce93d8",
+  "#a1887f", "#4db6ac", "#ef5350", "#7986cb", "#ba68c8",
+  "#90a4ae", "#fff176",
+];
+
+function getEraColor(era: string, customColor?: string | null): string {
+  if (customColor) return customColor;
+  return ERA_COLORS[era] || DEFAULT_COLORS[Math.abs(hashString(era)) % DEFAULT_COLORS.length];
+}
+
+function hashString(str: string): number {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash |= 0;
+  }
+  return hash;
+}
+
+interface EventFormData {
+  title: string;
+  description: string;
   date: string;
+  endDate: string;
   era: string;
-  sortKey: string;
+  entityId: string;
+  calendarId: string;
+  color: string;
+  visibility: string;
+  sortOrder: number;
 }
 
-export function TimelineView({ entities, onSelectEntity }: TimelineViewProps) {
-  const timelineEvents = useMemo(() => {
-    const events: TimelineEvent[] = [];
+const EMPTY_FORM: EventFormData = {
+  title: "",
+  description: "",
+  date: "",
+  endDate: "",
+  era: "",
+  entityId: "",
+  calendarId: "",
+  color: "",
+  visibility: "gm_only",
+  sortOrder: 0,
+};
 
-    entities.forEach(entity => {
-      if (entity.entityType === "timeline" && entity.timelineData) {
-        const data = entity.timelineData as any;
-        events.push({
-          entity,
-          date: data.startDate || "",
-          era: data.era || "Unknown Era",
-          sortKey: data.startDate || entity.displayName,
-        });
-      } else if (entity.entityType === "event" && entity.loreFields) {
-        const data = entity.loreFields as any;
-        events.push({
-          entity,
-          date: data.date || "",
-          era: data.era || "Unknown Era",
-          sortKey: data.date || entity.displayName,
-        });
-      }
-    });
+export function TimelineView({ campaignId, isGM, onSelectEntity }: TimelineViewProps) {
+  const { data: events = [], isLoading } = useTimelineEvents(campaignId);
+  const { data: entities = [] } = useEntities(campaignId);
+  const { data: calendars = [] } = useCalendars(campaignId);
+  const createEvent = useCreateTimelineEvent(campaignId);
+  const updateEvent = useUpdateTimelineEvent(campaignId);
+  const deleteEvent = useDeleteTimelineEvent(campaignId);
 
-    return events.sort((a, b) => a.sortKey.localeCompare(b.sortKey));
-  }, [entities]);
+  const [showForm, setShowForm] = useState(false);
+  const [editingEvent, setEditingEvent] = useState<WorldTimelineEvent | null>(null);
+  const [formData, setFormData] = useState<EventFormData>(EMPTY_FORM);
+  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
 
   const groupedByEra = useMemo(() => {
-    const groups: Record<string, TimelineEvent[]> = {};
-    timelineEvents.forEach(event => {
-      if (!groups[event.era]) groups[event.era] = [];
-      groups[event.era].push(event);
+    const groups: Record<string, WorldTimelineEvent[]> = {};
+    const sorted = [...events].sort((a, b) => {
+      if (a.era !== b.era) return (a.era || "").localeCompare(b.era || "");
+      return (a.sortOrder || 0) - (b.sortOrder || 0);
+    });
+    sorted.forEach(event => {
+      const era = event.era || "Unclassified";
+      if (!groups[era]) groups[era] = [];
+      groups[era].push(event);
     });
     return Object.entries(groups);
-  }, [timelineEvents]);
+  }, [events]);
 
-  if (timelineEvents.length === 0) {
+  const entityMap = useMemo(() => {
+    const map: Record<string, Entity> = {};
+    entities.forEach(e => { map[e.id] = e; });
+    return map;
+  }, [entities]);
+
+  const calendarMap = useMemo(() => {
+    const map: Record<string, WorldCalendar> = {};
+    calendars.forEach(c => { map[c.id] = c; });
+    return map;
+  }, [calendars]);
+
+  const existingEras = useMemo(() => {
+    const eras = new Set<string>();
+    events.forEach(e => { if (e.era) eras.add(e.era); });
+    return Array.from(eras);
+  }, [events]);
+
+  const openCreateForm = () => {
+    setEditingEvent(null);
+    setFormData({ ...EMPTY_FORM, sortOrder: events.length });
+    setShowForm(true);
+  };
+
+  const openEditForm = (event: WorldTimelineEvent) => {
+    setEditingEvent(event);
+    setFormData({
+      title: event.title,
+      description: event.description || "",
+      date: event.date || "",
+      endDate: event.endDate || "",
+      era: event.era || "",
+      entityId: event.entityId || "",
+      calendarId: event.calendarId || "",
+      color: event.color || "",
+      visibility: event.visibility,
+      sortOrder: event.sortOrder || 0,
+    });
+    setShowForm(true);
+  };
+
+  const handleSubmit = async () => {
+    if (!formData.title.trim()) return;
+    const payload: any = {
+      title: formData.title.trim(),
+      description: formData.description.trim() || null,
+      date: formData.date.trim() || null,
+      endDate: formData.endDate.trim() || null,
+      era: formData.era.trim() || null,
+      entityId: formData.entityId || null,
+      calendarId: formData.calendarId || null,
+      color: formData.color || null,
+      visibility: formData.visibility,
+      sortOrder: formData.sortOrder,
+    };
+
+    if (editingEvent) {
+      await updateEvent.mutateAsync({ id: editingEvent.id, ...payload });
+    } else {
+      await createEvent.mutateAsync(payload);
+    }
+    setShowForm(false);
+    setEditingEvent(null);
+  };
+
+  const handleDelete = async (eventId: string) => {
+    await deleteEvent.mutateAsync(eventId);
+    setDeleteConfirm(null);
+  };
+
+  const formatCalendarDate = (dateStr: string, calendarId?: string | null): string => {
+    if (!calendarId || !calendarMap[calendarId]) return dateStr;
+    const cal = calendarMap[calendarId];
+    const parts = dateStr.split(/[-/]/);
+    if (parts.length >= 2) {
+      const monthIdx = parseInt(parts[0], 10) - 1;
+      const day = parts[1];
+      const monthName = (cal.monthNames as string[])?.[monthIdx];
+      if (monthName) {
+        const suffix = cal.yearSuffix || "";
+        if (parts.length >= 3) {
+          return `${day} ${monthName}, ${parts[2]}${suffix}`;
+        }
+        return `${day} ${monthName}`;
+      }
+    }
+    return dateStr;
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-16" data-testid="timeline-loading">
+        <Loader2 className="h-8 w-8 animate-spin text-stone-600" />
+      </div>
+    );
+  }
+
+  if (events.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-stone-500" data-testid="timeline-empty">
         <Clock className="h-12 w-12 mb-4 opacity-30" />
         <p className="text-sm">No timeline events yet</p>
-        <p className="text-xs mt-1">Create Timeline or Event entities to see them here</p>
+        <p className="text-xs mt-1 mb-4">Create timeline events to build your world's history</p>
+        {isGM && (
+          <Button onClick={openCreateForm} className="bg-amber-600 hover:bg-amber-500 text-white" data-testid="button-create-first-event">
+            <Plus className="h-4 w-4 mr-2" />
+            Create First Event
+          </Button>
+        )}
+        {showForm && (
+          <EventFormDialog
+            open={showForm}
+            onClose={() => setShowForm(false)}
+            formData={formData}
+            setFormData={setFormData}
+            onSubmit={handleSubmit}
+            isEditing={!!editingEvent}
+            entities={entities}
+            calendars={calendars}
+            existingEras={existingEras}
+            isSubmitting={createEvent.isPending || updateEvent.isPending}
+          />
+        )}
       </div>
     );
   }
 
   return (
     <div className="p-3 md:p-6 max-w-3xl mx-auto" data-testid="timeline-view">
-      {groupedByEra.map(([era, events]) => (
-        <div key={era} className="mb-8">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="h-px flex-1 bg-stone-700" />
-            <h3 className="text-sm font-semibold text-amber-400 uppercase tracking-wider px-3 py-1 bg-stone-800/50 rounded-full border border-stone-700">
-              {era}
-            </h3>
-            <div className="h-px flex-1 bg-stone-700" />
-          </div>
+      {isGM && (
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-lg font-semibold text-stone-200">World Timeline</h2>
+          <Button onClick={openCreateForm} size="sm" className="bg-amber-600 hover:bg-amber-500 text-white" data-testid="button-add-event">
+            <Plus className="h-3.5 w-3.5 mr-1.5" />
+            Add Event
+          </Button>
+        </div>
+      )}
+      {!isGM && (
+        <h2 className="text-lg font-semibold text-stone-200 mb-6">World Timeline</h2>
+      )}
 
-          <div className="relative pl-8">
-            <div className="absolute left-3 top-0 bottom-0 w-0.5 bg-stone-700" />
+      {groupedByEra.map(([era, eraEvents]) => {
+        const eraColor = getEraColor(era, eraEvents[0]?.color);
+        return (
+          <div key={era} className="mb-8" data-testid={`timeline-era-${era}`}>
+            <div className="flex items-center gap-3 mb-4">
+              <div className="h-px flex-1" style={{ backgroundColor: eraColor + "44" }} />
+              <h3
+                className="text-sm font-semibold uppercase tracking-wider px-3 py-1 rounded-full border"
+                style={{ color: eraColor, backgroundColor: eraColor + "15", borderColor: eraColor + "33" }}
+              >
+                {era}
+              </h3>
+              <div className="h-px flex-1" style={{ backgroundColor: eraColor + "44" }} />
+            </div>
 
-            {events.map((event, idx) => {
-              const cfg = ENTITY_TYPE_CONFIG[event.entity.entityType];
-              return (
-                <div key={event.entity.id} className="relative mb-4 last:mb-0">
-                  <div
-                    className="absolute left-[-22px] top-3 w-3 h-3 rounded-full border-2 border-stone-700"
-                    style={{ backgroundColor: cfg?.color || "#666" }}
-                  />
+            <div className="relative pl-8">
+              <div className="absolute left-3 top-0 bottom-0 w-0.5" style={{ backgroundColor: eraColor + "44" }} />
 
-                  <button
-                    onClick={() => onSelectEntity(event.entity.id)}
-                    className="w-full text-left bg-stone-900/60 border border-stone-700 rounded-lg p-3 md:p-4 hover:border-stone-600 hover:bg-stone-800/60 transition-all group"
-                    data-testid={`timeline-event-${event.entity.id}`}
-                  >
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
-                          {event.date && (
-                            <Badge variant="outline" className="text-[10px] border-stone-600 text-stone-400">
-                              <Calendar className="h-2.5 w-2.5 mr-1" />{event.date}
-                            </Badge>
+              {eraEvents.map((event) => {
+                const eventColor = event.color || eraColor;
+                const linkedEntity = event.entityId ? entityMap[event.entityId] : null;
+                const linkedEntityCfg = linkedEntity ? ENTITY_TYPE_CONFIG[linkedEntity.entityType] : null;
+                const displayDate = event.date ? formatCalendarDate(event.date, event.calendarId) : null;
+                const displayEndDate = event.endDate ? formatCalendarDate(event.endDate, event.calendarId) : null;
+
+                return (
+                  <div key={event.id} className="relative mb-4 last:mb-0" data-testid={`timeline-event-${event.id}`}>
+                    <div
+                      className="absolute left-[-22px] top-3 w-3 h-3 rounded-full border-2"
+                      style={{ backgroundColor: eventColor, borderColor: eventColor + "88" }}
+                    />
+
+                    <div className="bg-stone-900/60 border border-stone-700 rounded-lg p-3 md:p-4 hover:border-stone-600 hover:bg-stone-800/60 transition-all group">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1 flex-wrap">
+                            {displayDate && (
+                              <Badge variant="outline" className="text-[10px] border-stone-600 text-stone-400" data-testid={`event-date-${event.id}`}>
+                                <Calendar className="h-2.5 w-2.5 mr-1" />
+                                {displayDate}
+                                {displayEndDate && ` — ${displayEndDate}`}
+                              </Badge>
+                            )}
+                            {event.visibility === "gm_only" && isGM && (
+                              <Badge variant="outline" className="text-[10px] border-red-800/50 text-red-400">
+                                <EyeOff className="h-2.5 w-2.5 mr-1" />
+                                GM Only
+                              </Badge>
+                            )}
+                            {event.visibility === "player_visible" && isGM && (
+                              <Badge variant="outline" className="text-[10px] border-green-800/50 text-green-400">
+                                <Eye className="h-2.5 w-2.5 mr-1" />
+                                Visible
+                              </Badge>
+                            )}
+                          </div>
+                          <h4 className="text-sm font-medium text-stone-200">
+                            {event.title}
+                          </h4>
+                          {event.description && (
+                            <p className="text-xs text-stone-400 mt-1 whitespace-pre-wrap">{event.description}</p>
                           )}
-                          <Badge
-                            variant="outline"
-                            className="text-[10px] border-stone-600"
-                            style={{ color: cfg?.color, borderColor: cfg?.color + "55" }}
-                          >
-                            {cfg?.label || event.entity.entityType}
-                          </Badge>
+                          {linkedEntity && (
+                            <button
+                              onClick={() => onSelectEntity?.(linkedEntity.id)}
+                              className="flex items-center gap-1.5 mt-2 text-[11px] hover:text-amber-400 transition-colors"
+                              style={{ color: linkedEntityCfg?.color || "#999" }}
+                              data-testid={`event-entity-link-${event.id}`}
+                            >
+                              <Link2 className="h-3 w-3" />
+                              <span>{linkedEntity.displayName}</span>
+                              <ChevronRight className="h-3 w-3 opacity-50" />
+                            </button>
+                          )}
                         </div>
-                        <h4 className="text-sm font-medium text-stone-200 group-hover:text-amber-400 transition-colors">
-                          {event.entity.displayName}
-                        </h4>
-                        {event.entity.description && (
-                          <p className="text-xs text-stone-400 mt-1 line-clamp-2">{event.entity.description}</p>
+                        {isGM && (
+                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6 text-stone-500 hover:text-stone-200"
+                              onClick={() => openEditForm(event)}
+                              data-testid={`button-edit-event-${event.id}`}
+                            >
+                              <Edit2 className="h-3 w-3" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6 text-stone-500 hover:text-red-400"
+                              onClick={() => setDeleteConfirm(event.id)}
+                              data-testid={`button-delete-event-${event.id}`}
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
+                          </div>
                         )}
                       </div>
-                      <ChevronRight className="h-4 w-4 text-stone-600 group-hover:text-stone-400 flex-shrink-0 mt-1" />
                     </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+
+      {showForm && (
+        <EventFormDialog
+          open={showForm}
+          onClose={() => { setShowForm(false); setEditingEvent(null); }}
+          formData={formData}
+          setFormData={setFormData}
+          onSubmit={handleSubmit}
+          isEditing={!!editingEvent}
+          entities={entities}
+          calendars={calendars}
+          existingEras={existingEras}
+          isSubmitting={createEvent.isPending || updateEvent.isPending}
+        />
+      )}
+
+      <AlertDialog open={!!deleteConfirm} onOpenChange={() => setDeleteConfirm(null)}>
+        <AlertDialogContent className="bg-stone-900 border-stone-700">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-stone-200">Delete Timeline Event</AlertDialogTitle>
+            <AlertDialogDescription className="text-stone-400">
+              This will permanently remove this event from the timeline. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="bg-stone-800 border-stone-700 text-stone-300 hover:bg-stone-700" data-testid="button-cancel-delete">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-500 text-white"
+              onClick={() => deleteConfirm && handleDelete(deleteConfirm)}
+              data-testid="button-confirm-delete"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  );
+}
+
+interface EventFormDialogProps {
+  open: boolean;
+  onClose: () => void;
+  formData: EventFormData;
+  setFormData: React.Dispatch<React.SetStateAction<EventFormData>>;
+  onSubmit: () => Promise<void>;
+  isEditing: boolean;
+  entities: Entity[];
+  calendars: WorldCalendar[];
+  existingEras: string[];
+  isSubmitting: boolean;
+}
+
+function EventFormDialog({ open, onClose, formData, setFormData, onSubmit, isEditing, entities, calendars, existingEras, isSubmitting }: EventFormDialogProps) {
+  const [entitySearch, setEntitySearch] = useState("");
+
+  const filteredEntities = useMemo(() => {
+    if (!entitySearch) return entities.slice(0, 20);
+    const q = entitySearch.toLowerCase();
+    return entities.filter(e => e.displayName.toLowerCase().includes(q)).slice(0, 20);
+  }, [entities, entitySearch]);
+
+  const selectedEntity = entities.find(e => e.id === formData.entityId);
+
+  return (
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="bg-stone-900 border-stone-700 max-w-md max-h-[90vh] overflow-y-auto" data-testid="timeline-event-form">
+        <DialogHeader>
+          <DialogTitle className="text-stone-200">
+            {isEditing ? "Edit Timeline Event" : "Create Timeline Event"}
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-3">
+          <div>
+            <label className="text-xs text-stone-400 mb-1 block">Title *</label>
+            <Input
+              value={formData.title}
+              onChange={(e) => setFormData(d => ({ ...d, title: e.target.value }))}
+              placeholder="Event title"
+              className="bg-stone-800 border-stone-700 text-stone-200"
+              data-testid="input-event-title"
+            />
+          </div>
+
+          <div>
+            <label className="text-xs text-stone-400 mb-1 block">Description</label>
+            <Textarea
+              value={formData.description}
+              onChange={(e) => setFormData(d => ({ ...d, description: e.target.value }))}
+              placeholder="What happened?"
+              className="bg-stone-800 border-stone-700 text-stone-200 min-h-[80px]"
+              data-testid="input-event-description"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-xs text-stone-400 mb-1 block">Date</label>
+              <Input
+                value={formData.date}
+                onChange={(e) => setFormData(d => ({ ...d, date: e.target.value }))}
+                placeholder="e.g. Year 1042"
+                className="bg-stone-800 border-stone-700 text-stone-200"
+                data-testid="input-event-date"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-stone-400 mb-1 block">End Date</label>
+              <Input
+                value={formData.endDate}
+                onChange={(e) => setFormData(d => ({ ...d, endDate: e.target.value }))}
+                placeholder="Optional"
+                className="bg-stone-800 border-stone-700 text-stone-200"
+                data-testid="input-event-end-date"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="text-xs text-stone-400 mb-1 block">Era</label>
+            <div className="flex gap-2">
+              <Input
+                value={formData.era}
+                onChange={(e) => setFormData(d => ({ ...d, era: e.target.value }))}
+                placeholder="e.g. Age of Heroes"
+                className="bg-stone-800 border-stone-700 text-stone-200 flex-1"
+                data-testid="input-event-era"
+              />
+            </div>
+            {existingEras.length > 0 && (
+              <div className="flex flex-wrap gap-1 mt-1.5">
+                {existingEras.map(era => (
+                  <Badge
+                    key={era}
+                    variant="outline"
+                    className="text-[10px] cursor-pointer border-stone-700 text-stone-500 hover:text-stone-300 hover:border-stone-500"
+                    onClick={() => setFormData(d => ({ ...d, era }))}
+                  >
+                    {era}
+                  </Badge>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div>
+            <label className="text-xs text-stone-400 mb-1 block">Color</label>
+            <div className="flex items-center gap-2">
+              <Input
+                type="color"
+                value={formData.color || "#90a4ae"}
+                onChange={(e) => setFormData(d => ({ ...d, color: e.target.value }))}
+                className="w-8 h-8 p-0 border-0 bg-transparent cursor-pointer"
+                data-testid="input-event-color"
+              />
+              <div className="flex gap-1 flex-wrap flex-1">
+                {DEFAULT_COLORS.slice(0, 8).map(c => (
+                  <button
+                    key={c}
+                    className={`w-5 h-5 rounded-full border-2 transition-all ${formData.color === c ? 'border-white scale-110' : 'border-transparent hover:border-stone-500'}`}
+                    style={{ backgroundColor: c }}
+                    onClick={() => setFormData(d => ({ ...d, color: c }))}
+                  />
+                ))}
+                {formData.color && (
+                  <button
+                    className="text-[9px] text-stone-500 hover:text-stone-300 px-1"
+                    onClick={() => setFormData(d => ({ ...d, color: "" }))}
+                  >
+                    Clear
                   </button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <label className="text-xs text-stone-400 mb-1 block">Linked Entity</label>
+            {selectedEntity ? (
+              <div className="flex items-center justify-between bg-stone-800 border border-stone-700 rounded-md px-3 py-2">
+                <div className="flex items-center gap-2">
+                  <div
+                    className="w-2 h-2 rounded-full"
+                    style={{ backgroundColor: ENTITY_TYPE_CONFIG[selectedEntity.entityType]?.color }}
+                  />
+                  <span className="text-xs text-stone-200">{selectedEntity.displayName}</span>
+                  <Badge variant="outline" className="text-[9px] border-stone-600 text-stone-500">
+                    {ENTITY_TYPE_CONFIG[selectedEntity.entityType]?.label}
+                  </Badge>
                 </div>
-              );
-            })}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-5 w-5 text-stone-500 hover:text-red-400"
+                  onClick={() => setFormData(d => ({ ...d, entityId: "" }))}
+                >
+                  <Trash2 className="h-3 w-3" />
+                </Button>
+              </div>
+            ) : (
+              <div>
+                <Input
+                  value={entitySearch}
+                  onChange={(e) => setEntitySearch(e.target.value)}
+                  placeholder="Search entities to link..."
+                  className="bg-stone-800 border-stone-700 text-stone-200 mb-1"
+                  data-testid="input-entity-search"
+                />
+                {entitySearch && (
+                  <div className="bg-stone-800 border border-stone-700 rounded-md max-h-32 overflow-y-auto">
+                    {filteredEntities.length === 0 ? (
+                      <div className="text-xs text-stone-500 p-2">No entities found</div>
+                    ) : (
+                      filteredEntities.map(e => {
+                        const cfg = ENTITY_TYPE_CONFIG[e.entityType];
+                        return (
+                          <button
+                            key={e.id}
+                            className="w-full text-left px-2 py-1.5 text-xs text-stone-300 hover:bg-stone-700 flex items-center gap-2"
+                            onClick={() => {
+                              setFormData(d => ({ ...d, entityId: e.id }));
+                              setEntitySearch("");
+                            }}
+                          >
+                            <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: cfg?.color }} />
+                            <span className="truncate">{e.displayName}</span>
+                            <span className="text-[9px] text-stone-500 flex-shrink-0">{cfg?.label}</span>
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {calendars.length > 0 && (
+            <div>
+              <label className="text-xs text-stone-400 mb-1 block">Calendar</label>
+              <Select value={formData.calendarId || "none"} onValueChange={(v) => setFormData(d => ({ ...d, calendarId: v === "none" ? "" : v }))}>
+                <SelectTrigger className="bg-stone-800 border-stone-700 text-stone-200" data-testid="select-calendar">
+                  <SelectValue placeholder="No calendar" />
+                </SelectTrigger>
+                <SelectContent className="bg-stone-800 border-stone-700">
+                  <SelectItem value="none" className="text-stone-400">No calendar</SelectItem>
+                  {calendars.map(cal => (
+                    <SelectItem key={cal.id} value={cal.id} className="text-stone-200">
+                      {cal.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          <div>
+            <label className="text-xs text-stone-400 mb-1 block">Visibility</label>
+            <Select value={formData.visibility} onValueChange={(v) => setFormData(d => ({ ...d, visibility: v }))}>
+              <SelectTrigger className="bg-stone-800 border-stone-700 text-stone-200" data-testid="select-visibility">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="bg-stone-800 border-stone-700">
+                <SelectItem value="gm_only" className="text-stone-200">
+                  <div className="flex items-center gap-2">
+                    <EyeOff className="h-3 w-3 text-red-400" />
+                    GM Only
+                  </div>
+                </SelectItem>
+                <SelectItem value="player_visible" className="text-stone-200">
+                  <div className="flex items-center gap-2">
+                    <Eye className="h-3 w-3 text-green-400" />
+                    Player Visible
+                  </div>
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div>
+            <label className="text-xs text-stone-400 mb-1 block">Sort Order</label>
+            <Input
+              type="number"
+              value={formData.sortOrder}
+              onChange={(e) => setFormData(d => ({ ...d, sortOrder: parseInt(e.target.value) || 0 }))}
+              className="bg-stone-800 border-stone-700 text-stone-200 w-24"
+              data-testid="input-event-sort-order"
+            />
           </div>
         </div>
-      ))}
-    </div>
+
+        <DialogFooter className="mt-4">
+          <Button variant="ghost" onClick={onClose} className="text-stone-400 hover:text-stone-200" data-testid="button-cancel-event">
+            Cancel
+          </Button>
+          <Button
+            onClick={onSubmit}
+            disabled={!formData.title.trim() || isSubmitting}
+            className="bg-amber-600 hover:bg-amber-500 text-white"
+            data-testid="button-save-event"
+          >
+            {isSubmitting && <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />}
+            {isEditing ? "Save Changes" : "Create Event"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

@@ -19,6 +19,7 @@ import SiteSecurity from "@/pages/SiteSecurity";
 import Notes from "@/pages/Notes";
 import Join from "@/pages/Join";
 import WorldBuilder from "@/pages/WorldBuilder";
+import SharedWorldView from "@/pages/SharedWorldView";
 import { AuthProvider, useAuth } from "./lib/AuthContext";
 import { BannedScreen } from "@/components/BannedScreen";
 
@@ -186,6 +187,7 @@ function Router() {
       <Route path="/worldbuilder">
         {() => <ProtectedRoute component={WorldBuilder} />}
       </Route>
+      <Route path="/shared/:token" component={SharedWorldView} />
       <Route component={NotFound} />
     </Switch>
   );

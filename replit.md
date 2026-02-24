@@ -19,10 +19,11 @@ Preferred communication style: Simple, everyday language.
     -   **Game Mechanics**: Real-time chat with dice rolls, attributes/skills, traits, rest mechanics, exhaustion, inventory with hotbars, initiative tracker, roll notifications, targeting with range/hit detection (including AOE), armor damage reduction, combat status effects, and a customizable player hotbar.
     -   **Feat System**: Interactive feat tree editor with draggable nodes, tier-based styling, prerequisites, and dynamic effects.
     -   **Spell Management**: System for defining spells with properties like damage, type, range, cost, and attribute.
-    -   **Notes System**: Obsidian-like note-taking with nested folders, markdown, rich text, entity references, collaborative editing, Canvas editor, and Graph View.
+    -   **Notes System**: Obsidian-like note-taking with nested folders, markdown, rich text, entity references, collaborative editing, Canvas editor, and Graph View. Integrated with Worldbuilding — notes support [[Entity Name]] wiki-links that resolve to worldbuilding entities, and campaign Notes panel includes a "World" section for browsing/editing world entities inline.
     -   **Sandbox System**: Rules-agnostic Dynamic System Builder for custom VTTRPG systems, featuring flexible property placement, various property types, a full dice engine, expression engine for calculations and conditional visibility, and extensive styling options.
     -   **Vision Zones**: GM-drawn freeform polygons to define indoor/outdoor areas, overriding scene day/night settings for vision calculations.
-    -   **Worldbuilding Wiki System**: Full wiki-style worldbuilding encyclopedia. Entity types: character, location, faction, quest, event, lore, item, encounter, clue, magic, timeline, article. Each entity has a rich markdown article editor with type-specific template fields, wiki-link syntax ([[EntityName]]), auto-save, and markdown toolbar. Three views: Wiki (article editor with sidebar navigation), Timeline (chronological event display with era grouping), and Graph (force-directed relationship visualization with pan/zoom). Features: 22 link types, visibility controls (GM-only/shared/player-visible), "What Links Here" backlinks, recently edited sidebar, category filtering, entity cross-referencing, and live WebSocket sync. Components: WorldBuilder page (/worldbuilder), WikiArticleEditor, TimelineView, RelationshipGraph, WorldbuilderPanel (sidebar), EntitySidePanel (embedded or overlay, 6-tab detail view), EntityPicker (searchable dropdown), SheetEmbed/InventoryEmbed (live character data views).
+    -   **Worldbuilding Wiki System**: Unified worldbuilding platform accessible via World Builder page (/worldbuilder) and within campaigns via Notes. Five sections: Encyclopedia (wiki articles for 12 entity types with markdown editor, template fields, 22 link types), Maps (interactive world maps with clickable pins — text reveals, map drill-downs, entity links), Timeline (dynamic events grouped by era with calendar integration), Calendar (custom calendar systems with custom months/days/weekdays and day annotations), and Graph (force-directed relationship visualization). Features: public share links for players (/shared/:token, no auth required), visibility controls (GM-only/shared/player-visible), breadcrumb map navigation, pin placement editor, WebSocket live sync for all changes.
+    -   **Share System**: GMs can generate public share links for their world. Unauthenticated visitors see all player-visible content (articles, maps, timeline, calendar) in a read-only view.
 
 ### Backend
 -   **Technology Stack**: Express.js with TypeScript, `express-session`.
@@ -31,12 +32,26 @@ Preferred communication style: Simple, everyday language.
 ### Data Storage
 -   **Database**: PostgreSQL via Neon serverless, managed with Drizzle ORM.
 -   **Schema**: Comprehensive schema covering all application entities.
+-   **New Worldbuilding Tables**: `world_share_links` (public share tokens), `world_maps` (interactive maps with self-referential parent_map_id), `world_map_pins` (clickable pins with text_reveal/map_link/entity_link types), `world_calendars` (custom calendar systems with month/day/weekday names), `world_timeline_events` (timeline events with era grouping and calendar integration).
 -   **Validation**: Zod schemas for input validation.
 
 ### Authentication & Authorization
 -   **Authentication**: `bcryptjs` for password hashing, session-based authentication.
 -   **Authorization**: Three-tier role system (Owner, Assistant GM, Player) and a four-tier character access permission system.
 -   **Security**: Hashed passwords, session cookies, CSRF protection, and PII sanitization.
+
+## Key Worldbuilding Components
+-   `client/src/pages/WorldBuilder.tsx` — Main unified world builder with sidebar section navigation
+-   `client/src/pages/SharedWorldView.tsx` — Public read-only world viewer (no auth)
+-   `client/src/components/worldbuilding/WikiArticleEditor.tsx` — Markdown article editor with template fields
+-   `client/src/components/worldbuilding/WorldMapViewer.tsx` — Interactive map viewer with clickable pins
+-   `client/src/components/worldbuilding/WorldMapEditor.tsx` — GM map editor (place pins, set images)
+-   `client/src/components/worldbuilding/TimelineView.tsx` — Dynamic timeline with era grouping
+-   `client/src/components/worldbuilding/WorldCalendar.tsx` — Custom calendar system
+-   `client/src/components/worldbuilding/RelationshipGraph.tsx` — Force-directed entity graph
+-   `client/src/components/worldbuilding/EntitySidePanel.tsx` — Entity detail panel (6 tabs)
+-   `client/src/components/worldbuilding/WorldbuilderPanel.tsx` — Entity creation dialog
+-   `client/src/lib/worldbuilding-api.ts` — All worldbuilding API hooks and WebSocket sync
 
 ## External Dependencies
 

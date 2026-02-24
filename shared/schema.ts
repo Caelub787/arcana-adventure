@@ -1501,3 +1501,113 @@ export const insertEntityLinkSchema = createInsertSchema(entityLinks).omit({
 
 export type InsertEntityLink = z.infer<typeof insertEntityLinkSchema>;
 export type EntityLink = typeof entityLinks.$inferSelect;
+
+export const worldShareLinks = pgTable("world_share_links", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  campaignId: varchar("campaign_id").notNull().references(() => campaigns.id, { onDelete: "cascade" }),
+  token: text("token").notNull().unique(),
+  createdBy: varchar("created_by").references(() => users.id, { onDelete: "set null" }),
+  isActive: boolean("is_active").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertWorldShareLinkSchema = createInsertSchema(worldShareLinks).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertWorldShareLink = z.infer<typeof insertWorldShareLinkSchema>;
+export type WorldShareLink = typeof worldShareLinks.$inferSelect;
+
+export const worldMaps = pgTable("world_maps", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  campaignId: varchar("campaign_id").notNull().references(() => campaigns.id, { onDelete: "cascade" }),
+  title: text("title").notNull(),
+  imageUrl: text("image_url"),
+  description: text("description"),
+  parentMapId: varchar("parent_map_id").references((): AnyPgColumn => worldMaps.id, { onDelete: "set null" }),
+  visibility: text("visibility").notNull().default("gm_only"),
+  sortOrder: integer("sort_order").default(0),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertWorldMapSchema = createInsertSchema(worldMaps).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertWorldMap = z.infer<typeof insertWorldMapSchema>;
+export type WorldMap = typeof worldMaps.$inferSelect;
+
+export const MAP_PIN_TYPES = ["text_reveal", "map_link", "entity_link"] as const;
+export type MapPinType = typeof MAP_PIN_TYPES[number];
+
+export const worldMapPins = pgTable("world_map_pins", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  mapId: varchar("map_id").notNull().references(() => worldMaps.id, { onDelete: "cascade" }),
+  x: real("x").notNull(),
+  y: real("y").notNull(),
+  label: text("label"),
+  icon: text("icon"),
+  color: text("color").default("#f59e0b"),
+  pinType: text("pin_type").notNull().default("text_reveal"),
+  textContent: text("text_content"),
+  targetMapId: varchar("target_map_id").references(() => worldMaps.id, { onDelete: "set null" }),
+  targetEntityId: varchar("target_entity_id").references(() => entities.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertWorldMapPinSchema = createInsertSchema(worldMapPins).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertWorldMapPin = z.infer<typeof insertWorldMapPinSchema>;
+export type WorldMapPin = typeof worldMapPins.$inferSelect;
+
+export const worldCalendars = pgTable("world_calendars", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  campaignId: varchar("campaign_id").notNull().references(() => campaigns.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  monthNames: jsonb("month_names").notNull().default(sql`'[]'::jsonb`),
+  daysPerMonth: jsonb("days_per_month").notNull().default(sql`'[]'::jsonb`),
+  weekDayNames: jsonb("week_day_names").notNull().default(sql`'[]'::jsonb`),
+  currentYear: integer("current_year").default(1),
+  currentMonth: integer("current_month").default(0),
+  currentDay: integer("current_day").default(1),
+  yearSuffix: text("year_suffix").default(""),
+  notes: jsonb("notes").default(sql`'{}'::jsonb`),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertWorldCalendarSchema = createInsertSchema(worldCalendars).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertWorldCalendar = z.infer<typeof insertWorldCalendarSchema>;
+export type WorldCalendar = typeof worldCalendars.$inferSelect;
+
+export const worldTimelineEvents = pgTable("world_timeline_events", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  campaignId: varchar("campaign_id").notNull().references(() => campaigns.id, { onDelete: "cascade" }),
+  title: text("title").notNull(),
+  description: text("description"),
+  date: text("date"),
+  endDate: text("end_date"),
+  era: text("era"),
+  entityId: varchar("entity_id").references(() => entities.id, { onDelete: "set null" }),
+  calendarId: varchar("calendar_id").references(() => worldCalendars.id, { onDelete: "set null" }),
+  color: text("color"),
+  icon: text("icon"),
+  sortOrder: integer("sort_order").default(0),
+  visibility: text("visibility").notNull().default("gm_only"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertWorldTimelineEventSchema = createInsertSchema(worldTimelineEvents).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertWorldTimelineEvent = z.infer<typeof insertWorldTimelineEventSchema>;
+export type WorldTimelineEvent = typeof worldTimelineEvents.$inferSelect;
