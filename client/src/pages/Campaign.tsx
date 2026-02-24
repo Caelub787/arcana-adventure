@@ -10618,17 +10618,21 @@ export default function Campaign() {
                 </div>
               )}
               {activeSidePanel === 'notes' && effectiveCampaignId && (
-                <div className="h-full overflow-y-auto p-3">
-                  <NotesFolderBrowser
+                <div className="h-full overflow-hidden">
+                  <CampaignNotesPanel
                     campaignId={effectiveCampaignId}
-                    onSelectNote={(noteId) => {
-                      if (isMobile) {
-                        setLocation(`/notes/${noteId}`);
-                      } else {
-                        setFloatingNotesInitialNoteId(noteId);
-                        setFloatingNotesOpen(true);
+                    onClose={() => setSidePanelMinimized(true)}
+                    isOpen={true}
+                    campaignMembers={members as any[] || []}
+                    onViewCharacter={(char: any) => {
+                      if (char?.id) {
+                        setOpenCharacterSheets(prev => {
+                          if (prev.some(c => c.id === char.id)) return prev;
+                          return [...prev, char];
+                        });
                       }
                     }}
+                    hideCloseButton={true}
                   />
                 </div>
               )}
