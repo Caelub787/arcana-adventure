@@ -53,7 +53,9 @@ import {
   type SceneLight, type InsertSceneLight,
   type SceneVisionZone, type InsertSceneVisionZone,
   type SceneMapPin, type InsertSceneMapPin,
-  users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, items, spells, characterPermissions, initiativeEntries, systemSpecies, campaignSpecies, featTemplates, featTrees, feats, featConnections, characterFeats, systemSpells, systemSkills, characterCustomSkills, systemTraits, characterTraits, characterFolders, characterTemplateFolders, sceneFolders, friendRequests, friendships, noteFolders, notes, noteReferences, noteShares, tokenEffects, spellEffects, itemEffects, tokenActiveEffects, thrownItems, adminNotifications, userNotifications, termsAndConditions, userTermsAcceptance, sandboxFolders, sandboxTemplates, sandboxActors, rollEntries, sceneWalls, sceneDoors, sceneWindows, sceneLights, sceneVisionZones, sceneMapPins
+  type Entity, type InsertEntity,
+  type EntityLink, type InsertEntityLink,
+  users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, items, spells, characterPermissions, initiativeEntries, systemSpecies, campaignSpecies, featTemplates, featTrees, feats, featConnections, characterFeats, systemSpells, systemSkills, characterCustomSkills, systemTraits, characterTraits, characterFolders, characterTemplateFolders, sceneFolders, friendRequests, friendships, noteFolders, notes, noteReferences, noteShares, tokenEffects, spellEffects, itemEffects, tokenActiveEffects, thrownItems, adminNotifications, userNotifications, termsAndConditions, userTermsAcceptance, sandboxFolders, sandboxTemplates, sandboxActors, rollEntries, sceneWalls, sceneDoors, sceneWindows, sceneLights, sceneVisionZones, sceneMapPins, entities, entityLinks
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql, inArray, or, isNull } from "drizzle-orm";
@@ -491,6 +493,26 @@ export interface IStorage {
   createSceneMapPin(pin: InsertSceneMapPin): Promise<SceneMapPin>;
   updateSceneMapPin(id: string, updates: Record<string, any>): Promise<SceneMapPin | undefined>;
   deleteSceneMapPin(id: string): Promise<void>;
+
+  // Worldbuilding Entity operations
+  getEntity(id: string): Promise<Entity | undefined>;
+  getEntitiesByCampaign(campaignId: string, includeDeleted?: boolean): Promise<Entity[]>;
+  searchEntitiesByCampaign(campaignId: string, query: string, entityType?: string): Promise<Entity[]>;
+  createEntity(entity: InsertEntity): Promise<Entity>;
+  updateEntity(id: string, data: Partial<Entity>): Promise<Entity | undefined>;
+  softDeleteEntity(id: string): Promise<Entity | undefined>;
+  restoreEntity(id: string): Promise<Entity | undefined>;
+  getEntitiesBySheet(sheetId: string): Promise<Entity[]>;
+  getEntitiesByNote(notePageId: string): Promise<Entity[]>;
+
+  // Entity Link operations
+  getEntityLink(id: string): Promise<EntityLink | undefined>;
+  getEntityLinks(entityId: string): Promise<EntityLink[]>;
+  getEntityLinksByCampaign(campaignId: string): Promise<EntityLink[]>;
+  createEntityLink(link: InsertEntityLink): Promise<EntityLink>;
+  updateEntityLink(id: string, data: Partial<EntityLink>): Promise<EntityLink | undefined>;
+  deleteEntityLink(id: string): Promise<void>;
+  getEntityReferences(entityId: string): Promise<{ links: EntityLink[]; noteReferences: any[]; }>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -3611,6 +3633,122 @@ export class DatabaseStorage implements IStorage {
 
   async deleteSceneMapPin(id: string): Promise<void> {
     await db.delete(sceneMapPins).where(eq(sceneMapPins.id, id));
+  }
+
+  // ============================================
+  // WORLDBUILDING ENTITY OPERATIONS
+  // ============================================
+
+  async getEntity(id: string): Promise<Entity | undefined> {
+    const [entity] = await db.select().from(entities).where(eq(entities.id, id));
+    return entity;
+  }
+
+  async getEntitiesByCampaign(campaignId: string, includeDeleted = false): Promise<Entity[]> {
+    if (includeDeleted) {
+      return await db.select().from(entities).where(eq(entities.campaignId, campaignId));
+    }
+    return await db.select().from(entities).where(
+      and(eq(entities.campaignId, campaignId), eq(entities.isDeleted, false))
+    );
+  }
+
+  async searchEntitiesByCampaign(campaignId: string, query: string, entityType?: string): Promise<Entity[]> {
+    const lowerQuery = `%${query.toLowerCase()}%`;
+    const conditions = [
+      eq(entities.campaignId, campaignId),
+      eq(entities.isDeleted, false),
+      sql`LOWER(${entities.displayName}) LIKE ${lowerQuery}`
+    ];
+    if (entityType) {
+      conditions.push(eq(entities.entityType, entityType));
+    }
+    return await db.select().from(entities).where(and(...conditions));
+  }
+
+  async createEntity(entity: InsertEntity): Promise<Entity> {
+    const [created] = await db.insert(entities).values(entity).returning();
+    return created;
+  }
+
+  async updateEntity(id: string, data: Partial<Entity>): Promise<Entity | undefined> {
+    const [updated] = await db.update(entities)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(entities.id, id))
+      .returning();
+    return updated;
+  }
+
+  async softDeleteEntity(id: string): Promise<Entity | undefined> {
+    const [updated] = await db.update(entities)
+      .set({ isDeleted: true, deletedAt: new Date(), updatedAt: new Date() })
+      .where(eq(entities.id, id))
+      .returning();
+    return updated;
+  }
+
+  async restoreEntity(id: string): Promise<Entity | undefined> {
+    const [updated] = await db.update(entities)
+      .set({ isDeleted: false, deletedAt: null, updatedAt: new Date() })
+      .where(eq(entities.id, id))
+      .returning();
+    return updated;
+  }
+
+  async getEntitiesBySheet(sheetId: string): Promise<Entity[]> {
+    return await db.select().from(entities).where(
+      and(eq(entities.sheetId, sheetId), eq(entities.isDeleted, false))
+    );
+  }
+
+  async getEntitiesByNote(notePageId: string): Promise<Entity[]> {
+    return await db.select().from(entities).where(
+      and(eq(entities.notePageId, notePageId), eq(entities.isDeleted, false))
+    );
+  }
+
+  // ============================================
+  // ENTITY LINK OPERATIONS
+  // ============================================
+
+  async getEntityLink(id: string): Promise<EntityLink | undefined> {
+    const [link] = await db.select().from(entityLinks).where(eq(entityLinks.id, id));
+    return link;
+  }
+
+  async getEntityLinks(entityId: string): Promise<EntityLink[]> {
+    return await db.select().from(entityLinks).where(
+      or(eq(entityLinks.fromEntityId, entityId), eq(entityLinks.toEntityId, entityId))
+    );
+  }
+
+  async getEntityLinksByCampaign(campaignId: string): Promise<EntityLink[]> {
+    return await db.select().from(entityLinks).where(eq(entityLinks.campaignId, campaignId));
+  }
+
+  async createEntityLink(link: InsertEntityLink): Promise<EntityLink> {
+    const [created] = await db.insert(entityLinks).values(link).returning();
+    return created;
+  }
+
+  async updateEntityLink(id: string, data: Partial<EntityLink>): Promise<EntityLink | undefined> {
+    const [updated] = await db.update(entityLinks)
+      .set(data)
+      .where(eq(entityLinks.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteEntityLink(id: string): Promise<void> {
+    await db.delete(entityLinks).where(eq(entityLinks.id, id));
+  }
+
+  async getEntityReferences(entityId: string): Promise<{ links: EntityLink[]; noteReferences: any[]; }> {
+    const links = await this.getEntityLinks(entityId);
+    const backlinks = await db.select().from(noteReferences).where(
+      and(eq(noteReferences.entityType, 'entity'), eq(noteReferences.entityId, entityId))
+    );
+    return { links, noteReferences: backlinks };
   }
 }
 

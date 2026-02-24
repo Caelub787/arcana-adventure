@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertUserSchema, insertCampaignSchema, insertCharacterSchema, insertTokenSchema, insertChatMessageSchema, insertSceneSchema, insertHotbarSchema, insertItemSchema, insertSpellSchema, initiativeEntries, insertTokenEffectSchema, insertTokenActiveEffectSchema, rollEntries, insertRollEntrySchema, items, sceneVisionZones } from "@shared/schema";
+import { insertUserSchema, insertCampaignSchema, insertCharacterSchema, insertTokenSchema, insertChatMessageSchema, insertSceneSchema, insertHotbarSchema, insertItemSchema, insertSpellSchema, initiativeEntries, insertTokenEffectSchema, insertTokenActiveEffectSchema, rollEntries, insertRollEntrySchema, items, sceneVisionZones, insertEntitySchema, insertEntityLinkSchema } from "@shared/schema";
 import bcrypt from "bcryptjs";
 import { WebSocketServer } from "ws";
 import { sendPasswordResetEmail } from "./email";
@@ -9345,6 +9345,246 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (e) {
       console.error("Failed to delete sandbox actor:", e);
       res.status(500).json({ error: "Failed to delete sandbox actor" });
+    }
+  });
+
+  // ==================== ENTITY ROUTES ====================
+
+  app.get("/api/campaigns/:campaignId/entities", requireAuth, async (req, res) => {
+    try {
+      const { campaignId } = req.params;
+      const campaign = await storage.getCampaign(campaignId);
+      if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+      const isMember = await storage.isCampaignMember(campaignId, req.session.userId!);
+      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId);
+      if (!isMember && !isGM) return res.status(403).json({ error: "Not a campaign member" });
+      const entities = await storage.getEntitiesByCampaign(campaignId);
+      const filtered = isGM ? entities : entities.filter(e => e.visibility !== 'gm_only');
+      res.json(filtered);
+    } catch (e) {
+      console.error("Failed to get entities:", e);
+      res.status(500).json({ error: "Failed to get entities" });
+    }
+  });
+
+  app.get("/api/campaigns/:campaignId/entities/search", requireAuth, async (req, res) => {
+    try {
+      const { campaignId } = req.params;
+      const { q, type } = req.query;
+      const campaign = await storage.getCampaign(campaignId);
+      if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+      const isMember = await storage.isCampaignMember(campaignId, req.session.userId!);
+      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId);
+      if (!isMember && !isGM) return res.status(403).json({ error: "Not a campaign member" });
+      const entities = await storage.searchEntitiesByCampaign(campaignId, (q as string) || "", type as string | undefined);
+      const filtered = isGM ? entities : entities.filter(e => e.visibility !== 'gm_only');
+      res.json(filtered);
+    } catch (e) {
+      console.error("Failed to search entities:", e);
+      res.status(500).json({ error: "Failed to search entities" });
+    }
+  });
+
+  app.get("/api/campaigns/:campaignId/entities/:entityId", requireAuth, async (req, res) => {
+    try {
+      const { campaignId, entityId } = req.params;
+      const campaign = await storage.getCampaign(campaignId);
+      if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+      const isMember = await storage.isCampaignMember(campaignId, req.session.userId!);
+      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId);
+      if (!isMember && !isGM) return res.status(403).json({ error: "Not a campaign member" });
+      const entity = await storage.getEntity(entityId);
+      if (!entity || entity.campaignId !== campaignId) return res.status(404).json({ error: "Entity not found" });
+      if (!isGM && entity.visibility === 'gm_only') return res.status(404).json({ error: "Entity not found" });
+      res.json(entity);
+    } catch (e) {
+      console.error("Failed to get entity:", e);
+      res.status(500).json({ error: "Failed to get entity" });
+    }
+  });
+
+  app.post("/api/campaigns/:campaignId/entities", requireAuth, async (req, res) => {
+    try {
+      const { campaignId } = req.params;
+      const campaign = await storage.getCampaign(campaignId);
+      if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId);
+      if (!isGM) return res.status(403).json({ error: "Only GMs can create entities" });
+      const parsed = insertEntitySchema.parse({ ...req.body, campaignId, createdBy: req.session.userId });
+      const entity = await storage.createEntity(parsed);
+      broadcastToCampaign(campaignId, { type: "entity_created", entity });
+      res.status(201).json(entity);
+    } catch (e) {
+      console.error("Failed to create entity:", e);
+      res.status(500).json({ error: "Failed to create entity" });
+    }
+  });
+
+  app.patch("/api/campaigns/:campaignId/entities/:entityId", requireAuth, async (req, res) => {
+    try {
+      const { campaignId, entityId } = req.params;
+      const campaign = await storage.getCampaign(campaignId);
+      if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId);
+      if (!isGM) return res.status(403).json({ error: "Only GMs can update entities" });
+      const existing = await storage.getEntity(entityId);
+      if (!existing || existing.campaignId !== campaignId) return res.status(404).json({ error: "Entity not found" });
+      const entity = await storage.updateEntity(entityId, req.body);
+      broadcastToCampaign(campaignId, { type: "entity_updated", entity });
+      res.json(entity);
+    } catch (e) {
+      console.error("Failed to update entity:", e);
+      res.status(500).json({ error: "Failed to update entity" });
+    }
+  });
+
+  app.delete("/api/campaigns/:campaignId/entities/:entityId", requireAuth, async (req, res) => {
+    try {
+      const { campaignId, entityId } = req.params;
+      const campaign = await storage.getCampaign(campaignId);
+      if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId);
+      if (!isGM) return res.status(403).json({ error: "Only GMs can delete entities" });
+      const existing = await storage.getEntity(entityId);
+      if (!existing || existing.campaignId !== campaignId) return res.status(404).json({ error: "Entity not found" });
+      await storage.softDeleteEntity(entityId);
+      broadcastToCampaign(campaignId, { type: "entity_deleted", entityId });
+      res.json({ success: true });
+    } catch (e) {
+      console.error("Failed to delete entity:", e);
+      res.status(500).json({ error: "Failed to delete entity" });
+    }
+  });
+
+  app.post("/api/campaigns/:campaignId/entities/:entityId/restore", requireAuth, async (req, res) => {
+    try {
+      const { campaignId, entityId } = req.params;
+      const campaign = await storage.getCampaign(campaignId);
+      if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId);
+      if (!isGM) return res.status(403).json({ error: "Only GMs can restore entities" });
+      const entity = await storage.restoreEntity(entityId);
+      if (!entity) return res.status(404).json({ error: "Entity not found" });
+      broadcastToCampaign(campaignId, { type: "entity_restored", entity });
+      res.json(entity);
+    } catch (e) {
+      console.error("Failed to restore entity:", e);
+      res.status(500).json({ error: "Failed to restore entity" });
+    }
+  });
+
+  app.get("/api/campaigns/:campaignId/entities/:entityId/references", requireAuth, async (req, res) => {
+    try {
+      const { campaignId, entityId } = req.params;
+      const campaign = await storage.getCampaign(campaignId);
+      if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+      const isMember = await storage.isCampaignMember(campaignId, req.session.userId!);
+      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId);
+      if (!isMember && !isGM) return res.status(403).json({ error: "Not a campaign member" });
+      const references = await storage.getEntityReferences(entityId);
+      res.json(references);
+    } catch (e) {
+      console.error("Failed to get entity references:", e);
+      res.status(500).json({ error: "Failed to get entity references" });
+    }
+  });
+
+  // ==================== ENTITY LINK ROUTES ====================
+
+  app.get("/api/campaigns/:campaignId/entity-links", requireAuth, async (req, res) => {
+    try {
+      const { campaignId } = req.params;
+      const campaign = await storage.getCampaign(campaignId);
+      if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+      const isMember = await storage.isCampaignMember(campaignId, req.session.userId!);
+      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId);
+      if (!isMember && !isGM) return res.status(403).json({ error: "Not a campaign member" });
+      const links = await storage.getEntityLinksByCampaign(campaignId);
+      if (isGM) {
+        res.json(links);
+      } else {
+        const allEntities = await storage.getEntitiesByCampaign(campaignId);
+        const gmOnlyIds = new Set(allEntities.filter(e => e.visibility === 'gm_only').map(e => e.id));
+        res.json(links.filter(l => !gmOnlyIds.has(l.fromEntityId) && !gmOnlyIds.has(l.toEntityId)));
+      }
+    } catch (e) {
+      console.error("Failed to get entity links:", e);
+      res.status(500).json({ error: "Failed to get entity links" });
+    }
+  });
+
+  app.get("/api/campaigns/:campaignId/entity-links/entity/:entityId", requireAuth, async (req, res) => {
+    try {
+      const { campaignId, entityId } = req.params;
+      const campaign = await storage.getCampaign(campaignId);
+      if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+      const isMember = await storage.isCampaignMember(campaignId, req.session.userId!);
+      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId);
+      if (!isMember && !isGM) return res.status(403).json({ error: "Not a campaign member" });
+      const links = await storage.getEntityLinks(entityId);
+      if (isGM) {
+        res.json(links);
+      } else {
+        const allEntities = await storage.getEntitiesByCampaign(campaignId);
+        const gmOnlyIds = new Set(allEntities.filter(e => e.visibility === 'gm_only').map(e => e.id));
+        res.json(links.filter(l => !gmOnlyIds.has(l.fromEntityId) && !gmOnlyIds.has(l.toEntityId)));
+      }
+    } catch (e) {
+      console.error("Failed to get entity links:", e);
+      res.status(500).json({ error: "Failed to get entity links" });
+    }
+  });
+
+  app.post("/api/campaigns/:campaignId/entity-links", requireAuth, async (req, res) => {
+    try {
+      const { campaignId } = req.params;
+      const campaign = await storage.getCampaign(campaignId);
+      if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId);
+      if (!isGM) return res.status(403).json({ error: "Only GMs can create entity links" });
+      const parsed = insertEntityLinkSchema.parse({ ...req.body, campaignId });
+      const link = await storage.createEntityLink(parsed);
+      broadcastToCampaign(campaignId, { type: "entity_link_created", link });
+      res.status(201).json(link);
+    } catch (e) {
+      console.error("Failed to create entity link:", e);
+      res.status(500).json({ error: "Failed to create entity link" });
+    }
+  });
+
+  app.patch("/api/campaigns/:campaignId/entity-links/:linkId", requireAuth, async (req, res) => {
+    try {
+      const { campaignId, linkId } = req.params;
+      const campaign = await storage.getCampaign(campaignId);
+      if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId);
+      if (!isGM) return res.status(403).json({ error: "Only GMs can update entity links" });
+      const existing = await storage.getEntityLink(linkId);
+      if (!existing || existing.campaignId !== campaignId) return res.status(404).json({ error: "Entity link not found" });
+      const link = await storage.updateEntityLink(linkId, req.body);
+      broadcastToCampaign(campaignId, { type: "entity_link_updated", link });
+      res.json(link);
+    } catch (e) {
+      console.error("Failed to update entity link:", e);
+      res.status(500).json({ error: "Failed to update entity link" });
+    }
+  });
+
+  app.delete("/api/campaigns/:campaignId/entity-links/:linkId", requireAuth, async (req, res) => {
+    try {
+      const { campaignId, linkId } = req.params;
+      const campaign = await storage.getCampaign(campaignId);
+      if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+      const isGM = await hasGmAccess(req.session.userId!, campaignId, campaign.gmUserId);
+      if (!isGM) return res.status(403).json({ error: "Only GMs can delete entity links" });
+      const existing = await storage.getEntityLink(linkId);
+      if (!existing || existing.campaignId !== campaignId) return res.status(404).json({ error: "Entity link not found" });
+      await storage.deleteEntityLink(linkId);
+      broadcastToCampaign(campaignId, { type: "entity_link_deleted", linkId });
+      res.json({ success: true });
+    } catch (e) {
+      console.error("Failed to delete entity link:", e);
+      res.status(500).json({ error: "Failed to delete entity link" });
     }
   });
 

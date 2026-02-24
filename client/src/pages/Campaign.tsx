@@ -37,6 +37,8 @@ import { PropertyStyleEditor, getPropertyCssStyle, type PropertyStyle } from "@/
 import { migrateTemplateData } from "@/components/sandbox/types";
 import { evaluateExpression, ExpressionContext } from '@/components/sandbox/expressionEngine';
 import { rollDice, formatRollResult, isDiceExpression, DiceRollResult } from '@/components/sandbox/diceEngine';
+import { WorldbuilderPanel } from "@/components/worldbuilding/WorldbuilderPanel";
+import { Globe } from "lucide-react";
 
 // Scene Settings Form Component
 function SceneSettingsForm({ scene, onUpdateScene, onCalibrateGrid }: { scene: Scene; onUpdateScene: (settings: Partial<Scene>) => void; onCalibrateGrid?: () => void }) {
@@ -6691,7 +6693,7 @@ export default function Campaign() {
   const [floatingNotesCollapsed, setFloatingNotesCollapsed] = useState(false);
 
   // Unified side panel state (campaignDefaultPanel and useEffect moved after campaign query declaration)
-  type SidePanelTab = 'characters' | 'chat' | 'notes' | 'settings' | 'scene' | 'initiative' | null;
+  type SidePanelTab = 'characters' | 'chat' | 'notes' | 'settings' | 'scene' | 'initiative' | 'world' | null;
   const [activeSidePanel, setActiveSidePanel] = useState<SidePanelTab>(() => {
     if (typeof window !== 'undefined' && window.innerWidth < 768) return null;
     return 'characters';
@@ -9223,6 +9225,32 @@ export default function Campaign() {
             </Tooltip>
           </TooltipProvider>
 
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => {
+                    if (activeSidePanel === 'world' && !sidePanelMinimized) {
+                      setSidePanelMinimized(true);
+                    } else {
+                      setActiveSidePanel('world');
+                      setSidePanelMinimized(false);
+                    }
+                  }}
+                  className={`text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto ${activeSidePanel === 'world' && !sidePanelMinimized ? 'text-amber-400 bg-white/10' : ''}`}
+                  data-testid="button-panel-world"
+                >
+                  <Globe className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="left" className="bg-stone-800 border-stone-700 text-stone-200">
+                <p>World Builder</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
           {role === 'gm' && (
             <TooltipProvider>
               <Tooltip>
@@ -10659,6 +10687,15 @@ export default function Campaign() {
                       }
                     }}
                     hideCloseButton={true}
+                  />
+                </div>
+              )}
+              {activeSidePanel === 'world' && effectiveCampaignId && (
+                <div className="h-full overflow-hidden">
+                  <WorldbuilderPanel
+                    campaignId={effectiveCampaignId}
+                    isGM={role === 'gm'}
+                    characters={characters as any[] || []}
                   />
                 </div>
               )}

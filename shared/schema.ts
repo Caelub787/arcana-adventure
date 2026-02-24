@@ -1423,3 +1423,78 @@ export const insertSceneMapPinSchema = createInsertSchema(sceneMapPins).omit({
 
 export type InsertSceneMapPin = z.infer<typeof insertSceneMapPinSchema>;
 export type SceneMapPin = typeof sceneMapPins.$inferSelect;
+
+// ============================================
+// WORLDBUILDING ENTITY SYSTEM
+// ============================================
+
+export const ENTITY_TYPES = [
+  "character", "location", "faction", "quest", "event", "lore", "item", "encounter", "clue"
+] as const;
+export type EntityType = typeof ENTITY_TYPES[number];
+
+export const VISIBILITY_LEVELS = ["gm_only", "shared", "player_visible"] as const;
+export type VisibilityLevel = typeof VISIBILITY_LEVELS[number];
+
+export const entities = pgTable("entities", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  campaignId: varchar("campaign_id").notNull().references(() => campaigns.id, { onDelete: "cascade" }),
+  entityType: text("entity_type").notNull(),
+  displayName: text("display_name").notNull(),
+  description: text("description"),
+  image: text("image"),
+  sheetId: varchar("sheet_id").references(() => characters.id, { onDelete: "set null" }),
+  notePageId: varchar("note_page_id").references(() => notes.id, { onDelete: "set null" }),
+  visibility: text("visibility").notNull().default("gm_only"),
+  tags: text("tags").array().default(sql`ARRAY[]::text[]`),
+  loreFields: jsonb("lore_fields").default({}),
+  questData: jsonb("quest_data"),
+  eventData: jsonb("event_data"),
+  clueData: jsonb("clue_data"),
+  locationData: jsonb("location_data"),
+  factionData: jsonb("faction_data"),
+  encounterData: jsonb("encounter_data"),
+  isDeleted: boolean("is_deleted").default(false).notNull(),
+  deletedAt: timestamp("deleted_at"),
+  createdBy: varchar("created_by").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertEntitySchema = createInsertSchema(entities).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  isDeleted: true,
+  deletedAt: true,
+});
+
+export type InsertEntity = z.infer<typeof insertEntitySchema>;
+export type Entity = typeof entities.$inferSelect;
+
+export const LINK_TYPES = [
+  "ally", "enemy", "member_of", "located_in", "related_to", "quest_target",
+  "quest_giver", "owns", "controls", "parent_of", "child_of", "employs",
+  "guards", "trades_with", "worships", "rivals", "mentor_of", "student_of",
+  "found_at", "found_from", "related_quest", "custom"
+] as const;
+export type LinkType = typeof LINK_TYPES[number];
+
+export const entityLinks = pgTable("entity_links", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  campaignId: varchar("campaign_id").notNull().references(() => campaigns.id, { onDelete: "cascade" }),
+  fromEntityId: varchar("from_entity_id").notNull().references(() => entities.id, { onDelete: "cascade" }),
+  toEntityId: varchar("to_entity_id").notNull().references(() => entities.id, { onDelete: "cascade" }),
+  linkType: text("link_type").notNull(),
+  label: text("label"),
+  metadata: jsonb("metadata").default({}),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertEntityLinkSchema = createInsertSchema(entityLinks).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertEntityLink = z.infer<typeof insertEntityLinkSchema>;
+export type EntityLink = typeof entityLinks.$inferSelect;
