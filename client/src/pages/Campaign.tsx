@@ -56,6 +56,20 @@ function SceneSettingsForm({ scene, onUpdateScene, onCalibrateGrid }: { scene: S
   const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
+    setLocalSettings({
+      gridEnabled: scene.gridEnabled,
+      gridType: scene.gridType,
+      gridSize: scene.gridSize,
+      gridColor: scene.gridColor || '#ffffff',
+      gridThickness: scene.gridThickness ?? 1,
+      gridOpacity: scene.gridOpacity ?? 0.4,
+      gridOffsetX: (scene as any).gridOffsetX ?? 0,
+      gridOffsetY: (scene as any).gridOffsetY ?? 0,
+      backgroundImage: scene.backgroundImage || '',
+    });
+  }, [scene.id]);
+
+  useEffect(() => {
     return () => {
       if (debounceTimeoutRef.current) {
         clearTimeout(debounceTimeoutRef.current);
@@ -7609,10 +7623,23 @@ export default function Campaign() {
   });
 
   // Update scene mutation
+  const activeSceneIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    activeSceneIdRef.current = activeScene?.id ?? null;
+  }, [activeScene?.id]);
+  
   const updateSceneMutation = useMutation({
-    mutationFn: (data: Partial<Scene>) => api.updateScene(activeScene!.id, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/scenes/${activeScene?.id}`] });
+    mutationFn: (data: Partial<Scene> & { _sceneId?: string }) => {
+      const sceneId = data._sceneId || activeSceneIdRef.current || activeScene?.id;
+      if (!sceneId) throw new Error("No active scene");
+      const { _sceneId, ...updateData } = data;
+      return api.updateScene(sceneId, updateData);
+    },
+    onSuccess: (_data, variables) => {
+      const sceneId = variables._sceneId || activeSceneIdRef.current || activeScene?.id;
+      if (sceneId) {
+        queryClient.invalidateQueries({ queryKey: [`/api/scenes/${sceneId}`] });
+      }
     },
     onError: (error: any) => {
       toast({ title: "Error", description: error.message || "Failed to update scene", variant: "destructive" });
@@ -8808,11 +8835,10 @@ export default function Campaign() {
   };
 
   const handleUpdateScene = async (settings: Partial<Scene>) => {
-    if (activeScene) {
-      // If grid size is changing, re-snap all tokens to the new grid
-      if (settings.gridSize && settings.gridSize !== activeScene.gridSize) {
+    const sceneId = activeScene?.id || activeSceneIdRef.current;
+    if (sceneId) {
+      if (settings.gridSize && activeScene && settings.gridSize !== activeScene.gridSize) {
         const newGridSize = settings.gridSize;
-        // Re-snap each token to the new grid (using same Math.round as drag snapping)
         for (const token of tokens) {
           const snappedX = Math.round(token.x / newGridSize) * newGridSize;
           const snappedY = Math.round(token.y / newGridSize) * newGridSize;
@@ -8821,7 +8847,7 @@ export default function Campaign() {
           }
         }
       }
-      updateSceneMutation.mutate(settings);
+      updateSceneMutation.mutate({ ...settings, _sceneId: sceneId } as any);
     }
   };
 

@@ -3819,7 +3819,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ error: "Only the GM can update scenes" });
       }
 
-      const updatedScene = await storage.updateScene(req.params.sceneId, req.body);
+      const { _sceneId, ...sceneUpdateData } = req.body;
+      if (sceneUpdateData.backgroundImage) {
+        console.log(`[Scene Update] Scene ${req.params.sceneId} backgroundImage being set to: ${sceneUpdateData.backgroundImage}`);
+      }
+      const updatedScene = await storage.updateScene(req.params.sceneId, sceneUpdateData);
+      if (sceneUpdateData.backgroundImage) {
+        console.log(`[Scene Update] After DB update, scene backgroundImage is: ${updatedScene?.backgroundImage}`);
+      }
       
       // Broadcast scene update to all campaign members
       broadcastToCampaign(scene.campaignId, {
@@ -3829,6 +3836,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       res.json(updatedScene);
     } catch (err) {
+      console.error("[Scene Update] Error:", err);
       res.status(400).json({ error: "Failed to update scene" });
     }
   });
