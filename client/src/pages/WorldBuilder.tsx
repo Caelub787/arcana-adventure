@@ -133,7 +133,7 @@ export default function WorldBuilder() {
             </Link>
             <div className="flex items-center gap-2">
               <Globe className="h-5 w-5 text-amber-400" />
-              <h1 className="text-base font-semibold text-stone-200">World Anvil</h1>
+              <h1 className="text-base font-semibold text-stone-200">World Builder</h1>
             </div>
             {selectedCampaignId && (
               <div className="flex items-center gap-1 ml-2">
