@@ -1,12 +1,13 @@
 import React, { useState, useMemo, useCallback } from "react";
-import { useCalendars, useCreateCalendar, useUpdateCalendar, useDeleteCalendar, useTimelineEvents, type WorldCalendar as WorldCalendarType, type WorldTimelineEvent } from "@/lib/worldbuilding-api";
+import { useCalendars, useCreateCalendar, useUpdateCalendar, useDeleteCalendar, useTimelineEvents, useCalendarSyncs, useCreateCalendarSync, useDeleteCalendarSync, type WorldCalendar as WorldCalendarType, type WorldTimelineEvent, type WorldCalendarSync } from "@/lib/worldbuilding-api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Calendar, Plus, ChevronLeft, ChevronRight, Settings, Trash2, Loader2, Edit2, X, ChevronDown, ChevronUp, Save, Star } from "lucide-react";
+import { Calendar, Plus, ChevronLeft, ChevronRight, Settings, Trash2, Loader2, Edit2, X, ChevronDown, ChevronUp, Save, Star, Link2, Unlink } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 interface WorldCalendarProps {
@@ -19,19 +20,73 @@ const DEFAULT_MONTH_NAMES = ["Deepwinter", "Clawstorm", "Thawmelt", "Greenrise",
 const DEFAULT_DAYS_PER_MONTH = [30, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
 const DEFAULT_WEEKDAY_NAMES = ["Moonday", "Twinday", "Ashday", "Wineday", "Thunderday", "Starday", "Sunday"];
 
+function totalDaysFromEpoch(year: number, month: number, day: number, daysPerMonth: number[]): number {
+  const totalMonths = daysPerMonth.length;
+  let total = 0;
+  const fullYears = year - 1;
+  const daysPerYear = daysPerMonth.reduce((s, d) => s + d, 0);
+  total += fullYears * daysPerYear;
+  for (let m = 0; m < month; m++) {
+    total += daysPerMonth[m] || 30;
+  }
+  total += day;
+  return total;
+}
+
+function dateFromTotalDays(totalDays: number, daysPerMonth: number[]): { year: number; month: number; day: number } {
+  const daysPerYear = daysPerMonth.reduce((s, d) => s + d, 0);
+  if (daysPerYear <= 0) return { year: 1, month: 0, day: 1 };
+  let remaining = totalDays;
+  let year = 1;
+  if (remaining > daysPerYear) {
+    const fullYears = Math.floor((remaining - 1) / daysPerYear);
+    year += fullYears;
+    remaining -= fullYears * daysPerYear;
+  }
+  let month = 0;
+  while (month < daysPerMonth.length && remaining > (daysPerMonth[month] || 30)) {
+    remaining -= (daysPerMonth[month] || 30);
+    month++;
+  }
+  if (month >= daysPerMonth.length) { month = daysPerMonth.length - 1; }
+  return { year, month, day: Math.max(1, remaining) };
+}
+
+function convertEventDate(dateStr: string, sourceCalendar: WorldCalendarType, targetCalendar: WorldCalendarType, epochOffset: number): { month: number; day: number; year?: number } | null {
+  const parts = dateStr.split("-");
+  if (parts.length < 2) return null;
+  const srcMonth = parseInt(parts[0], 10) - 1;
+  const srcDay = parseInt(parts[1], 10);
+  const srcYear = parts.length >= 3 ? parseInt(parts[2], 10) : 1;
+  const srcDPM = (sourceCalendar.daysPerMonth as number[]) || [];
+  const tgtDPM = (targetCalendar.daysPerMonth as number[]) || [];
+  const srcTotal = totalDaysFromEpoch(srcYear, srcMonth, srcDay, srcDPM);
+  const tgtTotal = srcTotal + epochOffset;
+  if (tgtTotal < 1) return null;
+  const result = dateFromTotalDays(tgtTotal, tgtDPM);
+  return { month: result.month, day: result.day, year: parts.length >= 3 ? result.year : undefined };
+}
+
 export function WorldCalendar({ campaignId, worldId, isGM = false }: WorldCalendarProps) {
   const { toast } = useToast();
   const resolvedId = worldId || campaignId;
   const { data: calendars = [], isLoading } = useCalendars(resolvedId);
   const { data: timelineEvents = [] } = useTimelineEvents(resolvedId);
+  const { data: calendarSyncs = [] } = useCalendarSyncs(resolvedId);
   const createCalendar = useCreateCalendar(resolvedId);
   const updateCalendar = useUpdateCalendar(resolvedId);
   const deleteCalendar = useDeleteCalendar(resolvedId);
+  const createSync = useCreateCalendarSync(resolvedId);
+  const deleteSync = useDeleteCalendarSync(resolvedId);
 
   const [selectedCalendarId, setSelectedCalendarId] = useState<string | null>(null);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [showSettingsDialog, setShowSettingsDialog] = useState(false);
   const [showDayNoteDialog, setShowDayNoteDialog] = useState(false);
+  const [showSyncDialog, setShowSyncDialog] = useState(false);
+  const [syncTargetCalendarId, setSyncTargetCalendarId] = useState("");
+  const [syncAlignSourceDate, setSyncAlignSourceDate] = useState({ month: 0, day: 1, year: 1 });
+  const [syncAlignTargetDate, setSyncAlignTargetDate] = useState({ month: 0, day: 1, year: 1 });
   const [selectedDay, setSelectedDay] = useState<{ month: number; day: number } | null>(null);
   const [dayNoteText, setDayNoteText] = useState("");
   const [viewMonth, setViewMonth] = useState<number | null>(null);
@@ -48,23 +103,60 @@ export function WorldCalendar({ campaignId, worldId, isGM = false }: WorldCalend
   const currentMonth = viewMonth ?? (selectedCalendar?.currentMonth ?? 0);
   const currentYear = viewYear ?? (selectedCalendar?.currentYear ?? 1);
 
+  const syncedEventsForCalendar = useMemo(() => {
+    if (!selectedCalendar) return [];
+    const syncsForThis = calendarSyncs.filter(
+      s => s.sourceCalendarId === selectedCalendar.id || s.targetCalendarId === selectedCalendar.id
+    );
+    if (syncsForThis.length === 0) return [];
+
+    const results: Array<WorldTimelineEvent & { _syncedMonth: number; _syncedDay: number; _syncedYear?: number; _fromCalendarName: string }> = [];
+
+    for (const sync of syncsForThis) {
+      const isSource = sync.sourceCalendarId === selectedCalendar.id;
+      const otherCalId = isSource ? sync.targetCalendarId : sync.sourceCalendarId;
+      const otherCal = calendars.find(c => c.id === otherCalId);
+      if (!otherCal) continue;
+
+      const offset = isSource ? -sync.epochOffset : sync.epochOffset;
+      const otherEvents = timelineEvents.filter(e => e.calendarId === otherCalId && e.date);
+
+      for (const ev of otherEvents) {
+        const converted = convertEventDate(ev.date!, otherCal, selectedCalendar, offset);
+        if (converted) {
+          results.push({
+            ...ev,
+            _syncedMonth: converted.month,
+            _syncedDay: converted.day,
+            _syncedYear: converted.year,
+            _fromCalendarName: otherCal.name,
+          });
+        }
+      }
+    }
+    return results;
+  }, [selectedCalendar, calendarSyncs, calendars, timelineEvents]);
+
   const calendarEvents = useMemo(() => {
     if (!selectedCalendar) return [];
     return timelineEvents.filter(e => e.calendarId === selectedCalendar.id);
   }, [timelineEvents, selectedCalendar]);
 
   const eventsForDay = useCallback((month: number, day: number) => {
-    return calendarEvents.filter(e => {
+    const month1Based = month + 1;
+    const native = calendarEvents.filter(e => {
       if (!e.date) return false;
       const parts = e.date.split("-");
       if (parts.length >= 2) {
         const eMonth = parseInt(parts[0], 10);
         const eDay = parseInt(parts[1], 10);
-        return eMonth === month && eDay === day;
+        return eMonth === month1Based && eDay === day;
       }
       return false;
     });
-  }, [calendarEvents]);
+    const synced = syncedEventsForCalendar.filter(e => e._syncedMonth === month && e._syncedDay === day);
+    return [...native, ...synced];
+  }, [calendarEvents, syncedEventsForCalendar]);
 
   const getDayNote = useCallback((month: number, day: number): string => {
     if (!selectedCalendar?.notes) return "";
@@ -122,7 +214,7 @@ export function WorldCalendar({ campaignId, worldId, isGM = false }: WorldCalend
     if (!formName.trim()) return;
     try {
       await createCalendar.mutateAsync({
-        campaignId: resolvedId,
+        ...(worldId ? { worldId } : { campaignId }),
         name: formName.trim(),
         monthNames: formMonthNames,
         daysPerMonth: formDaysPerMonth,
@@ -189,6 +281,51 @@ export function WorldCalendar({ campaignId, worldId, isGM = false }: WorldCalend
     setFormWeekDayNames([...DEFAULT_WEEKDAY_NAMES]);
     setShowCreateDialog(true);
   };
+
+  const openSyncDialog = () => {
+    setSyncTargetCalendarId("");
+    setSyncAlignSourceDate({ month: 0, day: 1, year: 1 });
+    setSyncAlignTargetDate({ month: 0, day: 1, year: 1 });
+    setShowSyncDialog(true);
+  };
+
+  const handleCreateSync = async () => {
+    if (!selectedCalendar || !syncTargetCalendarId) return;
+    const targetCal = calendars.find(c => c.id === syncTargetCalendarId);
+    if (!targetCal) return;
+
+    const srcDPM = (selectedCalendar.daysPerMonth as number[]) || [];
+    const tgtDPM = (targetCal.daysPerMonth as number[]) || [];
+    const srcTotal = totalDaysFromEpoch(syncAlignSourceDate.year, syncAlignSourceDate.month, syncAlignSourceDate.day, srcDPM);
+    const tgtTotal = totalDaysFromEpoch(syncAlignTargetDate.year, syncAlignTargetDate.month, syncAlignTargetDate.day, tgtDPM);
+    const epochOffset = tgtTotal - srcTotal;
+
+    try {
+      await createSync.mutateAsync({
+        sourceCalendarId: selectedCalendar.id,
+        targetCalendarId: syncTargetCalendarId,
+        epochOffset,
+      });
+      setShowSyncDialog(false);
+      toast({ title: "Calendars synced" });
+    } catch (e: any) {
+      toast({ title: "Failed to sync calendars", description: e.message, variant: "destructive" });
+    }
+  };
+
+  const handleDeleteSync = async (syncId: string) => {
+    try {
+      await deleteSync.mutateAsync(syncId);
+      toast({ title: "Sync removed" });
+    } catch (e: any) {
+      toast({ title: "Failed to remove sync", description: e.message, variant: "destructive" });
+    }
+  };
+
+  const syncsForCurrentCalendar = useMemo(() => {
+    if (!selectedCalendar) return [];
+    return calendarSyncs.filter(s => s.sourceCalendarId === selectedCalendar.id || s.targetCalendarId === selectedCalendar.id);
+  }, [calendarSyncs, selectedCalendar]);
 
   const navigateMonth = (delta: number) => {
     if (!selectedCalendar) return;
@@ -332,6 +469,11 @@ export function WorldCalendar({ campaignId, worldId, isGM = false }: WorldCalend
               <Button variant="ghost" size="icon" className="h-7 w-7 text-stone-400 hover:text-amber-400" onClick={openCreate} title="New Calendar" data-testid="button-create-calendar">
                 <Plus className="h-3.5 w-3.5" />
               </Button>
+              {calendars.length > 1 && (
+                <Button variant="ghost" size="icon" className="h-7 w-7 text-stone-400 hover:text-blue-400" onClick={openSyncDialog} title="Sync Calendars" data-testid="button-sync-calendars">
+                  <Link2 className="h-3.5 w-3.5" />
+                </Button>
+              )}
               <Button variant="ghost" size="icon" className="h-7 w-7 text-stone-400 hover:text-amber-400" onClick={openSettings} title="Calendar Settings" data-testid="button-calendar-settings">
                 <Settings className="h-3.5 w-3.5" />
               </Button>
@@ -417,7 +559,8 @@ export function WorldCalendar({ campaignId, worldId, isGM = false }: WorldCalend
                     <p className="text-[8px] text-stone-500 mt-0.5 line-clamp-2 leading-tight">{dayNote}</p>
                   )}
                   {dayEvents.slice(0, 2).map(ev => (
-                    <div key={ev.id} className="mt-0.5 text-[8px] leading-tight px-0.5 py-px rounded truncate" style={{ backgroundColor: (ev.color || "#64b5f6") + "22", color: ev.color || "#64b5f6" }}>
+                    <div key={ev.id + ((ev as any)._fromCalendarName ? '-synced' : '')} className="mt-0.5 text-[8px] leading-tight px-0.5 py-px rounded truncate" style={{ backgroundColor: (ev.color || "#64b5f6") + "22", color: ev.color || "#64b5f6" }}>
+                      {(ev as any)._fromCalendarName && <span className="opacity-60">[{(ev as any)._fromCalendarName}] </span>}
                       {ev.title}
                     </div>
                   ))}
@@ -437,7 +580,7 @@ export function WorldCalendar({ campaignId, worldId, isGM = false }: WorldCalend
                   .filter(e => {
                     if (!e.date) return false;
                     const parts = e.date.split("-");
-                    return parts.length >= 1 && parseInt(parts[0], 10) === currentMonth;
+                    return parts.length >= 1 && parseInt(parts[0], 10) === currentMonth + 1;
                   })
                   .sort((a, b) => {
                     const dayA = parseInt((a.date || "0-0").split("-")[1] || "0", 10);
@@ -533,9 +676,12 @@ export function WorldCalendar({ campaignId, worldId, isGM = false }: WorldCalend
               <div>
                 <h4 className="text-[10px] text-stone-500 uppercase tracking-wider mb-1">Events</h4>
                 {eventsForDay(selectedDay.month, selectedDay.day).map(ev => (
-                  <div key={ev.id} className="flex items-center gap-2 px-2 py-1 rounded bg-stone-800/50 mb-1">
+                  <div key={ev.id + ((ev as any)._fromCalendarName ? '-s' : '')} className="flex items-center gap-2 px-2 py-1 rounded bg-stone-800/50 mb-1">
                     <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: ev.color || "#64b5f6" }} />
                     <span className="text-xs text-stone-300">{ev.title}</span>
+                    {(ev as any)._fromCalendarName && (
+                      <Badge variant="outline" className="text-[9px] border-blue-500/30 text-blue-400 px-1">{(ev as any)._fromCalendarName}</Badge>
+                    )}
                   </div>
                 ))}
               </div>
@@ -556,6 +702,120 @@ export function WorldCalendar({ campaignId, worldId, isGM = false }: WorldCalend
             <Button className="bg-amber-600 hover:bg-amber-500 text-white" onClick={saveDayNote} disabled={updateCalendar.isPending} data-testid="button-save-day-note">
               Save
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showSyncDialog} onOpenChange={setShowSyncDialog}>
+        <DialogContent className="bg-stone-900 border-stone-700 text-stone-200 max-w-md max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-stone-100 flex items-center gap-2">
+              <Link2 className="h-4 w-4 text-blue-400" />
+              Sync Calendars
+            </DialogTitle>
+          </DialogHeader>
+
+          {syncsForCurrentCalendar.length > 0 && (
+            <div className="space-y-2">
+              <label className="text-xs text-stone-400 uppercase tracking-wider">Active Syncs</label>
+              {syncsForCurrentCalendar.map(sync => {
+                const otherId = sync.sourceCalendarId === selectedCalendar?.id ? sync.targetCalendarId : sync.sourceCalendarId;
+                const otherCal = calendars.find(c => c.id === otherId);
+                return (
+                  <div key={sync.id} className="flex items-center justify-between px-3 py-2 rounded bg-stone-800/60 border border-stone-700" data-testid={`sync-entry-${sync.id}`}>
+                    <div className="flex items-center gap-2">
+                      <Link2 className="h-3 w-3 text-blue-400" />
+                      <span className="text-xs text-stone-300">{otherCal?.name || "Unknown"}</span>
+                      <Badge variant="outline" className="text-[9px] border-stone-600 text-stone-500">
+                        offset: {sync.epochOffset > 0 ? "+" : ""}{sync.epochOffset}d
+                      </Badge>
+                    </div>
+                    <Button variant="ghost" size="icon" className="h-6 w-6 text-stone-500 hover:text-red-400" onClick={() => handleDeleteSync(sync.id)} data-testid={`button-remove-sync-${sync.id}`}>
+                      <Unlink className="h-3 w-3" />
+                    </Button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          <div className="space-y-3 border-t border-stone-800 pt-3">
+            <label className="text-xs text-stone-400 uppercase tracking-wider">Create New Sync</label>
+            <div>
+              <label className="text-xs text-stone-500 mb-1 block">Sync {selectedCalendar?.name} with:</label>
+              <Select value={syncTargetCalendarId || "none"} onValueChange={(v) => setSyncTargetCalendarId(v === "none" ? "" : v)}>
+                <SelectTrigger className="bg-stone-800 border-stone-700 text-stone-200 text-xs" data-testid="select-sync-target">
+                  <SelectValue placeholder="Select calendar" />
+                </SelectTrigger>
+                <SelectContent className="bg-stone-800 border-stone-700">
+                  <SelectItem value="none" className="text-stone-500 text-xs">Select a calendar</SelectItem>
+                  {calendars
+                    .filter(c => c.id !== selectedCalendar?.id && !syncsForCurrentCalendar.some(s => s.sourceCalendarId === c.id || s.targetCalendarId === c.id))
+                    .map(c => (
+                      <SelectItem key={c.id} value={c.id} className="text-stone-200 text-xs">{c.name}</SelectItem>
+                    ))
+                  }
+                </SelectContent>
+              </Select>
+            </div>
+
+            {syncTargetCalendarId && selectedCalendar && (() => {
+              const targetCal = calendars.find(c => c.id === syncTargetCalendarId);
+              if (!targetCal) return null;
+              const srcMonths = (selectedCalendar.monthNames as string[]) || [];
+              const tgtMonths = (targetCal.monthNames as string[]) || [];
+              return (
+                <div className="space-y-3 bg-stone-800/30 rounded p-3 border border-stone-700/50">
+                  <p className="text-[10px] text-stone-500">Align dates: specify which date on each calendar corresponds to the same real moment.</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] text-amber-400 font-medium">{selectedCalendar.name}</label>
+                      <Select value={String(syncAlignSourceDate.month)} onValueChange={v => setSyncAlignSourceDate(d => ({ ...d, month: parseInt(v) }))}>
+                        <SelectTrigger className="bg-stone-800 border-stone-700 text-stone-200 text-xs h-7" data-testid="sync-source-month">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent className="bg-stone-800 border-stone-700 max-h-48">
+                          {srcMonths.map((m, i) => (
+                            <SelectItem key={i} value={String(i)} className="text-stone-200 text-xs">{m}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <div className="grid grid-cols-2 gap-1">
+                        <Input type="number" min={1} value={syncAlignSourceDate.day} onChange={e => setSyncAlignSourceDate(d => ({ ...d, day: parseInt(e.target.value) || 1 }))} placeholder="Day" className="bg-stone-800 border-stone-700 text-stone-200 text-xs h-7" data-testid="sync-source-day" />
+                        <Input type="number" value={syncAlignSourceDate.year} onChange={e => setSyncAlignSourceDate(d => ({ ...d, year: parseInt(e.target.value) || 1 }))} placeholder="Year" className="bg-stone-800 border-stone-700 text-stone-200 text-xs h-7" data-testid="sync-source-year" />
+                      </div>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] text-blue-400 font-medium">{targetCal.name}</label>
+                      <Select value={String(syncAlignTargetDate.month)} onValueChange={v => setSyncAlignTargetDate(d => ({ ...d, month: parseInt(v) }))}>
+                        <SelectTrigger className="bg-stone-800 border-stone-700 text-stone-200 text-xs h-7" data-testid="sync-target-month">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent className="bg-stone-800 border-stone-700 max-h-48">
+                          {tgtMonths.map((m, i) => (
+                            <SelectItem key={i} value={String(i)} className="text-stone-200 text-xs">{m}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <div className="grid grid-cols-2 gap-1">
+                        <Input type="number" min={1} value={syncAlignTargetDate.day} onChange={e => setSyncAlignTargetDate(d => ({ ...d, day: parseInt(e.target.value) || 1 }))} placeholder="Day" className="bg-stone-800 border-stone-700 text-stone-200 text-xs h-7" data-testid="sync-target-day" />
+                        <Input type="number" value={syncAlignTargetDate.year} onChange={e => setSyncAlignTargetDate(d => ({ ...d, year: parseInt(e.target.value) || 1 }))} placeholder="Year" className="bg-stone-800 border-stone-700 text-stone-200 text-xs h-7" data-testid="sync-target-year" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+
+          <DialogFooter>
+            <Button variant="ghost" className="text-stone-400" onClick={() => setShowSyncDialog(false)}>Close</Button>
+            {syncTargetCalendarId && (
+              <Button className="bg-blue-600 hover:bg-blue-500 text-white" onClick={handleCreateSync} disabled={createSync.isPending} data-testid="button-confirm-sync">
+                {createSync.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Link2 className="h-4 w-4 mr-2" />}
+                Sync
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

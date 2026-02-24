@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertUserSchema, insertCampaignSchema, insertCharacterSchema, insertTokenSchema, insertChatMessageSchema, insertSceneSchema, insertHotbarSchema, insertItemSchema, insertSpellSchema, initiativeEntries, insertTokenEffectSchema, insertTokenActiveEffectSchema, rollEntries, insertRollEntrySchema, items, sceneVisionZones, insertEntitySchema, insertEntityLinkSchema, insertWorldMapSchema, insertWorldMapPinSchema, insertWorldCalendarSchema, insertWorldTimelineEventSchema, insertWorldSchema } from "@shared/schema";
+import { insertUserSchema, insertCampaignSchema, insertCharacterSchema, insertTokenSchema, insertChatMessageSchema, insertSceneSchema, insertHotbarSchema, insertItemSchema, insertSpellSchema, initiativeEntries, insertTokenEffectSchema, insertTokenActiveEffectSchema, rollEntries, insertRollEntrySchema, items, sceneVisionZones, insertEntitySchema, insertEntityLinkSchema, insertWorldMapSchema, insertWorldMapPinSchema, insertWorldCalendarSchema, insertWorldTimelineEventSchema, insertWorldSchema, insertWorldCalendarSyncSchema } from "@shared/schema";
 import bcrypt from "bcryptjs";
 import { WebSocketServer } from "ws";
 import { sendPasswordResetEmail } from "./email";
@@ -10624,6 +10624,50 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (e) {
       console.error("Failed to delete world timeline event:", e);
       res.status(500).json({ error: "Failed to delete timeline event" });
+    }
+  });
+
+  // ==================== WORLD-SCOPED CALENDAR SYNC ROUTES ====================
+
+  app.get("/api/worlds/:worldId/calendar-syncs", requireAuth, async (req, res) => {
+    try {
+      const world = await storage.getWorld(req.params.worldId);
+      if (!world) return res.status(404).json({ error: "World not found" });
+      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+      const syncs = await storage.getCalendarSyncsByWorld(req.params.worldId);
+      res.json(syncs);
+    } catch (e) {
+      console.error("Failed to get calendar syncs:", e);
+      res.status(500).json({ error: "Failed to get calendar syncs" });
+    }
+  });
+
+  app.post("/api/worlds/:worldId/calendar-syncs", requireAuth, async (req, res) => {
+    try {
+      const world = await storage.getWorld(req.params.worldId);
+      if (!world) return res.status(404).json({ error: "World not found" });
+      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+      const parsed = insertWorldCalendarSyncSchema.parse({ ...req.body, worldId: req.params.worldId });
+      const sync = await storage.createCalendarSync(parsed);
+      res.status(201).json(sync);
+    } catch (e) {
+      console.error("Failed to create calendar sync:", e);
+      res.status(500).json({ error: "Failed to create calendar sync" });
+    }
+  });
+
+  app.delete("/api/worlds/:worldId/calendar-syncs/:syncId", requireAuth, async (req, res) => {
+    try {
+      const world = await storage.getWorld(req.params.worldId);
+      if (!world) return res.status(404).json({ error: "World not found" });
+      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+      const existing = await storage.getCalendarSync(req.params.syncId);
+      if (!existing || existing.worldId !== req.params.worldId) return res.status(404).json({ error: "Calendar sync not found" });
+      await storage.deleteCalendarSync(req.params.syncId);
+      res.json({ success: true });
+    } catch (e) {
+      console.error("Failed to delete calendar sync:", e);
+      res.status(500).json({ error: "Failed to delete calendar sync" });
     }
   });
 

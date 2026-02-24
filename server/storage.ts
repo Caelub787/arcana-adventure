@@ -61,7 +61,8 @@ import {
   type WorldCalendar, type InsertWorldCalendar,
   type WorldTimelineEvent, type InsertWorldTimelineEvent,
   type World, type InsertWorld,
-  users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, items, spells, characterPermissions, initiativeEntries, systemSpecies, campaignSpecies, featTemplates, featTrees, feats, featConnections, characterFeats, systemSpells, systemSkills, characterCustomSkills, systemTraits, characterTraits, characterFolders, characterTemplateFolders, sceneFolders, friendRequests, friendships, noteFolders, notes, noteReferences, noteShares, tokenEffects, spellEffects, itemEffects, tokenActiveEffects, thrownItems, adminNotifications, userNotifications, termsAndConditions, userTermsAcceptance, sandboxFolders, sandboxTemplates, sandboxActors, rollEntries, sceneWalls, sceneDoors, sceneWindows, sceneLights, sceneVisionZones, sceneMapPins, entities, entityLinks, worldShareLinks, worldMaps, worldMapPins, worldCalendars, worldTimelineEvents, worlds
+  type WorldCalendarSync, type InsertWorldCalendarSync,
+  users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, items, spells, characterPermissions, initiativeEntries, systemSpecies, campaignSpecies, featTemplates, featTrees, feats, featConnections, characterFeats, systemSpells, systemSkills, characterCustomSkills, systemTraits, characterTraits, characterFolders, characterTemplateFolders, sceneFolders, friendRequests, friendships, noteFolders, notes, noteReferences, noteShares, tokenEffects, spellEffects, itemEffects, tokenActiveEffects, thrownItems, adminNotifications, userNotifications, termsAndConditions, userTermsAcceptance, sandboxFolders, sandboxTemplates, sandboxActors, rollEntries, sceneWalls, sceneDoors, sceneWindows, sceneLights, sceneVisionZones, sceneMapPins, entities, entityLinks, worldShareLinks, worldMaps, worldMapPins, worldCalendars, worldTimelineEvents, worlds, worldCalendarSyncs
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql, inArray, or, isNull } from "drizzle-orm";
@@ -569,6 +570,12 @@ export interface IStorage {
   getWorldMapsByWorld(worldId: string): Promise<WorldMap[]>;
   getWorldCalendarsByWorld(worldId: string): Promise<WorldCalendar[]>;
   getWorldTimelineEventsByWorld(worldId: string): Promise<WorldTimelineEvent[]>;
+
+  // World Calendar Sync operations
+  getCalendarSyncsByWorld(worldId: string): Promise<WorldCalendarSync[]>;
+  getCalendarSync(id: string): Promise<WorldCalendarSync | undefined>;
+  createCalendarSync(sync: InsertWorldCalendarSync): Promise<WorldCalendarSync>;
+  deleteCalendarSync(id: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -4038,6 +4045,24 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(worldTimelineEvents)
       .where(eq(worldTimelineEvents.worldId, worldId))
       .orderBy(worldTimelineEvents.sortOrder);
+  }
+
+  async getCalendarSyncsByWorld(worldId: string): Promise<WorldCalendarSync[]> {
+    return await db.select().from(worldCalendarSyncs).where(eq(worldCalendarSyncs.worldId, worldId));
+  }
+
+  async getCalendarSync(id: string): Promise<WorldCalendarSync | undefined> {
+    const [sync] = await db.select().from(worldCalendarSyncs).where(eq(worldCalendarSyncs.id, id)).limit(1);
+    return sync;
+  }
+
+  async createCalendarSync(sync: InsertWorldCalendarSync): Promise<WorldCalendarSync> {
+    const [created] = await db.insert(worldCalendarSyncs).values(sync).returning();
+    return created;
+  }
+
+  async deleteCalendarSync(id: string): Promise<void> {
+    await db.delete(worldCalendarSyncs).where(eq(worldCalendarSyncs.id, id));
   }
 }
 

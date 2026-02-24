@@ -1636,3 +1636,19 @@ export const insertWorldTimelineEventSchema = createInsertSchema(worldTimelineEv
 });
 export type InsertWorldTimelineEvent = z.infer<typeof insertWorldTimelineEventSchema>;
 export type WorldTimelineEvent = typeof worldTimelineEvents.$inferSelect;
+
+export const worldCalendarSyncs = pgTable("world_calendar_syncs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  worldId: varchar("world_id").notNull().references(() => worlds.id, { onDelete: "cascade" }),
+  sourceCalendarId: varchar("source_calendar_id").notNull().references(() => worldCalendars.id, { onDelete: "cascade" }),
+  targetCalendarId: varchar("target_calendar_id").notNull().references(() => worldCalendars.id, { onDelete: "cascade" }),
+  epochOffset: integer("epoch_offset").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertWorldCalendarSyncSchema = createInsertSchema(worldCalendarSyncs).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertWorldCalendarSync = z.infer<typeof insertWorldCalendarSyncSchema>;
+export type WorldCalendarSync = typeof worldCalendarSyncs.$inferSelect;

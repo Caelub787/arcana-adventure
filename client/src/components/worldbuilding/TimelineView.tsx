@@ -414,6 +414,86 @@ export function TimelineView({ campaignId, worldId, isGM, onSelectEntity }: Time
   );
 }
 
+function CalendarDatePicker({ value, calendar, onChange, testIdPrefix }: {
+  value: string;
+  calendar: WorldCalendar;
+  onChange: (v: string) => void;
+  testIdPrefix: string;
+}) {
+  const monthNames = (calendar.monthNames as string[]) || [];
+  const daysPerMonth = (calendar.daysPerMonth as number[]) || [];
+
+  const parts = value ? value.split("-") : [];
+  const month = parts.length >= 1 ? parseInt(parts[0], 10) : 0;
+  const day = parts.length >= 2 ? parseInt(parts[1], 10) : 0;
+  const year = parts.length >= 3 ? parseInt(parts[2], 10) : 0;
+
+  const buildDate = (m: number, d: number, y: number) => {
+    if (m <= 0 && d <= 0 && y <= 0) return "";
+    if (y > 0) return `${m}-${d}-${y}`;
+    if (m > 0 && d > 0) return `${m}-${d}`;
+    return "";
+  };
+
+  const maxDay = month > 0 && month <= daysPerMonth.length ? daysPerMonth[month - 1] : 31;
+
+  return (
+    <div className="grid grid-cols-3 gap-2">
+      <div>
+        <Select
+          value={month > 0 ? String(month) : "0"}
+          onValueChange={(v) => {
+            const m = parseInt(v, 10);
+            const newMax = m > 0 && m <= daysPerMonth.length ? daysPerMonth[m - 1] : 31;
+            const d = day > newMax ? newMax : day;
+            onChange(buildDate(m, d || 1, year));
+          }}
+        >
+          <SelectTrigger className="bg-stone-800 border-stone-700 text-stone-200 text-xs" data-testid={`${testIdPrefix}-month`}>
+            <SelectValue placeholder="Month" />
+          </SelectTrigger>
+          <SelectContent className="bg-stone-800 border-stone-700 max-h-60">
+            <SelectItem value="0" className="text-stone-500 text-xs">No month</SelectItem>
+            {monthNames.map((name, i) => (
+              <SelectItem key={i} value={String(i + 1)} className="text-stone-200 text-xs">
+                {name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <div>
+        <Input
+          type="number"
+          min={1}
+          max={maxDay}
+          value={day || ""}
+          onChange={(e) => {
+            const d = Math.max(0, Math.min(maxDay, parseInt(e.target.value) || 0));
+            onChange(buildDate(month || 1, d, year));
+          }}
+          placeholder="Day"
+          className="bg-stone-800 border-stone-700 text-stone-200 text-xs"
+          data-testid={`${testIdPrefix}-day`}
+        />
+      </div>
+      <div>
+        <Input
+          type="number"
+          value={year || ""}
+          onChange={(e) => {
+            const y = parseInt(e.target.value) || 0;
+            onChange(buildDate(month || 1, day || 1, y));
+          }}
+          placeholder="Year"
+          className="bg-stone-800 border-stone-700 text-stone-200 text-xs"
+          data-testid={`${testIdPrefix}-year`}
+        />
+      </div>
+    </div>
+  );
+}
+
 interface EventFormDialogProps {
   open: boolean;
   onClose: () => void;
@@ -429,6 +509,7 @@ interface EventFormDialogProps {
 
 function EventFormDialog({ open, onClose, formData, setFormData, onSubmit, isEditing, entities, calendars, existingEras, isSubmitting }: EventFormDialogProps) {
   const [entitySearch, setEntitySearch] = useState("");
+  const selectedCalendar = calendars.find(c => c.id === formData.calendarId);
 
   const filteredEntities = useMemo(() => {
     if (!entitySearch) return entities.slice(0, 20);
@@ -470,28 +551,47 @@ function EventFormDialog({ open, onClose, formData, setFormData, onSubmit, isEdi
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="text-xs text-stone-400 mb-1 block">Date</label>
-              <Input
+          {selectedCalendar ? (
+            <div className="space-y-2">
+              <label className="text-xs text-stone-400 mb-1 block">Date ({selectedCalendar.name})</label>
+              <CalendarDatePicker
                 value={formData.date}
-                onChange={(e) => setFormData(d => ({ ...d, date: e.target.value }))}
-                placeholder="e.g. Year 1042"
-                className="bg-stone-800 border-stone-700 text-stone-200"
-                data-testid="input-event-date"
+                calendar={selectedCalendar}
+                onChange={(v) => setFormData(d => ({ ...d, date: v }))}
+                testIdPrefix="input-event-date"
               />
-            </div>
-            <div>
-              <label className="text-xs text-stone-400 mb-1 block">End Date</label>
-              <Input
+              <label className="text-xs text-stone-400 mb-1 block">End Date (optional)</label>
+              <CalendarDatePicker
                 value={formData.endDate}
-                onChange={(e) => setFormData(d => ({ ...d, endDate: e.target.value }))}
-                placeholder="Optional"
-                className="bg-stone-800 border-stone-700 text-stone-200"
-                data-testid="input-event-end-date"
+                calendar={selectedCalendar}
+                onChange={(v) => setFormData(d => ({ ...d, endDate: v }))}
+                testIdPrefix="input-event-end-date"
               />
             </div>
-          </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-xs text-stone-400 mb-1 block">Date</label>
+                <Input
+                  value={formData.date}
+                  onChange={(e) => setFormData(d => ({ ...d, date: e.target.value }))}
+                  placeholder="e.g. Year 1042"
+                  className="bg-stone-800 border-stone-700 text-stone-200"
+                  data-testid="input-event-date"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-stone-400 mb-1 block">End Date</label>
+                <Input
+                  value={formData.endDate}
+                  onChange={(e) => setFormData(d => ({ ...d, endDate: e.target.value }))}
+                  placeholder="Optional"
+                  className="bg-stone-800 border-stone-700 text-stone-200"
+                  data-testid="input-event-end-date"
+                />
+              </div>
+            </div>
+          )}
 
           <div>
             <label className="text-xs text-stone-400 mb-1 block">Era</label>

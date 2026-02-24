@@ -456,6 +456,50 @@ export function useDeleteCalendar(worldId: string | undefined) {
   });
 }
 
+export interface WorldCalendarSync {
+  id: string;
+  worldId: string;
+  sourceCalendarId: string;
+  targetCalendarId: string;
+  epochOffset: number;
+  createdAt: string;
+}
+
+export function useCalendarSyncs(worldId: string | undefined) {
+  return useQuery<WorldCalendarSync[]>({
+    queryKey: ["/api/worlds", worldId, "calendar-syncs"],
+    queryFn: () => fetchJSON(`/api/worlds/${worldId}/calendar-syncs`),
+    enabled: !!worldId,
+  });
+}
+
+export function useCreateCalendarSync(worldId: string | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { sourceCalendarId: string; targetCalendarId: string; epochOffset: number }) =>
+      fetchJSON(`/api/worlds/${worldId}/calendar-syncs`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['/api/worlds', worldId, 'calendar-syncs'] });
+    },
+  });
+}
+
+export function useDeleteCalendarSync(worldId: string | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (syncId: string) =>
+      fetchJSON(`/api/worlds/${worldId}/calendar-syncs/${syncId}`, {
+        method: 'DELETE',
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['/api/worlds', worldId, 'calendar-syncs'] });
+    },
+  });
+}
+
 export function useWorldbuildingSync(worldId: string | undefined) {
   const qc = useQueryClient();
 
@@ -483,6 +527,9 @@ export function useWorldbuildingSync(worldId: string | undefined) {
       }
       if (['world_timeline_event_created', 'world_timeline_event_updated', 'world_timeline_event_deleted'].includes(data.type)) {
         qc.invalidateQueries({ queryKey: ["/api/worlds", worldId, "timeline-events"] });
+      }
+      if (['calendar_sync_created', 'calendar_sync_deleted'].includes(data.type)) {
+        qc.invalidateQueries({ queryKey: ['/api/worlds', worldId, 'calendar-syncs'] });
       }
     });
 
