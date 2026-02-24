@@ -573,8 +573,9 @@ function SharedCalendarView({ calendars }: { calendars: SharedCalendar[] }) {
 }
 
 export default function SharedWorldView() {
-  const [, params] = useRoute("/shared/:token");
-  const token = params?.token;
+  const [matchWorld, paramsWorld] = useRoute("/world/:token");
+  const [matchShared, paramsShared] = useRoute("/shared/:token");
+  const token = paramsWorld?.token || paramsShared?.token;
 
   const { data, isLoading, error } = useQuery<SharedWorldData>({
     queryKey: ["shared-world", token],

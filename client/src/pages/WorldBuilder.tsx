@@ -204,7 +204,7 @@ export default function WorldBuilder() {
     },
   });
 
-  const shareLinkUrl = shareLink?.token ? `${window.location.origin}/shared/${shareLink.token}` : null;
+  const shareLinkUrl = shareLink?.token ? `${window.location.origin}/world/${shareLink.token}` : null;
 
   const handleCopyShareLink = () => {
     if (shareLinkUrl) {

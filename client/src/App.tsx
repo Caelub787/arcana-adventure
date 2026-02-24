@@ -187,6 +187,7 @@ function Router() {
       <Route path="/worldbuilder">
         {() => <ProtectedRoute component={WorldBuilder} />}
       </Route>
+      <Route path="/world/:token" component={SharedWorldView} />
       <Route path="/shared/:token" component={SharedWorldView} />
       <Route component={NotFound} />
     </Switch>

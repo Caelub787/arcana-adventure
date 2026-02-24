@@ -9599,7 +9599,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!isGM) return res.status(403).json({ error: "Only GMs can create share links" });
       const existing = await storage.getWorldShareLink(campaignId);
       if (existing) return res.status(400).json({ error: "Share link already exists", link: existing });
-      const shareToken = crypto.randomBytes(24).toString('hex');
+      const user = await storage.getUser(req.session.userId!);
+      if (!user) return res.status(401).json({ error: "User not found" });
+      const campaignSlug = campaign.name.replace(/[^a-zA-Z0-9]+/g, '').toLowerCase();
+      const userSlug = user.username.replace(/[^a-zA-Z0-9]+/g, '');
+      let shareToken = `${campaignSlug}${userSlug}`;
+      const existingToken = await storage.getWorldShareLinkByToken(shareToken);
+      if (existingToken) {
+        shareToken = `${shareToken}-${crypto.randomBytes(3).toString('hex')}`;
+      }
       const link = await storage.createWorldShareLink({
         campaignId,
         token: shareToken,
@@ -10305,7 +10313,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
       const existing = await storage.getWorldShareLinkByWorld(req.params.worldId);
       if (existing) return res.status(400).json({ error: "Share link already exists", link: existing });
-      const shareToken = crypto.randomBytes(24).toString('hex');
+      const user = await storage.getUser(req.session.userId!);
+      if (!user) return res.status(401).json({ error: "User not found" });
+      const worldSlug = world.name.replace(/[^a-zA-Z0-9]+/g, '').toLowerCase();
+      const userSlug = user.username.replace(/[^a-zA-Z0-9]+/g, '');
+      let shareToken = `${worldSlug}${userSlug}`;
+      const existingToken = await storage.getWorldShareLinkByToken(shareToken);
+      if (existingToken) {
+        shareToken = `${shareToken}-${crypto.randomBytes(3).toString('hex')}`;
+      }
       const link = await storage.createWorldShareLink({
         worldId: req.params.worldId,
         token: shareToken,
