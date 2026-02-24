@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Play, Users, BookOpen, ScrollText, Plus, Heart, Loader2, Shield, FileText } from "lucide-react";
+import { Play, Users, BookOpen, ScrollText, Plus, Heart, Loader2, Shield, FileText, Globe } from "lucide-react";
 import bgImage from "@assets/home_background.webp";
 import { useAuth } from "@/lib/AuthContext";
 import { api, getTerms, getTermsStatus, acceptTerms, type TermsAndConditions } from "@/lib/api";
@@ -157,8 +157,8 @@ export default function Home() {
             </CardContent>
           </Card>
 
-          {/* Main Menu Grid (My Campaigns, Settings, Admin) */}
-          <div className={`grid grid-cols-1 gap-6 ${isAdmin ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
+          {/* Main Menu Grid */}
+          <div className={`grid grid-cols-1 gap-6 ${isAdmin ? 'md:grid-cols-4' : 'md:grid-cols-3'}`}>
             
             {/* My Campaigns */}
             <Link href="/my-campaigns">
@@ -171,6 +171,21 @@ export default function Home() {
                 </CardHeader>
                 <CardContent>
                   <p className="text-sm text-stone-500 group-hover:text-stone-400">Manage your created campaigns, or join new ones.</p>
+                </CardContent>
+              </Card>
+            </Link>
+
+            {/* World Builder */}
+            <Link href="/worldbuilder">
+              <Card className="group cursor-pointer border-stone-800 bg-stone-950/60 backdrop-blur-sm transition-all hover:-translate-y-1 hover:border-emerald-600/50 hover:bg-stone-900/80 hover:shadow-[0_0_30px_rgba(16,185,129,0.2)]" data-testid="card-world-builder">
+                <CardHeader>
+                  <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-emerald-900/30 text-emerald-500 group-hover:bg-emerald-600 group-hover:text-white transition-colors">
+                    <Globe className="h-6 w-6" />
+                  </div>
+                  <CardTitle className="font-display text-xl text-stone-200 group-hover:text-emerald-400">World Builder</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-sm text-stone-500 group-hover:text-stone-400">Build your world with entities, relationships, and lore.</p>
                 </CardContent>
               </Card>
             </Link>

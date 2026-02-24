@@ -18,6 +18,7 @@ import AdminSettings from "@/pages/AdminSettings";
 import SiteSecurity from "@/pages/SiteSecurity";
 import Notes from "@/pages/Notes";
 import Join from "@/pages/Join";
+import WorldBuilder from "@/pages/WorldBuilder";
 import { AuthProvider, useAuth } from "./lib/AuthContext";
 import { BannedScreen } from "@/components/BannedScreen";
 
@@ -181,6 +182,9 @@ function Router() {
       </Route>
       <Route path="/join/:code">
         {() => <ProtectedRoute component={Join} />}
+      </Route>
+      <Route path="/worldbuilder">
+        {() => <ProtectedRoute component={WorldBuilder} />}
       </Route>
       <Route component={NotFound} />
     </Switch>
