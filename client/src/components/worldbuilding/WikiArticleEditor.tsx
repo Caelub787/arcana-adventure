@@ -188,7 +188,7 @@ export function WikiArticleEditor({ entity, campaignId, isGM, onEntityUpdated }:
 
   return (
     <div className="flex flex-col h-full" data-testid="wiki-article-editor">
-      <div className="border-b border-stone-700 bg-stone-900/50 p-4">
+      <div className="border-b border-stone-700 bg-stone-900/50 p-3 md:p-4">
         <div className="flex items-center justify-between mb-3">
           {mode === "edit" ? (
             <Input
@@ -253,8 +253,8 @@ export function WikiArticleEditor({ entity, campaignId, isGM, onEntityUpdated }:
         )}
 
         {templateFields.length > 0 && (
-          <div className="border-b border-stone-700 bg-stone-900/30 p-4">
-            <div className="grid grid-cols-2 gap-3">
+          <div className="border-b border-stone-700 bg-stone-900/30 p-3 md:p-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               {templateFields.map(field => (
                 <div key={field.key} className={field.type === 'textarea' || field.type === 'list' ? 'col-span-2' : ''}>
                   <Label className="text-[10px] text-stone-500 uppercase tracking-wider">{field.label}</Label>
@@ -334,10 +334,10 @@ export function WikiArticleEditor({ entity, campaignId, isGM, onEntityUpdated }:
           </div>
         )}
 
-        <div className="p-4">
+        <div className="p-3 md:p-4">
           {mode === "edit" ? (
             <>
-              <div className="flex items-center gap-1 mb-2 border-b border-stone-800 pb-2">
+              <div className="flex items-center gap-1 mb-2 border-b border-stone-800 pb-2 flex-wrap">
                 <Button variant="ghost" size="icon" className="h-7 w-7 text-stone-500 hover:text-stone-200" onClick={() => insertMarkdown("**", "**")} data-testid="button-md-bold"><Bold className="h-3.5 w-3.5" /></Button>
                 <Button variant="ghost" size="icon" className="h-7 w-7 text-stone-500 hover:text-stone-200" onClick={() => insertMarkdown("*", "*")} data-testid="button-md-italic"><Italic className="h-3.5 w-3.5" /></Button>
                 <div className="w-px h-4 bg-stone-700 mx-1" />
@@ -358,7 +358,7 @@ export function WikiArticleEditor({ entity, campaignId, isGM, onEntityUpdated }:
                 value={articleContent}
                 onChange={(e) => { setArticleContent(e.target.value); autoSave(); }}
                 placeholder="Write your article here... Use [[Entity Name]] to create wiki links."
-                className="bg-stone-950 border-stone-800 text-stone-300 min-h-[400px] font-mono text-sm resize-none leading-relaxed"
+                className="bg-stone-950 border-stone-800 text-stone-300 min-h-[250px] md:min-h-[400px] font-mono text-sm resize-none leading-relaxed"
                 data-testid="textarea-article-content"
               />
             </>

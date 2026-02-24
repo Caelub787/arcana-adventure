@@ -62,7 +62,7 @@ export function TimelineView({ entities, onSelectEntity }: TimelineViewProps) {
   }
 
   return (
-    <div className="p-6 max-w-3xl mx-auto" data-testid="timeline-view">
+    <div className="p-3 md:p-6 max-w-3xl mx-auto" data-testid="timeline-view">
       {groupedByEra.map(([era, events]) => (
         <div key={era} className="mb-8">
           <div className="flex items-center gap-3 mb-4">
@@ -87,7 +87,7 @@ export function TimelineView({ entities, onSelectEntity }: TimelineViewProps) {
 
                   <button
                     onClick={() => onSelectEntity(event.entity.id)}
-                    className="w-full text-left bg-stone-900/60 border border-stone-700 rounded-lg p-4 hover:border-stone-600 hover:bg-stone-800/60 transition-all group"
+                    className="w-full text-left bg-stone-900/60 border border-stone-700 rounded-lg p-3 md:p-4 hover:border-stone-600 hover:bg-stone-800/60 transition-all group"
                     data-testid={`timeline-event-${event.entity.id}`}
                   >
                     <div className="flex items-start justify-between">
