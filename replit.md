@@ -22,6 +22,7 @@ Preferred communication style: Simple, everyday language.
     -   **Notes System**: Obsidian-like note-taking with nested folders, markdown, rich text, entity references, collaborative editing, Canvas editor, and Graph View.
     -   **Sandbox System**: Rules-agnostic Dynamic System Builder for custom VTTRPG systems, featuring flexible property placement, various property types, a full dice engine, expression engine for calculations and conditional visibility, and extensive styling options.
     -   **Vision Zones**: GM-drawn freeform polygons to define indoor/outdoor areas, overriding scene day/night settings for vision calculations.
+    -   **Worldbuilding System**: Entity management (characters, locations, factions, quests, events, lore, items, encounters, clues) with relationship linking (22 link types), visibility controls (GM-only/shared/player-visible), entity search, and live WebSocket sync. Components: WorldbuilderPanel (sidebar), EntitySidePanel (6-tab detail view with Overview, Notes, Sheet, Inventory, Relationships, References), EntityPicker (searchable dropdown), SheetEmbed/InventoryEmbed (live character data views).
 
 ### Backend
 -   **Technology Stack**: Express.js with TypeScript, `express-session`.
