@@ -14,7 +14,8 @@ const ICON_MAP: Record<string, React.ElementType> = {
 };
 
 interface EntitySidePanelProps {
-  campaignId: string;
+  campaignId?: string;
+  worldId?: string;
   entityId: string;
   onClose?: () => void;
   onNavigateToEntity?: (entityId: string) => void;
@@ -22,13 +23,14 @@ interface EntitySidePanelProps {
   embedded?: boolean;
 }
 
-export function EntitySidePanel({ campaignId, entityId, onClose, onNavigateToEntity, isGM = false, embedded = false }: EntitySidePanelProps) {
-  const { data: entity, isLoading } = useEntity(campaignId, entityId);
-  const { data: links = [] } = useEntityLinks(campaignId, entityId);
-  const { data: references } = useEntityReferences(campaignId, entityId);
-  const { data: allEntities = [] } = useEntities(campaignId);
-  const createLink = useCreateEntityLink(campaignId);
-  const deleteLink = useDeleteEntityLink(campaignId);
+export function EntitySidePanel({ campaignId, worldId, entityId, onClose, onNavigateToEntity, isGM = false, embedded = false }: EntitySidePanelProps) {
+  const resolvedId = worldId || campaignId;
+  const { data: entity, isLoading } = useEntity(resolvedId, entityId);
+  const { data: links = [] } = useEntityLinks(resolvedId, entityId);
+  const { data: references } = useEntityReferences(resolvedId, entityId);
+  const { data: allEntities = [] } = useEntities(resolvedId);
+  const createLink = useCreateEntityLink(resolvedId);
+  const deleteLink = useDeleteEntityLink(resolvedId);
   const [showLinkPicker, setShowLinkPicker] = useState(false);
   const [linkType, setLinkType] = useState("related_to");
 
@@ -58,11 +60,11 @@ export function EntitySidePanel({ campaignId, entityId, onClose, onNavigateToEnt
 
   const handleAddLink = (targetEntity: Entity) => {
     createLink.mutate({
-      campaignId,
+      campaignId: resolvedId,
       fromEntityId: entity.id,
       toEntityId: targetEntity.id,
       linkType,
-    });
+    } as any);
     setShowLinkPicker(false);
   };
 
@@ -158,13 +160,13 @@ export function EntitySidePanel({ campaignId, entityId, onClose, onNavigateToEnt
 
           {hasSheet && entity.sheetId && (
             <TabsContent value="sheet" className="p-3 mt-0">
-              <SheetEmbed characterId={entity.sheetId} campaignId={campaignId} mode="expanded" />
+              <SheetEmbed characterId={entity.sheetId} campaignId={resolvedId} mode="expanded" />
             </TabsContent>
           )}
 
           {hasSheet && entity.sheetId && (
             <TabsContent value="inventory" className="p-3 mt-0">
-              <InventoryEmbed characterId={entity.sheetId} campaignId={campaignId} mode="expanded" />
+              <InventoryEmbed characterId={entity.sheetId} campaignId={resolvedId} mode="expanded" />
             </TabsContent>
           )}
 
@@ -195,7 +197,7 @@ export function EntitySidePanel({ campaignId, entityId, onClose, onNavigateToEnt
                   ))}
                 </select>
                 <EntityPicker
-                  campaignId={campaignId}
+                  worldId={resolvedId}
                   onSelect={handleAddLink}
                   onCancel={() => setShowLinkPicker(false)}
                   excludeIds={[entity.id]}

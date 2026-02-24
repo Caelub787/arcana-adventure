@@ -15,25 +15,27 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Map, MapPin, Plus, Save, Trash2, X, Edit3, ChevronLeft, FileText, Navigation, Link2, GripVertical, Loader2, Image } from "lucide-react";
 
 interface WorldMapEditorProps {
-  campaignId: string;
+  campaignId?: string;
+  worldId?: string;
   mapId?: string;
   onBack: () => void;
   onMapCreated?: (mapId: string) => void;
 }
 
-export function WorldMapEditor({ campaignId, mapId, onBack, onMapCreated }: WorldMapEditorProps) {
-  const { data: allMaps = [] } = useWorldMaps(campaignId);
-  const { data: entities = [] } = useEntities(campaignId);
-  const { data: pins = [], isLoading: pinsLoading } = useWorldMapPins(campaignId, mapId);
+export function WorldMapEditor({ campaignId, worldId, mapId, onBack, onMapCreated }: WorldMapEditorProps) {
+  const resolvedId = worldId || campaignId;
+  const { data: allMaps = [] } = useWorldMaps(resolvedId);
+  const { data: entities = [] } = useEntities(resolvedId);
+  const { data: pins = [], isLoading: pinsLoading } = useWorldMapPins(resolvedId, mapId);
 
   const currentMap = allMaps.find(m => m.id === mapId);
 
-  const createMap = useCreateWorldMap(campaignId);
-  const updateMap = useUpdateWorldMap(campaignId);
-  const deleteMap = useDeleteWorldMap(campaignId);
-  const createPin = useCreateWorldMapPin(campaignId, mapId);
-  const updatePin = useUpdateWorldMapPin(campaignId, mapId);
-  const deletePin = useDeleteWorldMapPin(campaignId, mapId);
+  const createMap = useCreateWorldMap(resolvedId);
+  const updateMap = useUpdateWorldMap(resolvedId);
+  const deleteMap = useDeleteWorldMap(resolvedId);
+  const createPin = useCreateWorldMapPin(resolvedId, mapId);
+  const updatePin = useUpdateWorldMapPin(resolvedId, mapId);
+  const deletePin = useDeleteWorldMapPin(resolvedId, mapId);
 
   const [title, setTitle] = useState(currentMap?.title || "");
   const [imageUrl, setImageUrl] = useState(currentMap?.imageUrl || "");
@@ -67,7 +69,7 @@ export function WorldMapEditor({ campaignId, mapId, onBack, onMapCreated }: Worl
     try {
       if (isNew) {
         const result = await createMap.mutateAsync({
-          campaignId,
+          campaignId: resolvedId,
           title: title.trim(),
           imageUrl: imageUrl || undefined,
           description: description || undefined,

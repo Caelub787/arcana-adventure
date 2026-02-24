@@ -10,7 +10,8 @@ const ICON_MAP: Record<string, React.ElementType> = {
 };
 
 interface EntityPickerProps {
-  campaignId: string;
+  campaignId?: string;
+  worldId?: string;
   onSelect: (entity: Entity) => void;
   onCancel?: () => void;
   filterType?: string;
@@ -18,14 +19,15 @@ interface EntityPickerProps {
   placeholder?: string;
 }
 
-export function EntityPicker({ campaignId, onSelect, onCancel, filterType, excludeIds = [], placeholder = "Search entities..." }: EntityPickerProps) {
+export function EntityPicker({ campaignId, worldId, onSelect, onCancel, filterType, excludeIds = [], placeholder = "Search entities..." }: EntityPickerProps) {
   const [query, setQuery] = useState("");
   const [selectedType, setSelectedType] = useState<string | undefined>(filterType);
   const [isOpen, setIsOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  const { data: results = [], isLoading } = useSearchEntities(campaignId, query, selectedType);
+  const resolvedId = worldId || campaignId;
+  const { data: results = [], isLoading } = useSearchEntities(resolvedId, query, selectedType);
   const filtered = results.filter(e => !excludeIds.includes(e.id));
 
   useEffect(() => {

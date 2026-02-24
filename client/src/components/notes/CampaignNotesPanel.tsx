@@ -6,7 +6,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { format } from "date-fns";
-import { useEntities, ENTITY_TYPE_CONFIG, type Entity } from "@/lib/worldbuilding-api";
+import { useEntitiesByCampaign, ENTITY_TYPE_CONFIG, type Entity } from "@/lib/worldbuilding-api";
 import { WikiArticleEditor } from "@/components/worldbuilding/WikiArticleEditor";
 
 import { Button } from "@/components/ui/button";
@@ -704,7 +704,7 @@ export function CampaignNotesPanel({
     enabled: !!user && !!campaignId && isOpen,
   });
 
-  const { data: worldEntities = [] } = useEntities(isOpen ? campaignId : undefined);
+  const { data: worldEntities = [] } = useEntitiesByCampaign(isOpen ? campaignId : undefined);
 
   const { data: campaignData } = useQuery({
     queryKey: ["/api/campaigns", campaignId, "detail"],

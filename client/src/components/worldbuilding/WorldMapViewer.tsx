@@ -6,16 +6,18 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Map, MapPin, Plus, ChevronRight, ZoomIn, ZoomOut, Maximize2, Eye, Loader2, FileText, Navigation, Link2, X } from "lucide-react";
 
 interface WorldMapViewerProps {
-  campaignId: string;
+  campaignId?: string;
+  worldId?: string;
   isGM: boolean;
   onEditMap?: (mapId: string) => void;
   onCreateMap?: () => void;
   onNavigateToEntity?: (entityId: string) => void;
 }
 
-export function WorldMapViewer({ campaignId, isGM, onEditMap, onCreateMap, onNavigateToEntity }: WorldMapViewerProps) {
-  const { data: allMaps = [], isLoading } = useWorldMaps(campaignId);
-  const { data: entities = [] } = useEntities(campaignId);
+export function WorldMapViewer({ campaignId, worldId, isGM, onEditMap, onCreateMap, onNavigateToEntity }: WorldMapViewerProps) {
+  const resolvedId = worldId || campaignId;
+  const { data: allMaps = [], isLoading } = useWorldMaps(resolvedId);
+  const { data: entities = [] } = useEntities(resolvedId);
   const [selectedMapId, setSelectedMapId] = useState<string | null>(null);
   const [mapHistory, setMapHistory] = useState<string[]>([]);
 
@@ -128,7 +130,7 @@ export function WorldMapViewer({ campaignId, isGM, onEditMap, onCreateMap, onNav
 
       <div className="flex-1 overflow-hidden">
         <MapCanvas
-          campaignId={campaignId}
+          campaignId={resolvedId}
           map={selectedMap}
           allMaps={visibleMaps}
           entities={entities}

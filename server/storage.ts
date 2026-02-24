@@ -60,7 +60,8 @@ import {
   type WorldMapPin, type InsertWorldMapPin,
   type WorldCalendar, type InsertWorldCalendar,
   type WorldTimelineEvent, type InsertWorldTimelineEvent,
-  users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, items, spells, characterPermissions, initiativeEntries, systemSpecies, campaignSpecies, featTemplates, featTrees, feats, featConnections, characterFeats, systemSpells, systemSkills, characterCustomSkills, systemTraits, characterTraits, characterFolders, characterTemplateFolders, sceneFolders, friendRequests, friendships, noteFolders, notes, noteReferences, noteShares, tokenEffects, spellEffects, itemEffects, tokenActiveEffects, thrownItems, adminNotifications, userNotifications, termsAndConditions, userTermsAcceptance, sandboxFolders, sandboxTemplates, sandboxActors, rollEntries, sceneWalls, sceneDoors, sceneWindows, sceneLights, sceneVisionZones, sceneMapPins, entities, entityLinks, worldShareLinks, worldMaps, worldMapPins, worldCalendars, worldTimelineEvents
+  type World, type InsertWorld,
+  users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, items, spells, characterPermissions, initiativeEntries, systemSpecies, campaignSpecies, featTemplates, featTrees, feats, featConnections, characterFeats, systemSpells, systemSkills, characterCustomSkills, systemTraits, characterTraits, characterFolders, characterTemplateFolders, sceneFolders, friendRequests, friendships, noteFolders, notes, noteReferences, noteShares, tokenEffects, spellEffects, itemEffects, tokenActiveEffects, thrownItems, adminNotifications, userNotifications, termsAndConditions, userTermsAcceptance, sandboxFolders, sandboxTemplates, sandboxActors, rollEntries, sceneWalls, sceneDoors, sceneWindows, sceneLights, sceneVisionZones, sceneMapPins, entities, entityLinks, worldShareLinks, worldMaps, worldMapPins, worldCalendars, worldTimelineEvents, worlds
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql, inArray, or, isNull } from "drizzle-orm";
@@ -552,6 +553,22 @@ export interface IStorage {
   createWorldTimelineEvent(event: InsertWorldTimelineEvent): Promise<WorldTimelineEvent>;
   updateWorldTimelineEvent(id: string, data: Partial<WorldTimelineEvent>): Promise<WorldTimelineEvent | undefined>;
   deleteWorldTimelineEvent(id: string): Promise<void>;
+
+  // World operations
+  getWorldsByUser(userId: string): Promise<World[]>;
+  getWorld(id: string): Promise<World | undefined>;
+  createWorld(world: InsertWorld): Promise<World>;
+  updateWorld(id: string, data: Partial<World>): Promise<World | undefined>;
+  deleteWorld(id: string): Promise<void>;
+
+  // World-scoped query operations (query by worldId instead of campaignId)
+  getEntitiesByWorld(worldId: string, includeDeleted?: boolean): Promise<Entity[]>;
+  searchEntitiesByWorld(worldId: string, query: string, entityType?: string): Promise<Entity[]>;
+  getEntityLinksByWorld(worldId: string): Promise<EntityLink[]>;
+  getWorldShareLinkByWorld(worldId: string): Promise<WorldShareLink | undefined>;
+  getWorldMapsByWorld(worldId: string): Promise<WorldMap[]>;
+  getWorldCalendarsByWorld(worldId: string): Promise<WorldCalendar[]>;
+  getWorldTimelineEventsByWorld(worldId: string): Promise<WorldTimelineEvent[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -3936,6 +3953,91 @@ export class DatabaseStorage implements IStorage {
 
   async deleteWorldTimelineEvent(id: string): Promise<void> {
     await db.delete(worldTimelineEvents).where(eq(worldTimelineEvents.id, id));
+  }
+
+  // ============================================
+  // WORLD OPERATIONS
+  // ============================================
+
+  async getWorldsByUser(userId: string): Promise<World[]> {
+    return await db.select().from(worlds)
+      .where(eq(worlds.userId, userId))
+      .orderBy(desc(worlds.updatedAt));
+  }
+
+  async getWorld(id: string): Promise<World | undefined> {
+    const [world] = await db.select().from(worlds).where(eq(worlds.id, id));
+    return world;
+  }
+
+  async createWorld(world: InsertWorld): Promise<World> {
+    const [created] = await db.insert(worlds).values(world).returning();
+    return created;
+  }
+
+  async updateWorld(id: string, data: Partial<World>): Promise<World | undefined> {
+    const [updated] = await db.update(worlds)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(worlds.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteWorld(id: string): Promise<void> {
+    await db.delete(worlds).where(eq(worlds.id, id));
+  }
+
+  // ============================================
+  // WORLD-SCOPED QUERY OPERATIONS
+  // ============================================
+
+  async getEntitiesByWorld(worldId: string, includeDeleted = false): Promise<Entity[]> {
+    if (includeDeleted) {
+      return await db.select().from(entities).where(eq(entities.worldId, worldId));
+    }
+    return await db.select().from(entities).where(
+      and(eq(entities.worldId, worldId), eq(entities.isDeleted, false))
+    );
+  }
+
+  async searchEntitiesByWorld(worldId: string, query: string, entityType?: string): Promise<Entity[]> {
+    const lowerQuery = `%${query.toLowerCase()}%`;
+    const conditions = [
+      eq(entities.worldId, worldId),
+      eq(entities.isDeleted, false),
+      sql`LOWER(${entities.displayName}) LIKE ${lowerQuery}`
+    ];
+    if (entityType) {
+      conditions.push(eq(entities.entityType, entityType));
+    }
+    return await db.select().from(entities).where(and(...conditions));
+  }
+
+  async getEntityLinksByWorld(worldId: string): Promise<EntityLink[]> {
+    return await db.select().from(entityLinks).where(eq(entityLinks.worldId, worldId));
+  }
+
+  async getWorldShareLinkByWorld(worldId: string): Promise<WorldShareLink | undefined> {
+    const [link] = await db.select().from(worldShareLinks)
+      .where(and(eq(worldShareLinks.worldId, worldId), eq(worldShareLinks.isActive, true)))
+      .limit(1);
+    return link;
+  }
+
+  async getWorldMapsByWorld(worldId: string): Promise<WorldMap[]> {
+    return await db.select().from(worldMaps)
+      .where(eq(worldMaps.worldId, worldId))
+      .orderBy(worldMaps.sortOrder);
+  }
+
+  async getWorldCalendarsByWorld(worldId: string): Promise<WorldCalendar[]> {
+    return await db.select().from(worldCalendars).where(eq(worldCalendars.worldId, worldId));
+  }
+
+  async getWorldTimelineEventsByWorld(worldId: string): Promise<WorldTimelineEvent[]> {
+    return await db.select().from(worldTimelineEvents)
+      .where(eq(worldTimelineEvents.worldId, worldId))
+      .orderBy(worldTimelineEvents.sortOrder);
   }
 }
 

@@ -10,14 +10,27 @@ import { EntitySidePanel } from "@/components/worldbuilding/EntitySidePanel";
 import { WorldCalendar } from "@/components/worldbuilding/WorldCalendar";
 import { WorldMapViewer } from "@/components/worldbuilding/WorldMapViewer";
 import { WorldMapEditor } from "@/components/worldbuilding/WorldMapEditor";
-import { useEntities, useEntityLinks, useEntity, useWorldbuildingSync, ENTITY_TYPE_CONFIG, type Entity, useWorldMaps } from "@/lib/worldbuilding-api";
+import { useEntities, useEntityLinks, useEntity, useDeleteEntity, useWorldbuildingSync, ENTITY_TYPE_CONFIG, type Entity, useWorldMaps } from "@/lib/worldbuilding-api";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, Globe, Loader2, Network, Clock, FileText, ChevronLeft, BookOpen, Search, Plus, User, MapPin, Shield, Scroll, Calendar, Package, Swords, Sparkles, Menu, X, Info, Map, Share2, ChevronRight, Copy, Check, Trash2, ExternalLink } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { ArrowLeft, Globe, Loader2, Network, Clock, FileText, ChevronLeft, BookOpen, Search, Plus, User, MapPin, Shield, Scroll, Calendar, Package, Swords, Sparkles, Menu, X, Info, Map, Share2, ChevronRight, Copy, Check, Trash2, ExternalLink, Settings } from "lucide-react";
 import ProfileDropdown from "@/components/ProfileDropdown";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useToast } from "@/hooks/use-toast";
@@ -36,13 +49,24 @@ const SECTION_CONFIG: { key: ActiveSection; label: string; icon: React.ElementTy
   { key: "graph", label: "Graph", icon: Network, description: "Relationship graph" },
 ];
 
+interface World {
+  id: string;
+  name: string;
+  description?: string | null;
+  image?: string | null;
+  userId: string;
+  campaignId?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export default function WorldBuilder() {
   const [, setLocation] = useLocation();
   const { user, logout } = useAuth();
   const isMobile = useIsMobile();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const [selectedCampaignId, setSelectedCampaignId] = useState<string>("");
+  const [selectedWorldId, setSelectedWorldId] = useState<string>("");
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
   const [activeSection, setActiveSection] = useState<ActiveSection>("encyclopedia");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -55,71 +79,127 @@ export default function WorldBuilder() {
   const [editingMapId, setEditingMapId] = useState<string | null>(null);
   const [creatingMap, setCreatingMap] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
+  const [showCreateWorldDialog, setShowCreateWorldDialog] = useState(false);
+  const [newWorldName, setNewWorldName] = useState("");
+  const [newWorldDescription, setNewWorldDescription] = useState("");
+  const [showWorldSettingsDialog, setShowWorldSettingsDialog] = useState(false);
+  const [editWorldName, setEditWorldName] = useState("");
+  const [editWorldDescription, setEditWorldDescription] = useState("");
+  const [showDeleteWorldConfirm, setShowDeleteWorldConfirm] = useState(false);
+  const [deleteEntityConfirm, setDeleteEntityConfirm] = useState<string | null>(null);
 
-  const { data: campaignsData, isLoading: campaignsLoading } = useQuery<{ created: any[], joined: any[] }>({
-    queryKey: ['/api/campaigns'],
-    enabled: !!user,
-  });
-
-  const gmCampaigns = [
-    ...(campaignsData?.created || []),
-    ...(campaignsData?.joined || []).filter((c: any) => c.role === 'gm' || c.role === 'assistant_gm'),
-  ];
-  const uniqueGmCampaigns = gmCampaigns.filter((c, i, arr) => arr.findIndex(x => x.id === c.id) === i);
-
-  useEffect(() => {
-    if (uniqueGmCampaigns.length > 0 && !selectedCampaignId) {
-      setSelectedCampaignId(uniqueGmCampaigns[0].id);
-    }
-  }, [uniqueGmCampaigns, selectedCampaignId]);
-
-  useWorldbuildingSync(selectedCampaignId);
-  const { data: entities = [], isLoading: entitiesLoading } = useEntities(selectedCampaignId || undefined);
-  const { data: links = [] } = useEntityLinks(selectedCampaignId || undefined);
-  const { data: selectedEntity } = useEntity(
-    selectedCampaignId || undefined,
-    selectedEntityId || undefined
-  );
-
-  const { data: characters = [] } = useQuery<any[]>({
-    queryKey: ['/api/campaigns', selectedCampaignId, 'characters'],
+  const { data: worlds = [], isLoading: worldsLoading } = useQuery<World[]>({
+    queryKey: ['/api/worlds'],
     queryFn: async () => {
-      const res = await fetch(`/api/campaigns/${selectedCampaignId}/characters`, { credentials: 'include' });
+      const res = await fetch('/api/worlds', { credentials: 'include' });
       if (!res.ok) return [];
       return res.json();
     },
-    enabled: !!selectedCampaignId,
+    enabled: !!user,
   });
 
+  useEffect(() => {
+    if (worlds.length > 0 && !selectedWorldId) {
+      setSelectedWorldId(worlds[0].id);
+    }
+  }, [worlds, selectedWorldId]);
+
+  const selectedWorld = worlds.find(w => w.id === selectedWorldId);
+
+  const createWorldMutation = useMutation({
+    mutationFn: async (data: { name: string; description?: string }) => {
+      const res = await fetch('/api/worlds', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) throw new Error('Failed to create world');
+      return res.json();
+    },
+    onSuccess: (newWorld: World) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/worlds'] });
+      setSelectedWorldId(newWorld.id);
+      setShowCreateWorldDialog(false);
+      setNewWorldName("");
+      setNewWorldDescription("");
+      toast({ title: "World created" });
+    },
+  });
+
+  const updateWorldMutation = useMutation({
+    mutationFn: async (data: { name: string; description?: string }) => {
+      const res = await fetch(`/api/worlds/${selectedWorldId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) throw new Error('Failed to update world');
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/worlds'] });
+      setShowWorldSettingsDialog(false);
+      toast({ title: "World updated" });
+    },
+  });
+
+  const deleteWorldMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/worlds/${selectedWorldId}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      if (!res.ok) throw new Error('Failed to delete world');
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/worlds'] });
+      setSelectedWorldId("");
+      setShowDeleteWorldConfirm(false);
+      setShowWorldSettingsDialog(false);
+      toast({ title: "World deleted" });
+    },
+  });
+
+  useWorldbuildingSync(selectedWorldId);
+  const { data: entities = [], isLoading: entitiesLoading } = useEntities(selectedWorldId || undefined);
+  const { data: links = [] } = useEntityLinks(selectedWorldId || undefined);
+  const { data: selectedEntity } = useEntity(
+    selectedWorldId || undefined,
+    selectedEntityId || undefined
+  );
+  const deleteEntityMutation = useDeleteEntity(selectedWorldId || undefined);
+
   const { data: shareLink } = useQuery<any>({
-    queryKey: ['/api/campaigns', selectedCampaignId, 'share-link'],
+    queryKey: ['/api/worlds', selectedWorldId, 'share-link'],
     queryFn: async () => {
-      const res = await fetch(`/api/campaigns/${selectedCampaignId}/share-link`, { credentials: 'include' });
+      const res = await fetch(`/api/worlds/${selectedWorldId}/share-link`, { credentials: 'include' });
       if (!res.ok) return null;
       return res.json();
     },
-    enabled: !!selectedCampaignId,
+    enabled: !!selectedWorldId,
   });
 
   const createShareLink = useMutation({
     mutationFn: async () => {
-      const res = await fetch(`/api/campaigns/${selectedCampaignId}/share-link`, { method: 'POST', credentials: 'include' });
+      const res = await fetch(`/api/worlds/${selectedWorldId}/share-link`, { method: 'POST', credentials: 'include' });
       if (!res.ok) throw new Error('Failed to create share link');
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/campaigns', selectedCampaignId, 'share-link'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/worlds', selectedWorldId, 'share-link'] });
       toast({ title: "Share link created" });
     },
   });
 
   const deleteShareLink = useMutation({
     mutationFn: async (linkId: string) => {
-      const res = await fetch(`/api/campaigns/${selectedCampaignId}/share-link/${linkId}`, { method: 'DELETE', credentials: 'include' });
+      const res = await fetch(`/api/worlds/${selectedWorldId}/share-link/${linkId}`, { method: 'DELETE', credentials: 'include' });
       if (!res.ok) throw new Error('Failed to revoke share link');
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/campaigns', selectedCampaignId, 'share-link'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/worlds', selectedWorldId, 'share-link'] });
       toast({ title: "Share link revoked" });
     },
   });
@@ -132,6 +212,20 @@ export default function WorldBuilder() {
       setCopiedLink(true);
       setTimeout(() => setCopiedLink(false), 2000);
     }
+  };
+
+  const handleDeleteEntity = async () => {
+    if (!deleteEntityConfirm) return;
+    try {
+      await deleteEntityMutation.mutateAsync(deleteEntityConfirm);
+      if (selectedEntityId === deleteEntityConfirm) {
+        setSelectedEntityId(null);
+      }
+      toast({ title: "Entity deleted" });
+    } catch {
+      toast({ title: "Failed to delete entity", variant: "destructive" });
+    }
+    setDeleteEntityConfirm(null);
   };
 
   const filteredEntities = useMemo(() => {
@@ -182,6 +276,14 @@ export default function WorldBuilder() {
     setLocation("/login");
   };
 
+  const openWorldSettings = () => {
+    if (selectedWorld) {
+      setEditWorldName(selectedWorld.name);
+      setEditWorldDescription(selectedWorld.description || "");
+      setShowWorldSettingsDialog(true);
+    }
+  };
+
   const sectionNavContent = (
     <div className="flex flex-col h-full">
       <div className="p-3 border-b border-stone-700">
@@ -190,26 +292,38 @@ export default function WorldBuilder() {
             <Globe className="h-4 w-4 text-amber-400" />
             <h2 className="text-xs font-semibold text-stone-300 uppercase tracking-wider">World Builder</h2>
           </div>
-          {isMobile && (
-            <Button variant="ghost" size="icon" className="h-6 w-6 text-stone-500 hover:text-stone-300" onClick={() => setMobileSidebarOpen(false)} data-testid="button-close-mobile-sidebar">
-              <X className="h-3.5 w-3.5" />
-            </Button>
-          )}
+          <div className="flex items-center gap-1">
+            {selectedWorldId && (
+              <Button variant="ghost" size="icon" className="h-6 w-6 text-stone-500 hover:text-stone-300" onClick={openWorldSettings} data-testid="button-world-settings">
+                <Settings className="h-3.5 w-3.5" />
+              </Button>
+            )}
+            {isMobile && (
+              <Button variant="ghost" size="icon" className="h-6 w-6 text-stone-500 hover:text-stone-300" onClick={() => setMobileSidebarOpen(false)} data-testid="button-close-mobile-sidebar">
+                <X className="h-3.5 w-3.5" />
+              </Button>
+            )}
+          </div>
         </div>
-        {uniqueGmCampaigns.length > 0 && (
-          <Select value={selectedCampaignId} onValueChange={(val) => { setSelectedCampaignId(val); setSelectedEntityId(null); }}>
-            <SelectTrigger className="w-full bg-stone-800 border-stone-700 text-stone-200 h-7 text-xs" data-testid="select-campaign">
-              <SelectValue placeholder="Select Campaign" />
-            </SelectTrigger>
-            <SelectContent className="bg-stone-800 border-stone-700">
-              {uniqueGmCampaigns.map((c: any) => (
-                <SelectItem key={c.id} value={c.id} className="text-stone-200 focus:bg-stone-700 focus:text-stone-100 text-xs">
-                  {c.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
+        <div className="flex items-center gap-1">
+          {worlds.length > 0 && (
+            <Select value={selectedWorldId} onValueChange={(val) => { setSelectedWorldId(val); setSelectedEntityId(null); }}>
+              <SelectTrigger className="w-full bg-stone-800 border-stone-700 text-stone-200 h-7 text-xs" data-testid="select-world">
+                <SelectValue placeholder="Select World" />
+              </SelectTrigger>
+              <SelectContent className="bg-stone-800 border-stone-700">
+                {worlds.map((w: World) => (
+                  <SelectItem key={w.id} value={w.id} className="text-stone-200 focus:bg-stone-700 focus:text-stone-100 text-xs">
+                    {w.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          <Button variant="ghost" size="icon" className="h-7 w-7 flex-shrink-0 text-amber-400 hover:text-amber-300" onClick={() => setShowCreateWorldDialog(true)} data-testid="button-create-world">
+            <Plus className="h-3.5 w-3.5" />
+          </Button>
+        </div>
       </div>
 
       <nav className="p-2 border-b border-stone-800">
@@ -234,7 +348,7 @@ export default function WorldBuilder() {
         ))}
       </nav>
 
-      {activeSection === "encyclopedia" && selectedCampaignId && (
+      {activeSection === "encyclopedia" && selectedWorldId && (
         <div className="flex-1 flex flex-col min-h-0">
           <div className="p-2 border-b border-stone-800">
             <div className="flex items-center gap-1 mb-1.5">
@@ -352,7 +466,7 @@ export default function WorldBuilder() {
       <header className="border-b border-stone-800 bg-stone-900/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="flex items-center justify-between px-2 md:px-4 py-2 gap-2">
           <div className="flex items-center gap-1.5 md:gap-3 min-w-0">
-            {selectedCampaignId && (
+            {selectedWorldId && (
               <Button variant="ghost" size="icon" className="md:hidden h-8 w-8 text-stone-400 hover:text-stone-200 flex-shrink-0" onClick={() => setMobileSidebarOpen(!mobileSidebarOpen)} data-testid="button-toggle-mobile-sidebar">
                 <Menu className="h-4 w-4" />
               </Button>
@@ -367,7 +481,7 @@ export default function WorldBuilder() {
               <h1 className="text-base font-semibold text-stone-200">World Builder</h1>
             </div>
             <Globe className="md:hidden h-5 w-5 text-amber-400 flex-shrink-0" />
-            {selectedCampaignId && (
+            {selectedWorldId && (
               <div className="flex items-center">
                 <Badge variant="outline" className="text-[10px] border-stone-700 text-stone-400 px-1.5 py-0">
                   {SECTION_CONFIG.find(s => s.key === activeSection)?.label}
@@ -376,7 +490,7 @@ export default function WorldBuilder() {
             )}
           </div>
           <div className="flex items-center gap-1.5 md:gap-3 flex-shrink-0">
-            {selectedCampaignId && (
+            {selectedWorldId && (
               <Popover>
                 <PopoverTrigger asChild>
                   <Button variant="ghost" size="sm" className="h-8 gap-1.5 text-stone-400 hover:text-amber-400" data-testid="button-share-world">
@@ -437,18 +551,18 @@ export default function WorldBuilder() {
         </div>
       </header>
 
-      {campaignsLoading ? (
+      {worldsLoading ? (
         <div className="flex items-center justify-center h-[calc(100vh-49px)]">
           <Loader2 className="h-8 w-8 animate-spin text-stone-500" />
         </div>
-      ) : uniqueGmCampaigns.length === 0 ? (
+      ) : worlds.length === 0 ? (
         <div className="flex flex-col items-center justify-center h-[calc(100vh-49px)] p-6 text-center">
           <Globe className="h-16 w-16 text-stone-700 mb-4" />
-          <h2 className="text-lg font-semibold text-stone-500 mb-2">No Campaigns Found</h2>
-          <p className="text-stone-600 text-sm max-w-md mb-4">You need to be a GM of at least one campaign to use the World Builder.</p>
-          <Link href="/my-campaigns">
-            <Button className="bg-amber-600 hover:bg-amber-500 text-white" data-testid="button-go-campaigns">Go to My Campaigns</Button>
-          </Link>
+          <h2 className="text-lg font-semibold text-stone-500 mb-2" data-testid="text-no-worlds">Create Your First World</h2>
+          <p className="text-stone-600 text-sm max-w-md mb-4">Worlds are independent containers for your worldbuilding. Create articles, maps, timelines, and calendars all in one place.</p>
+          <Button className="bg-amber-600 hover:bg-amber-500 text-white" onClick={() => setShowCreateWorldDialog(true)} data-testid="button-create-first-world">
+            <Plus className="h-4 w-4 mr-2" /> Create World
+          </Button>
         </div>
       ) : (
         <div className="flex h-[calc(100vh-49px)] relative">
@@ -467,16 +581,16 @@ export default function WorldBuilder() {
                   <Button variant="ghost" size="icon" className="h-8 w-8 text-stone-400 hover:text-stone-200 mb-2" onClick={() => setSidebarCollapsed(false)} data-testid="button-expand-sidebar">
                     <ChevronRight className="h-4 w-4" />
                   </Button>
-                  {SECTION_CONFIG.map(({ key, label, icon: Icon }) => (
+                  {SECTION_CONFIG.map(({ key, icon: Icon }) => (
                     <Button
                       key={key}
                       variant="ghost"
                       size="icon"
-                      className={`h-8 w-8 ${activeSection === key ? 'text-amber-400 bg-amber-500/10' : 'text-stone-500 hover:text-stone-300'}`}
-                      onClick={() => { setActiveSection(key); setSidebarCollapsed(false); }}
-                      title={label}
+                      className={`h-8 w-8 ${activeSection === key ? 'text-amber-400' : 'text-stone-500 hover:text-stone-300'}`}
+                      onClick={() => { setActiveSection(key); if (key !== "encyclopedia") setSelectedEntityId(null); }}
+                      data-testid={`nav-section-collapsed-${key}`}
                     >
-                      <Icon className="h-3.5 w-3.5" />
+                      <Icon className="h-4 w-4" />
                     </Button>
                   ))}
                 </div>
@@ -520,6 +634,15 @@ export default function WorldBuilder() {
                             {selectedEntity.visibility === "gm_only" ? "GM Only" : selectedEntity.visibility === "player_visible" ? "Players" : "Shared"}
                           </span>
                         </div>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 text-stone-500 hover:text-red-400 flex-shrink-0"
+                          onClick={() => setDeleteEntityConfirm(selectedEntityId)}
+                          data-testid="button-delete-entity"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
                         {isMobile && (
                           <Button variant="ghost" size="icon" className="h-7 w-7 text-stone-400 hover:text-amber-400 flex-shrink-0" onClick={() => setMobileDetailOpen(true)} data-testid="button-open-mobile-detail">
                             <Info className="h-4 w-4" />
@@ -529,7 +652,7 @@ export default function WorldBuilder() {
                       <div className="flex-1 overflow-y-auto">
                         <WikiArticleEditor
                           entity={selectedEntity}
-                          campaignId={selectedCampaignId}
+                          worldId={selectedWorldId}
                           isGM={true}
                         />
                       </div>
@@ -537,7 +660,7 @@ export default function WorldBuilder() {
 
                     <div className="hidden md:block w-72 border-l border-stone-800 bg-stone-900/30 flex-shrink-0 overflow-y-auto">
                       <EntitySidePanel
-                        campaignId={selectedCampaignId}
+                        worldId={selectedWorldId}
                         entityId={selectedEntityId}
                         onClose={() => setSelectedEntityId(null)}
                         onNavigateToEntity={handleSelectEntity}
@@ -574,14 +697,14 @@ export default function WorldBuilder() {
               <>
                 {editingMapId || creatingMap ? (
                   <WorldMapEditor
-                    campaignId={selectedCampaignId}
+                    worldId={selectedWorldId}
                     mapId={editingMapId || undefined}
                     onBack={() => { setEditingMapId(null); setCreatingMap(false); }}
                     onMapCreated={(newId) => { setCreatingMap(false); setEditingMapId(newId); }}
                   />
                 ) : (
                   <WorldMapViewer
-                    campaignId={selectedCampaignId}
+                    worldId={selectedWorldId}
                     isGM={true}
                     onEditMap={(mapId) => setEditingMapId(mapId)}
                     onCreateMap={() => setCreatingMap(true)}
@@ -594,19 +717,19 @@ export default function WorldBuilder() {
               </>
             )}
 
-            {activeSection === "timeline" && selectedCampaignId && (
+            {activeSection === "timeline" && selectedWorldId && (
               <div className="flex-1 overflow-y-auto">
                 <TimelineView
-                  campaignId={selectedCampaignId}
+                  worldId={selectedWorldId}
                   isGM={true}
                   onSelectEntity={handleSelectEntity}
                 />
               </div>
             )}
 
-            {activeSection === "calendar" && selectedCampaignId && (
+            {activeSection === "calendar" && selectedWorldId && (
               <div className="flex-1 overflow-hidden">
-                <WorldCalendar campaignId={selectedCampaignId} isGM={true} />
+                <WorldCalendar worldId={selectedWorldId} isGM={true} />
               </div>
             )}
 
@@ -629,7 +752,7 @@ export default function WorldBuilder() {
           <div className="fixed inset-0 z-[60] bg-black/50" onClick={() => setMobileDetailOpen(false)} data-testid="mobile-detail-backdrop" />
           <div className="fixed inset-y-0 right-0 z-[70] w-full max-w-sm bg-stone-900 border-l border-stone-800 shadow-2xl overflow-y-auto" data-testid="mobile-detail-panel">
             <EntitySidePanel
-              campaignId={selectedCampaignId}
+              worldId={selectedWorldId}
               entityId={selectedEntityId}
               onClose={() => setMobileDetailOpen(false)}
               onNavigateToEntity={(id) => { setMobileDetailOpen(false); handleSelectEntity(id); }}
@@ -640,16 +763,151 @@ export default function WorldBuilder() {
         </>
       )}
 
-      {showCreateInline && selectedCampaignId && (
+      {showCreateInline && selectedWorldId && (
         <WorldbuilderPanel
-          campaignId={selectedCampaignId}
+          worldId={selectedWorldId}
           isGM={true}
-          characters={characters}
           onOpenEntity={handleSelectEntity}
           createOnly={true}
           onCloseCreate={() => setShowCreateInline(false)}
         />
       )}
+
+      <Dialog open={showCreateWorldDialog} onOpenChange={setShowCreateWorldDialog}>
+        <DialogContent className="bg-stone-900 border-stone-700 text-stone-200 max-w-md" data-testid="dialog-create-world">
+          <DialogHeader>
+            <DialogTitle className="text-stone-100">Create New World</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label className="text-xs text-stone-400">Name *</Label>
+              <Input
+                value={newWorldName}
+                onChange={(e) => setNewWorldName(e.target.value)}
+                placeholder="World name..."
+                className="mt-1 bg-stone-800 border-stone-700 text-stone-200"
+                data-testid="input-world-name"
+              />
+            </div>
+            <div>
+              <Label className="text-xs text-stone-400">Description</Label>
+              <Textarea
+                value={newWorldDescription}
+                onChange={(e) => setNewWorldDescription(e.target.value)}
+                placeholder="Brief description of your world..."
+                className="mt-1 bg-stone-800 border-stone-700 text-stone-200 min-h-[60px]"
+                data-testid="input-world-description"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setShowCreateWorldDialog(false)} className="text-stone-400" data-testid="button-cancel-create-world">Cancel</Button>
+            <Button
+              onClick={() => createWorldMutation.mutate({ name: newWorldName.trim(), description: newWorldDescription.trim() || undefined })}
+              disabled={!newWorldName.trim() || createWorldMutation.isPending}
+              className="bg-amber-600 hover:bg-amber-500 text-white"
+              data-testid="button-confirm-create-world"
+            >
+              {createWorldMutation.isPending ? "Creating..." : "Create"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showWorldSettingsDialog} onOpenChange={setShowWorldSettingsDialog}>
+        <DialogContent className="bg-stone-900 border-stone-700 text-stone-200 max-w-md" data-testid="dialog-world-settings">
+          <DialogHeader>
+            <DialogTitle className="text-stone-100">World Settings</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label className="text-xs text-stone-400">Name</Label>
+              <Input
+                value={editWorldName}
+                onChange={(e) => setEditWorldName(e.target.value)}
+                placeholder="World name..."
+                className="mt-1 bg-stone-800 border-stone-700 text-stone-200"
+                data-testid="input-edit-world-name"
+              />
+            </div>
+            <div>
+              <Label className="text-xs text-stone-400">Description</Label>
+              <Textarea
+                value={editWorldDescription}
+                onChange={(e) => setEditWorldDescription(e.target.value)}
+                placeholder="Brief description..."
+                className="mt-1 bg-stone-800 border-stone-700 text-stone-200 min-h-[60px]"
+                data-testid="input-edit-world-description"
+              />
+            </div>
+          </div>
+          <DialogFooter className="flex justify-between items-center">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-red-400 hover:text-red-300 hover:bg-red-500/10"
+              onClick={() => setShowDeleteWorldConfirm(true)}
+              data-testid="button-delete-world"
+            >
+              <Trash2 className="h-3.5 w-3.5 mr-1.5" />
+              Delete World
+            </Button>
+            <div className="flex gap-2">
+              <Button variant="ghost" onClick={() => setShowWorldSettingsDialog(false)} className="text-stone-400">Cancel</Button>
+              <Button
+                onClick={() => updateWorldMutation.mutate({ name: editWorldName.trim(), description: editWorldDescription.trim() || undefined })}
+                disabled={!editWorldName.trim() || updateWorldMutation.isPending}
+                className="bg-amber-600 hover:bg-amber-500 text-white"
+                data-testid="button-save-world-settings"
+              >
+                {updateWorldMutation.isPending ? "Saving..." : "Save"}
+              </Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={showDeleteWorldConfirm} onOpenChange={setShowDeleteWorldConfirm}>
+        <AlertDialogContent className="bg-stone-900 border-stone-700">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-stone-200">Delete World</AlertDialogTitle>
+            <AlertDialogDescription className="text-stone-400">
+              This will permanently delete all articles, maps, timelines, and calendars in this world. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="bg-stone-800 border-stone-700 text-stone-300 hover:bg-stone-700" data-testid="button-cancel-delete-world">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-500 text-white"
+              onClick={() => deleteWorldMutation.mutate()}
+              data-testid="button-confirm-delete-world"
+            >
+              {deleteWorldMutation.isPending ? "Deleting..." : "Delete World"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={!!deleteEntityConfirm} onOpenChange={() => setDeleteEntityConfirm(null)}>
+        <AlertDialogContent className="bg-stone-900 border-stone-700">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-stone-200">Delete {selectedEntity?.displayName || "Entity"}?</AlertDialogTitle>
+            <AlertDialogDescription className="text-stone-400">
+              This will permanently delete this entity and its article content. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="bg-stone-800 border-stone-700 text-stone-300 hover:bg-stone-700" data-testid="button-cancel-delete-entity">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-500 text-white"
+              onClick={handleDeleteEntity}
+              data-testid="button-confirm-delete-entity"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

@@ -16,7 +16,8 @@ const ICON_MAP: Record<string, React.ElementType> = {
 };
 
 interface WorldbuilderPanelProps {
-  campaignId: string;
+  campaignId?: string;
+  worldId?: string;
   isGM: boolean;
   characters?: any[];
   onOpenEntity?: (entityId: string) => void;
@@ -24,11 +25,12 @@ interface WorldbuilderPanelProps {
   onCloseCreate?: () => void;
 }
 
-export function WorldbuilderPanel({ campaignId, isGM, characters = [], onOpenEntity, createOnly = false, onCloseCreate }: WorldbuilderPanelProps) {
-  useWorldbuildingSync(campaignId);
-  const { data: entities = [], isLoading } = useEntities(campaignId);
-  const createEntity = useCreateEntity(campaignId);
-  const deleteEntity = useDeleteEntity(campaignId);
+export function WorldbuilderPanel({ campaignId, worldId, isGM, characters = [], onOpenEntity, createOnly = false, onCloseCreate }: WorldbuilderPanelProps) {
+  const resolvedId = worldId || campaignId;
+  useWorldbuildingSync(resolvedId);
+  const { data: entities = [], isLoading } = useEntities(resolvedId);
+  const createEntity = useCreateEntity(resolvedId);
+  const deleteEntity = useDeleteEntity(resolvedId);
   const [searchQuery, setSearchQuery] = useState("");
   const [filterType, setFilterType] = useState<string>("");
   const [showCreateDialog, setShowCreateDialog] = useState(createOnly);
@@ -65,7 +67,8 @@ export function WorldbuilderPanel({ campaignId, isGM, characters = [], onOpenEnt
   const handleCreate = async () => {
     if (!newEntity.displayName.trim()) return;
     await createEntity.mutateAsync({
-      campaignId,
+      worldId: worldId || undefined,
+      campaignId: campaignId || undefined,
       displayName: newEntity.displayName.trim(),
       entityType: newEntity.entityType,
       description: newEntity.description.trim() || undefined,
@@ -398,7 +401,7 @@ export function WorldbuilderPanel({ campaignId, isGM, characters = [], onOpenEnt
 
       {selectedEntityId && (
         <EntitySidePanel
-          campaignId={campaignId}
+          worldId={resolvedId}
           entityId={selectedEntityId}
           onClose={() => setSelectedEntityId(null)}
           onNavigateToEntity={(id) => setSelectedEntityId(id)}

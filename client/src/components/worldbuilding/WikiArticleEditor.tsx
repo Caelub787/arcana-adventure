@@ -88,7 +88,8 @@ const TYPE_TEMPLATE_FIELDS: Record<string, { key: string; label: string; type: '
 
 interface WikiArticleEditorProps {
   entity: Entity;
-  campaignId: string;
+  campaignId?: string;
+  worldId?: string;
   isGM: boolean;
   onEntityUpdated?: () => void;
 }
@@ -110,8 +111,10 @@ function renderMarkdownPreview(content: string): string {
   return html;
 }
 
-export function WikiArticleEditor({ entity, campaignId, isGM, onEntityUpdated }: WikiArticleEditorProps) {
-  const updateEntity = useUpdateEntity(campaignId);
+export function WikiArticleEditor({ entity, campaignId, worldId, isGM, onEntityUpdated }: WikiArticleEditorProps) {
+  const resolvedId = worldId || campaignId;
+  const scope = worldId ? "worlds" as const : "campaigns" as const;
+  const updateEntity = useUpdateEntity(resolvedId, scope);
   const [mode, setMode] = useState<"view" | "edit">("view");
   const [articleContent, setArticleContent] = useState(entity.articleContent || "");
   const [description, setDescription] = useState(entity.description || "");

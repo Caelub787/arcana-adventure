@@ -1428,6 +1428,25 @@ export type SceneMapPin = typeof sceneMapPins.$inferSelect;
 // WORLDBUILDING ENTITY SYSTEM
 // ============================================
 
+export const worlds = pgTable("worlds", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  description: text("description"),
+  image: text("image"),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  campaignId: varchar("campaign_id").references(() => campaigns.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertWorldSchema = createInsertSchema(worlds).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertWorld = z.infer<typeof insertWorldSchema>;
+export type World = typeof worlds.$inferSelect;
+
 export const ENTITY_TYPES = [
   "character", "location", "faction", "quest", "event", "lore", "item", "encounter", "clue", "magic", "timeline", "article"
 ] as const;
@@ -1438,7 +1457,8 @@ export type VisibilityLevel = typeof VISIBILITY_LEVELS[number];
 
 export const entities = pgTable("entities", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  campaignId: varchar("campaign_id").notNull().references(() => campaigns.id, { onDelete: "cascade" }),
+  campaignId: varchar("campaign_id").references(() => campaigns.id, { onDelete: "cascade" }),
+  worldId: varchar("world_id").references(() => worlds.id, { onDelete: "cascade" }),
   entityType: text("entity_type").notNull(),
   displayName: text("display_name").notNull(),
   description: text("description"),
@@ -1485,7 +1505,8 @@ export type LinkType = typeof LINK_TYPES[number];
 
 export const entityLinks = pgTable("entity_links", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  campaignId: varchar("campaign_id").notNull().references(() => campaigns.id, { onDelete: "cascade" }),
+  campaignId: varchar("campaign_id").references(() => campaigns.id, { onDelete: "cascade" }),
+  worldId: varchar("world_id").references(() => worlds.id, { onDelete: "cascade" }),
   fromEntityId: varchar("from_entity_id").notNull().references(() => entities.id, { onDelete: "cascade" }),
   toEntityId: varchar("to_entity_id").notNull().references(() => entities.id, { onDelete: "cascade" }),
   linkType: text("link_type").notNull(),
@@ -1504,7 +1525,8 @@ export type EntityLink = typeof entityLinks.$inferSelect;
 
 export const worldShareLinks = pgTable("world_share_links", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  campaignId: varchar("campaign_id").notNull().references(() => campaigns.id, { onDelete: "cascade" }),
+  campaignId: varchar("campaign_id").references(() => campaigns.id, { onDelete: "cascade" }),
+  worldId: varchar("world_id").references(() => worlds.id, { onDelete: "cascade" }),
   token: text("token").notNull().unique(),
   createdBy: varchar("created_by").references(() => users.id, { onDelete: "set null" }),
   isActive: boolean("is_active").default(true).notNull(),
@@ -1520,7 +1542,8 @@ export type WorldShareLink = typeof worldShareLinks.$inferSelect;
 
 export const worldMaps = pgTable("world_maps", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  campaignId: varchar("campaign_id").notNull().references(() => campaigns.id, { onDelete: "cascade" }),
+  campaignId: varchar("campaign_id").references(() => campaigns.id, { onDelete: "cascade" }),
+  worldId: varchar("world_id").references(() => worlds.id, { onDelete: "cascade" }),
   title: text("title").notNull(),
   imageUrl: text("image_url"),
   description: text("description"),
@@ -1566,7 +1589,8 @@ export type WorldMapPin = typeof worldMapPins.$inferSelect;
 
 export const worldCalendars = pgTable("world_calendars", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  campaignId: varchar("campaign_id").notNull().references(() => campaigns.id, { onDelete: "cascade" }),
+  campaignId: varchar("campaign_id").references(() => campaigns.id, { onDelete: "cascade" }),
+  worldId: varchar("world_id").references(() => worlds.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   monthNames: jsonb("month_names").notNull().default(sql`'[]'::jsonb`),
   daysPerMonth: jsonb("days_per_month").notNull().default(sql`'[]'::jsonb`),
@@ -1590,7 +1614,8 @@ export type WorldCalendar = typeof worldCalendars.$inferSelect;
 
 export const worldTimelineEvents = pgTable("world_timeline_events", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  campaignId: varchar("campaign_id").notNull().references(() => campaigns.id, { onDelete: "cascade" }),
+  campaignId: varchar("campaign_id").references(() => campaigns.id, { onDelete: "cascade" }),
+  worldId: varchar("world_id").references(() => worlds.id, { onDelete: "cascade" }),
   title: text("title").notNull(),
   description: text("description"),
   date: text("date"),

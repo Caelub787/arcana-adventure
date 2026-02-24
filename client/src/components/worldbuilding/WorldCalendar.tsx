@@ -10,7 +10,8 @@ import { Calendar, Plus, ChevronLeft, ChevronRight, Settings, Trash2, Loader2, E
 import { useToast } from "@/hooks/use-toast";
 
 interface WorldCalendarProps {
-  campaignId: string;
+  campaignId?: string;
+  worldId?: string;
   isGM?: boolean;
 }
 
@@ -18,13 +19,14 @@ const DEFAULT_MONTH_NAMES = ["Deepwinter", "Clawstorm", "Thawmelt", "Greenrise",
 const DEFAULT_DAYS_PER_MONTH = [30, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
 const DEFAULT_WEEKDAY_NAMES = ["Moonday", "Twinday", "Ashday", "Wineday", "Thunderday", "Starday", "Sunday"];
 
-export function WorldCalendar({ campaignId, isGM = false }: WorldCalendarProps) {
+export function WorldCalendar({ campaignId, worldId, isGM = false }: WorldCalendarProps) {
   const { toast } = useToast();
-  const { data: calendars = [], isLoading } = useCalendars(campaignId);
-  const { data: timelineEvents = [] } = useTimelineEvents(campaignId);
-  const createCalendar = useCreateCalendar(campaignId);
-  const updateCalendar = useUpdateCalendar(campaignId);
-  const deleteCalendar = useDeleteCalendar(campaignId);
+  const resolvedId = worldId || campaignId;
+  const { data: calendars = [], isLoading } = useCalendars(resolvedId);
+  const { data: timelineEvents = [] } = useTimelineEvents(resolvedId);
+  const createCalendar = useCreateCalendar(resolvedId);
+  const updateCalendar = useUpdateCalendar(resolvedId);
+  const deleteCalendar = useDeleteCalendar(resolvedId);
 
   const [selectedCalendarId, setSelectedCalendarId] = useState<string | null>(null);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
@@ -120,7 +122,7 @@ export function WorldCalendar({ campaignId, isGM = false }: WorldCalendarProps) 
     if (!formName.trim()) return;
     try {
       await createCalendar.mutateAsync({
-        campaignId,
+        campaignId: resolvedId,
         name: formName.trim(),
         monthNames: formMonthNames,
         daysPerMonth: formDaysPerMonth,

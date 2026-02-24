@@ -36,7 +36,8 @@ import {
 import { Clock, Calendar, ChevronRight, Plus, Edit2, Trash2, Link2, Eye, EyeOff, Loader2 } from "lucide-react";
 
 interface TimelineViewProps {
-  campaignId: string;
+  campaignId?: string;
+  worldId?: string;
   isGM: boolean;
   onSelectEntity?: (entityId: string) => void;
 }
@@ -97,13 +98,14 @@ const EMPTY_FORM: EventFormData = {
   sortOrder: 0,
 };
 
-export function TimelineView({ campaignId, isGM, onSelectEntity }: TimelineViewProps) {
-  const { data: events = [], isLoading } = useTimelineEvents(campaignId);
-  const { data: entities = [] } = useEntities(campaignId);
-  const { data: calendars = [] } = useCalendars(campaignId);
-  const createEvent = useCreateTimelineEvent(campaignId);
-  const updateEvent = useUpdateTimelineEvent(campaignId);
-  const deleteEvent = useDeleteTimelineEvent(campaignId);
+export function TimelineView({ campaignId, worldId, isGM, onSelectEntity }: TimelineViewProps) {
+  const resolvedId = worldId || campaignId;
+  const { data: events = [], isLoading } = useTimelineEvents(resolvedId);
+  const { data: entities = [] } = useEntities(resolvedId);
+  const { data: calendars = [] } = useCalendars(resolvedId);
+  const createEvent = useCreateTimelineEvent(resolvedId);
+  const updateEvent = useUpdateTimelineEvent(resolvedId);
+  const deleteEvent = useDeleteTimelineEvent(resolvedId);
 
   const [showForm, setShowForm] = useState(false);
   const [editingEvent, setEditingEvent] = useState<WorldTimelineEvent | null>(null);

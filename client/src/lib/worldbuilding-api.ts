@@ -54,7 +54,15 @@ async function fetchJSON(url: string, options?: RequestInit) {
   return res.json();
 }
 
-export function useEntities(campaignId: string | undefined) {
+export function useEntities(worldId: string | undefined) {
+  return useQuery<Entity[]>({
+    queryKey: ["/api/worlds", worldId, "entities"],
+    queryFn: () => fetchJSON(`/api/worlds/${worldId}/entities`),
+    enabled: !!worldId,
+  });
+}
+
+export function useEntitiesByCampaign(campaignId: string | undefined) {
   return useQuery<Entity[]>({
     queryKey: ["/api/campaigns", campaignId, "entities"],
     queryFn: () => fetchJSON(`/api/campaigns/${campaignId}/entities`),
@@ -62,108 +70,108 @@ export function useEntities(campaignId: string | undefined) {
   });
 }
 
-export function useEntity(campaignId: string | undefined, entityId: string | undefined) {
+export function useEntity(worldId: string | undefined, entityId: string | undefined) {
   return useQuery<Entity>({
-    queryKey: ["/api/campaigns", campaignId, "entities", entityId],
-    queryFn: () => fetchJSON(`/api/campaigns/${campaignId}/entities/${entityId}`),
-    enabled: !!campaignId && !!entityId,
+    queryKey: ["/api/worlds", worldId, "entities", entityId],
+    queryFn: () => fetchJSON(`/api/worlds/${worldId}/entities/${entityId}`),
+    enabled: !!worldId && !!entityId,
   });
 }
 
-export function useSearchEntities(campaignId: string | undefined, query: string, entityType?: string) {
+export function useSearchEntities(worldId: string | undefined, query: string, entityType?: string) {
   const params = new URLSearchParams();
   if (query) params.set("q", query);
   if (entityType) params.set("type", entityType);
   return useQuery<Entity[]>({
-    queryKey: ["/api/campaigns", campaignId, "entities", "search", query, entityType],
-    queryFn: () => fetchJSON(`/api/campaigns/${campaignId}/entities/search?${params}`),
-    enabled: !!campaignId && query.length > 0,
+    queryKey: ["/api/worlds", worldId, "entities", "search", query, entityType],
+    queryFn: () => fetchJSON(`/api/worlds/${worldId}/entities/search?${params}`),
+    enabled: !!worldId && query.length > 0,
   });
 }
 
-export function useEntityLinks(campaignId: string | undefined, entityId?: string) {
+export function useEntityLinks(worldId: string | undefined, entityId?: string) {
   const url = entityId
-    ? `/api/campaigns/${campaignId}/entity-links/entity/${entityId}`
-    : `/api/campaigns/${campaignId}/entity-links`;
+    ? `/api/worlds/${worldId}/entity-links/entity/${entityId}`
+    : `/api/worlds/${worldId}/entity-links`;
   return useQuery<EntityLink[]>({
-    queryKey: ["/api/campaigns", campaignId, "entity-links", entityId || "all"],
+    queryKey: ["/api/worlds", worldId, "entity-links", entityId || "all"],
     queryFn: () => fetchJSON(url),
-    enabled: !!campaignId,
+    enabled: !!worldId,
   });
 }
 
-export function useEntityReferences(campaignId: string | undefined, entityId: string | undefined) {
+export function useEntityReferences(worldId: string | undefined, entityId: string | undefined) {
   return useQuery({
-    queryKey: ["/api/campaigns", campaignId, "entities", entityId, "references"],
-    queryFn: () => fetchJSON(`/api/campaigns/${campaignId}/entities/${entityId}/references`),
-    enabled: !!campaignId && !!entityId,
+    queryKey: ["/api/worlds", worldId, "entities", entityId, "references"],
+    queryFn: () => fetchJSON(`/api/worlds/${worldId}/entities/${entityId}/references`),
+    enabled: !!worldId && !!entityId,
   });
 }
 
-export function useCreateEntity(campaignId: string | undefined) {
+export function useCreateEntity(worldId: string | undefined) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (data: Partial<Entity>) =>
-      fetchJSON(`/api/campaigns/${campaignId}/entities`, {
+      fetchJSON(`/api/worlds/${worldId}/entities`, {
         method: "POST",
         body: JSON.stringify(data),
       }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["/api/campaigns", campaignId, "entities"] });
+      qc.invalidateQueries({ queryKey: ["/api/worlds", worldId, "entities"] });
     },
   });
 }
 
-export function useUpdateEntity(campaignId: string | undefined) {
+export function useUpdateEntity(worldId: string | undefined, scope: "worlds" | "campaigns" = "worlds") {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, ...data }: Partial<Entity> & { id: string }) =>
-      fetchJSON(`/api/campaigns/${campaignId}/entities/${id}`, {
+      fetchJSON(`/api/${scope}/${worldId}/entities/${id}`, {
         method: "PATCH",
         body: JSON.stringify(data),
       }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["/api/campaigns", campaignId, "entities"] });
+      qc.invalidateQueries({ queryKey: [`/api/${scope}`, worldId, "entities"] });
     },
   });
 }
 
-export function useDeleteEntity(campaignId: string | undefined) {
+export function useDeleteEntity(worldId: string | undefined) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (entityId: string) =>
-      fetchJSON(`/api/campaigns/${campaignId}/entities/${entityId}`, {
+      fetchJSON(`/api/worlds/${worldId}/entities/${entityId}`, {
         method: "DELETE",
       }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["/api/campaigns", campaignId, "entities"] });
+      qc.invalidateQueries({ queryKey: ["/api/worlds", worldId, "entities"] });
     },
   });
 }
 
-export function useCreateEntityLink(campaignId: string | undefined) {
+export function useCreateEntityLink(worldId: string | undefined) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (data: Partial<EntityLink>) =>
-      fetchJSON(`/api/campaigns/${campaignId}/entity-links`, {
+      fetchJSON(`/api/worlds/${worldId}/entity-links`, {
         method: "POST",
         body: JSON.stringify(data),
       }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["/api/campaigns", campaignId, "entity-links"] });
+      qc.invalidateQueries({ queryKey: ["/api/worlds", worldId, "entity-links"] });
     },
   });
 }
 
-export function useDeleteEntityLink(campaignId: string | undefined) {
+export function useDeleteEntityLink(worldId: string | undefined) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (linkId: string) =>
-      fetchJSON(`/api/campaigns/${campaignId}/entity-links/${linkId}`, {
+      fetchJSON(`/api/worlds/${worldId}/entity-links/${linkId}`, {
         method: "DELETE",
       }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["/api/campaigns", campaignId, "entity-links"] });
+      qc.invalidateQueries({ queryKey: ["/api/worlds", worldId, "entity-links"] });
     },
   });
 }
@@ -211,108 +219,108 @@ export interface WorldMapPin {
   createdAt: string;
 }
 
-export function useWorldMaps(campaignId: string | undefined) {
+export function useWorldMaps(worldId: string | undefined) {
   return useQuery<WorldMap[]>({
-    queryKey: ["/api/campaigns", campaignId, "world-maps"],
-    queryFn: () => fetchJSON(`/api/campaigns/${campaignId}/world-maps`),
-    enabled: !!campaignId,
+    queryKey: ["/api/worlds", worldId, "world-maps"],
+    queryFn: () => fetchJSON(`/api/worlds/${worldId}/world-maps`),
+    enabled: !!worldId,
   });
 }
 
-export function useWorldMap(campaignId: string | undefined, mapId: string | undefined) {
+export function useWorldMap(worldId: string | undefined, mapId: string | undefined) {
   return useQuery<WorldMap>({
-    queryKey: ["/api/campaigns", campaignId, "world-maps", mapId],
-    queryFn: () => fetchJSON(`/api/campaigns/${campaignId}/world-maps/${mapId}`),
-    enabled: !!campaignId && !!mapId,
+    queryKey: ["/api/worlds", worldId, "world-maps", mapId],
+    queryFn: () => fetchJSON(`/api/worlds/${worldId}/world-maps/${mapId}`),
+    enabled: !!worldId && !!mapId,
   });
 }
 
-export function useWorldMapPins(campaignId: string | undefined, mapId: string | undefined) {
+export function useWorldMapPins(worldId: string | undefined, mapId: string | undefined) {
   return useQuery<WorldMapPin[]>({
-    queryKey: ["/api/campaigns", campaignId, "world-maps", mapId, "pins"],
-    queryFn: () => fetchJSON(`/api/campaigns/${campaignId}/world-maps/${mapId}/pins`),
-    enabled: !!campaignId && !!mapId,
+    queryKey: ["/api/worlds", worldId, "world-maps", mapId, "pins"],
+    queryFn: () => fetchJSON(`/api/worlds/${worldId}/world-maps/${mapId}/pins`),
+    enabled: !!worldId && !!mapId,
   });
 }
 
-export function useCreateWorldMap(campaignId: string | undefined) {
+export function useCreateWorldMap(worldId: string | undefined) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (data: Partial<WorldMap>) =>
-      fetchJSON(`/api/campaigns/${campaignId}/world-maps`, {
+      fetchJSON(`/api/worlds/${worldId}/world-maps`, {
         method: "POST",
         body: JSON.stringify(data),
       }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["/api/campaigns", campaignId, "world-maps"] });
+      qc.invalidateQueries({ queryKey: ["/api/worlds", worldId, "world-maps"] });
     },
   });
 }
 
-export function useUpdateWorldMap(campaignId: string | undefined) {
+export function useUpdateWorldMap(worldId: string | undefined) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, ...data }: Partial<WorldMap> & { id: string }) =>
-      fetchJSON(`/api/campaigns/${campaignId}/world-maps/${id}`, {
+      fetchJSON(`/api/worlds/${worldId}/world-maps/${id}`, {
         method: "PATCH",
         body: JSON.stringify(data),
       }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["/api/campaigns", campaignId, "world-maps"] });
+      qc.invalidateQueries({ queryKey: ["/api/worlds", worldId, "world-maps"] });
     },
   });
 }
 
-export function useDeleteWorldMap(campaignId: string | undefined) {
+export function useDeleteWorldMap(worldId: string | undefined) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (mapId: string) =>
-      fetchJSON(`/api/campaigns/${campaignId}/world-maps/${mapId}`, {
+      fetchJSON(`/api/worlds/${worldId}/world-maps/${mapId}`, {
         method: "DELETE",
       }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["/api/campaigns", campaignId, "world-maps"] });
+      qc.invalidateQueries({ queryKey: ["/api/worlds", worldId, "world-maps"] });
     },
   });
 }
 
-export function useCreateWorldMapPin(campaignId: string | undefined, mapId: string | undefined) {
+export function useCreateWorldMapPin(worldId: string | undefined, mapId: string | undefined) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (data: Partial<WorldMapPin>) =>
-      fetchJSON(`/api/campaigns/${campaignId}/world-maps/${mapId}/pins`, {
+      fetchJSON(`/api/worlds/${worldId}/world-maps/${mapId}/pins`, {
         method: "POST",
         body: JSON.stringify(data),
       }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["/api/campaigns", campaignId, "world-maps", mapId, "pins"] });
+      qc.invalidateQueries({ queryKey: ["/api/worlds", worldId, "world-maps", mapId, "pins"] });
     },
   });
 }
 
-export function useUpdateWorldMapPin(campaignId: string | undefined, mapId: string | undefined) {
+export function useUpdateWorldMapPin(worldId: string | undefined, mapId: string | undefined) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, ...data }: Partial<WorldMapPin> & { id: string }) =>
-      fetchJSON(`/api/campaigns/${campaignId}/world-maps/${mapId}/pins/${id}`, {
+      fetchJSON(`/api/worlds/${worldId}/world-maps/${mapId}/pins/${id}`, {
         method: "PATCH",
         body: JSON.stringify(data),
       }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["/api/campaigns", campaignId, "world-maps", mapId, "pins"] });
+      qc.invalidateQueries({ queryKey: ["/api/worlds", worldId, "world-maps", mapId, "pins"] });
     },
   });
 }
 
-export function useDeleteWorldMapPin(campaignId: string | undefined, mapId: string | undefined) {
+export function useDeleteWorldMapPin(worldId: string | undefined, mapId: string | undefined) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (pinId: string) =>
-      fetchJSON(`/api/campaigns/${campaignId}/world-maps/${mapId}/pins/${pinId}`, {
+      fetchJSON(`/api/worlds/${worldId}/world-maps/${mapId}/pins/${pinId}`, {
         method: "DELETE",
       }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["/api/campaigns", campaignId, "world-maps", mapId, "pins"] });
+      qc.invalidateQueries({ queryKey: ["/api/worlds", worldId, "world-maps", mapId, "pins"] });
     },
   });
 }
@@ -350,136 +358,136 @@ export interface WorldCalendar {
   updatedAt: string;
 }
 
-export function useTimelineEvents(campaignId: string | undefined) {
+export function useTimelineEvents(worldId: string | undefined) {
   return useQuery<WorldTimelineEvent[]>({
-    queryKey: ["/api/campaigns", campaignId, "timeline-events"],
-    queryFn: () => fetchJSON(`/api/campaigns/${campaignId}/timeline-events`),
-    enabled: !!campaignId,
+    queryKey: ["/api/worlds", worldId, "timeline-events"],
+    queryFn: () => fetchJSON(`/api/worlds/${worldId}/timeline-events`),
+    enabled: !!worldId,
   });
 }
 
-export function useCreateTimelineEvent(campaignId: string | undefined) {
+export function useCreateTimelineEvent(worldId: string | undefined) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (data: Partial<WorldTimelineEvent>) =>
-      fetchJSON(`/api/campaigns/${campaignId}/timeline-events`, {
+      fetchJSON(`/api/worlds/${worldId}/timeline-events`, {
         method: "POST",
         body: JSON.stringify(data),
       }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["/api/campaigns", campaignId, "timeline-events"] });
+      qc.invalidateQueries({ queryKey: ["/api/worlds", worldId, "timeline-events"] });
     },
   });
 }
 
-export function useUpdateTimelineEvent(campaignId: string | undefined) {
+export function useUpdateTimelineEvent(worldId: string | undefined) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, ...data }: Partial<WorldTimelineEvent> & { id: string }) =>
-      fetchJSON(`/api/campaigns/${campaignId}/timeline-events/${id}`, {
+      fetchJSON(`/api/worlds/${worldId}/timeline-events/${id}`, {
         method: "PATCH",
         body: JSON.stringify(data),
       }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["/api/campaigns", campaignId, "timeline-events"] });
+      qc.invalidateQueries({ queryKey: ["/api/worlds", worldId, "timeline-events"] });
     },
   });
 }
 
-export function useDeleteTimelineEvent(campaignId: string | undefined) {
+export function useDeleteTimelineEvent(worldId: string | undefined) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (eventId: string) =>
-      fetchJSON(`/api/campaigns/${campaignId}/timeline-events/${eventId}`, {
+      fetchJSON(`/api/worlds/${worldId}/timeline-events/${eventId}`, {
         method: "DELETE",
       }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["/api/campaigns", campaignId, "timeline-events"] });
+      qc.invalidateQueries({ queryKey: ["/api/worlds", worldId, "timeline-events"] });
     },
   });
 }
 
-export function useCalendars(campaignId: string | undefined) {
+export function useCalendars(worldId: string | undefined) {
   return useQuery<WorldCalendar[]>({
-    queryKey: ["/api/campaigns", campaignId, "calendars"],
-    queryFn: () => fetchJSON(`/api/campaigns/${campaignId}/calendars`),
-    enabled: !!campaignId,
+    queryKey: ["/api/worlds", worldId, "calendars"],
+    queryFn: () => fetchJSON(`/api/worlds/${worldId}/calendars`),
+    enabled: !!worldId,
   });
 }
 
-export function useCreateCalendar(campaignId: string | undefined) {
-        const qc = useQueryClient();
-        return useMutation({
-                mutationFn: (data: Partial<WorldCalendar>) =>
-                        fetchJSON(`/api/campaigns/${campaignId}/calendars`, {
-                                method: 'POST',
-                                body: JSON.stringify(data),
-                        }),
-                onSuccess: () => {
-                        qc.invalidateQueries({ queryKey: ['/api/campaigns', campaignId, 'calendars'] });
-                },
-        });
+export function useCreateCalendar(worldId: string | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: Partial<WorldCalendar>) =>
+      fetchJSON(`/api/worlds/${worldId}/calendars`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['/api/worlds', worldId, 'calendars'] });
+    },
+  });
 }
 
-export function useUpdateCalendar(campaignId: string | undefined) {
-        const qc = useQueryClient();
-        return useMutation({
-                mutationFn: ({ id, ...data }: Partial<WorldCalendar> & { id: string }) =>
-                        fetchJSON(`/api/campaigns/${campaignId}/calendars/${id}`, {
-                                method: 'PATCH',
-                                body: JSON.stringify(data),
-                        }),
-                onSuccess: () => {
-                        qc.invalidateQueries({ queryKey: ['/api/campaigns', campaignId, 'calendars'] });
-                },
-        });
+export function useUpdateCalendar(worldId: string | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...data }: Partial<WorldCalendar> & { id: string }) =>
+      fetchJSON(`/api/worlds/${worldId}/calendars/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['/api/worlds', worldId, 'calendars'] });
+    },
+  });
 }
 
-export function useDeleteCalendar(campaignId: string | undefined) {
-        const qc = useQueryClient();
-        return useMutation({
-                mutationFn: (calendarId: string) =>
-                        fetchJSON(`/api/campaigns/${campaignId}/calendars/${calendarId}`, {
-                                method: 'DELETE',
-                        }),
-                onSuccess: () => {
-                        qc.invalidateQueries({ queryKey: ['/api/campaigns', campaignId, 'calendars'] });
-                },
-        });
+export function useDeleteCalendar(worldId: string | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (calendarId: string) =>
+      fetchJSON(`/api/worlds/${worldId}/calendars/${calendarId}`, {
+        method: 'DELETE',
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['/api/worlds', worldId, 'calendars'] });
+    },
+  });
 }
 
-export function useWorldbuildingSync(campaignId: string | undefined) {
+export function useWorldbuildingSync(worldId: string | undefined) {
   const qc = useQueryClient();
 
   useEffect(() => {
-    if (!campaignId) return;
+    if (!worldId) return;
 
     const unsubscribe = gameWs.onMessage((data: any) => {
       if (['entity_created', 'entity_updated', 'entity_deleted', 'entity_restored'].includes(data.type)) {
-        qc.invalidateQueries({ queryKey: ["/api/campaigns", campaignId, "entities"] });
+        qc.invalidateQueries({ queryKey: ["/api/worlds", worldId, "entities"] });
       }
       if (['entity_link_created', 'entity_link_updated', 'entity_link_deleted'].includes(data.type)) {
-        qc.invalidateQueries({ queryKey: ["/api/campaigns", campaignId, "entity-links"] });
+        qc.invalidateQueries({ queryKey: ["/api/worlds", worldId, "entity-links"] });
       }
       if (['world_map_created', 'world_map_updated', 'world_map_deleted'].includes(data.type)) {
-        qc.invalidateQueries({ queryKey: ["/api/campaigns", campaignId, "world-maps"] });
+        qc.invalidateQueries({ queryKey: ["/api/worlds", worldId, "world-maps"] });
       }
       if (['world_map_pin_created', 'world_map_pin_updated', 'world_map_pin_deleted'].includes(data.type)) {
         const mapId = data.mapId;
         if (mapId) {
-          qc.invalidateQueries({ queryKey: ["/api/campaigns", campaignId, "world-maps", mapId, "pins"] });
+          qc.invalidateQueries({ queryKey: ["/api/worlds", worldId, "world-maps", mapId, "pins"] });
         }
       }
       if (['world_calendar_created', 'world_calendar_updated', 'world_calendar_deleted'].includes(data.type)) {
-        qc.invalidateQueries({ queryKey: ['/api/campaigns', campaignId, 'calendars'] });
+        qc.invalidateQueries({ queryKey: ['/api/worlds', worldId, 'calendars'] });
       }
       if (['world_timeline_event_created', 'world_timeline_event_updated', 'world_timeline_event_deleted'].includes(data.type)) {
-        qc.invalidateQueries({ queryKey: ["/api/campaigns", campaignId, "timeline-events"] });
+        qc.invalidateQueries({ queryKey: ["/api/worlds", worldId, "timeline-events"] });
       }
     });
 
     return () => { unsubscribe?.(); };
-  }, [campaignId, qc]);
+  }, [worldId, qc]);
 }
 
 export const LINK_TYPE_LABELS: Record<string, string> = {

@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertUserSchema, insertCampaignSchema, insertCharacterSchema, insertTokenSchema, insertChatMessageSchema, insertSceneSchema, insertHotbarSchema, insertItemSchema, insertSpellSchema, initiativeEntries, insertTokenEffectSchema, insertTokenActiveEffectSchema, rollEntries, insertRollEntrySchema, items, sceneVisionZones, insertEntitySchema, insertEntityLinkSchema, insertWorldMapSchema, insertWorldMapPinSchema, insertWorldCalendarSchema, insertWorldTimelineEventSchema } from "@shared/schema";
+import { insertUserSchema, insertCampaignSchema, insertCharacterSchema, insertTokenSchema, insertChatMessageSchema, insertSceneSchema, insertHotbarSchema, insertItemSchema, insertSpellSchema, initiativeEntries, insertTokenEffectSchema, insertTokenActiveEffectSchema, rollEntries, insertRollEntrySchema, items, sceneVisionZones, insertEntitySchema, insertEntityLinkSchema, insertWorldMapSchema, insertWorldMapPinSchema, insertWorldCalendarSchema, insertWorldTimelineEventSchema, insertWorldSchema } from "@shared/schema";
 import bcrypt from "bcryptjs";
 import { WebSocketServer } from "ws";
 import { sendPasswordResetEmail } from "./email";
@@ -9652,24 +9652,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { token } = req.params;
       const shareLink = await storage.getWorldShareLinkByToken(token);
       if (!shareLink) return res.status(404).json({ error: "Share link not found or inactive" });
-      const campaign = await storage.getCampaign(shareLink.campaignId);
-      if (!campaign) return res.status(404).json({ error: "Campaign not found" });
-      const allEntities = await storage.getEntitiesByCampaign(shareLink.campaignId);
+
+      let allEntities: any[];
+      let allMaps: any[];
+      let calendars: any[];
+      let allTimelineEvents: any[];
+      let entityLinksAll: any[];
+      let sourceName: string;
+
+      if (shareLink.worldId) {
+        const world = await storage.getWorld(shareLink.worldId);
+        if (!world) return res.status(404).json({ error: "World not found" });
+        sourceName = world.name;
+        allEntities = await storage.getEntitiesByWorld(shareLink.worldId);
+        allMaps = await storage.getWorldMapsByWorld(shareLink.worldId);
+        calendars = await storage.getWorldCalendarsByWorld(shareLink.worldId);
+        allTimelineEvents = await storage.getWorldTimelineEventsByWorld(shareLink.worldId);
+        entityLinksAll = await storage.getEntityLinksByWorld(shareLink.worldId);
+      } else if (shareLink.campaignId) {
+        const campaign = await storage.getCampaign(shareLink.campaignId);
+        if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+        sourceName = campaign.name;
+        allEntities = await storage.getEntitiesByCampaign(shareLink.campaignId);
+        allMaps = await storage.getWorldMaps(shareLink.campaignId);
+        calendars = await storage.getWorldCalendars(shareLink.campaignId);
+        allTimelineEvents = await storage.getWorldTimelineEvents(shareLink.campaignId);
+        entityLinksAll = await storage.getEntityLinksByCampaign(shareLink.campaignId);
+      } else {
+        return res.status(404).json({ error: "Share link has no associated world or campaign" });
+      }
+
       const visibleEntities = allEntities.filter(e => e.visibility === 'player_visible' || e.visibility === 'shared');
-      const allMaps = await storage.getWorldMaps(shareLink.campaignId);
       const visibleMaps = allMaps.filter(m => m.visibility !== 'gm_only');
       const mapPinsMap: Record<string, any[]> = {};
       for (const map of visibleMaps) {
         mapPinsMap[map.id] = await storage.getWorldMapPins(map.id);
       }
-      const calendars = await storage.getWorldCalendars(shareLink.campaignId);
-      const allTimelineEvents = await storage.getWorldTimelineEvents(shareLink.campaignId);
       const visibleTimelineEvents = allTimelineEvents.filter(e => e.visibility !== 'gm_only');
-      const entityLinks = await storage.getEntityLinksByCampaign(shareLink.campaignId);
       const visibleEntityIds = new Set(visibleEntities.map(e => e.id));
-      const visibleLinks = entityLinks.filter(l => visibleEntityIds.has(l.fromEntityId) && visibleEntityIds.has(l.toEntityId));
+      const visibleLinks = entityLinksAll.filter(l => visibleEntityIds.has(l.fromEntityId) && visibleEntityIds.has(l.toEntityId));
       res.json({
-        campaignName: campaign.name,
+        campaignName: sourceName,
         entities: visibleEntities,
         entityLinks: visibleLinks,
         maps: visibleMaps,
@@ -10022,6 +10045,584 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ success: true });
     } catch (e) {
       console.error("Failed to delete timeline event:", e);
+      res.status(500).json({ error: "Failed to delete timeline event" });
+    }
+  });
+
+  // ==================== WORLD CRUD ROUTES ====================
+
+  app.get("/api/worlds", requireAuth, async (req, res) => {
+    try {
+      const worldsList = await storage.getWorldsByUser(req.session.userId!);
+      res.json(worldsList);
+    } catch (e) {
+      console.error("Failed to get worlds:", e);
+      res.status(500).json({ error: "Failed to get worlds" });
+    }
+  });
+
+  app.post("/api/worlds", requireAuth, async (req, res) => {
+    try {
+      const parsed = insertWorldSchema.parse({ ...req.body, userId: req.session.userId! });
+      const world = await storage.createWorld(parsed);
+      res.status(201).json(world);
+    } catch (e) {
+      console.error("Failed to create world:", e);
+      res.status(500).json({ error: "Failed to create world" });
+    }
+  });
+
+  app.get("/api/worlds/:worldId", requireAuth, async (req, res) => {
+    try {
+      const world = await storage.getWorld(req.params.worldId);
+      if (!world) return res.status(404).json({ error: "World not found" });
+      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+      res.json(world);
+    } catch (e) {
+      console.error("Failed to get world:", e);
+      res.status(500).json({ error: "Failed to get world" });
+    }
+  });
+
+  app.patch("/api/worlds/:worldId", requireAuth, async (req, res) => {
+    try {
+      const world = await storage.getWorld(req.params.worldId);
+      if (!world) return res.status(404).json({ error: "World not found" });
+      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+      const updated = await storage.updateWorld(req.params.worldId, req.body);
+      res.json(updated);
+    } catch (e) {
+      console.error("Failed to update world:", e);
+      res.status(500).json({ error: "Failed to update world" });
+    }
+  });
+
+  app.delete("/api/worlds/:worldId", requireAuth, async (req, res) => {
+    try {
+      const world = await storage.getWorld(req.params.worldId);
+      if (!world) return res.status(404).json({ error: "World not found" });
+      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+      await storage.deleteWorld(req.params.worldId);
+      res.json({ success: true });
+    } catch (e) {
+      console.error("Failed to delete world:", e);
+      res.status(500).json({ error: "Failed to delete world" });
+    }
+  });
+
+  // ==================== WORLD-SCOPED ENTITY ROUTES ====================
+
+  app.get("/api/worlds/:worldId/entities", requireAuth, async (req, res) => {
+    try {
+      const world = await storage.getWorld(req.params.worldId);
+      if (!world) return res.status(404).json({ error: "World not found" });
+      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+      const allEntities = await storage.getEntitiesByWorld(req.params.worldId);
+      res.json(allEntities);
+    } catch (e) {
+      console.error("Failed to get world entities:", e);
+      res.status(500).json({ error: "Failed to get entities" });
+    }
+  });
+
+  app.get("/api/worlds/:worldId/entities/search", requireAuth, async (req, res) => {
+    try {
+      const world = await storage.getWorld(req.params.worldId);
+      if (!world) return res.status(404).json({ error: "World not found" });
+      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+      const { q, type } = req.query;
+      const allEntities = await storage.searchEntitiesByWorld(req.params.worldId, (q as string) || "", type as string | undefined);
+      res.json(allEntities);
+    } catch (e) {
+      console.error("Failed to search world entities:", e);
+      res.status(500).json({ error: "Failed to search entities" });
+    }
+  });
+
+  app.get("/api/worlds/:worldId/entities/:entityId", requireAuth, async (req, res) => {
+    try {
+      const world = await storage.getWorld(req.params.worldId);
+      if (!world) return res.status(404).json({ error: "World not found" });
+      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+      const entity = await storage.getEntity(req.params.entityId);
+      if (!entity || entity.worldId !== req.params.worldId) return res.status(404).json({ error: "Entity not found" });
+      res.json(entity);
+    } catch (e) {
+      console.error("Failed to get world entity:", e);
+      res.status(500).json({ error: "Failed to get entity" });
+    }
+  });
+
+  app.post("/api/worlds/:worldId/entities", requireAuth, async (req, res) => {
+    try {
+      const world = await storage.getWorld(req.params.worldId);
+      if (!world) return res.status(404).json({ error: "World not found" });
+      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+      const parsed = insertEntitySchema.parse({ ...req.body, worldId: req.params.worldId, createdBy: req.session.userId });
+      const entity = await storage.createEntity(parsed);
+      res.status(201).json(entity);
+    } catch (e) {
+      console.error("Failed to create world entity:", e);
+      res.status(500).json({ error: "Failed to create entity" });
+    }
+  });
+
+  app.patch("/api/worlds/:worldId/entities/:entityId", requireAuth, async (req, res) => {
+    try {
+      const world = await storage.getWorld(req.params.worldId);
+      if (!world) return res.status(404).json({ error: "World not found" });
+      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+      const existing = await storage.getEntity(req.params.entityId);
+      if (!existing || existing.worldId !== req.params.worldId) return res.status(404).json({ error: "Entity not found" });
+      const entity = await storage.updateEntity(req.params.entityId, req.body);
+      res.json(entity);
+    } catch (e) {
+      console.error("Failed to update world entity:", e);
+      res.status(500).json({ error: "Failed to update entity" });
+    }
+  });
+
+  app.delete("/api/worlds/:worldId/entities/:entityId", requireAuth, async (req, res) => {
+    try {
+      const world = await storage.getWorld(req.params.worldId);
+      if (!world) return res.status(404).json({ error: "World not found" });
+      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+      const existing = await storage.getEntity(req.params.entityId);
+      if (!existing || existing.worldId !== req.params.worldId) return res.status(404).json({ error: "Entity not found" });
+      await storage.softDeleteEntity(req.params.entityId);
+      res.json({ success: true });
+    } catch (e) {
+      console.error("Failed to delete world entity:", e);
+      res.status(500).json({ error: "Failed to delete entity" });
+    }
+  });
+
+  app.post("/api/worlds/:worldId/entities/:entityId/restore", requireAuth, async (req, res) => {
+    try {
+      const world = await storage.getWorld(req.params.worldId);
+      if (!world) return res.status(404).json({ error: "World not found" });
+      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+      const entity = await storage.restoreEntity(req.params.entityId);
+      if (!entity) return res.status(404).json({ error: "Entity not found" });
+      res.json(entity);
+    } catch (e) {
+      console.error("Failed to restore world entity:", e);
+      res.status(500).json({ error: "Failed to restore entity" });
+    }
+  });
+
+  app.get("/api/worlds/:worldId/entities/:entityId/references", requireAuth, async (req, res) => {
+    try {
+      const world = await storage.getWorld(req.params.worldId);
+      if (!world) return res.status(404).json({ error: "World not found" });
+      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+      const references = await storage.getEntityReferences(req.params.entityId);
+      res.json(references);
+    } catch (e) {
+      console.error("Failed to get world entity references:", e);
+      res.status(500).json({ error: "Failed to get entity references" });
+    }
+  });
+
+  // ==================== WORLD-SCOPED ENTITY LINK ROUTES ====================
+
+  app.get("/api/worlds/:worldId/entity-links", requireAuth, async (req, res) => {
+    try {
+      const world = await storage.getWorld(req.params.worldId);
+      if (!world) return res.status(404).json({ error: "World not found" });
+      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+      const links = await storage.getEntityLinksByWorld(req.params.worldId);
+      res.json(links);
+    } catch (e) {
+      console.error("Failed to get world entity links:", e);
+      res.status(500).json({ error: "Failed to get entity links" });
+    }
+  });
+
+  app.get("/api/worlds/:worldId/entity-links/entity/:entityId", requireAuth, async (req, res) => {
+    try {
+      const world = await storage.getWorld(req.params.worldId);
+      if (!world) return res.status(404).json({ error: "World not found" });
+      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+      const links = await storage.getEntityLinks(req.params.entityId);
+      res.json(links);
+    } catch (e) {
+      console.error("Failed to get world entity links:", e);
+      res.status(500).json({ error: "Failed to get entity links" });
+    }
+  });
+
+  app.post("/api/worlds/:worldId/entity-links", requireAuth, async (req, res) => {
+    try {
+      const world = await storage.getWorld(req.params.worldId);
+      if (!world) return res.status(404).json({ error: "World not found" });
+      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+      const parsed = insertEntityLinkSchema.parse({ ...req.body, worldId: req.params.worldId });
+      const link = await storage.createEntityLink(parsed);
+      res.status(201).json(link);
+    } catch (e) {
+      console.error("Failed to create world entity link:", e);
+      res.status(500).json({ error: "Failed to create entity link" });
+    }
+  });
+
+  app.patch("/api/worlds/:worldId/entity-links/:linkId", requireAuth, async (req, res) => {
+    try {
+      const world = await storage.getWorld(req.params.worldId);
+      if (!world) return res.status(404).json({ error: "World not found" });
+      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+      const existing = await storage.getEntityLink(req.params.linkId);
+      if (!existing || existing.worldId !== req.params.worldId) return res.status(404).json({ error: "Entity link not found" });
+      const link = await storage.updateEntityLink(req.params.linkId, req.body);
+      res.json(link);
+    } catch (e) {
+      console.error("Failed to update world entity link:", e);
+      res.status(500).json({ error: "Failed to update entity link" });
+    }
+  });
+
+  app.delete("/api/worlds/:worldId/entity-links/:linkId", requireAuth, async (req, res) => {
+    try {
+      const world = await storage.getWorld(req.params.worldId);
+      if (!world) return res.status(404).json({ error: "World not found" });
+      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+      const existing = await storage.getEntityLink(req.params.linkId);
+      if (!existing || existing.worldId !== req.params.worldId) return res.status(404).json({ error: "Entity link not found" });
+      await storage.deleteEntityLink(req.params.linkId);
+      res.json({ success: true });
+    } catch (e) {
+      console.error("Failed to delete world entity link:", e);
+      res.status(500).json({ error: "Failed to delete entity link" });
+    }
+  });
+
+  // ==================== WORLD-SCOPED SHARE LINK ROUTES ====================
+
+  app.post("/api/worlds/:worldId/share-link", requireAuth, async (req, res) => {
+    try {
+      const world = await storage.getWorld(req.params.worldId);
+      if (!world) return res.status(404).json({ error: "World not found" });
+      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+      const existing = await storage.getWorldShareLinkByWorld(req.params.worldId);
+      if (existing) return res.status(400).json({ error: "Share link already exists", link: existing });
+      const shareToken = crypto.randomBytes(24).toString('hex');
+      const link = await storage.createWorldShareLink({
+        worldId: req.params.worldId,
+        token: shareToken,
+        createdBy: req.session.userId!,
+        isActive: true,
+      });
+      res.status(201).json(link);
+    } catch (e) {
+      console.error("Failed to create world share link:", e);
+      res.status(500).json({ error: "Failed to create share link" });
+    }
+  });
+
+  app.get("/api/worlds/:worldId/share-link", requireAuth, async (req, res) => {
+    try {
+      const world = await storage.getWorld(req.params.worldId);
+      if (!world) return res.status(404).json({ error: "World not found" });
+      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+      const link = await storage.getWorldShareLinkByWorld(req.params.worldId);
+      res.json(link || null);
+    } catch (e) {
+      console.error("Failed to get world share link:", e);
+      res.status(500).json({ error: "Failed to get share link" });
+    }
+  });
+
+  app.delete("/api/worlds/:worldId/share-link/:linkId", requireAuth, async (req, res) => {
+    try {
+      const world = await storage.getWorld(req.params.worldId);
+      if (!world) return res.status(404).json({ error: "World not found" });
+      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+      await storage.deleteWorldShareLink(req.params.linkId);
+      res.json({ success: true });
+    } catch (e) {
+      console.error("Failed to delete world share link:", e);
+      res.status(500).json({ error: "Failed to delete share link" });
+    }
+  });
+
+  // ==================== WORLD-SCOPED WORLD MAP ROUTES ====================
+
+  app.get("/api/worlds/:worldId/world-maps", requireAuth, async (req, res) => {
+    try {
+      const world = await storage.getWorld(req.params.worldId);
+      if (!world) return res.status(404).json({ error: "World not found" });
+      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+      const maps = await storage.getWorldMapsByWorld(req.params.worldId);
+      res.json(maps);
+    } catch (e) {
+      console.error("Failed to get world maps:", e);
+      res.status(500).json({ error: "Failed to get world maps" });
+    }
+  });
+
+  app.get("/api/worlds/:worldId/world-maps/:mapId", requireAuth, async (req, res) => {
+    try {
+      const world = await storage.getWorld(req.params.worldId);
+      if (!world) return res.status(404).json({ error: "World not found" });
+      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+      const map = await storage.getWorldMap(req.params.mapId);
+      if (!map || map.worldId !== req.params.worldId) return res.status(404).json({ error: "Map not found" });
+      res.json(map);
+    } catch (e) {
+      console.error("Failed to get world map:", e);
+      res.status(500).json({ error: "Failed to get world map" });
+    }
+  });
+
+  app.post("/api/worlds/:worldId/world-maps", requireAuth, async (req, res) => {
+    try {
+      const world = await storage.getWorld(req.params.worldId);
+      if (!world) return res.status(404).json({ error: "World not found" });
+      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+      const parsed = insertWorldMapSchema.parse({ ...req.body, worldId: req.params.worldId });
+      const map = await storage.createWorldMap(parsed);
+      res.status(201).json(map);
+    } catch (e) {
+      console.error("Failed to create world map:", e);
+      res.status(500).json({ error: "Failed to create world map" });
+    }
+  });
+
+  app.patch("/api/worlds/:worldId/world-maps/:mapId", requireAuth, async (req, res) => {
+    try {
+      const world = await storage.getWorld(req.params.worldId);
+      if (!world) return res.status(404).json({ error: "World not found" });
+      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+      const existing = await storage.getWorldMap(req.params.mapId);
+      if (!existing || existing.worldId !== req.params.worldId) return res.status(404).json({ error: "Map not found" });
+      const map = await storage.updateWorldMap(req.params.mapId, req.body);
+      res.json(map);
+    } catch (e) {
+      console.error("Failed to update world map:", e);
+      res.status(500).json({ error: "Failed to update world map" });
+    }
+  });
+
+  app.delete("/api/worlds/:worldId/world-maps/:mapId", requireAuth, async (req, res) => {
+    try {
+      const world = await storage.getWorld(req.params.worldId);
+      if (!world) return res.status(404).json({ error: "World not found" });
+      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+      const existing = await storage.getWorldMap(req.params.mapId);
+      if (!existing || existing.worldId !== req.params.worldId) return res.status(404).json({ error: "Map not found" });
+      await storage.deleteWorldMap(req.params.mapId);
+      res.json({ success: true });
+    } catch (e) {
+      console.error("Failed to delete world map:", e);
+      res.status(500).json({ error: "Failed to delete world map" });
+    }
+  });
+
+  // ==================== WORLD-SCOPED WORLD MAP PIN ROUTES ====================
+
+  app.get("/api/worlds/:worldId/world-maps/:mapId/pins", requireAuth, async (req, res) => {
+    try {
+      const world = await storage.getWorld(req.params.worldId);
+      if (!world) return res.status(404).json({ error: "World not found" });
+      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+      const map = await storage.getWorldMap(req.params.mapId);
+      if (!map || map.worldId !== req.params.worldId) return res.status(404).json({ error: "Map not found" });
+      const pins = await storage.getWorldMapPins(req.params.mapId);
+      res.json(pins);
+    } catch (e) {
+      console.error("Failed to get world map pins:", e);
+      res.status(500).json({ error: "Failed to get map pins" });
+    }
+  });
+
+  app.post("/api/worlds/:worldId/world-maps/:mapId/pins", requireAuth, async (req, res) => {
+    try {
+      const world = await storage.getWorld(req.params.worldId);
+      if (!world) return res.status(404).json({ error: "World not found" });
+      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+      const map = await storage.getWorldMap(req.params.mapId);
+      if (!map || map.worldId !== req.params.worldId) return res.status(404).json({ error: "Map not found" });
+      const parsed = insertWorldMapPinSchema.parse({ ...req.body, mapId: req.params.mapId });
+      const pin = await storage.createWorldMapPin(parsed);
+      res.status(201).json(pin);
+    } catch (e) {
+      console.error("Failed to create world map pin:", e);
+      res.status(500).json({ error: "Failed to create map pin" });
+    }
+  });
+
+  app.patch("/api/worlds/:worldId/world-maps/:mapId/pins/:pinId", requireAuth, async (req, res) => {
+    try {
+      const world = await storage.getWorld(req.params.worldId);
+      if (!world) return res.status(404).json({ error: "World not found" });
+      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+      const existing = await storage.getWorldMapPin(req.params.pinId);
+      if (!existing || existing.mapId !== req.params.mapId) return res.status(404).json({ error: "Pin not found" });
+      const pin = await storage.updateWorldMapPin(req.params.pinId, req.body);
+      res.json(pin);
+    } catch (e) {
+      console.error("Failed to update world map pin:", e);
+      res.status(500).json({ error: "Failed to update map pin" });
+    }
+  });
+
+  app.delete("/api/worlds/:worldId/world-maps/:mapId/pins/:pinId", requireAuth, async (req, res) => {
+    try {
+      const world = await storage.getWorld(req.params.worldId);
+      if (!world) return res.status(404).json({ error: "World not found" });
+      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+      const existing = await storage.getWorldMapPin(req.params.pinId);
+      if (!existing || existing.mapId !== req.params.mapId) return res.status(404).json({ error: "Pin not found" });
+      await storage.deleteWorldMapPin(req.params.pinId);
+      res.json({ success: true });
+    } catch (e) {
+      console.error("Failed to delete world map pin:", e);
+      res.status(500).json({ error: "Failed to delete map pin" });
+    }
+  });
+
+  // ==================== WORLD-SCOPED CALENDAR ROUTES ====================
+
+  app.get("/api/worlds/:worldId/calendars", requireAuth, async (req, res) => {
+    try {
+      const world = await storage.getWorld(req.params.worldId);
+      if (!world) return res.status(404).json({ error: "World not found" });
+      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+      const calendars = await storage.getWorldCalendarsByWorld(req.params.worldId);
+      res.json(calendars);
+    } catch (e) {
+      console.error("Failed to get world calendars:", e);
+      res.status(500).json({ error: "Failed to get calendars" });
+    }
+  });
+
+  app.get("/api/worlds/:worldId/calendars/:calendarId", requireAuth, async (req, res) => {
+    try {
+      const world = await storage.getWorld(req.params.worldId);
+      if (!world) return res.status(404).json({ error: "World not found" });
+      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+      const calendar = await storage.getWorldCalendar(req.params.calendarId);
+      if (!calendar || calendar.worldId !== req.params.worldId) return res.status(404).json({ error: "Calendar not found" });
+      res.json(calendar);
+    } catch (e) {
+      console.error("Failed to get world calendar:", e);
+      res.status(500).json({ error: "Failed to get calendar" });
+    }
+  });
+
+  app.post("/api/worlds/:worldId/calendars", requireAuth, async (req, res) => {
+    try {
+      const world = await storage.getWorld(req.params.worldId);
+      if (!world) return res.status(404).json({ error: "World not found" });
+      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+      const parsed = insertWorldCalendarSchema.parse({ ...req.body, worldId: req.params.worldId });
+      const calendar = await storage.createWorldCalendar(parsed);
+      res.status(201).json(calendar);
+    } catch (e) {
+      console.error("Failed to create world calendar:", e);
+      res.status(500).json({ error: "Failed to create calendar" });
+    }
+  });
+
+  app.patch("/api/worlds/:worldId/calendars/:calendarId", requireAuth, async (req, res) => {
+    try {
+      const world = await storage.getWorld(req.params.worldId);
+      if (!world) return res.status(404).json({ error: "World not found" });
+      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+      const existing = await storage.getWorldCalendar(req.params.calendarId);
+      if (!existing || existing.worldId !== req.params.worldId) return res.status(404).json({ error: "Calendar not found" });
+      const calendar = await storage.updateWorldCalendar(req.params.calendarId, req.body);
+      res.json(calendar);
+    } catch (e) {
+      console.error("Failed to update world calendar:", e);
+      res.status(500).json({ error: "Failed to update calendar" });
+    }
+  });
+
+  app.delete("/api/worlds/:worldId/calendars/:calendarId", requireAuth, async (req, res) => {
+    try {
+      const world = await storage.getWorld(req.params.worldId);
+      if (!world) return res.status(404).json({ error: "World not found" });
+      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+      const existing = await storage.getWorldCalendar(req.params.calendarId);
+      if (!existing || existing.worldId !== req.params.worldId) return res.status(404).json({ error: "Calendar not found" });
+      await storage.deleteWorldCalendar(req.params.calendarId);
+      res.json({ success: true });
+    } catch (e) {
+      console.error("Failed to delete world calendar:", e);
+      res.status(500).json({ error: "Failed to delete calendar" });
+    }
+  });
+
+  // ==================== WORLD-SCOPED TIMELINE EVENT ROUTES ====================
+
+  app.get("/api/worlds/:worldId/timeline-events", requireAuth, async (req, res) => {
+    try {
+      const world = await storage.getWorld(req.params.worldId);
+      if (!world) return res.status(404).json({ error: "World not found" });
+      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+      const events = await storage.getWorldTimelineEventsByWorld(req.params.worldId);
+      res.json(events);
+    } catch (e) {
+      console.error("Failed to get world timeline events:", e);
+      res.status(500).json({ error: "Failed to get timeline events" });
+    }
+  });
+
+  app.get("/api/worlds/:worldId/timeline-events/:eventId", requireAuth, async (req, res) => {
+    try {
+      const world = await storage.getWorld(req.params.worldId);
+      if (!world) return res.status(404).json({ error: "World not found" });
+      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+      const event = await storage.getWorldTimelineEvent(req.params.eventId);
+      if (!event || event.worldId !== req.params.worldId) return res.status(404).json({ error: "Event not found" });
+      res.json(event);
+    } catch (e) {
+      console.error("Failed to get world timeline event:", e);
+      res.status(500).json({ error: "Failed to get timeline event" });
+    }
+  });
+
+  app.post("/api/worlds/:worldId/timeline-events", requireAuth, async (req, res) => {
+    try {
+      const world = await storage.getWorld(req.params.worldId);
+      if (!world) return res.status(404).json({ error: "World not found" });
+      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+      const parsed = insertWorldTimelineEventSchema.parse({ ...req.body, worldId: req.params.worldId });
+      const event = await storage.createWorldTimelineEvent(parsed);
+      res.status(201).json(event);
+    } catch (e) {
+      console.error("Failed to create world timeline event:", e);
+      res.status(500).json({ error: "Failed to create timeline event" });
+    }
+  });
+
+  app.patch("/api/worlds/:worldId/timeline-events/:eventId", requireAuth, async (req, res) => {
+    try {
+      const world = await storage.getWorld(req.params.worldId);
+      if (!world) return res.status(404).json({ error: "World not found" });
+      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+      const existing = await storage.getWorldTimelineEvent(req.params.eventId);
+      if (!existing || existing.worldId !== req.params.worldId) return res.status(404).json({ error: "Event not found" });
+      const event = await storage.updateWorldTimelineEvent(req.params.eventId, req.body);
+      res.json(event);
+    } catch (e) {
+      console.error("Failed to update world timeline event:", e);
+      res.status(500).json({ error: "Failed to update timeline event" });
+    }
+  });
+
+  app.delete("/api/worlds/:worldId/timeline-events/:eventId", requireAuth, async (req, res) => {
+    try {
+      const world = await storage.getWorld(req.params.worldId);
+      if (!world) return res.status(404).json({ error: "World not found" });
+      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+      const existing = await storage.getWorldTimelineEvent(req.params.eventId);
+      if (!existing || existing.worldId !== req.params.worldId) return res.status(404).json({ error: "Event not found" });
+      await storage.deleteWorldTimelineEvent(req.params.eventId);
+      res.json({ success: true });
+    } catch (e) {
+      console.error("Failed to delete world timeline event:", e);
       res.status(500).json({ error: "Failed to delete timeline event" });
     }
   });
