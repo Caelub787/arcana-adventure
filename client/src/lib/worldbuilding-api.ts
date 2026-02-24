@@ -20,6 +20,9 @@ export interface Entity {
   locationData?: Record<string, any> | null;
   factionData?: Record<string, any> | null;
   encounterData?: Record<string, any> | null;
+  articleContent?: string | null;
+  magicData?: Record<string, any> | null;
+  timelineData?: Record<string, any> | null;
   isDeleted: boolean;
   deletedAt?: string | null;
   createdBy?: string | null;
@@ -175,6 +178,9 @@ export const ENTITY_TYPE_CONFIG: Record<string, { label: string; pluralLabel: st
   item: { label: "Item", pluralLabel: "Items", color: "#4db6ac", icon: "Package" },
   encounter: { label: "Encounter", pluralLabel: "Encounters", color: "#ef5350", icon: "Swords" },
   clue: { label: "Clue", pluralLabel: "Clues", color: "#7986cb", icon: "Search" },
+  magic: { label: "Magic", pluralLabel: "Magic", color: "#ba68c8", icon: "Sparkles" },
+  timeline: { label: "Timeline", pluralLabel: "Timelines", color: "#90a4ae", icon: "Clock" },
+  article: { label: "Article", pluralLabel: "Articles", color: "#fff176", icon: "FileText" },
 };
 
 export function useWorldbuildingSync(campaignId: string | undefined) {
@@ -192,7 +198,7 @@ export function useWorldbuildingSync(campaignId: string | undefined) {
       }
     });
 
-    return unsubscribe;
+    return () => { unsubscribe?.(); };
   }, [campaignId, qc]);
 }
 

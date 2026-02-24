@@ -16,12 +16,13 @@ const ICON_MAP: Record<string, React.ElementType> = {
 interface EntitySidePanelProps {
   campaignId: string;
   entityId: string;
-  onClose: () => void;
+  onClose?: () => void;
   onNavigateToEntity?: (entityId: string) => void;
   isGM?: boolean;
+  embedded?: boolean;
 }
 
-export function EntitySidePanel({ campaignId, entityId, onClose, onNavigateToEntity, isGM = false }: EntitySidePanelProps) {
+export function EntitySidePanel({ campaignId, entityId, onClose, onNavigateToEntity, isGM = false, embedded = false }: EntitySidePanelProps) {
   const { data: entity, isLoading } = useEntity(campaignId, entityId);
   const { data: links = [] } = useEntityLinks(campaignId, entityId);
   const { data: references } = useEntityReferences(campaignId, entityId);
@@ -31,10 +32,14 @@ export function EntitySidePanel({ campaignId, entityId, onClose, onNavigateToEnt
   const [showLinkPicker, setShowLinkPicker] = useState(false);
   const [linkType, setLinkType] = useState("related_to");
 
+  const containerClass = embedded
+    ? "h-full flex flex-col"
+    : "fixed right-0 top-0 h-full w-96 bg-stone-900 border-l border-stone-700 z-[10500] shadow-2xl flex flex-col";
+
   if (isLoading || !entity) {
     return (
-      <div className="fixed right-0 top-0 h-full w-96 bg-stone-900 border-l border-stone-700 z-[10500] shadow-2xl p-4" data-testid="entity-side-panel-loading">
-        <div className="flex justify-end"><Button variant="ghost" size="icon" onClick={onClose}><X className="h-4 w-4" /></Button></div>
+      <div className={embedded ? "p-4" : "fixed right-0 top-0 h-full w-96 bg-stone-900 border-l border-stone-700 z-[10500] shadow-2xl p-4"} data-testid="entity-side-panel-loading">
+        {!embedded && <div className="flex justify-end"><Button variant="ghost" size="icon" onClick={onClose}><X className="h-4 w-4" /></Button></div>}
         <div className="animate-pulse space-y-3 mt-4">
           <div className="h-6 bg-stone-800 rounded w-3/4" />
           <div className="h-4 bg-stone-800 rounded w-1/2" />
@@ -64,24 +69,26 @@ export function EntitySidePanel({ campaignId, entityId, onClose, onNavigateToEnt
   const loreFields = entity.loreFields as Record<string, any> | null;
 
   return (
-    <div className="fixed right-0 top-0 h-full w-96 bg-stone-900 border-l border-stone-700 z-[10500] shadow-2xl flex flex-col" data-testid="entity-side-panel">
-      <div className="flex items-center gap-2 p-3 border-b border-stone-700 bg-stone-800/50">
-        <div className="w-8 h-8 rounded flex items-center justify-center flex-shrink-0" style={{ backgroundColor: cfg?.color + "22" }}>
-          <IconComp className="h-4 w-4" style={{ color: cfg?.color }} />
-        </div>
-        <div className="flex-1 min-w-0">
-          <h3 className="font-semibold text-stone-200 truncate text-sm">{entity.displayName}</h3>
-          <div className="flex items-center gap-2">
-            <Badge variant="outline" className="text-[10px] px-1.5 border-stone-600 text-stone-400">{cfg?.label}</Badge>
-            <span className="text-[10px] text-stone-500 flex items-center gap-1">
-              {entity.visibility === "gm_only" ? <><EyeOff className="h-2.5 w-2.5" /> GM Only</> : entity.visibility === "player_visible" ? <><Eye className="h-2.5 w-2.5" /> Players</> : "Shared"}
-            </span>
+    <div className={containerClass} data-testid="entity-side-panel">
+      {!embedded && (
+        <div className="flex items-center gap-2 p-3 border-b border-stone-700 bg-stone-800/50">
+          <div className="w-8 h-8 rounded flex items-center justify-center flex-shrink-0" style={{ backgroundColor: cfg?.color + "22" }}>
+            <IconComp className="h-4 w-4" style={{ color: cfg?.color }} />
           </div>
+          <div className="flex-1 min-w-0">
+            <h3 className="font-semibold text-stone-200 truncate text-sm">{entity.displayName}</h3>
+            <div className="flex items-center gap-2">
+              <Badge variant="outline" className="text-[10px] px-1.5 border-stone-600 text-stone-400">{cfg?.label}</Badge>
+              <span className="text-[10px] text-stone-500 flex items-center gap-1">
+                {entity.visibility === "gm_only" ? <><EyeOff className="h-2.5 w-2.5" /> GM Only</> : entity.visibility === "player_visible" ? <><Eye className="h-2.5 w-2.5" /> Players</> : "Shared"}
+              </span>
+            </div>
+          </div>
+          <Button variant="ghost" size="icon" onClick={onClose} className="text-stone-400 hover:text-stone-200 flex-shrink-0" data-testid="button-close-entity-panel">
+            <X className="h-4 w-4" />
+          </Button>
         </div>
-        <Button variant="ghost" size="icon" onClick={onClose} className="text-stone-400 hover:text-stone-200 flex-shrink-0" data-testid="button-close-entity-panel">
-          <X className="h-4 w-4" />
-        </Button>
-      </div>
+      )}
 
       <Tabs defaultValue="overview" className="flex-1 flex flex-col overflow-hidden">
         <TabsList className="bg-stone-800/50 border-b border-stone-700 rounded-none justify-start px-2 h-9 flex-shrink-0">

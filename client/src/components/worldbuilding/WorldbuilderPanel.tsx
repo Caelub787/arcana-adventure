@@ -20,16 +20,18 @@ interface WorldbuilderPanelProps {
   isGM: boolean;
   characters?: any[];
   onOpenEntity?: (entityId: string) => void;
+  createOnly?: boolean;
+  onCloseCreate?: () => void;
 }
 
-export function WorldbuilderPanel({ campaignId, isGM, characters = [], onOpenEntity }: WorldbuilderPanelProps) {
+export function WorldbuilderPanel({ campaignId, isGM, characters = [], onOpenEntity, createOnly = false, onCloseCreate }: WorldbuilderPanelProps) {
   useWorldbuildingSync(campaignId);
   const { data: entities = [], isLoading } = useEntities(campaignId);
   const createEntity = useCreateEntity(campaignId);
   const deleteEntity = useDeleteEntity(campaignId);
   const [searchQuery, setSearchQuery] = useState("");
   const [filterType, setFilterType] = useState<string>("");
-  const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [showCreateDialog, setShowCreateDialog] = useState(createOnly);
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
   const [showFilters, setShowFilters] = useState(false);
 
@@ -73,6 +75,7 @@ export function WorldbuilderPanel({ campaignId, isGM, characters = [], onOpenEnt
     } as any);
     setShowCreateDialog(false);
     setNewEntity({ displayName: "", entityType: "character", description: "", visibility: "gm_only", sheetId: "", tags: "" });
+    if (createOnly && onCloseCreate) onCloseCreate();
   };
 
   const handleEntityClick = (entityId: string) => {
@@ -82,6 +85,103 @@ export function WorldbuilderPanel({ campaignId, isGM, characters = [], onOpenEnt
       setSelectedEntityId(entityId);
     }
   };
+
+  if (createOnly) {
+    return (
+      <Dialog open={showCreateDialog} onOpenChange={(open) => { setShowCreateDialog(open); if (!open && onCloseCreate) onCloseCreate(); }}>
+        <DialogContent className="bg-stone-900 border-stone-700 text-stone-200 max-w-md" data-testid="dialog-create-entity">
+          <DialogHeader>
+            <DialogTitle className="text-stone-100">Create New Article</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label className="text-xs text-stone-400">Type</Label>
+              <select
+                value={newEntity.entityType}
+                onChange={(e) => setNewEntity(p => ({ ...p, entityType: e.target.value }))}
+                className="w-full mt-1 bg-stone-800 border border-stone-700 text-stone-200 rounded px-2 py-2 text-sm"
+                data-testid="select-entity-type"
+              >
+                {Object.entries(ENTITY_TYPE_CONFIG).map(([key, cfg]) => (
+                  <option key={key} value={key}>{cfg.label}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <Label className="text-xs text-stone-400">Name</Label>
+              <Input
+                value={newEntity.displayName}
+                onChange={(e) => setNewEntity(p => ({ ...p, displayName: e.target.value }))}
+                placeholder="Entity name..."
+                className="mt-1 bg-stone-800 border-stone-700 text-stone-200"
+                data-testid="input-entity-name"
+              />
+            </div>
+            <div>
+              <Label className="text-xs text-stone-400">Description</Label>
+              <Textarea
+                value={newEntity.description}
+                onChange={(e) => setNewEntity(p => ({ ...p, description: e.target.value }))}
+                placeholder="Brief description..."
+                className="mt-1 bg-stone-800 border-stone-700 text-stone-200 min-h-[60px]"
+                data-testid="input-entity-description"
+              />
+            </div>
+            <div>
+              <Label className="text-xs text-stone-400">Visibility</Label>
+              <select
+                value={newEntity.visibility}
+                onChange={(e) => setNewEntity(p => ({ ...p, visibility: e.target.value }))}
+                className="w-full mt-1 bg-stone-800 border border-stone-700 text-stone-200 rounded px-2 py-2 text-sm"
+                data-testid="select-entity-visibility"
+              >
+                <option value="gm_only">GM Only</option>
+                <option value="shared">Shared</option>
+                <option value="player_visible">Player Visible</option>
+              </select>
+            </div>
+            {newEntity.entityType === "character" && characters.length > 0 && (
+              <div>
+                <Label className="text-xs text-stone-400">Link to Existing Character Sheet</Label>
+                <select
+                  value={newEntity.sheetId}
+                  onChange={(e) => setNewEntity(p => ({ ...p, sheetId: e.target.value }))}
+                  className="w-full mt-1 bg-stone-800 border border-stone-700 text-stone-200 rounded px-2 py-2 text-sm"
+                  data-testid="select-link-sheet"
+                >
+                  <option value="">None (create without sheet)</option>
+                  {characters.map((c: any) => (
+                    <option key={c.id} value={c.id}>{c.name} (Lv.{c.level})</option>
+                  ))}
+                </select>
+              </div>
+            )}
+            <div>
+              <Label className="text-xs text-stone-400">Tags (comma separated)</Label>
+              <Input
+                value={newEntity.tags}
+                onChange={(e) => setNewEntity(p => ({ ...p, tags: e.target.value }))}
+                placeholder="npc, quest-giver, important..."
+                className="mt-1 bg-stone-800 border-stone-700 text-stone-200"
+                data-testid="input-entity-tags"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => { setShowCreateDialog(false); onCloseCreate?.(); }} className="text-stone-400" data-testid="button-cancel-create">Cancel</Button>
+            <Button
+              onClick={handleCreate}
+              disabled={!newEntity.displayName.trim() || createEntity.isPending}
+              className="bg-amber-600 hover:bg-amber-500 text-white"
+              data-testid="button-confirm-create"
+            >
+              {createEntity.isPending ? "Creating..." : "Create"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    );
+  }
 
   return (
     <>
@@ -203,7 +303,7 @@ export function WorldbuilderPanel({ campaignId, isGM, characters = [], onOpenEnt
         </ScrollArea>
       </div>
 
-      <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+      <Dialog open={showCreateDialog} onOpenChange={(open) => { setShowCreateDialog(open); if (!open && createOnly && onCloseCreate) onCloseCreate(); }}>
         <DialogContent className="bg-stone-900 border-stone-700 text-stone-200 max-w-md" data-testid="dialog-create-entity">
           <DialogHeader>
             <DialogTitle className="text-stone-100">Create Entity</DialogTitle>

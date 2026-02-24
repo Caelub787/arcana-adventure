@@ -1429,7 +1429,7 @@ export type SceneMapPin = typeof sceneMapPins.$inferSelect;
 // ============================================
 
 export const ENTITY_TYPES = [
-  "character", "location", "faction", "quest", "event", "lore", "item", "encounter", "clue"
+  "character", "location", "faction", "quest", "event", "lore", "item", "encounter", "clue", "magic", "timeline", "article"
 ] as const;
 export type EntityType = typeof ENTITY_TYPES[number];
 
@@ -1442,6 +1442,7 @@ export const entities = pgTable("entities", {
   entityType: text("entity_type").notNull(),
   displayName: text("display_name").notNull(),
   description: text("description"),
+  articleContent: text("article_content"),
   image: text("image"),
   sheetId: varchar("sheet_id").references(() => characters.id, { onDelete: "set null" }),
   notePageId: varchar("note_page_id").references(() => notes.id, { onDelete: "set null" }),
@@ -1454,6 +1455,8 @@ export const entities = pgTable("entities", {
   locationData: jsonb("location_data"),
   factionData: jsonb("faction_data"),
   encounterData: jsonb("encounter_data"),
+  magicData: jsonb("magic_data"),
+  timelineData: jsonb("timeline_data"),
   isDeleted: boolean("is_deleted").default(false).notNull(),
   deletedAt: timestamp("deleted_at"),
   createdBy: varchar("created_by").references(() => users.id, { onDelete: "set null" }),
