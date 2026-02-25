@@ -142,7 +142,6 @@ export function WorldMapEditor({ campaignId, worldId, mapId, onBack, onMapCreate
     try {
       if (isNew) {
         const result = await createMap.mutateAsync({
-          campaignId: resolvedId,
           title: title.trim(),
           imageUrl: imageUrl || undefined,
           description: description || undefined,
