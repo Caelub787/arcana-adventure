@@ -362,6 +362,7 @@ export function WorldMapEditor({ campaignId, worldId, mapId, onBack, onMapCreate
 
         <div className="flex-1 overflow-hidden bg-stone-950 relative" ref={containerRef}>
           {imageUrl ? (
+            <>
             <div
               className={`absolute inset-0 ${isPlacingPin ? 'cursor-crosshair' : ''}`}
               style={{ cursor: isPlacingPin ? 'crosshair' : editorDragging ? 'grabbing' : 'grab' }}
@@ -450,7 +451,6 @@ export function WorldMapEditor({ campaignId, worldId, mapId, onBack, onMapCreate
                 </div>
               )}
             </div>
-
             <div className="absolute bottom-3 right-3 flex flex-col gap-1 z-20">
               <Button variant="ghost" size="icon" className="h-8 w-8 bg-stone-900/80 hover:bg-stone-800 text-stone-300 border border-stone-700" onClick={() => setEditorZoom(z => Math.min(z * 1.2, 10))} data-testid="button-editor-zoom-in">
                 <ZoomIn className="h-4 w-4" />
@@ -462,12 +462,12 @@ export function WorldMapEditor({ campaignId, worldId, mapId, onBack, onMapCreate
                 <Maximize2 className="h-4 w-4" />
               </Button>
             </div>
-
             <div className="absolute top-3 left-3 z-20">
               <Badge className="bg-stone-900/80 border-stone-700 text-stone-300 text-[10px]">
                 {Math.round((editorZoom / editorFitRef.current) * 100)}%
               </Badge>
             </div>
+            </>
           ) : (
             <div className="flex items-center justify-center h-full">
               <div className="text-center p-8">
