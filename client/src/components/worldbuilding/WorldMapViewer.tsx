@@ -251,16 +251,46 @@ function MapCanvas({ campaignId, map, allMaps, entities, isGM, onNavigateToSubMa
 }) {
   const { data: pins = [] } = useWorldMapPins(campaignId, map.id);
   const containerRef = useRef<HTMLDivElement>(null);
+  const imgRef = useRef<HTMLImageElement>(null);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const [activePinId, setActivePinId] = useState<string | null>(null);
+  const [imageLoaded, setImageLoaded] = useState(false);
+  const initialFitRef = useRef<number>(1);
+
+  const fitToScreen = useCallback(() => {
+    if (!containerRef.current || !imgRef.current) return;
+    const cw = containerRef.current.clientWidth;
+    const ch = containerRef.current.clientHeight;
+    const iw = imgRef.current.naturalWidth;
+    const ih = imgRef.current.naturalHeight;
+    if (!iw || !ih) return;
+    const scale = Math.min(cw / iw, ch / ih, 1);
+    initialFitRef.current = scale;
+    setZoom(scale);
+    setPan({
+      x: (cw - iw * scale) / 2,
+      y: (ch - ih * scale) / 2,
+    });
+  }, []);
+
+  const handleImageLoad = useCallback(() => {
+    setImageLoaded(true);
+    fitToScreen();
+  }, [fitToScreen]);
+
+  useEffect(() => {
+    setImageLoaded(false);
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
+  }, [map.id]);
 
   const handleWheel = useCallback((e: React.WheelEvent) => {
     e.preventDefault();
     const delta = e.deltaY > 0 ? 0.9 : 1.1;
-    setZoom(z => Math.min(Math.max(z * delta, 0.1), 5));
+    setZoom(z => Math.min(Math.max(z * delta, 0.05), 10));
   }, []);
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
@@ -279,9 +309,8 @@ function MapCanvas({ campaignId, map, allMaps, entities, isGM, onNavigateToSubMa
   }, []);
 
   const resetView = useCallback(() => {
-    setZoom(1);
-    setPan({ x: 0, y: 0 });
-  }, []);
+    fitToScreen();
+  }, [fitToScreen]);
 
   const handlePinClick = (pin: WorldMapPin, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -334,10 +363,13 @@ function MapCanvas({ campaignId, map, allMaps, entities, isGM, onNavigateToSubMa
           }}
         >
           <img
+            ref={imgRef}
             src={map.imageUrl}
             alt={map.title}
             className="max-w-none select-none"
             draggable={false}
+            onLoad={handleImageLoad}
+            style={{ opacity: imageLoaded ? 1 : 0 }}
             data-testid="map-image"
           />
           {pins.map(pin => (
@@ -441,7 +473,7 @@ function MapCanvas({ campaignId, map, allMaps, entities, isGM, onNavigateToSubMa
 
       <div className="absolute top-3 left-3 z-20">
         <Badge className="bg-stone-900/80 border-stone-700 text-stone-300 text-[10px]">
-          {Math.round(zoom * 100)}%
+          {Math.round((zoom / initialFitRef.current) * 100)}%
         </Badge>
       </div>
     </div>

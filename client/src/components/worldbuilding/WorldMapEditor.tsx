@@ -12,7 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Map, MapPin, Plus, Save, Trash2, X, Edit3, ChevronLeft, FileText, Navigation, Link2, GripVertical, Loader2, Image, Upload } from "lucide-react";
+import { Map, MapPin, Plus, Save, Trash2, X, Edit3, ChevronLeft, FileText, Navigation, Link2, GripVertical, Loader2, Image, Upload, ZoomIn, ZoomOut, Maximize2 } from "lucide-react";
 
 interface WorldMapEditorProps {
   campaignId?: string;
@@ -96,6 +96,33 @@ export function WorldMapEditor({ campaignId, worldId, mapId, onBack, onMapCreate
   }, [handleImageUpload]);
   const imageRef = useRef<HTMLImageElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const [editorZoom, setEditorZoom] = useState(1);
+  const [editorPan, setEditorPan] = useState({ x: 0, y: 0 });
+  const [editorDragging, setEditorDragging] = useState(false);
+  const [editorDragStart, setEditorDragStart] = useState({ x: 0, y: 0 });
+  const [editorImageLoaded, setEditorImageLoaded] = useState(false);
+  const editorFitRef = useRef<number>(1);
+
+  const fitEditorToScreen = useCallback(() => {
+    if (!containerRef.current || !imageRef.current) return;
+    const cw = containerRef.current.clientWidth;
+    const ch = containerRef.current.clientHeight;
+    const iw = imageRef.current.naturalWidth;
+    const ih = imageRef.current.naturalHeight;
+    if (!iw || !ih) return;
+    const scale = Math.min(cw / iw, ch / ih, 1);
+    editorFitRef.current = scale;
+    setEditorZoom(scale);
+    setEditorPan({
+      x: (cw - iw * scale) / 2,
+      y: (ch - ih * scale) / 2,
+    });
+  }, []);
+
+  const handleEditorImageLoad = useCallback(() => {
+    setEditorImageLoaded(true);
+    fitEditorToScreen();
+  }, [fitEditorToScreen]);
 
   const isNew = !mapId;
 
@@ -336,16 +363,43 @@ export function WorldMapEditor({ campaignId, worldId, mapId, onBack, onMapCreate
         <div className="flex-1 overflow-hidden bg-stone-950 relative" ref={containerRef}>
           {imageUrl ? (
             <div
-              className={`relative h-full overflow-auto ${isPlacingPin ? 'cursor-crosshair' : ''}`}
+              className={`absolute inset-0 ${isPlacingPin ? 'cursor-crosshair' : ''}`}
+              style={{ cursor: isPlacingPin ? 'crosshair' : editorDragging ? 'grabbing' : 'grab' }}
+              onWheel={(e) => {
+                e.preventDefault();
+                const delta = e.deltaY > 0 ? 0.9 : 1.1;
+                setEditorZoom(z => Math.min(Math.max(z * delta, 0.05), 10));
+              }}
+              onMouseDown={(e) => {
+                if (isPlacingPin) return;
+                if (e.button !== 0) return;
+                setEditorDragging(true);
+                setEditorDragStart({ x: e.clientX - editorPan.x, y: e.clientY - editorPan.y });
+              }}
+              onMouseMove={(e) => {
+                if (!editorDragging) return;
+                setEditorPan({ x: e.clientX - editorDragStart.x, y: e.clientY - editorDragStart.y });
+              }}
+              onMouseUp={() => setEditorDragging(false)}
+              onMouseLeave={() => setEditorDragging(false)}
               onClick={isPlacingPin ? handleImageClick : undefined}
             >
-              <div className="relative inline-block min-w-full min-h-full">
+              <div
+                style={{
+                  transform: `translate(${editorPan.x}px, ${editorPan.y}px) scale(${editorZoom})`,
+                  transformOrigin: '0 0',
+                  position: 'relative',
+                  display: 'inline-block',
+                }}
+              >
                 <img
                   ref={imageRef}
                   src={imageUrl}
                   alt={title}
                   className="max-w-none select-none"
                   draggable={false}
+                  onLoad={handleEditorImageLoad}
+                  style={{ opacity: editorImageLoaded ? 1 : 0 }}
                   data-testid="editor-map-image"
                 />
                 {pins.map(pin => (
@@ -396,11 +450,29 @@ export function WorldMapEditor({ campaignId, worldId, mapId, onBack, onMapCreate
                 </div>
               )}
             </div>
+
+            <div className="absolute bottom-3 right-3 flex flex-col gap-1 z-20">
+              <Button variant="ghost" size="icon" className="h-8 w-8 bg-stone-900/80 hover:bg-stone-800 text-stone-300 border border-stone-700" onClick={() => setEditorZoom(z => Math.min(z * 1.2, 10))} data-testid="button-editor-zoom-in">
+                <ZoomIn className="h-4 w-4" />
+              </Button>
+              <Button variant="ghost" size="icon" className="h-8 w-8 bg-stone-900/80 hover:bg-stone-800 text-stone-300 border border-stone-700" onClick={() => setEditorZoom(z => Math.max(z * 0.8, 0.05))} data-testid="button-editor-zoom-out">
+                <ZoomOut className="h-4 w-4" />
+              </Button>
+              <Button variant="ghost" size="icon" className="h-8 w-8 bg-stone-900/80 hover:bg-stone-800 text-stone-300 border border-stone-700" onClick={fitEditorToScreen} data-testid="button-editor-fit">
+                <Maximize2 className="h-4 w-4" />
+              </Button>
+            </div>
+
+            <div className="absolute top-3 left-3 z-20">
+              <Badge className="bg-stone-900/80 border-stone-700 text-stone-300 text-[10px]">
+                {Math.round((editorZoom / editorFitRef.current) * 100)}%
+              </Badge>
+            </div>
           ) : (
             <div className="flex items-center justify-center h-full">
               <div className="text-center p-8">
                 <Image className="h-12 w-12 text-stone-700 mx-auto mb-3" />
-                <p className="text-stone-500 text-sm">Add an image URL in the settings panel</p>
+                <p className="text-stone-500 text-sm">Add an image URL or upload one in the settings panel</p>
               </div>
             </div>
           )}
