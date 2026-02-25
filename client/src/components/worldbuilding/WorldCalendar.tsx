@@ -417,7 +417,7 @@ export function WorldCalendar({ campaignId, worldId, isGM = false }: WorldCalend
   const renderDialogs = () => (
     <>
       <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
-        <DialogContent className="bg-stone-900 border-stone-700 text-stone-200 max-w-lg max-h-[85vh] overflow-y-auto">
+        <DialogContent className="bg-stone-900 border-stone-700 text-stone-200 w-full max-w-[95vw] md:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-stone-100">Create Calendar</DialogTitle>
           </DialogHeader>
@@ -647,7 +647,7 @@ export function WorldCalendar({ campaignId, worldId, isGM = false }: WorldCalend
       {renderDialogs()}
 
       <Dialog open={showSettingsDialog} onOpenChange={setShowSettingsDialog}>
-        <DialogContent className="bg-stone-900 border-stone-700 text-stone-200 max-w-lg max-h-[85vh] overflow-y-auto">
+        <DialogContent className="bg-stone-900 border-stone-700 text-stone-200 w-full max-w-[95vw] md:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-stone-100">Calendar Settings</DialogTitle>
           </DialogHeader>
@@ -716,7 +716,7 @@ export function WorldCalendar({ campaignId, worldId, isGM = false }: WorldCalend
       </Dialog>
 
       <Dialog open={showSyncDialog} onOpenChange={setShowSyncDialog}>
-        <DialogContent className="bg-stone-900 border-stone-700 text-stone-200 max-w-md max-h-[85vh] overflow-y-auto">
+        <DialogContent className="bg-stone-900 border-stone-700 text-stone-200 w-full max-w-[95vw] md:max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-stone-100 flex items-center gap-2">
               <Link2 className="h-4 w-4 text-blue-400" />
@@ -865,101 +865,104 @@ function CalendarForm({
 
   return (
     <div className="space-y-4">
-      <div>
-        <label className="text-xs text-stone-400 block mb-1">Calendar Name</label>
-        <Input
-          value={name}
-          onChange={e => setName(e.target.value)}
-          className="bg-stone-800 border-stone-700 text-stone-200 text-sm"
-          placeholder="e.g., Harptos Calendar"
-          data-testid="input-calendar-name"
-        />
-      </div>
-
-      <div>
-        <label className="text-xs text-stone-400 block mb-1">Year Suffix (optional)</label>
-        <Input
-          value={yearSuffix}
-          onChange={e => setYearSuffix(e.target.value)}
-          className="bg-stone-800 border-stone-700 text-stone-200 text-sm"
-          placeholder="e.g., DR, AE, etc."
-          data-testid="input-year-suffix"
-        />
-      </div>
-
-      <div>
-        <div className="flex items-center justify-between mb-1">
-          <label className="text-xs text-stone-400">Weekday Names</label>
-          <Button variant="ghost" size="sm" className="h-5 text-[10px] text-amber-400 hover:text-amber-300 px-1" onClick={addWeekDay}>
-            <Plus className="h-2.5 w-2.5 mr-0.5" /> Add
-          </Button>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div>
+          <label className="text-xs text-stone-400 block mb-1">Calendar Name</label>
+          <Input
+            value={name}
+            onChange={e => setName(e.target.value)}
+            className="bg-stone-800 border-stone-700 text-stone-200 text-sm"
+            placeholder="e.g., Harptos Calendar"
+            data-testid="input-calendar-name"
+          />
         </div>
-        <div className="space-y-1 max-h-[120px] overflow-y-auto">
-          {weekDayNames.map((day, i) => (
-            <div key={i} className="flex items-center gap-1">
-              <Input
-                value={day}
-                onChange={e => {
-                  const copy = [...weekDayNames];
-                  copy[i] = e.target.value;
-                  setWeekDayNames(copy);
-                }}
-                className="bg-stone-800 border-stone-700 text-stone-200 text-xs h-7 flex-1"
-                data-testid={`input-weekday-${i}`}
-              />
-              {weekDayNames.length > 1 && (
-                <Button variant="ghost" size="icon" className="h-6 w-6 text-stone-500 hover:text-red-400 flex-shrink-0" onClick={() => removeWeekDay(i)}>
-                  <X className="h-3 w-3" />
-                </Button>
-              )}
-            </div>
-          ))}
+        <div>
+          <label className="text-xs text-stone-400 block mb-1">Year Suffix (optional)</label>
+          <Input
+            value={yearSuffix}
+            onChange={e => setYearSuffix(e.target.value)}
+            className="bg-stone-800 border-stone-700 text-stone-200 text-sm"
+            placeholder="e.g., DR, AE, etc."
+            data-testid="input-year-suffix"
+          />
         </div>
       </div>
 
-      <div>
-        <div className="flex items-center justify-between mb-1">
-          <label className="text-xs text-stone-400">Months</label>
-          <Button variant="ghost" size="sm" className="h-5 text-[10px] text-amber-400 hover:text-amber-300 px-1" onClick={addMonth}>
-            <Plus className="h-2.5 w-2.5 mr-0.5" /> Add
-          </Button>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <div className="flex items-center justify-between mb-1">
+            <label className="text-xs text-stone-400">Weekday Names</label>
+            <Button variant="ghost" size="sm" className="h-5 text-[10px] text-amber-400 hover:text-amber-300 px-1" onClick={addWeekDay}>
+              <Plus className="h-2.5 w-2.5 mr-0.5" /> Add
+            </Button>
+          </div>
+          <div className="space-y-1">
+            {weekDayNames.map((day, i) => (
+              <div key={i} className="flex items-center gap-1">
+                <Input
+                  value={day}
+                  onChange={e => {
+                    const copy = [...weekDayNames];
+                    copy[i] = e.target.value;
+                    setWeekDayNames(copy);
+                  }}
+                  className="bg-stone-800 border-stone-700 text-stone-200 text-xs h-7 flex-1"
+                  data-testid={`input-weekday-${i}`}
+                />
+                {weekDayNames.length > 1 && (
+                  <Button variant="ghost" size="icon" className="h-6 w-6 text-stone-500 hover:text-red-400 flex-shrink-0" onClick={() => removeWeekDay(i)}>
+                    <X className="h-3 w-3" />
+                  </Button>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
-        <div className="space-y-1 max-h-[250px] overflow-y-auto">
-          {monthNames.map((month, i) => (
-            <div key={i} className="flex items-center gap-1">
-              <span className="text-[10px] text-stone-600 w-5 text-right flex-shrink-0">{i + 1}</span>
-              <Input
-                value={month}
-                onChange={e => {
-                  const copy = [...monthNames];
-                  copy[i] = e.target.value;
-                  setMonthNames(copy);
-                }}
-                className="bg-stone-800 border-stone-700 text-stone-200 text-xs h-7 flex-1"
-                placeholder={`Month ${i + 1}`}
-                data-testid={`input-month-name-${i}`}
-              />
-              <Input
-                type="number"
-                value={daysPerMonth[i] || 30}
-                onChange={e => {
-                  const copy = [...daysPerMonth];
-                  copy[i] = parseInt(e.target.value, 10) || 1;
-                  setDaysPerMonth(copy);
-                }}
-                className="bg-stone-800 border-stone-700 text-stone-200 text-xs h-7 w-16"
-                min={1}
-                max={100}
-                data-testid={`input-days-per-month-${i}`}
-              />
-              <span className="text-[10px] text-stone-600 flex-shrink-0">days</span>
-              {monthNames.length > 1 && (
-                <Button variant="ghost" size="icon" className="h-6 w-6 text-stone-500 hover:text-red-400 flex-shrink-0" onClick={() => removeMonth(i)}>
-                  <X className="h-3 w-3" />
-                </Button>
-              )}
-            </div>
-          ))}
+
+        <div>
+          <div className="flex items-center justify-between mb-1">
+            <label className="text-xs text-stone-400">Months</label>
+            <Button variant="ghost" size="sm" className="h-5 text-[10px] text-amber-400 hover:text-amber-300 px-1" onClick={addMonth}>
+              <Plus className="h-2.5 w-2.5 mr-0.5" /> Add
+            </Button>
+          </div>
+          <div className="space-y-1">
+            {monthNames.map((month, i) => (
+              <div key={i} className="flex items-center gap-1">
+                <span className="text-[10px] text-stone-600 w-5 text-right flex-shrink-0">{i + 1}</span>
+                <Input
+                  value={month}
+                  onChange={e => {
+                    const copy = [...monthNames];
+                    copy[i] = e.target.value;
+                    setMonthNames(copy);
+                  }}
+                  className="bg-stone-800 border-stone-700 text-stone-200 text-xs h-7 flex-1"
+                  placeholder={`Month ${i + 1}`}
+                  data-testid={`input-month-name-${i}`}
+                />
+                <Input
+                  type="number"
+                  value={daysPerMonth[i] || 30}
+                  onChange={e => {
+                    const copy = [...daysPerMonth];
+                    copy[i] = parseInt(e.target.value, 10) || 1;
+                    setDaysPerMonth(copy);
+                  }}
+                  className="bg-stone-800 border-stone-700 text-stone-200 text-xs h-7 w-16"
+                  min={1}
+                  max={100}
+                  data-testid={`input-days-per-month-${i}`}
+                />
+                <span className="text-[10px] text-stone-600 flex-shrink-0">days</span>
+                {monthNames.length > 1 && (
+                  <Button variant="ghost" size="icon" className="h-6 w-6 text-stone-500 hover:text-red-400 flex-shrink-0" onClick={() => removeMonth(i)}>
+                    <X className="h-3 w-3" />
+                  </Button>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </div>

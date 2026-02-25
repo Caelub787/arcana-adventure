@@ -492,7 +492,7 @@ export function TimelineView({ campaignId, worldId, isGM, onSelectEntity }: Time
       </div>
 
       <Dialog open={showTimelineForm} onOpenChange={setShowTimelineForm}>
-        <DialogContent className="bg-stone-900 border-stone-700 text-stone-200 max-w-sm" data-testid="timeline-form-dialog">
+        <DialogContent className="bg-stone-900 border-stone-700 text-stone-200 w-full max-w-[95vw] md:max-w-lg" data-testid="timeline-form-dialog">
           <DialogHeader>
             <DialogTitle className="text-stone-100">
               {editingTimeline ? "Edit Timeline" : "Create Timeline"}
@@ -877,237 +877,241 @@ function EventFormDialog({ open, onClose, formData, setFormData, onSubmit, isEdi
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="bg-stone-900 border-stone-700 max-w-md max-h-[90vh] overflow-y-auto" data-testid="timeline-event-form">
+      <DialogContent className="bg-stone-900 border-stone-700 w-full max-w-[95vw] md:max-w-2xl max-h-[90vh] overflow-y-auto" data-testid="timeline-event-form">
         <DialogHeader>
           <DialogTitle className="text-stone-200">
             {isEditing ? "Edit Timeline Event" : "Create Timeline Event"}
           </DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-3">
-          <div>
-            <label className="text-xs text-stone-400 mb-1 block">Title *</label>
-            <Input
-              value={formData.title}
-              onChange={(e) => setFormData(d => ({ ...d, title: e.target.value }))}
-              placeholder="Event title"
-              className="bg-stone-800 border-stone-700 text-stone-200"
-              data-testid="input-event-title"
-            />
-          </div>
-
-          <div>
-            <label className="text-xs text-stone-400 mb-1 block">Description</label>
-            <Textarea
-              value={formData.description}
-              onChange={(e) => setFormData(d => ({ ...d, description: e.target.value }))}
-              placeholder="What happened?"
-              className="bg-stone-800 border-stone-700 text-stone-200 min-h-[80px]"
-              data-testid="input-event-description"
-            />
-          </div>
-
-          {selectedCalendar ? (
-            <div className="space-y-2">
-              <label className="text-xs text-stone-400 mb-1 block">Date ({selectedCalendar.name})</label>
-              <CalendarDatePicker
-                value={formData.date}
-                calendar={selectedCalendar}
-                onChange={(v) => setFormData(d => ({ ...d, date: v }))}
-                testIdPrefix="input-event-date"
-              />
-              <label className="text-xs text-stone-400 mb-1 block">End Date (optional)</label>
-              <CalendarDatePicker
-                value={formData.endDate}
-                calendar={selectedCalendar}
-                onChange={(v) => setFormData(d => ({ ...d, endDate: v }))}
-                testIdPrefix="input-event-end-date"
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3">
+          <div className="space-y-3">
+            <div>
+              <label className="text-xs text-stone-400 mb-1 block">Title *</label>
+              <Input
+                value={formData.title}
+                onChange={(e) => setFormData(d => ({ ...d, title: e.target.value }))}
+                placeholder="Event title"
+                className="bg-stone-800 border-stone-700 text-stone-200"
+                data-testid="input-event-title"
               />
             </div>
-          ) : (
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="text-xs text-stone-400 mb-1 block">Date</label>
+
+            <div>
+              <label className="text-xs text-stone-400 mb-1 block">Description</label>
+              <Textarea
+                value={formData.description}
+                onChange={(e) => setFormData(d => ({ ...d, description: e.target.value }))}
+                placeholder="What happened?"
+                className="bg-stone-800 border-stone-700 text-stone-200 min-h-[80px]"
+                data-testid="input-event-description"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs text-stone-400 mb-1 block">Era</label>
+              <div className="flex gap-2">
                 <Input
-                  value={formData.date}
-                  onChange={(e) => setFormData(d => ({ ...d, date: e.target.value }))}
-                  placeholder="e.g. Year 1042"
-                  className="bg-stone-800 border-stone-700 text-stone-200"
-                  data-testid="input-event-date"
+                  value={formData.era}
+                  onChange={(e) => setFormData(d => ({ ...d, era: e.target.value }))}
+                  placeholder="e.g. Age of Heroes"
+                  className="bg-stone-800 border-stone-700 text-stone-200 flex-1"
+                  data-testid="input-event-era"
                 />
               </div>
-              <div>
-                <label className="text-xs text-stone-400 mb-1 block">End Date</label>
-                <Input
-                  value={formData.endDate}
-                  onChange={(e) => setFormData(d => ({ ...d, endDate: e.target.value }))}
-                  placeholder="Optional"
-                  className="bg-stone-800 border-stone-700 text-stone-200"
-                  data-testid="input-event-end-date"
-                />
-              </div>
-            </div>
-          )}
-
-          <div>
-            <label className="text-xs text-stone-400 mb-1 block">Era</label>
-            <div className="flex gap-2">
-              <Input
-                value={formData.era}
-                onChange={(e) => setFormData(d => ({ ...d, era: e.target.value }))}
-                placeholder="e.g. Age of Heroes"
-                className="bg-stone-800 border-stone-700 text-stone-200 flex-1"
-                data-testid="input-event-era"
-              />
-            </div>
-            {existingEras.length > 0 && (
-              <div className="flex flex-wrap gap-1 mt-1.5">
-                {existingEras.map(era => (
-                  <Badge
-                    key={era}
-                    variant="outline"
-                    className="text-[10px] cursor-pointer border-stone-700 text-stone-500 hover:text-stone-300 hover:border-stone-500"
-                    onClick={() => setFormData(d => ({ ...d, era }))}
-                  >
-                    {era}
-                  </Badge>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <div>
-            <label className="text-xs text-stone-400 mb-1 block">Color</label>
-            <div className="flex items-center gap-2">
-              <Input
-                type="color"
-                value={formData.color || "#90a4ae"}
-                onChange={(e) => setFormData(d => ({ ...d, color: e.target.value }))}
-                className="w-8 h-8 p-0 border-0 bg-transparent cursor-pointer"
-                data-testid="input-event-color"
-              />
-              <div className="flex gap-1 flex-wrap flex-1">
-                {DEFAULT_COLORS.slice(0, 8).map(c => (
-                  <button
-                    key={c}
-                    className={`w-5 h-5 rounded-full border-2 transition-all ${formData.color === c ? 'border-white scale-110' : 'border-transparent hover:border-stone-500'}`}
-                    style={{ backgroundColor: c }}
-                    onClick={() => setFormData(d => ({ ...d, color: c }))}
-                  />
-                ))}
-                {formData.color && (
-                  <button
-                    className="text-[9px] text-stone-500 hover:text-stone-300 px-1"
-                    onClick={() => setFormData(d => ({ ...d, color: "" }))}
-                  >
-                    Clear
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-
-          <div>
-            <label className="text-xs text-stone-400 mb-1 block">Linked Entity</label>
-            {selectedEntity ? (
-              <div className="flex items-center justify-between bg-stone-800 border border-stone-700 rounded-md px-3 py-2">
-                <div className="flex items-center gap-2">
-                  <div
-                    className="w-2 h-2 rounded-full"
-                    style={{ backgroundColor: ENTITY_TYPE_CONFIG[selectedEntity.entityType]?.color }}
-                  />
-                  <span className="text-xs text-stone-200">{selectedEntity.displayName}</span>
-                  <Badge variant="outline" className="text-[9px] border-stone-600 text-stone-500">
-                    {ENTITY_TYPE_CONFIG[selectedEntity.entityType]?.label}
-                  </Badge>
+              {existingEras.length > 0 && (
+                <div className="flex flex-wrap gap-1 mt-1.5">
+                  {existingEras.map(era => (
+                    <Badge
+                      key={era}
+                      variant="outline"
+                      className="text-[10px] cursor-pointer border-stone-700 text-stone-500 hover:text-stone-300 hover:border-stone-500"
+                      onClick={() => setFormData(d => ({ ...d, era }))}
+                    >
+                      {era}
+                    </Badge>
+                  ))}
                 </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-5 w-5 text-stone-500 hover:text-red-400"
-                  onClick={() => setFormData(d => ({ ...d, entityId: "" }))}
-                >
-                  <Trash2 className="h-3 w-3" />
-                </Button>
+              )}
+            </div>
+
+            <div>
+              <label className="text-xs text-stone-400 mb-1 block">Color</label>
+              <div className="flex items-center gap-2">
+                <Input
+                  type="color"
+                  value={formData.color || "#90a4ae"}
+                  onChange={(e) => setFormData(d => ({ ...d, color: e.target.value }))}
+                  className="w-8 h-8 p-0 border-0 bg-transparent cursor-pointer"
+                  data-testid="input-event-color"
+                />
+                <div className="flex gap-1 flex-wrap flex-1">
+                  {DEFAULT_COLORS.slice(0, 8).map(c => (
+                    <button
+                      key={c}
+                      className={`w-5 h-5 rounded-full border-2 transition-all ${formData.color === c ? 'border-white scale-110' : 'border-transparent hover:border-stone-500'}`}
+                      style={{ backgroundColor: c }}
+                      onClick={() => setFormData(d => ({ ...d, color: c }))}
+                    />
+                  ))}
+                  {formData.color && (
+                    <button
+                      className="text-[9px] text-stone-500 hover:text-stone-300 px-1"
+                      onClick={() => setFormData(d => ({ ...d, color: "" }))}
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            {selectedCalendar ? (
+              <div className="space-y-2">
+                <label className="text-xs text-stone-400 mb-1 block">Date ({selectedCalendar.name})</label>
+                <CalendarDatePicker
+                  value={formData.date}
+                  calendar={selectedCalendar}
+                  onChange={(v) => setFormData(d => ({ ...d, date: v }))}
+                  testIdPrefix="input-event-date"
+                />
+                <label className="text-xs text-stone-400 mb-1 block">End Date (optional)</label>
+                <CalendarDatePicker
+                  value={formData.endDate}
+                  calendar={selectedCalendar}
+                  onChange={(v) => setFormData(d => ({ ...d, endDate: v }))}
+                  testIdPrefix="input-event-end-date"
+                />
               </div>
             ) : (
-              <div>
-                <Input
-                  value={entitySearch}
-                  onChange={(e) => setEntitySearch(e.target.value)}
-                  placeholder="Search entities to link..."
-                  className="bg-stone-800 border-stone-700 text-stone-200 mb-1"
-                  data-testid="input-entity-search"
-                />
-                {entitySearch && (
-                  <div className="bg-stone-800 border border-stone-700 rounded-md max-h-32 overflow-y-auto">
-                    {filteredEntities.length === 0 ? (
-                      <div className="text-xs text-stone-500 p-2">No entities found</div>
-                    ) : (
-                      filteredEntities.map(e => {
-                        const cfg = ENTITY_TYPE_CONFIG[e.entityType];
-                        return (
-                          <button
-                            key={e.id}
-                            className="w-full text-left px-2 py-1.5 text-xs text-stone-300 hover:bg-stone-700 flex items-center gap-2"
-                            onClick={() => {
-                              setFormData(d => ({ ...d, entityId: e.id }));
-                              setEntitySearch("");
-                            }}
-                          >
-                            <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: cfg?.color }} />
-                            <span className="truncate">{e.displayName}</span>
-                            <span className="text-[9px] text-stone-500 flex-shrink-0">{cfg?.label}</span>
-                          </button>
-                        );
-                      })
-                    )}
-                  </div>
-                )}
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-xs text-stone-400 mb-1 block">Date</label>
+                  <Input
+                    value={formData.date}
+                    onChange={(e) => setFormData(d => ({ ...d, date: e.target.value }))}
+                    placeholder="e.g. Year 1042"
+                    className="bg-stone-800 border-stone-700 text-stone-200"
+                    data-testid="input-event-date"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-stone-400 mb-1 block">End Date</label>
+                  <Input
+                    value={formData.endDate}
+                    onChange={(e) => setFormData(d => ({ ...d, endDate: e.target.value }))}
+                    placeholder="Optional"
+                    className="bg-stone-800 border-stone-700 text-stone-200"
+                    data-testid="input-event-end-date"
+                  />
+                </div>
               </div>
             )}
-          </div>
 
-          {calendars.length > 0 && (
             <div>
-              <label className="text-xs text-stone-400 mb-1 block">Calendar</label>
-              <Select value={formData.calendarId || "none"} onValueChange={(v) => setFormData(d => ({ ...d, calendarId: v === "none" ? "" : v }))}>
-                <SelectTrigger className="bg-stone-800 border-stone-700 text-stone-200" data-testid="select-calendar">
-                  <SelectValue placeholder="No calendar" />
+              <label className="text-xs text-stone-400 mb-1 block">Linked Entity</label>
+              {selectedEntity ? (
+                <div className="flex items-center justify-between bg-stone-800 border border-stone-700 rounded-md px-3 py-2">
+                  <div className="flex items-center gap-2">
+                    <div
+                      className="w-2 h-2 rounded-full"
+                      style={{ backgroundColor: ENTITY_TYPE_CONFIG[selectedEntity.entityType]?.color }}
+                    />
+                    <span className="text-xs text-stone-200">{selectedEntity.displayName}</span>
+                    <Badge variant="outline" className="text-[9px] border-stone-600 text-stone-500">
+                      {ENTITY_TYPE_CONFIG[selectedEntity.entityType]?.label}
+                    </Badge>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-5 w-5 text-stone-500 hover:text-red-400"
+                    onClick={() => setFormData(d => ({ ...d, entityId: "" }))}
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </Button>
+                </div>
+              ) : (
+                <div>
+                  <Input
+                    value={entitySearch}
+                    onChange={(e) => setEntitySearch(e.target.value)}
+                    placeholder="Search entities to link..."
+                    className="bg-stone-800 border-stone-700 text-stone-200 mb-1"
+                    data-testid="input-entity-search"
+                  />
+                  {entitySearch && (
+                    <div className="bg-stone-800 border border-stone-700 rounded-md max-h-32 overflow-y-auto">
+                      {filteredEntities.length === 0 ? (
+                        <div className="text-xs text-stone-500 p-2">No entities found</div>
+                      ) : (
+                        filteredEntities.map(e => {
+                          const cfg = ENTITY_TYPE_CONFIG[e.entityType];
+                          return (
+                            <button
+                              key={e.id}
+                              className="w-full text-left px-2 py-1.5 text-xs text-stone-300 hover:bg-stone-700 flex items-center gap-2"
+                              onClick={() => {
+                                setFormData(d => ({ ...d, entityId: e.id }));
+                                setEntitySearch("");
+                              }}
+                            >
+                              <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: cfg?.color }} />
+                              <span className="truncate">{e.displayName}</span>
+                              <span className="text-[9px] text-stone-500 flex-shrink-0">{cfg?.label}</span>
+                            </button>
+                          );
+                        })
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {calendars.length > 0 && (
+              <div>
+                <label className="text-xs text-stone-400 mb-1 block">Calendar</label>
+                <Select value={formData.calendarId || "none"} onValueChange={(v) => setFormData(d => ({ ...d, calendarId: v === "none" ? "" : v }))}>
+                  <SelectTrigger className="bg-stone-800 border-stone-700 text-stone-200" data-testid="select-calendar">
+                    <SelectValue placeholder="No calendar" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-stone-800 border-stone-700">
+                    <SelectItem value="none" className="text-stone-400">No calendar</SelectItem>
+                    {calendars.map(cal => (
+                      <SelectItem key={cal.id} value={cal.id} className="text-stone-200">
+                        {cal.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            <div>
+              <label className="text-xs text-stone-400 mb-1 block">Visibility</label>
+              <Select value={formData.visibility} onValueChange={(v) => setFormData(d => ({ ...d, visibility: v }))}>
+                <SelectTrigger className="bg-stone-800 border-stone-700 text-stone-200" data-testid="select-visibility">
+                  <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="bg-stone-800 border-stone-700">
-                  <SelectItem value="none" className="text-stone-400">No calendar</SelectItem>
-                  {calendars.map(cal => (
-                    <SelectItem key={cal.id} value={cal.id} className="text-stone-200">
-                      {cal.name}
-                    </SelectItem>
-                  ))}
+                  <SelectItem value="gm_only" className="text-stone-200">
+                    <div className="flex items-center gap-2">
+                      <EyeOff className="h-3 w-3 text-red-400" />
+                      GM Only
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="player_visible" className="text-stone-200">
+                    <div className="flex items-center gap-2">
+                      <Eye className="h-3 w-3 text-green-400" />
+                      Player Visible
+                    </div>
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </div>
-          )}
-
-          <div>
-            <label className="text-xs text-stone-400 mb-1 block">Visibility</label>
-            <Select value={formData.visibility} onValueChange={(v) => setFormData(d => ({ ...d, visibility: v }))}>
-              <SelectTrigger className="bg-stone-800 border-stone-700 text-stone-200" data-testid="select-visibility">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent className="bg-stone-800 border-stone-700">
-                <SelectItem value="gm_only" className="text-stone-200">
-                  <div className="flex items-center gap-2">
-                    <EyeOff className="h-3 w-3 text-red-400" />
-                    GM Only
-                  </div>
-                </SelectItem>
-                <SelectItem value="player_visible" className="text-stone-200">
-                  <div className="flex items-center gap-2">
-                    <Eye className="h-3 w-3 text-green-400" />
-                    Player Visible
-                  </div>
-                </SelectItem>
-              </SelectContent>
-            </Select>
           </div>
         </div>
 

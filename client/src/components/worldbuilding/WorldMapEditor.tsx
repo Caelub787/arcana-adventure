@@ -345,7 +345,7 @@ export function WorldMapEditor({ campaignId, worldId, mapId, onBack, onMapCreate
       </div>
 
       <Dialog open={showPinDialog} onOpenChange={setShowPinDialog}>
-        <DialogContent className="bg-stone-900 border-stone-700 text-stone-200 max-w-md">
+        <DialogContent className="bg-stone-900 border-stone-700 text-stone-200 w-full max-w-[95vw] md:max-w-xl">
           <DialogHeader>
             <DialogTitle className="text-stone-100 text-base">{editingPin ? "Edit Pin" : "New Pin"}</DialogTitle>
           </DialogHeader>

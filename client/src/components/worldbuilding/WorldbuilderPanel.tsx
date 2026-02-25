@@ -92,7 +92,7 @@ export function WorldbuilderPanel({ campaignId, worldId, isGM, characters = [], 
   if (createOnly) {
     return (
       <Dialog open={showCreateDialog} onOpenChange={(open) => { setShowCreateDialog(open); if (!open && onCloseCreate) onCloseCreate(); }}>
-        <DialogContent className="bg-stone-900 border-stone-700 text-stone-200 max-w-md" data-testid="dialog-create-entity">
+        <DialogContent className="bg-stone-900 border-stone-700 text-stone-200 w-full max-w-[95vw] md:max-w-xl" data-testid="dialog-create-entity">
           <DialogHeader>
             <DialogTitle className="text-stone-100">Create New Article</DialogTitle>
           </DialogHeader>
@@ -307,7 +307,7 @@ export function WorldbuilderPanel({ campaignId, worldId, isGM, characters = [], 
       </div>
 
       <Dialog open={showCreateDialog} onOpenChange={(open) => { setShowCreateDialog(open); if (!open && createOnly && onCloseCreate) onCloseCreate(); }}>
-        <DialogContent className="bg-stone-900 border-stone-700 text-stone-200 max-w-md" data-testid="dialog-create-entity">
+        <DialogContent className="bg-stone-900 border-stone-700 text-stone-200 w-full max-w-[95vw] md:max-w-xl" data-testid="dialog-create-entity">
           <DialogHeader>
             <DialogTitle className="text-stone-100">Create Entity</DialogTitle>
           </DialogHeader>
