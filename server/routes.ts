@@ -1988,7 +1988,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/login", async (req, res) => {
     try {
-      const { email, password } = req.body;
+      const { email, password, rememberMe } = req.body;
       console.log(`[LOGIN] Attempt for email: ${email}`);
       
       const user = await storage.getUserByEmail(email);
@@ -2004,6 +2004,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ error: "Invalid credentials" });
       }
       console.log(`[LOGIN] Password valid for user: ${user.username}`);
+
+      if (rememberMe) {
+        req.session.cookie.maxAge = 1000 * 60 * 60 * 24 * 30;
+      } else {
+        req.session.cookie.maxAge = undefined as any;
+        req.session.cookie.expires = undefined as any;
+      }
 
       req.session.userId = user.id;
       // Only send safe user fields (never send password hash to client)

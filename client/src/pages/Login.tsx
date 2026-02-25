@@ -35,7 +35,7 @@ export default function Login() {
     setIsLoading(true);
     
     try {
-      await login(email, password);
+      await login(email, password, rememberMe);
       
       // Save or clear remembered email based on checkbox (password is never stored for security)
       if (rememberMe) {

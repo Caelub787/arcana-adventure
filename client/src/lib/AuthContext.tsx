@@ -8,7 +8,7 @@ interface AuthContextType {
   isAdmin: boolean;
   isBanned: boolean;
   banDetails: BanDetails | null;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string, rememberMe?: boolean) => Promise<void>;
   register: (email: string, password: string, username: string, name: string) => Promise<void>;
   logout: () => Promise<void>;
   refetchUser: () => Promise<void>;
@@ -44,8 +44,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const login = async (email: string, password: string) => {
-    const { user } = await api.login(email, password);
+  const login = async (email: string, password: string, rememberMe?: boolean) => {
+    const { user } = await api.login(email, password, rememberMe);
     setUser(user);
   };
 
