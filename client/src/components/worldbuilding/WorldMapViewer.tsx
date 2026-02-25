@@ -259,6 +259,8 @@ function MapCanvas({ campaignId, map, allMaps, entities, isGM, onNavigateToSubMa
   const [activePinId, setActivePinId] = useState<string | null>(null);
   const [imageLoaded, setImageLoaded] = useState(false);
   const initialFitRef = useRef<number>(1);
+  const [imgNatSize, setImgNatSize] = useState({ w: 0, h: 0 });
+  const touchRef = useRef<{ lastDist: number; lastCenter: { x: number; y: number }; touching: boolean }>({ lastDist: 0, lastCenter: { x: 0, y: 0 }, touching: false });
 
   const fitToScreen = useCallback(() => {
     if (!containerRef.current || !imgRef.current) return;
@@ -278,6 +280,9 @@ function MapCanvas({ campaignId, map, allMaps, entities, isGM, onNavigateToSubMa
 
   const handleImageLoad = useCallback(() => {
     setImageLoaded(true);
+    if (imgRef.current) {
+      setImgNatSize({ w: imgRef.current.naturalWidth, h: imgRef.current.naturalHeight });
+    }
     fitToScreen();
   }, [fitToScreen]);
 
@@ -355,6 +360,11 @@ function MapCanvas({ campaignId, map, allMaps, entities, isGM, onNavigateToSubMa
     );
   }
 
+  const pinScreenPos = (pin: WorldMapPin) => ({
+    x: pan.x + (pin.x / 100) * imgNatSize.w * zoom,
+    y: pan.y + (pin.y / 100) * imgNatSize.h * zoom,
+  });
+
   return (
     <div className="relative h-full w-full overflow-hidden bg-stone-950" ref={containerRef}>
       <div
@@ -364,7 +374,66 @@ function MapCanvas({ campaignId, map, allMaps, entities, isGM, onNavigateToSubMa
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
-        style={{ cursor: isDragging ? 'grabbing' : 'grab' }}
+        onTouchStart={(e) => {
+          if (e.touches.length === 2) {
+            const dx = e.touches[0].clientX - e.touches[1].clientX;
+            const dy = e.touches[0].clientY - e.touches[1].clientY;
+            touchRef.current.lastDist = Math.sqrt(dx * dx + dy * dy);
+            touchRef.current.lastCenter = {
+              x: (e.touches[0].clientX + e.touches[1].clientX) / 2,
+              y: (e.touches[0].clientY + e.touches[1].clientY) / 2,
+            };
+            touchRef.current.touching = true;
+          } else if (e.touches.length === 1) {
+            touchRef.current.touching = true;
+            setIsDragging(true);
+            setDragStart({ x: e.touches[0].clientX - pan.x, y: e.touches[0].clientY - pan.y });
+          }
+        }}
+        onTouchMove={(e) => {
+          if (e.touches.length === 2) {
+            e.preventDefault();
+            const dx = e.touches[0].clientX - e.touches[1].clientX;
+            const dy = e.touches[0].clientY - e.touches[1].clientY;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            const center = {
+              x: (e.touches[0].clientX + e.touches[1].clientX) / 2,
+              y: (e.touches[0].clientY + e.touches[1].clientY) / 2,
+            };
+            if (touchRef.current.lastDist > 0) {
+              const factor = dist / touchRef.current.lastDist;
+              const rect = containerRef.current?.getBoundingClientRect();
+              if (rect) {
+                const mx = center.x - rect.left;
+                const my = center.y - rect.top;
+                setZoom(prevZoom => {
+                  const newZoom = Math.min(Math.max(prevZoom * factor, 0.05), 10);
+                  const scale = newZoom / prevZoom;
+                  setPan(prevPan => ({
+                    x: mx - (mx - prevPan.x) * scale,
+                    y: my - (my - prevPan.y) * scale,
+                  }));
+                  return newZoom;
+                });
+              }
+              const panDx = center.x - touchRef.current.lastCenter.x;
+              const panDy = center.y - touchRef.current.lastCenter.y;
+              setPan(prev => ({ x: prev.x + panDx, y: prev.y + panDy }));
+            }
+            touchRef.current.lastDist = dist;
+            touchRef.current.lastCenter = center;
+          } else if (e.touches.length === 1 && isDragging) {
+            setPan({ x: e.touches[0].clientX - dragStart.x, y: e.touches[0].clientY - dragStart.y });
+          }
+        }}
+        onTouchEnd={(e) => {
+          if (e.touches.length === 0) {
+            setIsDragging(false);
+            touchRef.current.touching = false;
+            touchRef.current.lastDist = 0;
+          }
+        }}
+        style={{ cursor: isDragging ? 'grabbing' : 'grab', touchAction: 'none' }}
       >
         <div
           style={{
@@ -384,97 +453,96 @@ function MapCanvas({ campaignId, map, allMaps, entities, isGM, onNavigateToSubMa
             style={{ opacity: imageLoaded ? 1 : 0 }}
             data-testid="map-image"
           />
-          {pins.map(pin => {
-            const pinScale = 1 / zoom;
-            return (
-            <div
-              key={pin.id}
-              className="absolute"
-              style={{
-                left: `${pin.x}%`,
-                top: `${pin.y}%`,
-                transform: 'translate(-50%, -100%)',
-                zIndex: activePinId === pin.id ? 20 : 10,
-              }}
-            >
-             <div style={{ transform: `scale(${pinScale})`, transformOrigin: 'bottom center' }}>
-              <button
-                onClick={(e) => handlePinClick(pin, e)}
-                className="group relative flex flex-col items-center"
-                data-testid={`map-pin-${pin.id}`}
-                title={pin.label || undefined}
-              >
-                <div
-                  className="w-8 h-8 rounded-full flex items-center justify-center shadow-lg border-2 border-stone-900 hover:scale-110 transition-transform"
-                  style={{ backgroundColor: pin.color || '#f59e0b' }}
-                >
-                  {pin.pinType === "map_link" ? (
-                    <Navigation className="h-4 w-4 text-white" />
-                  ) : pin.pinType === "entity_link" ? (
-                    <Link2 className="h-4 w-4 text-white" />
-                  ) : (
-                    <FileText className="h-4 w-4 text-white" />
-                  )}
-                </div>
-                {pin.label && (
-                  <span className="mt-1 text-[11px] font-medium text-stone-200 bg-stone-900/90 px-1.5 py-0.5 rounded whitespace-nowrap shadow-md">
-                    {pin.label}
-                  </span>
-                )}
-              </button>
-             </div>
-
-              {activePinId === pin.id && pin.pinType === "text_reveal" && (
-                <div
-                  className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-72 bg-stone-800 border border-stone-700 rounded-lg shadow-xl p-3 z-30"
-                  onClick={(e) => e.stopPropagation()}
-                  data-testid={`pin-popover-${pin.id}`}
-                >
-                  <div className="flex items-center justify-between mb-1.5">
-                    <h4 className="text-sm font-semibold text-stone-200">{pin.label || "Note"}</h4>
-                    <button onClick={() => setActivePinId(null)} className="text-stone-500 hover:text-stone-300">
-                      <X className="h-4 w-4" />
-                    </button>
-                  </div>
-                  <p className="text-xs text-stone-400 whitespace-pre-wrap leading-relaxed">{pin.textContent || "No content"}</p>
-                  <div className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 w-2 h-2 bg-stone-800 border-r border-b border-stone-700 rotate-45" />
-                </div>
-              )}
-
-              {activePinId === pin.id && pin.pinType === "map_link" && pin.targetMapId && (
-                <div
-                  className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-stone-800 border border-stone-700 rounded-lg shadow-xl p-2 z-30"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <button
-                    onClick={() => onNavigateToSubMap(pin.targetMapId!)}
-                    className="flex items-center gap-1.5 text-xs text-amber-400 hover:text-amber-300 whitespace-nowrap"
-                  >
-                    <Map className="h-3 w-3" />
-                    Go to {getMapName(pin.targetMapId)}
-                  </button>
-                </div>
-              )}
-
-              {activePinId === pin.id && pin.pinType === "entity_link" && pin.targetEntityId && (
-                <div
-                  className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-stone-800 border border-stone-700 rounded-lg shadow-xl p-2 z-30"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <button
-                    onClick={() => onNavigateToEntity?.(pin.targetEntityId!)}
-                    className="flex items-center gap-1.5 text-xs text-amber-400 hover:text-amber-300 whitespace-nowrap"
-                  >
-                    <Link2 className="h-3 w-3" />
-                    {getEntityName(pin.targetEntityId)}
-                  </button>
-                </div>
-              )}
-            </div>
-          );
-          })}
         </div>
       </div>
+
+      {imageLoaded && imgNatSize.w > 0 && pins.map(pin => {
+        const pos = pinScreenPos(pin);
+        return (
+          <div
+            key={pin.id}
+            className="absolute pointer-events-none"
+            style={{
+              left: pos.x,
+              top: pos.y,
+              transform: 'translate(-50%, -100%)',
+              zIndex: activePinId === pin.id ? 20 : 10,
+            }}
+          >
+            <button
+              onClick={(e) => handlePinClick(pin, e)}
+              className="group relative flex flex-col items-center pointer-events-auto"
+              data-testid={`map-pin-${pin.id}`}
+              title={pin.label || undefined}
+            >
+              <div
+                className="w-8 h-8 rounded-full flex items-center justify-center shadow-lg border-2 border-stone-900 hover:scale-110 transition-transform"
+                style={{ backgroundColor: pin.color || '#f59e0b' }}
+              >
+                {pin.pinType === "map_link" ? (
+                  <Navigation className="h-4 w-4 text-white" />
+                ) : pin.pinType === "entity_link" ? (
+                  <Link2 className="h-4 w-4 text-white" />
+                ) : (
+                  <FileText className="h-4 w-4 text-white" />
+                )}
+              </div>
+              {pin.label && (
+                <span className="mt-1 text-[11px] font-medium text-stone-200 bg-stone-900/90 px-1.5 py-0.5 rounded whitespace-nowrap shadow-md">
+                  {pin.label}
+                </span>
+              )}
+            </button>
+
+            {activePinId === pin.id && pin.pinType === "text_reveal" && (
+              <div
+                className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-72 bg-stone-800 border border-stone-700 rounded-lg shadow-xl p-3 z-30 pointer-events-auto"
+                onClick={(e) => e.stopPropagation()}
+                data-testid={`pin-popover-${pin.id}`}
+              >
+                <div className="flex items-center justify-between mb-1.5">
+                  <h4 className="text-sm font-semibold text-stone-200">{pin.label || "Note"}</h4>
+                  <button onClick={() => setActivePinId(null)} className="text-stone-500 hover:text-stone-300">
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+                <p className="text-xs text-stone-400 whitespace-pre-wrap leading-relaxed">{pin.textContent || "No content"}</p>
+                <div className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 w-2 h-2 bg-stone-800 border-r border-b border-stone-700 rotate-45" />
+              </div>
+            )}
+
+            {activePinId === pin.id && pin.pinType === "map_link" && pin.targetMapId && (
+              <div
+                className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-stone-800 border border-stone-700 rounded-lg shadow-xl p-2 z-30 pointer-events-auto"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <button
+                  onClick={() => onNavigateToSubMap(pin.targetMapId!)}
+                  className="flex items-center gap-1.5 text-xs text-amber-400 hover:text-amber-300 whitespace-nowrap"
+                >
+                  <Map className="h-3 w-3" />
+                  Go to {getMapName(pin.targetMapId)}
+                </button>
+              </div>
+            )}
+
+            {activePinId === pin.id && pin.pinType === "entity_link" && pin.targetEntityId && (
+              <div
+                className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-stone-800 border border-stone-700 rounded-lg shadow-xl p-2 z-30 pointer-events-auto"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <button
+                  onClick={() => onNavigateToEntity?.(pin.targetEntityId!)}
+                  className="flex items-center gap-1.5 text-xs text-amber-400 hover:text-amber-300 whitespace-nowrap"
+                >
+                  <Link2 className="h-3 w-3" />
+                  {getEntityName(pin.targetEntityId)}
+                </button>
+              </div>
+            )}
+          </div>
+        );
+      })}
 
       <div className="absolute bottom-3 right-3 flex flex-col gap-1 z-20">
         <Button variant="ghost" size="icon" className="h-8 w-8 bg-stone-900/80 hover:bg-stone-800 text-stone-300 border border-stone-700" onClick={() => setZoom(z => Math.min(z * 1.2, 5))} data-testid="button-zoom-in">

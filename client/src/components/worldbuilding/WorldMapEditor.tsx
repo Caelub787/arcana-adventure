@@ -134,8 +134,13 @@ export function WorldMapEditor({ campaignId, worldId, mapId, onBack, onMapCreate
     });
   }, []);
 
+  const [editorImgNatSize, setEditorImgNatSize] = useState({ w: 0, h: 0 });
+
   const handleEditorImageLoad = useCallback(() => {
     setEditorImageLoaded(true);
+    if (imageRef.current) {
+      setEditorImgNatSize({ w: imageRef.current.naturalWidth, h: imageRef.current.naturalHeight });
+    }
     fitEditorToScreen();
   }, [fitEditorToScreen]);
 
@@ -511,51 +516,6 @@ export function WorldMapEditor({ campaignId, worldId, mapId, onBack, onMapCreate
                   style={{ opacity: editorImageLoaded ? 1 : 0 }}
                   data-testid="editor-map-image"
                 />
-                {pins.map(pin => {
-                  const pinScale = 1 / editorZoom;
-                  return (
-                  <div
-                    key={pin.id}
-                    className="absolute"
-                    style={{
-                      left: `${pin.x}%`,
-                      top: `${pin.y}%`,
-                      transform: 'translate(-50%, -100%)',
-                      zIndex: 10,
-                      cursor: draggingPinId === pin.id ? 'grabbing' : 'pointer',
-                    }}
-                    draggable
-                    onDragStart={() => setDraggingPinId(pin.id)}
-                    onDragEnd={(e) => handlePinDragEnd(pin.id, e as any)}
-                  >
-                   <div style={{ transform: `scale(${pinScale})`, transformOrigin: 'bottom center' }}>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); handleEditPin(pin); }}
-                      className="flex flex-col items-center"
-                      data-testid={`editor-pin-${pin.id}`}
-                    >
-                      <div
-                        className="w-8 h-8 rounded-full flex items-center justify-center shadow-lg border-2 border-stone-900 hover:scale-110 transition-transform"
-                        style={{ backgroundColor: pin.color || '#f59e0b' }}
-                      >
-                        {pin.pinType === "map_link" ? (
-                          <Navigation className="h-4 w-4 text-white" />
-                        ) : pin.pinType === "entity_link" ? (
-                          <Link2 className="h-4 w-4 text-white" />
-                        ) : (
-                          <FileText className="h-4 w-4 text-white" />
-                        )}
-                      </div>
-                      {pin.label && (
-                        <span className="mt-1 text-[11px] font-medium text-stone-200 bg-stone-900/90 px-1.5 py-0.5 rounded whitespace-nowrap shadow-md">
-                          {pin.label}
-                        </span>
-                      )}
-                    </button>
-                   </div>
-                  </div>
-                  );
-                })}
               </div>
 
               {isPlacingPin && (
@@ -568,6 +528,52 @@ export function WorldMapEditor({ campaignId, worldId, mapId, onBack, onMapCreate
                 </div>
               )}
             </div>
+
+            {editorImageLoaded && editorImgNatSize.w > 0 && pins.map(pin => {
+              const sx = editorPan.x + (pin.x / 100) * editorImgNatSize.w * editorZoom;
+              const sy = editorPan.y + (pin.y / 100) * editorImgNatSize.h * editorZoom;
+              return (
+                <div
+                  key={pin.id}
+                  className="absolute pointer-events-none"
+                  style={{
+                    left: sx,
+                    top: sy,
+                    transform: 'translate(-50%, -100%)',
+                    zIndex: 10,
+                    cursor: draggingPinId === pin.id ? 'grabbing' : 'pointer',
+                  }}
+                >
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleEditPin(pin); }}
+                    className="flex flex-col items-center pointer-events-auto"
+                    data-testid={`editor-pin-${pin.id}`}
+                    draggable
+                    onDragStart={() => setDraggingPinId(pin.id)}
+                    onDragEnd={(e) => handlePinDragEnd(pin.id, e as any)}
+                  >
+                    <div
+                      className="w-8 h-8 rounded-full flex items-center justify-center shadow-lg border-2 border-stone-900 hover:scale-110 transition-transform"
+                      style={{ backgroundColor: pin.color || '#f59e0b' }}
+                    >
+                      {pin.pinType === "map_link" ? (
+                        <Navigation className="h-4 w-4 text-white" />
+                      ) : pin.pinType === "entity_link" ? (
+                        <Link2 className="h-4 w-4 text-white" />
+                      ) : (
+                        <FileText className="h-4 w-4 text-white" />
+                      )}
+                    </div>
+                    {pin.label && (
+                      <span className="mt-1 text-[11px] font-medium text-stone-200 bg-stone-900/90 px-1.5 py-0.5 rounded whitespace-nowrap shadow-md">
+                        {pin.label}
+                      </span>
+                    )}
+                  </button>
+                </div>
+              );
+            })}
+
             <div className="absolute bottom-3 right-3 flex flex-col gap-1 z-20">
               <Button variant="ghost" size="icon" className="h-8 w-8 bg-stone-900/80 hover:bg-stone-800 text-stone-300 border border-stone-700" onClick={() => setEditorZoom(z => Math.min(z * 1.2, 10))} data-testid="button-editor-zoom-in">
                 <ZoomIn className="h-4 w-4" />
