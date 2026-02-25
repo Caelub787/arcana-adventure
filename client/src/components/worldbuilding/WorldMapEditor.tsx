@@ -59,20 +59,29 @@ export function WorldMapEditor({ campaignId, worldId, mapId, onBack, onMapCreate
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [draggingPinId, setDraggingPinId] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleImageUpload = useCallback(async (file: File) => {
-    if (!file.type.startsWith("image/")) return;
+    if (!file.type.startsWith("image/")) {
+      setUploadError("Please select an image file");
+      return;
+    }
     setUploading(true);
+    setUploadError(null);
     try {
       const formData = new FormData();
       formData.append("image", file);
       const res = await fetch("/api/upload/image", { method: "POST", body: formData });
-      if (!res.ok) throw new Error("Upload failed");
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        throw new Error(body?.error || `Upload failed (${res.status})`);
+      }
       const { url } = await res.json();
       setImageUrl(url);
-    } catch (e) {
+    } catch (e: any) {
       console.error("Image upload failed:", e);
+      setUploadError(e.message || "Upload failed. The file may be too large or in an unsupported format.");
     } finally {
       setUploading(false);
     }
@@ -244,6 +253,9 @@ export function WorldMapEditor({ campaignId, worldId, mapId, onBack, onMapCreate
                 <span className="ml-1 hidden md:inline">{uploading ? "Uploading..." : "Upload"}</span>
               </Button>
             </div>
+            {uploadError && (
+              <p className="text-[10px] text-red-400 mt-1" data-testid="text-upload-error">{uploadError}</p>
+            )}
           </div>
 
           <div>

@@ -22,7 +22,7 @@ if (!fs.existsSync(UPLOADS_DIR)) {
 
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 50 * 1024 * 1024 },
+  limits: { fileSize: 100 * 1024 * 1024 },
 });
 
 declare module "express-session" {
@@ -7785,7 +7785,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const height = metadata.height || 0;
 
     let pipeline = sharp(buffer);
-    const MAX_DIM = 4096;
+    const MAX_DIM = 8192;
     if (width > MAX_DIM || height > MAX_DIM) {
       pipeline = pipeline.resize({
         width: width > height ? MAX_DIM : undefined,
@@ -7795,7 +7795,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     }
 
-    await pipeline.webp({ quality: 82 }).toFile(filepath);
+    await pipeline.webp({ quality: 90 }).toFile(filepath);
     return `/uploads/scene-backgrounds/${filename}`;
   }
 
