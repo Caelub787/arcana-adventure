@@ -406,7 +406,7 @@ export function TimelineView({ campaignId, worldId, isGM, onSelectEntity }: Time
 
       <div className="flex-1 overflow-y-auto">
         {selectedTimeline ? (
-          <div className="p-3 md:p-6 max-w-3xl mx-auto">
+          <div className="p-3 md:p-6">
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center gap-3">
                 <div
@@ -460,7 +460,7 @@ export function TimelineView({ campaignId, worldId, isGM, onSelectEntity }: Time
             <p className="text-xs mt-1 max-w-xs text-center">Create timelines to organize your world's events into distinct historical threads.</p>
           </div>
         ) : (
-          <div className="p-3 md:p-6 max-w-3xl mx-auto">
+          <div className="p-3 md:p-6">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-lg font-semibold text-stone-200">Unassigned Events</h2>
               {isGM && (

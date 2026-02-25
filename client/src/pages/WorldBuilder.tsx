@@ -671,7 +671,7 @@ export default function WorldBuilder() {
                   </div>
                 ) : (
                   <div className="flex-1 flex items-center justify-center">
-                    <div className="text-center p-4 md:p-8 max-w-lg">
+                    <div className="text-center p-4 md:p-8">
                       <Globe className="h-12 md:h-16 w-12 md:w-16 text-stone-800 mx-auto mb-4" />
                       <h2 className="text-lg md:text-xl font-semibold text-stone-600 mb-2">Your World Awaits</h2>
                       <p className="text-stone-600 text-xs md:text-sm mb-6">Select an article from the sidebar or create a new one to start building your world's encyclopedia.</p>
