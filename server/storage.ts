@@ -60,9 +60,10 @@ import {
   type WorldMapPin, type InsertWorldMapPin,
   type WorldCalendar, type InsertWorldCalendar,
   type WorldTimelineEvent, type InsertWorldTimelineEvent,
+  type WorldTimeline, type InsertWorldTimeline,
   type World, type InsertWorld,
   type WorldCalendarSync, type InsertWorldCalendarSync,
-  users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, items, spells, characterPermissions, initiativeEntries, systemSpecies, campaignSpecies, featTemplates, featTrees, feats, featConnections, characterFeats, systemSpells, systemSkills, characterCustomSkills, systemTraits, characterTraits, characterFolders, characterTemplateFolders, sceneFolders, friendRequests, friendships, noteFolders, notes, noteReferences, noteShares, tokenEffects, spellEffects, itemEffects, tokenActiveEffects, thrownItems, adminNotifications, userNotifications, termsAndConditions, userTermsAcceptance, sandboxFolders, sandboxTemplates, sandboxActors, rollEntries, sceneWalls, sceneDoors, sceneWindows, sceneLights, sceneVisionZones, sceneMapPins, entities, entityLinks, worldShareLinks, worldMaps, worldMapPins, worldCalendars, worldTimelineEvents, worlds, worldCalendarSyncs
+  users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, items, spells, characterPermissions, initiativeEntries, systemSpecies, campaignSpecies, featTemplates, featTrees, feats, featConnections, characterFeats, systemSpells, systemSkills, characterCustomSkills, systemTraits, characterTraits, characterFolders, characterTemplateFolders, sceneFolders, friendRequests, friendships, noteFolders, notes, noteReferences, noteShares, tokenEffects, spellEffects, itemEffects, tokenActiveEffects, thrownItems, adminNotifications, userNotifications, termsAndConditions, userTermsAcceptance, sandboxFolders, sandboxTemplates, sandboxActors, rollEntries, sceneWalls, sceneDoors, sceneWindows, sceneLights, sceneVisionZones, sceneMapPins, entities, entityLinks, worldShareLinks, worldMaps, worldMapPins, worldCalendars, worldTimelineEvents, worldTimelines, worlds, worldCalendarSyncs
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql, inArray, or, isNull } from "drizzle-orm";
@@ -576,6 +577,13 @@ export interface IStorage {
   getCalendarSync(id: string): Promise<WorldCalendarSync | undefined>;
   createCalendarSync(sync: InsertWorldCalendarSync): Promise<WorldCalendarSync>;
   deleteCalendarSync(id: string): Promise<void>;
+
+  // World Timeline operations
+  getTimelinesByWorld(worldId: string): Promise<WorldTimeline[]>;
+  getTimeline(id: string): Promise<WorldTimeline | undefined>;
+  createTimeline(data: InsertWorldTimeline): Promise<WorldTimeline>;
+  updateTimeline(id: string, data: Partial<WorldTimeline>): Promise<WorldTimeline | undefined>;
+  deleteTimeline(id: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -4063,6 +4071,29 @@ export class DatabaseStorage implements IStorage {
 
   async deleteCalendarSync(id: string): Promise<void> {
     await db.delete(worldCalendarSyncs).where(eq(worldCalendarSyncs.id, id));
+  }
+
+  async getTimelinesByWorld(worldId: string): Promise<WorldTimeline[]> {
+    return await db.select().from(worldTimelines).where(eq(worldTimelines.worldId, worldId));
+  }
+
+  async getTimeline(id: string): Promise<WorldTimeline | undefined> {
+    const [timeline] = await db.select().from(worldTimelines).where(eq(worldTimelines.id, id)).limit(1);
+    return timeline;
+  }
+
+  async createTimeline(data: InsertWorldTimeline): Promise<WorldTimeline> {
+    const [created] = await db.insert(worldTimelines).values(data).returning();
+    return created;
+  }
+
+  async updateTimeline(id: string, data: Partial<WorldTimeline>): Promise<WorldTimeline | undefined> {
+    const [updated] = await db.update(worldTimelines).set(data).where(eq(worldTimelines.id, id)).returning();
+    return updated;
+  }
+
+  async deleteTimeline(id: string): Promise<void> {
+    await db.delete(worldTimelines).where(eq(worldTimelines.id, id));
   }
 }
 

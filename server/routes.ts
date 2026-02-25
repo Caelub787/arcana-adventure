@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertUserSchema, insertCampaignSchema, insertCharacterSchema, insertTokenSchema, insertChatMessageSchema, insertSceneSchema, insertHotbarSchema, insertItemSchema, insertSpellSchema, initiativeEntries, insertTokenEffectSchema, insertTokenActiveEffectSchema, rollEntries, insertRollEntrySchema, items, sceneVisionZones, insertEntitySchema, insertEntityLinkSchema, insertWorldMapSchema, insertWorldMapPinSchema, insertWorldCalendarSchema, insertWorldTimelineEventSchema, insertWorldSchema, insertWorldCalendarSyncSchema } from "@shared/schema";
+import { insertUserSchema, insertCampaignSchema, insertCharacterSchema, insertTokenSchema, insertChatMessageSchema, insertSceneSchema, insertHotbarSchema, insertItemSchema, insertSpellSchema, initiativeEntries, insertTokenEffectSchema, insertTokenActiveEffectSchema, rollEntries, insertRollEntrySchema, items, sceneVisionZones, insertEntitySchema, insertEntityLinkSchema, insertWorldMapSchema, insertWorldMapPinSchema, insertWorldCalendarSchema, insertWorldTimelineEventSchema, insertWorldTimelineSchema, insertWorldSchema, insertWorldCalendarSyncSchema } from "@shared/schema";
 import bcrypt from "bcryptjs";
 import { WebSocketServer } from "ws";
 import { sendPasswordResetEmail } from "./email";
@@ -10684,6 +10684,66 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (e) {
       console.error("Failed to delete calendar sync:", e);
       res.status(500).json({ error: "Failed to delete calendar sync" });
+    }
+  });
+
+  // World Timeline CRUD (world-scoped)
+  app.get("/api/worlds/:worldId/timelines", requireAuth, async (req, res) => {
+    try {
+      const world = await storage.getWorld(req.params.worldId);
+      if (!world) return res.status(404).json({ error: "World not found" });
+      const timelines = await storage.getTimelinesByWorld(req.params.worldId);
+      res.json(timelines);
+    } catch (e) {
+      console.error("Failed to get timelines:", e);
+      res.status(500).json({ error: "Failed to get timelines" });
+    }
+  });
+
+  app.post("/api/worlds/:worldId/timelines", requireAuth, async (req, res) => {
+    try {
+      const world = await storage.getWorld(req.params.worldId);
+      if (!world) return res.status(404).json({ error: "World not found" });
+      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+      const parsed = insertWorldTimelineSchema.parse({ ...req.body, worldId: req.params.worldId });
+      const timeline = await storage.createTimeline(parsed);
+      if (world.campaignId) broadcastToCampaign(world.campaignId, { type: "world_timeline_created", timeline });
+      res.status(201).json(timeline);
+    } catch (e) {
+      console.error("Failed to create timeline:", e);
+      res.status(500).json({ error: "Failed to create timeline" });
+    }
+  });
+
+  app.patch("/api/worlds/:worldId/timelines/:timelineId", requireAuth, async (req, res) => {
+    try {
+      const world = await storage.getWorld(req.params.worldId);
+      if (!world) return res.status(404).json({ error: "World not found" });
+      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+      const existing = await storage.getTimeline(req.params.timelineId);
+      if (!existing || existing.worldId !== req.params.worldId) return res.status(404).json({ error: "Timeline not found" });
+      const timeline = await storage.updateTimeline(req.params.timelineId, req.body);
+      if (world.campaignId) broadcastToCampaign(world.campaignId, { type: "world_timeline_updated", timeline });
+      res.json(timeline);
+    } catch (e) {
+      console.error("Failed to update timeline:", e);
+      res.status(500).json({ error: "Failed to update timeline" });
+    }
+  });
+
+  app.delete("/api/worlds/:worldId/timelines/:timelineId", requireAuth, async (req, res) => {
+    try {
+      const world = await storage.getWorld(req.params.worldId);
+      if (!world) return res.status(404).json({ error: "World not found" });
+      if (world.userId !== req.session.userId!) return res.status(403).json({ error: "Not the world owner" });
+      const existing = await storage.getTimeline(req.params.timelineId);
+      if (!existing || existing.worldId !== req.params.worldId) return res.status(404).json({ error: "Timeline not found" });
+      await storage.deleteTimeline(req.params.timelineId);
+      if (world.campaignId) broadcastToCampaign(world.campaignId, { type: "world_timeline_deleted", timelineId: req.params.timelineId });
+      res.json({ success: true });
+    } catch (e) {
+      console.error("Failed to delete timeline:", e);
+      res.status(500).json({ error: "Failed to delete timeline" });
     }
   });
 

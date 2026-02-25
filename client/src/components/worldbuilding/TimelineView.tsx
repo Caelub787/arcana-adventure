@@ -2,8 +2,13 @@ import React, { useMemo, useState } from "react";
 import {
   type Entity,
   type WorldTimelineEvent,
+  type WorldTimeline,
   type WorldCalendar,
   ENTITY_TYPE_CONFIG,
+  useTimelines,
+  useCreateTimeline,
+  useUpdateTimeline,
+  useDeleteTimeline,
   useTimelineEvents,
   useCreateTimelineEvent,
   useUpdateTimelineEvent,
@@ -33,7 +38,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Clock, Calendar, ChevronRight, Plus, Edit2, Trash2, Link2, Eye, EyeOff, Loader2 } from "lucide-react";
+import { Clock, Calendar, ChevronRight, Plus, Edit2, Trash2, Link2, Eye, EyeOff, Loader2, BookOpen, Settings } from "lucide-react";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 interface TimelineViewProps {
   campaignId?: string;
@@ -42,24 +48,20 @@ interface TimelineViewProps {
   onSelectEntity?: (entityId: string) => void;
 }
 
-const ERA_COLORS: Record<string, string> = {
-  "Ancient": "#90a4ae",
-  "Classical": "#a1887f",
-  "Medieval": "#81c784",
-  "Renaissance": "#64b5f6",
-  "Modern": "#ce93d8",
-  "Future": "#4db6ac",
-};
-
 const DEFAULT_COLORS = [
   "#e57373", "#81c784", "#64b5f6", "#ffb74d", "#ce93d8",
   "#a1887f", "#4db6ac", "#ef5350", "#7986cb", "#ba68c8",
   "#90a4ae", "#fff176",
 ];
 
+const TIMELINE_COLORS = [
+  "#64b5f6", "#81c784", "#ce93d8", "#ffb74d", "#e57373",
+  "#4db6ac", "#a1887f", "#7986cb", "#ba68c8", "#90a4ae",
+];
+
 function getEraColor(era: string, customColor?: string | null): string {
   if (customColor) return customColor;
-  return ERA_COLORS[era] || DEFAULT_COLORS[Math.abs(hashString(era)) % DEFAULT_COLORS.length];
+  return DEFAULT_COLORS[Math.abs(hashString(era)) % DEFAULT_COLORS.length];
 }
 
 function hashString(str: string): number {
@@ -82,7 +84,6 @@ interface EventFormData {
   calendarId: string;
   color: string;
   visibility: string;
-  sortOrder: number;
 }
 
 const EMPTY_FORM: EventFormData = {
@@ -95,28 +96,55 @@ const EMPTY_FORM: EventFormData = {
   calendarId: "",
   color: "",
   visibility: "gm_only",
-  sortOrder: 0,
 };
 
 export function TimelineView({ campaignId, worldId, isGM, onSelectEntity }: TimelineViewProps) {
   const resolvedId = worldId || campaignId;
-  const { data: events = [], isLoading } = useTimelineEvents(resolvedId);
+  const { data: timelines = [], isLoading: timelinesLoading } = useTimelines(resolvedId);
+  const { data: allEvents = [], isLoading: eventsLoading } = useTimelineEvents(resolvedId);
   const { data: entities = [] } = useEntities(resolvedId);
   const { data: calendars = [] } = useCalendars(resolvedId);
+  const createTimeline = useCreateTimeline(resolvedId);
+  const updateTimeline = useUpdateTimeline(resolvedId);
+  const deleteTimeline = useDeleteTimeline(resolvedId);
   const createEvent = useCreateTimelineEvent(resolvedId);
   const updateEvent = useUpdateTimelineEvent(resolvedId);
   const deleteEvent = useDeleteTimelineEvent(resolvedId);
 
-  const [showForm, setShowForm] = useState(false);
+  const [selectedTimelineId, setSelectedTimelineId] = useState<string | null>(null);
+  const [showTimelineForm, setShowTimelineForm] = useState(false);
+  const [editingTimeline, setEditingTimeline] = useState<WorldTimeline | null>(null);
+  const [timelineName, setTimelineName] = useState("");
+  const [timelineDescription, setTimelineDescription] = useState("");
+  const [timelineColor, setTimelineColor] = useState("");
+  const [timelineVisibility, setTimelineVisibility] = useState("gm_only");
+  const [deleteTimelineConfirm, setDeleteTimelineConfirm] = useState<string | null>(null);
+
+  const [showEventForm, setShowEventForm] = useState(false);
   const [editingEvent, setEditingEvent] = useState<WorldTimelineEvent | null>(null);
   const [formData, setFormData] = useState<EventFormData>(EMPTY_FORM);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
 
+  const isLoading = timelinesLoading || eventsLoading;
+
+  const selectedTimeline = useMemo(() => {
+    if (selectedTimelineId) return timelines.find(t => t.id === selectedTimelineId) || null;
+    return timelines.length > 0 ? timelines[0] : null;
+  }, [timelines, selectedTimelineId]);
+
+  const currentTimelineId = selectedTimeline?.id || null;
+
+  const filteredEvents = useMemo(() => {
+    if (!currentTimelineId) return allEvents.filter(e => !e.timelineId);
+    return allEvents.filter(e => e.timelineId === currentTimelineId);
+  }, [allEvents, currentTimelineId]);
+
   const groupedByEra = useMemo(() => {
     const groups: Record<string, WorldTimelineEvent[]> = {};
-    const sorted = [...events].sort((a, b) => {
+    const sorted = [...filteredEvents].sort((a, b) => {
       if (a.era !== b.era) return (a.era || "").localeCompare(b.era || "");
-      return (a.sortOrder || 0) - (b.sortOrder || 0);
+      if (a.date && b.date) return a.date.localeCompare(b.date);
+      return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
     });
     sorted.forEach(event => {
       const era = event.era || "Unclassified";
@@ -124,7 +152,7 @@ export function TimelineView({ campaignId, worldId, isGM, onSelectEntity }: Time
       groups[era].push(event);
     });
     return Object.entries(groups);
-  }, [events]);
+  }, [filteredEvents]);
 
   const entityMap = useMemo(() => {
     const map: Record<string, Entity> = {};
@@ -140,17 +168,62 @@ export function TimelineView({ campaignId, worldId, isGM, onSelectEntity }: Time
 
   const existingEras = useMemo(() => {
     const eras = new Set<string>();
-    events.forEach(e => { if (e.era) eras.add(e.era); });
+    filteredEvents.forEach(e => { if (e.era) eras.add(e.era); });
     return Array.from(eras);
-  }, [events]);
+  }, [filteredEvents]);
 
-  const openCreateForm = () => {
-    setEditingEvent(null);
-    setFormData({ ...EMPTY_FORM, sortOrder: events.length });
-    setShowForm(true);
+  const unassignedCount = useMemo(() => {
+    return allEvents.filter(e => !e.timelineId).length;
+  }, [allEvents]);
+
+  const openCreateTimeline = () => {
+    setEditingTimeline(null);
+    setTimelineName("");
+    setTimelineDescription("");
+    setTimelineColor(TIMELINE_COLORS[timelines.length % TIMELINE_COLORS.length]);
+    setTimelineVisibility("gm_only");
+    setShowTimelineForm(true);
   };
 
-  const openEditForm = (event: WorldTimelineEvent) => {
+  const openEditTimeline = (tl: WorldTimeline) => {
+    setEditingTimeline(tl);
+    setTimelineName(tl.name);
+    setTimelineDescription(tl.description || "");
+    setTimelineColor(tl.color || "");
+    setTimelineVisibility(tl.visibility);
+    setShowTimelineForm(true);
+  };
+
+  const handleSaveTimeline = async () => {
+    if (!timelineName.trim()) return;
+    const payload = {
+      name: timelineName.trim(),
+      description: timelineDescription.trim() || null,
+      color: timelineColor || null,
+      visibility: timelineVisibility,
+    };
+    if (editingTimeline) {
+      await updateTimeline.mutateAsync({ id: editingTimeline.id, ...payload });
+    } else {
+      const created = await createTimeline.mutateAsync(payload);
+      setSelectedTimelineId(created.id);
+    }
+    setShowTimelineForm(false);
+  };
+
+  const handleDeleteTimeline = async (id: string) => {
+    await deleteTimeline.mutateAsync(id);
+    if (selectedTimelineId === id) setSelectedTimelineId(null);
+    setDeleteTimelineConfirm(null);
+  };
+
+  const openCreateEvent = () => {
+    setEditingEvent(null);
+    setFormData(EMPTY_FORM);
+    setShowEventForm(true);
+  };
+
+  const openEditEvent = (event: WorldTimelineEvent) => {
     setEditingEvent(event);
     setFormData({
       title: event.title,
@@ -162,12 +235,11 @@ export function TimelineView({ campaignId, worldId, isGM, onSelectEntity }: Time
       calendarId: event.calendarId || "",
       color: event.color || "",
       visibility: event.visibility,
-      sortOrder: event.sortOrder || 0,
     });
-    setShowForm(true);
+    setShowEventForm(true);
   };
 
-  const handleSubmit = async () => {
+  const handleSubmitEvent = async () => {
     if (!formData.title.trim()) return;
     const payload: any = {
       title: formData.title.trim(),
@@ -179,19 +251,18 @@ export function TimelineView({ campaignId, worldId, isGM, onSelectEntity }: Time
       calendarId: formData.calendarId || null,
       color: formData.color || null,
       visibility: formData.visibility,
-      sortOrder: formData.sortOrder,
+      timelineId: currentTimelineId,
     };
-
     if (editingEvent) {
       await updateEvent.mutateAsync({ id: editingEvent.id, ...payload });
     } else {
       await createEvent.mutateAsync(payload);
     }
-    setShowForm(false);
+    setShowEventForm(false);
     setEditingEvent(null);
   };
 
-  const handleDelete = async (eventId: string) => {
+  const handleDeleteEvent = async (eventId: string) => {
     await deleteEvent.mutateAsync(eventId);
     setDeleteConfirm(null);
   };
@@ -223,51 +294,372 @@ export function TimelineView({ campaignId, worldId, isGM, onSelectEntity }: Time
     );
   }
 
-  if (events.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center py-16 text-stone-500" data-testid="timeline-empty">
-        <Clock className="h-12 w-12 mb-4 opacity-30" />
-        <p className="text-sm">No timeline events yet</p>
-        <p className="text-xs mt-1 mb-4">Create timeline events to build your world's history</p>
-        {isGM && (
-          <Button onClick={openCreateForm} className="bg-amber-600 hover:bg-amber-500 text-white" data-testid="button-create-first-event">
-            <Plus className="h-4 w-4 mr-2" />
-            Create First Event
-          </Button>
-        )}
-        {showForm && (
-          <EventFormDialog
-            open={showForm}
-            onClose={() => setShowForm(false)}
-            formData={formData}
-            setFormData={setFormData}
-            onSubmit={handleSubmit}
-            isEditing={!!editingEvent}
-            entities={entities}
-            calendars={calendars}
-            existingEras={existingEras}
-            isSubmitting={createEvent.isPending || updateEvent.isPending}
-          />
+  return (
+    <div className="flex h-full" data-testid="timeline-view">
+      <div className="w-56 flex-shrink-0 border-r border-stone-700 bg-stone-900/50 flex flex-col">
+        <div className="p-3 border-b border-stone-700">
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-xs font-semibold text-stone-400 uppercase tracking-wider">Timelines</h3>
+            {isGM && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6 text-stone-500 hover:text-amber-400"
+                onClick={openCreateTimeline}
+                data-testid="button-create-timeline"
+              >
+                <Plus className="h-3.5 w-3.5" />
+              </Button>
+            )}
+          </div>
+        </div>
+
+        <ScrollArea className="flex-1">
+          <div className="p-2 space-y-0.5">
+            {timelines.map(tl => {
+              const isSelected = currentTimelineId === tl.id;
+              const tlColor = tl.color || "#64b5f6";
+              const eventCount = allEvents.filter(e => e.timelineId === tl.id).length;
+              return (
+                <div
+                  key={tl.id}
+                  className={`group flex items-center gap-2 px-2.5 py-2 rounded-md cursor-pointer transition-all ${
+                    isSelected
+                      ? "bg-stone-700/60 text-stone-100"
+                      : "text-stone-400 hover:bg-stone-800 hover:text-stone-200"
+                  }`}
+                  onClick={() => setSelectedTimelineId(tl.id)}
+                  data-testid={`timeline-item-${tl.id}`}
+                >
+                  <div
+                    className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                    style={{ backgroundColor: tlColor }}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs font-medium truncate">{tl.name}</div>
+                    <div className="text-[10px] text-stone-500">{eventCount} events</div>
+                  </div>
+                  {isGM && (
+                    <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-5 w-5 text-stone-500 hover:text-stone-200"
+                        onClick={(e) => { e.stopPropagation(); openEditTimeline(tl); }}
+                        data-testid={`button-edit-timeline-${tl.id}`}
+                      >
+                        <Settings className="h-3 w-3" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-5 w-5 text-stone-500 hover:text-red-400"
+                        onClick={(e) => { e.stopPropagation(); setDeleteTimelineConfirm(tl.id); }}
+                        data-testid={`button-delete-timeline-${tl.id}`}
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+
+            {unassignedCount > 0 && (
+              <div
+                className={`flex items-center gap-2 px-2.5 py-2 rounded-md cursor-pointer transition-all ${
+                  currentTimelineId === null && timelines.length > 0
+                    ? "bg-stone-700/60 text-stone-100"
+                    : "text-stone-500 hover:bg-stone-800 hover:text-stone-300"
+                }`}
+                onClick={() => setSelectedTimelineId(null)}
+                data-testid="timeline-unassigned"
+              >
+                <Clock className="h-3 w-3 flex-shrink-0 opacity-50" />
+                <div className="flex-1 min-w-0">
+                  <div className="text-xs font-medium">Unassigned</div>
+                  <div className="text-[10px] text-stone-500">{unassignedCount} events</div>
+                </div>
+              </div>
+            )}
+
+            {timelines.length === 0 && (
+              <div className="px-3 py-6 text-center">
+                <BookOpen className="h-8 w-8 text-stone-700 mx-auto mb-2" />
+                <p className="text-[11px] text-stone-500 mb-3">No timelines yet</p>
+                {isGM && (
+                  <Button
+                    size="sm"
+                    className="bg-amber-600 hover:bg-amber-500 text-white text-xs h-7"
+                    onClick={openCreateTimeline}
+                    data-testid="button-create-first-timeline"
+                  >
+                    <Plus className="h-3 w-3 mr-1" />
+                    Create Timeline
+                  </Button>
+                )}
+              </div>
+            )}
+          </div>
+        </ScrollArea>
+      </div>
+
+      <div className="flex-1 overflow-y-auto">
+        {selectedTimeline ? (
+          <div className="p-3 md:p-6 max-w-3xl mx-auto">
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <div
+                  className="w-3 h-3 rounded-full"
+                  style={{ backgroundColor: selectedTimeline.color || "#64b5f6" }}
+                />
+                <div>
+                  <h2 className="text-lg font-semibold text-stone-200" data-testid="text-timeline-title">{selectedTimeline.name}</h2>
+                  {selectedTimeline.description && (
+                    <p className="text-xs text-stone-400 mt-0.5">{selectedTimeline.description}</p>
+                  )}
+                </div>
+              </div>
+              {isGM && (
+                <Button onClick={openCreateEvent} size="sm" className="bg-amber-600 hover:bg-amber-500 text-white" data-testid="button-add-event">
+                  <Plus className="h-3.5 w-3.5 mr-1.5" />
+                  Add Event
+                </Button>
+              )}
+            </div>
+
+            {filteredEvents.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-16 text-stone-500">
+                <Clock className="h-12 w-12 mb-4 opacity-30" />
+                <p className="text-sm">No events in this timeline</p>
+                <p className="text-xs mt-1 mb-4">Add events to build this timeline's history</p>
+                {isGM && (
+                  <Button onClick={openCreateEvent} className="bg-amber-600 hover:bg-amber-500 text-white" data-testid="button-create-first-event">
+                    <Plus className="h-4 w-4 mr-2" />
+                    Create First Event
+                  </Button>
+                )}
+              </div>
+            ) : (
+              <TimelineEventList
+                groupedByEra={groupedByEra}
+                entityMap={entityMap}
+                calendarMap={calendarMap}
+                formatCalendarDate={formatCalendarDate}
+                isGM={isGM}
+                onEdit={openEditEvent}
+                onDelete={setDeleteConfirm}
+                onSelectEntity={onSelectEntity}
+              />
+            )}
+          </div>
+        ) : timelines.length === 0 && unassignedCount === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full text-stone-500">
+            <Clock className="h-16 w-16 mb-4 opacity-20" />
+            <p className="text-sm font-medium">Build Your World's History</p>
+            <p className="text-xs mt-1 max-w-xs text-center">Create timelines to organize your world's events into distinct historical threads.</p>
+          </div>
+        ) : (
+          <div className="p-3 md:p-6 max-w-3xl mx-auto">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-lg font-semibold text-stone-200">Unassigned Events</h2>
+              {isGM && (
+                <Button onClick={openCreateEvent} size="sm" className="bg-amber-600 hover:bg-amber-500 text-white" data-testid="button-add-event">
+                  <Plus className="h-3.5 w-3.5 mr-1.5" />
+                  Add Event
+                </Button>
+              )}
+            </div>
+            {filteredEvents.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-16 text-stone-500">
+                <Clock className="h-12 w-12 mb-4 opacity-30" />
+                <p className="text-sm">No unassigned events</p>
+              </div>
+            ) : (
+              <TimelineEventList
+                groupedByEra={groupedByEra}
+                entityMap={entityMap}
+                calendarMap={calendarMap}
+                formatCalendarDate={formatCalendarDate}
+                isGM={isGM}
+                onEdit={openEditEvent}
+                onDelete={setDeleteConfirm}
+                onSelectEntity={onSelectEntity}
+              />
+            )}
+          </div>
         )}
       </div>
-    );
-  }
 
+      <Dialog open={showTimelineForm} onOpenChange={setShowTimelineForm}>
+        <DialogContent className="bg-stone-900 border-stone-700 text-stone-200 max-w-sm" data-testid="timeline-form-dialog">
+          <DialogHeader>
+            <DialogTitle className="text-stone-100">
+              {editingTimeline ? "Edit Timeline" : "Create Timeline"}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <label className="text-xs text-stone-400 mb-1 block">Name *</label>
+              <Input
+                value={timelineName}
+                onChange={(e) => setTimelineName(e.target.value)}
+                placeholder="e.g. History of the Realm"
+                className="bg-stone-800 border-stone-700 text-stone-200"
+                data-testid="input-timeline-name"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-stone-400 mb-1 block">Description</label>
+              <Textarea
+                value={timelineDescription}
+                onChange={(e) => setTimelineDescription(e.target.value)}
+                placeholder="What this timeline covers..."
+                className="bg-stone-800 border-stone-700 text-stone-200 min-h-[60px]"
+                data-testid="input-timeline-description"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-stone-400 mb-1 block">Color</label>
+              <div className="flex items-center gap-2">
+                <Input
+                  type="color"
+                  value={timelineColor || "#64b5f6"}
+                  onChange={(e) => setTimelineColor(e.target.value)}
+                  className="w-8 h-8 p-0 border-0 bg-transparent cursor-pointer"
+                  data-testid="input-timeline-color"
+                />
+                <div className="flex gap-1 flex-wrap flex-1">
+                  {TIMELINE_COLORS.map(c => (
+                    <button
+                      key={c}
+                      className={`w-5 h-5 rounded-full border-2 transition-all ${timelineColor === c ? 'border-white scale-110' : 'border-transparent hover:border-stone-500'}`}
+                      style={{ backgroundColor: c }}
+                      onClick={() => setTimelineColor(c)}
+                    />
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div>
+              <label className="text-xs text-stone-400 mb-1 block">Visibility</label>
+              <Select value={timelineVisibility} onValueChange={setTimelineVisibility}>
+                <SelectTrigger className="bg-stone-800 border-stone-700 text-stone-200" data-testid="select-timeline-visibility">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="bg-stone-800 border-stone-700">
+                  <SelectItem value="gm_only" className="text-stone-200">
+                    <div className="flex items-center gap-2">
+                      <EyeOff className="h-3 w-3 text-red-400" />
+                      GM Only
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="player_visible" className="text-stone-200">
+                    <div className="flex items-center gap-2">
+                      <Eye className="h-3 w-3 text-green-400" />
+                      Player Visible
+                    </div>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" className="text-stone-400" onClick={() => setShowTimelineForm(false)}>Cancel</Button>
+            <Button
+              className="bg-amber-600 hover:bg-amber-500 text-white"
+              onClick={handleSaveTimeline}
+              disabled={!timelineName.trim() || createTimeline.isPending || updateTimeline.isPending}
+              data-testid="button-save-timeline"
+            >
+              {(createTimeline.isPending || updateTimeline.isPending) && <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />}
+              {editingTimeline ? "Save" : "Create"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={!!deleteTimelineConfirm} onOpenChange={() => setDeleteTimelineConfirm(null)}>
+        <AlertDialogContent className="bg-stone-900 border-stone-700">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-stone-200">Delete Timeline</AlertDialogTitle>
+            <AlertDialogDescription className="text-stone-400">
+              This will permanently delete this timeline and all its events. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="bg-stone-800 border-stone-700 text-stone-300 hover:bg-stone-700">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-500 text-white"
+              onClick={() => deleteTimelineConfirm && handleDeleteTimeline(deleteTimelineConfirm)}
+              data-testid="button-confirm-delete-timeline"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {showEventForm && (
+        <EventFormDialog
+          open={showEventForm}
+          onClose={() => { setShowEventForm(false); setEditingEvent(null); }}
+          formData={formData}
+          setFormData={setFormData}
+          onSubmit={handleSubmitEvent}
+          isEditing={!!editingEvent}
+          entities={entities}
+          calendars={calendars}
+          existingEras={existingEras}
+          isSubmitting={createEvent.isPending || updateEvent.isPending}
+        />
+      )}
+
+      <AlertDialog open={!!deleteConfirm} onOpenChange={() => setDeleteConfirm(null)}>
+        <AlertDialogContent className="bg-stone-900 border-stone-700">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-stone-200">Delete Timeline Event</AlertDialogTitle>
+            <AlertDialogDescription className="text-stone-400">
+              This will permanently remove this event from the timeline. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="bg-stone-800 border-stone-700 text-stone-300 hover:bg-stone-700" data-testid="button-cancel-delete">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-500 text-white"
+              onClick={() => deleteConfirm && handleDeleteEvent(deleteConfirm)}
+              data-testid="button-confirm-delete"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  );
+}
+
+function TimelineEventList({
+  groupedByEra,
+  entityMap,
+  calendarMap,
+  formatCalendarDate,
+  isGM,
+  onEdit,
+  onDelete,
+  onSelectEntity,
+}: {
+  groupedByEra: [string, WorldTimelineEvent[]][];
+  entityMap: Record<string, Entity>;
+  calendarMap: Record<string, WorldCalendar>;
+  formatCalendarDate: (dateStr: string, calendarId?: string | null) => string;
+  isGM: boolean;
+  onEdit: (event: WorldTimelineEvent) => void;
+  onDelete: (eventId: string) => void;
+  onSelectEntity?: (entityId: string) => void;
+}) {
   return (
-    <div className="p-3 md:p-6 max-w-3xl mx-auto" data-testid="timeline-view">
-      {isGM && (
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-lg font-semibold text-stone-200">World Timeline</h2>
-          <Button onClick={openCreateForm} size="sm" className="bg-amber-600 hover:bg-amber-500 text-white" data-testid="button-add-event">
-            <Plus className="h-3.5 w-3.5 mr-1.5" />
-            Add Event
-          </Button>
-        </div>
-      )}
-      {!isGM && (
-        <h2 className="text-lg font-semibold text-stone-200 mb-6">World Timeline</h2>
-      )}
-
+    <>
       {groupedByEra.map(([era, eraEvents]) => {
         const eraColor = getEraColor(era, eraEvents[0]?.color);
         return (
@@ -349,7 +741,7 @@ export function TimelineView({ campaignId, worldId, isGM, onSelectEntity }: Time
                               variant="ghost"
                               size="icon"
                               className="h-6 w-6 text-stone-500 hover:text-stone-200"
-                              onClick={() => openEditForm(event)}
+                              onClick={() => onEdit(event)}
                               data-testid={`button-edit-event-${event.id}`}
                             >
                               <Edit2 className="h-3 w-3" />
@@ -358,7 +750,7 @@ export function TimelineView({ campaignId, worldId, isGM, onSelectEntity }: Time
                               variant="ghost"
                               size="icon"
                               className="h-6 w-6 text-stone-500 hover:text-red-400"
-                              onClick={() => setDeleteConfirm(event.id)}
+                              onClick={() => onDelete(event.id)}
                               data-testid={`button-delete-event-${event.id}`}
                             >
                               <Trash2 className="h-3 w-3" />
@@ -374,43 +766,7 @@ export function TimelineView({ campaignId, worldId, isGM, onSelectEntity }: Time
           </div>
         );
       })}
-
-      {showForm && (
-        <EventFormDialog
-          open={showForm}
-          onClose={() => { setShowForm(false); setEditingEvent(null); }}
-          formData={formData}
-          setFormData={setFormData}
-          onSubmit={handleSubmit}
-          isEditing={!!editingEvent}
-          entities={entities}
-          calendars={calendars}
-          existingEras={existingEras}
-          isSubmitting={createEvent.isPending || updateEvent.isPending}
-        />
-      )}
-
-      <AlertDialog open={!!deleteConfirm} onOpenChange={() => setDeleteConfirm(null)}>
-        <AlertDialogContent className="bg-stone-900 border-stone-700">
-          <AlertDialogHeader>
-            <AlertDialogTitle className="text-stone-200">Delete Timeline Event</AlertDialogTitle>
-            <AlertDialogDescription className="text-stone-400">
-              This will permanently remove this event from the timeline. This action cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel className="bg-stone-800 border-stone-700 text-stone-300 hover:bg-stone-700" data-testid="button-cancel-delete">Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-red-600 hover:bg-red-500 text-white"
-              onClick={() => deleteConfirm && handleDelete(deleteConfirm)}
-              data-testid="button-confirm-delete"
-            >
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </div>
+    </>
   );
 }
 
@@ -752,17 +1108,6 @@ function EventFormDialog({ open, onClose, formData, setFormData, onSubmit, isEdi
                 </SelectItem>
               </SelectContent>
             </Select>
-          </div>
-
-          <div>
-            <label className="text-xs text-stone-400 mb-1 block">Sort Order</label>
-            <Input
-              type="number"
-              value={formData.sortOrder}
-              onChange={(e) => setFormData(d => ({ ...d, sortOrder: parseInt(e.target.value) || 0 }))}
-              className="bg-stone-800 border-stone-700 text-stone-200 w-24"
-              data-testid="input-event-sort-order"
-            />
           </div>
         </div>
 

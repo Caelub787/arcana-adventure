@@ -1612,10 +1612,30 @@ export const insertWorldCalendarSchema = createInsertSchema(worldCalendars).omit
 export type InsertWorldCalendar = z.infer<typeof insertWorldCalendarSchema>;
 export type WorldCalendar = typeof worldCalendars.$inferSelect;
 
+export const worldTimelines = pgTable("world_timelines", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  worldId: varchar("world_id").references(() => worlds.id, { onDelete: "cascade" }),
+  campaignId: varchar("campaign_id").references(() => campaigns.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  description: text("description"),
+  color: text("color"),
+  sortOrder: integer("sort_order").default(0),
+  visibility: text("visibility").notNull().default("gm_only"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertWorldTimelineSchema = createInsertSchema(worldTimelines).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertWorldTimeline = z.infer<typeof insertWorldTimelineSchema>;
+export type WorldTimeline = typeof worldTimelines.$inferSelect;
+
 export const worldTimelineEvents = pgTable("world_timeline_events", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   campaignId: varchar("campaign_id").references(() => campaigns.id, { onDelete: "cascade" }),
   worldId: varchar("world_id").references(() => worlds.id, { onDelete: "cascade" }),
+  timelineId: varchar("timeline_id").references(() => worldTimelines.id, { onDelete: "cascade" }),
   title: text("title").notNull(),
   description: text("description"),
   date: text("date"),

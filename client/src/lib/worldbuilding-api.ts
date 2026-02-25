@@ -325,9 +325,22 @@ export function useDeleteWorldMapPin(worldId: string | undefined, mapId: string 
   });
 }
 
+export interface WorldTimeline {
+  id: string;
+  worldId?: string | null;
+  campaignId?: string | null;
+  name: string;
+  description?: string | null;
+  color?: string | null;
+  sortOrder?: number | null;
+  visibility: string;
+  createdAt: string;
+}
+
 export interface WorldTimelineEvent {
   id: string;
   campaignId: string;
+  timelineId?: string | null;
   title: string;
   description?: string | null;
   date?: string | null;
@@ -356,6 +369,56 @@ export interface WorldCalendar {
   notes?: Record<string, any> | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export function useTimelines(worldId: string | undefined) {
+  return useQuery<WorldTimeline[]>({
+    queryKey: ["/api/worlds", worldId, "timelines"],
+    queryFn: () => fetchJSON(`/api/worlds/${worldId}/timelines`),
+    enabled: !!worldId,
+  });
+}
+
+export function useCreateTimeline(worldId: string | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: Partial<WorldTimeline>) =>
+      fetchJSON(`/api/worlds/${worldId}/timelines`, {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/worlds", worldId, "timelines"] });
+    },
+  });
+}
+
+export function useUpdateTimeline(worldId: string | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...data }: Partial<WorldTimeline> & { id: string }) =>
+      fetchJSON(`/api/worlds/${worldId}/timelines/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(data),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/worlds", worldId, "timelines"] });
+    },
+  });
+}
+
+export function useDeleteTimeline(worldId: string | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (timelineId: string) =>
+      fetchJSON(`/api/worlds/${worldId}/timelines/${timelineId}`, {
+        method: "DELETE",
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/worlds", worldId, "timelines"] });
+      qc.invalidateQueries({ queryKey: ["/api/worlds", worldId, "timeline-events"] });
+    },
+  });
 }
 
 export function useTimelineEvents(worldId: string | undefined) {
@@ -527,6 +590,9 @@ export function useWorldbuildingSync(worldId: string | undefined) {
       }
       if (['world_timeline_event_created', 'world_timeline_event_updated', 'world_timeline_event_deleted'].includes(data.type)) {
         qc.invalidateQueries({ queryKey: ["/api/worlds", worldId, "timeline-events"] });
+      }
+      if (['world_timeline_created', 'world_timeline_updated', 'world_timeline_deleted'].includes(data.type)) {
+        qc.invalidateQueries({ queryKey: ["/api/worlds", worldId, "timelines"] });
       }
       if (['calendar_sync_created', 'calendar_sync_deleted'].includes(data.type)) {
         qc.invalidateQueries({ queryKey: ['/api/worlds', worldId, 'calendar-syncs'] });

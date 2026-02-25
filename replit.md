@@ -34,7 +34,7 @@ Preferred communication style: Simple, everyday language.
 -   **Database**: PostgreSQL via Neon serverless, managed with Drizzle ORM.
 -   **Schema**: Comprehensive schema covering all application entities.
 -   **Worlds Table**: `worlds` (id, name, description, image, userId, optional campaignId) — independent worldbuilding containers.
--   **Worldbuilding Tables**: `entities`, `entity_links`, `world_share_links`, `world_maps`, `world_map_pins`, `world_calendars`, `world_timeline_events`, `world_calendar_syncs` — all have both `worldId` and `campaignId` (nullable) for flexible scoping.
+-   **Worldbuilding Tables**: `entities`, `entity_links`, `world_share_links`, `world_maps`, `world_map_pins`, `world_calendars`, `world_timelines`, `world_timeline_events`, `world_calendar_syncs` — all have both `worldId` and `campaignId` (nullable) for flexible scoping. Timeline events reference a `timelineId` to support multiple timelines per world.
 -   **Validation**: Zod schemas for input validation.
 
 ### Authentication & Authorization
@@ -48,7 +48,7 @@ Preferred communication style: Simple, everyday language.
 -   `client/src/components/worldbuilding/WikiArticleEditor.tsx` — Markdown article editor with template fields
 -   `client/src/components/worldbuilding/WorldMapViewer.tsx` — Interactive map viewer with clickable pins
 -   `client/src/components/worldbuilding/WorldMapEditor.tsx` — GM map editor (place pins, set images)
--   `client/src/components/worldbuilding/TimelineView.tsx` — Dynamic timeline with era grouping
+-   `client/src/components/worldbuilding/TimelineView.tsx` — Multi-timeline system with sidebar selector, era grouping, and per-timeline event management
 -   `client/src/components/worldbuilding/WorldCalendar.tsx` — Custom calendar system
 -   `client/src/components/worldbuilding/RelationshipGraph.tsx` — Force-directed entity graph
 -   `client/src/components/worldbuilding/EntitySidePanel.tsx` — Entity detail panel (6 tabs)

@@ -414,6 +414,37 @@ export function WorldCalendar({ campaignId, worldId, isGM = false }: WorldCalend
       day === (selectedCalendar.currentDay ?? 1);
   };
 
+  const renderDialogs = () => (
+    <>
+      <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+        <DialogContent className="bg-stone-900 border-stone-700 text-stone-200 max-w-lg max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-stone-100">Create Calendar</DialogTitle>
+          </DialogHeader>
+          <CalendarForm
+            name={formName}
+            setName={setFormName}
+            yearSuffix={formYearSuffix}
+            setYearSuffix={setFormYearSuffix}
+            monthNames={formMonthNames}
+            setMonthNames={setFormMonthNames}
+            daysPerMonth={formDaysPerMonth}
+            setDaysPerMonth={setFormDaysPerMonth}
+            weekDayNames={formWeekDayNames}
+            setWeekDayNames={setFormWeekDayNames}
+          />
+          <DialogFooter>
+            <Button variant="ghost" className="text-stone-400" onClick={() => setShowCreateDialog(false)}>Cancel</Button>
+            <Button className="bg-amber-600 hover:bg-amber-500 text-white" onClick={handleCreateCalendar} disabled={createCalendar.isPending} data-testid="button-confirm-create-calendar">
+              {createCalendar.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Plus className="h-4 w-4 mr-2" />}
+              Create
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -424,17 +455,20 @@ export function WorldCalendar({ campaignId, worldId, isGM = false }: WorldCalend
 
   if (calendars.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center h-full p-8 text-center">
-        <Calendar className="h-16 w-16 text-stone-700 mb-4" />
-        <h2 className="text-xl font-semibold text-stone-500 mb-2" data-testid="text-no-calendars">No Calendars Yet</h2>
-        <p className="text-stone-600 text-sm max-w-md mb-6">Create a custom calendar system with unique months, weekdays, and events for your world.</p>
-        {isGM && (
-          <Button className="bg-amber-600 hover:bg-amber-500 text-white" onClick={openCreate} data-testid="button-create-first-calendar">
-            <Plus className="h-4 w-4 mr-2" />
-            Create Calendar
-          </Button>
-        )}
-      </div>
+      <>
+        <div className="flex flex-col items-center justify-center h-full p-8 text-center">
+          <Calendar className="h-16 w-16 text-stone-700 mb-4" />
+          <h2 className="text-xl font-semibold text-stone-500 mb-2" data-testid="text-no-calendars">No Calendars Yet</h2>
+          <p className="text-stone-600 text-sm max-w-md mb-6">Create a custom calendar system with unique months, weekdays, and events for your world.</p>
+          {isGM && (
+            <Button className="bg-amber-600 hover:bg-amber-500 text-white" onClick={openCreate} data-testid="button-create-first-calendar">
+              <Plus className="h-4 w-4 mr-2" />
+              Create Calendar
+            </Button>
+          )}
+        </div>
+        {renderDialogs()}
+      </>
     );
   }
 
@@ -610,32 +644,7 @@ export function WorldCalendar({ campaignId, worldId, isGM = false }: WorldCalend
         </div>
       </ScrollArea>
 
-      <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
-        <DialogContent className="bg-stone-900 border-stone-700 text-stone-200 max-w-lg max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="text-stone-100">Create Calendar</DialogTitle>
-          </DialogHeader>
-          <CalendarForm
-            name={formName}
-            setName={setFormName}
-            yearSuffix={formYearSuffix}
-            setYearSuffix={setFormYearSuffix}
-            monthNames={formMonthNames}
-            setMonthNames={setFormMonthNames}
-            daysPerMonth={formDaysPerMonth}
-            setDaysPerMonth={setFormDaysPerMonth}
-            weekDayNames={formWeekDayNames}
-            setWeekDayNames={setFormWeekDayNames}
-          />
-          <DialogFooter>
-            <Button variant="ghost" className="text-stone-400" onClick={() => setShowCreateDialog(false)}>Cancel</Button>
-            <Button className="bg-amber-600 hover:bg-amber-500 text-white" onClick={handleCreateCalendar} disabled={createCalendar.isPending} data-testid="button-confirm-create-calendar">
-              {createCalendar.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Plus className="h-4 w-4 mr-2" />}
-              Create
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {renderDialogs()}
 
       <Dialog open={showSettingsDialog} onOpenChange={setShowSettingsDialog}>
         <DialogContent className="bg-stone-900 border-stone-700 text-stone-200 max-w-lg max-h-[85vh] overflow-y-auto">
