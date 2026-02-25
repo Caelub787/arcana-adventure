@@ -406,7 +406,7 @@ export function TimelineView({ campaignId, worldId, isGM, onSelectEntity }: Time
 
       <div className="flex-1 overflow-y-auto">
         {selectedTimeline ? (
-          <div className="p-3 md:p-6">
+          <div className="p-3 md:p-6 flex flex-col h-full">
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center gap-3">
                 <div
@@ -429,7 +429,7 @@ export function TimelineView({ campaignId, worldId, isGM, onSelectEntity }: Time
             </div>
 
             {filteredEvents.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-16 text-stone-500">
+              <div className="flex-1 flex flex-col items-center justify-center text-stone-500">
                 <Clock className="h-12 w-12 mb-4 opacity-30" />
                 <p className="text-sm">No events in this timeline</p>
                 <p className="text-xs mt-1 mb-4">Add events to build this timeline's history</p>
@@ -460,7 +460,7 @@ export function TimelineView({ campaignId, worldId, isGM, onSelectEntity }: Time
             <p className="text-xs mt-1 max-w-xs text-center">Create timelines to organize your world's events into distinct historical threads.</p>
           </div>
         ) : (
-          <div className="p-3 md:p-6">
+          <div className="p-3 md:p-6 flex flex-col h-full">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-lg font-semibold text-stone-200">Unassigned Events</h2>
               {isGM && (
@@ -471,7 +471,7 @@ export function TimelineView({ campaignId, worldId, isGM, onSelectEntity }: Time
               )}
             </div>
             {filteredEvents.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-16 text-stone-500">
+              <div className="flex-1 flex flex-col items-center justify-center text-stone-500">
                 <Clock className="h-12 w-12 mb-4 opacity-30" />
                 <p className="text-sm">No unassigned events</p>
               </div>
