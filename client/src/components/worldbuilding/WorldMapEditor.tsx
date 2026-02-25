@@ -12,7 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Map, MapPin, Plus, Save, Trash2, X, Edit3, ChevronLeft, FileText, Navigation, Link2, GripVertical, Loader2, Image } from "lucide-react";
+import { Map, MapPin, Plus, Save, Trash2, X, Edit3, ChevronLeft, FileText, Navigation, Link2, GripVertical, Loader2, Image, Upload } from "lucide-react";
 
 interface WorldMapEditorProps {
   campaignId?: string;
@@ -58,6 +58,33 @@ export function WorldMapEditor({ campaignId, worldId, mapId, onBack, onMapCreate
   const [saving, setSaving] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [draggingPinId, setDraggingPinId] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleImageUpload = useCallback(async (file: File) => {
+    if (!file.type.startsWith("image/")) return;
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("image", file);
+      const res = await fetch("/api/upload/image", { method: "POST", body: formData });
+      if (!res.ok) throw new Error("Upload failed");
+      const { url } = await res.json();
+      setImageUrl(url);
+    } catch (e) {
+      console.error("Image upload failed:", e);
+    } finally {
+      setUploading(false);
+    }
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    const file = e.dataTransfer.files?.[0];
+    if (file && file.type.startsWith("image/")) {
+      handleImageUpload(file);
+    }
+  }, [handleImageUpload]);
   const imageRef = useRef<HTMLImageElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -191,8 +218,32 @@ export function WorldMapEditor({ campaignId, worldId, mapId, onBack, onMapCreate
           </div>
 
           <div>
-            <Label className="text-[10px] text-stone-500 uppercase tracking-wider">Image URL</Label>
-            <Input value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder="https://..." className="mt-0.5 bg-stone-800 border-stone-700 text-stone-200 text-xs h-7" data-testid="input-map-image" />
+            <Label className="text-[10px] text-stone-500 uppercase tracking-wider">Map Image</Label>
+            <div className="flex gap-1.5 mt-0.5">
+              <Input value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder="Paste URL or upload..." className="bg-stone-800 border-stone-700 text-stone-200 text-xs h-7 flex-1" data-testid="input-map-image" />
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) handleImageUpload(file);
+                  e.target.value = "";
+                }}
+              />
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 px-2 border-stone-700 text-stone-300 hover:bg-stone-700 hover:text-stone-100 text-xs"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading}
+                data-testid="button-upload-map-image"
+              >
+                {uploading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Upload className="h-3 w-3" />}
+                <span className="ml-1 hidden md:inline">{uploading ? "Uploading..." : "Upload"}</span>
+              </Button>
+            </div>
           </div>
 
           <div>
