@@ -384,14 +384,17 @@ function MapCanvas({ campaignId, map, allMaps, entities, isGM, onNavigateToSubMa
             style={{ opacity: imageLoaded ? 1 : 0 }}
             data-testid="map-image"
           />
-          {pins.map(pin => (
+          {pins.map(pin => {
+            const pinScale = 1 / zoom;
+            return (
             <div
               key={pin.id}
               className="absolute"
               style={{
                 left: `${pin.x}%`,
                 top: `${pin.y}%`,
-                transform: 'translate(-50%, -100%)',
+                transform: `translate(-50%, -100%) scale(${pinScale})`,
+                transformOrigin: 'bottom center',
                 zIndex: activePinId === pin.id ? 20 : 10,
               }}
             >
@@ -402,19 +405,19 @@ function MapCanvas({ campaignId, map, allMaps, entities, isGM, onNavigateToSubMa
                 title={pin.label || undefined}
               >
                 <div
-                  className="w-6 h-6 rounded-full flex items-center justify-center shadow-lg border-2 border-stone-900 hover:scale-125 transition-transform"
+                  className="w-8 h-8 rounded-full flex items-center justify-center shadow-lg border-2 border-stone-900 hover:scale-110 transition-transform"
                   style={{ backgroundColor: pin.color || '#f59e0b' }}
                 >
                   {pin.pinType === "map_link" ? (
-                    <Navigation className="h-3 w-3 text-white" />
+                    <Navigation className="h-4 w-4 text-white" />
                   ) : pin.pinType === "entity_link" ? (
-                    <Link2 className="h-3 w-3 text-white" />
+                    <Link2 className="h-4 w-4 text-white" />
                   ) : (
-                    <FileText className="h-3 w-3 text-white" />
+                    <FileText className="h-4 w-4 text-white" />
                   )}
                 </div>
                 {pin.label && (
-                  <span className="mt-0.5 text-[9px] font-medium text-stone-200 bg-stone-900/80 px-1 rounded whitespace-nowrap">
+                  <span className="mt-1 text-[11px] font-medium text-stone-200 bg-stone-900/90 px-1.5 py-0.5 rounded whitespace-nowrap shadow-md">
                     {pin.label}
                   </span>
                 )}
@@ -422,17 +425,17 @@ function MapCanvas({ campaignId, map, allMaps, entities, isGM, onNavigateToSubMa
 
               {activePinId === pin.id && pin.pinType === "text_reveal" && (
                 <div
-                  className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 bg-stone-800 border border-stone-700 rounded-lg shadow-xl p-3 z-30"
+                  className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-72 bg-stone-800 border border-stone-700 rounded-lg shadow-xl p-3 z-30"
                   onClick={(e) => e.stopPropagation()}
                   data-testid={`pin-popover-${pin.id}`}
                 >
                   <div className="flex items-center justify-between mb-1.5">
-                    <h4 className="text-xs font-semibold text-stone-200">{pin.label || "Note"}</h4>
+                    <h4 className="text-sm font-semibold text-stone-200">{pin.label || "Note"}</h4>
                     <button onClick={() => setActivePinId(null)} className="text-stone-500 hover:text-stone-300">
-                      <X className="h-3 w-3" />
+                      <X className="h-4 w-4" />
                     </button>
                   </div>
-                  <p className="text-[11px] text-stone-400 whitespace-pre-wrap leading-relaxed">{pin.textContent || "No content"}</p>
+                  <p className="text-xs text-stone-400 whitespace-pre-wrap leading-relaxed">{pin.textContent || "No content"}</p>
                   <div className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 w-2 h-2 bg-stone-800 border-r border-b border-stone-700 rotate-45" />
                 </div>
               )}
@@ -467,7 +470,8 @@ function MapCanvas({ campaignId, map, allMaps, entities, isGM, onNavigateToSubMa
                 </div>
               )}
             </div>
-          ))}
+          );
+          })}
         </div>
       </div>
 
