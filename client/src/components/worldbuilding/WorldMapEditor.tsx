@@ -12,8 +12,9 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Map, MapPin, Plus, Save, Trash2, X, Edit3, ChevronLeft, FileText, Navigation, Link2, GripVertical, Loader2, Image, Upload, ZoomIn, ZoomOut, Maximize2 } from "lucide-react";
+import { Map, MapPin, Plus, Save, Trash2, X, Edit3, ChevronLeft, FileText, Navigation, Link2, GripVertical, Loader2, Image, Upload, ZoomIn, ZoomOut, Maximize2, PanelLeftClose, PanelLeft } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 interface WorldMapEditorProps {
   campaignId?: string;
@@ -66,12 +67,15 @@ export function WorldMapEditor({ campaignId, worldId, mapId, onBack, onMapCreate
     }
   }, [currentMap?.id, currentMap?.title, currentMap?.imageUrl, currentMap?.description, currentMap?.parentMapId, currentMap?.visibility]);
 
+  const isMobile = useIsMobile();
+  const [panelCollapsed, setPanelCollapsed] = useState(false);
   const [saving, setSaving] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [draggingPinId, setDraggingPinId] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const touchRef = useRef<{ lastDist: number; lastCenter: { x: number; y: number }; touching: boolean; moved: boolean; startPos: { x: number; y: number } }>({ lastDist: 0, lastCenter: { x: 0, y: 0 }, touching: false, moved: false, startPos: { x: 0, y: 0 } });
 
   const handleImageUpload = useCallback(async (file: File) => {
     if (!file.type.startsWith("image/")) {
@@ -264,7 +268,7 @@ export function WorldMapEditor({ campaignId, worldId, mapId, onBack, onMapCreate
       </div>
 
       <div className="flex-1 flex overflow-hidden">
-        <div className="w-72 border-r border-stone-800 bg-stone-900/30 overflow-y-auto flex-shrink-0 p-3 space-y-3">
+        <div className={`${panelCollapsed ? 'hidden' : 'w-full md:w-72'} border-r border-stone-800 bg-stone-900/30 overflow-y-auto flex-shrink-0 p-3 space-y-3`}>
           <div>
             <Label className="text-[10px] text-stone-500 uppercase tracking-wider">Title</Label>
             <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Map title..." className="mt-0.5 bg-stone-800 border-stone-700 text-stone-200 text-xs h-7" data-testid="input-map-title" />
@@ -345,11 +349,15 @@ export function WorldMapEditor({ campaignId, worldId, mapId, onBack, onMapCreate
                     variant={isPlacingPin ? "default" : "ghost"}
                     size="sm"
                     className={`h-6 text-[10px] ${isPlacingPin ? 'bg-amber-600 text-white' : 'text-amber-400 hover:text-amber-300'}`}
-                    onClick={() => setIsPlacingPin(!isPlacingPin)}
+                    onClick={() => {
+                      const newVal = !isPlacingPin;
+                      setIsPlacingPin(newVal);
+                      if (newVal && isMobile) setPanelCollapsed(true);
+                    }}
                     data-testid="button-place-pin"
                   >
                     <MapPin className="h-3 w-3 mr-1" />
-                    {isPlacingPin ? "Click on map..." : "Add Pin"}
+                    {isPlacingPin ? "Tap on map..." : "Add Pin"}
                   </Button>
                 </div>
                 <div className="space-y-1">
@@ -382,7 +390,7 @@ export function WorldMapEditor({ campaignId, worldId, mapId, onBack, onMapCreate
             <>
             <div
               className={`absolute inset-0 ${isPlacingPin ? 'cursor-crosshair' : ''}`}
-              style={{ cursor: isPlacingPin ? 'crosshair' : editorDragging ? 'grabbing' : 'grab' }}
+              style={{ cursor: isPlacingPin ? 'crosshair' : editorDragging ? 'grabbing' : 'grab', touchAction: 'none' }}
               onWheel={(e) => {
                 e.preventDefault();
                 const factor = e.deltaY > 0 ? 0.9 : 1.1;
@@ -413,6 +421,77 @@ export function WorldMapEditor({ campaignId, worldId, mapId, onBack, onMapCreate
               onMouseUp={() => setEditorDragging(false)}
               onMouseLeave={() => setEditorDragging(false)}
               onClick={isPlacingPin ? handleImageClick : undefined}
+              onTouchStart={(e) => {
+                if (e.touches.length === 2) {
+                  const dx = e.touches[0].clientX - e.touches[1].clientX;
+                  const dy = e.touches[0].clientY - e.touches[1].clientY;
+                  touchRef.current.lastDist = Math.sqrt(dx * dx + dy * dy);
+                  touchRef.current.lastCenter = {
+                    x: (e.touches[0].clientX + e.touches[1].clientX) / 2,
+                    y: (e.touches[0].clientY + e.touches[1].clientY) / 2,
+                  };
+                  touchRef.current.touching = true;
+                  touchRef.current.moved = true;
+                } else if (e.touches.length === 1) {
+                  touchRef.current.touching = true;
+                  touchRef.current.moved = false;
+                  touchRef.current.startPos = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+                  setEditorDragging(true);
+                  setEditorDragStart({ x: e.touches[0].clientX - editorPan.x, y: e.touches[0].clientY - editorPan.y });
+                }
+              }}
+              onTouchMove={(e) => {
+                if (e.touches.length === 2) {
+                  e.preventDefault();
+                  const dx = e.touches[0].clientX - e.touches[1].clientX;
+                  const dy = e.touches[0].clientY - e.touches[1].clientY;
+                  const dist = Math.sqrt(dx * dx + dy * dy);
+                  const center = {
+                    x: (e.touches[0].clientX + e.touches[1].clientX) / 2,
+                    y: (e.touches[0].clientY + e.touches[1].clientY) / 2,
+                  };
+                  if (touchRef.current.lastDist > 0) {
+                    const factor = dist / touchRef.current.lastDist;
+                    const rect = containerRef.current?.getBoundingClientRect();
+                    if (rect) {
+                      const mx = center.x - rect.left;
+                      const my = center.y - rect.top;
+                      setEditorZoom(prevZoom => {
+                        const newZoom = Math.min(Math.max(prevZoom * factor, 0.05), 10);
+                        const scale = newZoom / prevZoom;
+                        setEditorPan(prevPan => ({
+                          x: mx - (mx - prevPan.x) * scale,
+                          y: my - (my - prevPan.y) * scale,
+                        }));
+                        return newZoom;
+                      });
+                    }
+                    const panDx = center.x - touchRef.current.lastCenter.x;
+                    const panDy = center.y - touchRef.current.lastCenter.y;
+                    setEditorPan(prev => ({ x: prev.x + panDx, y: prev.y + panDy }));
+                  }
+                  touchRef.current.lastDist = dist;
+                  touchRef.current.lastCenter = center;
+                } else if (e.touches.length === 1) {
+                  const dx = e.touches[0].clientX - touchRef.current.startPos.x;
+                  const dy = e.touches[0].clientY - touchRef.current.startPos.y;
+                  if (Math.abs(dx) > 5 || Math.abs(dy) > 5) touchRef.current.moved = true;
+                  if (editorDragging) {
+                    setEditorPan({ x: e.touches[0].clientX - editorDragStart.x, y: e.touches[0].clientY - editorDragStart.y });
+                  }
+                }
+              }}
+              onTouchEnd={(e) => {
+                if (isPlacingPin && e.changedTouches.length === 1 && !touchRef.current.moved) {
+                  const touch = e.changedTouches[0];
+                  handleImageClick({ clientX: touch.clientX, clientY: touch.clientY, stopPropagation: () => {} } as any);
+                }
+                if (e.touches.length === 0) {
+                  setEditorDragging(false);
+                  touchRef.current.touching = false;
+                  touchRef.current.lastDist = 0;
+                }
+              }}
             >
               <div
                 style={{
@@ -432,14 +511,17 @@ export function WorldMapEditor({ campaignId, worldId, mapId, onBack, onMapCreate
                   style={{ opacity: editorImageLoaded ? 1 : 0 }}
                   data-testid="editor-map-image"
                 />
-                {pins.map(pin => (
+                {pins.map(pin => {
+                  const pinScale = 1 / editorZoom;
+                  return (
                   <div
                     key={pin.id}
                     className="absolute"
                     style={{
                       left: `${pin.x}%`,
                       top: `${pin.y}%`,
-                      transform: 'translate(-50%, -100%)',
+                      transform: `translate(-50%, -100%) scale(${pinScale})`,
+                      transformOrigin: 'bottom center',
                       zIndex: 10,
                       cursor: draggingPinId === pin.id ? 'grabbing' : 'pointer',
                     }}
@@ -453,30 +535,35 @@ export function WorldMapEditor({ campaignId, worldId, mapId, onBack, onMapCreate
                       data-testid={`editor-pin-${pin.id}`}
                     >
                       <div
-                        className="w-6 h-6 rounded-full flex items-center justify-center shadow-lg border-2 border-stone-900 hover:scale-125 transition-transform"
+                        className="w-8 h-8 rounded-full flex items-center justify-center shadow-lg border-2 border-stone-900 hover:scale-110 transition-transform"
                         style={{ backgroundColor: pin.color || '#f59e0b' }}
                       >
                         {pin.pinType === "map_link" ? (
-                          <Navigation className="h-3 w-3 text-white" />
+                          <Navigation className="h-4 w-4 text-white" />
                         ) : pin.pinType === "entity_link" ? (
-                          <Link2 className="h-3 w-3 text-white" />
+                          <Link2 className="h-4 w-4 text-white" />
                         ) : (
-                          <FileText className="h-3 w-3 text-white" />
+                          <FileText className="h-4 w-4 text-white" />
                         )}
                       </div>
                       {pin.label && (
-                        <span className="mt-0.5 text-[9px] font-medium text-stone-200 bg-stone-900/80 px-1 rounded whitespace-nowrap">
+                        <span className="mt-1 text-[11px] font-medium text-stone-200 bg-stone-900/90 px-1.5 py-0.5 rounded whitespace-nowrap shadow-md">
                           {pin.label}
                         </span>
                       )}
                     </button>
                   </div>
-                ))}
+                  );
+                })}
               </div>
 
               {isPlacingPin && (
-                <div className="absolute top-3 left-1/2 -translate-x-1/2 bg-amber-600/90 text-white px-3 py-1.5 rounded-full text-xs font-medium shadow-lg z-20">
-                  Click anywhere on the map to place a pin
+                <div className="absolute top-3 left-1/2 -translate-x-1/2 bg-amber-600/90 text-white px-3 py-1.5 rounded-full text-xs font-medium shadow-lg z-20 flex items-center gap-2">
+                  <MapPin className="h-3 w-3" />
+                  {isMobile ? "Tap on map to place pin" : "Click anywhere on the map to place a pin"}
+                  <button onClick={() => setIsPlacingPin(false)} className="ml-1 hover:text-amber-200">
+                    <X className="h-3 w-3" />
+                  </button>
                 </div>
               )}
             </div>
@@ -491,7 +578,16 @@ export function WorldMapEditor({ campaignId, worldId, mapId, onBack, onMapCreate
                 <Maximize2 className="h-4 w-4" />
               </Button>
             </div>
-            <div className="absolute top-3 left-3 z-20">
+            <div className="absolute top-3 left-3 z-20 flex items-center gap-1.5">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 bg-stone-900/80 hover:bg-stone-800 text-stone-300 border border-stone-700"
+                onClick={() => setPanelCollapsed(!panelCollapsed)}
+                data-testid="button-toggle-panel"
+              >
+                {panelCollapsed ? <PanelLeft className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+              </Button>
               <Badge className="bg-stone-900/80 border-stone-700 text-stone-300 text-[10px]">
                 {Math.round((editorZoom / editorFitRef.current) * 100)}%
               </Badge>
