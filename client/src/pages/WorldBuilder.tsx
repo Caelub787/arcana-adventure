@@ -462,7 +462,7 @@ export default function WorldBuilder() {
   );
 
   return (
-    <div className="min-h-screen bg-stone-950 text-stone-100" data-testid="worldbuilder-page">
+    <div className="h-screen overflow-hidden bg-stone-950 text-stone-100" data-testid="worldbuilder-page">
       <header className="border-b border-stone-800 bg-stone-900/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="flex items-center justify-between px-2 md:px-4 py-2 gap-2">
           <div className="flex items-center gap-1.5 md:gap-3 min-w-0">

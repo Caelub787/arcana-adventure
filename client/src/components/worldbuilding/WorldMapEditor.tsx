@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from "react";
+import React, { useState, useRef, useCallback, useEffect } from "react";
 import {
   useWorldMaps, useWorldMapPins, useEntities,
   useCreateWorldMap, useUpdateWorldMap, useDeleteWorldMap,
@@ -55,6 +55,16 @@ export function WorldMapEditor({ campaignId, worldId, mapId, onBack, onMapCreate
     x: 0,
     y: 0,
   });
+  useEffect(() => {
+    if (currentMap) {
+      setTitle(currentMap.title || "");
+      setImageUrl(currentMap.imageUrl || "");
+      setDescription(currentMap.description || "");
+      setParentMapId(currentMap.parentMapId || "");
+      setVisibility(currentMap.visibility || "gm_only");
+    }
+  }, [currentMap?.id, currentMap?.title, currentMap?.imageUrl, currentMap?.description, currentMap?.parentMapId, currentMap?.visibility]);
+
   const [saving, setSaving] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [draggingPinId, setDraggingPinId] = useState<string | null>(null);
@@ -368,8 +378,20 @@ export function WorldMapEditor({ campaignId, worldId, mapId, onBack, onMapCreate
               style={{ cursor: isPlacingPin ? 'crosshair' : editorDragging ? 'grabbing' : 'grab' }}
               onWheel={(e) => {
                 e.preventDefault();
-                const delta = e.deltaY > 0 ? 0.9 : 1.1;
-                setEditorZoom(z => Math.min(Math.max(z * delta, 0.05), 10));
+                const factor = e.deltaY > 0 ? 0.9 : 1.1;
+                const rect = containerRef.current?.getBoundingClientRect();
+                if (!rect) return;
+                const mx = e.clientX - rect.left;
+                const my = e.clientY - rect.top;
+                setEditorZoom(prevZoom => {
+                  const newZoom = Math.min(Math.max(prevZoom * factor, 0.05), 10);
+                  const scale = newZoom / prevZoom;
+                  setEditorPan(prevPan => ({
+                    x: mx - (mx - prevPan.x) * scale,
+                    y: my - (my - prevPan.y) * scale,
+                  }));
+                  return newZoom;
+                });
               }}
               onMouseDown={(e) => {
                 if (isPlacingPin) return;

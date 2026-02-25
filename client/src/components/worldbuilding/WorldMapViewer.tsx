@@ -289,8 +289,20 @@ function MapCanvas({ campaignId, map, allMaps, entities, isGM, onNavigateToSubMa
 
   const handleWheel = useCallback((e: React.WheelEvent) => {
     e.preventDefault();
-    const delta = e.deltaY > 0 ? 0.9 : 1.1;
-    setZoom(z => Math.min(Math.max(z * delta, 0.05), 10));
+    const factor = e.deltaY > 0 ? 0.9 : 1.1;
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    setZoom(prevZoom => {
+      const newZoom = Math.min(Math.max(prevZoom * factor, 0.05), 10);
+      const scale = newZoom / prevZoom;
+      setPan(prevPan => ({
+        x: mx - (mx - prevPan.x) * scale,
+        y: my - (my - prevPan.y) * scale,
+      }));
+      return newZoom;
+    });
   }, []);
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
