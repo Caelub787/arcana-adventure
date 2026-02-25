@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Map, MapPin, Plus, Save, Trash2, X, Edit3, ChevronLeft, FileText, Navigation, Link2, GripVertical, Loader2, Image, Upload, ZoomIn, ZoomOut, Maximize2 } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 
 interface WorldMapEditorProps {
   campaignId?: string;
@@ -136,6 +137,8 @@ export function WorldMapEditor({ campaignId, worldId, mapId, onBack, onMapCreate
 
   const isNew = !mapId;
 
+  const { toast } = useToast();
+
   const handleSaveMap = async () => {
     if (!title.trim()) return;
     setSaving(true);
@@ -149,6 +152,7 @@ export function WorldMapEditor({ campaignId, worldId, mapId, onBack, onMapCreate
           visibility,
         });
         onMapCreated?.(result.id);
+        toast({ title: "Map created" });
       } else {
         await updateMap.mutateAsync({
           id: mapId,
@@ -158,7 +162,11 @@ export function WorldMapEditor({ campaignId, worldId, mapId, onBack, onMapCreate
           parentMapId: parentMapId || undefined,
           visibility,
         });
+        toast({ title: "Map saved" });
       }
+    } catch (err: any) {
+      console.error("Map save failed:", err);
+      toast({ title: "Failed to save map", description: err?.message || "Unknown error", variant: "destructive" });
     } finally {
       setSaving(false);
     }

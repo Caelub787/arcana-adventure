@@ -38,7 +38,7 @@ Preferred communication style: Simple, everyday language.
 -   **Validation**: Zod schemas for input validation.
 
 ### Authentication & Authorization
--   **Authentication**: `bcryptjs` for password hashing, session-based authentication.
+-   **Authentication**: `bcryptjs` for password hashing, session-based authentication with "Remember Me" support (30-day persistent vs session-only cookies).
 -   **Authorization**: Three-tier role system (Owner, Assistant GM, Player) and a four-tier character access permission system.
 -   **Security**: Hashed passwords, session cookies, CSRF protection, and PII sanitization.
 
@@ -48,7 +48,7 @@ Preferred communication style: Simple, everyday language.
 -   `client/src/components/worldbuilding/WikiArticleEditor.tsx` — Markdown article editor with template fields
 -   `client/src/components/worldbuilding/WorldMapViewer.tsx` — Interactive map viewer with clickable pins
 -   `client/src/components/worldbuilding/WorldMapEditor.tsx` — GM map editor (place pins, set images)
--   `client/src/components/worldbuilding/TimelineView.tsx` — Multi-timeline system with sidebar selector, era grouping, and per-timeline event management
+-   `client/src/components/worldbuilding/TimelineView.tsx` — Multi-timeline system with era grouping, per-timeline event management; timeline selection controlled externally from WorldBuilder sidebar
 -   `client/src/components/worldbuilding/WorldCalendar.tsx` — Custom calendar system
 -   `client/src/components/worldbuilding/RelationshipGraph.tsx` — Force-directed entity graph
 -   `client/src/components/worldbuilding/EntitySidePanel.tsx` — Entity detail panel (6 tabs)

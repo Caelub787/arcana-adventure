@@ -46,6 +46,8 @@ interface TimelineViewProps {
   worldId?: string;
   isGM: boolean;
   onSelectEntity?: (entityId: string) => void;
+  selectedTimelineId?: string | null;
+  onSelectTimeline?: (timelineId: string | null) => void;
 }
 
 const DEFAULT_COLORS = [
@@ -98,7 +100,7 @@ const EMPTY_FORM: EventFormData = {
   visibility: "gm_only",
 };
 
-export function TimelineView({ campaignId, worldId, isGM, onSelectEntity }: TimelineViewProps) {
+export function TimelineView({ campaignId, worldId, isGM, onSelectEntity, selectedTimelineId: externalSelectedId, onSelectTimeline }: TimelineViewProps) {
   const resolvedId = worldId || campaignId;
   const { data: timelines = [], isLoading: timelinesLoading } = useTimelines(resolvedId);
   const { data: allEvents = [], isLoading: eventsLoading } = useTimelineEvents(resolvedId);
@@ -111,7 +113,13 @@ export function TimelineView({ campaignId, worldId, isGM, onSelectEntity }: Time
   const updateEvent = useUpdateTimelineEvent(resolvedId);
   const deleteEvent = useDeleteTimelineEvent(resolvedId);
 
-  const [selectedTimelineId, setSelectedTimelineId] = useState<string | null>(null);
+  const isExternallyControlled = externalSelectedId !== undefined;
+  const [internalSelectedId, setInternalSelectedId] = useState<string | null>(null);
+  const selectedTimelineId = isExternallyControlled ? externalSelectedId : internalSelectedId;
+  const setSelectedTimelineId = (id: string | null) => {
+    if (onSelectTimeline) onSelectTimeline(id);
+    else setInternalSelectedId(id);
+  };
   const [showTimelineForm, setShowTimelineForm] = useState(false);
   const [editingTimeline, setEditingTimeline] = useState<WorldTimeline | null>(null);
   const [timelineName, setTimelineName] = useState("");
@@ -129,8 +137,9 @@ export function TimelineView({ campaignId, worldId, isGM, onSelectEntity }: Time
 
   const selectedTimeline = useMemo(() => {
     if (selectedTimelineId) return timelines.find(t => t.id === selectedTimelineId) || null;
+    if (isExternallyControlled) return null;
     return timelines.length > 0 ? timelines[0] : null;
-  }, [timelines, selectedTimelineId]);
+  }, [timelines, selectedTimelineId, isExternallyControlled]);
 
   const currentTimelineId = selectedTimeline?.id || null;
 
@@ -296,114 +305,6 @@ export function TimelineView({ campaignId, worldId, isGM, onSelectEntity }: Time
 
   return (
     <div className="flex h-full" data-testid="timeline-view">
-      <div className="w-56 flex-shrink-0 border-r border-stone-700 bg-stone-900/50 flex flex-col">
-        <div className="p-3 border-b border-stone-700">
-          <div className="flex items-center justify-between mb-2">
-            <h3 className="text-xs font-semibold text-stone-400 uppercase tracking-wider">Timelines</h3>
-            {isGM && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-6 w-6 text-stone-500 hover:text-amber-400"
-                onClick={openCreateTimeline}
-                data-testid="button-create-timeline"
-              >
-                <Plus className="h-3.5 w-3.5" />
-              </Button>
-            )}
-          </div>
-        </div>
-
-        <ScrollArea className="flex-1">
-          <div className="p-2 space-y-0.5">
-            {timelines.map(tl => {
-              const isSelected = currentTimelineId === tl.id;
-              const tlColor = tl.color || "#64b5f6";
-              const eventCount = allEvents.filter(e => e.timelineId === tl.id).length;
-              return (
-                <div
-                  key={tl.id}
-                  className={`group flex items-center gap-2 px-2.5 py-2 rounded-md cursor-pointer transition-all ${
-                    isSelected
-                      ? "bg-stone-700/60 text-stone-100"
-                      : "text-stone-400 hover:bg-stone-800 hover:text-stone-200"
-                  }`}
-                  onClick={() => setSelectedTimelineId(tl.id)}
-                  data-testid={`timeline-item-${tl.id}`}
-                >
-                  <div
-                    className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-                    style={{ backgroundColor: tlColor }}
-                  />
-                  <div className="flex-1 min-w-0">
-                    <div className="text-xs font-medium truncate">{tl.name}</div>
-                    <div className="text-[10px] text-stone-500">{eventCount} events</div>
-                  </div>
-                  {isGM && (
-                    <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-5 w-5 text-stone-500 hover:text-stone-200"
-                        onClick={(e) => { e.stopPropagation(); openEditTimeline(tl); }}
-                        data-testid={`button-edit-timeline-${tl.id}`}
-                      >
-                        <Settings className="h-3 w-3" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-5 w-5 text-stone-500 hover:text-red-400"
-                        onClick={(e) => { e.stopPropagation(); setDeleteTimelineConfirm(tl.id); }}
-                        data-testid={`button-delete-timeline-${tl.id}`}
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-
-            {unassignedCount > 0 && (
-              <div
-                className={`flex items-center gap-2 px-2.5 py-2 rounded-md cursor-pointer transition-all ${
-                  currentTimelineId === null && timelines.length > 0
-                    ? "bg-stone-700/60 text-stone-100"
-                    : "text-stone-500 hover:bg-stone-800 hover:text-stone-300"
-                }`}
-                onClick={() => setSelectedTimelineId(null)}
-                data-testid="timeline-unassigned"
-              >
-                <Clock className="h-3 w-3 flex-shrink-0 opacity-50" />
-                <div className="flex-1 min-w-0">
-                  <div className="text-xs font-medium">Unassigned</div>
-                  <div className="text-[10px] text-stone-500">{unassignedCount} events</div>
-                </div>
-              </div>
-            )}
-
-            {timelines.length === 0 && (
-              <div className="px-3 py-6 text-center">
-                <BookOpen className="h-8 w-8 text-stone-700 mx-auto mb-2" />
-                <p className="text-[11px] text-stone-500 mb-3">No timelines yet</p>
-                {isGM && (
-                  <Button
-                    size="sm"
-                    className="bg-amber-600 hover:bg-amber-500 text-white text-xs h-7"
-                    onClick={openCreateTimeline}
-                    data-testid="button-create-first-timeline"
-                  >
-                    <Plus className="h-3 w-3 mr-1" />
-                    Create Timeline
-                  </Button>
-                )}
-              </div>
-            )}
-          </div>
-        </ScrollArea>
-      </div>
-
       <div className="flex-1 overflow-y-auto">
         {selectedTimeline ? (
           <div className="p-3 md:p-6 flex flex-col h-full">
@@ -458,6 +359,18 @@ export function TimelineView({ campaignId, worldId, isGM, onSelectEntity }: Time
             <Clock className="h-16 w-16 mb-4 opacity-20" />
             <p className="text-sm font-medium">Build Your World's History</p>
             <p className="text-xs mt-1 max-w-xs text-center">Create timelines to organize your world's events into distinct historical threads.</p>
+            {isGM && (
+              <Button onClick={openCreateTimeline} className="bg-amber-600 hover:bg-amber-500 text-white mt-4" data-testid="button-create-first-timeline">
+                <Plus className="h-4 w-4 mr-2" />
+                Create Timeline
+              </Button>
+            )}
+          </div>
+        ) : isExternallyControlled && !selectedTimelineId && timelines.length > 0 && unassignedCount === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full text-stone-500">
+            <Clock className="h-16 w-16 mb-4 opacity-20" />
+            <p className="text-sm font-medium">Select a Timeline</p>
+            <p className="text-xs mt-1 max-w-xs text-center">Choose a timeline from the sidebar to view its events.</p>
           </div>
         ) : (
           <div className="p-3 md:p-6 flex flex-col h-full">

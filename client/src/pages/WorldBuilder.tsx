@@ -10,7 +10,7 @@ import { EntitySidePanel } from "@/components/worldbuilding/EntitySidePanel";
 import { WorldCalendar } from "@/components/worldbuilding/WorldCalendar";
 import { WorldMapViewer } from "@/components/worldbuilding/WorldMapViewer";
 import { WorldMapEditor } from "@/components/worldbuilding/WorldMapEditor";
-import { useEntities, useEntityLinks, useEntity, useDeleteEntity, useWorldbuildingSync, ENTITY_TYPE_CONFIG, type Entity, useWorldMaps } from "@/lib/worldbuilding-api";
+import { useEntities, useEntityLinks, useEntity, useDeleteEntity, useWorldbuildingSync, ENTITY_TYPE_CONFIG, type Entity, useWorldMaps, useTimelines, useTimelineEvents, type WorldTimeline } from "@/lib/worldbuilding-api";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -78,6 +78,7 @@ export default function WorldBuilder() {
   const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
   const [editingMapId, setEditingMapId] = useState<string | null>(null);
   const [creatingMap, setCreatingMap] = useState(false);
+  const [selectedTimelineId, setSelectedTimelineId] = useState<string | null>(null);
   const [copiedLink, setCopiedLink] = useState(false);
   const [showCreateWorldDialog, setShowCreateWorldDialog] = useState(false);
   const [newWorldName, setNewWorldName] = useState("");
@@ -165,6 +166,8 @@ export default function WorldBuilder() {
   useWorldbuildingSync(selectedWorldId);
   const { data: entities = [], isLoading: entitiesLoading } = useEntities(selectedWorldId || undefined);
   const { data: links = [] } = useEntityLinks(selectedWorldId || undefined);
+  const { data: timelines = [], isLoading: timelinesLoading } = useTimelines(selectedWorldId || undefined);
+  const { data: timelineEvents = [] } = useTimelineEvents(selectedWorldId || undefined);
   const { data: selectedEntity } = useEntity(
     selectedWorldId || undefined,
     selectedEntityId || undefined
@@ -250,6 +253,29 @@ export default function WorldBuilder() {
     return [...entities].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()).slice(0, 8);
   }, [entities]);
 
+  const timelineEventCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    timelineEvents.forEach(e => {
+      const key = e.timelineId || "__unassigned";
+      counts[key] = (counts[key] || 0) + 1;
+    });
+    return counts;
+  }, [timelineEvents]);
+
+  const filteredTimelines = useMemo(() => {
+    if (!searchQuery) return timelines;
+    const q = searchQuery.toLowerCase();
+    return timelines.filter(t => t.name.toLowerCase().includes(q) || t.description?.toLowerCase().includes(q));
+  }, [timelines, searchQuery]);
+
+  const handleSelectTimeline = (timelineId: string | null) => {
+    setSelectedTimelineId(timelineId);
+    setActiveSection("timeline");
+    if (isMobile) {
+      setMobileSidebarOpen(false);
+    }
+  };
+
   const handleSelectEntity = (entityId: string) => {
     if (selectedEntityId) {
       setEntityHistory(prev => [...prev.slice(-20), selectedEntityId]);
@@ -333,7 +359,8 @@ export default function WorldBuilder() {
             onClick={() => {
               setActiveSection(key);
               if (key !== "encyclopedia") setSelectedEntityId(null);
-              if (isMobile) setMobileSidebarOpen(false);
+              if (key !== "timeline") setSelectedTimelineId(null);
+              if (isMobile && key !== "encyclopedia" && key !== "timeline") setMobileSidebarOpen(false);
             }}
             className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-md text-xs transition-colors mb-0.5 ${
               activeSection === key
@@ -453,6 +480,92 @@ export default function WorldBuilder() {
                     </button>
                   );
                 })
+              )}
+            </div>
+          </ScrollArea>
+        </div>
+      )}
+
+      {activeSection === "timeline" && selectedWorldId && (
+        <div className="flex-1 flex flex-col min-h-0">
+          <div className="p-2 border-b border-stone-800">
+            <div className="flex items-center gap-1 mb-1.5">
+              <div className="relative flex-1">
+                <Search className="absolute left-2 top-1.5 h-3 w-3 text-stone-500" />
+                <Input
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search timelines..."
+                  className="pl-7 h-6 text-[11px] bg-stone-800 border-stone-700 text-stone-200"
+                  data-testid="input-timeline-search"
+                />
+              </div>
+            </div>
+          </div>
+
+          <ScrollArea className="flex-1">
+            <div className="p-2 space-y-0.5">
+              {timelinesLoading ? (
+                <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-stone-600" /></div>
+              ) : filteredTimelines.length === 0 && !searchQuery ? (
+                <div className="text-center py-6 text-stone-600 text-xs">
+                  No timelines yet — create one from the timeline panel!
+                </div>
+              ) : filteredTimelines.length === 0 ? (
+                <div className="text-center py-6 text-stone-600 text-xs">
+                  No matching timelines
+                </div>
+              ) : (
+                filteredTimelines.map(tl => {
+                  const tlColor = tl.color || "#64b5f6";
+                  const eventCount = timelineEventCounts[tl.id] || 0;
+                  const isSelected = selectedTimelineId === tl.id;
+                  return (
+                    <button
+                      key={tl.id}
+                      onClick={() => handleSelectTimeline(tl.id)}
+                      className={`w-full text-left px-2 py-1.5 rounded-md transition-colors group flex items-center gap-2 ${
+                        isSelected
+                          ? 'bg-stone-800 border-l-2 border-amber-400'
+                          : 'hover:bg-stone-800/60'
+                      }`}
+                      data-testid={`timeline-sidebar-item-${tl.id}`}
+                    >
+                      <div className="w-5 h-5 rounded flex items-center justify-center flex-shrink-0" style={{ backgroundColor: tlColor + "18" }}>
+                        <Clock className="h-2.5 w-2.5" style={{ color: tlColor }} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className={`text-[11px] font-medium truncate ${isSelected ? 'text-amber-400' : 'text-stone-300 group-hover:text-stone-100'}`}>
+                          {tl.name}
+                        </div>
+                        <div className="text-[9px] text-stone-500">{eventCount} event{eventCount !== 1 ? 's' : ''}</div>
+                      </div>
+                      {tl.visibility === "gm_only" && (
+                        <div className="w-1.5 h-1.5 rounded-full bg-red-500/50 flex-shrink-0" title="GM Only" />
+                      )}
+                    </button>
+                  );
+                })
+              )}
+
+              {(timelineEventCounts["__unassigned"] || 0) > 0 && !searchQuery && (
+                <button
+                  onClick={() => handleSelectTimeline(null)}
+                  className={`w-full text-left px-2 py-1.5 rounded-md transition-colors group flex items-center gap-2 mt-1 ${
+                    selectedTimelineId === null && activeSection === "timeline"
+                      ? 'bg-stone-800 border-l-2 border-amber-400'
+                      : 'hover:bg-stone-800/60'
+                  }`}
+                  data-testid="timeline-sidebar-unassigned"
+                >
+                  <div className="w-5 h-5 rounded flex items-center justify-center flex-shrink-0 bg-stone-800">
+                    <Clock className="h-2.5 w-2.5 text-stone-500" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[11px] font-medium text-stone-400">Unassigned</div>
+                    <div className="text-[9px] text-stone-500">{timelineEventCounts["__unassigned"]} event{timelineEventCounts["__unassigned"] !== 1 ? 's' : ''}</div>
+                  </div>
+                </button>
               )}
             </div>
           </ScrollArea>
@@ -723,6 +836,8 @@ export default function WorldBuilder() {
                   worldId={selectedWorldId}
                   isGM={true}
                   onSelectEntity={handleSelectEntity}
+                  selectedTimelineId={selectedTimelineId}
+                  onSelectTimeline={handleSelectTimeline}
                 />
               </div>
             )}
