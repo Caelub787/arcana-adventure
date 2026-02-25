@@ -393,11 +393,11 @@ function MapCanvas({ campaignId, map, allMaps, entities, isGM, onNavigateToSubMa
               style={{
                 left: `${pin.x}%`,
                 top: `${pin.y}%`,
-                transform: `translate(-50%, -100%) scale(${pinScale})`,
-                transformOrigin: 'bottom center',
+                transform: 'translate(-50%, -100%)',
                 zIndex: activePinId === pin.id ? 20 : 10,
               }}
             >
+             <div style={{ transform: `scale(${pinScale})`, transformOrigin: 'bottom center' }}>
               <button
                 onClick={(e) => handlePinClick(pin, e)}
                 className="group relative flex flex-col items-center"
@@ -422,6 +422,7 @@ function MapCanvas({ campaignId, map, allMaps, entities, isGM, onNavigateToSubMa
                   </span>
                 )}
               </button>
+             </div>
 
               {activePinId === pin.id && pin.pinType === "text_reveal" && (
                 <div

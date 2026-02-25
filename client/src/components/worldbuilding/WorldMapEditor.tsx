@@ -520,8 +520,7 @@ export function WorldMapEditor({ campaignId, worldId, mapId, onBack, onMapCreate
                     style={{
                       left: `${pin.x}%`,
                       top: `${pin.y}%`,
-                      transform: `translate(-50%, -100%) scale(${pinScale})`,
-                      transformOrigin: 'bottom center',
+                      transform: 'translate(-50%, -100%)',
                       zIndex: 10,
                       cursor: draggingPinId === pin.id ? 'grabbing' : 'pointer',
                     }}
@@ -529,6 +528,7 @@ export function WorldMapEditor({ campaignId, worldId, mapId, onBack, onMapCreate
                     onDragStart={() => setDraggingPinId(pin.id)}
                     onDragEnd={(e) => handlePinDragEnd(pin.id, e as any)}
                   >
+                   <div style={{ transform: `scale(${pinScale})`, transformOrigin: 'bottom center' }}>
                     <button
                       onClick={(e) => { e.stopPropagation(); handleEditPin(pin); }}
                       className="flex flex-col items-center"
@@ -552,6 +552,7 @@ export function WorldMapEditor({ campaignId, worldId, mapId, onBack, onMapCreate
                         </span>
                       )}
                     </button>
+                   </div>
                   </div>
                   );
                 })}
