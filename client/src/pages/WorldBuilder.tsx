@@ -739,75 +739,99 @@ export default function WorldBuilder() {
 
           <div className="flex-1 flex flex-col overflow-hidden min-w-0">
             {activeSection === "home" && selectedWorldId && selectedWorld && (
-              <div className="flex-1 overflow-y-auto">
-                <div className="max-w-3xl mx-auto p-4 md:p-8 space-y-6">
-                  <div className="flex items-center gap-3 mb-2">
-                    <Home className="h-6 w-6 text-amber-400" />
-                    <h2 className="text-xl font-bold text-stone-100" data-testid="text-home-editor-title">Home Page Editor</h2>
+              <div className="flex-1 overflow-y-auto bg-[#0c0a09]">
+                <div className="max-w-4xl mx-auto p-4 md:p-8">
+                  <div className="mb-8">
+                    <div className="flex items-center gap-3 mb-2">
+                      <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500/20 to-amber-600/10 flex items-center justify-center border border-amber-500/20">
+                        <Home className="h-5 w-5 text-amber-400" />
+                      </div>
+                      <div>
+                        <h2 className="text-xl font-bold text-stone-100" data-testid="text-home-editor-title">Home Page Editor</h2>
+                        <p className="text-xs text-stone-500">Craft the landing page visitors see when they open your shared world link.</p>
+                      </div>
+                    </div>
                   </div>
-                  <p className="text-xs text-stone-500">
-                    Edit the content visitors see when they open your shared world link. This is the landing page of your world's wiki.
-                  </p>
 
-                  <div className="space-y-4">
-                    <div>
-                      <Label className="text-xs text-stone-400">World Name</Label>
-                      <Input
-                        value={editWorldName}
-                        onChange={(e) => setEditWorldName(e.target.value)}
-                        placeholder="World name..."
-                        className="mt-1 bg-stone-800 border-stone-700 text-stone-200"
-                        data-testid="input-home-world-name"
-                      />
+                  <div className="space-y-6">
+                    <div className="bg-stone-900/50 rounded-xl border border-stone-800/60 p-5 space-y-5">
+                      <div className="flex items-center gap-2 mb-1">
+                        <Globe className="h-4 w-4 text-amber-400/70" />
+                        <h3 className="text-sm font-semibold text-stone-300 uppercase tracking-wider">World Identity</h3>
+                      </div>
+
+                      <div>
+                        <Label className="text-xs text-stone-400 font-medium">World Name</Label>
+                        <Input
+                          value={editWorldName}
+                          onChange={(e) => setEditWorldName(e.target.value)}
+                          placeholder="The name of your world..."
+                          className="mt-1.5 bg-stone-800/80 border-stone-700/50 text-stone-100 text-base font-semibold h-11 focus:border-amber-500/40 focus:ring-amber-500/20"
+                          data-testid="input-home-world-name"
+                        />
+                      </div>
+
+                      <div>
+                        <Label className="text-xs text-stone-400 font-medium">Description / Lore Blurb</Label>
+                        <Textarea
+                          value={editWorldDescription}
+                          onChange={(e) => setEditWorldDescription(e.target.value)}
+                          placeholder="A short description or lore blurb shown beneath the world name on the landing page..."
+                          className="mt-1.5 bg-stone-800/80 border-stone-700/50 text-stone-200 min-h-[80px] italic focus:border-amber-500/40 focus:ring-amber-500/20"
+                          data-testid="input-home-world-description"
+                        />
+                        <p className="text-[10px] text-stone-600 mt-1.5">Displayed as an italicized quote beneath your world's title on the landing page.</p>
+                      </div>
                     </div>
 
-                    <div>
-                      <Label className="text-xs text-stone-400">Description / Lore Blurb</Label>
-                      <Textarea
-                        value={editWorldDescription}
-                        onChange={(e) => setEditWorldDescription(e.target.value)}
-                        placeholder="A short description or lore blurb shown beneath the world name..."
-                        className="mt-1 bg-stone-800 border-stone-700 text-stone-200 min-h-[80px]"
-                        data-testid="input-home-world-description"
-                      />
-                    </div>
+                    <div className="bg-stone-900/50 rounded-xl border border-stone-800/60 p-5">
+                      <div className="flex items-center gap-2 mb-4">
+                        <FileText className="h-4 w-4 text-amber-400/70" />
+                        <h3 className="text-sm font-semibold text-stone-300 uppercase tracking-wider">Home Page Content</h3>
+                      </div>
 
-                    <div>
-                      <Label className="text-xs text-stone-400">Home Page Content (Markdown)</Label>
                       <Textarea
                         value={homeContentDraft}
                         onChange={(e) => { setHomeContentDraft(e.target.value); setHomeContentDirty(true); }}
-                        placeholder="Write the main article content for your world's home page. Supports markdown formatting..."
-                        className="mt-1 bg-stone-800 border-stone-700 text-stone-200 min-h-[300px] font-mono text-sm"
+                        placeholder={"Write the main article content for your world's home page.\n\nSupported formatting:\n# Heading 1\n## Heading 2\n### Heading 3\n**bold text**\n*italic text*\n- list items\n--- horizontal divider"}
+                        className="bg-stone-800/80 border-stone-700/50 text-stone-200 min-h-[400px] font-mono text-sm leading-relaxed focus:border-amber-500/40 focus:ring-amber-500/20"
                         data-testid="input-home-content"
                       />
-                      <p className="text-[10px] text-stone-600 mt-1">This content is displayed as the main body of your world's wiki landing page.</p>
+                      <div className="flex items-center justify-between mt-2">
+                        <p className="text-[10px] text-stone-600">This is the main body of your world's wiki landing page. Use markdown for formatting.</p>
+                        <span className="text-[10px] text-stone-600">{homeContentDraft.length} chars</span>
+                      </div>
                     </div>
 
-                    <div className="flex items-center gap-3 pt-2">
-                      <Button
-                        onClick={() => {
-                          updateWorldMutation.mutate({
-                            name: editWorldName.trim(),
-                            description: editWorldDescription.trim() || undefined,
-                            homeContent: homeContentDraft,
-                          });
-                          setHomeContentDirty(false);
-                        }}
-                        disabled={!editWorldName.trim() || updateWorldMutation.isPending}
-                        className="bg-amber-600 hover:bg-amber-500 text-white"
-                        data-testid="button-save-home-content"
-                      >
-                        {updateWorldMutation.isPending ? (
-                          <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                        ) : (
-                          <Save className="h-4 w-4 mr-2" />
+                    <div className="flex items-center justify-between bg-stone-900/30 rounded-xl border border-stone-800/40 p-4">
+                      <div className="flex items-center gap-3">
+                        <Button
+                          onClick={() => {
+                            updateWorldMutation.mutate({
+                              name: editWorldName.trim(),
+                              description: editWorldDescription.trim() || undefined,
+                              homeContent: homeContentDraft,
+                            });
+                            setHomeContentDirty(false);
+                          }}
+                          disabled={!editWorldName.trim() || updateWorldMutation.isPending}
+                          className="bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-white shadow-lg shadow-amber-500/20 px-6"
+                          data-testid="button-save-home-content"
+                        >
+                          {updateWorldMutation.isPending ? (
+                            <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                          ) : (
+                            <Save className="h-4 w-4 mr-2" />
+                          )}
+                          {updateWorldMutation.isPending ? "Saving..." : "Save Home Page"}
+                        </Button>
+                        {homeContentDirty && (
+                          <span className="text-xs text-amber-400/80 font-medium flex items-center gap-1.5">
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                            Unsaved changes
+                          </span>
                         )}
-                        {updateWorldMutation.isPending ? "Saving..." : "Save Home Page"}
-                      </Button>
-                      {homeContentDirty && (
-                        <span className="text-[10px] text-amber-400">Unsaved changes</span>
-                      )}
+                      </div>
                     </div>
                   </div>
                 </div>

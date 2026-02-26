@@ -132,16 +132,16 @@ const SECTION_CONFIG: { key: ActiveSection; label: string; icon: React.ElementTy
 function renderArticleContent(content: string) {
   const lines = content.split("\n");
   return lines.map((line, i) => {
-    if (line.startsWith("### ")) return <h3 key={i} className="text-base font-semibold text-stone-200 mt-4 mb-2">{line.slice(4)}</h3>;
-    if (line.startsWith("## ")) return <h2 key={i} className="text-lg font-semibold text-stone-200 mt-5 mb-2">{line.slice(3)}</h2>;
-    if (line.startsWith("# ")) return <h1 key={i} className="text-xl font-bold text-stone-100 mt-6 mb-3">{line.slice(2)}</h1>;
-    if (line.startsWith("- ")) return <li key={i} className="ml-4 text-stone-300 text-sm list-disc">{line.slice(2)}</li>;
-    if (line.startsWith("---")) return <hr key={i} className="border-stone-700 my-4" />;
-    if (line.trim() === "") return <div key={i} className="h-2" />;
+    if (line.startsWith("### ")) return <h3 key={i} className="text-lg font-semibold text-amber-200/90 mt-6 mb-3 flex items-center gap-2"><span className="w-6 h-px bg-amber-500/40" />{line.slice(4)}</h3>;
+    if (line.startsWith("## ")) return <h2 key={i} className="text-xl font-bold text-amber-100 mt-8 mb-3 pb-2 border-b border-amber-500/20">{line.slice(3)}</h2>;
+    if (line.startsWith("# ")) return <h1 key={i} className="text-2xl font-bold text-stone-100 mt-8 mb-4 pb-2 border-b border-amber-500/30">{line.slice(2)}</h1>;
+    if (line.startsWith("- ")) return <li key={i} className="ml-5 text-stone-300 text-sm list-disc marker:text-amber-500/50 leading-relaxed">{line.slice(2)}</li>;
+    if (line.startsWith("---")) return <div key={i} className="my-8 flex items-center gap-4"><div className="flex-1 h-px bg-gradient-to-r from-transparent via-amber-500/30 to-transparent" /><Sparkles className="h-3 w-3 text-amber-500/40" /><div className="flex-1 h-px bg-gradient-to-r from-transparent via-amber-500/30 to-transparent" /></div>;
+    if (line.trim() === "") return <div key={i} className="h-3" />;
     const formatted = line
-      .replace(/\*\*(.+?)\*\*/g, '<strong class="text-stone-200">$1</strong>')
-      .replace(/\*(.+?)\*/g, '<em>$1</em>');
-    return <p key={i} className="text-stone-300 text-sm leading-relaxed" dangerouslySetInnerHTML={{ __html: formatted }} />;
+      .replace(/\*\*(.+?)\*\*/g, '<strong class="text-stone-100 font-semibold">$1</strong>')
+      .replace(/\*(.+?)\*/g, '<em class="text-amber-200/70">$1</em>');
+    return <p key={i} className="text-stone-300 text-[15px] leading-[1.8]" dangerouslySetInnerHTML={{ __html: formatted }} />;
   });
 }
 
@@ -652,21 +652,23 @@ export default function SharedWorldView() {
   }
 
   const sidebarContent = (
-    <div className="flex flex-col h-full">
-      <div className="p-3 border-b border-stone-700">
-        <div className="flex items-center justify-between mb-1">
-          <div className="flex items-center gap-2">
-            <Globe className="h-4 w-4 text-amber-400" />
-            <h2 className="text-xs font-semibold text-stone-300 uppercase tracking-wider" data-testid="text-campaign-name">{data.campaignName}</h2>
+    <div className="flex flex-col h-full bg-[#0f0d0c]">
+      <div className="p-4 border-b border-amber-500/10">
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-amber-500/20 to-amber-600/10 flex items-center justify-center flex-shrink-0 border border-amber-500/20">
+              <Globe className="h-3.5 w-3.5 text-amber-400" />
+            </div>
+            <h2 className="text-sm font-bold text-stone-200 truncate" data-testid="text-campaign-name">{data.campaignName}</h2>
           </div>
           <Button variant="ghost" size="icon" className="h-6 w-6 text-stone-500 hover:text-stone-300 md:hidden" onClick={() => setMobileSidebarOpen(false)} data-testid="button-close-sidebar">
             <X className="h-3.5 w-3.5" />
           </Button>
         </div>
-        <Badge variant="outline" className="text-[9px] border-amber-500/30 text-amber-400/70">Shared World</Badge>
       </div>
 
-      <nav className="p-2 border-b border-stone-800">
+      <nav className="p-3 space-y-1 border-b border-stone-800/50">
+        <p className="text-[10px] text-stone-600 uppercase tracking-widest font-semibold mb-2 px-2">Navigation</p>
         {SECTION_CONFIG.map(({ key, label, icon: Icon }) => {
           const hasContent = key === "home" ? true :
                             key === "encyclopedia" ? entities.length > 0 :
@@ -674,19 +676,23 @@ export default function SharedWorldView() {
                             key === "timeline" ? timelineEvents.length > 0 :
                             key === "calendar" ? calendars.length > 0 : false;
           if (!hasContent) return null;
+          const sectionCount = key === "encyclopedia" ? entities.length : key === "maps" ? maps.length : key === "timeline" ? timelineEvents.length : key === "calendar" ? calendars.length : 0;
           return (
             <button
               key={key}
               onClick={() => { setActiveSection(key); setSelectedEntityId(null); setMobileSidebarOpen(false); }}
-              className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-md text-xs transition-colors mb-0.5 ${
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs transition-all duration-200 ${
                 activeSection === key
-                  ? 'bg-amber-500/10 text-amber-400 border-l-2 border-amber-400'
-                  : 'text-stone-400 hover:text-stone-200 hover:bg-stone-800/50'
+                  ? 'bg-gradient-to-r from-amber-500/15 to-amber-500/5 text-amber-300 shadow-sm shadow-amber-500/5 border border-amber-500/20'
+                  : 'text-stone-400 hover:text-stone-200 hover:bg-stone-800/40 border border-transparent'
               }`}
               data-testid={`nav-section-${key}`}
             >
-              <Icon className="h-3.5 w-3.5 flex-shrink-0" />
-              <span className="font-medium">{label}</span>
+              <Icon className={`h-4 w-4 flex-shrink-0 ${activeSection === key ? 'text-amber-400' : ''}`} />
+              <span className="font-medium flex-1 text-left">{label}</span>
+              {key !== "home" && sectionCount > 0 && (
+                <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${activeSection === key ? 'bg-amber-500/20 text-amber-400' : 'bg-stone-800 text-stone-500'}`}>{sectionCount}</span>
+              )}
             </button>
           );
         })}
@@ -765,19 +771,22 @@ export default function SharedWorldView() {
 
   return (
     <div className="min-h-screen bg-stone-950 text-stone-100" data-testid="shared-world-page">
-      <header className="border-b border-stone-800 bg-stone-900/80 backdrop-blur-sm sticky top-0 z-50">
+      <header className="border-b border-amber-500/10 bg-[#0f0d0c]/95 backdrop-blur-md sticky top-0 z-50">
         <div className="flex items-center justify-between px-3 md:px-6 py-2.5">
-          <div className="flex items-center gap-2">
-            <Button variant="ghost" size="icon" className="md:hidden h-8 w-8 text-stone-400" onClick={() => setMobileSidebarOpen(!mobileSidebarOpen)} data-testid="button-toggle-sidebar">
+          <div className="flex items-center gap-3">
+            <Button variant="ghost" size="icon" className="md:hidden h-8 w-8 text-stone-400 hover:text-amber-400" onClick={() => setMobileSidebarOpen(!mobileSidebarOpen)} data-testid="button-toggle-sidebar">
               {mobileSidebarOpen ? <X className="h-4 w-4" /> : <BookOpen className="h-4 w-4" />}
             </Button>
-            <Globe className="h-5 w-5 text-amber-400" />
-            <h1 className="text-sm md:text-base font-semibold text-stone-200 truncate" data-testid="text-world-title">{data.campaignName}</h1>
-            <Badge variant="outline" className="text-[9px] border-amber-500/30 text-amber-400/70 hidden md:inline-flex">Shared World</Badge>
+            <div className="flex items-center gap-2">
+              <Globe className="h-4 w-4 text-amber-400" />
+              <h1 className="text-sm font-bold text-stone-200 truncate" data-testid="text-world-title">{data.campaignName}</h1>
+            </div>
           </div>
-          <Badge variant="outline" className="text-[10px] border-stone-700 text-stone-500">
-            {SECTION_CONFIG.find(s => s.key === activeSection)?.label}
-          </Badge>
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] text-stone-500 font-medium uppercase tracking-wider">
+              {SECTION_CONFIG.find(s => s.key === activeSection)?.label}
+            </span>
+          </div>
         </div>
       </header>
 
@@ -786,107 +795,260 @@ export default function SharedWorldView() {
           <div className="absolute inset-0 z-40 bg-black/50 md:hidden" onClick={() => setMobileSidebarOpen(false)} />
         )}
 
-        <div className={`md:w-64 md:relative md:translate-x-0 absolute inset-y-0 left-0 z-50 w-full max-w-xs bg-stone-900 border-r border-stone-800 flex flex-col transition-transform duration-200 ${mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
+        <div className={`md:w-64 md:relative md:translate-x-0 absolute inset-y-0 left-0 z-50 w-full max-w-xs bg-[#0f0d0c] border-r border-amber-500/10 flex flex-col transition-transform duration-200 ${mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
           {sidebarContent}
         </div>
 
         <div className="flex-1 flex flex-col overflow-hidden min-w-0">
           {activeSection === "home" && (
-            <div className="flex-1 overflow-y-auto" data-testid="section-home">
-              {data.worldImage && (
-                <div className="relative w-full h-48 md:h-64 overflow-hidden">
-                  <img src={data.worldImage} alt={data.campaignName} className="w-full h-full object-cover" data-testid="img-world-banner" />
-                  <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-stone-950" />
-                </div>
-              )}
-              <div className="max-w-3xl mx-auto p-4 md:p-8">
-                <div className="flex items-center gap-3 mb-4">
-                  <Globe className="h-8 w-8 text-amber-400 flex-shrink-0" />
-                  <h2 className="text-2xl md:text-3xl font-bold text-stone-100" data-testid="text-home-heading">{data.campaignName}</h2>
-                </div>
-                {data.worldDescription && (
-                  <p className="text-sm md:text-base text-stone-400 italic mb-6 border-l-2 border-amber-500/30 pl-4 leading-relaxed" data-testid="text-home-description">{data.worldDescription}</p>
+            <div className="flex-1 overflow-y-auto bg-[#0c0a09]" data-testid="section-home">
+              <div className="relative w-full" style={{ minHeight: data.worldImage ? '340px' : '200px' }}>
+                {data.worldImage ? (
+                  <>
+                    <img src={data.worldImage} alt={data.campaignName} className="absolute inset-0 w-full h-full object-cover" data-testid="img-world-banner" />
+                    <div className="absolute inset-0 bg-gradient-to-b from-black/50 via-black/30 to-[#0c0a09]" />
+                    <div className="absolute inset-0 bg-gradient-to-t from-[#0c0a09] via-transparent to-transparent" />
+                  </>
+                ) : (
+                  <div className="absolute inset-0 bg-gradient-to-b from-amber-950/20 via-stone-950 to-[#0c0a09]" />
                 )}
+                <div className="absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-t from-[#0c0a09] to-transparent" />
+                <div className="relative z-10 flex flex-col items-center justify-end h-full pb-8 pt-16 px-4 text-center">
+                  <div className="mb-3 flex items-center gap-2">
+                    <div className="h-px w-12 bg-gradient-to-r from-transparent to-amber-500/60" />
+                    <Globe className="h-5 w-5 text-amber-400/80" />
+                    <div className="h-px w-12 bg-gradient-to-l from-transparent to-amber-500/60" />
+                  </div>
+                  <h1 className="text-3xl md:text-5xl font-bold text-white tracking-tight drop-shadow-lg" data-testid="text-home-heading" style={{ textShadow: '0 2px 20px rgba(0,0,0,0.8)' }}>
+                    {data.campaignName}
+                  </h1>
+                  {data.worldDescription && (
+                    <p className="mt-4 max-w-2xl text-base md:text-lg text-stone-300/90 italic leading-relaxed" data-testid="text-home-description" style={{ textShadow: '0 1px 8px rgba(0,0,0,0.6)' }}>
+                      "{data.worldDescription}"
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div className="relative z-10 -mt-4">
+                <div className="flex justify-center gap-3 md:gap-6 px-4 flex-wrap">
+                  {entities.length > 0 && (
+                    <div className="flex items-center gap-2 text-stone-400">
+                      <BookOpen className="h-3.5 w-3.5 text-amber-500/70" />
+                      <span className="text-xs font-medium">{entities.length} Articles</span>
+                    </div>
+                  )}
+                  {maps.length > 0 && (
+                    <div className="flex items-center gap-2 text-stone-400">
+                      <Map className="h-3.5 w-3.5 text-emerald-500/70" />
+                      <span className="text-xs font-medium">{maps.length} Maps</span>
+                    </div>
+                  )}
+                  {timelineEvents.length > 0 && (
+                    <div className="flex items-center gap-2 text-stone-400">
+                      <Clock className="h-3.5 w-3.5 text-purple-500/70" />
+                      <span className="text-xs font-medium">{timelineEvents.length} Events</span>
+                    </div>
+                  )}
+                  {calendars.length > 0 && (
+                    <div className="flex items-center gap-2 text-stone-400">
+                      <Calendar className="h-3.5 w-3.5 text-blue-500/70" />
+                      <span className="text-xs font-medium">{calendars.length} Calendars</span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex justify-center my-6">
+                  <div className="flex items-center gap-3">
+                    <div className="h-px w-16 bg-gradient-to-r from-transparent to-amber-500/40" />
+                    <div className="w-1.5 h-1.5 rotate-45 bg-amber-500/50" />
+                    <div className="h-px w-16 bg-gradient-to-l from-transparent to-amber-500/40" />
+                  </div>
+                </div>
+              </div>
+
+              <div className="max-w-4xl mx-auto px-4 md:px-8 pb-12">
                 {data.homeContent && (
-                  <div className="prose prose-invert prose-sm max-w-none mb-8" data-testid="home-article-content">
-                    {renderArticleContent(data.homeContent)}
+                  <div className="mb-12" data-testid="home-article-content">
+                    <div className="bg-stone-900/40 rounded-xl border border-stone-800/60 p-6 md:p-10 backdrop-blur-sm shadow-xl shadow-black/20">
+                      {renderArticleContent(data.homeContent)}
+                    </div>
                   </div>
                 )}
-                <div className="border-t border-stone-800 pt-6">
-                  <h3 className="text-xs font-semibold text-stone-500 uppercase tracking-wider mb-4">Explore</h3>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {entities.length > 0 && (
-                      <button
-                        onClick={() => { setActiveSection("encyclopedia"); setSelectedEntityId(null); }}
-                        className="flex items-center gap-3 p-4 rounded-lg bg-stone-900/60 border border-stone-800 hover:border-amber-500/40 transition-colors text-left group"
-                        data-testid="home-card-encyclopedia"
-                      >
-                        <div className="w-10 h-10 rounded-lg bg-amber-500/10 flex items-center justify-center flex-shrink-0">
-                          <BookOpen className="h-5 w-5 text-amber-400" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="text-sm font-medium text-stone-200 group-hover:text-amber-400 transition-colors">Encyclopedia</div>
-                          <div className="text-xs text-stone-500">{entities.length} {entities.length === 1 ? 'article' : 'articles'}</div>
-                          <div className="flex flex-wrap gap-1 mt-1">
-                            {Object.entries(typeCounts).slice(0, 4).map(([type, count]) => {
-                              const cfg = ENTITY_TYPE_CONFIG[type];
-                              if (!cfg) return null;
-                              return <span key={type} className="text-[9px] text-stone-600">{cfg.pluralLabel}: {count}</span>;
-                            })}
+
+                {(entities.length > 0 || maps.length > 0 || timelineEvents.length > 0 || calendars.length > 0) && (
+                  <div className="mb-12">
+                    <div className="flex items-center gap-4 mb-6">
+                      <div className="h-px flex-1 bg-gradient-to-r from-amber-500/30 to-transparent" />
+                      <h3 className="text-sm font-bold text-amber-400/80 uppercase tracking-[0.2em]">Explore This World</h3>
+                      <div className="h-px flex-1 bg-gradient-to-l from-amber-500/30 to-transparent" />
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      {entities.length > 0 && (
+                        <button
+                          onClick={() => { setActiveSection("encyclopedia"); setSelectedEntityId(null); }}
+                          className="group relative overflow-hidden rounded-xl bg-gradient-to-br from-stone-900 to-stone-900/60 border border-stone-800/60 hover:border-amber-500/40 transition-all duration-300 text-left p-5 hover:shadow-lg hover:shadow-amber-500/5"
+                          data-testid="home-card-encyclopedia"
+                        >
+                          <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-bl from-amber-500/5 to-transparent rounded-bl-full" />
+                          <div className="relative z-10">
+                            <div className="flex items-center gap-3 mb-3">
+                              <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-amber-500/20 to-amber-600/10 flex items-center justify-center border border-amber-500/20">
+                                <BookOpen className="h-5 w-5 text-amber-400" />
+                              </div>
+                              <div>
+                                <div className="text-base font-semibold text-stone-100 group-hover:text-amber-300 transition-colors">Encyclopedia</div>
+                                <div className="text-xs text-stone-500">{entities.length} {entities.length === 1 ? 'article' : 'articles'}</div>
+                              </div>
+                            </div>
+                            <div className="flex flex-wrap gap-1.5">
+                              {Object.entries(typeCounts).slice(0, 5).map(([type, count]) => {
+                                const cfg = ENTITY_TYPE_CONFIG[type];
+                                if (!cfg) return null;
+                                const TypeIcon = ICON_MAP[cfg.icon] || Search;
+                                return (
+                                  <span key={type} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] bg-stone-800/80 border border-stone-700/50">
+                                    <TypeIcon className="h-2.5 w-2.5" style={{ color: cfg.color }} />
+                                    <span className="text-stone-400">{count}</span>
+                                  </span>
+                                );
+                              })}
+                            </div>
                           </div>
-                        </div>
-                        <ChevronRight className="h-4 w-4 text-stone-600 group-hover:text-amber-400 flex-shrink-0" />
-                      </button>
-                    )}
-                    {maps.length > 0 && (
-                      <button
-                        onClick={() => { setActiveSection("maps"); setSelectedEntityId(null); }}
-                        className="flex items-center gap-3 p-4 rounded-lg bg-stone-900/60 border border-stone-800 hover:border-amber-500/40 transition-colors text-left group"
-                        data-testid="home-card-maps"
-                      >
-                        <div className="w-10 h-10 rounded-lg bg-emerald-500/10 flex items-center justify-center flex-shrink-0">
-                          <Map className="h-5 w-5 text-emerald-400" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="text-sm font-medium text-stone-200 group-hover:text-amber-400 transition-colors">Maps</div>
-                          <div className="text-xs text-stone-500">{maps.length} {maps.length === 1 ? 'map' : 'maps'}</div>
-                        </div>
-                        <ChevronRight className="h-4 w-4 text-stone-600 group-hover:text-amber-400 flex-shrink-0" />
-                      </button>
-                    )}
-                    {timelineEvents.length > 0 && (
-                      <button
-                        onClick={() => { setActiveSection("timeline"); setSelectedEntityId(null); }}
-                        className="flex items-center gap-3 p-4 rounded-lg bg-stone-900/60 border border-stone-800 hover:border-amber-500/40 transition-colors text-left group"
-                        data-testid="home-card-timeline"
-                      >
-                        <div className="w-10 h-10 rounded-lg bg-purple-500/10 flex items-center justify-center flex-shrink-0">
-                          <Clock className="h-5 w-5 text-purple-400" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="text-sm font-medium text-stone-200 group-hover:text-amber-400 transition-colors">Timeline</div>
-                          <div className="text-xs text-stone-500">{timelineEvents.length} {timelineEvents.length === 1 ? 'event' : 'events'}</div>
-                        </div>
-                        <ChevronRight className="h-4 w-4 text-stone-600 group-hover:text-amber-400 flex-shrink-0" />
-                      </button>
-                    )}
-                    {calendars.length > 0 && (
-                      <button
-                        onClick={() => { setActiveSection("calendar"); setSelectedEntityId(null); }}
-                        className="flex items-center gap-3 p-4 rounded-lg bg-stone-900/60 border border-stone-800 hover:border-amber-500/40 transition-colors text-left group"
-                        data-testid="home-card-calendar"
-                      >
-                        <div className="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center flex-shrink-0">
-                          <Calendar className="h-5 w-5 text-blue-400" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="text-sm font-medium text-stone-200 group-hover:text-amber-400 transition-colors">Calendar</div>
-                          <div className="text-xs text-stone-500">{calendars.length} {calendars.length === 1 ? 'calendar' : 'calendars'}</div>
-                        </div>
-                        <ChevronRight className="h-4 w-4 text-stone-600 group-hover:text-amber-400 flex-shrink-0" />
-                      </button>
+                          <ChevronRight className="absolute right-4 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-700 group-hover:text-amber-400 group-hover:translate-x-1 transition-all" />
+                        </button>
+                      )}
+                      {maps.length > 0 && (
+                        <button
+                          onClick={() => { setActiveSection("maps"); setSelectedEntityId(null); }}
+                          className="group relative overflow-hidden rounded-xl bg-gradient-to-br from-stone-900 to-stone-900/60 border border-stone-800/60 hover:border-emerald-500/40 transition-all duration-300 text-left p-5 hover:shadow-lg hover:shadow-emerald-500/5"
+                          data-testid="home-card-maps"
+                        >
+                          <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-bl from-emerald-500/5 to-transparent rounded-bl-full" />
+                          <div className="relative z-10">
+                            <div className="flex items-center gap-3 mb-3">
+                              <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-emerald-500/20 to-emerald-600/10 flex items-center justify-center border border-emerald-500/20">
+                                <Map className="h-5 w-5 text-emerald-400" />
+                              </div>
+                              <div>
+                                <div className="text-base font-semibold text-stone-100 group-hover:text-emerald-300 transition-colors">World Maps</div>
+                                <div className="text-xs text-stone-500">{maps.length} {maps.length === 1 ? 'map' : 'maps'} to explore</div>
+                              </div>
+                            </div>
+                            <p className="text-xs text-stone-500 leading-relaxed">Navigate the lands, discover hidden locations, and trace the paths between civilizations.</p>
+                          </div>
+                          <ChevronRight className="absolute right-4 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-700 group-hover:text-emerald-400 group-hover:translate-x-1 transition-all" />
+                        </button>
+                      )}
+                      {timelineEvents.length > 0 && (
+                        <button
+                          onClick={() => { setActiveSection("timeline"); setSelectedEntityId(null); }}
+                          className="group relative overflow-hidden rounded-xl bg-gradient-to-br from-stone-900 to-stone-900/60 border border-stone-800/60 hover:border-purple-500/40 transition-all duration-300 text-left p-5 hover:shadow-lg hover:shadow-purple-500/5"
+                          data-testid="home-card-timeline"
+                        >
+                          <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-bl from-purple-500/5 to-transparent rounded-bl-full" />
+                          <div className="relative z-10">
+                            <div className="flex items-center gap-3 mb-3">
+                              <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-purple-500/20 to-purple-600/10 flex items-center justify-center border border-purple-500/20">
+                                <Clock className="h-5 w-5 text-purple-400" />
+                              </div>
+                              <div>
+                                <div className="text-base font-semibold text-stone-100 group-hover:text-purple-300 transition-colors">Timeline</div>
+                                <div className="text-xs text-stone-500">{timelineEvents.length} {timelineEvents.length === 1 ? 'event' : 'events'} recorded</div>
+                              </div>
+                            </div>
+                            <p className="text-xs text-stone-500 leading-relaxed">Trace the history of this world through ages, eras, and defining moments.</p>
+                          </div>
+                          <ChevronRight className="absolute right-4 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-700 group-hover:text-purple-400 group-hover:translate-x-1 transition-all" />
+                        </button>
+                      )}
+                      {calendars.length > 0 && (
+                        <button
+                          onClick={() => { setActiveSection("calendar"); setSelectedEntityId(null); }}
+                          className="group relative overflow-hidden rounded-xl bg-gradient-to-br from-stone-900 to-stone-900/60 border border-stone-800/60 hover:border-blue-500/40 transition-all duration-300 text-left p-5 hover:shadow-lg hover:shadow-blue-500/5"
+                          data-testid="home-card-calendar"
+                        >
+                          <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-bl from-blue-500/5 to-transparent rounded-bl-full" />
+                          <div className="relative z-10">
+                            <div className="flex items-center gap-3 mb-3">
+                              <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-blue-500/20 to-blue-600/10 flex items-center justify-center border border-blue-500/20">
+                                <Calendar className="h-5 w-5 text-blue-400" />
+                              </div>
+                              <div>
+                                <div className="text-base font-semibold text-stone-100 group-hover:text-blue-300 transition-colors">Calendars</div>
+                                <div className="text-xs text-stone-500">{calendars.length} {calendars.length === 1 ? 'calendar system' : 'calendar systems'}</div>
+                              </div>
+                            </div>
+                            <p className="text-xs text-stone-500 leading-relaxed">Explore the unique ways time is measured and celebrated in this world.</p>
+                          </div>
+                          <ChevronRight className="absolute right-4 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-700 group-hover:text-blue-400 group-hover:translate-x-1 transition-all" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {entities.length > 0 && (
+                  <div className="mb-12">
+                    <div className="flex items-center gap-4 mb-5">
+                      <div className="h-px flex-1 bg-gradient-to-r from-amber-500/30 to-transparent" />
+                      <h3 className="text-sm font-bold text-amber-400/80 uppercase tracking-[0.2em]">Featured Articles</h3>
+                      <div className="h-px flex-1 bg-gradient-to-l from-amber-500/30 to-transparent" />
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                      {entities.slice(0, 6).map(entity => {
+                        const cfg = ENTITY_TYPE_CONFIG[entity.entityType];
+                        const TypeIcon = cfg ? ICON_MAP[cfg.icon] || Search : Search;
+                        return (
+                          <button
+                            key={entity.id}
+                            onClick={() => handleSelectEntity(entity.id)}
+                            className="group text-left rounded-lg bg-stone-900/50 border border-stone-800/50 hover:border-amber-500/30 transition-all duration-200 overflow-hidden hover:shadow-md hover:shadow-black/20"
+                            data-testid={`featured-entity-${entity.id}`}
+                          >
+                            {entity.image && (
+                              <div className="h-28 overflow-hidden">
+                                <img src={entity.image} alt={entity.displayName} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                              </div>
+                            )}
+                            <div className="p-3">
+                              <div className="flex items-center gap-2 mb-1">
+                                <TypeIcon className="h-3 w-3 flex-shrink-0" style={{ color: cfg?.color }} />
+                                <span className="text-[10px] uppercase tracking-wider font-medium" style={{ color: cfg?.color + 'aa' }}>{cfg?.label}</span>
+                              </div>
+                              <h4 className="text-sm font-semibold text-stone-200 group-hover:text-amber-300 transition-colors truncate">{entity.displayName}</h4>
+                              {entity.description && (
+                                <p className="text-[11px] text-stone-500 mt-1 line-clamp-2 leading-relaxed">{entity.description}</p>
+                              )}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {entities.length > 6 && (
+                      <div className="text-center mt-4">
+                        <button
+                          onClick={() => { setActiveSection("encyclopedia"); setSelectedEntityId(null); }}
+                          className="text-xs text-amber-400/70 hover:text-amber-300 transition-colors"
+                          data-testid="link-view-all-articles"
+                        >
+                          View all {entities.length} articles &rarr;
+                        </button>
+                      </div>
                     )}
                   </div>
+                )}
+
+                <div className="text-center py-8 border-t border-stone-800/40">
+                  <div className="flex justify-center mb-3">
+                    <div className="flex items-center gap-2">
+                      <div className="h-px w-8 bg-amber-500/30" />
+                      <Globe className="h-4 w-4 text-amber-500/40" />
+                      <div className="h-px w-8 bg-amber-500/30" />
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-stone-600">{data.campaignName}</p>
                 </div>
               </div>
             </div>
@@ -970,15 +1132,18 @@ export default function SharedWorldView() {
                   </div>
                 </div>
               ) : (
-                <div className="flex-1 overflow-y-auto">
-                  <div className="max-w-3xl mx-auto p-4 md:p-8">
-                    <Globe className="h-10 w-10 text-amber-400 mb-4" />
-                    <h2 className="text-2xl font-bold text-stone-100 mb-2" data-testid="text-home-title">{data.campaignName}</h2>
-                    {data.worldDescription && (
-                      <p className="text-sm text-stone-400 italic mb-6 border-l-2 border-amber-500/30 pl-3" data-testid="text-home-description">{data.worldDescription}</p>
-                    )}
-                    <p className="text-stone-500 text-sm mb-6">Select an article from the sidebar to begin exploring.</p>
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3 max-w-md">
+                <div className="flex-1 overflow-y-auto bg-[#0c0a09]">
+                  <div className="max-w-4xl mx-auto p-6 md:p-10">
+                    <div className="text-center mb-8">
+                      <div className="flex justify-center mb-4">
+                        <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-amber-500/20 to-amber-600/10 flex items-center justify-center border border-amber-500/20">
+                          <BookOpen className="h-7 w-7 text-amber-400" />
+                        </div>
+                      </div>
+                      <h2 className="text-2xl font-bold text-stone-100 mb-2" data-testid="text-home-title">Encyclopedia</h2>
+                      <p className="text-sm text-stone-500">Select an article from the sidebar to begin reading, or browse by category below.</p>
+                    </div>
+                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
                       {Object.entries(ENTITY_TYPE_CONFIG).map(([key, cfg]) => {
                         const IconComp = ICON_MAP[cfg.icon] || Search;
                         const count = typeCounts[key] || 0;
@@ -986,13 +1151,15 @@ export default function SharedWorldView() {
                         return (
                           <button
                             key={key}
-                            onClick={() => { setFilterType(key); setActiveSection("encyclopedia"); }}
-                            className="flex flex-col items-center gap-1 p-3 rounded-lg bg-stone-900/50 border border-stone-800 hover:border-amber-500/40 transition-colors cursor-pointer"
+                            onClick={() => { setFilterType(key); }}
+                            className="group flex flex-col items-center gap-2 p-4 rounded-xl bg-stone-900/50 border border-stone-800/50 hover:border-amber-500/30 transition-all duration-200 cursor-pointer hover:shadow-md hover:shadow-black/20"
                             data-testid={`home-category-${key}`}
                           >
-                            <IconComp className="h-5 w-5" style={{ color: cfg.color }} />
-                            <span className="text-[10px] text-stone-400">{cfg.pluralLabel}</span>
-                            <span className="text-xs font-semibold text-stone-300">{count}</span>
+                            <div className="w-10 h-10 rounded-xl flex items-center justify-center transition-colors" style={{ backgroundColor: cfg.color + '15' }}>
+                              <IconComp className="h-5 w-5 transition-transform group-hover:scale-110" style={{ color: cfg.color }} />
+                            </div>
+                            <span className="text-xs font-medium text-stone-300 group-hover:text-stone-200">{cfg.pluralLabel}</span>
+                            <span className="text-lg font-bold text-stone-100">{count}</span>
                           </button>
                         );
                       })}
