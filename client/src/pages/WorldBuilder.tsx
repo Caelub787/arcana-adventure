@@ -25,7 +25,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { ArrowLeft, Globe, Loader2, Network, Clock, FileText, ChevronLeft, BookOpen, Search, Plus, User, MapPin, Shield, Scroll, Calendar, Package, Swords, Sparkles, Menu, X, Info, Map, Share2, ChevronRight, Copy, Check, Trash2, ExternalLink, Settings } from "lucide-react";
+import { ArrowLeft, Globe, Loader2, Network, Clock, FileText, ChevronLeft, BookOpen, Search, Plus, User, MapPin, Shield, Scroll, Calendar, Package, Swords, Sparkles, Menu, X, Info, Map, Share2, ChevronRight, Copy, Check, Trash2, ExternalLink, Settings, Home, Save } from "lucide-react";
 import ProfileDropdown from "@/components/ProfileDropdown";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -39,9 +39,10 @@ const ICON_MAP: Record<string, React.ElementType> = {
   User, MapPin, Shield, Scroll, Calendar, BookOpen, Package, Swords, Search, Sparkles, Clock, FileText,
 };
 
-type ActiveSection = "encyclopedia" | "maps" | "timeline" | "calendar" | "graph";
+type ActiveSection = "home" | "encyclopedia" | "maps" | "timeline" | "calendar" | "graph";
 
 const SECTION_CONFIG: { key: ActiveSection; label: string; icon: React.ElementType; description: string }[] = [
+  { key: "home", label: "Home", icon: Home, description: "World home page" },
   { key: "encyclopedia", label: "Encyclopedia", icon: BookOpen, description: "Wiki articles & entities" },
   { key: "maps", label: "Maps", icon: Map, description: "Interactive world maps" },
   { key: "timeline", label: "Timeline", icon: Clock, description: "Dynamic timeline" },
@@ -56,6 +57,7 @@ interface World {
   image?: string | null;
   userId: string;
   campaignId?: string | null;
+  homeContent?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -68,7 +70,7 @@ export default function WorldBuilder() {
   const queryClient = useQueryClient();
   const [selectedWorldId, setSelectedWorldId] = useState<string>("");
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
-  const [activeSection, setActiveSection] = useState<ActiveSection>("encyclopedia");
+  const [activeSection, setActiveSection] = useState<ActiveSection>("home");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [filterType, setFilterType] = useState<string>("");
@@ -88,6 +90,8 @@ export default function WorldBuilder() {
   const [editWorldDescription, setEditWorldDescription] = useState("");
   const [showDeleteWorldConfirm, setShowDeleteWorldConfirm] = useState(false);
   const [deleteEntityConfirm, setDeleteEntityConfirm] = useState<string | null>(null);
+  const [homeContentDraft, setHomeContentDraft] = useState("");
+  const [homeContentDirty, setHomeContentDirty] = useState(false);
 
   const { data: worlds = [], isLoading: worldsLoading } = useQuery<World[]>({
     queryKey: ['/api/worlds'],
@@ -106,6 +110,15 @@ export default function WorldBuilder() {
   }, [worlds, selectedWorldId]);
 
   const selectedWorld = worlds.find(w => w.id === selectedWorldId);
+
+  useEffect(() => {
+    if (selectedWorld) {
+      setHomeContentDraft(selectedWorld.homeContent || "");
+      setHomeContentDirty(false);
+      setEditWorldName(selectedWorld.name);
+      setEditWorldDescription(selectedWorld.description || "");
+    }
+  }, [selectedWorld?.id, selectedWorld?.homeContent]);
 
   const createWorldMutation = useMutation({
     mutationFn: async (data: { name: string; description?: string }) => {
@@ -129,7 +142,7 @@ export default function WorldBuilder() {
   });
 
   const updateWorldMutation = useMutation({
-    mutationFn: async (data: { name: string; description?: string }) => {
+    mutationFn: async (data: { name: string; description?: string; homeContent?: string }) => {
       const res = await fetch(`/api/worlds/${selectedWorldId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -360,6 +373,10 @@ export default function WorldBuilder() {
               setActiveSection(key);
               if (key !== "encyclopedia") setSelectedEntityId(null);
               if (key !== "timeline") setSelectedTimelineId(null);
+              if (key === "home" && selectedWorld) {
+                setEditWorldName(selectedWorld.name);
+                setEditWorldDescription(selectedWorld.description || "");
+              }
               if (isMobile && key !== "encyclopedia" && key !== "timeline") setMobileSidebarOpen(false);
             }}
             className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-md text-xs transition-colors mb-0.5 ${
@@ -700,7 +717,7 @@ export default function WorldBuilder() {
                       variant="ghost"
                       size="icon"
                       className={`h-8 w-8 ${activeSection === key ? 'text-amber-400' : 'text-stone-500 hover:text-stone-300'}`}
-                      onClick={() => { setActiveSection(key); if (key !== "encyclopedia") setSelectedEntityId(null); }}
+                      onClick={() => { setActiveSection(key); if (key !== "encyclopedia") setSelectedEntityId(null); if (key === "home" && selectedWorld) { setEditWorldName(selectedWorld.name); setEditWorldDescription(selectedWorld.description || ""); } }}
                       data-testid={`nav-section-collapsed-${key}`}
                     >
                       <Icon className="h-4 w-4" />
@@ -721,6 +738,82 @@ export default function WorldBuilder() {
           )}
 
           <div className="flex-1 flex flex-col overflow-hidden min-w-0">
+            {activeSection === "home" && selectedWorldId && selectedWorld && (
+              <div className="flex-1 overflow-y-auto">
+                <div className="max-w-3xl mx-auto p-4 md:p-8 space-y-6">
+                  <div className="flex items-center gap-3 mb-2">
+                    <Home className="h-6 w-6 text-amber-400" />
+                    <h2 className="text-xl font-bold text-stone-100" data-testid="text-home-editor-title">Home Page Editor</h2>
+                  </div>
+                  <p className="text-xs text-stone-500">
+                    Edit the content visitors see when they open your shared world link. This is the landing page of your world's wiki.
+                  </p>
+
+                  <div className="space-y-4">
+                    <div>
+                      <Label className="text-xs text-stone-400">World Name</Label>
+                      <Input
+                        value={editWorldName}
+                        onChange={(e) => setEditWorldName(e.target.value)}
+                        placeholder="World name..."
+                        className="mt-1 bg-stone-800 border-stone-700 text-stone-200"
+                        data-testid="input-home-world-name"
+                      />
+                    </div>
+
+                    <div>
+                      <Label className="text-xs text-stone-400">Description / Lore Blurb</Label>
+                      <Textarea
+                        value={editWorldDescription}
+                        onChange={(e) => setEditWorldDescription(e.target.value)}
+                        placeholder="A short description or lore blurb shown beneath the world name..."
+                        className="mt-1 bg-stone-800 border-stone-700 text-stone-200 min-h-[80px]"
+                        data-testid="input-home-world-description"
+                      />
+                    </div>
+
+                    <div>
+                      <Label className="text-xs text-stone-400">Home Page Content (Markdown)</Label>
+                      <Textarea
+                        value={homeContentDraft}
+                        onChange={(e) => { setHomeContentDraft(e.target.value); setHomeContentDirty(true); }}
+                        placeholder="Write the main article content for your world's home page. Supports markdown formatting..."
+                        className="mt-1 bg-stone-800 border-stone-700 text-stone-200 min-h-[300px] font-mono text-sm"
+                        data-testid="input-home-content"
+                      />
+                      <p className="text-[10px] text-stone-600 mt-1">This content is displayed as the main body of your world's wiki landing page.</p>
+                    </div>
+
+                    <div className="flex items-center gap-3 pt-2">
+                      <Button
+                        onClick={() => {
+                          updateWorldMutation.mutate({
+                            name: editWorldName.trim(),
+                            description: editWorldDescription.trim() || undefined,
+                            homeContent: homeContentDraft,
+                          });
+                          setHomeContentDirty(false);
+                        }}
+                        disabled={!editWorldName.trim() || updateWorldMutation.isPending}
+                        className="bg-amber-600 hover:bg-amber-500 text-white"
+                        data-testid="button-save-home-content"
+                      >
+                        {updateWorldMutation.isPending ? (
+                          <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                        ) : (
+                          <Save className="h-4 w-4 mr-2" />
+                        )}
+                        {updateWorldMutation.isPending ? "Saving..." : "Save Home Page"}
+                      </Button>
+                      {homeContentDirty && (
+                        <span className="text-[10px] text-amber-400">Unsaved changes</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {activeSection === "encyclopedia" && (
               <>
                 {selectedEntityId && selectedEntity ? (

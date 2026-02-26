@@ -1433,6 +1433,7 @@ export const worlds = pgTable("worlds", {
   name: text("name").notNull(),
   description: text("description"),
   image: text("image"),
+  homeContent: text("home_content"),
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   campaignId: varchar("campaign_id").references(() => campaigns.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").defaultNow().notNull(),

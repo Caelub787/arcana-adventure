@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useRef, useCallback, useEffect } from "react";
 import { useRoute } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { Globe, BookOpen, Map, Clock, Calendar, Network, Search, MapPin, User, Shield, Scroll, Package, Swords, Sparkles, FileText, Loader2, ChevronRight, ChevronLeft, ZoomIn, ZoomOut, Maximize2, Navigation, Link2, X, Eye } from "lucide-react";
+import { Globe, BookOpen, Map, Clock, Calendar, Network, Search, MapPin, User, Shield, Scroll, Package, Swords, Sparkles, FileText, Loader2, ChevronRight, ChevronLeft, ZoomIn, ZoomOut, Maximize2, Navigation, Link2, X, Eye, Home } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -108,6 +108,9 @@ interface SharedCalendar {
 
 interface SharedWorldData {
   campaignName: string;
+  worldImage?: string | null;
+  worldDescription?: string | null;
+  homeContent?: string | null;
   entities: SharedEntity[];
   entityLinks: SharedEntityLink[];
   maps: SharedWorldMap[];
@@ -116,9 +119,10 @@ interface SharedWorldData {
   timelineEvents: SharedTimelineEvent[];
 }
 
-type ActiveSection = "encyclopedia" | "maps" | "timeline" | "calendar";
+type ActiveSection = "home" | "encyclopedia" | "maps" | "timeline" | "calendar";
 
 const SECTION_CONFIG: { key: ActiveSection; label: string; icon: React.ElementType }[] = [
+  { key: "home", label: "Home", icon: Home },
   { key: "encyclopedia", label: "Encyclopedia", icon: BookOpen },
   { key: "maps", label: "Maps", icon: Map },
   { key: "timeline", label: "Timeline", icon: Clock },
@@ -587,7 +591,7 @@ export default function SharedWorldView() {
     enabled: !!token,
   });
 
-  const [activeSection, setActiveSection] = useState<ActiveSection>("encyclopedia");
+  const [activeSection, setActiveSection] = useState<ActiveSection>("home");
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [filterType, setFilterType] = useState("");
@@ -664,7 +668,8 @@ export default function SharedWorldView() {
 
       <nav className="p-2 border-b border-stone-800">
         {SECTION_CONFIG.map(({ key, label, icon: Icon }) => {
-          const hasContent = key === "encyclopedia" ? entities.length > 0 :
+          const hasContent = key === "home" ? true :
+                            key === "encyclopedia" ? entities.length > 0 :
                             key === "maps" ? maps.length > 0 :
                             key === "timeline" ? timelineEvents.length > 0 :
                             key === "calendar" ? calendars.length > 0 : false;
@@ -786,6 +791,107 @@ export default function SharedWorldView() {
         </div>
 
         <div className="flex-1 flex flex-col overflow-hidden min-w-0">
+          {activeSection === "home" && (
+            <div className="flex-1 overflow-y-auto" data-testid="section-home">
+              {data.worldImage && (
+                <div className="relative w-full h-48 md:h-64 overflow-hidden">
+                  <img src={data.worldImage} alt={data.campaignName} className="w-full h-full object-cover" data-testid="img-world-banner" />
+                  <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-stone-950" />
+                </div>
+              )}
+              <div className="max-w-3xl mx-auto p-4 md:p-8">
+                <div className="flex items-center gap-3 mb-4">
+                  <Globe className="h-8 w-8 text-amber-400 flex-shrink-0" />
+                  <h2 className="text-2xl md:text-3xl font-bold text-stone-100" data-testid="text-home-heading">{data.campaignName}</h2>
+                </div>
+                {data.worldDescription && (
+                  <p className="text-sm md:text-base text-stone-400 italic mb-6 border-l-2 border-amber-500/30 pl-4 leading-relaxed" data-testid="text-home-description">{data.worldDescription}</p>
+                )}
+                {data.homeContent && (
+                  <div className="prose prose-invert prose-sm max-w-none mb-8" data-testid="home-article-content">
+                    {renderArticleContent(data.homeContent)}
+                  </div>
+                )}
+                <div className="border-t border-stone-800 pt-6">
+                  <h3 className="text-xs font-semibold text-stone-500 uppercase tracking-wider mb-4">Explore</h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {entities.length > 0 && (
+                      <button
+                        onClick={() => { setActiveSection("encyclopedia"); setSelectedEntityId(null); }}
+                        className="flex items-center gap-3 p-4 rounded-lg bg-stone-900/60 border border-stone-800 hover:border-amber-500/40 transition-colors text-left group"
+                        data-testid="home-card-encyclopedia"
+                      >
+                        <div className="w-10 h-10 rounded-lg bg-amber-500/10 flex items-center justify-center flex-shrink-0">
+                          <BookOpen className="h-5 w-5 text-amber-400" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-medium text-stone-200 group-hover:text-amber-400 transition-colors">Encyclopedia</div>
+                          <div className="text-xs text-stone-500">{entities.length} {entities.length === 1 ? 'article' : 'articles'}</div>
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {Object.entries(typeCounts).slice(0, 4).map(([type, count]) => {
+                              const cfg = ENTITY_TYPE_CONFIG[type];
+                              if (!cfg) return null;
+                              return <span key={type} className="text-[9px] text-stone-600">{cfg.pluralLabel}: {count}</span>;
+                            })}
+                          </div>
+                        </div>
+                        <ChevronRight className="h-4 w-4 text-stone-600 group-hover:text-amber-400 flex-shrink-0" />
+                      </button>
+                    )}
+                    {maps.length > 0 && (
+                      <button
+                        onClick={() => { setActiveSection("maps"); setSelectedEntityId(null); }}
+                        className="flex items-center gap-3 p-4 rounded-lg bg-stone-900/60 border border-stone-800 hover:border-amber-500/40 transition-colors text-left group"
+                        data-testid="home-card-maps"
+                      >
+                        <div className="w-10 h-10 rounded-lg bg-emerald-500/10 flex items-center justify-center flex-shrink-0">
+                          <Map className="h-5 w-5 text-emerald-400" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-medium text-stone-200 group-hover:text-amber-400 transition-colors">Maps</div>
+                          <div className="text-xs text-stone-500">{maps.length} {maps.length === 1 ? 'map' : 'maps'}</div>
+                        </div>
+                        <ChevronRight className="h-4 w-4 text-stone-600 group-hover:text-amber-400 flex-shrink-0" />
+                      </button>
+                    )}
+                    {timelineEvents.length > 0 && (
+                      <button
+                        onClick={() => { setActiveSection("timeline"); setSelectedEntityId(null); }}
+                        className="flex items-center gap-3 p-4 rounded-lg bg-stone-900/60 border border-stone-800 hover:border-amber-500/40 transition-colors text-left group"
+                        data-testid="home-card-timeline"
+                      >
+                        <div className="w-10 h-10 rounded-lg bg-purple-500/10 flex items-center justify-center flex-shrink-0">
+                          <Clock className="h-5 w-5 text-purple-400" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-medium text-stone-200 group-hover:text-amber-400 transition-colors">Timeline</div>
+                          <div className="text-xs text-stone-500">{timelineEvents.length} {timelineEvents.length === 1 ? 'event' : 'events'}</div>
+                        </div>
+                        <ChevronRight className="h-4 w-4 text-stone-600 group-hover:text-amber-400 flex-shrink-0" />
+                      </button>
+                    )}
+                    {calendars.length > 0 && (
+                      <button
+                        onClick={() => { setActiveSection("calendar"); setSelectedEntityId(null); }}
+                        className="flex items-center gap-3 p-4 rounded-lg bg-stone-900/60 border border-stone-800 hover:border-amber-500/40 transition-colors text-left group"
+                        data-testid="home-card-calendar"
+                      >
+                        <div className="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center flex-shrink-0">
+                          <Calendar className="h-5 w-5 text-blue-400" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-medium text-stone-200 group-hover:text-amber-400 transition-colors">Calendar</div>
+                          <div className="text-xs text-stone-500">{calendars.length} {calendars.length === 1 ? 'calendar' : 'calendars'}</div>
+                        </div>
+                        <ChevronRight className="h-4 w-4 text-stone-600 group-hover:text-amber-400 flex-shrink-0" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {activeSection === "encyclopedia" && (
             <>
               {selectedEntity ? (
@@ -864,22 +970,30 @@ export default function SharedWorldView() {
                   </div>
                 </div>
               ) : (
-                <div className="flex-1 flex items-center justify-center">
-                  <div className="text-center p-8 max-w-lg">
-                    <Globe className="h-16 w-16 text-stone-800 mx-auto mb-4" />
-                    <h2 className="text-xl font-semibold text-stone-600 mb-2">Welcome to {data.campaignName}</h2>
-                    <p className="text-stone-600 text-sm mb-6">Explore the world by selecting an article from the sidebar, or browse maps, timeline, and calendar.</p>
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3 max-w-sm mx-auto">
-                      {Object.entries(ENTITY_TYPE_CONFIG).slice(0, 6).map(([key, cfg]) => {
+                <div className="flex-1 overflow-y-auto">
+                  <div className="max-w-3xl mx-auto p-4 md:p-8">
+                    <Globe className="h-10 w-10 text-amber-400 mb-4" />
+                    <h2 className="text-2xl font-bold text-stone-100 mb-2" data-testid="text-home-title">{data.campaignName}</h2>
+                    {data.worldDescription && (
+                      <p className="text-sm text-stone-400 italic mb-6 border-l-2 border-amber-500/30 pl-3" data-testid="text-home-description">{data.worldDescription}</p>
+                    )}
+                    <p className="text-stone-500 text-sm mb-6">Select an article from the sidebar to begin exploring.</p>
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3 max-w-md">
+                      {Object.entries(ENTITY_TYPE_CONFIG).map(([key, cfg]) => {
                         const IconComp = ICON_MAP[cfg.icon] || Search;
                         const count = typeCounts[key] || 0;
                         if (count === 0) return null;
                         return (
-                          <div key={key} className="flex flex-col items-center gap-1 p-3 rounded-lg bg-stone-900/50 border border-stone-800">
+                          <button
+                            key={key}
+                            onClick={() => { setFilterType(key); setActiveSection("encyclopedia"); }}
+                            className="flex flex-col items-center gap-1 p-3 rounded-lg bg-stone-900/50 border border-stone-800 hover:border-amber-500/40 transition-colors cursor-pointer"
+                            data-testid={`home-category-${key}`}
+                          >
                             <IconComp className="h-5 w-5" style={{ color: cfg.color }} />
-                            <span className="text-[10px] text-stone-500">{cfg.label}</span>
-                            <span className="text-[10px] text-stone-600">{count}</span>
-                          </div>
+                            <span className="text-[10px] text-stone-400">{cfg.pluralLabel}</span>
+                            <span className="text-xs font-semibold text-stone-300">{count}</span>
+                          </button>
                         );
                       })}
                     </div>

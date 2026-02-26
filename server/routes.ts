@@ -9674,11 +9674,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let allTimelineEvents: any[];
       let entityLinksAll: any[];
       let sourceName: string;
+      let worldDescription: string | null = null;
+      let worldImage: string | null = null;
+      let worldHomeContent: string | null = null;
 
       if (shareLink.worldId) {
         const world = await storage.getWorld(shareLink.worldId);
         if (!world) return res.status(404).json({ error: "World not found" });
         sourceName = world.name;
+        worldDescription = world.description || null;
+        worldImage = world.image || null;
+        worldHomeContent = world.homeContent || null;
         allEntities = await storage.getEntitiesByWorld(shareLink.worldId);
         allMaps = await storage.getWorldMapsByWorld(shareLink.worldId);
         calendars = await storage.getWorldCalendarsByWorld(shareLink.worldId);
@@ -9708,6 +9714,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const visibleLinks = entityLinksAll.filter(l => visibleEntityIds.has(l.fromEntityId) && visibleEntityIds.has(l.toEntityId));
       res.json({
         campaignName: sourceName,
+        worldDescription,
+        worldImage,
+        homeContent: worldHomeContent,
         entities: visibleEntities,
         entityLinks: visibleLinks,
         maps: visibleMaps,
