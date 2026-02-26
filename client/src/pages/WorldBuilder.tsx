@@ -25,7 +25,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { ArrowLeft, Globe, Loader2, Network, Clock, FileText, ChevronLeft, BookOpen, Search, Plus, User, MapPin, Shield, Scroll, Calendar, Package, Swords, Sparkles, Menu, X, Info, Map, Share2, ChevronRight, Copy, Check, Trash2, ExternalLink, Settings, Home, Save } from "lucide-react";
+import { ArrowLeft, Globe, Loader2, Network, Clock, FileText, ChevronLeft, BookOpen, Search, Plus, User, MapPin, Shield, Scroll, Calendar, Package, Swords, Sparkles, Menu, X, Info, Map, Share2, ChevronRight, Copy, Check, Trash2, ExternalLink, Settings, Home, Save, Eye, Pencil } from "lucide-react";
 import ProfileDropdown from "@/components/ProfileDropdown";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -38,6 +38,22 @@ import { useToast } from "@/hooks/use-toast";
 const ICON_MAP: Record<string, React.ElementType> = {
   User, MapPin, Shield, Scroll, Calendar, BookOpen, Package, Swords, Search, Sparkles, Clock, FileText,
 };
+
+function renderHomeContent(content: string) {
+  const lines = content.split("\n");
+  return lines.map((line, i) => {
+    if (line.startsWith("### ")) return <h3 key={i} className="text-lg font-semibold text-amber-200/90 mt-6 mb-3 flex items-center gap-2"><span className="w-6 h-px bg-amber-500/40" />{line.slice(4)}</h3>;
+    if (line.startsWith("## ")) return <h2 key={i} className="text-xl font-bold text-amber-100 mt-8 mb-3 pb-2 border-b border-amber-500/20">{line.slice(3)}</h2>;
+    if (line.startsWith("# ")) return <h1 key={i} className="text-2xl font-bold text-stone-100 mt-8 mb-4 pb-2 border-b border-amber-500/30">{line.slice(2)}</h1>;
+    if (line.startsWith("- ")) return <li key={i} className="ml-5 text-stone-300 text-sm list-disc marker:text-amber-500/50 leading-relaxed">{line.slice(2)}</li>;
+    if (line.startsWith("---")) return <div key={i} className="my-8 flex items-center gap-4"><div className="flex-1 h-px bg-gradient-to-r from-transparent via-amber-500/30 to-transparent" /><Sparkles className="h-3 w-3 text-amber-500/40" /><div className="flex-1 h-px bg-gradient-to-r from-transparent via-amber-500/30 to-transparent" /></div>;
+    if (line.trim() === "") return <div key={i} className="h-3" />;
+    const formatted = line
+      .replace(/\*\*(.+?)\*\*/g, '<strong class="text-stone-100 font-semibold">$1</strong>')
+      .replace(/\*(.+?)\*/g, '<em class="text-amber-200/70">$1</em>');
+    return <p key={i} className="text-stone-300 text-[15px] leading-[1.8]" dangerouslySetInnerHTML={{ __html: formatted }} />;
+  });
+}
 
 type ActiveSection = "home" | "encyclopedia" | "maps" | "timeline" | "calendar" | "graph";
 
@@ -92,6 +108,7 @@ export default function WorldBuilder() {
   const [deleteEntityConfirm, setDeleteEntityConfirm] = useState<string | null>(null);
   const [homeContentDraft, setHomeContentDraft] = useState("");
   const [homeContentDirty, setHomeContentDirty] = useState(false);
+  const [homeEditorMode, setHomeEditorMode] = useState<"preview" | "edit">("preview");
 
   const { data: worlds = [], isLoading: worldsLoading } = useQuery<World[]>({
     queryKey: ['/api/worlds'],
@@ -740,72 +757,59 @@ export default function WorldBuilder() {
           <div className="flex-1 flex flex-col overflow-hidden min-w-0">
             {activeSection === "home" && selectedWorldId && selectedWorld && (
               <div className="flex-1 overflow-y-auto bg-[#0c0a09]">
-                <div className="max-w-4xl mx-auto p-4 md:p-8">
-                  <div className="mb-8">
-                    <div className="flex items-center gap-3 mb-2">
-                      <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500/20 to-amber-600/10 flex items-center justify-center border border-amber-500/20">
-                        <Home className="h-5 w-5 text-amber-400" />
-                      </div>
-                      <div>
-                        <h2 className="text-xl font-bold text-stone-100" data-testid="text-home-editor-title">Home Page Editor</h2>
-                        <p className="text-xs text-stone-500">Craft the landing page visitors see when they open your shared world link.</p>
-                      </div>
+                <div className="sticky top-0 z-20 bg-[#0c0a09]/95 backdrop-blur-md border-b border-stone-800/60 px-4 md:px-8 py-2.5">
+                  <div className="flex items-center justify-between max-w-4xl mx-auto">
+                    <div className="flex items-center gap-2.5">
+                      <Home className="h-4 w-4 text-amber-400" />
+                      <span className="text-sm font-semibold text-stone-200">Home Page</span>
+                      {homeContentDirty && (
+                        <span className="text-[10px] text-amber-400/80 font-medium flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                          Unsaved
+                        </span>
+                      )}
                     </div>
-                  </div>
-
-                  <div className="space-y-6">
-                    <div className="bg-stone-900/50 rounded-xl border border-stone-800/60 p-5 space-y-5">
-                      <div className="flex items-center gap-2 mb-1">
-                        <Globe className="h-4 w-4 text-amber-400/70" />
-                        <h3 className="text-sm font-semibold text-stone-300 uppercase tracking-wider">World Identity</h3>
+                    <div className="flex items-center gap-2">
+                      <div className="flex items-center bg-stone-800/60 rounded-lg border border-stone-700/50 p-0.5">
+                        <button
+                          onClick={() => setHomeEditorMode("preview")}
+                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                            homeEditorMode === "preview"
+                              ? "bg-amber-500/15 text-amber-300 shadow-sm"
+                              : "text-stone-400 hover:text-stone-200"
+                          }`}
+                          data-testid="button-home-preview"
+                        >
+                          <Eye className="h-3.5 w-3.5" />
+                          Preview
+                        </button>
+                        <button
+                          onClick={() => setHomeEditorMode("edit")}
+                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                            homeEditorMode === "edit"
+                              ? "bg-amber-500/15 text-amber-300 shadow-sm"
+                              : "text-stone-400 hover:text-stone-200"
+                          }`}
+                          data-testid="button-home-edit"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                          Edit
+                        </button>
                       </div>
-
-                      <div>
-                        <Label className="text-xs text-stone-400 font-medium">World Name</Label>
-                        <Input
-                          value={editWorldName}
-                          onChange={(e) => setEditWorldName(e.target.value)}
-                          placeholder="The name of your world..."
-                          className="mt-1.5 bg-stone-800/80 border-stone-700/50 text-stone-100 text-base font-semibold h-11 focus:border-amber-500/40 focus:ring-amber-500/20"
-                          data-testid="input-home-world-name"
-                        />
-                      </div>
-
-                      <div>
-                        <Label className="text-xs text-stone-400 font-medium">Description / Lore Blurb</Label>
-                        <Textarea
-                          value={editWorldDescription}
-                          onChange={(e) => setEditWorldDescription(e.target.value)}
-                          placeholder="A short description or lore blurb shown beneath the world name on the landing page..."
-                          className="mt-1.5 bg-stone-800/80 border-stone-700/50 text-stone-200 min-h-[80px] italic focus:border-amber-500/40 focus:ring-amber-500/20"
-                          data-testid="input-home-world-description"
-                        />
-                        <p className="text-[10px] text-stone-600 mt-1.5">Displayed as an italicized quote beneath your world's title on the landing page.</p>
-                      </div>
-                    </div>
-
-                    <div className="bg-stone-900/50 rounded-xl border border-stone-800/60 p-5">
-                      <div className="flex items-center gap-2 mb-4">
-                        <FileText className="h-4 w-4 text-amber-400/70" />
-                        <h3 className="text-sm font-semibold text-stone-300 uppercase tracking-wider">Home Page Content</h3>
-                      </div>
-
-                      <Textarea
-                        value={homeContentDraft}
-                        onChange={(e) => { setHomeContentDraft(e.target.value); setHomeContentDirty(true); }}
-                        placeholder={"Write the main article content for your world's home page.\n\nSupported formatting:\n# Heading 1\n## Heading 2\n### Heading 3\n**bold text**\n*italic text*\n- list items\n--- horizontal divider"}
-                        className="bg-stone-800/80 border-stone-700/50 text-stone-200 min-h-[400px] font-mono text-sm leading-relaxed focus:border-amber-500/40 focus:ring-amber-500/20"
-                        data-testid="input-home-content"
-                      />
-                      <div className="flex items-center justify-between mt-2">
-                        <p className="text-[10px] text-stone-600">This is the main body of your world's wiki landing page. Use markdown for formatting.</p>
-                        <span className="text-[10px] text-stone-600">{homeContentDraft.length} chars</span>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center justify-between bg-stone-900/30 rounded-xl border border-stone-800/40 p-4">
-                      <div className="flex items-center gap-3">
+                      {homeEditorMode === "preview" && (
                         <Button
+                          size="sm"
+                          onClick={() => setHomeEditorMode("edit")}
+                          className="bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-white text-xs h-8 px-4"
+                          data-testid="button-open-editor"
+                        >
+                          <Pencil className="h-3 w-3 mr-1.5" />
+                          Edit Page
+                        </Button>
+                      )}
+                      {homeEditorMode === "edit" && (
+                        <Button
+                          size="sm"
                           onClick={() => {
                             updateWorldMutation.mutate({
                               name: editWorldName.trim(),
@@ -815,26 +819,191 @@ export default function WorldBuilder() {
                             setHomeContentDirty(false);
                           }}
                           disabled={!editWorldName.trim() || updateWorldMutation.isPending}
-                          className="bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-white shadow-lg shadow-amber-500/20 px-6"
+                          className="bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-white text-xs h-8 px-4 shadow-lg shadow-amber-500/20"
                           data-testid="button-save-home-content"
                         >
                           {updateWorldMutation.isPending ? (
-                            <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                            <Loader2 className="h-3 w-3 animate-spin mr-1.5" />
                           ) : (
-                            <Save className="h-4 w-4 mr-2" />
+                            <Save className="h-3 w-3 mr-1.5" />
                           )}
-                          {updateWorldMutation.isPending ? "Saving..." : "Save Home Page"}
+                          {updateWorldMutation.isPending ? "Saving..." : "Save"}
                         </Button>
-                        {homeContentDirty && (
-                          <span className="text-xs text-amber-400/80 font-medium flex items-center gap-1.5">
-                            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
-                            Unsaved changes
-                          </span>
-                        )}
-                      </div>
+                      )}
                     </div>
                   </div>
                 </div>
+
+                {homeEditorMode === "preview" && (
+                  <div data-testid="home-preview">
+                    <div className="relative w-full" style={{ minHeight: selectedWorld.image ? '300px' : '180px' }}>
+                      {selectedWorld.image ? (
+                        <>
+                          <img src={selectedWorld.image} alt={editWorldName} className="absolute inset-0 w-full h-full object-cover" />
+                          <div className="absolute inset-0 bg-gradient-to-b from-black/50 via-black/30 to-[#0c0a09]" />
+                          <div className="absolute inset-0 bg-gradient-to-t from-[#0c0a09] via-transparent to-transparent" />
+                        </>
+                      ) : (
+                        <div className="absolute inset-0 bg-gradient-to-b from-amber-950/20 via-stone-950 to-[#0c0a09]" />
+                      )}
+                      <div className="absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-t from-[#0c0a09] to-transparent" />
+                      <div className="relative z-10 flex flex-col items-center justify-end h-full pb-8 pt-16 px-4 text-center">
+                        <div className="mb-3 flex items-center gap-2">
+                          <div className="h-px w-12 bg-gradient-to-r from-transparent to-amber-500/60" />
+                          <Globe className="h-5 w-5 text-amber-400/80" />
+                          <div className="h-px w-12 bg-gradient-to-l from-transparent to-amber-500/60" />
+                        </div>
+                        <h1 className="text-3xl md:text-5xl font-bold text-white tracking-tight" style={{ textShadow: '0 2px 20px rgba(0,0,0,0.8)' }}>
+                          {editWorldName || "Untitled World"}
+                        </h1>
+                        {editWorldDescription && (
+                          <p className="mt-4 max-w-2xl text-base md:text-lg text-stone-300/90 italic leading-relaxed" style={{ textShadow: '0 1px 8px rgba(0,0,0,0.6)' }}>
+                            "{editWorldDescription}"
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="relative z-10 -mt-4">
+                      <div className="flex justify-center gap-3 md:gap-6 px-4 flex-wrap">
+                        {entities.length > 0 && (
+                          <div className="flex items-center gap-2 text-stone-400">
+                            <BookOpen className="h-3.5 w-3.5 text-amber-500/70" />
+                            <span className="text-xs font-medium">{entities.length} Articles</span>
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex justify-center my-6">
+                        <div className="flex items-center gap-3">
+                          <div className="h-px w-16 bg-gradient-to-r from-transparent to-amber-500/40" />
+                          <div className="w-1.5 h-1.5 rotate-45 bg-amber-500/50" />
+                          <div className="h-px w-16 bg-gradient-to-l from-transparent to-amber-500/40" />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="max-w-4xl mx-auto px-4 md:px-8 pb-12">
+                      {homeContentDraft ? (
+                        <div className="mb-12">
+                          <div className="bg-stone-900/40 rounded-xl border border-stone-800/60 p-6 md:p-10 backdrop-blur-sm shadow-xl shadow-black/20">
+                            {renderHomeContent(homeContentDraft)}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="mb-12">
+                          <div className="bg-stone-900/40 rounded-xl border border-stone-800/60 border-dashed p-10 text-center">
+                            <FileText className="h-10 w-10 text-stone-700 mx-auto mb-3" />
+                            <p className="text-stone-500 text-sm mb-3">No home page content yet.</p>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setHomeEditorMode("edit")}
+                              className="border-amber-500/30 text-amber-400 hover:bg-amber-500/10"
+                              data-testid="button-add-content"
+                            >
+                              <Pencil className="h-3 w-3 mr-1.5" />
+                              Add Content
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+
+                      {entities.length > 0 && (
+                        <div className="mb-12">
+                          <div className="flex items-center gap-4 mb-5">
+                            <div className="h-px flex-1 bg-gradient-to-r from-amber-500/30 to-transparent" />
+                            <h3 className="text-sm font-bold text-amber-400/80 uppercase tracking-[0.2em]">Explore This World</h3>
+                            <div className="h-px flex-1 bg-gradient-to-l from-amber-500/30 to-transparent" />
+                          </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                            {Object.entries(ENTITY_TYPE_CONFIG).slice(0, 6).map(([key, cfg]) => {
+                              const count = typeCounts[key] || 0;
+                              if (count === 0) return null;
+                              const TypeIcon = ICON_MAP[cfg.icon] || Search;
+                              return (
+                                <div key={key} className="flex items-center gap-3 p-3 rounded-lg bg-stone-900/50 border border-stone-800/50">
+                                  <div className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ backgroundColor: cfg.color + '15' }}>
+                                    <TypeIcon className="h-4 w-4" style={{ color: cfg.color }} />
+                                  </div>
+                                  <div>
+                                    <div className="text-sm font-medium text-stone-200">{cfg.pluralLabel}</div>
+                                    <div className="text-xs text-stone-500">{count} {count === 1 ? 'entry' : 'entries'}</div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="text-center py-8 border-t border-stone-800/40">
+                        <div className="flex justify-center mb-3">
+                          <div className="flex items-center gap-2">
+                            <div className="h-px w-8 bg-amber-500/30" />
+                            <Globe className="h-4 w-4 text-amber-500/40" />
+                            <div className="h-px w-8 bg-amber-500/30" />
+                          </div>
+                        </div>
+                        <p className="text-[11px] text-stone-600">{editWorldName || "Untitled World"}</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {homeEditorMode === "edit" && (
+                  <div className="max-w-4xl mx-auto p-4 md:p-8" data-testid="home-editor">
+                    <div className="space-y-6">
+                      <div className="bg-stone-900/50 rounded-xl border border-stone-800/60 p-5 space-y-5">
+                        <div className="flex items-center gap-2 mb-1">
+                          <Globe className="h-4 w-4 text-amber-400/70" />
+                          <h3 className="text-sm font-semibold text-stone-300 uppercase tracking-wider">World Identity</h3>
+                        </div>
+
+                        <div>
+                          <Label className="text-xs text-stone-400 font-medium">World Name</Label>
+                          <Input
+                            value={editWorldName}
+                            onChange={(e) => setEditWorldName(e.target.value)}
+                            placeholder="The name of your world..."
+                            className="mt-1.5 bg-stone-800/80 border-stone-700/50 text-stone-100 text-base font-semibold h-11 focus:border-amber-500/40 focus:ring-amber-500/20"
+                            data-testid="input-home-world-name"
+                          />
+                        </div>
+
+                        <div>
+                          <Label className="text-xs text-stone-400 font-medium">Description / Lore Blurb</Label>
+                          <Textarea
+                            value={editWorldDescription}
+                            onChange={(e) => setEditWorldDescription(e.target.value)}
+                            placeholder="A short description or lore blurb shown beneath the world name on the landing page..."
+                            className="mt-1.5 bg-stone-800/80 border-stone-700/50 text-stone-200 min-h-[80px] italic focus:border-amber-500/40 focus:ring-amber-500/20"
+                            data-testid="input-home-world-description"
+                          />
+                          <p className="text-[10px] text-stone-600 mt-1.5">Displayed as an italicized quote beneath your world's title on the landing page.</p>
+                        </div>
+                      </div>
+
+                      <div className="bg-stone-900/50 rounded-xl border border-stone-800/60 p-5">
+                        <div className="flex items-center gap-2 mb-4">
+                          <FileText className="h-4 w-4 text-amber-400/70" />
+                          <h3 className="text-sm font-semibold text-stone-300 uppercase tracking-wider">Home Page Content</h3>
+                        </div>
+
+                        <Textarea
+                          value={homeContentDraft}
+                          onChange={(e) => { setHomeContentDraft(e.target.value); setHomeContentDirty(true); }}
+                          placeholder={"Write the main article content for your world's home page.\n\nSupported formatting:\n# Heading 1\n## Heading 2\n### Heading 3\n**bold text**\n*italic text*\n- list items\n--- horizontal divider"}
+                          className="bg-stone-800/80 border-stone-700/50 text-stone-200 min-h-[400px] font-mono text-sm leading-relaxed focus:border-amber-500/40 focus:ring-amber-500/20"
+                          data-testid="input-home-content"
+                        />
+                        <div className="flex items-center justify-between mt-2">
+                          <p className="text-[10px] text-stone-600">Use markdown for formatting. Switch to Preview to see how it looks.</p>
+                          <span className="text-[10px] text-stone-600">{homeContentDraft.length} chars</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
