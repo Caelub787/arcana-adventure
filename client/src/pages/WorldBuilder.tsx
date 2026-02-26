@@ -796,17 +796,6 @@ export default function WorldBuilder() {
                           Edit
                         </button>
                       </div>
-                      {homeEditorMode === "preview" && (
-                        <Button
-                          size="sm"
-                          onClick={() => setHomeEditorMode("edit")}
-                          className="bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-white text-xs h-8 px-4"
-                          data-testid="button-open-editor"
-                        >
-                          <Pencil className="h-3 w-3 mr-1.5" />
-                          Edit Page
-                        </Button>
-                      )}
                       {homeEditorMode === "edit" && (
                         <Button
                           size="sm"
@@ -893,17 +882,7 @@ export default function WorldBuilder() {
                         <div className="mb-12">
                           <div className="bg-stone-900/40 rounded-xl border border-stone-800/60 border-dashed p-10 text-center">
                             <FileText className="h-10 w-10 text-stone-700 mx-auto mb-3" />
-                            <p className="text-stone-500 text-sm mb-3">No home page content yet.</p>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => setHomeEditorMode("edit")}
-                              className="border-amber-500/30 text-amber-400 hover:bg-amber-500/10"
-                              data-testid="button-add-content"
-                            >
-                              <Pencil className="h-3 w-3 mr-1.5" />
-                              Add Content
-                            </Button>
+                            <p className="text-stone-500 text-sm">No home page content yet. Switch to Edit to add content.</p>
                           </div>
                         </div>
                       )}
