@@ -5788,9 +5788,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const user = await storage.getUser(req.session.userId!);
       const userIsAdmin = user?.isAdmin || ADMIN_EMAILS.includes(user?.email?.toLowerCase() || '');
       
-      // Adding custom skills requires owner, GM, or admin access (edit access alone is not sufficient)
-      if (!access.isOwner && !access.isGM && !userIsAdmin) {
-        return res.status(403).json({ error: "Only the character owner or GM can add custom skills" });
+      if (!access.isGM && !userIsAdmin) {
+        return res.status(403).json({ error: "Only the GM can add custom skills" });
       }
       
       const skill = await storage.addCharacterCustomSkill({
@@ -5814,7 +5813,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.patch("/api/characters/:characterId/custom-skills/:skillId", requireAuth, async (req, res) => {
     try {
-      const character = await storage.getCharacter(req.params.characterId);
+      const access = await checkCharacterAccess(req.params.characterId, req.session.userId!, 'edit');
+      if (!access.character) return res.status(404).json({ error: "Character not found" });
+      const user = await storage.getUser(req.session.userId!);
+      const userIsAdmin = user?.isAdmin || ADMIN_EMAILS.includes(user?.email?.toLowerCase() || '');
+      if (!access.isGM && !userIsAdmin) return res.status(403).json({ error: "Only the GM can edit custom skills" });
+      const character = access.character;
       const skill = await storage.updateCharacterCustomSkill(req.params.skillId, req.body);
       if (!skill) {
         return res.status(404).json({ error: "Skill not found" });
@@ -5837,7 +5841,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.delete("/api/characters/:characterId/custom-skills/:skillId", requireAuth, async (req, res) => {
     try {
-      const character = await storage.getCharacter(req.params.characterId);
+      const access = await checkCharacterAccess(req.params.characterId, req.session.userId!, 'edit');
+      if (!access.character) return res.status(404).json({ error: "Character not found" });
+      const user = await storage.getUser(req.session.userId!);
+      const userIsAdmin = user?.isAdmin || ADMIN_EMAILS.includes(user?.email?.toLowerCase() || '');
+      if (!access.isGM && !userIsAdmin) return res.status(403).json({ error: "Only the GM can remove custom skills" });
+      const character = access.character;
       await storage.removeCharacterCustomSkill(req.params.skillId);
       
       if (character?.campaignId) {
@@ -5942,9 +5951,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const user = await storage.getUser(req.session.userId!);
       const userIsAdmin = user?.isAdmin || ADMIN_EMAILS.includes(user?.email?.toLowerCase() || '');
       
-      // Adding traits requires owner, GM, or admin access (edit access alone is not sufficient)
-      if (!access.isOwner && !access.isGM && !userIsAdmin) {
-        return res.status(403).json({ error: "Only the character owner or GM can add traits" });
+      if (!access.isGM && !userIsAdmin) {
+        return res.status(403).json({ error: "Only the GM can add traits" });
       }
       
       const trait = await storage.addCharacterTrait({
@@ -5968,7 +5976,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.patch("/api/characters/:characterId/traits/:traitId", requireAuth, async (req, res) => {
     try {
-      const character = await storage.getCharacter(req.params.characterId);
+      const access = await checkCharacterAccess(req.params.characterId, req.session.userId!, 'edit');
+      if (!access.character) return res.status(404).json({ error: "Character not found" });
+      const user = await storage.getUser(req.session.userId!);
+      const userIsAdmin = user?.isAdmin || ADMIN_EMAILS.includes(user?.email?.toLowerCase() || '');
+      if (!access.isGM && !userIsAdmin) return res.status(403).json({ error: "Only the GM can edit traits" });
+      const character = access.character;
       const trait = await storage.updateCharacterTrait(req.params.traitId, req.body);
       if (!trait) {
         return res.status(404).json({ error: "Trait not found" });
@@ -5991,7 +6004,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.delete("/api/characters/:characterId/traits/:traitId", requireAuth, async (req, res) => {
     try {
-      const character = await storage.getCharacter(req.params.characterId);
+      const access = await checkCharacterAccess(req.params.characterId, req.session.userId!, 'edit');
+      if (!access.character) return res.status(404).json({ error: "Character not found" });
+      const user = await storage.getUser(req.session.userId!);
+      const userIsAdmin = user?.isAdmin || ADMIN_EMAILS.includes(user?.email?.toLowerCase() || '');
+      if (!access.isGM && !userIsAdmin) return res.status(403).json({ error: "Only the GM can remove traits" });
+      const character = access.character;
       await storage.removeCharacterTrait(req.params.traitId);
       
       if (character?.campaignId) {

@@ -18321,7 +18321,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                     <BookOpen className="h-4 w-4" />
                     Custom Skills
                   </CardTitle>
-                  {canAddContent && (
+                  {isGM && (
                     <Button
                       size="sm"
                       variant="outline"
@@ -18447,7 +18447,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                             <span className="font-bold">
                               {skillValue >= 0 ? `+${skillValue}` : skillValue}
                             </span>
-                            {(isOwner || isGM) && (
+                            {isGM && (
                               <Button
                                 variant="ghost"
                                 size="icon"
@@ -18526,7 +18526,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                     <Star className="h-4 w-4" />
                     Traits
                   </CardTitle>
-                  {canAddContent && (
+                  {isGM && (
                     <Button
                       size="sm"
                       variant="outline"
@@ -18618,33 +18618,33 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                           </div>
                           <div className="flex items-center gap-1">
                             {(isOwner || isGM) && (
-                              <>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity"
-                                  disabled={!canUse || useTraitMutation.isPending}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    useTraitMutation.mutate(trait.id);
-                                  }}
-                                  data-testid={`button-use-trait-${trait.id}`}
-                                >
-                                  <Zap className="h-3 w-3" />
-                                </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setEditingTrait(trait);
-                                  }}
-                                  data-testid={`button-edit-trait-${trait.id}`}
-                                >
-                                  <Pencil className="h-3 w-3" />
-                                </Button>
-                              </>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity"
+                                disabled={!canUse || useTraitMutation.isPending}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  useTraitMutation.mutate(trait.id);
+                                }}
+                                data-testid={`button-use-trait-${trait.id}`}
+                              >
+                                <Zap className="h-3 w-3" />
+                              </Button>
+                            )}
+                            {isGM && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setEditingTrait(trait);
+                                }}
+                                data-testid={`button-edit-trait-${trait.id}`}
+                              >
+                                <Pencil className="h-3 w-3" />
+                              </Button>
                             )}
                           </div>
                         </Badge>
