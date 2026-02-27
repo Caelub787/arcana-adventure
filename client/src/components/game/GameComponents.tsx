@@ -18315,7 +18315,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
 
             {/* Custom Skills Section */}
             <Card className="bg-stone-800 border-stone-700 mt-4">
-              <CardHeader className="pb-2">
+              <CardHeader className="pb-3">
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-cyan-500 text-sm font-medium flex items-center gap-2">
                     <BookOpen className="h-4 w-4" />
@@ -18325,8 +18325,17 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => setShowAddCustomSkill(true)}
-                      className="h-7 text-xs"
+                      onPointerDown={(e) => {
+                        e.stopPropagation();
+                        clearTimeout(longPressTimerRef.current);
+                        clickTimersRef.current.forEach((timer) => clearTimeout(timer));
+                        clickTimersRef.current.clear();
+                      }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowAddCustomSkill(true);
+                      }}
+                      className="text-xs py-2 px-3 min-h-[40px]"
                       data-testid="button-add-custom-skill"
                     >
                       <Plus className="h-3 w-3 mr-1" />
@@ -18335,7 +18344,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                   )}
                 </div>
               </CardHeader>
-              <CardContent className="pt-2">
+              <CardContent className="pt-3">
                 {characterCustomSkills.length === 0 ? (
                   <div className="text-center py-4 text-stone-500 text-sm">
                     No custom skills added yet
@@ -18478,7 +18487,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
               zIndex={floatingZIndices?.['skill-add'] || 10200}
               onBringToFront={() => bringToFront?.('skill-add')}
               defaultSize={{ width: 500, height: 500 }}
-              minWidth={350}
+              minWidth={300}
               minHeight={300}
             >
               <div className="p-4">
