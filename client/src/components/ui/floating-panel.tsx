@@ -280,6 +280,10 @@ export function FloatingPanel({
         e.stopPropagation();
         onBringToFront?.();
       }}
+      onClick={(e) => e.stopPropagation()}
+      onPointerUp={(e) => e.stopPropagation()}
+      onTouchStart={(e) => e.stopPropagation()}
+      onTouchEnd={(e) => e.stopPropagation()}
     >
       <div
         className={cn(
