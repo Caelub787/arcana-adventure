@@ -255,36 +255,54 @@ export function FloatingPanel({
   const minimizedMaxWidth = 120;
   const s = sizeRef.current;
 
+  const panelZIndex = isFullscreen ? Math.max(zIndex, 10500) : zIndex;
+
   const panelContent = (
-    <div
-      ref={panelRef}
-      className={cn(
-        "fixed bg-stone-900 border border-stone-700 rounded-lg shadow-2xl flex flex-col overflow-hidden",
-        className
+    <>
+      {isMobile && (
+        <div
+          className="fixed inset-0"
+          style={{
+            zIndex: panelZIndex - 1,
+            pointerEvents: 'auto',
+          }}
+          onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+          onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+          onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
+          onTouchStart={(e) => e.stopPropagation()}
+          onTouchEnd={(e) => e.stopPropagation()}
+          onTouchMove={(e) => e.stopPropagation()}
+        />
       )}
-      style={{
-        left: 0,
-        top: 0,
-        width: isMinimized ? minimizedMaxWidth : (isFullscreen ? window.innerWidth : s.width),
-        height: isMinimized ? headerHeight : (isFullscreen ? window.innerHeight : s.height),
-        zIndex: isFullscreen ? Math.max(zIndex, 10500) : zIndex,
-        backfaceVisibility: 'hidden' as const,
-      }}
-      data-testid="floating-panel"
-      data-floating-panel
-      onMouseDown={(e) => {
-        e.stopPropagation();
-        onBringToFront?.();
-      }}
-      onPointerDown={(e) => {
-        e.stopPropagation();
-        onBringToFront?.();
-      }}
-      onClick={(e) => e.stopPropagation()}
-      onPointerUp={(e) => e.stopPropagation()}
-      onTouchStart={(e) => e.stopPropagation()}
-      onTouchEnd={(e) => e.stopPropagation()}
-    >
+      <div
+        ref={panelRef}
+        className={cn(
+          "fixed bg-stone-900 border border-stone-700 rounded-lg shadow-2xl flex flex-col overflow-hidden",
+          className
+        )}
+        style={{
+          left: 0,
+          top: 0,
+          width: isMinimized ? minimizedMaxWidth : (isFullscreen ? window.innerWidth : s.width),
+          height: isMinimized ? headerHeight : (isFullscreen ? window.innerHeight : s.height),
+          zIndex: panelZIndex,
+          backfaceVisibility: 'hidden' as const,
+        }}
+        data-testid="floating-panel"
+        data-floating-panel
+        onMouseDown={(e) => {
+          e.stopPropagation();
+          onBringToFront?.();
+        }}
+        onPointerDown={(e) => {
+          e.stopPropagation();
+          onBringToFront?.();
+        }}
+        onClick={(e) => e.stopPropagation()}
+        onPointerUp={(e) => e.stopPropagation()}
+        onTouchStart={(e) => e.stopPropagation()}
+        onTouchEnd={(e) => e.stopPropagation()}
+      >
       <div
         className={cn(
           "flex items-center justify-between bg-stone-800 border-b border-stone-700 cursor-grab select-none shrink-0",
@@ -420,6 +438,7 @@ export function FloatingPanel({
         </>
       )}
     </div>
+    </>
   );
 
   return createPortal(panelContent, document.body);
