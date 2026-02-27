@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { ScrollArea } from '@/components/ui/scroll-area';
+
 import { Folder, FolderOpen, ArrowLeft, Search, Image, Loader2, Check, Home, AlertCircle, RefreshCw, X } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from '@/hooks/use-toast';
@@ -192,12 +192,10 @@ export function ImageBrowser({ open, onOpenChange, onSelect, title = "Browse Ima
       />
       <div
         className="fixed inset-0 sm:inset-auto sm:left-1/2 sm:top-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2 sm:w-[600px] sm:h-[70vh] sm:rounded-lg bg-stone-950 border border-stone-800 text-stone-200 shadow-2xl flex flex-col overflow-hidden"
-        style={{ zIndex: 10301, pointerEvents: 'auto' }}
+        style={{ zIndex: 10301, pointerEvents: 'auto', touchAction: 'auto' }}
         data-image-browser-content="true"
         onMouseDown={(e) => e.stopPropagation()}
         onClick={(e) => e.stopPropagation()}
-        onPointerDown={(e) => e.stopPropagation()}
-        onWheel={(e) => e.stopPropagation()}
         onFocusCapture={(e) => e.stopPropagation()}
         onBlurCapture={(e) => e.stopPropagation()}
       >
@@ -289,7 +287,7 @@ export function ImageBrowser({ open, onOpenChange, onSelect, title = "Browse Ima
             </Button>
           )}
 
-          <ScrollArea className="flex-1 min-h-0">
+          <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain" style={{ WebkitOverflowScrolling: 'touch' }}>
             {isLoading ? (
               <div className="flex items-center justify-center h-[200px] sm:h-[300px]">
                 <Loader2 className="h-8 w-8 animate-spin text-amber-500" />
@@ -373,7 +371,7 @@ export function ImageBrowser({ open, onOpenChange, onSelect, title = "Browse Ima
                 )}
               </div>
             )}
-          </ScrollArea>
+          </div>
 
           <div className="flex justify-end pt-2 sm:pt-3 border-t border-stone-800 shrink-0">
             <Button
