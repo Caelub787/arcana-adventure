@@ -212,7 +212,7 @@ export function ImageBrowser({ open, onOpenChange, onSelect, title = "Browse Ima
           </button>
         </div>
 
-        <div className="flex-1 flex flex-col overflow-hidden p-3 sm:p-4 gap-2 sm:gap-3">
+        <div className="flex-1 flex flex-col min-h-0 p-3 sm:p-4 gap-2 sm:gap-3">
           <div className="flex gap-2">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-500" />
@@ -221,10 +221,7 @@ export function ImageBrowser({ open, onOpenChange, onSelect, title = "Browse Ima
                 placeholder="Search images..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                onPointerDown={(e) => {
-                  e.stopPropagation();
-                  requestAnimationFrame(() => searchInputRef.current?.focus());
-                }}
+                onMouseDown={(e) => e.stopPropagation()}
                 className="pl-10 bg-stone-900 border-stone-700 text-stone-200"
                 data-testid="input-image-search"
               />
@@ -287,7 +284,11 @@ export function ImageBrowser({ open, onOpenChange, onSelect, title = "Browse Ima
             </Button>
           )}
 
-          <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain" style={{ WebkitOverflowScrolling: 'touch' }}>
+          <div
+            className="flex-1 min-h-0 overflow-y-auto overscroll-contain"
+            style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}
+            onTouchMove={(e) => e.stopPropagation()}
+          >
             {isLoading ? (
               <div className="flex items-center justify-center h-[200px] sm:h-[300px]">
                 <Loader2 className="h-8 w-8 animate-spin text-amber-500" />
