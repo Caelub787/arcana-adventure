@@ -35,7 +35,7 @@ export function FloatingPanel({
   if (!open) return null;
 
   if (isMobile) {
-    return createPortal(
+    return (
       <div
         className={cn(
           "fixed inset-0 bg-stone-900 flex flex-col",
@@ -65,8 +65,7 @@ export function FloatingPanel({
         >
           {children}
         </div>
-      </div>,
-      document.body
+      </div>
     );
   }
 
