@@ -17726,10 +17726,14 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                         ['Speed reduced to 0'],
                         ['HP set to 0'],
                       ];
-                      const exhaustionColors = [
-                        'bg-stone-700', 'bg-yellow-700', 'bg-yellow-800', 'bg-orange-700', 'bg-red-700',
-                        'bg-red-800', 'bg-black'
-                      ];
+                      const exhaustionColors: Record<number, string> = {
+                        1: 'bg-orange-400',
+                        2: 'bg-orange-500',
+                        3: 'bg-orange-600',
+                        4: 'bg-red-500',
+                        5: 'bg-red-600',
+                        6: 'bg-red-700',
+                      };
                       const activeEffects: string[] = [];
                       for (let i = 1; i <= exhaustion; i++) {
                         activeEffects.push(...exhaustionLevelEffects[i]);
