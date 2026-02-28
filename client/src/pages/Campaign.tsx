@@ -38,7 +38,14 @@ import { migrateTemplateData } from "@/components/sandbox/types";
 import { evaluateExpression, ExpressionContext } from '@/components/sandbox/expressionEngine';
 import { rollDice, formatRollResult, isDiceExpression, DiceRollResult } from '@/components/sandbox/diceEngine';
 import { WorldbuilderPanel } from "@/components/worldbuilding/WorldbuilderPanel";
-import { Globe } from "lucide-react";
+import { WorldMapViewer } from "@/components/worldbuilding/WorldMapViewer";
+import { WorldMapEditor } from "@/components/worldbuilding/WorldMapEditor";
+import { TimelineView } from "@/components/worldbuilding/TimelineView";
+import { WorldCalendar } from "@/components/worldbuilding/WorldCalendar";
+import { RelationshipGraph } from "@/components/worldbuilding/RelationshipGraph";
+import { EntitySidePanel } from "@/components/worldbuilding/EntitySidePanel";
+import { useEntitiesByCampaign, useWorldbuildingSync } from "@/lib/worldbuilding-api";
+import { Globe, Home, Calendar, Clock } from "lucide-react";
 
 // Scene Settings Form Component
 function SceneSettingsForm({ scene, onUpdateScene, onCalibrateGrid }: { scene: Scene; onUpdateScene: (settings: Partial<Scene>) => void; onCalibrateGrid?: () => void }) {
@@ -6322,6 +6329,278 @@ function NotesFolderBrowser({ campaignId, onSelectNote }: { campaignId: string; 
   );
 }
 
+type WorldBuilderSection = "home" | "encyclopedia" | "maps" | "timeline" | "calendar" | "graph";
+
+const WORLD_BUILDER_SECTIONS: { key: WorldBuilderSection; label: string; icon: React.ElementType }[] = [
+  { key: "home", label: "Home", icon: Home },
+  { key: "encyclopedia", label: "Encyclopedia", icon: BookOpen },
+  { key: "maps", label: "Maps", icon: MapIcon },
+  { key: "timeline", label: "Timeline", icon: Clock },
+  { key: "calendar", label: "Calendar", icon: Calendar },
+  { key: "graph", label: "Graph", icon: Network },
+];
+
+function renderWorldHomeContent(content: string) {
+  const lines = content.split("\n");
+  return lines.map((line, i) => {
+    if (line.startsWith("### ")) return <h3 key={i} className="text-lg font-semibold text-amber-200/90 mt-6 mb-3 flex items-center gap-2"><span className="w-6 h-px bg-amber-500/40" />{line.slice(4)}</h3>;
+    if (line.startsWith("## ")) return <h2 key={i} className="text-xl font-bold text-amber-100 mt-8 mb-3 pb-2 border-b border-amber-500/20">{line.slice(3)}</h2>;
+    if (line.startsWith("# ")) return <h1 key={i} className="text-2xl font-bold text-stone-100 mt-8 mb-4 pb-2 border-b border-amber-500/30">{line.slice(2)}</h1>;
+    if (line.startsWith("- ")) return <li key={i} className="ml-5 text-stone-300 text-sm list-disc marker:text-amber-500/50 leading-relaxed">{line.slice(2)}</li>;
+    if (line.startsWith("---")) return <div key={i} className="my-8 flex items-center gap-4"><div className="flex-1 h-px bg-gradient-to-r from-transparent via-amber-500/30 to-transparent" /><Sparkles className="h-3 w-3 text-amber-500/40" /><div className="flex-1 h-px bg-gradient-to-r from-transparent via-amber-500/30 to-transparent" /></div>;
+    if (line.trim() === "") return <div key={i} className="h-3" />;
+    const formatted = line
+      .replace(/\*\*(.+?)\*\*/g, '<strong class="text-stone-100 font-semibold">$1</strong>')
+      .replace(/\*(.+?)\*/g, '<em class="text-amber-200/70">$1</em>');
+    return <p key={i} className="text-stone-300 text-[15px] leading-[1.8]" dangerouslySetInnerHTML={{ __html: formatted }} />;
+  });
+}
+
+function FloatingWorldBuilder({
+  campaignId,
+  isGM,
+  characters,
+  open,
+  onClose,
+  zIndex = 10200,
+  onBringToFront,
+}: {
+  campaignId: string;
+  isGM: boolean;
+  characters: any[];
+  open: boolean;
+  onClose: () => void;
+  zIndex?: number;
+  onBringToFront?: () => void;
+}) {
+  const [activeSection, setActiveSection] = useState<WorldBuilderSection>("home");
+  const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
+  const [editingMapId, setEditingMapId] = useState<string | null>(null);
+  const [creatingMap, setCreatingMap] = useState(false);
+  const [selectedTimelineId, setSelectedTimelineId] = useState<string | null>(null);
+  const [homeContent, setHomeContent] = useState("");
+  const [homeEditing, setHomeEditing] = useState(false);
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  useWorldbuildingSync(campaignId);
+  const { data: entities = [] } = useEntitiesByCampaign(campaignId);
+  const { data: links = [] } = useQuery<any[]>({
+    queryKey: ["/api/campaigns", campaignId, "entity-links"],
+    queryFn: async () => {
+      const res = await fetch(`/api/campaigns/${campaignId}/entity-links`, { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!campaignId,
+  });
+
+  const { data: worldData } = useQuery<any>({
+    queryKey: ["/api/campaigns", campaignId, "world-home"],
+    queryFn: async () => {
+      const res = await fetch(`/api/worlds`, { credentials: "include" });
+      if (!res.ok) return null;
+      const worlds = await res.json();
+      const match = worlds.find((w: any) => w.campaignId === campaignId);
+      return match || null;
+    },
+    enabled: !!campaignId,
+  });
+
+  useEffect(() => {
+    if (worldData?.homeContent !== undefined) {
+      setHomeContent(worldData.homeContent || "");
+    }
+  }, [worldData]);
+
+  const saveHomeContent = async () => {
+    if (!worldData?.id) return;
+    try {
+      await fetch(`/api/worlds/${worldData.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ homeContent }),
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/campaigns", campaignId, "world-home"] });
+      setHomeEditing(false);
+      toast({ title: "Home content saved" });
+    } catch {
+      toast({ title: "Failed to save", variant: "destructive" });
+    }
+  };
+
+  const handleSelectEntity = (entityId: string) => {
+    setSelectedEntityId(entityId);
+    setActiveSection("encyclopedia");
+  };
+
+  const handleSelectTimeline = (timelineId: string | null) => {
+    setSelectedTimelineId(timelineId);
+  };
+
+  if (!open) return null;
+
+  return (
+    <FloatingPanel
+      open={open}
+      onClose={onClose}
+      title={<span className="text-amber-500">World Builder</span>}
+      zIndex={zIndex}
+      onBringToFront={onBringToFront}
+      defaultSize={{ width: 900, height: 650 }}
+      minWidth={600}
+      minHeight={400}
+    >
+      <div className="flex flex-col h-full" data-testid="floating-world-builder">
+        <div className="flex items-center gap-1 px-3 py-2 border-b border-stone-700 bg-stone-800/50 shrink-0 overflow-x-auto">
+          {WORLD_BUILDER_SECTIONS.map(({ key, label, icon: Icon }) => (
+            <button
+              key={key}
+              onClick={() => setActiveSection(key)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium whitespace-nowrap transition-colors ${
+                activeSection === key
+                  ? "bg-amber-600/20 text-amber-400 border border-amber-600/40"
+                  : "text-stone-400 hover:text-stone-200 hover:bg-stone-700"
+              }`}
+              data-testid={`worldbuilder-tab-${key}`}
+            >
+              <Icon className="h-3.5 w-3.5" />
+              {label}
+            </button>
+          ))}
+        </div>
+
+        <div className="flex-1 overflow-hidden flex">
+          <div className="flex-1 overflow-y-auto overflow-x-hidden">
+            {activeSection === "home" && (
+              <div className="p-6">
+                {worldData ? (
+                  <>
+                    <div className="mb-6">
+                      <h2 className="text-2xl font-bold text-amber-400 font-display">{worldData.name || "World"}</h2>
+                      {worldData.description && <p className="text-stone-400 text-sm mt-1">{worldData.description}</p>}
+                    </div>
+                    {isGM && !homeEditing && (
+                      <div className="flex justify-end mb-4">
+                        <Button size="sm" variant="outline" onClick={() => setHomeEditing(true)} data-testid="edit-home-btn">
+                          <Pencil className="h-3 w-3 mr-1" /> Edit
+                        </Button>
+                      </div>
+                    )}
+                    {homeEditing ? (
+                      <div className="space-y-3">
+                        <textarea
+                          value={homeContent}
+                          onChange={(e) => setHomeContent(e.target.value)}
+                          className="w-full min-h-[300px] p-3 bg-stone-800 border border-stone-700 rounded text-stone-200 text-sm font-mono"
+                          placeholder="Write your world's home page content here... (Markdown supported)"
+                          data-testid="home-content-editor"
+                        />
+                        <div className="flex gap-2">
+                          <Button size="sm" onClick={saveHomeContent} data-testid="save-home-btn">Save</Button>
+                          <Button size="sm" variant="outline" onClick={() => { setHomeEditing(false); setHomeContent(worldData.homeContent || ""); }}>Cancel</Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="prose prose-invert max-w-none">
+                        {homeContent ? renderWorldHomeContent(homeContent) : (
+                          <p className="text-stone-500 italic">No home content yet.{isGM ? " Click Edit to add content." : ""}</p>
+                        )}
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="text-center py-12 text-stone-500">
+                    <Globe className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                    <p>No world linked to this campaign yet.</p>
+                    {isGM && <p className="text-sm mt-1">Create a world in the World Builder section first.</p>}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {activeSection === "encyclopedia" && (
+              <div className="flex h-full">
+                <div className={`${selectedEntityId ? 'w-1/2 border-r border-stone-700' : 'w-full'} overflow-hidden`}>
+                  <WorldbuilderPanel
+                    campaignId={campaignId}
+                    isGM={isGM}
+                    characters={characters}
+                    onOpenEntity={(entityId) => setSelectedEntityId(entityId)}
+                  />
+                </div>
+                {selectedEntityId && (
+                  <div className="w-1/2 overflow-y-auto">
+                    <EntitySidePanel
+                      campaignId={campaignId}
+                      entityId={selectedEntityId}
+                      onClose={() => setSelectedEntityId(null)}
+                      onNavigateToEntity={(entityId) => setSelectedEntityId(entityId)}
+                      isGM={isGM}
+                      embedded={true}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+
+            {activeSection === "maps" && (
+              <div className="h-full">
+                {editingMapId || creatingMap ? (
+                  <WorldMapEditor
+                    campaignId={campaignId}
+                    mapId={editingMapId || undefined}
+                    onBack={() => { setEditingMapId(null); setCreatingMap(false); }}
+                    onMapCreated={(newId) => { setCreatingMap(false); setEditingMapId(newId); }}
+                  />
+                ) : (
+                  <WorldMapViewer
+                    campaignId={campaignId}
+                    isGM={isGM}
+                    onEditMap={(mapId) => setEditingMapId(mapId)}
+                    onCreateMap={() => setCreatingMap(true)}
+                    onNavigateToEntity={(entityId) => handleSelectEntity(entityId)}
+                  />
+                )}
+              </div>
+            )}
+
+            {activeSection === "timeline" && (
+              <div className="h-full overflow-y-auto">
+                <TimelineView
+                  campaignId={campaignId}
+                  isGM={isGM}
+                  onSelectEntity={handleSelectEntity}
+                  selectedTimelineId={selectedTimelineId}
+                  onSelectTimeline={handleSelectTimeline}
+                />
+              </div>
+            )}
+
+            {activeSection === "calendar" && (
+              <div className="h-full overflow-hidden">
+                <WorldCalendar campaignId={campaignId} isGM={isGM} />
+              </div>
+            )}
+
+            {activeSection === "graph" && (
+              <div className="h-full">
+                <RelationshipGraph
+                  entities={entities}
+                  links={links}
+                  onSelectEntity={handleSelectEntity}
+                  selectedEntityId={selectedEntityId}
+                />
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </FloatingPanel>
+  );
+}
+
 function FloatingNotesEditor({
   campaignId,
   initialNoteId,
@@ -6684,6 +6963,9 @@ export default function Campaign() {
     floatingZCounterRef.current += 1;
     setFloatingZIndices(prev => ({ ...prev, [panelKey]: floatingZCounterRef.current }));
   }, []);
+
+  // Floating world builder state
+  const [floatingWorldBuilderOpen, setFloatingWorldBuilderOpen] = useState(false);
 
   // Floating notes panel state
   const [floatingNotesOpen, setFloatingNotesOpen] = useState(false);
@@ -9231,15 +9513,8 @@ export default function Campaign() {
                 <Button
                   variant="ghost"
                   size="icon"
-                  onClick={() => {
-                    if (activeSidePanel === 'world' && !sidePanelMinimized) {
-                      setSidePanelMinimized(true);
-                    } else {
-                      setActiveSidePanel('world');
-                      setSidePanelMinimized(false);
-                    }
-                  }}
-                  className={`text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto ${activeSidePanel === 'world' && !sidePanelMinimized ? 'text-amber-400 bg-white/10' : ''}`}
+                  onClick={() => setFloatingWorldBuilderOpen(prev => !prev)}
+                  className={`text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto ${floatingWorldBuilderOpen ? 'text-amber-400 bg-white/10' : ''}`}
                   data-testid="button-panel-world"
                 >
                   <Globe className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
@@ -9250,34 +9525,6 @@ export default function Campaign() {
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
-
-          {role === 'gm' && (
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => {
-                      if (activeSidePanel === 'scene' && !sidePanelMinimized) {
-                        setSidePanelMinimized(true);
-                      } else {
-                        setActiveSidePanel('scene');
-                        setSidePanelMinimized(false);
-                      }
-                    }}
-                    className={`text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto ${activeSidePanel === 'scene' && !sidePanelMinimized ? 'text-amber-400 bg-white/10' : ''}`}
-                    data-testid="button-panel-scene"
-                  >
-                    <Grid3X3 className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="left" className="bg-stone-800 border-stone-700 text-stone-200">
-                  <p>Scene Settings</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          )}
 
           {role === 'gm' && (
             <TooltipProvider>
@@ -9316,6 +9563,34 @@ export default function Campaign() {
                 </TooltipTrigger>
                 <TooltipContent side="left" className="bg-stone-800 border-stone-700 text-stone-200">
                   <p>Map Pins</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+
+          {role === 'gm' && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => {
+                      if (activeSidePanel === 'scene' && !sidePanelMinimized) {
+                        setSidePanelMinimized(true);
+                      } else {
+                        setActiveSidePanel('scene');
+                        setSidePanelMinimized(false);
+                      }
+                    }}
+                    className={`text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto ${activeSidePanel === 'scene' && !sidePanelMinimized ? 'text-amber-400 bg-white/10' : ''}`}
+                    data-testid="button-panel-scene"
+                  >
+                    <Grid3X3 className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="left" className="bg-stone-800 border-stone-700 text-stone-200">
+                  <p>Scene Settings</p>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
@@ -9783,6 +10058,19 @@ export default function Campaign() {
         />
       ))}
 
+      {/* Floating World Builder */}
+      {floatingWorldBuilderOpen && effectiveCampaignId && (
+        <FloatingWorldBuilder
+          campaignId={effectiveCampaignId}
+          isGM={role === 'gm'}
+          characters={characters as any[]}
+          open={floatingWorldBuilderOpen}
+          onClose={() => setFloatingWorldBuilderOpen(false)}
+          zIndex={floatingZIndices['worldbuilder'] || 10200}
+          onBringToFront={() => bringToFront('worldbuilder')}
+        />
+      )}
+
       {/* Floating Notes Editor */}
       {floatingNotesOpen && effectiveCampaignId && (
         <FloatingNotesEditor
@@ -10156,186 +10444,190 @@ export default function Campaign() {
            <BattlemapDiceOverlay />
            
            {/* Map Pin Editor - GM only */}
-           {role === 'gm' && showPinEditor && (
-             <div className="absolute top-4 left-4 z-50 bg-stone-900/95 backdrop-blur border border-stone-700 rounded-lg shadow-xl p-4 w-[320px] max-h-[500px] overflow-y-auto" data-testid="pin-editor-panel">
-               <div className="flex items-center justify-between mb-3">
-                 <h3 className="text-stone-200 font-bold text-sm">Map Pins</h3>
-                 <button onClick={() => { setShowPinEditor(false); setPinPlaceMode(false); setEditingPin(null); }} className="text-stone-400 hover:text-white">
-                   <X className="h-4 w-4" />
+           {role === 'gm' && (
+             <FloatingPanel
+               open={showPinEditor}
+               onClose={() => { setShowPinEditor(false); setPinPlaceMode(false); setEditingPin(null); }}
+               title={<span className="text-amber-500">Map Pins</span>}
+               zIndex={floatingZIndices['pins'] || 10200}
+               onBringToFront={() => bringToFront('pins')}
+               defaultSize={{ width: 360, height: 500 }}
+               minWidth={300}
+               minHeight={350}
+             >
+               <div className="p-4 space-y-3" data-testid="pin-editor-panel">
+                 <button
+                   onClick={() => setPinPlaceMode(!pinPlaceMode)}
+                   className={`w-full px-3 py-2 rounded text-sm font-medium transition-colors ${pinPlaceMode ? 'bg-amber-600 text-white' : 'bg-stone-700 text-stone-300 hover:bg-stone-600'}`}
+                   data-testid="toggle-pin-place-mode"
+                 >
+                   {pinPlaceMode ? '📍 Click Map to Place Pin...' : '+ Add Pin'}
                  </button>
-               </div>
-               
-               <button
-                 onClick={() => setPinPlaceMode(!pinPlaceMode)}
-                 className={`w-full mb-3 px-3 py-2 rounded text-sm font-medium transition-colors ${pinPlaceMode ? 'bg-amber-600 text-white' : 'bg-stone-700 text-stone-300 hover:bg-stone-600'}`}
-                 data-testid="toggle-pin-place-mode"
-               >
-                 {pinPlaceMode ? '📍 Click Map to Place Pin...' : '+ Add Pin'}
-               </button>
-               
-               {editingPin && (
-                 <div className="bg-stone-800 rounded-lg p-3 mb-3 border border-stone-600">
-                   <h4 className="text-stone-300 text-xs font-bold mb-2">{editingPin.isNew ? 'New Pin' : 'Edit Pin'}</h4>
-                   
-                   <label className="block text-stone-400 text-xs mb-1">Label</label>
-                   <input
-                     type="text"
-                     value={editingPin.label || ''}
-                     onChange={(e) => setEditingPin({ ...editingPin, label: e.target.value })}
-                     className="w-full px-2 py-1 rounded bg-stone-700 text-stone-200 text-sm border border-stone-600 mb-2"
-                     placeholder="Pin label..."
-                     data-testid="pin-label-input"
-                   />
-                   
-                   <label className="block text-stone-400 text-xs mb-1">Type</label>
-                   <select
-                     value={editingPin.pinType}
-                     onChange={(e) => setEditingPin({ ...editingPin, pinType: e.target.value })}
-                     className="w-full px-2 py-1 rounded bg-stone-700 text-stone-200 text-sm border border-stone-600 mb-2"
-                     data-testid="pin-type-select"
-                   >
-                     <option value="text_bubble">💬 Text Bubble</option>
-                     <option value="scene_link">🗺️ Scene Link</option>
-                     <option value="camera_zoom">🔍 Camera Zoom</option>
-                   </select>
-                   
-                   <label className="block text-stone-400 text-xs mb-1">Color</label>
-                   <input
-                     type="color"
-                     value={editingPin.color || '#e74c3c'}
-                     onChange={(e) => setEditingPin({ ...editingPin, color: e.target.value })}
-                     className="w-12 h-8 rounded border border-stone-600 mb-2 cursor-pointer"
-                     data-testid="pin-color-input"
-                   />
-                   
-                   {editingPin.pinType === 'text_bubble' && (
-                     <>
-                       <label className="block text-stone-400 text-xs mb-1">Text Content</label>
-                       <textarea
-                         value={editingPin.textContent || ''}
-                         onChange={(e) => setEditingPin({ ...editingPin, textContent: e.target.value })}
-                         className="w-full px-2 py-1 rounded bg-stone-700 text-stone-200 text-sm border border-stone-600 mb-2 min-h-[80px]"
-                         placeholder="Enter text to show when pin is clicked..."
-                         data-testid="pin-text-input"
-                       />
-                     </>
-                   )}
-                   
-                   {editingPin.pinType === 'scene_link' && (
-                     <>
-                       <label className="block text-stone-400 text-xs mb-1">Target Scene</label>
-                       <select
-                         value={editingPin.targetSceneId || ''}
-                         onChange={(e) => setEditingPin({ ...editingPin, targetSceneId: e.target.value || null })}
-                         className="w-full px-2 py-1 rounded bg-stone-700 text-stone-200 text-sm border border-stone-600 mb-2"
-                         data-testid="pin-scene-select"
-                       >
-                         <option value="">Select a scene...</option>
-                         {(allScenes as any[] || []).filter((s: any) => s.id !== activeScene?.id).map((s: any) => (
-                           <option key={s.id} value={s.id}>{s.name}</option>
-                         ))}
-                       </select>
-                     </>
-                   )}
-                   
-                   {editingPin.pinType === 'camera_zoom' && (
-                     <>
-                       <p className="text-stone-400 text-xs mb-2">
-                         Position your camera where you want players to zoom to, then click "Capture Camera".
-                       </p>
-                       <button
-                         onClick={() => {
-                           if (lastViewStateRef.current) {
-                             setEditingPin({
-                               ...editingPin,
-                               cameraX: Math.round(lastViewStateRef.current.x),
-                               cameraY: Math.round(lastViewStateRef.current.y),
-                               cameraZoom: Math.round(lastViewStateRef.current.zoom * 100) / 100,
-                             });
-                             toast({ title: 'Camera position captured!' });
-                           }
-                         }}
-                         className="w-full px-3 py-2 rounded bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium mb-2"
-                         data-testid="capture-camera-btn"
-                       >
-                         📸 Capture Current Camera Position
-                       </button>
-                       {editingPin.cameraX != null && (
-                         <p className="text-stone-500 text-xs">
-                           Saved: ({editingPin.cameraX}, {editingPin.cameraY}) zoom: {editingPin.cameraZoom}x
-                         </p>
-                       )}
-                     </>
-                   )}
-                   
-                   <div className="flex gap-2 mt-3">
-                     <button
-                       onClick={() => {
-                         const pinData = {
-                           x: editingPin.x,
-                           y: editingPin.y,
-                           pinType: editingPin.pinType,
-                           label: editingPin.label,
-                           color: editingPin.color,
-                           textContent: editingPin.textContent,
-                           targetSceneId: editingPin.targetSceneId,
-                           cameraX: editingPin.cameraX,
-                           cameraY: editingPin.cameraY,
-                           cameraZoom: editingPin.cameraZoom,
-                         };
-                         if (editingPin.isNew) {
-                           createPinMutation.mutate(pinData);
-                         } else {
-                           updatePinMutation.mutate({ pinId: editingPin.id, data: pinData });
-                         }
-                         setEditingPin(null);
-                       }}
-                       className="flex-1 px-3 py-1.5 rounded bg-green-600 hover:bg-green-500 text-white text-sm font-medium"
-                       data-testid="save-pin-btn"
+                 
+                 {editingPin && (
+                   <div className="bg-stone-800 rounded-lg p-3 border border-stone-600">
+                     <h4 className="text-stone-300 text-xs font-bold mb-2">{editingPin.isNew ? 'New Pin' : 'Edit Pin'}</h4>
+                     
+                     <label className="block text-stone-400 text-xs mb-1">Label</label>
+                     <input
+                       type="text"
+                       value={editingPin.label || ''}
+                       onChange={(e) => setEditingPin({ ...editingPin, label: e.target.value })}
+                       className="w-full px-2 py-1 rounded bg-stone-700 text-stone-200 text-sm border border-stone-600 mb-2"
+                       placeholder="Pin label..."
+                       data-testid="pin-label-input"
+                     />
+                     
+                     <label className="block text-stone-400 text-xs mb-1">Type</label>
+                     <select
+                       value={editingPin.pinType}
+                       onChange={(e) => setEditingPin({ ...editingPin, pinType: e.target.value })}
+                       className="w-full px-2 py-1 rounded bg-stone-700 text-stone-200 text-sm border border-stone-600 mb-2"
+                       data-testid="pin-type-select"
                      >
-                       Save
-                     </button>
-                     {!editingPin.isNew && (
-                       <button
-                         onClick={() => {
-                           deletePinMutation.mutate(editingPin.id);
-                         }}
-                         className="px-3 py-1.5 rounded bg-red-600 hover:bg-red-500 text-white text-sm font-medium"
-                         data-testid="delete-pin-btn"
-                       >
-                         Delete
-                       </button>
+                       <option value="text_bubble">💬 Text Bubble</option>
+                       <option value="scene_link">🗺️ Scene Link</option>
+                       <option value="camera_zoom">🔍 Camera Zoom</option>
+                     </select>
+                     
+                     <label className="block text-stone-400 text-xs mb-1">Color</label>
+                     <input
+                       type="color"
+                       value={editingPin.color || '#e74c3c'}
+                       onChange={(e) => setEditingPin({ ...editingPin, color: e.target.value })}
+                       className="w-12 h-8 rounded border border-stone-600 mb-2 cursor-pointer"
+                       data-testid="pin-color-input"
+                     />
+                     
+                     {editingPin.pinType === 'text_bubble' && (
+                       <>
+                         <label className="block text-stone-400 text-xs mb-1">Text Content</label>
+                         <textarea
+                           value={editingPin.textContent || ''}
+                           onChange={(e) => setEditingPin({ ...editingPin, textContent: e.target.value })}
+                           className="w-full px-2 py-1 rounded bg-stone-700 text-stone-200 text-sm border border-stone-600 mb-2 min-h-[80px]"
+                           placeholder="Enter text to show when pin is clicked..."
+                           data-testid="pin-text-input"
+                         />
+                       </>
                      )}
-                     <button
-                       onClick={() => setEditingPin(null)}
-                       className="px-3 py-1.5 rounded bg-stone-700 hover:bg-stone-600 text-stone-300 text-sm"
-                     >
-                       Cancel
-                     </button>
+                     
+                     {editingPin.pinType === 'scene_link' && (
+                       <>
+                         <label className="block text-stone-400 text-xs mb-1">Target Scene</label>
+                         <select
+                           value={editingPin.targetSceneId || ''}
+                           onChange={(e) => setEditingPin({ ...editingPin, targetSceneId: e.target.value || null })}
+                           className="w-full px-2 py-1 rounded bg-stone-700 text-stone-200 text-sm border border-stone-600 mb-2"
+                           data-testid="pin-scene-select"
+                         >
+                           <option value="">Select a scene...</option>
+                           {(allScenes as any[] || []).filter((s: any) => s.id !== activeScene?.id).map((s: any) => (
+                             <option key={s.id} value={s.id}>{s.name}</option>
+                           ))}
+                         </select>
+                       </>
+                     )}
+                     
+                     {editingPin.pinType === 'camera_zoom' && (
+                       <>
+                         <p className="text-stone-400 text-xs mb-2">
+                           Position your camera where you want players to zoom to, then click "Capture Camera".
+                         </p>
+                         <button
+                           onClick={() => {
+                             if (lastViewStateRef.current) {
+                               setEditingPin({
+                                 ...editingPin,
+                                 cameraX: Math.round(lastViewStateRef.current.x),
+                                 cameraY: Math.round(lastViewStateRef.current.y),
+                                 cameraZoom: Math.round(lastViewStateRef.current.zoom * 100) / 100,
+                               });
+                               toast({ title: 'Camera position captured!' });
+                             }
+                           }}
+                           className="w-full px-3 py-2 rounded bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium mb-2"
+                           data-testid="capture-camera-btn"
+                         >
+                           📸 Capture Current Camera Position
+                         </button>
+                         {editingPin.cameraX != null && (
+                           <p className="text-stone-500 text-xs">
+                             Saved: ({editingPin.cameraX}, {editingPin.cameraY}) zoom: {editingPin.cameraZoom}x
+                           </p>
+                         )}
+                       </>
+                     )}
+                     
+                     <div className="flex gap-2 mt-3">
+                       <button
+                         onClick={() => {
+                           const pinData = {
+                             x: editingPin.x,
+                             y: editingPin.y,
+                             pinType: editingPin.pinType,
+                             label: editingPin.label,
+                             color: editingPin.color,
+                             textContent: editingPin.textContent,
+                             targetSceneId: editingPin.targetSceneId,
+                             cameraX: editingPin.cameraX,
+                             cameraY: editingPin.cameraY,
+                             cameraZoom: editingPin.cameraZoom,
+                           };
+                           if (editingPin.isNew) {
+                             createPinMutation.mutate(pinData);
+                           } else {
+                             updatePinMutation.mutate({ pinId: editingPin.id, data: pinData });
+                           }
+                           setEditingPin(null);
+                         }}
+                         className="flex-1 px-3 py-1.5 rounded bg-green-600 hover:bg-green-500 text-white text-sm font-medium"
+                         data-testid="save-pin-btn"
+                       >
+                         Save
+                       </button>
+                       {!editingPin.isNew && (
+                         <button
+                           onClick={() => {
+                             deletePinMutation.mutate(editingPin.id);
+                           }}
+                           className="px-3 py-1.5 rounded bg-red-600 hover:bg-red-500 text-white text-sm font-medium"
+                           data-testid="delete-pin-btn"
+                         >
+                           Delete
+                         </button>
+                       )}
+                       <button
+                         onClick={() => setEditingPin(null)}
+                         className="px-3 py-1.5 rounded bg-stone-700 hover:bg-stone-600 text-stone-300 text-sm"
+                       >
+                         Cancel
+                       </button>
+                     </div>
                    </div>
-                 </div>
-               )}
-               
-               <div className="space-y-1">
-                 {(mapPins as any[]).map((pin: any) => (
-                   <div
-                     key={pin.id}
-                     className={`flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer hover:bg-stone-700 text-sm ${editingPin?.id === pin.id ? 'bg-stone-700' : 'bg-stone-800'}`}
-                     onClick={() => setEditingPin(pin)}
-                     data-testid={`pin-list-item-${pin.id}`}
-                   >
-                     <div className="w-4 h-4 rounded-full flex-shrink-0" style={{ backgroundColor: pin.color || '#e74c3c' }} />
-                     <span className="text-stone-300 truncate flex-1">{pin.label || 'Unnamed Pin'}</span>
-                     <span className="text-stone-500 text-xs">
-                       {pin.pinType === 'text_bubble' ? '💬' : pin.pinType === 'scene_link' ? '🗺️' : '🔍'}
-                     </span>
-                   </div>
-                 ))}
-                 {(mapPins as any[]).length === 0 && (
-                   <p className="text-stone-500 text-xs text-center py-2">No pins yet. Click "Add Pin" to create one.</p>
                  )}
+                 
+                 <div className="space-y-1">
+                   {(mapPins as any[]).map((pin: any) => (
+                     <div
+                       key={pin.id}
+                       className={`flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer hover:bg-stone-700 text-sm ${editingPin?.id === pin.id ? 'bg-stone-700' : 'bg-stone-800'}`}
+                       onClick={() => setEditingPin(pin)}
+                       data-testid={`pin-list-item-${pin.id}`}
+                     >
+                       <div className="w-4 h-4 rounded-full flex-shrink-0" style={{ backgroundColor: pin.color || '#e74c3c' }} />
+                       <span className="text-stone-300 truncate flex-1">{pin.label || 'Unnamed Pin'}</span>
+                       <span className="text-stone-500 text-xs">
+                         {pin.pinType === 'text_bubble' ? '💬' : pin.pinType === 'scene_link' ? '🗺️' : '🔍'}
+                       </span>
+                     </div>
+                   ))}
+                   {(mapPins as any[]).length === 0 && (
+                     <p className="text-stone-500 text-xs text-center py-2">No pins yet. Click "Add Pin" to create one.</p>
+                   )}
+                 </div>
                </div>
-             </div>
+             </FloatingPanel>
            )}
            
            <SelectionModeButtons
