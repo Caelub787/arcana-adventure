@@ -12,6 +12,7 @@ interface RollEntry {
   ownerType: string;
   ownerId: string;
   name: string;
+  description?: string;
   rollType: string;
   diceFormula?: string;
   mod?: number;
@@ -79,6 +80,7 @@ function emptyFormData(ownerType: string, ownerId: string): Partial<RollEntry> {
     ownerType,
     ownerId,
     name: "",
+    description: "",
     rollType: "damage",
     diceFormula: "",
     mod: 0,
@@ -336,6 +338,18 @@ function RollForm({
           onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
           placeholder="Roll name"
           data-testid={`input-${prefix}-name`}
+        />
+      </div>
+
+      <div>
+        <Label className="text-xs text-stone-400">Description</Label>
+        <textarea
+          className="w-full bg-stone-900 border border-stone-600 rounded-md px-3 py-1.5 text-xs text-stone-200 placeholder:text-stone-500 resize-none focus:outline-none focus:ring-1 focus:ring-amber-500/50"
+          value={form.description || ""}
+          onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+          placeholder="Optional description of what this roll does..."
+          rows={2}
+          data-testid={`input-${prefix}-description`}
         />
       </div>
 
@@ -1002,6 +1016,9 @@ export function RollEntriesEditor({ ownerType, ownerId, canEdit, onExecuteRoll, 
 
                 {isExpanded && (
                   <div className="mt-1.5 pl-5 space-y-0.5">
+                    {roll.description && (
+                      <p className="text-[11px] text-stone-300/80 italic mb-1" data-testid={`text-roll-description-${roll.id}`}>{roll.description}</p>
+                    )}
                     <p className="text-xs text-stone-300" data-testid={`text-roll-summary-${roll.id}`}>{summary}</p>
                     {details.map((d, i) => (
                       <p key={i} className="text-[10px] text-stone-400" data-testid={`text-roll-detail-${roll.id}-${i}`}>{d}</p>

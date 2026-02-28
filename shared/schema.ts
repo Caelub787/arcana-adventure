@@ -1254,6 +1254,7 @@ export const rollEntries = pgTable("roll_entries", {
   ownerType: text("owner_type").notNull(), // "item" or "spell"
   ownerId: varchar("owner_id").notNull(), // references items.id or spells.id
   name: text("name").notNull(), // e.g. "Attack Roll", "Damage Roll", "Heal"
+  description: text("description"), // optional description explaining what this roll does
   rollType: text("roll_type").notNull(), // "attack", "damage", "heal", "effect"
   diceFormula: text("dice_formula"), // e.g. "1d20", "2d6+3", "1d8"
   mod: integer("mod").default(0),

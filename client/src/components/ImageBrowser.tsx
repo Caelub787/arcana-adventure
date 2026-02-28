@@ -196,6 +196,7 @@ export function ImageBrowser({ open, onOpenChange, onSelect, title = "Browse Ima
         data-image-browser-content="true"
         onMouseDown={(e) => e.stopPropagation()}
         onClick={(e) => e.stopPropagation()}
+        onWheel={(e) => e.stopPropagation()}
         onFocusCapture={(e) => e.stopPropagation()}
         onBlurCapture={(e) => e.stopPropagation()}
       >
@@ -286,7 +287,7 @@ export function ImageBrowser({ open, onOpenChange, onSelect, title = "Browse Ima
 
           <div
             className="flex-1 min-h-0 overflow-y-auto overscroll-contain"
-            style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}
+            style={{ WebkitOverflowScrolling: 'touch' }}
             onTouchMove={(e) => e.stopPropagation()}
           >
             {isLoading ? (
