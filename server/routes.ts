@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertUserSchema, insertCampaignSchema, insertCharacterSchema, insertTokenSchema, insertChatMessageSchema, insertSceneSchema, insertHotbarSchema, insertItemSchema, insertSpellSchema, initiativeEntries, insertTokenEffectSchema, insertTokenActiveEffectSchema, rollEntries, insertRollEntrySchema, items, sceneVisionZones, insertEntitySchema, insertEntityLinkSchema, insertWorldMapSchema, insertWorldMapPinSchema, insertWorldCalendarSchema, insertWorldTimelineEventSchema, insertWorldTimelineSchema, insertWorldSchema, insertWorldCalendarSyncSchema } from "@shared/schema";
+import { insertUserSchema, insertCampaignSchema, insertCharacterSchema, insertTokenSchema, insertChatMessageSchema, insertSceneSchema, insertHotbarSchema, insertItemSchema, insertSpellSchema, initiativeEntries, insertTokenEffectSchema, insertTokenActiveEffectSchema, rollEntries, insertRollEntrySchema, items, sceneVisionZones, insertEntitySchema, insertEntityLinkSchema, insertWorldMapSchema, insertWorldMapPinSchema, insertWorldCalendarSchema, insertWorldTimelineEventSchema, insertWorldTimelineSchema, insertWorldSchema, insertWorldCalendarSyncSchema, insertCampaignMapPinSchema, insertShopItemSchema } from "@shared/schema";
 import bcrypt from "bcryptjs";
 import { WebSocketServer } from "ws";
 import { sendPasswordResetEmail } from "./email";
@@ -3795,8 +3795,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Check if this scene is linked by a map pin on the active scene
         let hasMapPinAccess = false;
         if (campaign.activeSceneId) {
-          const pins = await storage.getSceneMapPins(campaign.activeSceneId);
-          hasMapPinAccess = pins.some(p => p.pinType === 'scene_link' && p.targetSceneId === scene.id);
+          hasMapPinAccess = false;
         }
         if (!hasMapPinAccess) {
           return res.status(403).json({ error: "Only the GM can view non-active scenes" });
@@ -7537,76 +7536,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // ========== Scene Map Pins ==========
-  
-  app.get("/api/scenes/:sceneId/map-pins", requireAuth, async (req, res) => {
-    try {
-      const pins = await storage.getSceneMapPins(req.params.sceneId);
-      res.json(pins);
-    } catch (e) {
-      res.status(500).json({ error: "Failed to get map pins" });
-    }
-  });
-
-  app.post("/api/scenes/:sceneId/map-pins", requireAuth, async (req, res) => {
-    try {
-      const scene = await storage.getScene(req.params.sceneId);
-      if (!scene) return res.status(404).json({ error: "Scene not found" });
-      
-      const pin = await storage.createSceneMapPin({
-        ...req.body,
-        sceneId: req.params.sceneId,
-        campaignId: scene.campaignId,
-      });
-      
-      broadcastToCampaign(scene.campaignId, {
-        type: 'map_pin_created',
-        sceneId: req.params.sceneId,
-        pin,
-      });
-      
-      res.json(pin);
-    } catch (e) {
-      res.status(500).json({ error: "Failed to create map pin" });
-    }
-  });
-
-  app.patch("/api/scene-map-pins/:pinId", requireAuth, async (req, res) => {
-    try {
-      const pin = await storage.updateSceneMapPin(req.params.pinId, req.body);
-      if (!pin) return res.status(404).json({ error: "Pin not found" });
-      
-      broadcastToCampaign(pin.campaignId, {
-        type: 'map_pin_updated',
-        sceneId: pin.sceneId,
-        pin,
-      });
-      
-      res.json(pin);
-    } catch (e) {
-      res.status(500).json({ error: "Failed to update map pin" });
-    }
-  });
-
-  app.delete("/api/scene-map-pins/:pinId", requireAuth, async (req, res) => {
-    try {
-      const pin = await storage.getSceneMapPin(req.params.pinId);
-      if (!pin) return res.status(404).json({ error: "Pin not found" });
-      
-      await storage.deleteSceneMapPin(req.params.pinId);
-      
-      broadcastToCampaign(pin.campaignId, {
-        type: 'map_pin_deleted',
-        sceneId: pin.sceneId,
-        pinId: req.params.pinId,
-      });
-      
-      res.json({ success: true });
-    } catch (e) {
-      res.status(500).json({ error: "Failed to delete map pin" });
-    }
-  });
-
   // Scene Vision Zones CRUD
   app.get("/api/scenes/:sceneId/vision-zones", requireAuth, async (req, res) => {
     const zones = await storage.getSceneVisionZones(req.params.sceneId);
@@ -10796,6 +10725,428 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (e) {
       console.error("Failed to delete timeline:", e);
       res.status(500).json({ error: "Failed to delete timeline" });
+    }
+  });
+
+  // ============ CAMPAIGN MAP PINS ============
+
+  app.get("/api/campaigns/:campaignId/scenes/:sceneId/map-pins", requireAuth, async (req, res) => {
+    try {
+      const campaign = await storage.getCampaign(req.params.campaignId);
+      if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+
+      const membership = await storage.getCampaignMembership(req.session.userId!, req.params.campaignId);
+      const isGM = campaign.gmUserId === req.session.userId!;
+      if (!isGM && !membership) return res.status(403).json({ error: "Not a member of this campaign" });
+
+      const pins = await storage.getCampaignMapPins(req.params.sceneId);
+      res.json(pins);
+    } catch (err) {
+      console.error("Failed to get map pins:", err);
+      res.status(500).json({ error: "Failed to get map pins" });
+    }
+  });
+
+  app.post("/api/campaigns/:campaignId/scenes/:sceneId/map-pins", requireAuth, async (req, res) => {
+    try {
+      const campaign = await storage.getCampaign(req.params.campaignId);
+      if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+
+      const isGM = await hasGmAccess(req.session.userId!, req.params.campaignId, campaign.gmUserId);
+      if (!isGM) return res.status(403).json({ error: "Only the GM can create map pins" });
+
+      const parsed = insertCampaignMapPinSchema.parse({
+        ...req.body,
+        sceneId: req.params.sceneId,
+        campaignId: req.params.campaignId,
+      });
+      const result = await storage.createCampaignMapPin(parsed);
+
+      broadcastToCampaign(req.params.campaignId, { type: "campaign_map_pin_created", pin: result });
+      res.status(201).json(result);
+    } catch (err) {
+      console.error("Failed to create map pin:", err);
+      res.status(400).json({ error: "Failed to create map pin" });
+    }
+  });
+
+  app.patch("/api/campaign-map-pins/:pinId", requireAuth, async (req, res) => {
+    try {
+      const pin = await storage.getCampaignMapPin(req.params.pinId);
+      if (!pin) return res.status(404).json({ error: "Map pin not found" });
+
+      const campaign = await storage.getCampaign(pin.campaignId);
+      if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+
+      const isGM = await hasGmAccess(req.session.userId!, pin.campaignId, campaign.gmUserId);
+      if (!isGM) return res.status(403).json({ error: "Only the GM can update map pins" });
+
+      const result = await storage.updateCampaignMapPin(req.params.pinId, req.body);
+      broadcastToCampaign(pin.campaignId, { type: "campaign_map_pin_updated", pin: result });
+      res.json(result);
+    } catch (err) {
+      console.error("Failed to update map pin:", err);
+      res.status(500).json({ error: "Failed to update map pin" });
+    }
+  });
+
+  app.delete("/api/campaign-map-pins/:pinId", requireAuth, async (req, res) => {
+    try {
+      const pin = await storage.getCampaignMapPin(req.params.pinId);
+      if (!pin) return res.status(404).json({ error: "Map pin not found" });
+
+      const campaign = await storage.getCampaign(pin.campaignId);
+      if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+
+      const isGM = await hasGmAccess(req.session.userId!, pin.campaignId, campaign.gmUserId);
+      if (!isGM) return res.status(403).json({ error: "Only the GM can delete map pins" });
+
+      await storage.deleteCampaignMapPin(req.params.pinId);
+      broadcastToCampaign(pin.campaignId, { type: "campaign_map_pin_deleted", pinId: req.params.pinId });
+      res.json({ success: true });
+    } catch (err) {
+      console.error("Failed to delete map pin:", err);
+      res.status(500).json({ error: "Failed to delete map pin" });
+    }
+  });
+
+  // ============ SHOP ITEMS ============
+
+  app.get("/api/campaign-map-pins/:pinId/shop-items", requireAuth, async (req, res) => {
+    try {
+      const pin = await storage.getCampaignMapPin(req.params.pinId);
+      if (!pin) return res.status(404).json({ error: "Map pin not found" });
+
+      const campaign = await storage.getCampaign(pin.campaignId);
+      if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+
+      const membership = await storage.getCampaignMembership(req.session.userId!, pin.campaignId);
+      const isGM = campaign.gmUserId === req.session.userId!;
+      if (!isGM && !membership) return res.status(403).json({ error: "Not a member of this campaign" });
+
+      const shopItemsList = await storage.getShopItems(req.params.pinId);
+      res.json(shopItemsList);
+    } catch (err) {
+      console.error("Failed to get shop items:", err);
+      res.status(500).json({ error: "Failed to get shop items" });
+    }
+  });
+
+  app.post("/api/campaign-map-pins/:pinId/shop-items", requireAuth, async (req, res) => {
+    try {
+      const pin = await storage.getCampaignMapPin(req.params.pinId);
+      if (!pin) return res.status(404).json({ error: "Map pin not found" });
+
+      const campaign = await storage.getCampaign(pin.campaignId);
+      if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+
+      const isGM = await hasGmAccess(req.session.userId!, pin.campaignId, campaign.gmUserId);
+      if (!isGM) return res.status(403).json({ error: "Only the GM can create shop items" });
+
+      const parsed = insertShopItemSchema.parse({
+        ...req.body,
+        pinId: req.params.pinId,
+      });
+      const result = await storage.createShopItem(parsed);
+      res.status(201).json(result);
+    } catch (err) {
+      console.error("Failed to create shop item:", err);
+      res.status(400).json({ error: "Failed to create shop item" });
+    }
+  });
+
+  app.patch("/api/shop-items/:itemId", requireAuth, async (req, res) => {
+    try {
+      const shopItem = await storage.getShopItem(req.params.itemId);
+      if (!shopItem) return res.status(404).json({ error: "Shop item not found" });
+
+      const pin = await storage.getCampaignMapPin(shopItem.pinId);
+      if (!pin) return res.status(404).json({ error: "Map pin not found" });
+
+      const campaign = await storage.getCampaign(pin.campaignId);
+      if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+
+      const isGM = await hasGmAccess(req.session.userId!, pin.campaignId, campaign.gmUserId);
+      if (!isGM) return res.status(403).json({ error: "Only the GM can update shop items" });
+
+      const result = await storage.updateShopItem(req.params.itemId, req.body);
+      res.json(result);
+    } catch (err) {
+      console.error("Failed to update shop item:", err);
+      res.status(500).json({ error: "Failed to update shop item" });
+    }
+  });
+
+  app.delete("/api/shop-items/:itemId", requireAuth, async (req, res) => {
+    try {
+      const shopItem = await storage.getShopItem(req.params.itemId);
+      if (!shopItem) return res.status(404).json({ error: "Shop item not found" });
+
+      const pin = await storage.getCampaignMapPin(shopItem.pinId);
+      if (!pin) return res.status(404).json({ error: "Map pin not found" });
+
+      const campaign = await storage.getCampaign(pin.campaignId);
+      if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+
+      const isGM = await hasGmAccess(req.session.userId!, pin.campaignId, campaign.gmUserId);
+      if (!isGM) return res.status(403).json({ error: "Only the GM can delete shop items" });
+
+      await storage.deleteShopItem(req.params.itemId);
+      res.json({ success: true });
+    } catch (err) {
+      console.error("Failed to delete shop item:", err);
+      res.status(500).json({ error: "Failed to delete shop item" });
+    }
+  });
+
+  app.post("/api/campaign-map-pins/:pinId/buy", requireAuth, async (req, res) => {
+    try {
+      const { shopItemId, characterId } = req.body;
+      if (!shopItemId || !characterId) return res.status(400).json({ error: "shopItemId and characterId are required" });
+
+      const pin = await storage.getCampaignMapPin(req.params.pinId);
+      if (!pin) return res.status(404).json({ error: "Map pin not found" });
+
+      const campaign = await storage.getCampaign(pin.campaignId);
+      if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+
+      const character = await storage.getCharacter(characterId);
+      if (!character) return res.status(404).json({ error: "Character not found" });
+
+      const isGM = await hasGmAccess(req.session.userId!, pin.campaignId, campaign.gmUserId);
+      if (character.userId !== req.session.userId! && !isGM) {
+        return res.status(403).json({ error: "Character does not belong to you" });
+      }
+
+      const shopItem = await storage.getShopItem(shopItemId);
+      if (!shopItem) return res.status(404).json({ error: "Shop item not found" });
+      if (shopItem.pinId !== req.params.pinId) return res.status(400).json({ error: "Shop item does not belong to this pin" });
+
+      if (shopItem.quantity === 0) return res.status(400).json({ error: "Item is out of stock" });
+
+      const currencyToCopper: Record<string, number> = { platinum: 1000, gold: 100, silver: 10, copper: 1 };
+      const totalCostCopper = shopItem.price * (currencyToCopper[shopItem.currency] || 1);
+
+      const characterItems = await storage.getItemsByCharacter(characterId);
+      const currencyItems = characterItems.filter(i => i.itemType === 'currency');
+
+      let totalCopperHeld = 0;
+      for (const ci of currencyItems) {
+        const rate = currencyToCopper[ci.currency] || 1;
+        totalCopperHeld += ci.quantity * rate;
+      }
+
+      if (totalCopperHeld < totalCostCopper) {
+        return res.status(400).json({ error: "Insufficient funds", required: totalCostCopper, available: totalCopperHeld });
+      }
+
+      let remaining = totalCostCopper;
+      const sortOrder = ['copper', 'silver', 'gold', 'platinum'];
+      const sortedCurrency = [...currencyItems].sort((a, b) => sortOrder.indexOf(a.currency) - sortOrder.indexOf(b.currency));
+
+      for (const ci of sortedCurrency) {
+        if (remaining <= 0) break;
+        const rate = currencyToCopper[ci.currency] || 1;
+        const itemValueCopper = ci.quantity * rate;
+
+        if (itemValueCopper <= remaining) {
+          remaining -= itemValueCopper;
+          await storage.deleteItem(ci.id);
+        } else {
+          const unitsNeeded = Math.ceil(remaining / rate);
+          const changeCopper = (unitsNeeded * rate) - remaining;
+          remaining = 0;
+
+          if (ci.quantity - unitsNeeded > 0) {
+            await storage.updateItem(ci.id, { quantity: ci.quantity - unitsNeeded });
+          } else {
+            await storage.deleteItem(ci.id);
+          }
+
+          if (changeCopper > 0) {
+            let changeCopperLeft = changeCopper;
+            for (const denom of ['platinum', 'gold', 'silver', 'copper'] as const) {
+              const denomRate = currencyToCopper[denom];
+              if (changeCopperLeft >= denomRate) {
+                const count = Math.floor(changeCopperLeft / denomRate);
+                changeCopperLeft -= count * denomRate;
+                await storage.createItem({
+                  characterId,
+                  name: denom.charAt(0).toUpperCase() + denom.slice(1),
+                  itemType: 'currency',
+                  currency: denom,
+                  quantity: count,
+                  price: 1,
+                  rarity: 'common',
+                  durability: 10,
+                  isEquipped: false,
+                  isContainer: false,
+                  isHeavy: false,
+                  rulesVisible: true,
+                  breakChance: 0,
+                  itemWeight: 0,
+                  priceCopper: 0,
+                  priceSilver: 0,
+                  priceGold: 0,
+                  pricePlatinum: 0,
+                  isArchived: false,
+                  isDamaging: false,
+                  isDetonatable: false,
+                  canApplyEffects: false,
+                  grantsDcBonus: false,
+                  dcBonusValue: 0,
+                  isTemplate: false,
+                } as any);
+              }
+            }
+          }
+        }
+      }
+
+      const itemData = (shopItem.itemData || {}) as Record<string, any>;
+      const newItem = await storage.createItem({
+        characterId,
+        name: itemData.name || shopItem.name,
+        description: itemData.description || shopItem.description || '',
+        image: itemData.image || shopItem.image,
+        itemType: itemData.itemType || shopItem.itemType || 'utility',
+        quantity: 1,
+        price: shopItem.price,
+        currency: shopItem.currency,
+        rarity: itemData.rarity || 'common',
+        durability: itemData.durability ?? 10,
+        damage: itemData.damage,
+        damageType: itemData.damageType,
+        mod: itemData.mod ?? 0,
+        range: itemData.range,
+        aoe: itemData.aoe,
+        attribute: itemData.attribute,
+        size: itemData.size,
+        isHeavy: itemData.isHeavy ?? false,
+        isEquipped: false,
+        isContainer: itemData.isContainer ?? false,
+        carryCapacity: itemData.carryCapacity ?? 0,
+        armorSlot: itemData.armorSlot,
+        armorBonus: itemData.armorBonus ?? 0,
+        damageReduction: itemData.damageReduction ?? 0,
+        damageReductionType: itemData.damageReductionType,
+        rulesVisible: true,
+        breakChance: itemData.breakChance ?? 10,
+        itemWeight: itemData.itemWeight ?? 0,
+        priceCopper: 0,
+        priceSilver: 0,
+        priceGold: 0,
+        pricePlatinum: 0,
+        isArchived: false,
+        isDamaging: itemData.isDamaging ?? false,
+        isDetonatable: itemData.isDetonatable ?? false,
+        canApplyEffects: itemData.canApplyEffects ?? false,
+        grantsDcBonus: itemData.grantsDcBonus ?? false,
+        dcBonusValue: itemData.dcBonusValue ?? 0,
+        isTemplate: false,
+      } as any);
+
+      if (shopItem.quantity > 0) {
+        await storage.updateShopItem(shopItemId, { quantity: shopItem.quantity - 1 });
+      }
+
+      res.json({ success: true, item: newItem });
+    } catch (err) {
+      console.error("Failed to buy item:", err);
+      res.status(500).json({ error: "Failed to buy item" });
+    }
+  });
+
+  app.post("/api/campaign-map-pins/:pinId/sell", requireAuth, async (req, res) => {
+    try {
+      const { characterId, itemId, sellPercentage } = req.body;
+      if (!characterId || !itemId || sellPercentage == null) {
+        return res.status(400).json({ error: "characterId, itemId, and sellPercentage are required" });
+      }
+
+      const pin = await storage.getCampaignMapPin(req.params.pinId);
+      if (!pin) return res.status(404).json({ error: "Map pin not found" });
+
+      const campaign = await storage.getCampaign(pin.campaignId);
+      if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+
+      const character = await storage.getCharacter(characterId);
+      if (!character) return res.status(404).json({ error: "Character not found" });
+
+      const isGM = await hasGmAccess(req.session.userId!, pin.campaignId, campaign.gmUserId);
+      if (character.userId !== req.session.userId! && !isGM) {
+        return res.status(403).json({ error: "Character does not belong to you" });
+      }
+
+      const item = await storage.getItem(itemId);
+      if (!item || item.characterId !== characterId) {
+        return res.status(404).json({ error: "Item not found in character inventory" });
+      }
+
+      const currencyToCopper: Record<string, number> = { platinum: 1000, gold: 100, silver: 10, copper: 1 };
+      const itemValueCopper = item.price * (currencyToCopper[item.currency] || 1);
+      const sellValueCopper = Math.floor(itemValueCopper * (sellPercentage / 100));
+
+      if (item.quantity > 1) {
+        await storage.updateItem(itemId, { quantity: item.quantity - 1 });
+      } else {
+        await storage.deleteItem(itemId);
+      }
+
+      let bestCurrency = 'copper';
+      let bestAmount = sellValueCopper;
+
+      if (sellValueCopper > 0) {
+        let copperLeft = sellValueCopper;
+        for (const denom of ['platinum', 'gold', 'silver', 'copper'] as const) {
+          const denomRate = currencyToCopper[denom];
+          if (copperLeft >= denomRate) {
+            const count = Math.floor(copperLeft / denomRate);
+            copperLeft -= count * denomRate;
+            await storage.createItem({
+              characterId,
+              name: denom.charAt(0).toUpperCase() + denom.slice(1),
+              itemType: 'currency',
+              currency: denom,
+              quantity: count,
+              price: 1,
+              rarity: 'common',
+              durability: 10,
+              isEquipped: false,
+              isContainer: false,
+              isHeavy: false,
+              rulesVisible: true,
+              breakChance: 0,
+              itemWeight: 0,
+              priceCopper: 0,
+              priceSilver: 0,
+              priceGold: 0,
+              pricePlatinum: 0,
+              isArchived: false,
+              isDamaging: false,
+              isDetonatable: false,
+              canApplyEffects: false,
+              grantsDcBonus: false,
+              dcBonusValue: 0,
+              isTemplate: false,
+            } as any);
+          }
+        }
+
+        for (const denom of ['platinum', 'gold', 'silver', 'copper'] as const) {
+          const denomRate = currencyToCopper[denom];
+          if (sellValueCopper >= denomRate && sellValueCopper % denomRate === 0) {
+            bestCurrency = denom;
+            bestAmount = sellValueCopper / denomRate;
+            break;
+          }
+        }
+      }
+
+      res.json({ success: true, earnings: { amount: bestAmount, currency: bestCurrency } });
+    } catch (err) {
+      console.error("Failed to sell item:", err);
+      res.status(500).json({ error: "Failed to sell item" });
     }
   });
 

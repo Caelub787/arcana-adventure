@@ -7,7 +7,7 @@ import { BattlemapDiceOverlay, triggerBattlemapDiceRoll } from "@/components/gam
 import { type AoeTargetState, createInitialAoeState, getTokensInAoe } from "@/lib/aoeHelpers";
 import { RollNotificationContainer, triggerInitiativeNotification, triggerEffectRollNotification, getNotificationStyle, setNotificationStyle, type NotificationStyle } from "@/components/game/RollNotification";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Loader2, Settings, Map as MapIcon, Layers, Trash2, MessageSquare, User, BarChart3, Zap, Backpack, Sparkles, Grid3X3, ScrollText, Swords, Dices, Users, Dna, Edit2, Bell, FileText, X, ChevronLeft, Network, List, BookOpen, Send, Pin, Upload, Search, Package, MapPin } from "lucide-react";
+import { ArrowLeft, Loader2, Settings, Map as MapIcon, Layers, Trash2, MessageSquare, User, BarChart3, Zap, Backpack, Sparkles, Grid3X3, ScrollText, Swords, Dices, Users, Dna, Edit2, Bell, FileText, X, ChevronLeft, Network, List, BookOpen, Send, Pin, Upload, Search, Package } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -45,7 +45,7 @@ import { WorldCalendar } from "@/components/worldbuilding/WorldCalendar";
 import { RelationshipGraph } from "@/components/worldbuilding/RelationshipGraph";
 import { EntitySidePanel } from "@/components/worldbuilding/EntitySidePanel";
 import { useEntitiesByCampaign, useWorldbuildingSync } from "@/lib/worldbuilding-api";
-import { Globe, Home, Calendar, Clock } from "lucide-react";
+import { Globe, Home, Calendar, Clock, MapPin, Store, Coins, Dice1 } from "lucide-react";
 
 // Scene Settings Form Component
 function SceneSettingsForm({ scene, onUpdateScene, onCalibrateGrid }: { scene: Scene; onUpdateScene: (settings: Partial<Scene>) => void; onCalibrateGrid?: () => void }) {
@@ -6772,9 +6772,6 @@ export default function Campaign() {
   const [currentMap, setCurrentMap] = useState(battleMapImage1);
   const [createdCampaignId, setCreatedCampaignId] = useState<string | null>(null);
   const [currentView, setCurrentView] = useState({ x: 0, y: 0, zoom: 1 });
-  const [pinPlaceMode, setPinPlaceMode] = useState(false);
-  const [editingPin, setEditingPin] = useState<any>(null);
-  const [showPinEditor, setShowPinEditor] = useState(false);
   const [cameraTarget, setCameraTarget] = useState<{ x: number; y: number; zoom: number } | null>(null);
   const lastViewStateRef = useRef<{ x: number; y: number; zoom: number }>({ x: 0, y: 0, zoom: 1 });
   const fogCameraCenteredRef = useRef<string | null>(null);
@@ -6963,6 +6960,27 @@ export default function Campaign() {
     floatingZCounterRef.current += 1;
     setFloatingZIndices(prev => ({ ...prev, [panelKey]: floatingZCounterRef.current }));
   }, []);
+
+  // Map pin editor state
+  const [showMapPinEditor, setShowMapPinEditor] = useState(false);
+  const [pinPlaceMode, setPinPlaceMode] = useState(false);
+  const [editingPin, setEditingPin] = useState<any | null>(null);
+  const [pinFormData, setPinFormData] = useState({
+    x: 0, y: 0, label: '', color: '#f59e0b', icon: 'pin',
+    pinType: 'text_reveal' as 'text_reveal' | 'scene_link',
+    textContent: '', targetSceneId: '', isShop: false,
+  });
+  const [showPinForm, setShowPinForm] = useState(false);
+
+  // Shop state
+  const [shopPin, setShopPin] = useState<any | null>(null);
+  const [shopTab, setShopTab] = useState<'buy' | 'sell'>('buy');
+  const [haggleRoll, setHaggleRoll] = useState<number | null>(null);
+  const [sellPercentage, setSellPercentage] = useState(80);
+  const [shopCharacterId, setShopCharacterId] = useState<string>('');
+  const [shopEditingPin, setShopEditingPin] = useState<any | null>(null);
+  const [shopItemForm, setShopItemForm] = useState({ name: '', description: '', price: 0, currency: 'gold', quantity: -1 });
+  const [editingShopItemId, setEditingShopItemId] = useState<string | null>(null);
 
   // Floating world builder state
   const [floatingWorldBuilderOpen, setFloatingWorldBuilderOpen] = useState(false);
@@ -7216,40 +7234,6 @@ export default function Campaign() {
   // Get campaign's active scene ID (what players see)
   const campaignActiveSceneId = campaign && typeof campaign === 'object' && 'activeSceneId' in campaign ? (campaign as any).activeSceneId as string | null : null;
 
-  const handlePinClick = useCallback((pin: any) => {
-    if (role === 'gm' && showPinEditor) {
-      setEditingPin(pin);
-      return;
-    }
-    if (pin.pinType === 'scene_link' && pin.targetSceneId) {
-      if (role === 'gm') {
-        setGmViewingSceneId(pin.targetSceneId);
-      } else {
-        setPlayerViewingSceneId(pin.targetSceneId);
-      }
-      toast({ title: `Viewing: ${pin.label || 'Linked Scene'}`, description: 'Click "Return to Active Scene" to go back' });
-    } else if (pin.pinType === 'camera_zoom' && pin.cameraX != null && pin.cameraY != null && pin.cameraZoom != null) {
-      setCameraTarget({ x: pin.cameraX, y: pin.cameraY, zoom: pin.cameraZoom });
-    }
-  }, [role, showPinEditor, toast]);
-
-  const handlePinPlaced = useCallback((x: number, y: number) => {
-    setEditingPin({
-      isNew: true,
-      x,
-      y,
-      pinType: 'text_bubble',
-      label: '',
-      color: '#e74c3c',
-      textContent: '',
-      targetSceneId: null,
-      cameraX: null,
-      cameraY: null,
-      cameraZoom: null,
-    });
-    setPinPlaceMode(false);
-    setShowPinEditor(true);
-  }, []);
   const isSandbox = campaign && typeof campaign === 'object' && 'system' in campaign && (campaign as any).system === 'sandbox';
 
   const campaignDefaultPanel = campaign && typeof campaign === 'object' && 'defaultPanel' in campaign ? (campaign as any).defaultPanel : 'characters';
@@ -7617,18 +7601,166 @@ export default function Campaign() {
   };
 
   // Load all scenes for the campaign
-  // Map pins for current scene
-  const { data: mapPins = [] } = useQuery({
-    queryKey: ['scene-map-pins', activeScene?.id],
-    queryFn: () => api.getSceneMapPins(activeScene!.id),
-    enabled: !!activeScene?.id,
-  });
-
   const { data: allScenes } = useQuery({
     queryKey: [`/api/campaigns/${effectiveCampaignId}/scenes`],
     queryFn: () => api.getScenes(effectiveCampaignId!),
     enabled: !!effectiveCampaignId,
   });
+
+  // Load campaign map pins for the active scene
+  const { data: mapPins = [] } = useQuery({
+    queryKey: ['campaign-map-pins', activeScene?.id],
+    queryFn: () => api.getCampaignMapPins(effectiveCampaignId!, activeScene!.id),
+    enabled: !!effectiveCampaignId && !!activeScene?.id,
+  });
+
+  const createPinMutation = useMutation({
+    mutationFn: (data: any) => api.createCampaignMapPin(effectiveCampaignId!, activeScene!.id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['campaign-map-pins', activeScene?.id] });
+      setShowPinForm(false);
+      setPinPlaceMode(false);
+      setEditingPin(null);
+      toast({ title: 'Pin created' });
+    },
+  });
+
+  const updatePinMutation = useMutation({
+    mutationFn: ({ pinId, data }: { pinId: string; data: any }) => api.updateCampaignMapPin(pinId, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['campaign-map-pins', activeScene?.id] });
+      setShowPinForm(false);
+      setEditingPin(null);
+      toast({ title: 'Pin updated' });
+    },
+  });
+
+  const deletePinMutation = useMutation({
+    mutationFn: (pinId: string) => api.deleteCampaignMapPin(pinId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['campaign-map-pins', activeScene?.id] });
+      toast({ title: 'Pin deleted' });
+    },
+  });
+
+  const { data: shopItems = [], refetch: refetchShopItems } = useQuery({
+    queryKey: ['shop-items', shopPin?.id || shopEditingPin?.id],
+    queryFn: () => api.getShopItems((shopPin?.id || shopEditingPin?.id)!),
+    enabled: !!(shopPin?.id || shopEditingPin?.id),
+  });
+
+  const createShopItemMutation = useMutation({
+    mutationFn: ({ pinId, data }: { pinId: string; data: any }) => api.createShopItem(pinId, data),
+    onSuccess: () => {
+      refetchShopItems();
+      setShopItemForm({ name: '', description: '', price: 0, currency: 'gold', quantity: -1 });
+      setEditingShopItemId(null);
+      toast({ title: 'Shop item added' });
+    },
+  });
+
+  const updateShopItemMutation = useMutation({
+    mutationFn: ({ itemId, data }: { itemId: string; data: any }) => api.updateShopItem(itemId, data),
+    onSuccess: () => {
+      refetchShopItems();
+      setEditingShopItemId(null);
+      setShopItemForm({ name: '', description: '', price: 0, currency: 'gold', quantity: -1 });
+      toast({ title: 'Shop item updated' });
+    },
+  });
+
+  const deleteShopItemMutation = useMutation({
+    mutationFn: (itemId: string) => api.deleteShopItem(itemId),
+    onSuccess: () => {
+      refetchShopItems();
+      toast({ title: 'Shop item removed' });
+    },
+  });
+
+  const buyItemMutation = useMutation({
+    mutationFn: ({ pinId, shopItemId, characterId }: { pinId: string; shopItemId: string; characterId: string }) =>
+      api.buyFromShop(pinId, { shopItemId, characterId }),
+    onSuccess: (data: any) => {
+      refetchShopItems();
+      queryClient.invalidateQueries({ queryKey: [`/api/characters`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${effectiveCampaignId}/characters`] });
+      toast({ title: 'Item purchased!', description: data?.item?.name || 'Item added to inventory' });
+    },
+    onError: (err: any) => {
+      toast({ title: 'Purchase failed', description: err?.message || 'Insufficient funds or item unavailable', variant: 'destructive' });
+    },
+  });
+
+  const sellItemMutation = useMutation({
+    mutationFn: ({ pinId, characterId, itemId, sellPercentage: sp }: { pinId: string; characterId: string; itemId: string; sellPercentage: number }) =>
+      api.sellToShop(pinId, { characterId, itemId, sellPercentage: sp }),
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: [`/api/characters`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${effectiveCampaignId}/characters`] });
+      toast({ title: 'Item sold!', description: data?.earnings ? `Earned ${data.earnings.amount} ${data.earnings.currency}` : 'Sale complete' });
+    },
+    onError: (err: any) => {
+      toast({ title: 'Sale failed', description: err?.message || 'Could not sell item', variant: 'destructive' });
+    },
+  });
+
+  const handleHaggleRoll = () => {
+    const roll = Math.floor(Math.random() * 20) + 1;
+    setHaggleRoll(roll);
+    const percentageMap: Record<number, number> = {
+      1: 0, 2: 10, 3: 10, 4: 20, 5: 20, 6: 30, 7: 30, 8: 40, 9: 40,
+      10: 50, 11: 50, 12: 60, 13: 60, 14: 70, 15: 70, 16: 80, 17: 80,
+      18: 100, 19: 100, 20: 120,
+    };
+    const pct = percentageMap[roll] ?? 80;
+    setSellPercentage(pct);
+    const rollLabel = roll === 1 ? 'Nat 1!' : roll === 20 ? 'Nat 20!' : `Rolled ${roll}`;
+    toast({ title: `Charisma Haggle: ${rollLabel}`, description: `Sell rate: ${pct}%` });
+  };
+
+  const getCurrencySymbol = (curr: string) => {
+    const symbols: Record<string, string> = { copper: '🟤', silver: '⚪', gold: '🟡', platinum: '⬜' };
+    return symbols[curr] || '🪙';
+  };
+
+  const getCharacterCurrencyTotal = (charId: string) => {
+    const char = characters?.find((c: any) => c.id === charId);
+    if (!char?.items) return { copper: 0, silver: 0, gold: 0, platinum: 0, totalCopper: 0 };
+    const currencyItems = char.items.filter((i: any) => i.itemType === 'currency');
+    let totalCopper = 0;
+    const breakdown = { copper: 0, silver: 0, gold: 0, platinum: 0 };
+    for (const item of currencyItems) {
+      const qty = item.quantity || 1;
+      const val = (item.price || 0) * qty;
+      const curr = (item.currency || 'copper').toLowerCase();
+      if (curr === 'copper') { breakdown.copper += val; totalCopper += val; }
+      else if (curr === 'silver') { breakdown.silver += val; totalCopper += val * 10; }
+      else if (curr === 'gold') { breakdown.gold += val; totalCopper += val * 100; }
+      else if (curr === 'platinum') { breakdown.platinum += val; totalCopper += val * 1000; }
+    }
+    return { ...breakdown, totalCopper };
+  };
+
+  const convertCopperToDisplay = (copperAmount: number) => {
+    if (copperAmount <= 0) return '0 copper';
+    const plat = Math.floor(copperAmount / 1000);
+    let remainder = copperAmount % 1000;
+    const gold = Math.floor(remainder / 100);
+    remainder = remainder % 100;
+    const silver = Math.floor(remainder / 10);
+    const copper = remainder % 10;
+    const parts = [];
+    if (plat > 0) parts.push(`${plat} platinum`);
+    if (gold > 0) parts.push(`${gold} gold`);
+    if (silver > 0) parts.push(`${silver} silver`);
+    if (copper > 0) parts.push(`${copper} copper`);
+    return parts.join(', ') || '0 copper';
+  };
+
+  const getPriceInCopper = (price: number, currency: string) => {
+    const multipliers: Record<string, number> = { copper: 1, silver: 10, gold: 100, platinum: 1000 };
+    return price * (multipliers[currency.toLowerCase()] || 1);
+  };
 
   // Load scene folders for the campaign
   const { data: sceneFolders = [] } = useQuery({
@@ -8067,28 +8199,6 @@ export default function Campaign() {
     },
     onError: (error: any) => {
       toast({ title: "Error", description: error.message || "Failed to delete folder", variant: "destructive" });
-    },
-  });
-
-  const createPinMutation = useMutation({
-    mutationFn: (data: any) => api.createSceneMapPin(activeScene!.id, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['scene-map-pins', activeScene?.id] });
-    },
-  });
-
-  const updatePinMutation = useMutation({
-    mutationFn: ({ pinId, data }: { pinId: string; data: any }) => api.updateSceneMapPin(pinId, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['scene-map-pins', activeScene?.id] });
-    },
-  });
-
-  const deletePinMutation = useMutation({
-    mutationFn: (pinId: string) => api.deleteSceneMapPin(pinId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['scene-map-pins', activeScene?.id] });
-      setEditingPin(null);
     },
   });
 
@@ -8695,12 +8805,6 @@ export default function Campaign() {
         if (data.type === 'light_created') {
           queryClientRef.current.invalidateQueries({ queryKey: ['scene-lights'] });
         }
-        if (data.type === 'map_pin_created' || data.type === 'map_pin_updated' || data.type === 'map_pin_deleted') {
-          queryClientRef.current.invalidateQueries({ predicate: (query) => {
-            const key = query.queryKey;
-            return Array.isArray(key) && key[0] === 'scene-map-pins';
-          }});
-        }
         if (data.type === 'fog_state_updated' && data.sceneId) {
           queryClientRef.current.invalidateQueries({ queryKey: [`/api/scenes/${data.sceneId}`] });
         }
@@ -8889,6 +8993,12 @@ export default function Campaign() {
           if (data.sceneId === currentSceneId) {
             queryClientRef.current.invalidateQueries({ queryKey: ['thrown-items', currentSceneId] });
           }
+        }
+        
+        // Handle campaign map pin updates
+        if (data.type === 'campaign_map_pin_created' || data.type === 'campaign_map_pin_updated' || data.type === 'campaign_map_pin_deleted') {
+          const currentSceneId = sceneIdForTokensRef.current;
+          queryClientRef.current.invalidateQueries({ queryKey: ['campaign-map-pins', currentSceneId] });
         }
         
         // Handle admin notification - show toast to all users
@@ -9562,6 +9672,27 @@ export default function Campaign() {
                   <Button
                     variant="ghost"
                     size="icon"
+                    onClick={() => setShowMapPinEditor(prev => !prev)}
+                    className={`text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto ${showMapPinEditor ? 'text-amber-400 bg-white/10' : ''}`}
+                    data-testid="button-map-pins"
+                  >
+                    <MapPin className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="left" className="bg-stone-800 border-stone-700 text-stone-200">
+                  <p>Map Pins</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+
+          {role === 'gm' && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
                     onClick={() => setFogToolActive(!fogToolActive)}
                     className={`text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto ${fogToolActive ? 'text-cyan-400 bg-white/10' : ''}`}
                     data-testid="button-fog-of-war"
@@ -9576,26 +9707,6 @@ export default function Campaign() {
             </TooltipProvider>
           )}
 
-          {role === 'gm' && activeScene && (
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => setShowPinEditor(!showPinEditor)}
-                    className={`text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto ${showPinEditor ? 'text-amber-400 bg-white/10' : ''}`}
-                    data-testid="toggle-pin-editor"
-                  >
-                    <MapPin className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="left" className="bg-stone-800 border-stone-700 text-stone-200">
-                  <p>Map Pins</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          )}
 
           {role === 'gm' && (
             <TooltipProvider>
@@ -10100,6 +10211,507 @@ export default function Campaign() {
         />
       )}
 
+      {/* Map Pins Editor FloatingPanel */}
+      {showMapPinEditor && role === 'gm' && effectiveCampaignId && (
+        <FloatingPanel
+          open={showMapPinEditor}
+          onClose={() => { setShowMapPinEditor(false); setPinPlaceMode(false); setShowPinForm(false); setEditingPin(null); }}
+          title={<span className="text-amber-500">Map Pins</span>}
+          zIndex={floatingZIndices['map-pins'] || 10300}
+          onBringToFront={() => bringToFront('map-pins')}
+          defaultSize={{ width: 360, height: 480 }}
+          minWidth={300}
+          minHeight={300}
+        >
+          <div className="flex flex-col h-full p-3 gap-3" data-testid="map-pin-editor">
+            {!showPinForm ? (
+              <>
+                <Button
+                  onClick={() => {
+                    setPinPlaceMode(true);
+                    toast({ title: 'Pin Place Mode', description: 'Click on the map to place a pin' });
+                  }}
+                  className={`w-full ${pinPlaceMode ? 'bg-amber-600 hover:bg-amber-700' : 'bg-stone-700 hover:bg-stone-600'}`}
+                  data-testid="button-add-pin"
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  {pinPlaceMode ? 'Click Map to Place Pin...' : 'Add Pin'}
+                </Button>
+                {pinPlaceMode && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPinPlaceMode(false)}
+                    className="border-stone-600 text-stone-300"
+                    data-testid="button-cancel-place"
+                  >
+                    Cancel Placement
+                  </Button>
+                )}
+                <ScrollArea className="flex-1">
+                  <div className="space-y-2">
+                    {mapPins.length === 0 ? (
+                      <p className="text-center text-stone-500 text-sm py-4">No pins on this scene</p>
+                    ) : (
+                      mapPins.map((pin: any) => (
+                        <div key={pin.id} className="flex items-center gap-2 p-2 bg-stone-800 rounded border border-stone-700" data-testid={`pin-list-item-${pin.id}`}>
+                          <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs shrink-0" style={{ backgroundColor: pin.color || '#f59e0b' }}>
+                            {pin.icon === 'pin' ? '📍' : (pin.icon || '📍')}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm text-stone-200 truncate">{pin.label || 'Untitled'}</p>
+                            <p className="text-xs text-stone-500">{pin.pinType === 'scene_link' ? 'Scene Link' : 'Text'}{pin.isShop ? ' • Shop' : ''}</p>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-stone-400 hover:text-white shrink-0"
+                            onClick={() => {
+                              setEditingPin(pin);
+                              setPinFormData({
+                                x: pin.x, y: pin.y,
+                                label: pin.label || '', color: pin.color || '#f59e0b', icon: pin.icon || 'pin',
+                                pinType: pin.pinType || 'text_reveal',
+                                textContent: pin.textContent || '', targetSceneId: pin.targetSceneId || '',
+                                isShop: pin.isShop || false,
+                              });
+                              setShowPinForm(true);
+                            }}
+                            data-testid={`button-edit-pin-${pin.id}`}
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-red-400 hover:text-red-300 shrink-0"
+                            onClick={() => deletePinMutation.mutate(pin.id)}
+                            data-testid={`button-delete-pin-${pin.id}`}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </ScrollArea>
+              </>
+            ) : (
+              <ScrollArea className="flex-1">
+                <div className="space-y-3">
+                  <h3 className="text-sm font-medium text-amber-400">{editingPin ? 'Edit Pin' : 'New Pin'}</h3>
+                  <div>
+                    <Label className="text-xs text-stone-400">Label</Label>
+                    <Input
+                      value={pinFormData.label}
+                      onChange={(e) => setPinFormData(prev => ({ ...prev, label: e.target.value }))}
+                      className="bg-stone-800 border-stone-700 h-8 text-sm"
+                      placeholder="Pin label..."
+                      data-testid="input-pin-label"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs text-stone-400">Color</Label>
+                    <div className="flex gap-1.5 mt-1 flex-wrap">
+                      {['#f59e0b', '#ef4444', '#22c55e', '#3b82f6', '#a855f7', '#ec4899', '#06b6d4', '#f97316', '#ffffff'].map((c) => (
+                        <button
+                          key={c}
+                          onClick={() => setPinFormData(prev => ({ ...prev, color: c }))}
+                          className={`w-7 h-7 rounded-full border-2 transition-all ${pinFormData.color === c ? 'border-amber-400 ring-2 ring-amber-400/50' : 'border-stone-600 hover:border-stone-400'}`}
+                          style={{ backgroundColor: c }}
+                          data-testid={`pin-color-${c.replace('#', '')}`}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <Label className="text-xs text-stone-400">Pin Type</Label>
+                    <select
+                      value={pinFormData.pinType}
+                      onChange={(e) => setPinFormData(prev => ({ ...prev, pinType: e.target.value as 'text_reveal' | 'scene_link' }))}
+                      className="w-full bg-stone-800 border border-stone-700 text-stone-200 rounded px-3 py-1.5 text-sm mt-1"
+                      data-testid="select-pin-type"
+                    >
+                      <option value="text_reveal">Text Reveal</option>
+                      <option value="scene_link">Scene Link</option>
+                    </select>
+                  </div>
+                  {pinFormData.pinType === 'text_reveal' && (
+                    <>
+                      <div>
+                        <Label className="text-xs text-stone-400">Text Content</Label>
+                        <Textarea
+                          value={pinFormData.textContent}
+                          onChange={(e) => setPinFormData(prev => ({ ...prev, textContent: e.target.value }))}
+                          className="bg-stone-800 border-stone-700 text-sm min-h-[80px]"
+                          placeholder="Text to reveal when clicked..."
+                          data-testid="textarea-pin-content"
+                        />
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          id="pin-is-shop"
+                          checked={pinFormData.isShop}
+                          onChange={(e) => setPinFormData(prev => ({ ...prev, isShop: e.target.checked }))}
+                          className="h-4 w-4"
+                          data-testid="checkbox-pin-shop"
+                        />
+                        <Label htmlFor="pin-is-shop" className="text-xs text-stone-400">Is Shop</Label>
+                      </div>
+                    </>
+                  )}
+                  {pinFormData.pinType === 'scene_link' && (
+                    <div>
+                      <Label className="text-xs text-stone-400">Target Scene</Label>
+                      <select
+                        value={pinFormData.targetSceneId}
+                        onChange={(e) => setPinFormData(prev => ({ ...prev, targetSceneId: e.target.value }))}
+                        className="w-full bg-stone-800 border border-stone-700 text-stone-200 rounded px-3 py-1.5 text-sm mt-1"
+                        data-testid="select-target-scene"
+                      >
+                        <option value="">Select a scene...</option>
+                        {(allScenes || []).map((s: any) => (
+                          <option key={s.id} value={s.id}>{s.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                  <div className="flex gap-2 pt-2">
+                    <Button
+                      className="flex-1 bg-amber-600 hover:bg-amber-700"
+                      onClick={() => {
+                        const data = {
+                          x: pinFormData.x,
+                          y: pinFormData.y,
+                          label: pinFormData.label,
+                          color: pinFormData.color,
+                          icon: pinFormData.icon,
+                          pinType: pinFormData.pinType,
+                          textContent: pinFormData.pinType === 'text_reveal' ? pinFormData.textContent : null,
+                          targetSceneId: pinFormData.pinType === 'scene_link' ? pinFormData.targetSceneId : null,
+                          isShop: pinFormData.pinType === 'text_reveal' ? pinFormData.isShop : false,
+                        };
+                        if (editingPin) {
+                          updatePinMutation.mutate({ pinId: editingPin.id, data });
+                        } else {
+                          createPinMutation.mutate(data);
+                        }
+                      }}
+                      disabled={createPinMutation.isPending || updatePinMutation.isPending}
+                      data-testid="button-save-pin"
+                    >
+                      {(createPinMutation.isPending || updatePinMutation.isPending) ? 'Saving...' : 'Save'}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="border-stone-600 text-stone-300"
+                      onClick={() => { setShowPinForm(false); setEditingPin(null); }}
+                      data-testid="button-cancel-pin"
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              </ScrollArea>
+            )}
+          </div>
+        </FloatingPanel>
+      )}
+
+      {/* GM Shop Item Editor FloatingPanel */}
+      {shopEditingPin && role === 'gm' && (
+        <FloatingPanel
+          open={!!shopEditingPin}
+          onClose={() => { setShopEditingPin(null); setEditingShopItemId(null); setShopItemForm({ name: '', description: '', price: 0, currency: 'gold', quantity: -1 }); }}
+          title={<span className="text-amber-500"><Store className="inline h-4 w-4 mr-1" />{shopEditingPin.label || 'Shop'} - Items</span>}
+          zIndex={floatingZIndices['shop-editor'] || 10400}
+          onBringToFront={() => bringToFront('shop-editor')}
+          defaultSize={{ width: 400, height: 520 }}
+          minWidth={340}
+          minHeight={300}
+        >
+          <div className="flex flex-col h-full p-3 gap-3" data-testid="shop-editor">
+            <div className="space-y-2 border border-stone-700 rounded p-3 bg-stone-800/50">
+              <h4 className="text-xs text-stone-400 font-medium uppercase tracking-wider">{editingShopItemId ? 'Edit Item' : 'Add Item'}</h4>
+              <Input
+                value={shopItemForm.name}
+                onChange={(e) => setShopItemForm(prev => ({ ...prev, name: e.target.value }))}
+                className="bg-stone-800 border-stone-700 h-8 text-sm"
+                placeholder="Item name..."
+                data-testid="input-shop-item-name"
+              />
+              <Input
+                value={shopItemForm.description}
+                onChange={(e) => setShopItemForm(prev => ({ ...prev, description: e.target.value }))}
+                className="bg-stone-800 border-stone-700 h-8 text-sm"
+                placeholder="Description..."
+                data-testid="input-shop-item-desc"
+              />
+              <div className="flex gap-2">
+                <div className="flex-1">
+                  <Label className="text-xs text-stone-500">Price</Label>
+                  <Input
+                    type="number"
+                    value={shopItemForm.price}
+                    onChange={(e) => setShopItemForm(prev => ({ ...prev, price: parseInt(e.target.value) || 0 }))}
+                    className="bg-stone-800 border-stone-700 h-8 text-sm"
+                    data-testid="input-shop-item-price"
+                  />
+                </div>
+                <div className="w-28">
+                  <Label className="text-xs text-stone-500">Currency</Label>
+                  <select
+                    value={shopItemForm.currency}
+                    onChange={(e) => setShopItemForm(prev => ({ ...prev, currency: e.target.value }))}
+                    className="w-full bg-stone-800 border border-stone-700 text-stone-200 rounded px-2 py-1.5 text-sm"
+                    data-testid="select-shop-item-currency"
+                  >
+                    <option value="copper">Copper</option>
+                    <option value="silver">Silver</option>
+                    <option value="gold">Gold</option>
+                    <option value="platinum">Platinum</option>
+                  </select>
+                </div>
+                <div className="w-20">
+                  <Label className="text-xs text-stone-500">Stock</Label>
+                  <Input
+                    type="number"
+                    value={shopItemForm.quantity}
+                    onChange={(e) => setShopItemForm(prev => ({ ...prev, quantity: parseInt(e.target.value) || -1 }))}
+                    className="bg-stone-800 border-stone-700 h-8 text-sm"
+                    placeholder="-1=∞"
+                    data-testid="input-shop-item-qty"
+                  />
+                </div>
+              </div>
+              <p className="text-xs text-stone-500">Stock -1 = unlimited</p>
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  className="flex-1 bg-amber-600 hover:bg-amber-700 h-8"
+                  onClick={() => {
+                    if (!shopItemForm.name) return;
+                    if (editingShopItemId) {
+                      updateShopItemMutation.mutate({ itemId: editingShopItemId, data: shopItemForm });
+                    } else {
+                      createShopItemMutation.mutate({ pinId: shopEditingPin.id, data: shopItemForm });
+                    }
+                  }}
+                  disabled={!shopItemForm.name || createShopItemMutation.isPending || updateShopItemMutation.isPending}
+                  data-testid="button-save-shop-item"
+                >
+                  {editingShopItemId ? 'Update' : 'Add Item'}
+                </Button>
+                {editingShopItemId && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="border-stone-600 h-8"
+                    onClick={() => { setEditingShopItemId(null); setShopItemForm({ name: '', description: '', price: 0, currency: 'gold', quantity: -1 }); }}
+                    data-testid="button-cancel-edit-shop-item"
+                  >
+                    Cancel
+                  </Button>
+                )}
+              </div>
+            </div>
+            <ScrollArea className="flex-1">
+              <div className="space-y-2">
+                {shopItems.length === 0 ? (
+                  <p className="text-center text-stone-500 text-sm py-4">No items in this shop yet</p>
+                ) : (
+                  shopItems.map((item: any) => (
+                    <div key={item.id} className="flex items-center gap-2 p-2 bg-stone-800 rounded border border-stone-700" data-testid={`shop-item-${item.id}`}>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-stone-200 font-medium truncate">{item.name}</p>
+                        <p className="text-xs text-stone-400">{getCurrencySymbol(item.currency)} {item.price} {item.currency}{item.quantity >= 0 ? ` • Stock: ${item.quantity}` : ' • ∞'}</p>
+                        {item.description && <p className="text-xs text-stone-500 truncate">{item.description}</p>}
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 text-stone-400 hover:text-white shrink-0"
+                        onClick={() => {
+                          setEditingShopItemId(item.id);
+                          setShopItemForm({ name: item.name, description: item.description || '', price: item.price, currency: item.currency, quantity: item.quantity });
+                        }}
+                        data-testid={`button-edit-shop-item-${item.id}`}
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 text-red-400 hover:text-red-300 shrink-0"
+                        onClick={() => deleteShopItemMutation.mutate(item.id)}
+                        data-testid={`button-delete-shop-item-${item.id}`}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  ))
+                )}
+              </div>
+            </ScrollArea>
+          </div>
+        </FloatingPanel>
+      )}
+
+      {/* Player Shop Dialog */}
+      {shopPin && (
+        <FloatingPanel
+          open={!!shopPin}
+          onClose={() => { setShopPin(null); setHaggleRoll(null); setSellPercentage(80); }}
+          title={<span className="text-amber-500"><Store className="inline h-4 w-4 mr-1" />{shopPin.label || 'Shop'}</span>}
+          zIndex={floatingZIndices['player-shop'] || 10450}
+          onBringToFront={() => bringToFront('player-shop')}
+          defaultSize={{ width: 440, height: 560 }}
+          minWidth={360}
+          minHeight={350}
+        >
+          <div className="flex flex-col h-full" data-testid="player-shop">
+            {shopCharacterId && (() => {
+              const wallet = getCharacterCurrencyTotal(shopCharacterId);
+              const charName = characters?.find((c: any) => c.id === shopCharacterId)?.name || 'Character';
+              return (
+                <div className="px-3 pt-2 pb-1 border-b border-stone-700 bg-stone-800/50">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-stone-400">{charName}'s Wallet</span>
+                    <span className="text-xs text-stone-300">
+                      {wallet.platinum > 0 && <span className="mr-2">⬜ {wallet.platinum}</span>}
+                      {wallet.gold > 0 && <span className="mr-2">🟡 {wallet.gold}</span>}
+                      {wallet.silver > 0 && <span className="mr-2">⚪ {wallet.silver}</span>}
+                      {wallet.copper > 0 && <span>🟤 {wallet.copper}</span>}
+                      {wallet.totalCopper === 0 && <span className="text-stone-500">Empty</span>}
+                    </span>
+                  </div>
+                </div>
+              );
+            })()}
+
+            <div className="flex border-b border-stone-700">
+              <button
+                onClick={() => setShopTab('buy')}
+                className={`flex-1 py-2 text-sm font-medium transition-colors ${shopTab === 'buy' ? 'text-amber-400 border-b-2 border-amber-400' : 'text-stone-400 hover:text-stone-200'}`}
+                data-testid="tab-shop-buy"
+              >
+                <Coins className="inline h-3.5 w-3.5 mr-1" /> Buy
+              </button>
+              <button
+                onClick={() => setShopTab('sell')}
+                className={`flex-1 py-2 text-sm font-medium transition-colors ${shopTab === 'sell' ? 'text-amber-400 border-b-2 border-amber-400' : 'text-stone-400 hover:text-stone-200'}`}
+                data-testid="tab-shop-sell"
+              >
+                <Package className="inline h-3.5 w-3.5 mr-1" /> Sell
+              </button>
+            </div>
+
+            <ScrollArea className="flex-1 p-3">
+              {shopTab === 'buy' ? (
+                <div className="space-y-2">
+                  {shopItems.length === 0 ? (
+                    <p className="text-center text-stone-500 text-sm py-4">This shop has no items for sale</p>
+                  ) : (
+                    shopItems.map((item: any) => {
+                      const costCopper = getPriceInCopper(item.price, item.currency);
+                      const wallet = getCharacterCurrencyTotal(shopCharacterId);
+                      const canAfford = wallet.totalCopper >= costCopper;
+                      const outOfStock = item.quantity === 0;
+                      return (
+                        <div key={item.id} className="p-3 bg-stone-800 rounded border border-stone-700" data-testid={`shop-buy-item-${item.id}`}>
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm text-stone-200 font-medium">{item.name}</p>
+                              {item.description && <p className="text-xs text-stone-400 mt-0.5">{item.description}</p>}
+                              <p className="text-xs text-amber-400 mt-1">{getCurrencySymbol(item.currency)} {item.price} {item.currency}</p>
+                              {item.quantity >= 0 && <p className="text-xs text-stone-500">In stock: {item.quantity}</p>}
+                            </div>
+                            <Button
+                              size="sm"
+                              className="bg-green-700 hover:bg-green-600 h-8 text-xs shrink-0"
+                              disabled={!canAfford || outOfStock || buyItemMutation.isPending || !shopCharacterId}
+                              onClick={() => buyItemMutation.mutate({ pinId: shopPin.id, shopItemId: item.id, characterId: shopCharacterId })}
+                              data-testid={`button-buy-${item.id}`}
+                            >
+                              {buyItemMutation.isPending ? '...' : outOfStock ? 'Sold Out' : !canAfford ? 'Too Expensive' : 'Buy'}
+                            </Button>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between p-2 bg-stone-800 rounded border border-stone-700">
+                    <div>
+                      <p className="text-xs text-stone-400">Sell Rate</p>
+                      <p className="text-lg font-bold text-amber-400">{sellPercentage}%</p>
+                    </div>
+                    <div className="text-right">
+                      {haggleRoll !== null ? (
+                        <p className="text-sm text-stone-300">
+                          Rolled: <span className={`font-bold ${haggleRoll === 1 ? 'text-red-400' : haggleRoll === 20 ? 'text-green-400' : 'text-amber-300'}`}>
+                            {haggleRoll === 1 ? 'Nat 1!' : haggleRoll === 20 ? 'Nat 20!' : haggleRoll}
+                          </span>
+                        </p>
+                      ) : (
+                        <Button
+                          size="sm"
+                          className="bg-purple-700 hover:bg-purple-600 h-8"
+                          onClick={handleHaggleRoll}
+                          data-testid="button-haggle-roll"
+                        >
+                          <Dice1 className="h-3.5 w-3.5 mr-1" /> Haggle (d20)
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+
+                  {shopCharacterId && (() => {
+                    const char = characters?.find((c: any) => c.id === shopCharacterId);
+                    const sellableItems = char?.items?.filter((i: any) => i.itemType !== 'currency' && !i.isArchived) || [];
+                    if (sellableItems.length === 0) {
+                      return <p className="text-center text-stone-500 text-sm py-4">No items to sell</p>;
+                    }
+                    return (
+                      <div className="space-y-2">
+                        {sellableItems.map((item: any) => {
+                          const itemPriceCopper = getPriceInCopper(item.price || 0, item.currency || 'copper');
+                          const sellValueCopper = Math.floor(itemPriceCopper * (sellPercentage / 100));
+                          const sellDisplay = convertCopperToDisplay(sellValueCopper);
+                          return (
+                            <div key={item.id} className="p-3 bg-stone-800 rounded border border-stone-700" data-testid={`shop-sell-item-${item.id}`}>
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm text-stone-200 font-medium">{item.name}</p>
+                                  <p className="text-xs text-stone-500">Base: {getCurrencySymbol(item.currency || 'copper')} {item.price || 0} {item.currency || 'copper'}</p>
+                                  <p className="text-xs text-green-400 mt-0.5">Sell for: {sellDisplay}</p>
+                                </div>
+                                <Button
+                                  size="sm"
+                                  className="bg-amber-700 hover:bg-amber-600 h-8 text-xs shrink-0"
+                                  disabled={sellPercentage <= 0 || sellItemMutation.isPending}
+                                  onClick={() => sellItemMutation.mutate({ pinId: shopPin.id, characterId: shopCharacterId, itemId: item.id, sellPercentage })}
+                                  data-testid={`button-sell-${item.id}`}
+                                >
+                                  {sellItemMutation.isPending ? '...' : sellPercentage <= 0 ? 'Cannot Sell' : 'Sell'}
+                                </Button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
+            </ScrollArea>
+          </div>
+        </FloatingPanel>
+      )}
+
       {/* Floating Notes Editor */}
       {floatingNotesOpen && effectiveCampaignId && (
         <FloatingNotesEditor
@@ -10460,204 +11072,41 @@ export default function Campaign() {
                setGridCalibrationMode(false);
              }}
              onGridCalibrationCancel={() => setGridCalibrationMode(false)}
-             mapPins={mapPins as any[]}
-             pinPlaceMode={pinPlaceMode}
-             onPinClick={handlePinClick}
-             onPinPlaced={handlePinPlaced}
-             editingPinId={editingPin?.id}
              cameraTarget={cameraTarget}
              onCameraTargetReached={handleCameraTargetReached}
+             mapPins={mapPins}
+             pinPlaceMode={pinPlaceMode}
+             onPinClick={(pinAction: any) => {
+               if (pinAction.type === 'scene_link' && pinAction.targetSceneId) {
+                 if (role === 'gm') {
+                   setGmViewingSceneId(pinAction.targetSceneId);
+                 } else {
+                   setPlayerViewingSceneId(pinAction.targetSceneId);
+                 }
+               }
+               if (pinAction.type === 'shop' && pinAction.pin) {
+                 if (role === 'gm') {
+                   setShopEditingPin(pinAction.pin);
+                 } else {
+                   setShopPin(pinAction.pin);
+                   setShopTab('buy');
+                   setHaggleRoll(null);
+                   setSellPercentage(80);
+                   const myChar = characters?.find((c: any) => c.userId === user?.id);
+                   if (myChar) setShopCharacterId(myChar.id);
+                 }
+               }
+             }}
+             onPinPlaced={(x: number, y: number) => {
+               setPinFormData(prev => ({ ...prev, x, y, label: '', color: '#f59e0b', icon: 'pin', pinType: 'text_reveal', textContent: '', targetSceneId: '', isShop: false }));
+               setEditingPin(null);
+               setShowPinForm(true);
+               setPinPlaceMode(false);
+             }}
            />
            
            {/* Battlemap Dice Overlay for 3D dice rolling */}
            <BattlemapDiceOverlay />
-           
-           {/* Map Pin Editor - GM only */}
-           {role === 'gm' && (
-             <FloatingPanel
-               open={showPinEditor}
-               onClose={() => { setShowPinEditor(false); setPinPlaceMode(false); setEditingPin(null); }}
-               title={<span className="text-amber-500">Map Pins</span>}
-               zIndex={floatingZIndices['pins'] || 10200}
-               onBringToFront={() => bringToFront('pins')}
-               defaultSize={{ width: 360, height: 500 }}
-               minWidth={300}
-               minHeight={350}
-             >
-               <div className="p-4 space-y-3" data-testid="pin-editor-panel">
-                 <button
-                   onClick={() => setPinPlaceMode(!pinPlaceMode)}
-                   className={`w-full px-3 py-2 rounded text-sm font-medium transition-colors ${pinPlaceMode ? 'bg-amber-600 text-white' : 'bg-stone-700 text-stone-300 hover:bg-stone-600'}`}
-                   data-testid="toggle-pin-place-mode"
-                 >
-                   {pinPlaceMode ? '📍 Click Map to Place Pin...' : '+ Add Pin'}
-                 </button>
-                 
-                 {editingPin && (
-                   <div className="bg-stone-800 rounded-lg p-3 border border-stone-600">
-                     <h4 className="text-stone-300 text-xs font-bold mb-2">{editingPin.isNew ? 'New Pin' : 'Edit Pin'}</h4>
-                     
-                     <label className="block text-stone-400 text-xs mb-1">Label</label>
-                     <input
-                       type="text"
-                       value={editingPin.label || ''}
-                       onChange={(e) => setEditingPin({ ...editingPin, label: e.target.value })}
-                       className="w-full px-2 py-1 rounded bg-stone-700 text-stone-200 text-sm border border-stone-600 mb-2"
-                       placeholder="Pin label..."
-                       data-testid="pin-label-input"
-                     />
-                     
-                     <label className="block text-stone-400 text-xs mb-1">Type</label>
-                     <select
-                       value={editingPin.pinType}
-                       onChange={(e) => setEditingPin({ ...editingPin, pinType: e.target.value })}
-                       className="w-full px-2 py-1 rounded bg-stone-700 text-stone-200 text-sm border border-stone-600 mb-2"
-                       data-testid="pin-type-select"
-                     >
-                       <option value="text_bubble">💬 Text Bubble</option>
-                       <option value="scene_link">🗺️ Scene Link</option>
-                       <option value="camera_zoom">🔍 Camera Zoom</option>
-                     </select>
-                     
-                     <label className="block text-stone-400 text-xs mb-1">Color</label>
-                     <input
-                       type="color"
-                       value={editingPin.color || '#e74c3c'}
-                       onChange={(e) => setEditingPin({ ...editingPin, color: e.target.value })}
-                       className="w-12 h-8 rounded border border-stone-600 mb-2 cursor-pointer"
-                       data-testid="pin-color-input"
-                     />
-                     
-                     {editingPin.pinType === 'text_bubble' && (
-                       <>
-                         <label className="block text-stone-400 text-xs mb-1">Text Content</label>
-                         <textarea
-                           value={editingPin.textContent || ''}
-                           onChange={(e) => setEditingPin({ ...editingPin, textContent: e.target.value })}
-                           className="w-full px-2 py-1 rounded bg-stone-700 text-stone-200 text-sm border border-stone-600 mb-2 min-h-[80px]"
-                           placeholder="Enter text to show when pin is clicked..."
-                           data-testid="pin-text-input"
-                         />
-                       </>
-                     )}
-                     
-                     {editingPin.pinType === 'scene_link' && (
-                       <>
-                         <label className="block text-stone-400 text-xs mb-1">Target Scene</label>
-                         <select
-                           value={editingPin.targetSceneId || ''}
-                           onChange={(e) => setEditingPin({ ...editingPin, targetSceneId: e.target.value || null })}
-                           className="w-full px-2 py-1 rounded bg-stone-700 text-stone-200 text-sm border border-stone-600 mb-2"
-                           data-testid="pin-scene-select"
-                         >
-                           <option value="">Select a scene...</option>
-                           {(allScenes as any[] || []).filter((s: any) => s.id !== activeScene?.id).map((s: any) => (
-                             <option key={s.id} value={s.id}>{s.name}</option>
-                           ))}
-                         </select>
-                       </>
-                     )}
-                     
-                     {editingPin.pinType === 'camera_zoom' && (
-                       <>
-                         <p className="text-stone-400 text-xs mb-2">
-                           Position your camera where you want players to zoom to, then click "Capture Camera".
-                         </p>
-                         <button
-                           onClick={() => {
-                             if (lastViewStateRef.current) {
-                               setEditingPin({
-                                 ...editingPin,
-                                 cameraX: Math.round(lastViewStateRef.current.x),
-                                 cameraY: Math.round(lastViewStateRef.current.y),
-                                 cameraZoom: Math.round(lastViewStateRef.current.zoom * 100) / 100,
-                               });
-                               toast({ title: 'Camera position captured!' });
-                             }
-                           }}
-                           className="w-full px-3 py-2 rounded bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium mb-2"
-                           data-testid="capture-camera-btn"
-                         >
-                           📸 Capture Current Camera Position
-                         </button>
-                         {editingPin.cameraX != null && (
-                           <p className="text-stone-500 text-xs">
-                             Saved: ({editingPin.cameraX}, {editingPin.cameraY}) zoom: {editingPin.cameraZoom}x
-                           </p>
-                         )}
-                       </>
-                     )}
-                     
-                     <div className="flex gap-2 mt-3">
-                       <button
-                         onClick={() => {
-                           const pinData = {
-                             x: editingPin.x,
-                             y: editingPin.y,
-                             pinType: editingPin.pinType,
-                             label: editingPin.label,
-                             color: editingPin.color,
-                             textContent: editingPin.textContent,
-                             targetSceneId: editingPin.targetSceneId,
-                             cameraX: editingPin.cameraX,
-                             cameraY: editingPin.cameraY,
-                             cameraZoom: editingPin.cameraZoom,
-                           };
-                           if (editingPin.isNew) {
-                             createPinMutation.mutate(pinData);
-                           } else {
-                             updatePinMutation.mutate({ pinId: editingPin.id, data: pinData });
-                           }
-                           setEditingPin(null);
-                         }}
-                         className="flex-1 px-3 py-1.5 rounded bg-green-600 hover:bg-green-500 text-white text-sm font-medium"
-                         data-testid="save-pin-btn"
-                       >
-                         Save
-                       </button>
-                       {!editingPin.isNew && (
-                         <button
-                           onClick={() => {
-                             deletePinMutation.mutate(editingPin.id);
-                           }}
-                           className="px-3 py-1.5 rounded bg-red-600 hover:bg-red-500 text-white text-sm font-medium"
-                           data-testid="delete-pin-btn"
-                         >
-                           Delete
-                         </button>
-                       )}
-                       <button
-                         onClick={() => setEditingPin(null)}
-                         className="px-3 py-1.5 rounded bg-stone-700 hover:bg-stone-600 text-stone-300 text-sm"
-                       >
-                         Cancel
-                       </button>
-                     </div>
-                   </div>
-                 )}
-                 
-                 <div className="space-y-1">
-                   {(mapPins as any[]).map((pin: any) => (
-                     <div
-                       key={pin.id}
-                       className={`flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer hover:bg-stone-700 text-sm ${editingPin?.id === pin.id ? 'bg-stone-700' : 'bg-stone-800'}`}
-                       onClick={() => setEditingPin(pin)}
-                       data-testid={`pin-list-item-${pin.id}`}
-                     >
-                       <div className="w-4 h-4 rounded-full flex-shrink-0" style={{ backgroundColor: pin.color || '#e74c3c' }} />
-                       <span className="text-stone-300 truncate flex-1">{pin.label || 'Unnamed Pin'}</span>
-                       <span className="text-stone-500 text-xs">
-                         {pin.pinType === 'text_bubble' ? '💬' : pin.pinType === 'scene_link' ? '🗺️' : '🔍'}
-                       </span>
-                     </div>
-                   ))}
-                   {(mapPins as any[]).length === 0 && (
-                     <p className="text-stone-500 text-xs text-center py-2">No pins yet. Click "Add Pin" to create one.</p>
-                   )}
-                 </div>
-               </div>
-             </FloatingPanel>
-           )}
            
            <SelectionModeButtons
              selectionMode={selectionMode}

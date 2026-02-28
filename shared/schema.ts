@@ -1418,12 +1418,6 @@ export const sceneMapPins = pgTable("scene_map_pins", {
   cameraZoom: real("camera_zoom"),
 });
 
-export const insertSceneMapPinSchema = createInsertSchema(sceneMapPins).omit({
-  id: true,
-});
-
-export type InsertSceneMapPin = z.infer<typeof insertSceneMapPinSchema>;
-export type SceneMapPin = typeof sceneMapPins.$inferSelect;
 
 // ============================================
 // WORLDBUILDING ENTITY SYSTEM
@@ -1674,3 +1668,55 @@ export const insertWorldCalendarSyncSchema = createInsertSchema(worldCalendarSyn
 });
 export type InsertWorldCalendarSync = z.infer<typeof insertWorldCalendarSyncSchema>;
 export type WorldCalendarSync = typeof worldCalendarSyncs.$inferSelect;
+
+// ============================================
+// CAMPAIGN MAP PINS (replaces scene_map_pins)
+// ============================================
+
+export const campaignMapPins = pgTable("campaign_map_pins", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  sceneId: varchar("scene_id").notNull().references(() => scenes.id, { onDelete: "cascade" }),
+  campaignId: varchar("campaign_id").notNull().references(() => campaigns.id, { onDelete: "cascade" }),
+  x: real("x").notNull().default(0),
+  y: real("y").notNull().default(0),
+  label: text("label").default(""),
+  icon: text("icon").default("pin"),
+  color: text("color").default("#f59e0b"),
+  pinType: text("pin_type").notNull().default("text_reveal"),
+  textContent: text("text_content"),
+  targetSceneId: varchar("target_scene_id"),
+  isShop: boolean("is_shop").default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertCampaignMapPinSchema = createInsertSchema(campaignMapPins).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertCampaignMapPin = z.infer<typeof insertCampaignMapPinSchema>;
+export type CampaignMapPin = typeof campaignMapPins.$inferSelect;
+
+// ============================================
+// SHOP ITEMS (attached to campaign map pins)
+// ============================================
+
+export const shopItems = pgTable("shop_items", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  pinId: varchar("pin_id").notNull().references(() => campaignMapPins.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  description: text("description"),
+  image: text("image"),
+  price: integer("price").notNull().default(0),
+  currency: text("currency").notNull().default("gold"),
+  itemType: text("item_type"),
+  quantity: integer("quantity").notNull().default(-1),
+  itemData: jsonb("item_data"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertShopItemSchema = createInsertSchema(shopItems).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertShopItem = z.infer<typeof insertShopItemSchema>;
+export type ShopItem = typeof shopItems.$inferSelect;

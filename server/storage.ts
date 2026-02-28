@@ -52,7 +52,6 @@ import {
   type SceneWindow, type InsertSceneWindow,
   type SceneLight, type InsertSceneLight,
   type SceneVisionZone, type InsertSceneVisionZone,
-  type SceneMapPin, type InsertSceneMapPin,
   type Entity, type InsertEntity,
   type EntityLink, type InsertEntityLink,
   type WorldShareLink, type InsertWorldShareLink,
@@ -63,7 +62,9 @@ import {
   type WorldTimeline, type InsertWorldTimeline,
   type World, type InsertWorld,
   type WorldCalendarSync, type InsertWorldCalendarSync,
-  users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, items, spells, characterPermissions, initiativeEntries, systemSpecies, campaignSpecies, featTemplates, featTrees, feats, featConnections, characterFeats, systemSpells, systemSkills, characterCustomSkills, systemTraits, characterTraits, characterFolders, characterTemplateFolders, sceneFolders, friendRequests, friendships, noteFolders, notes, noteReferences, noteShares, tokenEffects, spellEffects, itemEffects, tokenActiveEffects, thrownItems, adminNotifications, userNotifications, termsAndConditions, userTermsAcceptance, sandboxFolders, sandboxTemplates, sandboxActors, rollEntries, sceneWalls, sceneDoors, sceneWindows, sceneLights, sceneVisionZones, sceneMapPins, entities, entityLinks, worldShareLinks, worldMaps, worldMapPins, worldCalendars, worldTimelineEvents, worldTimelines, worlds, worldCalendarSyncs
+  type CampaignMapPin, type InsertCampaignMapPin,
+  type ShopItem, type InsertShopItem,
+  users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, items, spells, characterPermissions, initiativeEntries, systemSpecies, campaignSpecies, featTemplates, featTrees, feats, featConnections, characterFeats, systemSpells, systemSkills, characterCustomSkills, systemTraits, characterTraits, characterFolders, characterTemplateFolders, sceneFolders, friendRequests, friendships, noteFolders, notes, noteReferences, noteShares, tokenEffects, spellEffects, itemEffects, tokenActiveEffects, thrownItems, adminNotifications, userNotifications, termsAndConditions, userTermsAcceptance, sandboxFolders, sandboxTemplates, sandboxActors, rollEntries, sceneWalls, sceneDoors, sceneWindows, sceneLights, sceneVisionZones, entities, entityLinks, worldShareLinks, worldMaps, worldMapPins, worldCalendars, worldTimelineEvents, worldTimelines, worlds, worldCalendarSyncs, campaignMapPins, shopItems
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql, inArray, or, isNull } from "drizzle-orm";
@@ -496,12 +497,6 @@ export interface IStorage {
   updateSandboxActor(id: string, data: Partial<SandboxActor>): Promise<SandboxActor>;
   deleteSandboxActor(id: string): Promise<void>;
 
-  getSceneMapPins(sceneId: string): Promise<SceneMapPin[]>;
-  getSceneMapPin(id: string): Promise<SceneMapPin | undefined>;
-  createSceneMapPin(pin: InsertSceneMapPin): Promise<SceneMapPin>;
-  updateSceneMapPin(id: string, updates: Record<string, any>): Promise<SceneMapPin | undefined>;
-  deleteSceneMapPin(id: string): Promise<void>;
-
   // Worldbuilding Entity operations
   getEntity(id: string): Promise<Entity | undefined>;
   getEntitiesByCampaign(campaignId: string, includeDeleted?: boolean): Promise<Entity[]>;
@@ -584,6 +579,20 @@ export interface IStorage {
   createTimeline(data: InsertWorldTimeline): Promise<WorldTimeline>;
   updateTimeline(id: string, data: Partial<WorldTimeline>): Promise<WorldTimeline | undefined>;
   deleteTimeline(id: string): Promise<void>;
+
+  // Campaign Map Pin operations
+  getCampaignMapPins(sceneId: string): Promise<CampaignMapPin[]>;
+  getCampaignMapPin(id: string): Promise<CampaignMapPin | undefined>;
+  createCampaignMapPin(pin: InsertCampaignMapPin): Promise<CampaignMapPin>;
+  updateCampaignMapPin(id: string, data: Partial<InsertCampaignMapPin>): Promise<CampaignMapPin | undefined>;
+  deleteCampaignMapPin(id: string): Promise<void>;
+
+  // Shop Item operations
+  getShopItems(pinId: string): Promise<ShopItem[]>;
+  getShopItem(id: string): Promise<ShopItem | undefined>;
+  createShopItem(item: InsertShopItem): Promise<ShopItem>;
+  updateShopItem(id: string, data: Partial<InsertShopItem>): Promise<ShopItem | undefined>;
+  deleteShopItem(id: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -3683,29 +3692,6 @@ export class DatabaseStorage implements IStorage {
     await db.delete(sandboxActors).where(eq(sandboxActors.id, id));
   }
 
-  async getSceneMapPins(sceneId: string): Promise<SceneMapPin[]> {
-    return await db.select().from(sceneMapPins).where(eq(sceneMapPins.sceneId, sceneId));
-  }
-
-  async getSceneMapPin(id: string): Promise<SceneMapPin | undefined> {
-    const [pin] = await db.select().from(sceneMapPins).where(eq(sceneMapPins.id, id));
-    return pin;
-  }
-
-  async createSceneMapPin(pin: InsertSceneMapPin): Promise<SceneMapPin> {
-    const [created] = await db.insert(sceneMapPins).values(pin).returning();
-    return created;
-  }
-
-  async updateSceneMapPin(id: string, updates: Record<string, any>): Promise<SceneMapPin | undefined> {
-    const [updated] = await db.update(sceneMapPins).set(updates).where(eq(sceneMapPins.id, id)).returning();
-    return updated;
-  }
-
-  async deleteSceneMapPin(id: string): Promise<void> {
-    await db.delete(sceneMapPins).where(eq(sceneMapPins.id, id));
-  }
-
   // ============================================
   // WORLDBUILDING ENTITY OPERATIONS
   // ============================================
@@ -4094,6 +4080,60 @@ export class DatabaseStorage implements IStorage {
 
   async deleteTimeline(id: string): Promise<void> {
     await db.delete(worldTimelines).where(eq(worldTimelines.id, id));
+  }
+
+  // ============================================
+  // CAMPAIGN MAP PIN OPERATIONS
+  // ============================================
+
+  async getCampaignMapPins(sceneId: string): Promise<CampaignMapPin[]> {
+    return await db.select().from(campaignMapPins).where(eq(campaignMapPins.sceneId, sceneId));
+  }
+
+  async getCampaignMapPin(id: string): Promise<CampaignMapPin | undefined> {
+    const [pin] = await db.select().from(campaignMapPins).where(eq(campaignMapPins.id, id));
+    return pin;
+  }
+
+  async createCampaignMapPin(pin: InsertCampaignMapPin): Promise<CampaignMapPin> {
+    const [created] = await db.insert(campaignMapPins).values(pin).returning();
+    return created;
+  }
+
+  async updateCampaignMapPin(id: string, data: Partial<InsertCampaignMapPin>): Promise<CampaignMapPin | undefined> {
+    const [updated] = await db.update(campaignMapPins).set(data).where(eq(campaignMapPins.id, id)).returning();
+    return updated;
+  }
+
+  async deleteCampaignMapPin(id: string): Promise<void> {
+    await db.delete(campaignMapPins).where(eq(campaignMapPins.id, id));
+  }
+
+  // ============================================
+  // SHOP ITEM OPERATIONS
+  // ============================================
+
+  async getShopItems(pinId: string): Promise<ShopItem[]> {
+    return await db.select().from(shopItems).where(eq(shopItems.pinId, pinId));
+  }
+
+  async getShopItem(id: string): Promise<ShopItem | undefined> {
+    const [item] = await db.select().from(shopItems).where(eq(shopItems.id, id));
+    return item;
+  }
+
+  async createShopItem(item: InsertShopItem): Promise<ShopItem> {
+    const [created] = await db.insert(shopItems).values(item).returning();
+    return created;
+  }
+
+  async updateShopItem(id: string, data: Partial<InsertShopItem>): Promise<ShopItem | undefined> {
+    const [updated] = await db.update(shopItems).set(data).where(eq(shopItems.id, id)).returning();
+    return updated;
+  }
+
+  async deleteShopItem(id: string): Promise<void> {
+    await db.delete(shopItems).where(eq(shopItems.id, id));
   }
 }
 

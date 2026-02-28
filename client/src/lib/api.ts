@@ -2124,29 +2124,68 @@ class ApiClient {
     });
   }
 
-  async getSceneMapPins(sceneId: string): Promise<any[]> {
-    return this.request(`/scenes/${sceneId}/map-pins`);
+  async getCampaignMapPins(campaignId: string, sceneId: string): Promise<any[]> {
+    return this.request(`/campaigns/${campaignId}/scenes/${sceneId}/map-pins`);
   }
 
-  async createSceneMapPin(sceneId: string, data: any): Promise<any> {
-    return this.request(`/scenes/${sceneId}/map-pins`, {
+  async createCampaignMapPin(campaignId: string, sceneId: string, data: any): Promise<any> {
+    return this.request(`/campaigns/${campaignId}/scenes/${sceneId}/map-pins`, {
       method: 'POST',
       body: JSON.stringify(data),
     });
   }
 
-  async updateSceneMapPin(pinId: string, data: any): Promise<any> {
-    return this.request(`/scene-map-pins/${pinId}`, {
+  async updateCampaignMapPin(pinId: string, data: any): Promise<any> {
+    return this.request(`/campaign-map-pins/${pinId}`, {
       method: 'PATCH',
       body: JSON.stringify(data),
     });
   }
 
-  async deleteSceneMapPin(pinId: string): Promise<any> {
-    return this.request(`/scene-map-pins/${pinId}`, {
+  async deleteCampaignMapPin(pinId: string): Promise<void> {
+    return this.request(`/campaign-map-pins/${pinId}`, {
       method: 'DELETE',
     });
   }
+
+  async getShopItems(pinId: string): Promise<any[]> {
+    return this.request(`/campaign-map-pins/${pinId}/shop-items`);
+  }
+
+  async createShopItem(pinId: string, data: any): Promise<any> {
+    return this.request(`/campaign-map-pins/${pinId}/shop-items`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateShopItem(itemId: string, data: any): Promise<any> {
+    return this.request(`/shop-items/${itemId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteShopItem(itemId: string): Promise<void> {
+    return this.request(`/shop-items/${itemId}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async buyFromShop(pinId: string, data: { shopItemId: string; characterId: string }): Promise<any> {
+    return this.request(`/campaign-map-pins/${pinId}/buy`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async sellToShop(pinId: string, data: { characterId: string; itemId: string; sellPercentage: number }): Promise<any> {
+    return this.request(`/campaign-map-pins/${pinId}/sell`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
 }
 
 export interface SandboxTemplate {

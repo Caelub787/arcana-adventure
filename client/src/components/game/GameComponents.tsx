@@ -273,86 +273,6 @@ export interface OtherPlayerAoe {
 // getTokenGridSpan is imported from '@/lib/aoeHelpers'
 
 
-function MapPinsOverlay({ pins, isGM, gridSize, pinPlaceMode, onPinClick, onPinPlaced, onPinDragEnd, editingPinId }: {
-  pins: any[];
-  isGM: boolean;
-  gridSize: number;
-  pinPlaceMode: boolean;
-  onPinClick: (pin: any) => void;
-  onPinPlaced?: (x: number, y: number) => void;
-  onPinDragEnd?: (pinId: string, x: number, y: number) => void;
-  editingPinId?: string | null;
-}) {
-  const MAP_OFFSET = 9000;
-  const [activeBubble, setActiveBubble] = useState<string | null>(null);
-
-  const handlePinClick = (e: React.MouseEvent, pin: any) => {
-    e.stopPropagation();
-    if (pin.pinType === 'text_bubble') {
-      setActiveBubble(activeBubble === pin.id ? null : pin.id);
-    } else {
-      onPinClick(pin);
-    }
-  };
-
-  const pinTypeIcons: Record<string, string> = {
-    'scene_link': '🗺️',
-    'text_bubble': '💬',
-    'camera_zoom': '🔍',
-  };
-
-  return (
-    <>
-      {pins.map((pin) => (
-        <div key={pin.id} style={{ position: 'absolute', zIndex: 20 }}>
-          <div
-            className={`absolute flex flex-col items-center cursor-pointer select-none transition-transform hover:scale-110 ${editingPinId === pin.id ? 'ring-2 ring-yellow-400 rounded-lg' : ''}`}
-            style={{
-              left: pin.x + MAP_OFFSET - 16,
-              top: pin.y + MAP_OFFSET - 36,
-              zIndex: 20,
-              pointerEvents: 'all',
-            }}
-            onClick={(e) => handlePinClick(e, pin)}
-            data-testid={`map-pin-${pin.id}`}
-          >
-            <div
-              className="flex items-center justify-center w-8 h-8 rounded-full shadow-lg border-2 border-white/50"
-              style={{ backgroundColor: pin.color || '#e74c3c' }}
-            >
-              <span className="text-sm">{pinTypeIcons[pin.pinType] || '📍'}</span>
-            </div>
-            {pin.label && (
-              <span className="mt-0.5 px-1.5 py-0.5 text-[10px] font-bold text-white bg-black/70 rounded whitespace-nowrap max-w-[120px] truncate">
-                {pin.label}
-              </span>
-            )}
-          </div>
-
-          {pin.pinType === 'text_bubble' && activeBubble === pin.id && (
-            <div
-              className="absolute bg-stone-800 border border-stone-600 rounded-lg shadow-xl p-3 text-stone-200 text-sm max-w-[250px] z-50"
-              style={{
-                left: pin.x + MAP_OFFSET + 20,
-                top: pin.y + MAP_OFFSET - 40,
-                pointerEvents: 'all',
-              }}
-              onClick={(e) => e.stopPropagation()}
-              data-testid={`pin-bubble-${pin.id}`}
-            >
-              <button
-                className="absolute top-1 right-1 text-stone-400 hover:text-white text-xs"
-                onClick={(e) => { e.stopPropagation(); setActiveBubble(null); }}
-              >✕</button>
-              <p className="whitespace-pre-wrap pr-4">{pin.textContent || 'No content'}</p>
-            </div>
-          )}
-        </div>
-      ))}
-    </>
-  );
-}
-
 // 2. BattleMap
 interface BattleMapProps {
   tokens: Token[];
@@ -420,18 +340,17 @@ interface BattleMapProps {
   gridCalibrationMode?: boolean;
   onGridCalibrationConfirm?: (gridSize: number, offsetX: number, offsetY: number) => void;
   onGridCalibrationCancel?: () => void;
+  cameraTarget?: { x: number; y: number; zoom: number } | null;
+  onCameraTargetReached?: () => void;
   mapPins?: any[];
   pinPlaceMode?: boolean;
   onPinClick?: (pin: any) => void;
   onPinPlaced?: (x: number, y: number) => void;
-  editingPinId?: string | null;
-  cameraTarget?: { x: number; y: number; zoom: number } | null;
-  onCameraTargetReached?: () => void;
 }
 
 
 
-export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClick, onTokenTripleClick, onDeleteToken, role, gridSize, backgroundImage, scene, onViewChange, characters = [], allSpecies = [], selectionMode = 'select', targetedTokenId, selectedTokenId, aoeTargetState, onAoeMouseMove, onAoeClick, otherPlayersAoe, myPermissions, tokenActiveEffects, allTokenEffects, onApplyEffect, onRemoveEffect, onToggleInvisibility, currentTurnCharacterId, otherPlayersTargeting, activeBeacons, onBeacon, otherPlayersViewports, thrownItems = [], onRefetchThrownItems, onDeleteThrownItem, detonatableGridTarget, onGridTargetClick, notesPanelOpen = false, notesPanelWidth = 0, onNotesClick, inCombat = false, fogToolActive: fogToolActiveProp, onFogToolActiveChange, onDropCharacterOnMap, onMapClickToPlace, placingCharacterId, currentUserId, assignedCharacterId, onTokenLongPress, gridCalibrationMode, onGridCalibrationConfirm, onGridCalibrationCancel, mapPins = [], pinPlaceMode = false, onPinClick, onPinPlaced, editingPinId, cameraTarget, onCameraTargetReached }: BattleMapProps) {
+export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClick, onTokenTripleClick, onDeleteToken, role, gridSize, backgroundImage, scene, onViewChange, characters = [], allSpecies = [], selectionMode = 'select', targetedTokenId, selectedTokenId, aoeTargetState, onAoeMouseMove, onAoeClick, otherPlayersAoe, myPermissions, tokenActiveEffects, allTokenEffects, onApplyEffect, onRemoveEffect, onToggleInvisibility, currentTurnCharacterId, otherPlayersTargeting, activeBeacons, onBeacon, otherPlayersViewports, thrownItems = [], onRefetchThrownItems, onDeleteThrownItem, detonatableGridTarget, onGridTargetClick, notesPanelOpen = false, notesPanelWidth = 0, onNotesClick, inCombat = false, fogToolActive: fogToolActiveProp, onFogToolActiveChange, onDropCharacterOnMap, onMapClickToPlace, placingCharacterId, currentUserId, assignedCharacterId, onTokenLongPress, gridCalibrationMode, onGridCalibrationConfirm, onGridCalibrationCancel, cameraTarget, onCameraTargetReached, mapPins = [], pinPlaceMode = false, onPinClick, onPinPlaced }: BattleMapProps) {
   // Derive isGM from role prop
   const isGM = role === 'gm';
   
@@ -516,6 +435,8 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
   const [selectedZoneMode, setSelectedZoneMode] = useState<'indoor' | 'outdoor'>('indoor');
   const [moveMode, setMoveMode] = useState(false);
   const [freeformMode, setFreeformMode] = useState(false);
+  const [bgImageDimensions, setBgImageDimensions] = useState<{ width: number; height: number }>({ width: 0, height: 0 });
+  const [revealedPinId, setRevealedPinId] = useState<string | null>(null);
   const campaignId = scene?.campaignId;
   const [gmSeeAsPlayer, setGmSeeAsPlayer] = useState(() => {
     try {
@@ -1352,7 +1273,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
     if (e.button !== 0) return;
     
     // Don't capture pointer when fog drawing tools are active - let WallDrawingOverlay handle clicks
-    if (wallDrawMode || doorPlaceMode || windowPlaceMode || lightPlaceMode || zoneDrawMode || moveMode || pinPlaceMode) return;
+    if (wallDrawMode || doorPlaceMode || windowPlaceMode || lightPlaceMode || zoneDrawMode || moveMode) return;
     
     // Don't capture pointer when placing a character token - let onClick handle it
     if (placingCharacterId) return;
@@ -1376,7 +1297,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
     
     // Capture pointer for reliable tracking
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-  }, [gridCalibrationMode, selectionMode, wallDrawMode, doorPlaceMode, windowPlaceMode, lightPlaceMode, zoneDrawMode, moveMode, pinPlaceMode, placingCharacterId, thrownItemDeleteMode]);
+  }, [gridCalibrationMode, selectionMode, wallDrawMode, doorPlaceMode, windowPlaceMode, lightPlaceMode, zoneDrawMode, moveMode, placingCharacterId, thrownItemDeleteMode]);
   
   const handleMapPointerMove = useCallback((e: React.PointerEvent) => {
     // Handle calibration drag
@@ -1524,7 +1445,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
     panPointerIdRef.current = null;
     panStartRef.current = null;
     notifyViewChange();
-  }, [selectionMode, aoeTargetState, gridSize, onAoeClick, onBeacon, onGridTargetClick, onMapClickToPlace, placingCharacterId, gridCalibrationMode, pinPlaceMode, onPinPlaced]);
+  }, [selectionMode, aoeTargetState, gridSize, onAoeClick, onBeacon, onGridTargetClick, onMapClickToPlace, placingCharacterId, gridCalibrationMode]);
   
   const handleMapPointerCancel = (e: React.PointerEvent) => {
     if (gestureModeRef.current === 'panning' && panPointerIdRef.current === e.pointerId) {
@@ -2003,7 +1924,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
         onPointerCancel={handleMapPointerCancel}
         onClick={(e) => {
           setShowDeleteButton(null);
-          if (pinPlaceMode && onPinPlaced) {
+          if (pinPlaceMode && onPinPlaced && bgImageDimensions.width > 0 && bgImageDimensions.height > 0) {
             const container = containerRef.current;
             if (container) {
               const rect = container.getBoundingClientRect();
@@ -2013,9 +1934,12 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
               const currentPan = panRef.current;
               const worldX = ((screenX + 9000 - currentPan.x) / currentZoom) - 9000;
               const worldY = ((screenY + 9000 - currentPan.y) / currentZoom) - 9000;
-              onPinPlaced(worldX, worldY);
+              const pctX = (worldX / bgImageDimensions.width) * 100;
+              const pctY = (worldY / bgImageDimensions.height) * 100;
+              if (pctX >= 0 && pctX <= 100 && pctY >= 0 && pctY <= 100) {
+                onPinPlaced(pctX, pctY);
+              }
             }
-            return;
           }
           if (placingCharacterId && onMapClickToPlace) {
             const container = containerRef.current;
@@ -2244,6 +2168,10 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
             transformOrigin: 'top left',
           }}
           draggable={false}
+          onLoad={(e) => {
+            const img = e.currentTarget;
+            setBgImageDimensions({ width: img.naturalWidth, height: img.naturalHeight });
+          }}
           onError={(e) => {
             const img = e.currentTarget;
             if (!img.dataset.triedFallback) {
@@ -2252,6 +2180,73 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
             }
           }}
         />
+
+        {/* Campaign Map Pins Overlay */}
+        {mapPins.length > 0 && bgImageDimensions.width > 0 && (
+          <div
+            className="absolute pointer-events-none"
+            style={{
+              left: '9000px',
+              top: '9000px',
+              width: bgImageDimensions.width,
+              height: bgImageDimensions.height,
+            }}
+          >
+            {mapPins.map((pin: any) => {
+              const xPx = (pin.x / 100) * bgImageDimensions.width;
+              const yPx = (pin.y / 100) * bgImageDimensions.height;
+              const isRevealed = revealedPinId === pin.id;
+              return (
+                <div
+                  key={pin.id}
+                  className="absolute pointer-events-auto"
+                  style={{
+                    left: xPx,
+                    top: yPx,
+                    transform: 'translate(-50%, -100%)',
+                    zIndex: isRevealed ? 1000 : 100,
+                  }}
+                  data-testid={`map-pin-${pin.id}`}
+                >
+                  <div
+                    className="flex flex-col items-center cursor-pointer group"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (pin.pinType === 'text_reveal') {
+                        setRevealedPinId(isRevealed ? null : pin.id);
+                      } else if (pin.pinType === 'scene_link' && onPinClick) {
+                        onPinClick({ type: 'scene_link', targetSceneId: pin.targetSceneId });
+                      }
+                      if (pin.isShop && onPinClick) {
+                        onPinClick({ type: 'shop', pin });
+                      }
+                    }}
+                  >
+                    <div
+                      className="w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-bold shadow-lg border-2 border-white/60 transition-transform group-hover:scale-110"
+                      style={{ backgroundColor: pin.color || '#f59e0b' }}
+                    >
+                      {pin.icon === 'pin' ? '📍' : (pin.icon || '📍')}
+                    </div>
+                    {pin.label && (
+                      <span className="text-xs font-bold text-white mt-0.5 px-1.5 py-0.5 bg-black/70 rounded whitespace-nowrap max-w-[120px] truncate">
+                        {pin.label}
+                      </span>
+                    )}
+                  </div>
+                  {isRevealed && pin.pinType === 'text_reveal' && pin.textContent && (
+                    <div
+                      className="absolute left-1/2 -translate-x-1/2 top-full mt-1 bg-stone-900 border border-stone-600 rounded-lg p-3 shadow-xl min-w-[180px] max-w-[280px] z-[1001]"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <p className="text-sm text-stone-200 whitespace-pre-wrap">{pin.textContent}</p>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
 
         {/* Ghost Token - Shows starting position during combat turn */}
         {ghostToken && inCombat && (() => {
@@ -3735,17 +3730,6 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
           </svg>
         )}
         
-        {/* Map Pins */}
-        <MapPinsOverlay
-          pins={mapPins}
-          isGM={isGM}
-          gridSize={gridSize}
-          pinPlaceMode={pinPlaceMode}
-          onPinClick={onPinClick || (() => {})}
-          onPinPlaced={onPinPlaced}
-          editingPinId={editingPinId}
-        />
-
         {/* Fog of War Overlay - walls, doors, windows, lights, fog */}
         {scene?.id && (
           <FogOfWarOverlay
