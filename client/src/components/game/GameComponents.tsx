@@ -17580,42 +17580,6 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                   </div>
                 </div>
 
-                {/* Exhaustion Status Labels */}
-                {(liveCharacter.exhaustion || 0) >= 1 && (
-                  <div className="space-y-1" data-testid="overview-exhaustion-labels">
-                    {(liveCharacter.exhaustion || 0) >= 1 && (
-                      <div className="flex items-center gap-1.5 px-2 py-1 bg-red-900/20 border border-red-800/30 rounded">
-                        <span className="text-[10px] text-red-400 font-bold">DIS</span>
-                        <span className="text-[10px] text-red-400/70">Skill Checks</span>
-                      </div>
-                    )}
-                    {(liveCharacter.exhaustion || 0) >= 2 && (
-                      <div className="flex items-center gap-1.5 px-2 py-1 bg-orange-900/20 border border-orange-800/30 rounded">
-                        <span className="text-[10px] text-orange-400 font-bold">{(liveCharacter.exhaustion || 0) >= 5 ? '0 ft' : '½'}</span>
-                        <span className="text-[10px] text-orange-400/70">{(liveCharacter.exhaustion || 0) >= 5 ? 'Speed reduced to 0' : 'Speed Halved'}</span>
-                      </div>
-                    )}
-                    {(liveCharacter.exhaustion || 0) >= 3 && (
-                      <div className="flex items-center gap-1.5 px-2 py-1 bg-red-900/20 border border-red-800/30 rounded">
-                        <span className="text-[10px] text-red-400 font-bold">DIS</span>
-                        <span className="text-[10px] text-red-400/70">Attack Rolls</span>
-                      </div>
-                    )}
-                    {(liveCharacter.exhaustion || 0) >= 4 && (
-                      <div className="flex items-center gap-1.5 px-2 py-1 bg-red-900/20 border border-red-800/30 rounded">
-                        <span className="text-[10px] text-red-400 font-bold">DIS</span>
-                        <span className="text-[10px] text-red-400/70">Saving Throws</span>
-                      </div>
-                    )}
-                    {(liveCharacter.exhaustion || 0) >= 6 && (
-                      <div className="flex items-center gap-1.5 px-2 py-1 bg-red-950/30 border border-red-700/50 rounded">
-                        <span className="text-[10px] text-red-500 font-bold">DEAD</span>
-                        <span className="text-[10px] text-red-500/70">HP set to 0</span>
-                      </div>
-                    )}
-                  </div>
-                )}
-
                 {/* Info Grid - Two Columns */}
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-2">
@@ -17827,7 +17791,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                             </div>
                           </div>
                           <div className="flex gap-0.5 mt-1">
-                            {[0, 1, 2, 3, 4, 5, 6].map(level => (
+                            {[1, 2, 3, 4, 5, 6].map(level => (
                               <div
                                 key={level}
                                 className={`flex-1 h-1.5 rounded ${level <= exhaustion ? exhaustionColors[level] : 'bg-stone-800'}`}
