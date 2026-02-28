@@ -15605,10 +15605,13 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
   
   // Live character data state (for real-time updates)
   const [liveCharacter, setLiveCharacter] = useState(character);
+  const pendingMutationRef = useRef(false);
   
   // Update live character and cancelled points when prop changes
   useEffect(() => {
-    setLiveCharacter(character);
+    if (!pendingMutationRef.current) {
+      setLiveCharacter(character);
+    }
     setCancelledAttrPoints(character?.cancelledAttrPoints || 0);
     setCancelledSkillPoints(character?.cancelledSkillPoints || 0);
   }, [character]);
@@ -16158,7 +16161,6 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
   const [hasAdvantage, setHasAdvantage] = useState(false);
   const [hasDisadvantage, setHasDisadvantage] = useState(false);
   const rollDataRef = useRef<{name: string, modifier: number} | null>(null);
-  const exhaustionTimerRef = useRef<NodeJS.Timeout | null>(null);
   
   // Level-up HP state
   const [showLevelUpHpDialog, setShowLevelUpHpDialog] = useState(false);
@@ -16728,28 +16730,38 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
     }
   });
 
+  // Mutation counter to prevent stale onSuccess from overwriting newer optimistic state
+  const mutationCounterRef = useRef(0);
+
   // Character update mutation with immediate UI update
   const updateCharacterMutation = useMutation({
-    mutationFn: (data: any) => api.updateCharacter(character.id, data),
+    mutationFn: (data: any) => {
+      mutationCounterRef.current += 1;
+      pendingMutationRef.current = true;
+      const myCounter = mutationCounterRef.current;
+      return api.updateCharacter(character.id, data).then(result => ({ result, myCounter }));
+    },
     onMutate: (data: any) => {
-      // Immediately update live character data for real-time display
       setLiveCharacter((prev: any) => ({ ...prev, ...data }));
     },
-    onSuccess: (updatedChar: any) => {
-      // Update with server response
-      if (updatedChar) {
-        setLiveCharacter(updatedChar);
+    onSuccess: (response: any) => {
+      const { result: updatedChar, myCounter } = response;
+      if (myCounter === mutationCounterRef.current) {
+        pendingMutationRef.current = false;
+        if (updatedChar) {
+          setLiveCharacter(updatedChar);
+        }
       }
-      // Invalidate the correct query key that Campaign.tsx uses
       if (campaignId) {
         queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${campaignId}/characters`] });
       }
-      // Also invalidate individual character query if it exists
       queryClient.invalidateQueries({ queryKey: [`/api/characters/${character.id}`] });
-      toast({ title: "Character updated successfully", duration: 1000 });
+      if (myCounter === mutationCounterRef.current) {
+        toast({ title: "Character updated successfully", duration: 1000 });
+      }
     },
     onError: (error: any) => {
-      // Revert to original character on error
+      pendingMutationRef.current = false;
       setLiveCharacter(character);
       toast({ 
         title: "Update failed", 
@@ -17425,9 +17437,17 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                             </div>
                           </div>
                         ) : (
-                          <span className="text-xs font-bold" data-testid="text-hp">
+                          <span className={`text-xs font-bold ${(liveCharacter.exhaustion || 0) >= 6 ? 'relative' : ''}`} data-testid="text-hp">
                             {liveCharacter.hp} / {effectiveMaxHp}
+                            {(liveCharacter.exhaustion || 0) >= 6 && (
+                              <span className="absolute inset-0 flex items-center">
+                                <span className="w-full h-[2px] bg-red-500 block" />
+                              </span>
+                            )}
                           </span>
+                        )}
+                        {(liveCharacter.exhaustion || 0) >= 6 && !editingOverview && (
+                          <span className="text-[9px] text-red-400 font-bold ml-1" data-testid="text-hp-exhaustion">Exhaustion</span>
                         )}
                       </div>
                       {!editingOverview && <Progress value={Math.min(100, Math.round((liveCharacter.hp / effectiveMaxHp) * 100))} className="h-2" data-testid="progress-hp" />}
@@ -17559,6 +17579,42 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                     {featBonuses.dc > 0 && <span className="text-purple-400">Feats: +{featBonuses.dc}</span>}
                   </div>
                 </div>
+
+                {/* Exhaustion Status Labels */}
+                {(liveCharacter.exhaustion || 0) >= 1 && (
+                  <div className="space-y-1" data-testid="overview-exhaustion-labels">
+                    {(liveCharacter.exhaustion || 0) >= 1 && (
+                      <div className="flex items-center gap-1.5 px-2 py-1 bg-red-900/20 border border-red-800/30 rounded">
+                        <span className="text-[10px] text-red-400 font-bold">DIS</span>
+                        <span className="text-[10px] text-red-400/70">Skill Checks</span>
+                      </div>
+                    )}
+                    {(liveCharacter.exhaustion || 0) >= 2 && (
+                      <div className="flex items-center gap-1.5 px-2 py-1 bg-orange-900/20 border border-orange-800/30 rounded">
+                        <span className="text-[10px] text-orange-400 font-bold">{(liveCharacter.exhaustion || 0) >= 5 ? '0 ft' : '½'}</span>
+                        <span className="text-[10px] text-orange-400/70">{(liveCharacter.exhaustion || 0) >= 5 ? 'Speed reduced to 0' : 'Speed Halved'}</span>
+                      </div>
+                    )}
+                    {(liveCharacter.exhaustion || 0) >= 3 && (
+                      <div className="flex items-center gap-1.5 px-2 py-1 bg-red-900/20 border border-red-800/30 rounded">
+                        <span className="text-[10px] text-red-400 font-bold">DIS</span>
+                        <span className="text-[10px] text-red-400/70">Attack Rolls</span>
+                      </div>
+                    )}
+                    {(liveCharacter.exhaustion || 0) >= 4 && (
+                      <div className="flex items-center gap-1.5 px-2 py-1 bg-red-900/20 border border-red-800/30 rounded">
+                        <span className="text-[10px] text-red-400 font-bold">DIS</span>
+                        <span className="text-[10px] text-red-400/70">Saving Throws</span>
+                      </div>
+                    )}
+                    {(liveCharacter.exhaustion || 0) >= 6 && (
+                      <div className="flex items-center gap-1.5 px-2 py-1 bg-red-950/30 border border-red-700/50 rounded">
+                        <span className="text-[10px] text-red-500 font-bold">DEAD</span>
+                        <span className="text-[10px] text-red-500/70">HP set to 0</span>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Info Grid - Two Columns */}
                 <div className="grid grid-cols-2 gap-3">
@@ -17732,10 +17788,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                                     if (exhaustion > 0) {
                                       const newVal = exhaustion - 1;
                                       setLiveCharacter((prev: any) => ({ ...prev, exhaustion: newVal }));
-                                      if (exhaustionTimerRef.current) clearTimeout(exhaustionTimerRef.current);
-                                      exhaustionTimerRef.current = setTimeout(() => {
-                                        updateCharacterMutation.mutate({ exhaustion: newVal });
-                                      }, 400);
+                                      updateCharacterMutation.mutate({ exhaustion: newVal });
                                     }
                                   }}
                                   disabled={exhaustion === 0}
@@ -17762,10 +17815,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                                       } else {
                                         setLiveCharacter((prev: any) => ({ ...prev, exhaustion: newVal }));
                                       }
-                                      if (exhaustionTimerRef.current) clearTimeout(exhaustionTimerRef.current);
-                                      exhaustionTimerRef.current = setTimeout(() => {
-                                        updateCharacterMutation.mutate(updates);
-                                      }, 400);
+                                      updateCharacterMutation.mutate(updates);
                                     }
                                   }}
                                   disabled={exhaustion === 6}
@@ -17891,6 +17941,13 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
           <TabsContent value="attributes" className="space-y-4 mt-0" data-testid="content-attributes">
             <Card className="bg-stone-800 border-stone-700">
               <CardContent className="pt-4">
+                {(liveCharacter.exhaustion || 0) >= 4 && (
+                  <div className="flex items-center gap-1.5 mb-3 px-2 py-1.5 bg-red-900/20 border border-red-800/30 rounded" data-testid="attributes-exhaustion-warning">
+                    <AlertTriangle className="h-3 w-3 text-red-400 shrink-0" />
+                    <span className="text-[10px] text-red-400 font-bold">DIS</span>
+                    <span className="text-[10px] text-red-400/70">Disadvantage on Saving Throws (Exhaustion Lv{liveCharacter.exhaustion})</span>
+                  </div>
+                )}
                 {(isOwner || isGM) && !editingAttributes && (
                   <div className="flex justify-end mb-2">
                     <Button
@@ -18124,6 +18181,13 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
           <TabsContent value="skills" className="space-y-4 mt-0" data-testid="content-skills">
             <Card className="bg-stone-800 border-stone-700">
               <CardContent className="pt-4">
+                {(liveCharacter.exhaustion || 0) >= 1 && (
+                  <div className="flex items-center gap-1.5 mb-3 px-2 py-1.5 bg-red-900/20 border border-red-800/30 rounded" data-testid="skills-exhaustion-warning">
+                    <AlertTriangle className="h-3 w-3 text-red-400 shrink-0" />
+                    <span className="text-[10px] text-red-400 font-bold">DIS</span>
+                    <span className="text-[10px] text-red-400/70">Disadvantage on all Skill Checks (Exhaustion Lv{liveCharacter.exhaustion})</span>
+                  </div>
+                )}
                 {canEditSheet && !editingSkills && (
                   <div className="flex justify-end mb-2">
                     <Button
@@ -18825,6 +18889,13 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
           <TabsContent value="inventory" className="space-y-4 mt-0" data-testid="content-inventory">
             <Card className="bg-stone-800 border-stone-700">
               <CardContent className="space-y-4 pt-4">
+                {(liveCharacter.exhaustion || 0) >= 3 && (
+                  <div className="flex items-center gap-1.5 px-2 py-1.5 bg-red-900/20 border border-red-800/30 rounded" data-testid="inventory-exhaustion-warning">
+                    <AlertTriangle className="h-3 w-3 text-red-400 shrink-0" />
+                    <span className="text-[10px] text-red-400 font-bold">DIS</span>
+                    <span className="text-[10px] text-red-400/70">Disadvantage on Attack Rolls (Exhaustion Lv{liveCharacter.exhaustion})</span>
+                  </div>
+                )}
                 <div className="flex justify-end gap-2">
                   {isGM && (
                     <Button size="sm" variant="outline" onClick={() => setShowManageTemplates(true)} data-testid="button-manage-templates" className="bg-stone-700 border-stone-600 hover:bg-stone-600">
@@ -19008,6 +19079,13 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
           <TabsContent value="magic" className="space-y-4 mt-0" data-testid="content-magic">
             <Card className="bg-stone-800 border-stone-700">
               <CardContent className="space-y-4 pt-4">
+                {(liveCharacter.exhaustion || 0) >= 3 && (
+                  <div className="flex items-center gap-1.5 px-2 py-1.5 bg-red-900/20 border border-red-800/30 rounded" data-testid="magic-exhaustion-warning">
+                    <AlertTriangle className="h-3 w-3 text-red-400 shrink-0" />
+                    <span className="text-[10px] text-red-400 font-bold">DIS</span>
+                    <span className="text-[10px] text-red-400/70">Disadvantage on Spell Attack Rolls (Exhaustion Lv{liveCharacter.exhaustion})</span>
+                  </div>
+                )}
                 {isGM && (
                   <div className="flex justify-end gap-2">
                     <Button 
