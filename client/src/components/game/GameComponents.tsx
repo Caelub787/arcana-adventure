@@ -370,8 +370,8 @@ function CampaignMapPinMarker({ pin, xPx, yPx, isRevealed, isGM, pinMoveMode, bg
   const pinRef = useRef<HTMLDivElement>(null);
 
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
-    e.stopPropagation();
     if (isGM && pinMoveMode && onPinDragEnd) {
+      e.stopPropagation();
       e.preventDefault();
       dragRef.current = { startScreenX: e.clientX, startScreenY: e.clientY, dragging: false, pointerId: e.pointerId };
       pinRef.current?.setPointerCapture(e.pointerId);
@@ -393,8 +393,8 @@ function CampaignMapPinMarker({ pin, xPx, yPx, isRevealed, isGM, pinMoveMode, bg
   }, [zoomRef]);
 
   const handlePointerUp = useCallback((e: React.PointerEvent) => {
-    e.stopPropagation();
     if (!dragRef.current) return;
+    e.stopPropagation();
     const wasDrag = dragRef.current.dragging;
     try { pinRef.current?.releasePointerCapture(dragRef.current.pointerId); } catch {}
     if (wasDrag && onPinDragEnd && bgImageDimensions.width > 0) {
@@ -407,13 +407,13 @@ function CampaignMapPinMarker({ pin, xPx, yPx, isRevealed, isGM, pinMoveMode, bg
       const pctY = Math.max(0, Math.min(100, (newYPx / bgImageDimensions.height) * 100));
       onPinDragEnd(pin.id, pctX, pctY);
     } else if (!wasDrag) {
-      handlePinClick();
+      doPinClick();
     }
     dragRef.current = null;
     setDragOffset(null);
-  }, [onPinDragEnd, bgImageDimensions, xPx, yPx, pin, zoomRef]);
+  }, [onPinDragEnd, bgImageDimensions, xPx, yPx, pin, zoomRef, onPinClick, onRevealToggle]);
 
-  const handlePinClick = useCallback(() => {
+  const doPinClick = () => {
     if (pin.isShop && onPinClick) {
       onPinClick({ type: 'shop', pin });
       if (pin.pinType === 'text_reveal') {
@@ -426,7 +426,7 @@ function CampaignMapPinMarker({ pin, xPx, yPx, isRevealed, isGM, pinMoveMode, bg
     } else if (pin.pinType === 'scene_link' && onPinClick) {
       onPinClick({ type: 'scene_link', targetSceneId: pin.targetSceneId });
     }
-  }, [pin, onPinClick, onRevealToggle]);
+  };
 
   const displayX = dragOffset ? xPx + dragOffset.dx : xPx;
   const displayY = dragOffset ? yPx + dragOffset.dy : yPx;
@@ -448,7 +448,7 @@ function CampaignMapPinMarker({ pin, xPx, yPx, isRevealed, isGM, pinMoveMode, bg
       onPointerUp={handlePointerUp}
       onClick={(e) => {
         e.stopPropagation();
-        if (!isGM) handlePinClick();
+        if (!pinMoveMode) doPinClick();
       }}
       data-testid={`map-pin-${pin.id}`}
     >
