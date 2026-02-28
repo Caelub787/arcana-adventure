@@ -68,6 +68,7 @@ function SiteUpdateBanner() {
               'skills': [['system-skills']],
               'character-templates': [['character-templates'], ['admin-character-templates']],
               'character-template-folders': [['character-template-folders']],
+              'system-traits': [['system-traits'], ['public-traits']],
               'token-effects': [['token-effects']],
               'spell-effects': [['system-spells'], ['token-effects']],
               'item-effects': [['system-items'], ['system-items-summary'], ['token-effects']],

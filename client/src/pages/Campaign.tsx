@@ -8408,6 +8408,17 @@ export default function Campaign() {
             queryClientRef.current.refetchQueries({ queryKey: [`/api/characters/${data.characterId}`] });
           }
         }
+        if (data.type === 'campaign_data_changed') {
+          const cid = effectiveCampaignIdRef.current;
+          const campaignQueryMap: Record<string, string[][]> = {
+            'template-items': [[`/api/campaigns/${cid}/template-items`], ['system-items-summary'], ['system-items']],
+            'species': [[`/api/campaigns/${cid}/species`], ['system-species'], ['species']],
+          };
+          const keys = campaignQueryMap[data.entity];
+          if (keys) {
+            keys.forEach(key => queryClientRef.current.invalidateQueries({ queryKey: key }));
+          }
+        }
         // Handle real-time character updates - update local state if it matches current character
         if (data.type === 'character_updated' && data.character) {
           const updatedChar = data.character;

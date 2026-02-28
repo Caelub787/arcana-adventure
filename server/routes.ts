@@ -3944,6 +3944,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ...req.body,
         campaignId: req.params.campaignId
       });
+      broadcastToCampaign(req.params.campaignId, { type: 'campaign_data_changed', entity: 'species', campaignId: req.params.campaignId });
       res.json(species);
     } catch (err) {
       res.status(400).json({ error: "Failed to create campaign species" });
@@ -3969,6 +3970,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const updated = await storage.updateCampaignSpecies(req.params.speciesId, req.body);
+      broadcastToCampaign(req.params.campaignId, { type: 'campaign_data_changed', entity: 'species', campaignId: req.params.campaignId });
       res.json(updated);
     } catch (err) {
       res.status(400).json({ error: "Failed to update campaign species" });
@@ -3994,6 +3996,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       await storage.deleteCampaignSpecies(req.params.speciesId);
+      broadcastToCampaign(req.params.campaignId, { type: 'campaign_data_changed', entity: 'species', campaignId: req.params.campaignId });
       res.json({ success: true });
     } catch (err) {
       res.status(400).json({ error: "Failed to delete campaign species" });
@@ -5350,6 +5353,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/admin/spells", requireAdmin, async (req, res) => {
     try {
       const spell = await storage.createSystemSpell(req.body);
+      broadcastToAllClients({ type: 'admin_data_changed', entity: 'system-spells' });
       res.json(spell);
     } catch (err) {
       res.status(400).json({ error: "Failed to create spell" });
@@ -5362,6 +5366,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!spell) {
         return res.status(404).json({ error: "Spell not found" });
       }
+      broadcastToAllClients({ type: 'admin_data_changed', entity: 'system-spells' });
       res.json(spell);
     } catch (err) {
       res.status(400).json({ error: "Failed to update spell" });
@@ -5371,6 +5376,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete("/api/admin/spells/:id", requireAdmin, async (req, res) => {
     try {
       await storage.deleteSystemSpell(req.params.id);
+      broadcastToAllClients({ type: 'admin_data_changed', entity: 'system-spells' });
       res.json({ success: true });
     } catch (err) {
       res.status(400).json({ error: "Failed to delete spell" });
@@ -5893,6 +5899,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/admin/traits", requireAdmin, async (req, res) => {
     try {
       const trait = await storage.createSystemTrait(req.body);
+      broadcastToAllClients({ type: 'admin_data_changed', entity: 'system-traits' });
       res.json(trait);
     } catch (err) {
       res.status(400).json({ error: "Failed to create trait" });
@@ -5905,6 +5912,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!trait) {
         return res.status(404).json({ error: "Trait not found" });
       }
+      broadcastToAllClients({ type: 'admin_data_changed', entity: 'system-traits' });
       res.json(trait);
     } catch (err) {
       res.status(400).json({ error: "Failed to update trait" });
@@ -5914,6 +5922,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete("/api/admin/traits/:id", requireAdmin, async (req, res) => {
     try {
       await storage.deleteSystemTrait(req.params.id);
+      broadcastToAllClients({ type: 'admin_data_changed', entity: 'system-traits' });
       res.json({ success: true });
     } catch (err) {
       res.status(400).json({ error: "Failed to delete trait" });
@@ -6173,6 +6182,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
       
+      broadcastToCampaign(req.params.campaignId, { type: 'campaign_data_changed', entity: 'template-items', campaignId: req.params.campaignId });
       res.json(item);
     } catch (err) {
       res.status(400).json({ error: "Failed to create campaign item" });
@@ -6210,6 +6220,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
       
+      broadcastToCampaign(req.params.campaignId, { type: 'campaign_data_changed', entity: 'template-items', campaignId: req.params.campaignId });
       res.json(updatedItem);
     } catch (err) {
       res.status(400).json({ error: "Failed to update campaign item" });
@@ -6232,6 +6243,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       await storage.deleteItem(req.params.id);
+      broadcastToCampaign(req.params.campaignId, { type: 'campaign_data_changed', entity: 'template-items', campaignId: req.params.campaignId });
       res.json({ success: true });
     } catch (err) {
       res.status(400).json({ error: "Failed to delete campaign item" });
@@ -8748,6 +8760,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Token effect not found" });
       }
       const updated = await storage.updateTokenEffect(req.params.id, req.body);
+      broadcastToAllClients({ type: 'admin_data_changed', entity: 'token-effects' });
       res.json(updated);
     } catch (err) {
       console.error("Failed to update token effect:", err);
