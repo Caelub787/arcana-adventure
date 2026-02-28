@@ -52,6 +52,7 @@ interface RollEntriesEditorProps {
   onExecuteRoll?: (roll: any) => void;
   draftRolls?: Partial<RollEntry>[];
   onDraftRollsChange?: (rolls: Partial<RollEntry>[]) => void;
+  characterCustomSkills?: any[];
 }
 
 const ATTRIBUTE_OPTIONS = ["might", "finesse", "wit", "presence", "will", "craft"];
@@ -744,7 +745,7 @@ function RollForm({
   );
 }
 
-export function RollEntriesEditor({ ownerType, ownerId, canEdit, onExecuteRoll, draftRolls, onDraftRollsChange }: RollEntriesEditorProps) {
+export function RollEntriesEditor({ ownerType, ownerId, canEdit, onExecuteRoll, draftRolls, onDraftRollsChange, characterCustomSkills }: RollEntriesEditorProps) {
   const queryClient = useQueryClient();
   const [addingNew, setAddingNew] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -846,7 +847,12 @@ export function RollEntriesEditor({ ownerType, ownerId, canEdit, onExecuteRoll, 
     deleteMutation.mutate(id);
   };
 
-  const sortedRolls = [...(rolls as RollEntry[])].sort((a, b) => ((a as any).sortOrder ?? 0) - ((b as any).sortOrder ?? 0));
+  const allSortedRolls = [...(rolls as RollEntry[])].sort((a, b) => ((a as any).sortOrder ?? 0) - ((b as any).sortOrder ?? 0));
+  const sortedRolls = canEdit ? allSortedRolls : allSortedRolls.filter(roll => {
+    if (!roll.isHidden) return true;
+    if (roll.requiredSkillId) return true;
+    return false;
+  });
 
   const handleReorder = async (rollId: string, direction: 'up' | 'down') => {
     const idx = sortedRolls.findIndex(r => r.id === rollId);
@@ -925,10 +931,18 @@ export function RollEntriesEditor({ ownerType, ownerId, canEdit, onExecuteRoll, 
         const details = getRollDetails(roll);
         const badgeClass = ROLL_TYPE_COLORS[roll.rollType] || "bg-stone-600 text-stone-200";
 
-        const isHiddenRoll = roll.isHidden && !canEdit;
         const hiddenSkillName = roll.isHidden && roll.requiredSkillId
           ? (systemSkills as any[]).find((s: any) => s.id === roll.requiredSkillId)?.name
           : null;
+        const requiredValue = roll.requiredSkillValue || 1;
+        const characterMeetsRequirement = roll.isHidden && roll.requiredSkillId && characterCustomSkills
+          ? (() => {
+              const matchingSkill = characterCustomSkills.find((cs: any) => cs.systemSkillId === roll.requiredSkillId);
+              return matchingSkill && matchingSkill.value >= requiredValue;
+            })()
+          : false;
+        const isLockedRoll = roll.isHidden && !canEdit && !characterMeetsRequirement;
+        const isHiddenRoll = isLockedRoll;
 
         return (
           <div

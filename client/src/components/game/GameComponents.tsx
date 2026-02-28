@@ -4232,6 +4232,11 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
     enabled: !!character.id,
   });
 
+  const { data: systemSkillsForHotbar = [] } = useQuery({
+    queryKey: ['system-skills'],
+    queryFn: () => api.getPublicSkills(),
+  });
+
   const { data: itemRollEntries = [] } = useQuery({
     queryKey: ['rollEntries', 'item', hotbar?.itemId],
     queryFn: () => api.getItemRolls(hotbar!.itemId!),
@@ -7192,14 +7197,14 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
   const handleClick = () => {
     if (targetedTokenId) {
       const allRolls = spellData ? spellRollEntries : itemRollEntries;
-      const visibleRolls = allRolls.filter((roll: any) => {
+      const usableRolls = allRolls.filter((roll: any) => {
         if (!roll.isHidden) return true;
         if (!roll.requiredSkillId) return false;
         const matchingSkill = customSkills.find((cs: any) => cs.systemSkillId === roll.requiredSkillId);
         return matchingSkill && matchingSkill.value >= (roll.requiredSkillValue || 1);
       });
-      if (visibleRolls.length === 1) {
-        handleRollEntryExecution(visibleRolls[0]);
+      if (usableRolls.length === 1) {
+        handleRollEntryExecution(usableRolls[0]);
         return;
       }
     }
@@ -7460,16 +7465,22 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
 
           {!isTraitClickable && !isSkillClickable && (itemRollEntries.length > 0 || spellRollEntries.length > 0) && (() => {
             const allRolls = spellData ? spellRollEntries : itemRollEntries;
-            const visibleRolls = allRolls.filter((roll: any) => {
+            const displayRolls = allRolls.filter((roll: any) => {
               if (!roll.isHidden) return true;
               if (!roll.requiredSkillId) return false;
-              const matchingSkill = customSkills.find((cs: any) => cs.systemSkillId === roll.requiredSkillId);
-              return matchingSkill && matchingSkill.value >= (roll.requiredSkillValue || 1);
+              return true;
             });
-            return visibleRolls.length > 0 ? (
+            return displayRolls.length > 0 ? (
             <div className="space-y-2 mb-3">
               <p className="text-xs text-stone-400 uppercase tracking-wider">Rolls</p>
-              {visibleRolls.map((roll: any) => {
+              {displayRolls.map((roll: any) => {
+                const isLocked = roll.isHidden && roll.requiredSkillId && (() => {
+                  const matchingSkill = customSkills.find((cs: any) => cs.systemSkillId === roll.requiredSkillId);
+                  return !(matchingSkill && matchingSkill.value >= (roll.requiredSkillValue || 1));
+                })();
+                const requiredSkillName = roll.isHidden && roll.requiredSkillId
+                  ? (systemSkillsForHotbar as any[]).find((s: any) => s.id === roll.requiredSkillId)?.name
+                  : null;
                 const stats: string[] = [];
                 if (roll.diceFormula) {
                   let diceStr = roll.diceFormula;
@@ -7486,18 +7497,31 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
                   stats.push(`${roll.range}ft`);
                 }
                 return (
-                  <button
-                    key={roll.id}
-                    onClick={() => handleRollEntryExecution(roll)}
-                    className={`w-full flex items-center justify-between p-2 rounded-lg border transition-colors ${roll.primaryColor ? 'border-white/20 text-white hover:brightness-110' : 'border-stone-600 bg-stone-800/50 hover:bg-stone-700/50'}`}
-                    style={roll.primaryColor ? { backgroundColor: roll.primaryColor } : undefined}
-                    data-testid={`button-roll-entry-${roll.id}`}
-                  >
-                    <span className="text-sm font-medium text-white">{roll.name}</span>
-                    {stats.length > 0 && (
-                      <span className={`text-xs ${roll.primaryColor ? 'text-white/70' : 'text-stone-400'}`}>{stats.join(' · ')}</span>
+                  <div key={roll.id}>
+                    <button
+                      onClick={() => !isLocked && handleRollEntryExecution(roll)}
+                      disabled={isLocked}
+                      className={`w-full flex items-center justify-between p-2 rounded-lg border transition-colors ${
+                        isLocked
+                          ? 'border-stone-700/50 bg-stone-900/60 opacity-50 cursor-not-allowed'
+                          : roll.primaryColor 
+                            ? 'border-white/20 text-white hover:brightness-110' 
+                            : 'border-stone-600 bg-stone-800/50 hover:bg-stone-700/50'
+                      }`}
+                      style={!isLocked && roll.primaryColor ? { backgroundColor: roll.primaryColor } : undefined}
+                      data-testid={`button-roll-entry-${roll.id}`}
+                    >
+                      <span className={`text-sm font-medium ${isLocked ? 'text-stone-500' : 'text-white'}`}>{roll.name}</span>
+                      {stats.length > 0 && (
+                        <span className={`text-xs ${isLocked ? 'text-stone-600' : roll.primaryColor ? 'text-white/70' : 'text-stone-400'}`}>{stats.join(' · ')}</span>
+                      )}
+                    </button>
+                    {isLocked && (
+                      <p className="text-[10px] text-red-400 mt-0.5 pl-2">
+                        Requires {requiredSkillName || 'skill'} level {roll.requiredSkillValue || 1}+
+                      </p>
                     )}
-                  </button>
+                  </div>
                 );
               })}
             </div>
@@ -20162,6 +20186,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                         ownerType="spell" 
                         ownerId={selectedSpell.id} 
                         canEdit={isGM}
+                        characterCustomSkills={characterCustomSkills as any[]}
                       />
 
                       <div className="flex items-center gap-2 pt-4 border-t border-stone-700 mt-4">
@@ -23260,6 +23285,11 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
     queryFn: () => api.getHotbars(character.id),
     enabled: !!character.id
   });
+  const { data: characterCustomSkills = [] } = useQuery({
+    queryKey: ['character-custom-skills', character.id],
+    queryFn: () => api.getCharacterCustomSkills(character.id),
+    enabled: !!character.id,
+  });
 
   const upsertHotbarMutation = useMutation({
     mutationFn: (data: any) => api.upsertHotbar(character.id, data),
@@ -24251,6 +24281,7 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
               ownerId={item.id} 
               canEdit={isGM} 
               onExecuteRoll={executeRoll}
+              characterCustomSkills={characterCustomSkills as any[]}
             />
 
             <div className="flex gap-2 pt-4">
