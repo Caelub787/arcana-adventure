@@ -582,11 +582,19 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
   }, []);
 
   const wasdPosRef = useRef<{ id: string; x: number; y: number } | null>(null);
+  const wasdTokenIdRef = useRef<string | null>(null);
   useEffect(() => {
-    if (!assignedCharacterId) { wasdPosRef.current = null; return; }
+    if (!assignedCharacterId) { wasdPosRef.current = null; wasdTokenIdRef.current = null; return; }
     const t = tokens.find(t => t.characterId === assignedCharacterId);
-    if (t) wasdPosRef.current = { id: t.id, x: t.x, y: t.y };
-    else wasdPosRef.current = null;
+    if (t) {
+      if (wasdTokenIdRef.current !== t.id) {
+        wasdPosRef.current = { id: t.id, x: t.x, y: t.y };
+        wasdTokenIdRef.current = t.id;
+      }
+    } else {
+      wasdPosRef.current = null;
+      wasdTokenIdRef.current = null;
+    }
   }, [tokens, assignedCharacterId]);
 
   const wasdDepsRef = useRef({ gridSize, onMoveToken, inCombat, currentTurnCharacterId, assignedCharacterId });
@@ -4543,9 +4551,13 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
     const extraMod = options?.extraMod || 0;
     const totalMod = attrMod + extraMod;
     
-    // Determine advantage type (if both, they cancel out)
-    const hasAdv = options?.advantage && !options?.disadvantage;
-    const hasDis = options?.disadvantage && !options?.advantage;
+    const exhaustionLevel = character.exhaustion || 0;
+    const exhaustionForcesDis = exhaustionLevel >= 3;
+    let optAdv = options?.advantage || false;
+    let optDis = options?.disadvantage || false;
+    if (exhaustionForcesDis) optDis = true;
+    const hasAdv = optAdv && !optDis;
+    const hasDis = optDis && !optAdv;
     
     // Roll dice - with advantage/disadvantage, roll 2d20 and take highest/lowest
     let roll: number;
@@ -5910,8 +5922,13 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
     const extraMod = options?.extraMod || 0;
     const totalMod = attrMod + extraMod;
     
-    const hasAdv = options?.advantage && !options?.disadvantage;
-    const hasDis = options?.disadvantage && !options?.advantage;
+    const spellExhaustionLevel = character.exhaustion || 0;
+    const spellExhaustionForcesDis = spellExhaustionLevel >= 3;
+    let spellOptAdv = options?.advantage || false;
+    let spellOptDis = options?.disadvantage || false;
+    if (spellExhaustionForcesDis) spellOptDis = true;
+    const hasAdv = spellOptAdv && !spellOptDis;
+    const hasDis = spellOptDis && !spellOptAdv;
     
     let roll: number;
     let rollText: string;
@@ -13474,19 +13491,31 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
     
     const attrName = itemData.attribute || 'might';
     const attrMod = getAttributeModifier(attrName);
-    const roll = Math.floor(Math.random() * 20) + 1;
+    const hotbarExhaustion = character.exhaustion || 0;
+    const hotbarForcesDis = hotbarExhaustion >= 3;
+    
+    let roll: number;
+    let rollText: string;
+    if (hotbarForcesDis) {
+      const r1 = Math.floor(Math.random() * 20) + 1;
+      const r2 = Math.floor(Math.random() * 20) + 1;
+      roll = Math.min(r1, r2);
+      rollText = `2d20kl [${r1}, ${r2}] = ${roll}`;
+    } else {
+      roll = Math.floor(Math.random() * 20) + 1;
+      rollText = `1d20 = ${roll}`;
+    }
     const total = roll + attrMod;
     
-    // Build calculation breakdown like "1d20 = 11 + Might (2)"
     const attrDisplayName = attrName.charAt(0).toUpperCase() + attrName.slice(1);
     const calculationBreakdown = attrMod !== 0 
-      ? `1d20 = ${roll} + ${attrDisplayName} (${attrMod >= 0 ? '+' : ''}${attrMod})`
-      : `1d20 = ${roll}`;
+      ? `${rollText} + ${attrDisplayName} (${attrMod >= 0 ? '+' : ''}${attrMod})`
+      : rollText;
     
     triggerRollNotification({
       type: 'attack',
       dieType: 'd20',
-      label: `${itemData.name} Attack`,
+      label: `${itemData.name} Attack${hotbarForcesDis ? ' (Exhaustion DIS)' : ''}`,
       result: roll,
       modifier: attrMod,
       total,
@@ -13629,19 +13658,32 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
     
     const attrName = spellData.attribute || 'wit';
     const attrMod = getAttributeModifier(attrName);
-    const roll = Math.floor(Math.random() * 20) + 1;
+    const spellHotbarExhaustion = character.exhaustion || 0;
+    const spellHotbarForcesDis = spellHotbarExhaustion >= 3;
+    
+    let roll: number;
+    let spellRollText: string;
+    if (spellHotbarForcesDis) {
+      const r1 = Math.floor(Math.random() * 20) + 1;
+      const r2 = Math.floor(Math.random() * 20) + 1;
+      roll = Math.min(r1, r2);
+      spellRollText = `2d20kl [${r1}, ${r2}] = ${roll}`;
+    } else {
+      roll = Math.floor(Math.random() * 20) + 1;
+      spellRollText = `1d20 = ${roll}`;
+    }
     const total = roll + attrMod;
     
     const attrDisplayName = attrName.charAt(0).toUpperCase() + attrName.slice(1);
     const calculationBreakdown = attrMod !== 0 
-      ? `1d20 = ${roll} + ${attrDisplayName} (${attrMod >= 0 ? '+' : ''}${attrMod})`
-      : `1d20 = ${roll}`;
+      ? `${spellRollText} + ${attrDisplayName} (${attrMod >= 0 ? '+' : ''}${attrMod})`
+      : spellRollText;
     
     const rollLabel = spellData.isAttack !== false ? 'Attack' : 'Use';
     triggerRollNotification({
       type: 'attack',
       dieType: 'd20',
-      label: `${spellData.name} ${rollLabel}`,
+      label: `${spellData.name} ${rollLabel}${spellHotbarForcesDis ? ' (Exhaustion DIS)' : ''}`,
       result: roll,
       modifier: attrMod,
       total,
@@ -16116,6 +16158,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
   const [hasAdvantage, setHasAdvantage] = useState(false);
   const [hasDisadvantage, setHasDisadvantage] = useState(false);
   const rollDataRef = useRef<{name: string, modifier: number} | null>(null);
+  const exhaustionTimerRef = useRef<NodeJS.Timeout | null>(null);
   
   // Level-up HP state
   const [showLevelUpHpDialog, setShowLevelUpHpDialog] = useState(false);
@@ -16283,8 +16326,16 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
     return 'none';
   };
   
+  const applyExhaustionDisadvantage = (
+    advantage: 'none' | 'advantage' | 'disadvantage',
+    forceDis: boolean
+  ): 'none' | 'advantage' | 'disadvantage' => {
+    if (!forceDis) return advantage;
+    if (advantage === 'advantage') return 'none';
+    return 'disadvantage';
+  };
+
   const handleRoll = (name: string, modifier: number, extraMod: number = 0, advantage: 'none' | 'advantage' | 'disadvantage' = 'none', isSkill: boolean = false) => {
-    // For skills, add the parent attribute modifier
     let totalMod = modifier + extraMod;
     let attributeValue = 0;
     
@@ -16299,11 +16350,14 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
       }
     }
     
-    // Use d30 if attribute >= 5 (for skills, use the parent attribute; for attributes, use the value itself)
     const checkValue = isSkill ? attributeValue : modifier;
     const dieType = checkValue >= 5 ? 'd30' : 'd20';
     
-    gameWs.sendDiceRoll(dieType, totalMod, name, liveCharacter.id, advantage);
+    const exhaustion = liveCharacter.exhaustion || 0;
+    const exhaustionForcesSkillDis = isSkill && exhaustion >= 1;
+    const finalAdvantage = applyExhaustionDisadvantage(advantage, exhaustionForcesSkillDis);
+    
+    gameWs.sendDiceRoll(dieType, totalMod, name, liveCharacter.id, finalAdvantage);
     setRollPanelOpen(false);
     setExtraModifier(0);
     setHasAdvantage(false);
@@ -17534,9 +17588,24 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                     </div>
                     <div>
                       <Label className="text-xs text-stone-400">Speed</Label>
-                      <p className="text-stone-200" data-testid="text-speed">
-                        {editingOverview ? overviewData.speed : liveCharacter.speed} ft
-                      </p>
+                      {(() => {
+                        const baseSpeed = editingOverview ? overviewData.speed : liveCharacter.speed;
+                        const exh = liveCharacter.exhaustion || 0;
+                        const effectiveSpeed = exh >= 5 ? 0 : exh >= 2 ? Math.floor(baseSpeed / 2) : baseSpeed;
+                        const isReduced = effectiveSpeed < baseSpeed;
+                        return (
+                          <p className="text-stone-200" data-testid="text-speed">
+                            {isReduced ? (
+                              <>
+                                <span className="line-through text-stone-500">{baseSpeed} ft</span>
+                                <span className="text-red-400 ml-1">{effectiveSpeed} ft</span>
+                              </>
+                            ) : (
+                              <>{baseSpeed} ft</>
+                            )}
+                          </p>
+                        );
+                      })()}
                     </div>
                   </div>
                   <div className="space-y-2">
@@ -17558,9 +17627,24 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                     </div>
                     <div>
                       <Label className="text-xs text-stone-400">Fly Speed</Label>
-                      <p className="text-stone-200" data-testid="text-fly-speed">
-                        {editingOverview ? overviewData.flySpeed : liveCharacter.flySpeed} ft
-                      </p>
+                      {(() => {
+                        const baseFlySpeed = editingOverview ? overviewData.flySpeed : liveCharacter.flySpeed;
+                        const exh = liveCharacter.exhaustion || 0;
+                        const effectiveFlySpeed = exh >= 5 ? 0 : exh >= 2 ? Math.floor(baseFlySpeed / 2) : baseFlySpeed;
+                        const isReduced = effectiveFlySpeed < baseFlySpeed;
+                        return (
+                          <p className="text-stone-200" data-testid="text-fly-speed">
+                            {isReduced ? (
+                              <>
+                                <span className="line-through text-stone-500">{baseFlySpeed} ft</span>
+                                <span className="text-red-400 ml-1">{effectiveFlySpeed} ft</span>
+                              </>
+                            ) : (
+                              <>{baseFlySpeed} ft</>
+                            )}
+                          </p>
+                        );
+                      })()}
                     </div>
                     <div className="col-span-2">
                       <Label className="text-xs text-stone-400">Vision</Label>
@@ -17613,18 +17697,23 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                     {/* Exhaustion - Compact */}
                     {(() => {
                       const exhaustion = liveCharacter.exhaustion || 0;
-                      const exhaustionEffects: Record<number, string> = {
-                        0: 'No effect',
-                        1: '-10ft speed',
-                        2: '-20ft, Disadv. skill checks',
-                        3: '-30ft, Disadv. skill & attack',
-                        4: '-40ft, Disadv. all, HP halved',
-                        5: 'Death'
-                      };
+                      const exhaustionLevelEffects: string[][] = [
+                        [],
+                        ['Disadvantage on Skill Checks'],
+                        ['Speed Halved'],
+                        ['Disadvantage on Attack Rolls'],
+                        ['Disadvantage on Saving Throws'],
+                        ['Speed reduced to 0'],
+                        ['HP set to 0'],
+                      ];
                       const exhaustionColors = [
-                        'bg-stone-700', 'bg-yellow-800', 'bg-orange-700', 'bg-red-700',
+                        'bg-stone-700', 'bg-yellow-700', 'bg-yellow-800', 'bg-orange-700', 'bg-red-700',
                         'bg-red-800', 'bg-black'
                       ];
+                      const activeEffects: string[] = [];
+                      for (let i = 1; i <= exhaustion; i++) {
+                        activeEffects.push(...exhaustionLevelEffects[i]);
+                      }
                       
                       return (
                         <div className={`rounded-lg p-2 border ${exhaustion > 0 ? 'border-red-700/50 bg-gradient-to-r from-red-900/30 to-orange-900/30' : 'border-stone-700/50 bg-stone-900/30'}`}>
@@ -17641,7 +17730,12 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                                   className="h-5 w-5 p-0"
                                   onClick={() => {
                                     if (exhaustion > 0) {
-                                      updateCharacterMutation.mutate({ exhaustion: exhaustion - 1 });
+                                      const newVal = exhaustion - 1;
+                                      setLiveCharacter((prev: any) => ({ ...prev, exhaustion: newVal }));
+                                      if (exhaustionTimerRef.current) clearTimeout(exhaustionTimerRef.current);
+                                      exhaustionTimerRef.current = setTimeout(() => {
+                                        updateCharacterMutation.mutate({ exhaustion: newVal });
+                                      }, 400);
                                     }
                                   }}
                                   disabled={exhaustion === 0}
@@ -17659,11 +17753,22 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                                   variant="ghost"
                                   className="h-5 w-5 p-0"
                                   onClick={() => {
-                                    if (exhaustion < 5) {
-                                      updateCharacterMutation.mutate({ exhaustion: exhaustion + 1 });
+                                    if (exhaustion < 6) {
+                                      const newVal = exhaustion + 1;
+                                      const updates: any = { exhaustion: newVal };
+                                      if (newVal === 6) {
+                                        updates.hp = 0;
+                                        setLiveCharacter((prev: any) => ({ ...prev, exhaustion: newVal, hp: 0 }));
+                                      } else {
+                                        setLiveCharacter((prev: any) => ({ ...prev, exhaustion: newVal }));
+                                      }
+                                      if (exhaustionTimerRef.current) clearTimeout(exhaustionTimerRef.current);
+                                      exhaustionTimerRef.current = setTimeout(() => {
+                                        updateCharacterMutation.mutate(updates);
+                                      }, 400);
                                     }
                                   }}
-                                  disabled={exhaustion === 5}
+                                  disabled={exhaustion === 6}
                                   data-testid="button-increase-exhaustion"
                                 >
                                   <Plus className="h-2.5 w-2.5" />
@@ -17672,7 +17777,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                             </div>
                           </div>
                           <div className="flex gap-0.5 mt-1">
-                            {[0, 1, 2, 3, 4, 5].map(level => (
+                            {[0, 1, 2, 3, 4, 5, 6].map(level => (
                               <div
                                 key={level}
                                 className={`flex-1 h-1.5 rounded ${level <= exhaustion ? exhaustionColors[level] : 'bg-stone-800'}`}
@@ -17681,9 +17786,11 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                             ))}
                           </div>
                           {exhaustion > 0 && (
-                            <p className="text-[10px] text-red-400/80 mt-1" data-testid="text-exhaustion-effect">
-                              {exhaustionEffects[exhaustion]}
-                            </p>
+                            <div className="mt-1 space-y-0.5" data-testid="text-exhaustion-effect">
+                              {activeEffects.map((effect, i) => (
+                                <p key={i} className="text-[10px] text-red-400/80">• {effect}</p>
+                              ))}
+                            </div>
                           )}
                         </div>
                       );
@@ -20570,6 +20677,20 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                 ADV and DIS cancel out - rolling normally
               </div>
             )}
+
+            {(() => {
+              const exh = liveCharacter.exhaustion || 0;
+              const isSkillRoll = rollPanelData.type === 'skill';
+              if (isSkillRoll && exh >= 1) {
+                return (
+                  <div className="text-center text-[11px] text-red-400 bg-red-900/20 border border-red-800/30 rounded px-2 py-1" data-testid="text-exhaustion-roll-warning">
+                    <AlertTriangle className="h-3 w-3 inline mr-1" />
+                    Exhaustion Lv{exh}: Disadvantage on Skill Checks
+                  </div>
+                );
+              }
+              return null;
+            })()}
             
             <div className="text-center text-sm text-stone-400">
               Total: <span className="text-amber-500 font-semibold">{(rollPanelData.modifier || 0) + extraModifier >= 0 ? '+' : ''}{(rollPanelData.modifier || 0) + extraModifier}</span>

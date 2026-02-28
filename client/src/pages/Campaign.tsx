@@ -8318,6 +8318,7 @@ export default function Campaign() {
   const effectiveCampaignIdRef = useRef(effectiveCampaignId);
   const membersRef = useRef(members);
   const incognitoFlagRef = useRef(isIncognitoMode && isAdmin);
+  const userIdRef = useRef(user?.id);
   useEffect(() => {
     queryClientRef.current = queryClient;
     toastRef.current = toast;
@@ -8325,7 +8326,8 @@ export default function Campaign() {
     effectiveCampaignIdRef.current = effectiveCampaignId;
     membersRef.current = members;
     incognitoFlagRef.current = isIncognitoMode && isAdmin;
-  }, [queryClient, toast, sceneIdForTokens, effectiveCampaignId, members, isIncognitoMode, isAdmin]);
+    userIdRef.current = user?.id;
+  }, [queryClient, toast, sceneIdForTokens, effectiveCampaignId, members, isIncognitoMode, isAdmin, user?.id]);
 
   // Helper function to get display name (username)
   const getDisplayName = (userId: string, fallbackUsername: string): string => {
@@ -8342,12 +8344,12 @@ export default function Campaign() {
       const unsubscribe = gameWs.onMessage((data) => {
         console.log('WebSocket message received:', data.type, data);
         if (data.type === 'token_move') {
-          // Update local state for immediate visual feedback
+          if (data.userId === userIdRef.current) {
+            return;
+          }
           setTokens(prev => prev.map(t => 
             t.id === data.tokenId ? { ...t, x: data.x, y: data.y } : t
           ));
-          // Also update the React Query cache to keep it in sync with WebSocket updates
-          // This ensures positions persist when switching scenes
           const currentCampaignId = effectiveCampaignIdRef.current;
           const currentSceneId = sceneIdForTokensRef.current;
           if (currentCampaignId && currentSceneId) {
@@ -11836,10 +11838,15 @@ export default function Campaign() {
           let roll2 = Math.floor(Math.random() * 20) + 1;
           let finalRoll = roll1;
           let advText = '';
-          if (dcSaveAdvantage && !dcSaveDisadvantage) {
+          const saveExhaustion = targetChar?.exhaustion || 0;
+          const saveExhaustionForcesDis = saveExhaustion >= 4;
+          let saveAdv = dcSaveAdvantage;
+          let saveDis = dcSaveDisadvantage;
+          if (saveExhaustionForcesDis) saveDis = true;
+          if (saveAdv && !saveDis) {
             finalRoll = Math.max(roll1, roll2);
             advText = ` (Adv: ${roll1}, ${roll2})`;
-          } else if (dcSaveDisadvantage && !dcSaveAdvantage) {
+          } else if (saveDis && !saveAdv) {
             finalRoll = Math.min(roll1, roll2);
             advText = ` (Dis: ${roll1}, ${roll2})`;
           }
@@ -11955,6 +11962,11 @@ export default function Campaign() {
                     Disadvantage
                   </label>
                 </div>
+                {(targetChar?.exhaustion || 0) >= 4 && (
+                  <div className="text-[11px] text-red-400 bg-red-900/20 border border-red-800/30 rounded px-2 py-1" data-testid="save-exhaustion-warning">
+                    Exhaustion Lv{targetChar?.exhaustion}: Disadvantage on Saving Throws
+                  </div>
+                )}
               </div>
 
               <button
