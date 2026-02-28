@@ -758,6 +758,11 @@ export function RollEntriesEditor({ ownerType, ownerId, canEdit, onExecuteRoll, 
     enabled: canEdit,
   });
 
+  const { data: systemSkills = [] } = useQuery({
+    queryKey: ['system-skills'],
+    queryFn: () => api.getPublicSkills(),
+  });
+
   const isDraftMode = !ownerId;
   const draftRollsData = draftRolls || [];
 
@@ -920,10 +925,15 @@ export function RollEntriesEditor({ ownerType, ownerId, canEdit, onExecuteRoll, 
         const details = getRollDetails(roll);
         const badgeClass = ROLL_TYPE_COLORS[roll.rollType] || "bg-stone-600 text-stone-200";
 
+        const isHiddenRoll = roll.isHidden && !canEdit;
+        const hiddenSkillName = roll.isHidden && roll.requiredSkillId
+          ? (systemSkills as any[]).find((s: any) => s.id === roll.requiredSkillId)?.name
+          : null;
+
         return (
           <div
             key={roll.id}
-            className="bg-stone-800/50 rounded-lg border border-stone-700 p-2"
+            className={`rounded-lg border p-2 ${isHiddenRoll ? 'bg-stone-900/60 border-stone-700/50 opacity-50' : 'bg-stone-800/50 border-stone-700'}`}
             data-testid={`card-roll-${roll.id}`}
           >
             {isEditing ? (
@@ -948,7 +958,7 @@ export function RollEntriesEditor({ ownerType, ownerId, canEdit, onExecuteRoll, 
                     {roll.primaryColor && (
                       <div className="w-3 h-3 rounded-full shrink-0 border border-white/20" style={{ backgroundColor: roll.primaryColor }} />
                     )}
-                    <span className="text-xs font-medium text-stone-200 truncate" data-testid={`text-roll-name-${roll.id}`}>{roll.name}</span>
+                    <span className={`text-xs font-medium truncate ${isHiddenRoll ? 'text-stone-500' : 'text-stone-200'}`} data-testid={`text-roll-name-${roll.id}`}>{roll.name}</span>
                     {roll.diceFormula && (
                       <span className="text-[10px] text-stone-400 shrink-0" data-testid={`text-roll-formula-${roll.id}`}>
                         {roll.diceFormula}{roll.mod && roll.mod !== 0 ? (roll.mod > 0 ? `+${roll.mod}` : roll.mod) : ""}
@@ -956,7 +966,7 @@ export function RollEntriesEditor({ ownerType, ownerId, canEdit, onExecuteRoll, 
                     )}
                   </button>
                   <div className="flex items-center gap-1 shrink-0">
-                    {onExecuteRoll && (
+                    {onExecuteRoll && !isHiddenRoll && (
                       <Button
                         size="sm"
                         variant="outline"
@@ -1013,6 +1023,12 @@ export function RollEntriesEditor({ ownerType, ownerId, canEdit, onExecuteRoll, 
                     )}
                   </div>
                 </div>
+
+                {isHiddenRoll && (
+                  <p className="text-[10px] text-red-400 mt-1 pl-5" data-testid={`text-roll-locked-${roll.id}`}>
+                    Requires {hiddenSkillName || 'skill'} level {roll.requiredSkillValue || 1}+ to unlock
+                  </p>
+                )}
 
                 {isExpanded && (
                   <div className="mt-1.5 pl-5 space-y-0.5">
