@@ -346,11 +346,142 @@ interface BattleMapProps {
   pinPlaceMode?: boolean;
   onPinClick?: (pin: any) => void;
   onPinPlaced?: (x: number, y: number) => void;
+  onPinDragEnd?: (pinId: string, x: number, y: number) => void;
+}
+
+function CampaignMapPinMarker({ pin, xPx, yPx, isRevealed, isGM, bgImageDimensions, containerRef, zoomRef, panRef, onPinClick, onPinDragEnd, onRevealToggle }: {
+  pin: any;
+  xPx: number;
+  yPx: number;
+  isRevealed: boolean;
+  isGM: boolean;
+  bgImageDimensions: { width: number; height: number };
+  containerRef: React.RefObject<HTMLDivElement | null>;
+  zoomRef: React.MutableRefObject<number>;
+  panRef: React.MutableRefObject<{ x: number; y: number }>;
+  onPinClick?: (action: any) => void;
+  onPinDragEnd?: (pinId: string, x: number, y: number) => void;
+  onRevealToggle: (pinId: string) => void;
+}) {
+  const dragRef = useRef<{ startScreenX: number; startScreenY: number; dragging: boolean; pointerId: number } | null>(null);
+  const [dragOffset, setDragOffset] = useState<{ dx: number; dy: number } | null>(null);
+  const pinRef = useRef<HTMLDivElement>(null);
+
+  const handlePointerDown = useCallback((e: React.PointerEvent) => {
+    e.stopPropagation();
+    if (isGM && onPinDragEnd) {
+      e.preventDefault();
+      dragRef.current = { startScreenX: e.clientX, startScreenY: e.clientY, dragging: false, pointerId: e.pointerId };
+      pinRef.current?.setPointerCapture(e.pointerId);
+    }
+  }, [isGM, onPinDragEnd]);
+
+  const handlePointerMove = useCallback((e: React.PointerEvent) => {
+    if (!dragRef.current) return;
+    e.stopPropagation();
+    const dx = e.clientX - dragRef.current.startScreenX;
+    const dy = e.clientY - dragRef.current.startScreenY;
+    if (!dragRef.current.dragging && (Math.abs(dx) > 4 || Math.abs(dy) > 4)) {
+      dragRef.current.dragging = true;
+    }
+    if (dragRef.current.dragging) {
+      const currentZoom = zoomRef.current;
+      setDragOffset({ dx: dx / currentZoom, dy: dy / currentZoom });
+    }
+  }, [zoomRef]);
+
+  const handlePointerUp = useCallback((e: React.PointerEvent) => {
+    e.stopPropagation();
+    if (!dragRef.current) return;
+    const wasDrag = dragRef.current.dragging;
+    try { pinRef.current?.releasePointerCapture(dragRef.current.pointerId); } catch {}
+    if (wasDrag && onPinDragEnd && bgImageDimensions.width > 0) {
+      const currentZoom = zoomRef.current;
+      const dx = (e.clientX - dragRef.current.startScreenX) / currentZoom;
+      const dy = (e.clientY - dragRef.current.startScreenY) / currentZoom;
+      const newXPx = xPx + dx;
+      const newYPx = yPx + dy;
+      const pctX = Math.max(0, Math.min(100, (newXPx / bgImageDimensions.width) * 100));
+      const pctY = Math.max(0, Math.min(100, (newYPx / bgImageDimensions.height) * 100));
+      onPinDragEnd(pin.id, pctX, pctY);
+    } else if (!wasDrag) {
+      handlePinClick();
+    }
+    dragRef.current = null;
+    setDragOffset(null);
+  }, [onPinDragEnd, bgImageDimensions, xPx, yPx, pin, zoomRef]);
+
+  const handlePinClick = useCallback(() => {
+    if (pin.isShop && onPinClick) {
+      onPinClick({ type: 'shop', pin });
+      if (pin.pinType === 'text_reveal') {
+        onRevealToggle(pin.id);
+      }
+      return;
+    }
+    if (pin.pinType === 'text_reveal') {
+      onRevealToggle(pin.id);
+    } else if (pin.pinType === 'scene_link' && onPinClick) {
+      onPinClick({ type: 'scene_link', targetSceneId: pin.targetSceneId });
+    }
+  }, [pin, onPinClick, onRevealToggle]);
+
+  const displayX = dragOffset ? xPx + dragOffset.dx : xPx;
+  const displayY = dragOffset ? yPx + dragOffset.dy : yPx;
+
+  return (
+    <div
+      ref={pinRef}
+      className="absolute pointer-events-auto"
+      style={{
+        left: displayX,
+        top: displayY,
+        transform: 'translate(-50%, -100%)',
+        zIndex: isRevealed ? 1000 : 100,
+        cursor: isGM ? 'grab' : 'pointer',
+        touchAction: 'none',
+      }}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onClick={(e) => {
+        e.stopPropagation();
+        if (!isGM) handlePinClick();
+      }}
+      data-testid={`map-pin-${pin.id}`}
+    >
+      <div className="flex flex-col items-center group">
+        <div
+          className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-bold shadow-lg border-2 border-white/60 transition-transform group-hover:scale-110 ${dragOffset ? 'scale-125 opacity-80' : ''}`}
+          style={{ backgroundColor: pin.color || '#f59e0b' }}
+        >
+          {pin.icon && pin.icon !== 'pin' ? (
+            <i className={pin.icon} style={{ fontSize: '14px' }} />
+          ) : (
+            <i className="fa-solid fa-location-dot" style={{ fontSize: '14px' }} />
+          )}
+        </div>
+        {pin.label && (
+          <span className="text-xs font-bold text-white mt-0.5 px-1.5 py-0.5 bg-black/70 rounded whitespace-nowrap max-w-[120px] truncate">
+            {pin.label}
+          </span>
+        )}
+      </div>
+      {isRevealed && pin.pinType === 'text_reveal' && pin.textContent && (
+        <div
+          className="absolute left-1/2 -translate-x-1/2 top-full mt-1 bg-stone-900 border border-stone-600 rounded-lg p-3 shadow-xl min-w-[180px] max-w-[280px] z-[1001]"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <p className="text-sm text-stone-200 whitespace-pre-wrap">{pin.textContent}</p>
+        </div>
+      )}
+    </div>
+  );
 }
 
 
-
-export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClick, onTokenTripleClick, onDeleteToken, role, gridSize, backgroundImage, scene, onViewChange, characters = [], allSpecies = [], selectionMode = 'select', targetedTokenId, selectedTokenId, aoeTargetState, onAoeMouseMove, onAoeClick, otherPlayersAoe, myPermissions, tokenActiveEffects, allTokenEffects, onApplyEffect, onRemoveEffect, onToggleInvisibility, currentTurnCharacterId, otherPlayersTargeting, activeBeacons, onBeacon, otherPlayersViewports, thrownItems = [], onRefetchThrownItems, onDeleteThrownItem, detonatableGridTarget, onGridTargetClick, notesPanelOpen = false, notesPanelWidth = 0, onNotesClick, inCombat = false, fogToolActive: fogToolActiveProp, onFogToolActiveChange, onDropCharacterOnMap, onMapClickToPlace, placingCharacterId, currentUserId, assignedCharacterId, onTokenLongPress, gridCalibrationMode, onGridCalibrationConfirm, onGridCalibrationCancel, cameraTarget, onCameraTargetReached, mapPins = [], pinPlaceMode = false, onPinClick, onPinPlaced }: BattleMapProps) {
+export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClick, onTokenTripleClick, onDeleteToken, role, gridSize, backgroundImage, scene, onViewChange, characters = [], allSpecies = [], selectionMode = 'select', targetedTokenId, selectedTokenId, aoeTargetState, onAoeMouseMove, onAoeClick, otherPlayersAoe, myPermissions, tokenActiveEffects, allTokenEffects, onApplyEffect, onRemoveEffect, onToggleInvisibility, currentTurnCharacterId, otherPlayersTargeting, activeBeacons, onBeacon, otherPlayersViewports, thrownItems = [], onRefetchThrownItems, onDeleteThrownItem, detonatableGridTarget, onGridTargetClick, notesPanelOpen = false, notesPanelWidth = 0, onNotesClick, inCombat = false, fogToolActive: fogToolActiveProp, onFogToolActiveChange, onDropCharacterOnMap, onMapClickToPlace, placingCharacterId, currentUserId, assignedCharacterId, onTokenLongPress, gridCalibrationMode, onGridCalibrationConfirm, onGridCalibrationCancel, cameraTarget, onCameraTargetReached, mapPins = [], pinPlaceMode = false, onPinClick, onPinPlaced, onPinDragEnd }: BattleMapProps) {
   // Derive isGM from role prop
   const isGM = role === 'gm';
   
@@ -2197,57 +2328,21 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
               const yPx = (pin.y / 100) * bgImageDimensions.height;
               const isRevealed = revealedPinId === pin.id;
               return (
-                <div
+                <CampaignMapPinMarker
                   key={pin.id}
-                  className="absolute pointer-events-auto"
-                  style={{
-                    left: xPx,
-                    top: yPx,
-                    transform: 'translate(-50%, -100%)',
-                    zIndex: isRevealed ? 1000 : 100,
-                  }}
-                  data-testid={`map-pin-${pin.id}`}
-                >
-                  <div
-                    className="flex flex-col items-center cursor-pointer group"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (pin.isShop && onPinClick) {
-                        onPinClick({ type: 'shop', pin });
-                        return;
-                      }
-                      if (pin.pinType === 'text_reveal') {
-                        setRevealedPinId(isRevealed ? null : pin.id);
-                      } else if (pin.pinType === 'scene_link' && onPinClick) {
-                        onPinClick({ type: 'scene_link', targetSceneId: pin.targetSceneId });
-                      }
-                    }}
-                  >
-                    <div
-                      className="w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-bold shadow-lg border-2 border-white/60 transition-transform group-hover:scale-110"
-                      style={{ backgroundColor: pin.color || '#f59e0b' }}
-                    >
-                      {pin.icon && pin.icon !== 'pin' ? (
-                        <i className={pin.icon} style={{ fontSize: '14px' }} />
-                      ) : (
-                        <i className="fa-solid fa-location-dot" style={{ fontSize: '14px' }} />
-                      )}
-                    </div>
-                    {pin.label && (
-                      <span className="text-xs font-bold text-white mt-0.5 px-1.5 py-0.5 bg-black/70 rounded whitespace-nowrap max-w-[120px] truncate">
-                        {pin.label}
-                      </span>
-                    )}
-                  </div>
-                  {isRevealed && pin.pinType === 'text_reveal' && pin.textContent && (
-                    <div
-                      className="absolute left-1/2 -translate-x-1/2 top-full mt-1 bg-stone-900 border border-stone-600 rounded-lg p-3 shadow-xl min-w-[180px] max-w-[280px] z-[1001]"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <p className="text-sm text-stone-200 whitespace-pre-wrap">{pin.textContent}</p>
-                    </div>
-                  )}
-                </div>
+                  pin={pin}
+                  xPx={xPx}
+                  yPx={yPx}
+                  isRevealed={isRevealed}
+                  isGM={isGM}
+                  bgImageDimensions={bgImageDimensions}
+                  containerRef={containerRef}
+                  zoomRef={zoomRef}
+                  panRef={panRef}
+                  onPinClick={onPinClick}
+                  onPinDragEnd={onPinDragEnd}
+                  onRevealToggle={(pinId) => setRevealedPinId(prev => prev === pinId ? null : pinId)}
+                />
               );
             })}
           </div>

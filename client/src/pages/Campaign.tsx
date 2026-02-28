@@ -10326,21 +10326,6 @@ export default function Campaign() {
                     </div>
                     <p className="text-xs text-stone-500 mt-1">e.g. fa-solid fa-store, fa-solid fa-shield, fa-solid fa-skull</p>
                   </div>
-                  {editingPin && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="w-full border-stone-600 text-stone-300 hover:text-white"
-                      onClick={() => {
-                        setPinPlaceMode(true);
-                        setShowPinForm(false);
-                        toast({ title: 'Reposition Pin', description: 'Click on the map to set the new position' });
-                      }}
-                      data-testid="button-reposition-pin"
-                    >
-                      <MapPin className="h-3.5 w-3.5 mr-1" /> Reposition Pin
-                    </Button>
-                  )}
                   <div>
                     <Label className="text-xs text-stone-400">Color</Label>
                     <div className="flex gap-1.5 mt-1 flex-wrap">
@@ -10463,6 +10448,11 @@ export default function Campaign() {
           minHeight={300}
         >
           <div className="flex flex-col h-full p-3 gap-3" data-testid="shop-editor">
+            {shopEditingPin.textContent && (
+              <div className="p-2 bg-stone-800/30 rounded border border-stone-700">
+                <p className="text-xs text-stone-400 whitespace-pre-wrap">{shopEditingPin.textContent}</p>
+              </div>
+            )}
             <div className="space-y-2 border border-stone-700 rounded p-3 bg-stone-800/50">
               <h4 className="text-xs text-stone-400 font-medium uppercase tracking-wider">{editingShopItemId ? 'Edit Item' : 'Add Item'}</h4>
               <Input
@@ -10602,6 +10592,11 @@ export default function Campaign() {
           minHeight={350}
         >
           <div className="flex flex-col h-full" data-testid="player-shop">
+            {shopPin.textContent && (
+              <div className="px-3 pt-2 pb-2 border-b border-stone-700 bg-stone-800/30">
+                <p className="text-sm text-stone-300 whitespace-pre-wrap">{shopPin.textContent}</p>
+              </div>
+            )}
             {shopCharacterId && (() => {
               const wallet = getCharacterCurrencyTotal(shopCharacterId);
               const charName = characters?.find((c: any) => c.id === shopCharacterId)?.name || 'Character';
@@ -11141,6 +11136,9 @@ export default function Campaign() {
                  setShowPinForm(true);
                  setPinPlaceMode(false);
                }
+             }}
+             onPinDragEnd={(pinId: string, x: number, y: number) => {
+               updatePinMutation.mutate({ pinId, data: { x, y } });
              }}
            />
            
