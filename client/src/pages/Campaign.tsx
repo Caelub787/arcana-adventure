@@ -6981,6 +6981,9 @@ export default function Campaign() {
   const [shopEditingPin, setShopEditingPin] = useState<any | null>(null);
   const [shopItemForm, setShopItemForm] = useState({ name: '', description: '', price: 0, currency: 'gold', quantity: -1 });
   const [editingShopItemId, setEditingShopItemId] = useState<string | null>(null);
+  const [shopEditorTab, setShopEditorTab] = useState<'inventory' | 'import'>('inventory');
+  const [selectedTemplateIds, setSelectedTemplateIds] = useState<Set<string>>(new Set());
+  const [templateSearch, setTemplateSearch] = useState('');
 
   // Floating world builder state
   const [floatingWorldBuilderOpen, setFloatingWorldBuilderOpen] = useState(false);
@@ -7648,6 +7651,16 @@ export default function Campaign() {
     queryFn: () => api.getShopItems((shopPin?.id || shopEditingPin?.id)!),
     enabled: !!(shopPin?.id || shopEditingPin?.id),
   });
+
+  const { data: templateItemsData } = useQuery({
+    queryKey: [`/api/campaigns/${effectiveCampaignId}/template-items`],
+    queryFn: () => api.getTemplateItems(effectiveCampaignId!),
+    enabled: !!effectiveCampaignId && !!shopEditingPin,
+  });
+  const allTemplateItems = [
+    ...(templateItemsData?.campaignItems || []),
+    ...(templateItemsData?.systemItems || []),
+  ];
 
   const createShopItemMutation = useMutation({
     mutationFn: ({ pinId, data }: { pinId: string; data: any }) => api.createShopItem(pinId, data),
@@ -10281,6 +10294,18 @@ export default function Campaign() {
                           >
                             <Pencil className="h-3.5 w-3.5" />
                           </Button>
+                          {pin.isShop && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 text-amber-400 hover:text-amber-300 shrink-0"
+                              onClick={() => { setShopEditingPin(pin); setShopEditorTab('inventory'); }}
+                              title="Manage Shop"
+                              data-testid={`button-manage-shop-${pin.id}`}
+                            >
+                              <Store className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
                           <Button
                             variant="ghost"
                             size="icon"
@@ -10439,142 +10464,255 @@ export default function Campaign() {
       {shopEditingPin && role === 'gm' && (
         <FloatingPanel
           open={!!shopEditingPin}
-          onClose={() => { setShopEditingPin(null); setEditingShopItemId(null); setShopItemForm({ name: '', description: '', price: 0, currency: 'gold', quantity: -1 }); }}
-          title={<span className="text-amber-500"><Store className="inline h-4 w-4 mr-1" />{shopEditingPin.label || 'Shop'} - Items</span>}
+          onClose={() => { setShopEditingPin(null); setEditingShopItemId(null); setShopItemForm({ name: '', description: '', price: 0, currency: 'gold', quantity: -1 }); setSelectedTemplateIds(new Set()); setTemplateSearch(''); setShopEditorTab('inventory'); }}
+          title={<span className="text-amber-500"><Store className="inline h-4 w-4 mr-1" />{shopEditingPin.label || 'Shop'} - Manage</span>}
           zIndex={floatingZIndices['shop-editor'] || 10400}
           onBringToFront={() => bringToFront('shop-editor')}
-          defaultSize={{ width: 400, height: 520 }}
-          minWidth={340}
-          minHeight={300}
+          defaultSize={{ width: 460, height: 580 }}
+          minWidth={380}
+          minHeight={350}
         >
-          <div className="flex flex-col h-full p-3 gap-3" data-testid="shop-editor">
-            {shopEditingPin.textContent && (
-              <div className="p-2 bg-stone-800/30 rounded border border-stone-700">
-                <p className="text-xs text-stone-400 whitespace-pre-wrap">{shopEditingPin.textContent}</p>
+          <div className="flex flex-col h-full" data-testid="shop-editor">
+            <div className="px-3 pt-2 pb-2 border-b border-stone-700 flex items-center gap-2">
+              <Label className="text-xs text-stone-400 shrink-0">Shopkeeper Gold:</Label>
+              <Input
+                type="number"
+                value={Math.floor((shopEditingPin.shopkeeperMoney ?? 0) / 100)}
+                onChange={(e) => {
+                  const goldVal = parseInt(e.target.value) || 0;
+                  const copperVal = goldVal * 100;
+                  setShopEditingPin((prev: any) => ({ ...prev, shopkeeperMoney: copperVal }));
+                  updatePinMutation.mutate({ pinId: shopEditingPin.id, data: { shopkeeperMoney: copperVal } });
+                }}
+                className="bg-stone-800 border-stone-700 h-7 text-xs w-24"
+                data-testid="input-shopkeeper-money"
+              />
+              <span className="text-xs text-stone-500 ml-auto">
+                {(() => {
+                  const total = shopEditingPin.shopkeeperMoney ?? 0;
+                  const parts = [];
+                  let rem = total;
+                  if (rem >= 1000) { parts.push(`${Math.floor(rem/1000)}pp`); rem %= 1000; }
+                  if (rem >= 100) { parts.push(`${Math.floor(rem/100)}gp`); rem %= 100; }
+                  if (rem >= 10) { parts.push(`${Math.floor(rem/10)}sp`); rem %= 10; }
+                  if (rem > 0) parts.push(`${rem}cp`);
+                  return parts.join(' ') || '0gp';
+                })()}
+              </span>
+            </div>
+
+            <div className="flex border-b border-stone-700">
+              <button
+                onClick={() => setShopEditorTab('inventory')}
+                className={`flex-1 py-2 text-xs font-medium transition-colors ${shopEditorTab === 'inventory' ? 'text-amber-400 border-b-2 border-amber-400' : 'text-stone-400 hover:text-stone-200'}`}
+                data-testid="tab-shop-inventory"
+              >
+                Shop Inventory ({shopItems.length})
+              </button>
+              <button
+                onClick={() => setShopEditorTab('import')}
+                className={`flex-1 py-2 text-xs font-medium transition-colors ${shopEditorTab === 'import' ? 'text-amber-400 border-b-2 border-amber-400' : 'text-stone-400 hover:text-stone-200'}`}
+                data-testid="tab-shop-import"
+              >
+                Import from Items
+              </button>
+            </div>
+
+            {shopEditorTab === 'inventory' ? (
+              <ScrollArea className="flex-1 p-3">
+                <div className="space-y-2">
+                  {shopItems.length === 0 ? (
+                    <div className="text-center py-6">
+                      <p className="text-stone-500 text-sm">No items in this shop yet</p>
+                      <p className="text-stone-600 text-xs mt-1">Use the "Import from Items" tab to add items</p>
+                    </div>
+                  ) : (
+                    shopItems.map((item: any) => (
+                      <div key={item.id} className="p-2.5 bg-stone-800 rounded border border-stone-700 space-y-2" data-testid={`shop-item-${item.id}`}>
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm text-stone-200 font-medium">{item.name}</p>
+                            {item.description && <p className="text-xs text-stone-500 truncate">{item.description}</p>}
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6 text-red-400 hover:text-red-300 shrink-0"
+                            onClick={() => deleteShopItemMutation.mutate(item.id)}
+                            data-testid={`button-delete-shop-item-${item.id}`}
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        </div>
+                        <div className="flex gap-2 items-end">
+                          <div className="w-20">
+                            <Label className="text-xs text-stone-500">Price</Label>
+                            <Input
+                              type="number"
+                              defaultValue={item.price}
+                              onBlur={(e) => {
+                                const val = parseInt(e.target.value) || 0;
+                                if (val !== item.price) updateShopItemMutation.mutate({ itemId: item.id, data: { price: val } });
+                              }}
+                              className="bg-stone-900 border-stone-700 h-7 text-xs"
+                              data-testid={`input-price-${item.id}`}
+                            />
+                          </div>
+                          <div className="w-24">
+                            <Label className="text-xs text-stone-500">Currency</Label>
+                            <select
+                              defaultValue={item.currency}
+                              onChange={(e) => updateShopItemMutation.mutate({ itemId: item.id, data: { currency: e.target.value } })}
+                              className="w-full bg-stone-900 border border-stone-700 text-stone-200 rounded px-1.5 py-1 text-xs h-7"
+                              data-testid={`select-currency-${item.id}`}
+                            >
+                              <option value="copper">Copper</option>
+                              <option value="silver">Silver</option>
+                              <option value="gold">Gold</option>
+                              <option value="platinum">Platinum</option>
+                            </select>
+                          </div>
+                          <div className="w-16">
+                            <Label className="text-xs text-stone-500">Stock</Label>
+                            <Input
+                              type="number"
+                              defaultValue={item.quantity}
+                              onBlur={(e) => {
+                                const val = parseInt(e.target.value);
+                                if (!isNaN(val) && val !== item.quantity) updateShopItemMutation.mutate({ itemId: item.id, data: { quantity: val } });
+                              }}
+                              className="bg-stone-900 border-stone-700 h-7 text-xs"
+                              title="-1 = unlimited"
+                              data-testid={`input-stock-${item.id}`}
+                            />
+                          </div>
+                          <div className="w-16">
+                            <Label className="text-xs text-stone-500">Durability</Label>
+                            <Input
+                              type="number"
+                              defaultValue={(item.itemData as any)?.durability ?? 10}
+                              onBlur={(e) => {
+                                const val = parseInt(e.target.value) || 0;
+                                const currentData = (item.itemData || {}) as Record<string, any>;
+                                if (val !== (currentData.durability ?? 10)) {
+                                  updateShopItemMutation.mutate({ itemId: item.id, data: { itemData: { ...currentData, durability: val } } });
+                                }
+                              }}
+                              className="bg-stone-900 border-stone-700 h-7 text-xs"
+                              min={0}
+                              max={10}
+                              data-testid={`input-durability-${item.id}`}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </ScrollArea>
+            ) : (
+              <div className="flex flex-col flex-1 min-h-0">
+                <div className="px-3 pt-2 pb-2">
+                  <Input
+                    value={templateSearch}
+                    onChange={(e) => setTemplateSearch(e.target.value)}
+                    className="bg-stone-800 border-stone-700 h-8 text-sm"
+                    placeholder="Search items..."
+                    data-testid="input-template-search"
+                  />
+                </div>
+                <ScrollArea className="flex-1 px-3">
+                  <div className="space-y-1 pb-16">
+                    {allTemplateItems
+                      .filter((t: any) => !t.isArchived && t.name.toLowerCase().includes(templateSearch.toLowerCase()))
+                      .map((t: any) => {
+                        const isSelected = selectedTemplateIds.has(t.id);
+                        return (
+                          <div
+                            key={t.id}
+                            onClick={() => {
+                              setSelectedTemplateIds(prev => {
+                                const next = new Set(prev);
+                                if (next.has(t.id)) next.delete(t.id); else next.add(t.id);
+                                return next;
+                              });
+                            }}
+                            className={`flex items-center gap-2 p-2 rounded border cursor-pointer transition-colors ${isSelected ? 'bg-amber-900/30 border-amber-600' : 'bg-stone-800 border-stone-700 hover:border-stone-500'}`}
+                            data-testid={`template-item-${t.id}`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              readOnly
+                              className="h-3.5 w-3.5 shrink-0"
+                            />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm text-stone-200 truncate">{t.name}</p>
+                              <p className="text-xs text-stone-500">{t.itemType || 'item'} • {getCurrencySymbol(t.currency || 'copper')} {t.price || 0} {t.currency || 'copper'}</p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    {allTemplateItems.filter((t: any) => !t.isArchived && t.name.toLowerCase().includes(templateSearch.toLowerCase())).length === 0 && (
+                      <p className="text-center text-stone-500 text-sm py-4">No items found</p>
+                    )}
+                  </div>
+                </ScrollArea>
+                {selectedTemplateIds.size > 0 && (
+                  <div className="absolute bottom-0 left-0 right-0 p-3 bg-stone-900 border-t border-stone-700">
+                    <Button
+                      className="w-full bg-amber-600 hover:bg-amber-700"
+                      onClick={() => {
+                        const selected = allTemplateItems.filter((t: any) => selectedTemplateIds.has(t.id));
+                        let completed = 0;
+                        for (const t of selected) {
+                          const itemData: Record<string, any> = {
+                            name: t.name, description: t.description, image: t.image,
+                            itemType: t.itemType, rarity: t.rarity, durability: t.durability,
+                            damage: t.damage, damageType: t.damageType, mod: t.mod,
+                            range: t.range, aoe: t.aoe, attribute: t.attribute, size: t.size,
+                            isHeavy: t.isHeavy, armorSlot: t.armorSlot, armorBonus: t.armorBonus,
+                            damageReduction: t.damageReduction, damageReductionType: t.damageReductionType,
+                            isContainer: t.isContainer, carryCapacity: t.carryCapacity,
+                            itemWeight: t.itemWeight, isDamaging: t.isDamaging,
+                            isDetonatable: t.isDetonatable, detonateAoeShape: t.detonateAoeShape,
+                            detonateAoeRange: t.detonateAoeRange, canApplyEffects: t.canApplyEffects,
+                            grantsDcBonus: t.grantsDcBonus, dcBonusValue: t.dcBonusValue,
+                            rationServings: t.rationServings,
+                          };
+                          createShopItemMutation.mutate({
+                            pinId: shopEditingPin.id,
+                            data: {
+                              name: t.name,
+                              description: t.description || '',
+                              image: t.image,
+                              price: t.price || 0,
+                              currency: t.currency || 'gold',
+                              quantity: -1,
+                              itemType: t.itemType,
+                              itemData,
+                            },
+                          }, {
+                            onSuccess: () => {
+                              completed++;
+                              if (completed === selected.length) {
+                                setSelectedTemplateIds(new Set());
+                                setShopEditorTab('inventory');
+                                toast({ title: `Added ${selected.length} item(s) to shop` });
+                              }
+                            }
+                          });
+                        }
+                      }}
+                      disabled={createShopItemMutation.isPending}
+                      data-testid="button-add-selected-items"
+                    >
+                      <Plus className="h-4 w-4 mr-1" /> Add {selectedTemplateIds.size} Item{selectedTemplateIds.size > 1 ? 's' : ''} to Shop
+                    </Button>
+                  </div>
+                )}
               </div>
             )}
-            <div className="space-y-2 border border-stone-700 rounded p-3 bg-stone-800/50">
-              <h4 className="text-xs text-stone-400 font-medium uppercase tracking-wider">{editingShopItemId ? 'Edit Item' : 'Add Item'}</h4>
-              <Input
-                value={shopItemForm.name}
-                onChange={(e) => setShopItemForm(prev => ({ ...prev, name: e.target.value }))}
-                className="bg-stone-800 border-stone-700 h-8 text-sm"
-                placeholder="Item name..."
-                data-testid="input-shop-item-name"
-              />
-              <Input
-                value={shopItemForm.description}
-                onChange={(e) => setShopItemForm(prev => ({ ...prev, description: e.target.value }))}
-                className="bg-stone-800 border-stone-700 h-8 text-sm"
-                placeholder="Description..."
-                data-testid="input-shop-item-desc"
-              />
-              <div className="flex gap-2">
-                <div className="flex-1">
-                  <Label className="text-xs text-stone-500">Price</Label>
-                  <Input
-                    type="number"
-                    value={shopItemForm.price}
-                    onChange={(e) => setShopItemForm(prev => ({ ...prev, price: parseInt(e.target.value) || 0 }))}
-                    className="bg-stone-800 border-stone-700 h-8 text-sm"
-                    data-testid="input-shop-item-price"
-                  />
-                </div>
-                <div className="w-28">
-                  <Label className="text-xs text-stone-500">Currency</Label>
-                  <select
-                    value={shopItemForm.currency}
-                    onChange={(e) => setShopItemForm(prev => ({ ...prev, currency: e.target.value }))}
-                    className="w-full bg-stone-800 border border-stone-700 text-stone-200 rounded px-2 py-1.5 text-sm"
-                    data-testid="select-shop-item-currency"
-                  >
-                    <option value="copper">Copper</option>
-                    <option value="silver">Silver</option>
-                    <option value="gold">Gold</option>
-                    <option value="platinum">Platinum</option>
-                  </select>
-                </div>
-                <div className="w-20">
-                  <Label className="text-xs text-stone-500">Stock</Label>
-                  <Input
-                    type="number"
-                    value={shopItemForm.quantity}
-                    onChange={(e) => setShopItemForm(prev => ({ ...prev, quantity: parseInt(e.target.value) || -1 }))}
-                    className="bg-stone-800 border-stone-700 h-8 text-sm"
-                    placeholder="-1=∞"
-                    data-testid="input-shop-item-qty"
-                  />
-                </div>
-              </div>
-              <p className="text-xs text-stone-500">Stock -1 = unlimited</p>
-              <div className="flex gap-2">
-                <Button
-                  size="sm"
-                  className="flex-1 bg-amber-600 hover:bg-amber-700 h-8"
-                  onClick={() => {
-                    if (!shopItemForm.name) return;
-                    if (editingShopItemId) {
-                      updateShopItemMutation.mutate({ itemId: editingShopItemId, data: shopItemForm });
-                    } else {
-                      createShopItemMutation.mutate({ pinId: shopEditingPin.id, data: shopItemForm });
-                    }
-                  }}
-                  disabled={!shopItemForm.name || createShopItemMutation.isPending || updateShopItemMutation.isPending}
-                  data-testid="button-save-shop-item"
-                >
-                  {editingShopItemId ? 'Update' : 'Add Item'}
-                </Button>
-                {editingShopItemId && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="border-stone-600 h-8"
-                    onClick={() => { setEditingShopItemId(null); setShopItemForm({ name: '', description: '', price: 0, currency: 'gold', quantity: -1 }); }}
-                    data-testid="button-cancel-edit-shop-item"
-                  >
-                    Cancel
-                  </Button>
-                )}
-              </div>
-            </div>
-            <ScrollArea className="flex-1">
-              <div className="space-y-2">
-                {shopItems.length === 0 ? (
-                  <p className="text-center text-stone-500 text-sm py-4">No items in this shop yet</p>
-                ) : (
-                  shopItems.map((item: any) => (
-                    <div key={item.id} className="flex items-center gap-2 p-2 bg-stone-800 rounded border border-stone-700" data-testid={`shop-item-${item.id}`}>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm text-stone-200 font-medium truncate">{item.name}</p>
-                        <p className="text-xs text-stone-400">{getCurrencySymbol(item.currency)} {item.price} {item.currency}{item.quantity >= 0 ? ` • Stock: ${item.quantity}` : ' • ∞'}</p>
-                        {item.description && <p className="text-xs text-stone-500 truncate">{item.description}</p>}
-                      </div>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 text-stone-400 hover:text-white shrink-0"
-                        onClick={() => {
-                          setEditingShopItemId(item.id);
-                          setShopItemForm({ name: item.name, description: item.description || '', price: item.price, currency: item.currency, quantity: item.quantity });
-                        }}
-                        data-testid={`button-edit-shop-item-${item.id}`}
-                      >
-                        <Pencil className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 text-red-400 hover:text-red-300 shrink-0"
-                        onClick={() => deleteShopItemMutation.mutate(item.id)}
-                        data-testid={`button-delete-shop-item-${item.id}`}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
-                  ))
-                )}
-              </div>
-            </ScrollArea>
           </div>
         </FloatingPanel>
       )}
@@ -10595,6 +10733,33 @@ export default function Campaign() {
             {shopPin.textContent && (
               <div className="px-3 pt-2 pb-2 border-b border-stone-700 bg-stone-800/30">
                 <p className="text-sm text-stone-300 whitespace-pre-wrap">{shopPin.textContent}</p>
+              </div>
+            )}
+            {role === 'gm' && (
+              <div className="px-3 pt-2 pb-1 border-b border-stone-700 bg-stone-800/50 flex items-center gap-2">
+                <select
+                  value={shopCharacterId}
+                  onChange={(e) => setShopCharacterId(e.target.value)}
+                  className="flex-1 bg-stone-800 border border-stone-700 text-stone-200 rounded px-2 py-1 text-xs"
+                  data-testid="select-shop-character"
+                >
+                  <option value="">Select character...</option>
+                  {(characters || []).map((c: any) => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="border-stone-600 text-amber-400 hover:text-amber-300 h-7 text-xs shrink-0"
+                  onClick={() => {
+                    setShopEditingPin(shopPin);
+                    setShopEditorTab('inventory');
+                  }}
+                  data-testid="button-manage-shop"
+                >
+                  <Settings className="h-3 w-3 mr-1" /> Manage
+                </Button>
               </div>
             )}
             {shopCharacterId && (() => {
@@ -11111,16 +11276,12 @@ export default function Campaign() {
                  }
                }
                if (pinAction.type === 'shop' && pinAction.pin) {
-                 if (role === 'gm') {
-                   setShopEditingPin(pinAction.pin);
-                 } else {
-                   setShopPin(pinAction.pin);
-                   setShopTab('buy');
-                   setHaggleRoll(null);
-                   setSellPercentage(80);
-                   const myChar = characters?.find((c: any) => c.userId === user?.id);
-                   if (myChar) setShopCharacterId(myChar.id);
-                 }
+                 setShopPin(pinAction.pin);
+                 setShopTab('buy');
+                 setHaggleRoll(null);
+                 setSellPercentage(80);
+                 const myChar = characters?.find((c: any) => c.userId === user?.id);
+                 if (myChar) setShopCharacterId(myChar.id);
                }
              }}
              onPinPlaced={(x: number, y: number) => {

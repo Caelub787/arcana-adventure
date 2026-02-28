@@ -11050,6 +11050,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         await storage.updateShopItem(shopItemId, { quantity: shopItem.quantity - 1 });
       }
 
+      if (pin.shopkeeperMoney != null) {
+        await storage.updateCampaignMapPin(pin.id, { shopkeeperMoney: (pin.shopkeeperMoney || 0) + totalCostCopper });
+      }
+
       res.json({ success: true, item: newItem });
     } catch (err) {
       console.error("Failed to buy item:", err);
@@ -11141,6 +11145,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
             break;
           }
         }
+      }
+
+      if (pin.shopkeeperMoney != null && sellValueCopper > 0) {
+        await storage.updateCampaignMapPin(pin.id, { shopkeeperMoney: Math.max(0, (pin.shopkeeperMoney || 0) - sellValueCopper) });
       }
 
       res.json({ success: true, earnings: { amount: bestAmount, currency: bestCurrency } });
