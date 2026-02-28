@@ -788,8 +788,12 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
     return waypoints;
   };
   
-  // Detect token position changes and start animations for remote moves
-  useEffect(() => {
+  // Detect token position changes and start animations synchronously during render
+  // This runs during render (not in useEffect) to avoid the 1-frame flash at destination
+  const prevTokensRef = useRef<string>('');
+  const tokensKey = tokens.map(t => `${t.id}:${t.x}:${t.y}`).join('|');
+  if (tokensKey !== prevTokensRef.current) {
+    prevTokensRef.current = tokensKey;
     const effectiveGridSize = gridSize;
     let startedNewAnimation = false;
     
@@ -797,28 +801,43 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
       const prevPos = prevTokenPositionsRef.current.get(token.id);
       const currPos = { x: token.x, y: token.y };
       
-      // Skip if this token is being dragged locally
       if (draggingToken?.id === token.id) {
         prevTokenPositionsRef.current.set(token.id, currPos);
         return;
       }
       
-      // Skip if already animating to this position
       const existingAnim = animatingTokensRef.current.get(token.id);
       if (existingAnim && existingAnim.toX === token.x && existingAnim.toY === token.y) {
         return;
       }
       
-      // Check if position changed significantly (more than 1 pixel)
       if (prevPos && (Math.abs(prevPos.x - currPos.x) > 1 || Math.abs(prevPos.y - currPos.y) > 1)) {
-        // Position changed - start animation
-        const waypoints = calculateWaypoints(prevPos.x, prevPos.y, currPos.x, currPos.y, effectiveGridSize);
+        // If there's an in-progress animation, start from the current visual position instead of prevPos
+        let startX = prevPos.x;
+        let startY = prevPos.y;
+        const existingAnimForInterrupt = animatingTokensRef.current.get(token.id);
+        if (existingAnimForInterrupt) {
+          const now = performance.now();
+          const elapsed = now - existingAnimForInterrupt.startTime;
+          const totalWaypoints = existingAnimForInterrupt.waypoints.length;
+          const totalDuration = (totalWaypoints - 1) * ANIMATION_SPEED_MS_PER_CELL;
+          if (elapsed < totalDuration) {
+            const progressTotal = elapsed / ANIMATION_SPEED_MS_PER_CELL;
+            const waypointIndex = Math.min(Math.floor(progressTotal), totalWaypoints - 2);
+            const waypointProgress = progressTotal - waypointIndex;
+            const fromWp = existingAnimForInterrupt.waypoints[waypointIndex];
+            const toWp = existingAnimForInterrupt.waypoints[waypointIndex + 1];
+            startX = fromWp.x + (toWp.x - fromWp.x) * Math.min(waypointProgress, 1);
+            startY = fromWp.y + (toWp.y - fromWp.y) * Math.min(waypointProgress, 1);
+          }
+        }
+        const waypoints = calculateWaypoints(startX, startY, currPos.x, currPos.y, effectiveGridSize);
         
         if (waypoints.length > 1) {
           animatingTokensRef.current.set(token.id, {
             id: token.id,
-            fromX: prevPos.x,
-            fromY: prevPos.y,
+            fromX: startX,
+            fromY: startY,
             toX: currPos.x,
             toY: currPos.y,
             waypoints,
@@ -831,18 +850,16 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
       prevTokenPositionsRef.current.set(token.id, currPos);
     });
     
-    // Clean up animations for tokens that no longer exist
     animatingTokensRef.current.forEach((_, tokenId) => {
       if (!tokens.find(t => t.id === tokenId)) {
         animatingTokensRef.current.delete(tokenId);
       }
     });
     
-    // Start animation loop if we have new animations and it's not already running
     if (startedNewAnimation && !animationFrameRef.current) {
       startAnimationLoop();
     }
-  }, [tokens, draggingToken?.id, scene?.gridSize, gridSize]);
+  }
   
   // Track combat turn changes and store ghost token position
   useEffect(() => {
