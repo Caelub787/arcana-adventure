@@ -10255,8 +10255,8 @@ export default function Campaign() {
                     ) : (
                       mapPins.map((pin: any) => (
                         <div key={pin.id} className="flex items-center gap-2 p-2 bg-stone-800 rounded border border-stone-700" data-testid={`pin-list-item-${pin.id}`}>
-                          <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs shrink-0" style={{ backgroundColor: pin.color || '#f59e0b' }}>
-                            {pin.icon === 'pin' ? '📍' : (pin.icon || '📍')}
+                          <div className="w-6 h-6 rounded-full flex items-center justify-center text-white shrink-0" style={{ backgroundColor: pin.color || '#f59e0b' }}>
+                            <i className={pin.icon && pin.icon !== 'pin' ? pin.icon : 'fa-solid fa-location-dot'} style={{ fontSize: '11px' }} />
                           </div>
                           <div className="flex-1 min-w-0">
                             <p className="text-sm text-stone-200 truncate">{pin.label || 'Untitled'}</p>
@@ -10310,6 +10310,37 @@ export default function Campaign() {
                       data-testid="input-pin-label"
                     />
                   </div>
+                  <div>
+                    <Label className="text-xs text-stone-400">Icon (FontAwesome class)</Label>
+                    <div className="flex gap-2 items-center mt-1">
+                      <Input
+                        value={pinFormData.icon}
+                        onChange={(e) => setPinFormData(prev => ({ ...prev, icon: e.target.value }))}
+                        className="bg-stone-800 border-stone-700 h-8 text-sm flex-1"
+                        placeholder="fa-solid fa-store"
+                        data-testid="input-pin-icon"
+                      />
+                      <div className="w-8 h-8 rounded-full flex items-center justify-center text-white shrink-0 border border-stone-600" style={{ backgroundColor: pinFormData.color }}>
+                        <i className={pinFormData.icon && pinFormData.icon !== 'pin' ? pinFormData.icon : 'fa-solid fa-location-dot'} style={{ fontSize: '12px' }} />
+                      </div>
+                    </div>
+                    <p className="text-xs text-stone-500 mt-1">e.g. fa-solid fa-store, fa-solid fa-shield, fa-solid fa-skull</p>
+                  </div>
+                  {editingPin && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="w-full border-stone-600 text-stone-300 hover:text-white"
+                      onClick={() => {
+                        setPinPlaceMode(true);
+                        setShowPinForm(false);
+                        toast({ title: 'Reposition Pin', description: 'Click on the map to set the new position' });
+                      }}
+                      data-testid="button-reposition-pin"
+                    >
+                      <MapPin className="h-3.5 w-3.5 mr-1" /> Reposition Pin
+                    </Button>
+                  )}
                   <div>
                     <Label className="text-xs text-stone-400">Color</Label>
                     <div className="flex gap-1.5 mt-1 flex-wrap">
@@ -11098,10 +11129,18 @@ export default function Campaign() {
                }
              }}
              onPinPlaced={(x: number, y: number) => {
-               setPinFormData(prev => ({ ...prev, x, y, label: '', color: '#f59e0b', icon: 'pin', pinType: 'text_reveal', textContent: '', targetSceneId: '', isShop: false }));
-               setEditingPin(null);
-               setShowPinForm(true);
-               setPinPlaceMode(false);
+               if (editingPin) {
+                 updatePinMutation.mutate({ pinId: editingPin.id, data: { x, y } });
+                 setPinFormData(prev => ({ ...prev, x, y }));
+                 setShowPinForm(true);
+                 setPinPlaceMode(false);
+                 toast({ title: 'Pin repositioned' });
+               } else {
+                 setPinFormData(prev => ({ ...prev, x, y, label: '', color: '#f59e0b', icon: 'pin', pinType: 'text_reveal', textContent: '', targetSceneId: '', isShop: false }));
+                 setEditingPin(null);
+                 setShowPinForm(true);
+                 setPinPlaceMode(false);
+               }
              }}
            />
            

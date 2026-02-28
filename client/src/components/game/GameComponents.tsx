@@ -2212,13 +2212,14 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                     className="flex flex-col items-center cursor-pointer group"
                     onClick={(e) => {
                       e.stopPropagation();
+                      if (pin.isShop && onPinClick) {
+                        onPinClick({ type: 'shop', pin });
+                        return;
+                      }
                       if (pin.pinType === 'text_reveal') {
                         setRevealedPinId(isRevealed ? null : pin.id);
                       } else if (pin.pinType === 'scene_link' && onPinClick) {
                         onPinClick({ type: 'scene_link', targetSceneId: pin.targetSceneId });
-                      }
-                      if (pin.isShop && onPinClick) {
-                        onPinClick({ type: 'shop', pin });
                       }
                     }}
                   >
@@ -2226,7 +2227,11 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                       className="w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-bold shadow-lg border-2 border-white/60 transition-transform group-hover:scale-110"
                       style={{ backgroundColor: pin.color || '#f59e0b' }}
                     >
-                      {pin.icon === 'pin' ? '📍' : (pin.icon || '📍')}
+                      {pin.icon && pin.icon !== 'pin' ? (
+                        <i className={pin.icon} style={{ fontSize: '14px' }} />
+                      ) : (
+                        <i className="fa-solid fa-location-dot" style={{ fontSize: '14px' }} />
+                      )}
                     </div>
                     {pin.label && (
                       <span className="text-xs font-bold text-white mt-0.5 px-1.5 py-0.5 bg-black/70 rounded whitespace-nowrap max-w-[120px] truncate">
