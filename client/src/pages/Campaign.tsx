@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from "react"
 import { createPortal } from "react-dom";
 import { useLocation, useSearch, useRoute } from "wouter";
 import { motion } from "framer-motion";
-import { CharacterCreation, BattleMap, CampaignMenu, CharacterSheet, BattleMapHotbars, InitiativeTracker, SelectionModeButtons, type SelectionMode } from "@/components/game/GameComponents";
+import { CharacterCreation, BattleMap, CampaignMenu, CharacterSheet, BattleMapHotbars, InitiativeTracker, SelectionModeButtons, LazyItemImage, type SelectionMode } from "@/components/game/GameComponents";
 import { BattlemapDiceOverlay, triggerBattlemapDiceRoll } from "@/components/game/BattlemapDiceOverlay";
 import { type AoeTargetState, createInitialAoeState, getTokensInAoe } from "@/lib/aoeHelpers";
 import { RollNotificationContainer, triggerInitiativeNotification, triggerEffectRollNotification, getNotificationStyle, setNotificationStyle, type NotificationStyle } from "@/components/game/RollNotification";
@@ -6984,6 +6984,8 @@ export default function Campaign() {
   const [shopEditorTab, setShopEditorTab] = useState<'inventory' | 'import'>('inventory');
   const [selectedTemplateIds, setSelectedTemplateIds] = useState<Set<string>>(new Set());
   const [templateSearch, setTemplateSearch] = useState('');
+  const [shopImportTypeFilter, setShopImportTypeFilter] = useState('all');
+  const [shopImportRarityFilter, setShopImportRarityFilter] = useState('all');
 
   // Floating world builder state
   const [floatingWorldBuilderOpen, setFloatingWorldBuilderOpen] = useState(false);
@@ -10618,21 +10620,72 @@ export default function Campaign() {
               </ScrollArea>
             ) : (
               <div className="flex flex-col flex-1 min-h-0">
-                <div className="px-3 pt-2 pb-2">
-                  <Input
-                    value={templateSearch}
-                    onChange={(e) => setTemplateSearch(e.target.value)}
-                    className="bg-stone-800 border-stone-700 h-8 text-sm"
-                    placeholder="Search items..."
-                    data-testid="input-template-search"
-                  />
+                <div className="px-3 pt-2 pb-2 space-y-2">
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
+                      <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-stone-500" />
+                      <Input
+                        value={templateSearch}
+                        onChange={(e) => setTemplateSearch(e.target.value)}
+                        className="bg-stone-800 border-stone-700 h-8 text-sm pl-8"
+                        placeholder="Search items..."
+                        data-testid="input-template-search"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <select
+                      value={shopImportTypeFilter}
+                      onChange={(e) => setShopImportTypeFilter(e.target.value)}
+                      className="flex-1 bg-stone-800 border border-stone-700 text-stone-200 rounded px-2 py-1 text-xs h-7"
+                      data-testid="select-shop-import-type-filter"
+                    >
+                      <option value="all">All Types</option>
+                      <option value="weapon">Weapon</option>
+                      <option value="armor">Armor</option>
+                      <option value="consumable">Consumable</option>
+                      <option value="utility">Utility</option>
+                      <option value="container">Container</option>
+                      <option value="currency">Currency</option>
+                      <option value="ammunition">Ammunition</option>
+                    </select>
+                    <select
+                      value={shopImportRarityFilter}
+                      onChange={(e) => setShopImportRarityFilter(e.target.value)}
+                      className="flex-1 bg-stone-800 border border-stone-700 text-stone-200 rounded px-2 py-1 text-xs h-7"
+                      data-testid="select-shop-import-rarity-filter"
+                    >
+                      <option value="all">All Rarities</option>
+                      <option value="common">Common</option>
+                      <option value="uncommon">Uncommon</option>
+                      <option value="rare">Rare</option>
+                      <option value="epic">Epic</option>
+                      <option value="legendary">Legendary</option>
+                    </select>
+                    {(shopImportTypeFilter !== 'all' || shopImportRarityFilter !== 'all') && (
+                      <button
+                        onClick={() => { setShopImportTypeFilter('all'); setShopImportRarityFilter('all'); }}
+                        className="text-xs text-amber-400 hover:text-amber-300 px-1 shrink-0"
+                        data-testid="button-clear-shop-import-filters"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
                 </div>
                 <ScrollArea className="flex-1 px-3">
                   <div className="space-y-1 pb-16">
                     {allTemplateItems
-                      .filter((t: any) => t.name.toLowerCase().includes(templateSearch.toLowerCase()))
+                      .filter((t: any) => {
+                        const matchesSearch = t.name.toLowerCase().includes(templateSearch.toLowerCase());
+                        const matchesType = shopImportTypeFilter === 'all' || t.itemType === shopImportTypeFilter;
+                        const matchesRarity = shopImportRarityFilter === 'all' || t.rarity === shopImportRarityFilter;
+                        return matchesSearch && matchesType && matchesRarity;
+                      })
                       .map((t: any) => {
                         const isSelected = selectedTemplateIds.has(t.id);
+                        const rar = t.rarity || 'common';
+                        const rarityColor = rar === 'legendary' ? 'text-yellow-400' : rar === 'epic' ? 'text-purple-400' : rar === 'rare' ? 'text-blue-400' : rar === 'uncommon' ? 'text-green-400' : 'text-stone-400';
                         return (
                           <div
                             key={t.id}
@@ -10643,7 +10696,7 @@ export default function Campaign() {
                                 return next;
                               });
                             }}
-                            className={`flex items-center gap-2 p-2 rounded border cursor-pointer transition-colors ${isSelected ? 'bg-amber-900/30 border-amber-600' : 'bg-stone-800 border-stone-700 hover:border-stone-500'}`}
+                            className={`flex items-center gap-2.5 p-2 rounded border cursor-pointer transition-colors ${isSelected ? 'bg-amber-900/30 border-amber-600' : 'bg-stone-800 border-stone-700 hover:border-stone-500'}`}
                             data-testid={`template-item-${t.id}`}
                           >
                             <input
@@ -10652,14 +10705,23 @@ export default function Campaign() {
                               readOnly
                               className="h-3.5 w-3.5 shrink-0"
                             />
+                            <LazyItemImage itemId={t.id} itemType={t.itemType || 'utility'} />
                             <div className="flex-1 min-w-0">
-                              <p className="text-sm text-stone-200 truncate">{t.name}</p>
-                              <p className="text-xs text-stone-500">{t.itemType || 'item'} • {getCurrencySymbol(t.currency || 'copper')} {t.price || 0} {t.currency || 'copper'}</p>
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-sm text-stone-200 truncate font-medium">{t.name}</span>
+                                <span className={`text-[10px] font-bold ${rarityColor}`} data-testid={`rarity-label-${t.id}`}>{rar}</span>
+                              </div>
+                              <p className="text-xs text-stone-500 capitalize">{t.itemType || 'item'} • {getCurrencySymbol(t.currency || 'copper')} {t.price || 0} {t.currency || 'copper'}</p>
                             </div>
                           </div>
                         );
                       })}
-                    {allTemplateItems.filter((t: any) => t.name.toLowerCase().includes(templateSearch.toLowerCase())).length === 0 && (
+                    {allTemplateItems.filter((t: any) => {
+                      const matchesSearch = t.name.toLowerCase().includes(templateSearch.toLowerCase());
+                      const matchesType = shopImportTypeFilter === 'all' || t.itemType === shopImportTypeFilter;
+                      const matchesRarity = shopImportRarityFilter === 'all' || t.rarity === shopImportRarityFilter;
+                      return matchesSearch && matchesType && matchesRarity;
+                    }).length === 0 && (
                       <p className="text-center text-stone-500 text-sm py-4">No items found</p>
                     )}
                   </div>

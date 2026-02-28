@@ -21700,7 +21700,7 @@ function FeatTreeViewerGrid({
 }
 
 // Lazy-loading item image component using IntersectionObserver
-function LazyItemImage({ itemId, itemType }: { itemId: string; itemType: string }) {
+export function LazyItemImage({ itemId, itemType }: { itemId: string; itemType: string }) {
   const [isVisible, setIsVisible] = useState(false);
   const imgRef = useRef<HTMLDivElement>(null);
 
