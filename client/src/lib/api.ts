@@ -1054,7 +1054,7 @@ class ApiClient {
     return this.request('/system-items/summary');
   }
 
-  async getTemplateItemSummaries(campaignId: string): Promise<{ campaignItems: { id: string; name: string; itemType: string; rarity: string; weight: number }[], systemItems: { id: string; name: string; itemType: string; rarity: string; weight: number }[] }> {
+  async getTemplateItemSummaries(campaignId: string): Promise<{ campaignItems: { id: string; name: string; itemType: string; rarity: string; weight: number; price: number; currency: string }[], systemItems: { id: string; name: string; itemType: string; rarity: string; weight: number; price: number; currency: string }[] }> {
     return this.request(`/campaigns/${campaignId}/template-items/summary`);
   }
 

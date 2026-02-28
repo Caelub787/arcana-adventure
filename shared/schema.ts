@@ -1687,6 +1687,7 @@ export const campaignMapPins = pgTable("campaign_map_pins", {
   targetSceneId: varchar("target_scene_id"),
   isShop: boolean("is_shop").default(false),
   shopkeeperMoney: integer("shopkeeper_money").default(0),
+  shopkeeperCharacterId: varchar("shopkeeper_character_id"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

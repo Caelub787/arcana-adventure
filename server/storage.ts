@@ -176,8 +176,8 @@ export interface IStorage {
   getSystemItems(): Promise<Item[]>;
   getCampaignTemplateItems(campaignId: string, userId?: string): Promise<Item[]>;
   // Lightweight summaries for picker dialogs (faster loading)
-  getSystemItemSummaries(): Promise<{ id: string; name: string; itemType: string; rarity: string; weight: number }[]>;
-  getCampaignItemSummaries(campaignId: string, userId?: string): Promise<{ id: string; name: string; itemType: string; rarity: string; weight: number }[]>;
+  getSystemItemSummaries(): Promise<{ id: string; name: string; itemType: string; rarity: string; weight: number; price: number; currency: string }[]>;
+  getCampaignItemSummaries(campaignId: string, userId?: string): Promise<{ id: string; name: string; itemType: string; rarity: string; weight: number; price: number; currency: string }[]>;
   createItem(item: InsertItem): Promise<Item>;
   updateItem(id: string, updates: Partial<InsertItem>): Promise<Item | undefined>;
   deleteItem(id: string): Promise<void>;
@@ -1823,13 +1823,15 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Lightweight summaries for faster item picker loading (no images to avoid Neon 507 response size limit)
-  async getSystemItemSummaries(): Promise<{ id: string; name: string; itemType: string; rarity: string; weight: number }[]> {
+  async getSystemItemSummaries(): Promise<{ id: string; name: string; itemType: string; rarity: string; weight: number; price: number; currency: string }[]> {
     return await db.select({
       id: items.id,
       name: items.name,
       itemType: items.itemType,
       rarity: items.rarity,
       weight: items.itemWeight,
+      price: items.price,
+      currency: items.currency,
     })
       .from(items)
       .where(and(
@@ -1840,7 +1842,7 @@ export class DatabaseStorage implements IStorage {
       ));
   }
 
-  async getCampaignItemSummaries(campaignId: string, userId?: string): Promise<{ id: string; name: string; itemType: string; rarity: string; weight: number }[]> {
+  async getCampaignItemSummaries(campaignId: string, userId?: string): Promise<{ id: string; name: string; itemType: string; rarity: string; weight: number; price: number; currency: string }[]> {
     // Get items specific to this campaign OR created by this user (GM library items)
     return await db.select({
       id: items.id,
@@ -1848,6 +1850,8 @@ export class DatabaseStorage implements IStorage {
       itemType: items.itemType,
       rarity: items.rarity,
       weight: items.itemWeight,
+      price: items.price,
+      currency: items.currency,
     })
       .from(items)
       .where(and(

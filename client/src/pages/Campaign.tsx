@@ -7653,8 +7653,8 @@ export default function Campaign() {
   });
 
   const { data: templateItemsData } = useQuery({
-    queryKey: [`/api/campaigns/${effectiveCampaignId}/template-items`],
-    queryFn: () => api.getTemplateItems(effectiveCampaignId!),
+    queryKey: [`/api/campaigns/${effectiveCampaignId}/template-items/summary`],
+    queryFn: () => api.getTemplateItemSummaries(effectiveCampaignId!),
     enabled: !!effectiveCampaignId && !!shopEditingPin,
   });
   const allTemplateItems = [
@@ -7718,7 +7718,10 @@ export default function Campaign() {
   });
 
   const handleHaggleRoll = () => {
-    const roll = Math.floor(Math.random() * 20) + 1;
+    const d20 = Math.floor(Math.random() * 20) + 1;
+    const char = characters?.find((c: any) => c.id === shopCharacterId);
+    const charismaMod = char?.skillCharisma ?? 0;
+    const roll = d20 === 1 ? 1 : d20 === 20 ? 20 : Math.max(1, Math.min(20, d20 + charismaMod));
     setHaggleRoll(roll);
     const percentageMap: Record<number, number> = {
       1: 0, 2: 10, 3: 10, 4: 20, 5: 20, 6: 30, 7: 30, 8: 40, 9: 40,
@@ -7727,7 +7730,7 @@ export default function Campaign() {
     };
     const pct = percentageMap[roll] ?? 80;
     setSellPercentage(pct);
-    const rollLabel = roll === 1 ? 'Nat 1!' : roll === 20 ? 'Nat 20!' : `Rolled ${roll}`;
+    const rollLabel = d20 === 1 ? 'Nat 1!' : d20 === 20 ? 'Nat 20!' : `d20: ${d20}${charismaMod !== 0 ? ` + CHA ${charismaMod >= 0 ? '+' : ''}${charismaMod} = ${roll}` : ''}`;
     toast({ title: `Charisma Haggle: ${rollLabel}`, description: `Sell rate: ${pct}%` });
   };
 
@@ -10474,31 +10477,34 @@ export default function Campaign() {
         >
           <div className="flex flex-col h-full" data-testid="shop-editor">
             <div className="px-3 pt-2 pb-2 border-b border-stone-700 flex items-center gap-2">
-              <Label className="text-xs text-stone-400 shrink-0">Shopkeeper Gold:</Label>
-              <Input
-                type="number"
-                value={Math.floor((shopEditingPin.shopkeeperMoney ?? 0) / 100)}
+              <Label className="text-xs text-stone-400 shrink-0">Shopkeeper:</Label>
+              <select
+                value={shopEditingPin.shopkeeperCharacterId || ''}
                 onChange={(e) => {
-                  const goldVal = parseInt(e.target.value) || 0;
-                  const copperVal = goldVal * 100;
-                  setShopEditingPin((prev: any) => ({ ...prev, shopkeeperMoney: copperVal }));
-                  updatePinMutation.mutate({ pinId: shopEditingPin.id, data: { shopkeeperMoney: copperVal } });
+                  const val = e.target.value || null;
+                  setShopEditingPin((prev: any) => ({ ...prev, shopkeeperCharacterId: val }));
+                  updatePinMutation.mutate({ pinId: shopEditingPin.id, data: { shopkeeperCharacterId: val } });
                 }}
-                className="bg-stone-800 border-stone-700 h-7 text-xs w-24"
-                data-testid="input-shopkeeper-money"
-              />
-              <span className="text-xs text-stone-500 ml-auto">
-                {(() => {
-                  const total = shopEditingPin.shopkeeperMoney ?? 0;
-                  const parts = [];
-                  let rem = total;
-                  if (rem >= 1000) { parts.push(`${Math.floor(rem/1000)}pp`); rem %= 1000; }
-                  if (rem >= 100) { parts.push(`${Math.floor(rem/100)}gp`); rem %= 100; }
-                  if (rem >= 10) { parts.push(`${Math.floor(rem/10)}sp`); rem %= 10; }
-                  if (rem > 0) parts.push(`${rem}cp`);
-                  return parts.join(' ') || '0gp';
-                })()}
-              </span>
+                className="flex-1 bg-stone-800 border border-stone-700 text-stone-200 rounded px-2 py-1 text-xs"
+                data-testid="select-shopkeeper-character"
+              >
+                <option value="">None (no currency tracking)</option>
+                {(characters || []).map((c: any) => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+              {shopEditingPin.shopkeeperCharacterId && (() => {
+                const wallet = getCharacterCurrencyTotal(shopEditingPin.shopkeeperCharacterId);
+                return (
+                  <span className="text-xs text-stone-400 shrink-0">
+                    {wallet.platinum > 0 && <span className="mr-1">⬜{wallet.platinum}</span>}
+                    {wallet.gold > 0 && <span className="mr-1">🟡{wallet.gold}</span>}
+                    {wallet.silver > 0 && <span className="mr-1">⚪{wallet.silver}</span>}
+                    {wallet.copper > 0 && <span>🟤{wallet.copper}</span>}
+                    {wallet.totalCopper === 0 && '0gp'}
+                  </span>
+                );
+              })()}
             </div>
 
             <div className="flex border-b border-stone-700">
@@ -10624,7 +10630,7 @@ export default function Campaign() {
                 <ScrollArea className="flex-1 px-3">
                   <div className="space-y-1 pb-16">
                     {allTemplateItems
-                      .filter((t: any) => !t.isArchived && t.name.toLowerCase().includes(templateSearch.toLowerCase()))
+                      .filter((t: any) => t.name.toLowerCase().includes(templateSearch.toLowerCase()))
                       .map((t: any) => {
                         const isSelected = selectedTemplateIds.has(t.id);
                         return (
@@ -10653,7 +10659,7 @@ export default function Campaign() {
                           </div>
                         );
                       })}
-                    {allTemplateItems.filter((t: any) => !t.isArchived && t.name.toLowerCase().includes(templateSearch.toLowerCase())).length === 0 && (
+                    {allTemplateItems.filter((t: any) => t.name.toLowerCase().includes(templateSearch.toLowerCase())).length === 0 && (
                       <p className="text-center text-stone-500 text-sm py-4">No items found</p>
                     )}
                   </div>
@@ -10662,46 +10668,53 @@ export default function Campaign() {
                   <div className="absolute bottom-0 left-0 right-0 p-3 bg-stone-900 border-t border-stone-700">
                     <Button
                       className="w-full bg-amber-600 hover:bg-amber-700"
-                      onClick={() => {
+                      onClick={async () => {
                         const selected = allTemplateItems.filter((t: any) => selectedTemplateIds.has(t.id));
-                        let completed = 0;
-                        for (const t of selected) {
-                          const itemData: Record<string, any> = {
-                            name: t.name, description: t.description, image: t.image,
-                            itemType: t.itemType, rarity: t.rarity, durability: t.durability,
-                            damage: t.damage, damageType: t.damageType, mod: t.mod,
-                            range: t.range, aoe: t.aoe, attribute: t.attribute, size: t.size,
-                            isHeavy: t.isHeavy, armorSlot: t.armorSlot, armorBonus: t.armorBonus,
-                            damageReduction: t.damageReduction, damageReductionType: t.damageReductionType,
-                            isContainer: t.isContainer, carryCapacity: t.carryCapacity,
-                            itemWeight: t.itemWeight, isDamaging: t.isDamaging,
-                            isDetonatable: t.isDetonatable, detonateAoeShape: t.detonateAoeShape,
-                            detonateAoeRange: t.detonateAoeRange, canApplyEffects: t.canApplyEffects,
-                            grantsDcBonus: t.grantsDcBonus, dcBonusValue: t.dcBonusValue,
-                            rationServings: t.rationServings,
-                          };
-                          createShopItemMutation.mutate({
-                            pinId: shopEditingPin.id,
-                            data: {
-                              name: t.name,
-                              description: t.description || '',
-                              image: t.image,
-                              price: t.price || 0,
-                              currency: t.currency || 'gold',
-                              quantity: -1,
-                              itemType: t.itemType,
-                              itemData,
-                            },
-                          }, {
-                            onSuccess: () => {
-                              completed++;
-                              if (completed === selected.length) {
-                                setSelectedTemplateIds(new Set());
-                                setShopEditorTab('inventory');
-                                toast({ title: `Added ${selected.length} item(s) to shop` });
+                        try {
+                          const fullData = await api.getTemplateItems(effectiveCampaignId!);
+                          const fullItems = [...(fullData.campaignItems || []), ...(fullData.systemItems || [])];
+                          let completed = 0;
+                          for (const summary of selected) {
+                            const t = fullItems.find((f: any) => f.id === summary.id) || summary;
+                            const itemData: Record<string, any> = {
+                              name: t.name, description: t.description, image: t.image,
+                              itemType: t.itemType, rarity: t.rarity, durability: t.durability,
+                              damage: t.damage, damageType: t.damageType, mod: t.mod,
+                              range: t.range, aoe: t.aoe, attribute: t.attribute, size: t.size,
+                              isHeavy: t.isHeavy, armorSlot: t.armorSlot, armorBonus: t.armorBonus,
+                              damageReduction: t.damageReduction, damageReductionType: t.damageReductionType,
+                              isContainer: t.isContainer, carryCapacity: t.carryCapacity,
+                              itemWeight: t.itemWeight, isDamaging: t.isDamaging,
+                              isDetonatable: t.isDetonatable, detonateAoeShape: t.detonateAoeShape,
+                              detonateAoeRange: t.detonateAoeRange, canApplyEffects: t.canApplyEffects,
+                              grantsDcBonus: t.grantsDcBonus, dcBonusValue: t.dcBonusValue,
+                              rationServings: t.rationServings,
+                            };
+                            createShopItemMutation.mutate({
+                              pinId: shopEditingPin.id,
+                              data: {
+                                name: t.name,
+                                description: t.description || '',
+                                image: t.image,
+                                price: t.price || 0,
+                                currency: t.currency || 'gold',
+                                quantity: -1,
+                                itemType: t.itemType,
+                                itemData,
+                              },
+                            }, {
+                              onSuccess: () => {
+                                completed++;
+                                if (completed === selected.length) {
+                                  setSelectedTemplateIds(new Set());
+                                  setShopEditorTab('inventory');
+                                  toast({ title: `Added ${selected.length} item(s) to shop` });
+                                }
                               }
-                            }
-                          });
+                            });
+                          }
+                        } catch (err) {
+                          toast({ title: 'Failed to fetch item details', variant: 'destructive' });
                         }
                       }}
                       disabled={createShopItemMutation.isPending}
@@ -10854,7 +10867,7 @@ export default function Campaign() {
                           onClick={handleHaggleRoll}
                           data-testid="button-haggle-roll"
                         >
-                          <Dice1 className="h-3.5 w-3.5 mr-1" /> Haggle (d20)
+                          <Dice1 className="h-3.5 w-3.5 mr-1" /> Haggle (d20+CHA)
                         </Button>
                       )}
                     </div>

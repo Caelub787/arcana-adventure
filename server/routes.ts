@@ -6146,6 +6146,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       res.json({ campaignItems, systemItems });
     } catch (err) {
+      console.error("Failed to fetch template items:", err);
       res.status(500).json({ error: "Failed to fetch template items" });
     }
   });
@@ -11050,8 +11051,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
         await storage.updateShopItem(shopItemId, { quantity: shopItem.quantity - 1 });
       }
 
-      if (pin.shopkeeperMoney != null) {
-        await storage.updateCampaignMapPin(pin.id, { shopkeeperMoney: (pin.shopkeeperMoney || 0) + totalCostCopper });
+      if (pin.shopkeeperCharacterId) {
+        let copperToAdd = totalCostCopper;
+        for (const denom of ['platinum', 'gold', 'silver', 'copper'] as const) {
+          const denomRate = currencyToCopper[denom];
+          if (copperToAdd >= denomRate) {
+            const count = Math.floor(copperToAdd / denomRate);
+            copperToAdd -= count * denomRate;
+            await storage.createItem({
+              characterId: pin.shopkeeperCharacterId,
+              name: denom.charAt(0).toUpperCase() + denom.slice(1),
+              itemType: 'currency', currency: denom, quantity: count, price: 1,
+              rarity: 'common', durability: 10, isEquipped: false, isContainer: false,
+              isHeavy: false, rulesVisible: true, breakChance: 0, itemWeight: 0,
+              priceCopper: 0, priceSilver: 0, priceGold: 0, pricePlatinum: 0,
+              isArchived: false, isDamaging: false, isDetonatable: false,
+              canApplyEffects: false, grantsDcBonus: false, dcBonusValue: 0, isTemplate: false,
+            } as any);
+          }
+        }
       }
 
       res.json({ success: true, item: newItem });
@@ -11147,8 +11165,54 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      if (pin.shopkeeperMoney != null && sellValueCopper > 0) {
-        await storage.updateCampaignMapPin(pin.id, { shopkeeperMoney: Math.max(0, (pin.shopkeeperMoney || 0) - sellValueCopper) });
+      if (pin.shopkeeperCharacterId && sellValueCopper > 0) {
+        const shopkeeperItems = await storage.getItemsByCharacter(pin.shopkeeperCharacterId);
+        const shopkeeperCurrency = shopkeeperItems.filter(i => i.itemType === 'currency');
+        let remaining = sellValueCopper;
+        const sortOrder = ['platinum', 'gold', 'silver', 'copper'];
+        const sortedCurrency = [...shopkeeperCurrency].sort((a, b) => sortOrder.indexOf(a.currency) - sortOrder.indexOf(b.currency));
+
+        for (const ci of sortedCurrency) {
+          if (remaining <= 0) break;
+          const rate = currencyToCopper[ci.currency] || 1;
+          const itemValueCopper = ci.quantity * rate;
+
+          if (itemValueCopper <= remaining) {
+            remaining -= itemValueCopper;
+            await storage.deleteItem(ci.id);
+          } else {
+            const unitsNeeded = Math.ceil(remaining / rate);
+            const changeCopper = (unitsNeeded * rate) - remaining;
+            remaining = 0;
+
+            if (ci.quantity - unitsNeeded > 0) {
+              await storage.updateItem(ci.id, { quantity: ci.quantity - unitsNeeded });
+            } else {
+              await storage.deleteItem(ci.id);
+            }
+
+            if (changeCopper > 0) {
+              let changeCopperLeft = changeCopper;
+              for (const denom of ['platinum', 'gold', 'silver', 'copper'] as const) {
+                const denomRate = currencyToCopper[denom];
+                if (changeCopperLeft >= denomRate) {
+                  const count = Math.floor(changeCopperLeft / denomRate);
+                  changeCopperLeft -= count * denomRate;
+                  await storage.createItem({
+                    characterId: pin.shopkeeperCharacterId!,
+                    name: denom.charAt(0).toUpperCase() + denom.slice(1),
+                    itemType: 'currency', currency: denom, quantity: count, price: 1,
+                    rarity: 'common', durability: 10, isEquipped: false, isContainer: false,
+                    isHeavy: false, rulesVisible: true, breakChance: 0, itemWeight: 0,
+                    priceCopper: 0, priceSilver: 0, priceGold: 0, pricePlatinum: 0,
+                    isArchived: false, isDamaging: false, isDetonatable: false,
+                    canApplyEffects: false, grantsDcBonus: false, dcBonusValue: 0, isTemplate: false,
+                  } as any);
+                }
+              }
+            }
+          }
+        }
       }
 
       res.json({ success: true, earnings: { amount: bestAmount, currency: bestCurrency } });
