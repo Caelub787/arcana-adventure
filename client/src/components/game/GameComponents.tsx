@@ -344,17 +344,19 @@ interface BattleMapProps {
   onCameraTargetReached?: () => void;
   mapPins?: any[];
   pinPlaceMode?: boolean;
+  pinMoveMode?: boolean;
   onPinClick?: (pin: any) => void;
   onPinPlaced?: (x: number, y: number) => void;
   onPinDragEnd?: (pinId: string, x: number, y: number) => void;
 }
 
-function CampaignMapPinMarker({ pin, xPx, yPx, isRevealed, isGM, bgImageDimensions, containerRef, zoomRef, panRef, onPinClick, onPinDragEnd, onRevealToggle }: {
+function CampaignMapPinMarker({ pin, xPx, yPx, isRevealed, isGM, pinMoveMode, bgImageDimensions, containerRef, zoomRef, panRef, onPinClick, onPinDragEnd, onRevealToggle }: {
   pin: any;
   xPx: number;
   yPx: number;
   isRevealed: boolean;
   isGM: boolean;
+  pinMoveMode?: boolean;
   bgImageDimensions: { width: number; height: number };
   containerRef: React.RefObject<HTMLDivElement | null>;
   zoomRef: React.MutableRefObject<number>;
@@ -369,12 +371,12 @@ function CampaignMapPinMarker({ pin, xPx, yPx, isRevealed, isGM, bgImageDimensio
 
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
     e.stopPropagation();
-    if (isGM && onPinDragEnd) {
+    if (isGM && pinMoveMode && onPinDragEnd) {
       e.preventDefault();
       dragRef.current = { startScreenX: e.clientX, startScreenY: e.clientY, dragging: false, pointerId: e.pointerId };
       pinRef.current?.setPointerCapture(e.pointerId);
     }
-  }, [isGM, onPinDragEnd]);
+  }, [isGM, pinMoveMode, onPinDragEnd]);
 
   const handlePointerMove = useCallback((e: React.PointerEvent) => {
     if (!dragRef.current) return;
@@ -438,7 +440,7 @@ function CampaignMapPinMarker({ pin, xPx, yPx, isRevealed, isGM, bgImageDimensio
         top: displayY,
         transform: 'translate(-50%, -100%)',
         zIndex: isRevealed ? 1000 : 100,
-        cursor: isGM ? 'grab' : 'pointer',
+        cursor: isGM && pinMoveMode ? 'grab' : 'pointer',
         touchAction: 'none',
       }}
       onPointerDown={handlePointerDown}
@@ -481,7 +483,7 @@ function CampaignMapPinMarker({ pin, xPx, yPx, isRevealed, isGM, bgImageDimensio
 }
 
 
-export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClick, onTokenTripleClick, onDeleteToken, role, gridSize, backgroundImage, scene, onViewChange, characters = [], allSpecies = [], selectionMode = 'select', targetedTokenId, selectedTokenId, aoeTargetState, onAoeMouseMove, onAoeClick, otherPlayersAoe, myPermissions, tokenActiveEffects, allTokenEffects, onApplyEffect, onRemoveEffect, onToggleInvisibility, currentTurnCharacterId, otherPlayersTargeting, activeBeacons, onBeacon, otherPlayersViewports, thrownItems = [], onRefetchThrownItems, onDeleteThrownItem, detonatableGridTarget, onGridTargetClick, notesPanelOpen = false, notesPanelWidth = 0, onNotesClick, inCombat = false, fogToolActive: fogToolActiveProp, onFogToolActiveChange, onDropCharacterOnMap, onMapClickToPlace, placingCharacterId, currentUserId, assignedCharacterId, onTokenLongPress, gridCalibrationMode, onGridCalibrationConfirm, onGridCalibrationCancel, cameraTarget, onCameraTargetReached, mapPins = [], pinPlaceMode = false, onPinClick, onPinPlaced, onPinDragEnd }: BattleMapProps) {
+export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClick, onTokenTripleClick, onDeleteToken, role, gridSize, backgroundImage, scene, onViewChange, characters = [], allSpecies = [], selectionMode = 'select', targetedTokenId, selectedTokenId, aoeTargetState, onAoeMouseMove, onAoeClick, otherPlayersAoe, myPermissions, tokenActiveEffects, allTokenEffects, onApplyEffect, onRemoveEffect, onToggleInvisibility, currentTurnCharacterId, otherPlayersTargeting, activeBeacons, onBeacon, otherPlayersViewports, thrownItems = [], onRefetchThrownItems, onDeleteThrownItem, detonatableGridTarget, onGridTargetClick, notesPanelOpen = false, notesPanelWidth = 0, onNotesClick, inCombat = false, fogToolActive: fogToolActiveProp, onFogToolActiveChange, onDropCharacterOnMap, onMapClickToPlace, placingCharacterId, currentUserId, assignedCharacterId, onTokenLongPress, gridCalibrationMode, onGridCalibrationConfirm, onGridCalibrationCancel, cameraTarget, onCameraTargetReached, mapPins = [], pinPlaceMode = false, pinMoveMode = false, onPinClick, onPinPlaced, onPinDragEnd }: BattleMapProps) {
   // Derive isGM from role prop
   const isGM = role === 'gm';
   
@@ -2335,6 +2337,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                   yPx={yPx}
                   isRevealed={isRevealed}
                   isGM={isGM}
+                  pinMoveMode={pinMoveMode}
                   bgImageDimensions={bgImageDimensions}
                   containerRef={containerRef}
                   zoomRef={zoomRef}

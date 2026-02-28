@@ -1723,3 +1723,24 @@ export const insertShopItemSchema = createInsertSchema(shopItems).omit({
 });
 export type InsertShopItem = z.infer<typeof insertShopItemSchema>;
 export type ShopItem = typeof shopItems.$inferSelect;
+
+export const shopHaggleRolls = pgTable("shop_haggle_rolls", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  pinId: varchar("pin_id").notNull().references(() => campaignMapPins.id, { onDelete: "cascade" }),
+  characterId: varchar("character_id").notNull(),
+  characterName: text("character_name").default(""),
+  roll: integer("roll").notNull(),
+  sellPercentage: integer("sell_percentage").notNull(),
+  d20Result: integer("d20_result").notNull(),
+  charismaMod: integer("charisma_mod").default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  uniqueIndex("shop_haggle_rolls_pin_character_unique").on(table.pinId, table.characterId),
+]);
+
+export const insertShopHaggleRollSchema = createInsertSchema(shopHaggleRolls).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertShopHaggleRoll = z.infer<typeof insertShopHaggleRollSchema>;
+export type ShopHaggleRoll = typeof shopHaggleRolls.$inferSelect;

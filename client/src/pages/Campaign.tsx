@@ -45,7 +45,7 @@ import { WorldCalendar } from "@/components/worldbuilding/WorldCalendar";
 import { RelationshipGraph } from "@/components/worldbuilding/RelationshipGraph";
 import { EntitySidePanel } from "@/components/worldbuilding/EntitySidePanel";
 import { useEntitiesByCampaign, useWorldbuildingSync } from "@/lib/worldbuilding-api";
-import { Globe, Home, Calendar, Clock, MapPin, Store, Coins, Dice1 } from "lucide-react";
+import { Globe, Home, Calendar, Clock, MapPin, Store, Coins, Dice1, Move } from "lucide-react";
 
 // Scene Settings Form Component
 function SceneSettingsForm({ scene, onUpdateScene, onCalibrateGrid }: { scene: Scene; onUpdateScene: (settings: Partial<Scene>) => void; onCalibrateGrid?: () => void }) {
@@ -6964,6 +6964,7 @@ export default function Campaign() {
   // Map pin editor state
   const [showMapPinEditor, setShowMapPinEditor] = useState(false);
   const [pinPlaceMode, setPinPlaceMode] = useState(false);
+  const [pinMoveMode, setPinMoveMode] = useState(false);
   const [editingPin, setEditingPin] = useState<any | null>(null);
   const [pinFormData, setPinFormData] = useState({
     x: 0, y: 0, label: '', color: '#f59e0b', icon: 'pin',
@@ -6981,7 +6982,7 @@ export default function Campaign() {
   const [shopEditingPin, setShopEditingPin] = useState<any | null>(null);
   const [shopItemForm, setShopItemForm] = useState({ name: '', description: '', price: 0, currency: 'gold', quantity: -1 });
   const [editingShopItemId, setEditingShopItemId] = useState<string | null>(null);
-  const [shopEditorTab, setShopEditorTab] = useState<'inventory' | 'import'>('inventory');
+  const [shopEditorTab, setShopEditorTab] = useState<'inventory' | 'import' | 'rolls'>('inventory');
   const [selectedTemplateIds, setSelectedTemplateIds] = useState<Set<string>>(new Set());
   const [templateSearch, setTemplateSearch] = useState('');
   const [shopImportTypeFilter, setShopImportTypeFilter] = useState('all');
@@ -7674,6 +7675,47 @@ export default function Campaign() {
     },
   });
 
+  const activePinId = shopPin?.id || shopEditingPin?.id;
+  const { data: haggleRolls = [] } = useQuery({
+    queryKey: ['haggle-rolls', activePinId],
+    queryFn: () => api.getHaggleRolls(activePinId!),
+    enabled: !!activePinId,
+  });
+
+  const { data: savedHaggleRoll } = useQuery({
+    queryKey: ['haggle-roll', shopPin?.id, shopCharacterId],
+    queryFn: () => api.getHaggleRoll(shopPin!.id, shopCharacterId),
+    enabled: !!shopPin?.id && !!shopCharacterId,
+  });
+
+  useEffect(() => {
+    if (savedHaggleRoll && shopPin) {
+      setHaggleRoll(savedHaggleRoll.roll);
+      setSellPercentage(savedHaggleRoll.sellPercentage);
+    } else if (shopPin && !savedHaggleRoll) {
+      setHaggleRoll(null);
+      setSellPercentage(shopPin.defaultSellPercentage ?? 80);
+    }
+  }, [savedHaggleRoll, shopPin]);
+
+  const saveHaggleRollMutation = useMutation({
+    mutationFn: (data: { pinId: string; characterId: string; characterName: string; roll: number; sellPercentage: number; d20Result: number; charismaMod: number }) =>
+      api.saveHaggleRoll(data.pinId, { characterId: data.characterId, characterName: data.characterName, roll: data.roll, sellPercentage: data.sellPercentage, d20Result: data.d20Result, charismaMod: data.charismaMod }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['haggle-rolls', activePinId] });
+      queryClient.invalidateQueries({ queryKey: ['haggle-roll', shopPin?.id, shopCharacterId] });
+    },
+  });
+
+  const resetHaggleRollMutation = useMutation({
+    mutationFn: ({ pinId, characterId }: { pinId: string; characterId: string }) =>
+      api.resetHaggleRoll(pinId, characterId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['haggle-rolls', activePinId] });
+      queryClient.invalidateQueries({ queryKey: ['haggle-roll', shopPin?.id, shopCharacterId] });
+    },
+  });
+
   const { data: templateItemsData } = useQuery({
     queryKey: [`/api/campaigns/${effectiveCampaignId}/template-items/summary`],
     queryFn: () => api.getTemplateItemSummaries(effectiveCampaignId!),
@@ -7744,6 +7786,7 @@ export default function Campaign() {
   });
 
   const handleHaggleRoll = () => {
+    if (!shopPin || !shopCharacterId) return;
     const d20 = Math.floor(Math.random() * 20) + 1;
     const char = characters?.find((c: any) => c.id === shopCharacterId);
     const charismaMod = char?.skillCharisma ?? 0;
@@ -7758,6 +7801,15 @@ export default function Campaign() {
     setSellPercentage(pct);
     const rollLabel = d20 === 1 ? 'Nat 1!' : d20 === 20 ? 'Nat 20!' : `d20: ${d20}${charismaMod !== 0 ? ` + CHA ${charismaMod >= 0 ? '+' : ''}${charismaMod} = ${roll}` : ''}`;
     toast({ title: `Charisma Haggle: ${rollLabel}`, description: `Sell rate: ${pct}%` });
+    saveHaggleRollMutation.mutate({
+      pinId: shopPin.id,
+      characterId: shopCharacterId,
+      characterName: char?.name || '',
+      roll,
+      sellPercentage: pct,
+      d20Result: d20,
+      charismaMod,
+    });
   };
 
   const getCurrencySymbol = (curr: string) => {
@@ -9048,6 +9100,16 @@ export default function Campaign() {
         if (data.type === 'campaign_map_pin_created' || data.type === 'campaign_map_pin_updated' || data.type === 'campaign_map_pin_deleted') {
           const currentSceneId = sceneIdForTokensRef.current;
           queryClientRef.current.invalidateQueries({ queryKey: ['campaign-map-pins', currentSceneId] });
+        }
+
+        if (data.type === 'shop_haggle_roll_updated' || data.type === 'shop_haggle_roll_reset') {
+          queryClientRef.current.invalidateQueries({ queryKey: ['haggle-rolls', data.pinId] });
+          if (data.type === 'shop_haggle_roll_reset' && data.characterId) {
+            queryClientRef.current.invalidateQueries({ queryKey: ['haggle-roll'] });
+          }
+          if (data.type === 'shop_haggle_roll_updated') {
+            queryClientRef.current.invalidateQueries({ queryKey: ['haggle-roll'] });
+          }
         }
         
         // Handle admin notification - show toast to all users
@@ -10454,6 +10516,22 @@ export default function Campaign() {
                       </select>
                     </div>
                   )}
+                  {editingPin && (
+                    <Button
+                      variant="outline"
+                      className={`w-full ${pinMoveMode ? 'bg-blue-600 hover:bg-blue-700 text-white border-blue-500' : 'border-stone-600 text-stone-300 hover:bg-stone-700'}`}
+                      onClick={() => {
+                        setPinMoveMode(!pinMoveMode);
+                        if (!pinMoveMode) {
+                          toast({ title: 'Move Mode Enabled', description: 'Drag the pin on the map to reposition it' });
+                        }
+                      }}
+                      data-testid="button-move-pin"
+                    >
+                      <Move className="h-4 w-4 mr-2" />
+                      {pinMoveMode ? 'Moving... Drag pin on map' : 'Move Pin'}
+                    </Button>
+                  )}
                   <div className="flex gap-2 pt-2">
                     <Button
                       className="flex-1 bg-amber-600 hover:bg-amber-700"
@@ -10474,6 +10552,7 @@ export default function Campaign() {
                         } else {
                           createPinMutation.mutate(data);
                         }
+                        setPinMoveMode(false);
                       }}
                       disabled={createPinMutation.isPending || updatePinMutation.isPending}
                       data-testid="button-save-pin"
@@ -10483,7 +10562,7 @@ export default function Campaign() {
                     <Button
                       variant="outline"
                       className="border-stone-600 text-stone-300"
-                      onClick={() => { setShowPinForm(false); setEditingPin(null); }}
+                      onClick={() => { setShowPinForm(false); setEditingPin(null); setPinMoveMode(false); }}
                       data-testid="button-cancel-pin"
                     >
                       Cancel
@@ -10564,24 +10643,71 @@ export default function Campaign() {
                 className={`flex-1 py-2 text-xs font-medium transition-colors ${shopEditorTab === 'inventory' ? 'text-amber-400 border-b-2 border-amber-400' : 'text-stone-400 hover:text-stone-200'}`}
                 data-testid="tab-shop-inventory"
               >
-                Shop Inventory ({shopItems.length})
+                Inventory ({shopItems.length})
               </button>
               <button
                 onClick={() => setShopEditorTab('import')}
                 className={`flex-1 py-2 text-xs font-medium transition-colors ${shopEditorTab === 'import' ? 'text-amber-400 border-b-2 border-amber-400' : 'text-stone-400 hover:text-stone-200'}`}
                 data-testid="tab-shop-import"
               >
-                Import from Items
+                Import
+              </button>
+              <button
+                onClick={() => setShopEditorTab('rolls')}
+                className={`flex-1 py-2 text-xs font-medium transition-colors ${shopEditorTab === 'rolls' ? 'text-amber-400 border-b-2 border-amber-400' : 'text-stone-400 hover:text-stone-200'}`}
+                data-testid="tab-shop-rolls"
+              >
+                Rolls ({haggleRolls.length})
               </button>
             </div>
 
-            {shopEditorTab === 'inventory' ? (
+            {shopEditorTab === 'rolls' ? (
+              <ScrollArea className="flex-1 p-3">
+                <div className="space-y-2">
+                  {haggleRolls.length === 0 ? (
+                    <p className="text-center text-stone-500 text-sm py-4">No haggle rolls yet</p>
+                  ) : (
+                    haggleRolls.map((hr: any) => (
+                      <div key={hr.id} className="flex items-center justify-between p-2 bg-stone-800 rounded border border-stone-700" data-testid={`haggle-roll-${hr.characterId}`}>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm text-stone-200 font-medium">{hr.characterName || 'Unknown'}</p>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            <span className="text-xs text-stone-400">
+                              d20: <span className={`font-bold ${hr.d20Result === 1 ? 'text-red-400' : hr.d20Result === 20 ? 'text-green-400' : 'text-stone-300'}`}>
+                                {hr.d20Result}
+                              </span>
+                              {hr.charismaMod !== 0 && (
+                                <span className="text-stone-500"> + CHA {hr.charismaMod >= 0 ? '+' : ''}{hr.charismaMod}</span>
+                              )}
+                            </span>
+                            <span className="text-xs text-stone-500">= {hr.roll}</span>
+                            <span className={`text-xs font-bold ${hr.sellPercentage === 0 ? 'text-red-400' : hr.sellPercentage >= 100 ? 'text-green-400' : 'text-amber-400'}`}>
+                              {hr.sellPercentage}%
+                            </span>
+                          </div>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-red-400 hover:text-red-300 hover:bg-red-900/20 h-7 text-xs shrink-0"
+                          onClick={() => resetHaggleRollMutation.mutate({ pinId: shopEditingPin.id, characterId: hr.characterId })}
+                          disabled={resetHaggleRollMutation.isPending}
+                          data-testid={`button-reset-roll-${hr.characterId}`}
+                        >
+                          Reset
+                        </Button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </ScrollArea>
+            ) : shopEditorTab === 'inventory' ? (
               <ScrollArea className="flex-1 p-3">
                 <div className="space-y-2">
                   {shopItems.length === 0 ? (
                     <div className="text-center py-6">
                       <p className="text-stone-500 text-sm">No items in this shop yet</p>
-                      <p className="text-stone-600 text-xs mt-1">Use the "Import from Items" tab to add items</p>
+                      <p className="text-stone-600 text-xs mt-1">Use the "Import" tab to add items</p>
                     </div>
                   ) : (
                     shopItems.map((item: any) => (
@@ -11390,6 +11516,7 @@ export default function Campaign() {
              onCameraTargetReached={handleCameraTargetReached}
              mapPins={mapPins}
              pinPlaceMode={pinPlaceMode}
+             pinMoveMode={pinMoveMode}
              onPinClick={(pinAction: any) => {
                if (pinAction.type === 'scene_link' && pinAction.targetSceneId) {
                  if (role === 'gm') {
@@ -11422,7 +11549,9 @@ export default function Campaign() {
                }
              }}
              onPinDragEnd={(pinId: string, x: number, y: number) => {
-               updatePinMutation.mutate({ pinId, data: { x, y } });
+               setPinFormData(prev => ({ ...prev, x, y }));
+               setPinMoveMode(false);
+               toast({ title: 'Pin moved', description: 'Click Save to save the new position' });
              }}
            />
            

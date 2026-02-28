@@ -11222,5 +11222,71 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.get("/api/campaign-map-pins/:pinId/haggle-rolls", requireAuth, async (req, res) => {
+    try {
+      const rolls = await storage.getShopHaggleRolls(req.params.pinId);
+      res.json(rolls);
+    } catch (err) {
+      console.error("Failed to get haggle rolls:", err);
+      res.status(500).json({ error: "Failed to get haggle rolls" });
+    }
+  });
+
+  app.get("/api/campaign-map-pins/:pinId/haggle-rolls/:characterId", requireAuth, async (req, res) => {
+    try {
+      const roll = await storage.getShopHaggleRoll(req.params.pinId, req.params.characterId);
+      res.json(roll || null);
+    } catch (err) {
+      console.error("Failed to get haggle roll:", err);
+      res.status(500).json({ error: "Failed to get haggle roll" });
+    }
+  });
+
+  app.post("/api/campaign-map-pins/:pinId/haggle-rolls", requireAuth, async (req, res) => {
+    try {
+      const { characterId, characterName, roll, sellPercentage, d20Result, charismaMod } = req.body;
+      if (!characterId || roll == null || sellPercentage == null || d20Result == null) {
+        return res.status(400).json({ error: "Missing required fields" });
+      }
+      const result = await storage.upsertShopHaggleRoll({
+        pinId: req.params.pinId,
+        characterId,
+        characterName: characterName || '',
+        roll,
+        sellPercentage,
+        d20Result,
+        charismaMod: charismaMod || 0,
+      });
+      const pin = await storage.getCampaignMapPin(req.params.pinId);
+      if (pin) {
+        broadcastToCampaign(pin.campaignId, { type: "shop_haggle_roll_updated", pinId: req.params.pinId, roll: result });
+      }
+      res.json(result);
+    } catch (err) {
+      console.error("Failed to save haggle roll:", err);
+      res.status(500).json({ error: "Failed to save haggle roll" });
+    }
+  });
+
+  app.delete("/api/campaign-map-pins/:pinId/haggle-rolls/:characterId", requireAuth, async (req, res) => {
+    try {
+      const pin = await storage.getCampaignMapPin(req.params.pinId);
+      if (!pin) return res.status(404).json({ error: "Pin not found" });
+
+      const campaign = await storage.getCampaign(pin.campaignId);
+      if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+
+      const isGM = await hasGmAccess(req.session.userId!, pin.campaignId, campaign.gmUserId);
+      if (!isGM) return res.status(403).json({ error: "Only the GM can reset haggle rolls" });
+
+      await storage.deleteShopHaggleRoll(req.params.pinId, req.params.characterId);
+      broadcastToCampaign(pin.campaignId, { type: "shop_haggle_roll_reset", pinId: req.params.pinId, characterId: req.params.characterId });
+      res.json({ success: true });
+    } catch (err) {
+      console.error("Failed to reset haggle roll:", err);
+      res.status(500).json({ error: "Failed to reset haggle roll" });
+    }
+  });
+
   return httpServer;
 }

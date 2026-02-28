@@ -64,7 +64,8 @@ import {
   type WorldCalendarSync, type InsertWorldCalendarSync,
   type CampaignMapPin, type InsertCampaignMapPin,
   type ShopItem, type InsertShopItem,
-  users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, items, spells, characterPermissions, initiativeEntries, systemSpecies, campaignSpecies, featTemplates, featTrees, feats, featConnections, characterFeats, systemSpells, systemSkills, characterCustomSkills, systemTraits, characterTraits, characterFolders, characterTemplateFolders, sceneFolders, friendRequests, friendships, noteFolders, notes, noteReferences, noteShares, tokenEffects, spellEffects, itemEffects, tokenActiveEffects, thrownItems, adminNotifications, userNotifications, termsAndConditions, userTermsAcceptance, sandboxFolders, sandboxTemplates, sandboxActors, rollEntries, sceneWalls, sceneDoors, sceneWindows, sceneLights, sceneVisionZones, entities, entityLinks, worldShareLinks, worldMaps, worldMapPins, worldCalendars, worldTimelineEvents, worldTimelines, worlds, worldCalendarSyncs, campaignMapPins, shopItems
+  type ShopHaggleRoll, type InsertShopHaggleRoll,
+  users, campaigns, campaignMembers, campaignBans, characters, tokens, chatMessages, passwordResetTokens, scenes, hotbars, items, spells, characterPermissions, initiativeEntries, systemSpecies, campaignSpecies, featTemplates, featTrees, feats, featConnections, characterFeats, systemSpells, systemSkills, characterCustomSkills, systemTraits, characterTraits, characterFolders, characterTemplateFolders, sceneFolders, friendRequests, friendships, noteFolders, notes, noteReferences, noteShares, tokenEffects, spellEffects, itemEffects, tokenActiveEffects, thrownItems, adminNotifications, userNotifications, termsAndConditions, userTermsAcceptance, sandboxFolders, sandboxTemplates, sandboxActors, rollEntries, sceneWalls, sceneDoors, sceneWindows, sceneLights, sceneVisionZones, entities, entityLinks, worldShareLinks, worldMaps, worldMapPins, worldCalendars, worldTimelineEvents, worldTimelines, worlds, worldCalendarSyncs, campaignMapPins, shopItems, shopHaggleRolls
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql, inArray, or, isNull } from "drizzle-orm";
@@ -593,6 +594,12 @@ export interface IStorage {
   createShopItem(item: InsertShopItem): Promise<ShopItem>;
   updateShopItem(id: string, data: Partial<InsertShopItem>): Promise<ShopItem | undefined>;
   deleteShopItem(id: string): Promise<void>;
+
+  // Shop Haggle Roll operations
+  getShopHaggleRolls(pinId: string): Promise<ShopHaggleRoll[]>;
+  getShopHaggleRoll(pinId: string, characterId: string): Promise<ShopHaggleRoll | undefined>;
+  upsertShopHaggleRoll(data: InsertShopHaggleRoll): Promise<ShopHaggleRoll>;
+  deleteShopHaggleRoll(pinId: string, characterId: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -4138,6 +4145,38 @@ export class DatabaseStorage implements IStorage {
 
   async deleteShopItem(id: string): Promise<void> {
     await db.delete(shopItems).where(eq(shopItems.id, id));
+  }
+
+  async getShopHaggleRolls(pinId: string): Promise<ShopHaggleRoll[]> {
+    return await db.select().from(shopHaggleRolls).where(eq(shopHaggleRolls.pinId, pinId));
+  }
+
+  async getShopHaggleRoll(pinId: string, characterId: string): Promise<ShopHaggleRoll | undefined> {
+    const [roll] = await db.select().from(shopHaggleRolls)
+      .where(and(eq(shopHaggleRolls.pinId, pinId), eq(shopHaggleRolls.characterId, characterId)));
+    return roll;
+  }
+
+  async upsertShopHaggleRoll(data: InsertShopHaggleRoll): Promise<ShopHaggleRoll> {
+    const [result] = await db.insert(shopHaggleRolls).values(data)
+      .onConflictDoUpdate({
+        target: [shopHaggleRolls.pinId, shopHaggleRolls.characterId],
+        set: {
+          roll: data.roll,
+          sellPercentage: data.sellPercentage,
+          d20Result: data.d20Result,
+          charismaMod: data.charismaMod,
+          characterName: data.characterName,
+          createdAt: sql`NOW()`,
+        },
+      })
+      .returning();
+    return result;
+  }
+
+  async deleteShopHaggleRoll(pinId: string, characterId: string): Promise<void> {
+    await db.delete(shopHaggleRolls)
+      .where(and(eq(shopHaggleRolls.pinId, pinId), eq(shopHaggleRolls.characterId, characterId)));
   }
 }
 

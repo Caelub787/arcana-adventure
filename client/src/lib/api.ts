@@ -2186,6 +2186,27 @@ class ApiClient {
     });
   }
 
+  async getHaggleRolls(pinId: string): Promise<any[]> {
+    return this.request(`/campaign-map-pins/${pinId}/haggle-rolls`);
+  }
+
+  async getHaggleRoll(pinId: string, characterId: string): Promise<any | null> {
+    return this.request(`/campaign-map-pins/${pinId}/haggle-rolls/${characterId}`);
+  }
+
+  async saveHaggleRoll(pinId: string, data: { characterId: string; characterName: string; roll: number; sellPercentage: number; d20Result: number; charismaMod: number }): Promise<any> {
+    return this.request(`/campaign-map-pins/${pinId}/haggle-rolls`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async resetHaggleRoll(pinId: string, characterId: string): Promise<any> {
+    return this.request(`/campaign-map-pins/${pinId}/haggle-rolls/${characterId}`, {
+      method: 'DELETE',
+    });
+  }
+
 }
 
 export interface SandboxTemplate {
