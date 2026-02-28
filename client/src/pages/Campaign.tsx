@@ -10733,11 +10733,9 @@ export default function Campaign() {
                       onClick={async () => {
                         const selected = allTemplateItems.filter((t: any) => selectedTemplateIds.has(t.id));
                         try {
-                          const fullData = await api.getTemplateItems(effectiveCampaignId!);
-                          const fullItems = [...(fullData.campaignItems || []), ...(fullData.systemItems || [])];
                           let completed = 0;
                           for (const summary of selected) {
-                            const t = fullItems.find((f: any) => f.id === summary.id) || summary;
+                            const t = await api.getSystemItem(summary.id).catch(() => summary);
                             const itemData: Record<string, any> = {
                               name: t.name, description: t.description, image: t.image,
                               itemType: t.itemType, rarity: t.rarity, durability: t.durability,
