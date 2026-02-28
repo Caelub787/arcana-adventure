@@ -30,6 +30,75 @@ export function FloatingPanel({
   zIndex = 10500,
   onBringToFront,
 }: FloatingPanelProps) {
+  const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
+
+  if (!open) return null;
+
+  if (isMobile) {
+    return createPortal(
+      <div
+        className={cn(
+          "fixed inset-0 bg-stone-900 flex flex-col",
+          className
+        )}
+        style={{ zIndex: Math.max(zIndex, 10500) }}
+        data-testid="floating-panel"
+        data-floating-panel
+      >
+        <div className="flex items-center justify-between bg-stone-800 border-b border-stone-700 px-4 py-3 shrink-0">
+          <div className="flex items-center gap-2 text-amber-500 font-display text-lg truncate min-w-0 pr-4">
+            <span className="truncate">{title}</span>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-2 rounded hover:bg-stone-700 transition-colors text-stone-400 hover:text-stone-200 shrink-0"
+            data-testid="floating-panel-close"
+          >
+            <X className="h-6 w-6" />
+          </button>
+        </div>
+
+        <div
+          className="flex-1 overflow-y-auto overflow-x-hidden overscroll-contain"
+          data-panel-content
+          style={{ WebkitOverflowScrolling: 'touch' } as React.CSSProperties}
+        >
+          {children}
+        </div>
+      </div>,
+      document.body
+    );
+  }
+
+  return <DesktopFloatingPanel
+    open={open}
+    onClose={onClose}
+    title={title}
+    defaultPosition={defaultPosition}
+    defaultSize={defaultSize}
+    minWidth={minWidth}
+    minHeight={minHeight}
+    className={className}
+    zIndex={zIndex}
+    onBringToFront={onBringToFront}
+  >
+    {children}
+  </DesktopFloatingPanel>;
+}
+
+function DesktopFloatingPanel({
+  open,
+  onClose,
+  title,
+  children,
+  defaultPosition,
+  defaultSize,
+  minWidth = 400,
+  minHeight = 400,
+  className,
+  zIndex = 10500,
+  onBringToFront,
+}: FloatingPanelProps) {
   const panelRef = React.useRef<HTMLDivElement>(null);
 
   const computedDefaultSize = React.useMemo(() => {
@@ -48,9 +117,8 @@ export function FloatingPanel({
     };
   }, [defaultPosition, computedDefaultSize]);
 
-  const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
-  const posRef = React.useRef<{ x: number; y: number }>(isMobile ? { x: 0, y: 0 } : initialPos);
-  const sizeRef = React.useRef(isMobile ? { width: window.innerWidth, height: window.innerHeight } : { ...computedDefaultSize });
+  const posRef = React.useRef<{ x: number; y: number }>({ ...initialPos });
+  const sizeRef = React.useRef({ ...computedDefaultSize });
   const isDraggingRef = React.useRef(false);
   const isResizingRef = React.useRef<string | null>(null);
   const dragStartRef = React.useRef({ x: 0, y: 0, posX: 0, posY: 0 });
@@ -59,7 +127,7 @@ export function FloatingPanel({
   const savedPanelStateRef = React.useRef<{ position: { x: number; y: number }; size: { width: number; height: number } } | null>(null);
 
   const [, forceRender] = React.useState(0);
-  const [isFullscreen, setIsFullscreen] = React.useState(isMobile);
+  const [isFullscreen, setIsFullscreen] = React.useState(false);
   const [isMinimized, setIsMinimized] = React.useState(false);
 
   const applyTransform = React.useCallback(() => {
@@ -259,22 +327,6 @@ export function FloatingPanel({
 
   const panelContent = (
     <>
-      {isMobile && (
-        <div
-          className="fixed inset-0"
-          style={{
-            zIndex: panelZIndex - 1,
-            pointerEvents: 'auto',
-            touchAction: 'none',
-          }}
-          onMouseDown={(e) => e.stopPropagation()}
-          onPointerDown={(e) => e.stopPropagation()}
-          onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
-          onTouchStart={(e) => e.stopPropagation()}
-          onTouchEnd={(e) => e.stopPropagation()}
-          onTouchMove={(e) => e.stopPropagation()}
-        />
-      )}
       <div
         ref={panelRef}
         className={cn(
@@ -301,8 +353,6 @@ export function FloatingPanel({
         }}
         onClick={(e) => e.stopPropagation()}
         onPointerUp={(e) => e.stopPropagation()}
-        onTouchStart={(e) => e.stopPropagation()}
-        onTouchEnd={(e) => e.stopPropagation()}
       >
       <div
         className={cn(
@@ -368,7 +418,7 @@ export function FloatingPanel({
 
       {!isMinimized && (
         <>
-          <div className="flex-1 overflow-y-auto overflow-x-hidden" data-panel-content style={{ touchAction: 'pan-y', WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
+          <div className="flex-1 overflow-y-auto overflow-x-hidden" data-panel-content>
             {children}
           </div>
 
