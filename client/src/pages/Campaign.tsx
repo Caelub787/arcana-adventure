@@ -8235,8 +8235,8 @@ export default function Campaign() {
     deleteTokenMutation.mutate(tokenId);
   }, []);
 
-  // Load tokens from API - merge with local state to preserve positions of actively-moved tokens
-  const localTokenPositionsRef = useRef<Map<string, { x: number; y: number; ts: number }>>(new Map());
+  // Load tokens from API - preserve positions of tokens moved locally within last 3 seconds
+  const localTokenMoveTimesRef = useRef<Map<string, number>>(new Map());
   useEffect(() => {
     if (tokensData && Array.isArray(tokensData)) {
       const now = Date.now();
@@ -8244,13 +8244,12 @@ export default function Campaign() {
         if (prev.length === 0) return tokensData;
         const prevMap = new Map(prev.map(t => [t.id, t]));
         return tokensData.map((serverToken: any) => {
-          const localPos = localTokenPositionsRef.current.get(serverToken.id);
-          if (localPos && now - localPos.ts < 2000) {
-            return { ...serverToken, x: localPos.x, y: localPos.y };
-          }
-          const localToken = prevMap.get(serverToken.id);
-          if (localToken && (localToken.x !== serverToken.x || localToken.y !== serverToken.y)) {
-            return { ...serverToken, x: localToken.x, y: localToken.y };
+          const lastMoveTime = localTokenMoveTimesRef.current.get(serverToken.id);
+          if (lastMoveTime && now - lastMoveTime < 3000) {
+            const localToken = prevMap.get(serverToken.id);
+            if (localToken) {
+              return { ...serverToken, x: localToken.x, y: localToken.y };
+            }
           }
           return serverToken;
         });
@@ -8937,7 +8936,7 @@ export default function Campaign() {
   };
 
   const handleMoveToken = useCallback((id: string, x: number, y: number, force = false) => {
-    localTokenPositionsRef.current.set(id, { x, y, ts: Date.now() });
+    localTokenMoveTimesRef.current.set(id, Date.now());
     setTokens(prev => prev.map(t => t.id === id ? { ...t, x, y } : t));
     gameWs.sendTokenMove(id, x, y, force);
   }, []);
