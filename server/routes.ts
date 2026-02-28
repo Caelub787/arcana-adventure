@@ -5817,8 +5817,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!access.character) return res.status(404).json({ error: "Character not found" });
       const user = await storage.getUser(req.session.userId!);
       const userIsAdmin = user?.isAdmin || ADMIN_EMAILS.includes(user?.email?.toLowerCase() || '');
-      if (!access.isGM && !userIsAdmin) return res.status(403).json({ error: "Only the GM can edit custom skills" });
       const character = access.character;
+      const isPlayerValueOnly = !access.isGM && !userIsAdmin;
+      if (isPlayerValueOnly) {
+        const allowedKeys = Object.keys(req.body);
+        const onlyValue = allowedKeys.length === 1 && allowedKeys[0] === 'value';
+        if (!onlyValue) return res.status(403).json({ error: "Only the GM can edit custom skill properties" });
+      }
       const skill = await storage.updateCharacterCustomSkill(req.params.skillId, req.body);
       if (!skill) {
         return res.status(404).json({ error: "Skill not found" });
