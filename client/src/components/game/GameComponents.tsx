@@ -15730,6 +15730,8 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
   const [showAddTrait, setShowAddTrait] = useState(false);
   const [editingTrait, setEditingTrait] = useState<CharacterTrait | null>(null);
 
+  const isAnyPanelOpen = showAddCustomSkill || !!editingCustomSkill || showAddTrait || !!editingTrait;
+
   // Calculate bonuses from unlocked feats
   const featBonuses = useMemo(() => {
     const bonuses = {
@@ -17890,6 +17892,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                         key={attr.key} 
                         className={`bg-stone-900 ${editingAttributes ? 'border-amber-700' : 'border-stone-600 cursor-pointer hover:bg-stone-800 transition-colors'}`}
                         onPointerDown={!editingAttributes ? () => {
+                          if (isAnyPanelOpen) return;
                           isLongPressRef.current = false;
                           longPressTimerRef.current = setTimeout(() => {
                             isLongPressRef.current = true;
@@ -17903,6 +17906,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                           clearTimeout(longPressTimerRef.current);
                         } : undefined}
                         onClick={!editingAttributes ? () => {
+                          if (isAnyPanelOpen) return;
                           const cardKey = `attr-${attr.key}`;
                           const now = Date.now();
                           const timeSinceLastClick = now - lastClickTimeRef.current;
@@ -18212,6 +18216,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                             variant="outline" 
                             className="justify-between p-3 bg-stone-900 border-stone-600 cursor-pointer hover:bg-stone-800 transition-colors"
                             onPointerDown={() => {
+                              if (isAnyPanelOpen) return;
                               isLongPressRef.current = false;
                               longPressTimerRef.current = setTimeout(() => {
                                 isLongPressRef.current = true;
@@ -18225,6 +18230,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                               clearTimeout(longPressTimerRef.current);
                             }}
                             onClick={() => {
+                              if (isAnyPanelOpen) return;
                               const cardKey = `skill-${skill.key}`;
                               const now = Date.now();
                               const timeSinceLastClick = now - lastClickTimeRef.current;
