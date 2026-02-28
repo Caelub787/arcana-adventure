@@ -18322,7 +18322,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                     <BookOpen className="h-4 w-4" />
                     Custom Skills
                   </CardTitle>
-                  {canEditSheet && (
+                  {isGM && (
                     <Button
                       size="sm"
                       variant="outline"
@@ -18457,7 +18457,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                             <span className="font-bold">
                               {skillValue >= 0 ? `+${skillValue}` : skillValue}
                             </span>
-                            {canEditSheet && (
+                            {isGM && (
                               <Button
                                 variant="ghost"
                                 size="icon"
