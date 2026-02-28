@@ -2050,7 +2050,6 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
           left: '-9000px',
           top: '-9000px',
           transformOrigin: "0 0",
-          willChange: 'transform',
         }}
         onPointerDown={handleMapPointerDown}
         onPointerMove={handleMapPointerMove}
