@@ -797,8 +797,8 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
       const prevPos = prevTokenPositionsRef.current.get(token.id);
       const currPos = { x: token.x, y: token.y };
       
-      // Skip if this token is being dragged locally
-      if (draggingToken?.id === token.id) {
+      // Skip if this token is being moved locally (drag or WASD)
+      if (draggingToken?.id === token.id || wasdTokenIdRef.current === token.id) {
         prevTokenPositionsRef.current.set(token.id, currPos);
         return;
       }
