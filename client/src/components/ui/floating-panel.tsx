@@ -265,9 +265,10 @@ export function FloatingPanel({
           style={{
             zIndex: panelZIndex - 1,
             pointerEvents: 'auto',
+            touchAction: 'none',
           }}
-          onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
-          onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+          onMouseDown={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
           onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
           onTouchStart={(e) => e.stopPropagation()}
           onTouchEnd={(e) => e.stopPropagation()}
@@ -367,7 +368,7 @@ export function FloatingPanel({
 
       {!isMinimized && (
         <>
-          <div className="flex-1 overflow-y-auto overflow-x-hidden" data-panel-content>
+          <div className="flex-1 overflow-y-auto overflow-x-hidden" data-panel-content style={{ touchAction: 'pan-y', WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
             {children}
           </div>
 

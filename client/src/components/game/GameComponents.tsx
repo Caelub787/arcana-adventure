@@ -14917,7 +14917,7 @@ function CustomSkillForm({
                   </PopoverContent>
                 </Popover>
               </div>
-              <ScrollArea className="h-[400px]">
+              <div className="max-h-[400px] overflow-y-auto" style={{ touchAction: 'pan-y', WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
                 <div className="space-y-2">
                   {filteredSkills.map(skill => (
                     <div
@@ -14955,7 +14955,7 @@ function CustomSkillForm({
                     </div>
                   )}
                 </div>
-              </ScrollArea>
+              </div>
             </>
           )}
         </TabsContent>
@@ -15299,7 +15299,7 @@ function TraitForm({
                   </PopoverContent>
                 </Popover>
               </div>
-              <ScrollArea className="h-[400px]">
+              <div className="max-h-[400px] overflow-y-auto" style={{ touchAction: 'pan-y', WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
                 <div className="space-y-2">
                   {filteredTraits.map(trait => (
                     <div
@@ -15337,7 +15337,7 @@ function TraitForm({
                     </div>
                   )}
                 </div>
-              </ScrollArea>
+              </div>
             </>
           )}
         </TabsContent>
@@ -19117,7 +19117,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                   </div>
                 )}
                 
-                <ScrollArea className="flex-1 min-h-0 overflow-y-auto">
+                <div className="flex-1 min-h-0 overflow-y-auto" style={{ touchAction: 'pan-y', WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
                   {/* Library Tab - only show when not editing */}
                   {!editSpellData && spellDialogTab === 'library' && (
                     <div className="space-y-4">
@@ -19793,7 +19793,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                       </div>
                     </div>
                   )}
-                </ScrollArea>
+                </div>
               </div>
             </FloatingPanel>
             )}
@@ -21911,7 +21911,7 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId, bringToFr
           </button>
         </div>
 
-        <ScrollArea className="flex-1 min-h-0 overflow-y-auto">
+        <div className="flex-1 min-h-0 overflow-y-auto" style={{ touchAction: 'pan-y', WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
           {activeTab === 'templates' ? (
             <div className="space-y-4">
               {/* Search and Filter */}
@@ -22578,7 +22578,7 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId, bringToFr
             </div>
           </div>
         )}
-        </ScrollArea>
+        </div>
 
       {/* Image Cropping Dialog */}
       <Dialog open={showImageCrop} onOpenChange={setShowImageCrop}>
@@ -22774,7 +22774,7 @@ function ManageTemplatesDialog({ open, onOpenChange, campaignId }: { open: boole
                 </Button>
               </div>
 
-              <ScrollArea className="flex-1">
+              <div className="flex-1 overflow-y-auto" style={{ touchAction: 'pan-y', WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
                 {!templateData || templateData.length === 0 ? (
                   <div className="text-center py-12 text-stone-400">
                     <Package className="h-12 w-12 mx-auto mb-3 opacity-50" />
@@ -22814,10 +22814,10 @@ function ManageTemplatesDialog({ open, onOpenChange, campaignId }: { open: boole
                     ))}
                   </div>
                 )}
-              </ScrollArea>
+              </div>
             </>
           ) : (
-            <ScrollArea className="flex-1 pr-4">
+            <div className="flex-1 pr-4 overflow-y-auto" style={{ touchAction: 'pan-y', WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
@@ -22976,7 +22976,7 @@ function ManageTemplatesDialog({ open, onOpenChange, campaignId }: { open: boole
                   </Button>
                 </div>
               </div>
-            </ScrollArea>
+            </div>
           )}
         </div>
       </DialogContent>
