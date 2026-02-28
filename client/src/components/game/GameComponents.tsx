@@ -350,7 +350,7 @@ interface BattleMapProps {
   onPinDragEnd?: (pinId: string, x: number, y: number) => void;
 }
 
-function CampaignMapPinMarker({ pin, xPx, yPx, isRevealed, isGM, pinMoveMode, bgImageDimensions, containerRef, zoomRef, panRef, onPinClick, onPinDragEnd, onRevealToggle }: {
+const CampaignMapPinMarker = React.memo(function CampaignMapPinMarker({ pin, xPx, yPx, isRevealed, isGM, pinMoveMode, bgImageDimensions, containerRef, zoomRef, panRef, onPinClick, onPinDragEnd, onRevealToggle }: {
   pin: any;
   xPx: number;
   yPx: number;
@@ -480,7 +480,7 @@ function CampaignMapPinMarker({ pin, xPx, yPx, isRevealed, isGM, pinMoveMode, bg
       )}
     </div>
   );
-}
+});
 
 
 export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClick, onTokenTripleClick, onDeleteToken, role, gridSize, backgroundImage, scene, onViewChange, characters = [], allSpecies = [], selectionMode = 'select', targetedTokenId, selectedTokenId, aoeTargetState, onAoeMouseMove, onAoeClick, otherPlayersAoe, myPermissions, tokenActiveEffects, allTokenEffects, onApplyEffect, onRemoveEffect, onToggleInvisibility, currentTurnCharacterId, otherPlayersTargeting, activeBeacons, onBeacon, otherPlayersViewports, thrownItems = [], onRefetchThrownItems, onDeleteThrownItem, detonatableGridTarget, onGridTargetClick, notesPanelOpen = false, notesPanelWidth = 0, onNotesClick, inCombat = false, fogToolActive: fogToolActiveProp, onFogToolActiveChange, onDropCharacterOnMap, onMapClickToPlace, placingCharacterId, currentUserId, assignedCharacterId, onTokenLongPress, gridCalibrationMode, onGridCalibrationConfirm, onGridCalibrationCancel, cameraTarget, onCameraTargetReached, mapPins = [], pinPlaceMode = false, pinMoveMode = false, onPinClick, onPinPlaced, onPinDragEnd }: BattleMapProps) {
@@ -2050,6 +2050,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
           left: '-9000px',
           top: '-9000px',
           transformOrigin: "0 0",
+          willChange: 'transform',
         }}
         onPointerDown={handleMapPointerDown}
         onPointerMove={handleMapPointerMove}
@@ -2431,7 +2432,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
           // Get species size for grid span calculation
           // Use enriched speciesSize from token (works regardless of character permissions)
           // Fall back to character lookup for backwards compatibility
-          const speciesData = character?.race ? allSpecies.find(s => s.name === character.race) : null;
+          const speciesData = character?.race ? speciesMap.get(character.race) : null;
           const gridSpan = getTokenGridSpan((token as any).speciesSize || speciesData?.size);
           
           const isDragging = draggingToken?.id === token.id;

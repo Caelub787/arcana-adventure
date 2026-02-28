@@ -10971,7 +10971,7 @@ export default function Campaign() {
       {shopPin && (
         <FloatingPanel
           open={!!shopPin}
-          onClose={() => { setShopPin(null); setHaggleRoll(null); setSellPercentage(shopPin?.defaultSellPercentage ?? 80); }}
+          onClose={() => { setShopPin(null); setHaggleRoll(null); setSellPercentage(shopPin?.defaultSellPercentage ?? 80); setShopCharacterId(''); }}
           title={<span className="text-amber-500"><Store className="inline h-4 w-4 mr-1" />{shopPin.label || 'Shop'}</span>}
           zIndex={floatingZIndices['player-shop'] || 10450}
           onBringToFront={() => bringToFront('player-shop')}
