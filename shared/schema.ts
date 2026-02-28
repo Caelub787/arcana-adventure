@@ -1688,6 +1688,7 @@ export const campaignMapPins = pgTable("campaign_map_pins", {
   isShop: boolean("is_shop").default(false),
   shopkeeperMoney: integer("shopkeeper_money").default(0),
   shopkeeperCharacterId: varchar("shopkeeper_character_id"),
+  defaultSellPercentage: integer("default_sell_percentage").default(80),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

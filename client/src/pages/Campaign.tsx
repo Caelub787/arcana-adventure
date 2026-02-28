@@ -7654,6 +7654,26 @@ export default function Campaign() {
     enabled: !!(shopPin?.id || shopEditingPin?.id),
   });
 
+  const { data: shopCharacterItems } = useQuery({
+    queryKey: ['items', shopCharacterId],
+    queryFn: () => api.getItems(shopCharacterId),
+    enabled: !!shopCharacterId,
+  });
+
+  const shopkeeperCharId = shopEditingPin?.shopkeeperCharacterId || shopPin?.shopkeeperCharacterId;
+  const { data: shopkeeperCharacterItems } = useQuery({
+    queryKey: ['items', shopkeeperCharId],
+    queryFn: () => api.getItems(shopkeeperCharId!),
+    enabled: !!shopkeeperCharId && shopkeeperCharId !== shopCharacterId,
+  });
+
+  const updatePinSilentMutation = useMutation({
+    mutationFn: ({ pinId, data }: { pinId: string; data: any }) => api.updateCampaignMapPin(pinId, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['campaign-map-pins', activeScene?.id] });
+    },
+  });
+
   const { data: templateItemsData } = useQuery({
     queryKey: [`/api/campaigns/${effectiveCampaignId}/template-items/summary`],
     queryFn: () => api.getTemplateItemSummaries(effectiveCampaignId!),
@@ -7699,6 +7719,8 @@ export default function Campaign() {
       refetchShopItems();
       queryClient.invalidateQueries({ queryKey: [`/api/characters`] });
       queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${effectiveCampaignId}/characters`] });
+      if (shopCharacterId) queryClient.invalidateQueries({ queryKey: ['items', shopCharacterId] });
+      if (shopkeeperCharId) queryClient.invalidateQueries({ queryKey: ['items', shopkeeperCharId] });
       toast({ title: 'Item purchased!', description: data?.item?.name || 'Item added to inventory' });
     },
     onError: (err: any) => {
@@ -7712,6 +7734,8 @@ export default function Campaign() {
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: [`/api/characters`] });
       queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${effectiveCampaignId}/characters`] });
+      if (shopCharacterId) queryClient.invalidateQueries({ queryKey: ['items', shopCharacterId] });
+      if (shopkeeperCharId) queryClient.invalidateQueries({ queryKey: ['items', shopkeeperCharId] });
       toast({ title: 'Item sold!', description: data?.earnings ? `Earned ${data.earnings.amount} ${data.earnings.currency}` : 'Sale complete' });
     },
     onError: (err: any) => {
@@ -7742,9 +7766,16 @@ export default function Campaign() {
   };
 
   const getCharacterCurrencyTotal = (charId: string) => {
-    const char = characters?.find((c: any) => c.id === charId);
-    if (!char?.items) return { copper: 0, silver: 0, gold: 0, platinum: 0, totalCopper: 0 };
-    const currencyItems = char.items.filter((i: any) => i.itemType === 'currency');
+    let itemsList: any[] | undefined;
+    if (charId === shopCharacterId && shopCharacterItems) {
+      itemsList = shopCharacterItems;
+    } else if (charId === shopkeeperCharId && shopkeeperCharacterItems) {
+      itemsList = shopkeeperCharacterItems;
+    } else if (charId === shopCharacterId) {
+      itemsList = shopCharacterItems;
+    }
+    if (!itemsList) return { copper: 0, silver: 0, gold: 0, platinum: 0, totalCopper: 0 };
+    const currencyItems = itemsList.filter((i: any) => i.itemType === 'currency');
     let totalCopper = 0;
     const breakdown = { copper: 0, silver: 0, gold: 0, platinum: 0 };
     for (const item of currencyItems) {
@@ -10485,7 +10516,7 @@ export default function Campaign() {
                 onChange={(e) => {
                   const val = e.target.value || null;
                   setShopEditingPin((prev: any) => ({ ...prev, shopkeeperCharacterId: val }));
-                  updatePinMutation.mutate({ pinId: shopEditingPin.id, data: { shopkeeperCharacterId: val } });
+                  updatePinSilentMutation.mutate({ pinId: shopEditingPin.id, data: { shopkeeperCharacterId: val } });
                 }}
                 className="flex-1 bg-stone-800 border border-stone-700 text-stone-200 rounded px-2 py-1 text-xs"
                 data-testid="select-shopkeeper-character"
@@ -10507,6 +10538,24 @@ export default function Campaign() {
                   </span>
                 );
               })()}
+            </div>
+
+            <div className="px-3 pt-2 pb-2 border-b border-stone-700 flex items-center gap-2">
+              <Label className="text-xs text-stone-400 shrink-0">Default Sell Rate:</Label>
+              <Input
+                type="number"
+                min={0}
+                max={200}
+                defaultValue={shopEditingPin.defaultSellPercentage ?? 80}
+                onBlur={(e) => {
+                  const val = Math.max(0, Math.min(200, parseInt(e.target.value) || 80));
+                  setShopEditingPin((prev: any) => ({ ...prev, defaultSellPercentage: val }));
+                  updatePinSilentMutation.mutate({ pinId: shopEditingPin.id, data: { defaultSellPercentage: val } });
+                }}
+                className="w-16 bg-stone-800 border-stone-700 h-7 text-xs"
+                data-testid="input-default-sell-percentage"
+              />
+              <span className="text-xs text-stone-500">%</span>
             </div>
 
             <div className="flex border-b border-stone-700">
@@ -10733,9 +10782,11 @@ export default function Campaign() {
                       onClick={async () => {
                         const selected = allTemplateItems.filter((t: any) => selectedTemplateIds.has(t.id));
                         try {
+                          const fullItems = await Promise.all(
+                            selected.map(s => api.getSystemItem(s.id).catch(() => s))
+                          );
                           let completed = 0;
-                          for (const summary of selected) {
-                            const t = await api.getSystemItem(summary.id).catch(() => summary);
+                          for (const t of fullItems) {
                             const itemData: Record<string, any> = {
                               name: t.name, description: t.description, image: t.image,
                               itemType: t.itemType, rarity: t.rarity, durability: t.durability,
@@ -10765,10 +10816,10 @@ export default function Campaign() {
                             }, {
                               onSuccess: () => {
                                 completed++;
-                                if (completed === selected.length) {
+                                if (completed === fullItems.length) {
                                   setSelectedTemplateIds(new Set());
                                   setShopEditorTab('inventory');
-                                  toast({ title: `Added ${selected.length} item(s) to shop` });
+                                  toast({ title: `Added ${fullItems.length} item(s) to shop` });
                                 }
                               }
                             });
@@ -10794,7 +10845,7 @@ export default function Campaign() {
       {shopPin && (
         <FloatingPanel
           open={!!shopPin}
-          onClose={() => { setShopPin(null); setHaggleRoll(null); setSellPercentage(80); }}
+          onClose={() => { setShopPin(null); setHaggleRoll(null); setSellPercentage(shopPin?.defaultSellPercentage ?? 80); }}
           title={<span className="text-amber-500"><Store className="inline h-4 w-4 mr-1" />{shopPin.label || 'Shop'}</span>}
           zIndex={floatingZIndices['player-shop'] || 10450}
           onBringToFront={() => bringToFront('player-shop')}
@@ -10934,8 +10985,7 @@ export default function Campaign() {
                   </div>
 
                   {shopCharacterId && (() => {
-                    const char = characters?.find((c: any) => c.id === shopCharacterId);
-                    const sellableItems = char?.items?.filter((i: any) => i.itemType !== 'currency' && !i.isArchived) || [];
+                    const sellableItems = (shopCharacterItems || []).filter((i: any) => i.itemType !== 'currency' && !i.isArchived);
                     if (sellableItems.length === 0) {
                       return <p className="text-center text-stone-500 text-sm py-4">No items to sell</p>;
                     }
@@ -11352,7 +11402,7 @@ export default function Campaign() {
                  setShopPin(pinAction.pin);
                  setShopTab('buy');
                  setHaggleRoll(null);
-                 setSellPercentage(80);
+                 setSellPercentage(pinAction.pin.defaultSellPercentage ?? 80);
                  const myChar = characters?.find((c: any) => c.userId === user?.id);
                  if (myChar) setShopCharacterId(myChar.id);
                }
