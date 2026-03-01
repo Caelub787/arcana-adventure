@@ -8,28 +8,41 @@ const SCOPES = [
   'https://www.googleapis.com/auth/userinfo.email',
 ];
 
-const pendingOAuthStates = new Map<string, { userId: string; expiresAt: number }>();
+const pendingOAuthStates = new Map<string, { userId: string; origin: string; expiresAt: number }>();
 
-function getOAuth2Client() {
+function getRedirectUri(origin: string): string {
+  return `${origin}/api/google/callback`;
+}
+
+function resolveOrigin(reqHost?: string): string {
+  if (reqHost && !reqHost.includes('localhost')) {
+    const host = reqHost.split(':')[0];
+    return `https://${host}`;
+  }
+  if (process.env.REPLIT_DEV_DOMAIN) {
+    return `https://${process.env.REPLIT_DEV_DOMAIN}`;
+  }
+  if (process.env.REPLIT_DOMAINS) {
+    return `https://${process.env.REPLIT_DOMAINS.split(',')[0]}`;
+  }
+  return 'http://localhost:5000';
+}
+
+function getOAuth2Client(origin: string) {
   const clientId = process.env.GOOGLE_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
   if (!clientId || !clientSecret) {
     throw new Error('Google OAuth credentials not configured');
   }
 
-  const redirectUri = process.env.REPLIT_DEV_DOMAIN
-    ? `https://${process.env.REPLIT_DEV_DOMAIN}/api/google/callback`
-    : process.env.REPLIT_DOMAINS
-      ? `https://${process.env.REPLIT_DOMAINS.split(',')[0]}/api/google/callback`
-      : 'http://localhost:5000/api/google/callback';
-
-  return new google.auth.OAuth2(clientId, clientSecret, redirectUri);
+  return new google.auth.OAuth2(clientId, clientSecret, getRedirectUri(origin));
 }
 
-export function getAuthUrl(userId: string): string {
+export function getAuthUrl(userId: string, reqHost?: string): string {
+  const origin = resolveOrigin(reqHost);
   const nonce = crypto.randomBytes(32).toString('hex');
-  pendingOAuthStates.set(nonce, { userId, expiresAt: Date.now() + 10 * 60 * 1000 });
-  const client = getOAuth2Client();
+  pendingOAuthStates.set(nonce, { userId, origin, expiresAt: Date.now() + 10 * 60 * 1000 });
+  const client = getOAuth2Client(origin);
   return client.generateAuthUrl({
     access_type: 'offline',
     scope: SCOPES,
@@ -38,16 +51,16 @@ export function getAuthUrl(userId: string): string {
   });
 }
 
-export function validateOAuthState(nonce: string): string | null {
+export function validateOAuthState(nonce: string): { userId: string; origin: string } | null {
   const entry = pendingOAuthStates.get(nonce);
   if (!entry) return null;
   pendingOAuthStates.delete(nonce);
   if (Date.now() > entry.expiresAt) return null;
-  return entry.userId;
+  return { userId: entry.userId, origin: entry.origin };
 }
 
-export async function exchangeCodeForTokens(code: string, userId: string): Promise<{ email: string }> {
-  const client = getOAuth2Client();
+export async function exchangeCodeForTokens(code: string, userId: string, origin: string): Promise<{ email: string }> {
+  const client = getOAuth2Client(origin);
   const { tokens } = await client.getToken(code);
 
   client.setCredentials(tokens);
@@ -70,7 +83,7 @@ export async function getUserGoogleClient(userId: string): Promise<{ drive: Retu
     throw new Error('Google account not connected. Please connect your Google account in your profile settings.');
   }
 
-  const client = getOAuth2Client();
+  const client = getOAuth2Client(resolveOrigin());
   client.setCredentials({
     access_token: tokens.googleAccessToken,
     refresh_token: tokens.googleRefreshToken,

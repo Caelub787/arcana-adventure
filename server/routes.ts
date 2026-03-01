@@ -7684,7 +7684,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/google/auth-url", requireAuth, async (req, res) => {
     try {
       const { getAuthUrl } = await import("./googleUserAuth.js");
-      const url = getAuthUrl(req.session.userId!);
+      const url = getAuthUrl(req.session.userId!, req.get('host'));
       res.json({ url });
     } catch (e: any) {
       console.error("Failed to generate Google auth URL:", e);
@@ -7699,17 +7699,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).send("Missing code or state parameter");
       }
       const { validateOAuthState, exchangeCodeForTokens } = await import("./googleUserAuth.js");
-      const userId = validateOAuthState(state as string);
-      if (!userId) {
+      const stateData = validateOAuthState(state as string);
+      if (!stateData) {
         return res.status(400).send("Invalid or expired OAuth state. Please try connecting again.");
       }
-      await exchangeCodeForTokens(code as string, userId);
-      const redirectUrl = process.env.REPLIT_DEV_DOMAIN
-        ? `https://${process.env.REPLIT_DEV_DOMAIN}/notes`
-        : process.env.REPLIT_DOMAINS
-          ? `https://${process.env.REPLIT_DOMAINS.split(',')[0]}/notes`
-          : '/notes';
-      res.redirect(redirectUrl + '?google_connected=1');
+      await exchangeCodeForTokens(code as string, stateData.userId, stateData.origin);
+      res.redirect(stateData.origin + '/notes?google_connected=1');
     } catch (e: any) {
       console.error("Google OAuth callback failed:", e);
       res.status(500).send("Google authentication failed. Please try again.");
