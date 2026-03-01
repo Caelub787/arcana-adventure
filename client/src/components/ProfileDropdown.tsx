@@ -51,9 +51,9 @@ export default function ProfileDropdown({ onLogout }: ProfileDropdownProps) {
     enabled: !!user,
   });
 
-  const { data: driveStatus, isLoading: driveStatusLoading, refetch: refetchDriveStatus } = useQuery<{ connected: boolean; email?: string; name?: string }>({
-    queryKey: ["/api/drive/status"],
-    queryFn: () => api.getDriveStatus(),
+  const { data: googleStatus, isLoading: googleStatusLoading } = useQuery<{ connected: boolean; email?: string }>({
+    queryKey: ["/api/google/status"],
+    queryFn: () => api.getGoogleStatus(),
     enabled: editDialogOpen,
   });
 
@@ -302,15 +302,15 @@ export default function ProfileDropdown({ onLogout }: ProfileDropdownProps) {
                     <Cloud className="h-5 w-5 text-amber-500" />
                   </div>
                   <div>
-                    <p className="font-medium text-stone-200">Google Drive</p>
-                    {driveStatusLoading ? (
+                    <p className="font-medium text-stone-200">Google Docs</p>
+                    {googleStatusLoading ? (
                       <div className="flex items-center gap-1.5 text-sm text-stone-500">
                         <Loader2 className="h-3 w-3 animate-spin" />
                         <span>Checking connection...</span>
                       </div>
-                    ) : driveStatus?.connected ? (
+                    ) : googleStatus?.connected ? (
                       <p className="text-sm text-stone-400" data-testid="text-drive-email">
-                        {driveStatus.email || "Connected"}
+                        {googleStatus.email || "Connected"}
                       </p>
                     ) : (
                       <p className="text-sm text-stone-500">Not connected</p>
@@ -318,28 +318,47 @@ export default function ProfileDropdown({ onLogout }: ProfileDropdownProps) {
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  {driveStatusLoading ? null : driveStatus?.connected ? (
-                    <div 
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-green-900/30 text-green-400 text-sm"
-                      data-testid="status-drive-connected"
+                  {googleStatusLoading ? null : googleStatus?.connected ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-red-400 border-red-800 hover:bg-red-900/30"
+                      data-testid="button-disconnect-google"
+                      onClick={async () => {
+                        try {
+                          await api.disconnectGoogle();
+                          queryClient.invalidateQueries({ queryKey: ["/api/google/status"] });
+                          toast({ title: "Google account disconnected" });
+                        } catch (e) {
+                          toast({ title: "Failed to disconnect", variant: "destructive" });
+                        }
+                      }}
                     >
-                      <Check className="h-3.5 w-3.5" />
-                      <span>Connected</span>
-                    </div>
+                      Disconnect
+                    </Button>
                   ) : (
-                    <div 
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-stone-800 text-stone-400 text-sm"
-                      data-testid="status-drive-disconnected"
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-amber-400 border-amber-800 hover:bg-amber-900/30"
+                      data-testid="button-connect-google"
+                      onClick={async () => {
+                        try {
+                          const { url } = await api.getGoogleAuthUrl();
+                          window.location.href = url;
+                        } catch (e) {
+                          toast({ title: "Failed to start Google connection", variant: "destructive" });
+                        }
+                      }}
                     >
-                      <AlertCircle className="h-3.5 w-3.5" />
-                      <span>Not Connected</span>
-                    </div>
+                      Connect
+                    </Button>
                   )}
                 </div>
               </div>
-              {!driveStatus?.connected && !driveStatusLoading && (
+              {!googleStatus?.connected && !googleStatusLoading && (
                 <p className="text-xs text-stone-500">
-                  Google Drive connection is managed at the application level. Contact an administrator to enable this feature.
+                  Connect your Google account to import and export notes with Google Docs.
                 </p>
               )}
             </div>

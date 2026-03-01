@@ -16,6 +16,10 @@ export const users = pgTable("users", {
   bannedAt: timestamp("banned_at"), // When user was banned (null = not banned)
   banExpiresAt: timestamp("ban_expires_at"), // When ban expires (null = permanent)
   banReason: text("ban_reason"), // Reason for the ban
+  googleAccessToken: text("google_access_token"),
+  googleRefreshToken: text("google_refresh_token"),
+  googleTokenExpiry: timestamp("google_token_expiry"),
+  googleEmail: text("google_email"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

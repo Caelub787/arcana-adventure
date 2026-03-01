@@ -653,6 +653,11 @@ export function CampaignNotesPanel({
   const [selectedDriveFile, setSelectedDriveFile] = useState<string | null>(null);
   const [exportingNoteId, setExportingNoteId] = useState<string | null>(null);
 
+  const { data: googleStatus } = useQuery<{ connected: boolean; email?: string }>({
+    queryKey: ["/api/google/status"],
+    queryFn: () => api.getGoogleStatus(),
+  });
+
   // Note tabs state
   const {
     openNotes,
@@ -1181,6 +1186,14 @@ export function CampaignNotesPanel({
 
   // Handler to open import dialog and fetch drive files
   const handleOpenImportDialog = async () => {
+    if (!googleStatus?.connected) {
+      toast({
+        title: "Google account not connected",
+        description: "Connect your Google account in your profile settings to import notes.",
+        variant: "destructive",
+      });
+      return;
+    }
     setImportDialogOpen(true);
     setDriveFilesLoading(true);
     setSelectedDriveFile(null);
@@ -1198,8 +1211,15 @@ export function CampaignNotesPanel({
     }
   };
 
-  // Handler to export current note
   const handleExportToDrive = (id: string) => {
+    if (!googleStatus?.connected) {
+      toast({
+        title: "Google account not connected",
+        description: "Connect your Google account in your profile settings to export notes.",
+        variant: "destructive",
+      });
+      return;
+    }
     setExportingNoteId(id);
     exportToDriveMutation.mutate(id);
   };

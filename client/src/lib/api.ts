@@ -1898,6 +1898,18 @@ class ApiClient {
     });
   }
 
+  async getGoogleAuthUrl(): Promise<{ url: string }> {
+    return this.request('/google/auth-url');
+  }
+
+  async getGoogleStatus(): Promise<{ connected: boolean; email?: string }> {
+    return this.request('/google/status');
+  }
+
+  async disconnectGoogle(): Promise<{ success: boolean }> {
+    return this.request('/google/disconnect', { method: 'POST' });
+  }
+
   // Note Reference endpoints
   async getNoteReferences(noteId: string): Promise<NoteReference[]> {
     return this.request(`/notes/${noteId}/references`);

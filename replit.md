@@ -67,7 +67,8 @@ Preferred communication style: Simple, everyday language.
 
 ### Third-Party Services
 -   **Neon Database**: Serverless PostgreSQL hosting.
--   **Google Drive Integration**: Image library browser for character/item images.
+-   **Google Drive Integration (Replit Connector)**: GM's image library browser for character/item images. Uses server-side Replit connector tied to the developer's Google account — this is intentional for the asset library.
+-   **Google OAuth (Per-User)**: Each user connects their own Google account for Google Docs import/export in the Notes system. Uses `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` env vars. OAuth flow: `/api/google/auth-url` → Google consent → `/api/google/callback` → tokens stored per-user in `users` table (`googleAccessToken`, `googleRefreshToken`, `googleTokenExpiry`, `googleEmail`). Helper module: `server/googleUserAuth.ts`.
 
 ### Key NPM Dependencies
 -   **UI & Styling**: Radix UI components, `tailwindcss`.

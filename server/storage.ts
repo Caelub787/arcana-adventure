@@ -156,6 +156,8 @@ export interface IStorage {
   deletePasswordResetToken(token: string): Promise<void>;
   deleteUserPasswordResetTokens(userId: string): Promise<void>;
   updateUserPassword(userId: string, hashedPassword: string): Promise<void>;
+  updateUserGoogleTokens(userId: string, data: { googleAccessToken: string | null; googleRefreshToken: string | null; googleTokenExpiry: Date | null; googleEmail: string | null }): Promise<void>;
+  getUserGoogleTokens(userId: string): Promise<{ googleAccessToken: string | null; googleRefreshToken: string | null; googleTokenExpiry: Date | null; googleEmail: string | null } | undefined>;
 
   // Scene operations
   createScene(scene: InsertScene): Promise<Scene>;
@@ -1664,6 +1666,22 @@ export class DatabaseStorage implements IStorage {
     await db.update(users)
       .set({ password: hashedPassword })
       .where(eq(users.id, userId));
+  }
+
+  async updateUserGoogleTokens(userId: string, data: { googleAccessToken: string | null; googleRefreshToken: string | null; googleTokenExpiry: Date | null; googleEmail: string | null }): Promise<void> {
+    await db.update(users)
+      .set(data)
+      .where(eq(users.id, userId));
+  }
+
+  async getUserGoogleTokens(userId: string): Promise<{ googleAccessToken: string | null; googleRefreshToken: string | null; googleTokenExpiry: Date | null; googleEmail: string | null } | undefined> {
+    const [user] = await db.select({
+      googleAccessToken: users.googleAccessToken,
+      googleRefreshToken: users.googleRefreshToken,
+      googleTokenExpiry: users.googleTokenExpiry,
+      googleEmail: users.googleEmail,
+    }).from(users).where(eq(users.id, userId));
+    return user;
   }
 
   // Scene operations

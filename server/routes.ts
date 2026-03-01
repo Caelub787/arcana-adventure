@@ -7679,9 +7679,133 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ======== PER-USER GOOGLE OAUTH ROUTES ========
+
+  app.get("/api/google/auth-url", requireAuth, async (req, res) => {
+    try {
+      const { getAuthUrl } = await import("./googleUserAuth.js");
+      const url = getAuthUrl(req.session.userId!);
+      res.json({ url });
+    } catch (e: any) {
+      console.error("Failed to generate Google auth URL:", e);
+      res.status(500).json({ error: "Failed to generate Google auth URL" });
+    }
+  });
+
+  app.get("/api/google/callback", async (req, res) => {
+    try {
+      const { code, state } = req.query;
+      if (!code || !state) {
+        return res.status(400).send("Missing code or state parameter");
+      }
+      const { validateOAuthState, exchangeCodeForTokens } = await import("./googleUserAuth.js");
+      const userId = validateOAuthState(state as string);
+      if (!userId) {
+        return res.status(400).send("Invalid or expired OAuth state. Please try connecting again.");
+      }
+      await exchangeCodeForTokens(code as string, userId);
+      const redirectUrl = process.env.REPLIT_DEV_DOMAIN
+        ? `https://${process.env.REPLIT_DEV_DOMAIN}/notes`
+        : process.env.REPLIT_DOMAINS
+          ? `https://${process.env.REPLIT_DOMAINS.split(',')[0]}/notes`
+          : '/notes';
+      res.redirect(redirectUrl + '?google_connected=1');
+    } catch (e: any) {
+      console.error("Google OAuth callback failed:", e);
+      res.status(500).send("Google authentication failed. Please try again.");
+    }
+  });
+
+  app.post("/api/google/disconnect", requireAuth, async (req, res) => {
+    try {
+      const { disconnectGoogle } = await import("./googleUserAuth.js");
+      await disconnectGoogle(req.session.userId!);
+      res.json({ success: true });
+    } catch (e: any) {
+      console.error("Failed to disconnect Google:", e);
+      res.status(500).json({ error: "Failed to disconnect Google account" });
+    }
+  });
+
+  app.get("/api/google/status", requireAuth, async (req, res) => {
+    try {
+      const { getGoogleConnectionStatus } = await import("./googleUserAuth.js");
+      const status = await getGoogleConnectionStatus(req.session.userId!);
+      res.json(status);
+    } catch (e: any) {
+      console.error("Failed to get Google status:", e);
+      res.status(500).json({ error: "Failed to get Google connection status" });
+    }
+  });
+
+  // ======== PER-USER GOOGLE DOCS SYNC ROUTES ========
+
+  app.get("/api/notes/drive-files", requireAuth, async (req, res) => {
+    try {
+      const { listUserGoogleDocs } = await import("./googleUserAuth.js");
+      const docs = await listUserGoogleDocs(req.session.userId!, 50);
+      res.json(docs);
+    } catch (e: any) {
+      console.error("Failed to list Google Docs:", e);
+      if (e.message?.includes("not connected") || e.message?.includes("reconnect")) {
+        return res.status(400).json({ error: e.message });
+      }
+      res.status(500).json({ error: "Failed to list Google Docs" });
+    }
+  });
+
+  app.post("/api/notes/:id/export-to-drive", requireAuth, async (req, res) => {
+    try {
+      const access = await storage.canAccessNote(req.session.userId!, req.params.id);
+      if (!access.canAccess) {
+        return res.status(403).json({ error: "Not authorized to access this note" });
+      }
+      const note = await storage.getNote(req.params.id);
+      if (!note) {
+        return res.status(404).json({ error: "Note not found" });
+      }
+      const { exportNoteToUserGoogleDoc } = await import("./googleUserAuth.js");
+      const { existingDocId } = req.body || {};
+      const result = await exportNoteToUserGoogleDoc(req.session.userId!, note.title, note.content || '', existingDocId);
+      res.json({ success: true, docId: result.docId, webViewLink: result.webViewLink });
+    } catch (e: any) {
+      console.error("Failed to export note to Google Docs:", e);
+      if (e.message?.includes("not connected") || e.message?.includes("reconnect")) {
+        return res.status(400).json({ error: e.message });
+      }
+      res.status(500).json({ error: "Failed to export note to Google Docs" });
+    }
+  });
+
+  app.post("/api/notes/import-from-drive", requireAuth, async (req, res) => {
+    try {
+      const { docId, folderId, campaignId } = req.body;
+      if (!docId) {
+        return res.status(400).json({ error: "Document ID is required" });
+      }
+      const { importUserGoogleDoc } = await import("./googleUserAuth.js");
+      const { title, content } = await importUserGoogleDoc(req.session.userId!, docId);
+      const note = await storage.createNote({
+        title,
+        content,
+        type: "markdown",
+        userId: req.session.userId!,
+        folderId: folderId || null,
+        campaignId: campaignId || null,
+      });
+      res.status(201).json(note);
+    } catch (e: any) {
+      console.error("Failed to import Google Doc:", e);
+      if (e.message?.includes("not connected") || e.message?.includes("reconnect")) {
+        return res.status(400).json({ error: e.message });
+      }
+      res.status(500).json({ error: "Failed to import Google Doc" });
+    }
+  });
+
   // ======== GOOGLE DRIVE IMAGE LIBRARY ROUTES ========
   
-  // Get Google Drive connection status
+  // Get Google Drive connection status (GM's Replit connector - for image library)
   app.get("/api/drive/status", requireAuth, async (req, res) => {
     try {
       const status = await getGoogleDriveStatus();
