@@ -27,7 +27,7 @@ declare module 'http' {
   }
 }
 
-// Trust proxy for production (Replit uses reverse proxy)
+// Trust proxy for production (reverse proxy behind load balancer / nginx)
 const isProduction = process.env.NODE_ENV === 'production';
 if (isProduction) {
   app.set('trust proxy', 1);

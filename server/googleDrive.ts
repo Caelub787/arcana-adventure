@@ -1,78 +1,52 @@
 // Google Drive integration for browsing image library and Google Docs sync
 import { google } from 'googleapis';
 
-let connectionSettings: any;
-
-async function getAccessToken() {
-  if (connectionSettings && connectionSettings.settings.expires_at && new Date(connectionSettings.settings.expires_at).getTime() > Date.now()) {
-    return connectionSettings.settings.access_token;
-  }
-  
-  const hostname = process.env.REPLIT_CONNECTORS_HOSTNAME;
-  const xReplitToken = process.env.REPL_IDENTITY 
-    ? 'repl ' + process.env.REPL_IDENTITY 
-    : process.env.WEB_REPL_RENEWAL 
-    ? 'depl ' + process.env.WEB_REPL_RENEWAL 
-    : null;
-
-  if (!xReplitToken) {
-    throw new Error('X_REPLIT_TOKEN not found for repl/depl');
+function getAuthClient() {
+  const serviceAccountKey = process.env.GOOGLE_SERVICE_ACCOUNT_KEY;
+  if (serviceAccountKey) {
+    const credentials = JSON.parse(serviceAccountKey);
+    const auth = new google.auth.GoogleAuth({
+      credentials,
+      scopes: [
+        'https://www.googleapis.com/auth/drive.readonly',
+        'https://www.googleapis.com/auth/documents',
+        'https://www.googleapis.com/auth/drive.file',
+      ],
+    });
+    return auth;
   }
 
-  connectionSettings = await fetch(
-    'https://' + hostname + '/api/v2/connection?include_secrets=true&connector_names=google-drive',
-    {
-      headers: {
-        'Accept': 'application/json',
-        'X_REPLIT_TOKEN': xReplitToken
-      }
-    }
-  ).then(res => res.json()).then(data => data.items?.[0]);
-
-  const accessToken = connectionSettings?.settings?.access_token || connectionSettings.settings?.oauth?.credentials?.access_token;
-
-  if (!connectionSettings || !accessToken) {
-    throw new Error('Google Drive not connected');
+  const accessToken = process.env.GOOGLE_DRIVE_ACCESS_TOKEN;
+  if (accessToken) {
+    const oauth2Client = new google.auth.OAuth2();
+    oauth2Client.setCredentials({ access_token: accessToken });
+    return oauth2Client;
   }
-  return accessToken;
+
+  throw new Error('Google Drive not configured. Set GOOGLE_SERVICE_ACCOUNT_KEY or GOOGLE_DRIVE_ACCESS_TOKEN environment variable.');
 }
 
-// WARNING: Never cache this client.
-// Access tokens expire, so a new client must be created each time.
 async function getGoogleDriveClient() {
-  const accessToken = await getAccessToken();
-
-  const oauth2Client = new google.auth.OAuth2();
-  oauth2Client.setCredentials({
-    access_token: accessToken
-  });
-
-  return google.drive({ version: 'v3', auth: oauth2Client });
+  const auth = getAuthClient();
+  return google.drive({ version: 'v3', auth });
 }
 
-// Get Google Docs API client for reading/writing documents
 export async function getGoogleDocsClient() {
-  const accessToken = await getAccessToken();
-  const oauth2Client = new google.auth.OAuth2();
-  oauth2Client.setCredentials({ access_token: accessToken });
-  return google.docs({ version: 'v1', auth: oauth2Client });
+  const auth = getAuthClient();
+  return google.docs({ version: 'v1', auth });
 }
 
 // Get Google Drive connection status and user info
 export async function getGoogleDriveStatus(): Promise<{ connected: boolean; email?: string; name?: string }> {
   try {
-    const accessToken = await getAccessToken();
-    
-    const oauth2Client = new google.auth.OAuth2();
-    oauth2Client.setCredentials({ access_token: accessToken });
-    
-    const oauth2 = google.oauth2({ version: 'v2', auth: oauth2Client });
-    const userInfo = await oauth2.userinfo.get();
+    const auth = getAuthClient();
+    const drive = google.drive({ version: 'v3', auth });
+    const about = await drive.about.get({ fields: 'user(displayName,emailAddress)' });
     
     return {
       connected: true,
-      email: userInfo.data.email || undefined,
-      name: userInfo.data.name || undefined,
+      email: about.data.user?.emailAddress || undefined,
+      name: about.data.user?.displayName || undefined,
     };
   } catch (error) {
     return { connected: false };

@@ -66,9 +66,18 @@ Preferred communication style: Simple, everyday language.
 ## External Dependencies
 
 ### Third-Party Services
--   **Neon Database**: Serverless PostgreSQL hosting.
--   **Google Drive Integration (Replit Connector)**: GM's image library browser for character/item images. Uses server-side Replit connector tied to the developer's Google account — this is intentional for the asset library.
--   **Google OAuth (Per-User)**: Each user connects their own Google account for Google Docs import/export in the Notes system. Uses `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` env vars. OAuth flow: `/api/google/auth-url` → Google consent → `/api/google/callback` → tokens stored per-user in `users` table (`googleAccessToken`, `googleRefreshToken`, `googleTokenExpiry`, `googleEmail`). Helper module: `server/googleUserAuth.ts`.
+-   **Neon Database**: Serverless PostgreSQL hosting (`DATABASE_URL` env var).
+-   **Google Drive Image Library**: GM's asset image browser. Configured via `GOOGLE_SERVICE_ACCOUNT_KEY` (JSON service account) or `GOOGLE_DRIVE_ACCESS_TOKEN` env var. Module: `server/googleDrive.ts`.
+-   **Google OAuth (Per-User)**: Each user connects their own Google account for Google Docs import/export in the Notes system. Uses `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` env vars. OAuth flow: `/api/google/auth-url` → Google consent → `/api/google/callback` → tokens stored per-user in `users` table. Helper module: `server/googleUserAuth.ts`.
+-   **Resend**: Password reset emails. Configured via `RESEND_API_KEY` and optional `RESEND_FROM_EMAIL` env vars.
+
+### Deployment
+-   **Domain**: `APP_DOMAIN` env var (defaults to `https://arcanaadventure.com`). Used for CORS, OAuth redirects, and WebSocket origin validation.
+-   **CORS**: Additional origins can be added via `CORS_ORIGIN` env var (comma-separated).
+-   **Build**: `npm run build` (Vite frontend + esbuild backend → `dist/`)
+-   **Start**: `npm run start` (serves from `dist/index.js`)
+-   **Docker**: `Dockerfile` included for containerized deployment.
+-   **Required env vars**: See `.env.example` for full list.
 
 ### Key NPM Dependencies
 -   **UI & Styling**: Radix UI components, `tailwindcss`.
