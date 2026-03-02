@@ -15,12 +15,15 @@ function getRedirectUri(origin: string): string {
 }
 
 function resolveOrigin(reqHost?: string): string {
-  if (process.env.APP_DOMAIN) {
-    return process.env.APP_DOMAIN;
-  }
   if (reqHost && !reqHost.includes('localhost')) {
     const host = reqHost.split(':')[0];
     return `https://${host}`;
+  }
+  if (process.env.REPLIT_DEV_DOMAIN) {
+    return `https://${process.env.REPLIT_DEV_DOMAIN}`;
+  }
+  if (process.env.REPLIT_DOMAINS) {
+    return `https://${process.env.REPLIT_DOMAINS.split(',')[0]}`;
   }
   return 'http://localhost:5000';
 }

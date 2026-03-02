@@ -245,20 +245,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const origin = req.headers.origin;
     const allowedOrigins = [
       'http://localhost:5000',
-      'http://localhost:5173',
+      'http://localhost:5173', // Vite dev server
       'http://0.0.0.0:5000',
     ];
     
-    const appDomain = process.env.APP_DOMAIN || 'https://arcanaadventure.com';
-    allowedOrigins.push(appDomain);
-    
-    if (process.env.CORS_ORIGIN) {
-      process.env.CORS_ORIGIN.split(',').forEach(o => allowedOrigins.push(o.trim()));
+    // Add Replit-specific origins when running on Replit
+    if (process.env.REPL_ID) {
+      allowedOrigins.push(`https://${process.env.REPL_ID}.repl.co`);
+      allowedOrigins.push(`https://${process.env.REPL_ID}-00-`); // Partial match for dev URLs
+    }
+    if (process.env.REPLIT_DEV_DOMAIN) {
+      allowedOrigins.push(`https://${process.env.REPLIT_DEV_DOMAIN}`);
     }
     
+    // Check if origin matches any allowed origin (with partial match support for Replit domains)
+    // In production, we allow any HTTPS origin since the app is publicly deployed
     const isProduction = process.env.NODE_ENV === 'production';
-    const isAllowed = !origin || allowedOrigins.some(allowed => 
-      origin === allowed || origin.startsWith(allowed)
+    const isAllowed = !origin || isProduction || allowedOrigins.some(allowed => 
+      origin === allowed || 
+      origin.startsWith(allowed) || 
+      (allowed.includes('.repl.co') && origin.includes('.repl.co')) ||
+      origin.includes('.picard.replit.dev') ||
+      origin.includes('.replit.dev') ||
+      origin.includes('.replit.app') || // Published apps use .replit.app domain
+      origin.startsWith('https://') // Allow any HTTPS origin (custom domains)
     );
     
     console.log(`[WebSocket] Connection attempt - origin: ${origin}, isProduction: ${isProduction}, isAllowed: ${isAllowed}`);
