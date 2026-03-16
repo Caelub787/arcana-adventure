@@ -30,7 +30,7 @@ import { useToast } from "@/hooks/use-toast";
 import { ImageBrowser } from "@/components/ImageBrowser";
 import { CampaignNotesPanel } from "@/components/notes/CampaignNotesPanel";
 import { FloatingPanel } from "@/components/ui/floating-panel";
-import { Folder, FolderOpen, FolderPlus, Plus, GripVertical, Eye, Radio, ChevronDown, ChevronRight, Pencil, Minus, Copy, Palette, Coffee } from "lucide-react";
+import { Folder, FolderOpen, FolderPlus, Plus, GripVertical, Eye, Radio, ChevronDown, ChevronRight, Pencil, Minus, Copy, Palette, Coffee, ExternalLink } from "lucide-react";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger, ContextMenuSub, ContextMenuSubTrigger, ContextMenuSubContent } from "@/components/ui/context-menu";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { PropertyStyleEditor, getPropertyCssStyle, type PropertyStyle } from "@/components/sandbox/PropertyStyleEditor";
@@ -44,7 +44,7 @@ import { TimelineView } from "@/components/worldbuilding/TimelineView";
 import { WorldCalendar } from "@/components/worldbuilding/WorldCalendar";
 import { RelationshipGraph } from "@/components/worldbuilding/RelationshipGraph";
 import { EntitySidePanel } from "@/components/worldbuilding/EntitySidePanel";
-import { useEntitiesByCampaign, useWorldbuildingSync } from "@/lib/worldbuilding-api";
+import { useEntities, useWorldbuildingSync } from "@/lib/worldbuilding-api";
 import { Globe, Home, Calendar, Clock, MapPin, Store, Coins, Dice1, Move } from "lucide-react";
 
 // Scene Settings Form Component
@@ -6380,49 +6380,56 @@ function FloatingWorldBuilder({
   const [selectedTimelineId, setSelectedTimelineId] = useState<string | null>(null);
   const [homeContent, setHomeContent] = useState("");
   const [homeEditing, setHomeEditing] = useState(false);
+  const [selectedWorldId, setSelectedWorldId] = useState<string>("");
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
-  useWorldbuildingSync(campaignId);
-  const { data: entities = [] } = useEntitiesByCampaign(campaignId);
-  const { data: links = [] } = useQuery<any[]>({
-    queryKey: ["/api/campaigns", campaignId, "entity-links"],
+  const { data: worlds = [], isLoading: worldsLoading } = useQuery<any[]>({
+    queryKey: ['/api/worlds'],
     queryFn: async () => {
-      const res = await fetch(`/api/campaigns/${campaignId}/entity-links`, { credentials: "include" });
+      const res = await fetch('/api/worlds', { credentials: 'include' });
       if (!res.ok) return [];
       return res.json();
     },
-    enabled: !!campaignId,
-  });
-
-  const { data: worldData } = useQuery<any>({
-    queryKey: ["/api/campaigns", campaignId, "world-home"],
-    queryFn: async () => {
-      const res = await fetch(`/api/worlds`, { credentials: "include" });
-      if (!res.ok) return null;
-      const worlds = await res.json();
-      const match = worlds.find((w: any) => w.campaignId === campaignId);
-      return match || null;
-    },
-    enabled: !!campaignId,
   });
 
   useEffect(() => {
-    if (worldData?.homeContent !== undefined) {
-      setHomeContent(worldData.homeContent || "");
+    if (worlds.length > 0 && !selectedWorldId) {
+      const campaignWorld = worlds.find((w: any) => w.campaignId === campaignId);
+      setSelectedWorldId(campaignWorld?.id || worlds[0].id);
     }
-  }, [worldData]);
+  }, [worlds, selectedWorldId, campaignId]);
+
+  const selectedWorld = worlds.find((w: any) => w.id === selectedWorldId);
+
+  useEffect(() => {
+    if (selectedWorld?.homeContent !== undefined) {
+      setHomeContent(selectedWorld.homeContent || "");
+    }
+  }, [selectedWorld?.id, selectedWorld?.homeContent]);
+
+  useWorldbuildingSync(selectedWorldId || undefined);
+  const { data: entities = [] } = useEntities(selectedWorldId || undefined);
+  const { data: links = [] } = useQuery<any[]>({
+    queryKey: ["/api/worlds", selectedWorldId, "entity-links"],
+    queryFn: async () => {
+      const res = await fetch(`/api/worlds/${selectedWorldId}/entity-links`, { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!selectedWorldId,
+  });
 
   const saveHomeContent = async () => {
-    if (!worldData?.id) return;
+    if (!selectedWorldId) return;
     try {
-      await fetch(`/api/worlds/${worldData.id}`, {
+      await fetch(`/api/worlds/${selectedWorldId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({ homeContent }),
       });
-      queryClient.invalidateQueries({ queryKey: ["/api/campaigns", campaignId, "world-home"] });
+      queryClient.invalidateQueries({ queryKey: ['/api/worlds'] });
       setHomeEditing(false);
       toast({ title: "Home content saved" });
     } catch {
@@ -6454,6 +6461,26 @@ function FloatingWorldBuilder({
     >
       <div className="flex flex-col h-full" data-testid="floating-world-builder">
         <div className="flex items-center gap-1 px-3 py-2 border-b border-stone-700 bg-stone-800/50 shrink-0 overflow-x-auto">
+          <select
+            value={selectedWorldId}
+            onChange={(e) => {
+              setSelectedWorldId(e.target.value);
+              setSelectedEntityId(null);
+              setEditingMapId(null);
+              setCreatingMap(false);
+              setSelectedTimelineId(null);
+              setHomeEditing(false);
+            }}
+            className="bg-stone-800 border border-stone-600 text-stone-200 text-xs rounded px-2 py-1.5 mr-2 max-w-[160px] truncate shrink-0"
+            data-testid="worldbuilder-world-selector"
+          >
+            {worldsLoading && <option>Loading...</option>}
+            {worlds.map((w: any) => (
+              <option key={w.id} value={w.id}>
+                {w.name}{w.campaignId === campaignId ? ' ★' : ''}
+              </option>
+            ))}
+          </select>
           {WORLD_BUILDER_SECTIONS.map(({ key, label, icon: Icon }) => (
             <button
               key={key}
@@ -6473,13 +6500,19 @@ function FloatingWorldBuilder({
 
         <div className="flex-1 overflow-hidden flex">
           <div className="flex-1 overflow-y-auto overflow-x-hidden">
-            {activeSection === "home" && (
-              <div className="p-6">
-                {worldData ? (
-                  <>
+            {!selectedWorldId ? (
+              <div className="text-center py-12 text-stone-500">
+                <Globe className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                <p>No worlds found.</p>
+                <p className="text-sm mt-1">Create a world in the World Builder from the main menu.</p>
+              </div>
+            ) : (
+              <>
+                {activeSection === "home" && (
+                  <div className="p-6">
                     <div className="mb-6">
-                      <h2 className="text-2xl font-bold text-amber-400 font-display">{worldData.name || "World"}</h2>
-                      {worldData.description && <p className="text-stone-400 text-sm mt-1">{worldData.description}</p>}
+                      <h2 className="text-2xl font-bold text-amber-400 font-display">{selectedWorld?.name || "World"}</h2>
+                      {selectedWorld?.description && <p className="text-stone-400 text-sm mt-1">{selectedWorld.description}</p>}
                     </div>
                     {isGM && !homeEditing && (
                       <div className="flex justify-end mb-4">
@@ -6499,7 +6532,7 @@ function FloatingWorldBuilder({
                         />
                         <div className="flex gap-2">
                           <Button size="sm" onClick={saveHomeContent} data-testid="save-home-btn">Save</Button>
-                          <Button size="sm" variant="outline" onClick={() => { setHomeEditing(false); setHomeContent(worldData.homeContent || ""); }}>Cancel</Button>
+                          <Button size="sm" variant="outline" onClick={() => { setHomeEditing(false); setHomeContent(selectedWorld?.homeContent || ""); }}>Cancel</Button>
                         </div>
                       </div>
                     ) : (
@@ -6509,90 +6542,84 @@ function FloatingWorldBuilder({
                         )}
                       </div>
                     )}
-                  </>
-                ) : (
-                  <div className="text-center py-12 text-stone-500">
-                    <Globe className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                    <p>No world linked to this campaign yet.</p>
-                    {isGM && <p className="text-sm mt-1">Create a world in the World Builder section first.</p>}
                   </div>
                 )}
-              </div>
-            )}
 
-            {activeSection === "encyclopedia" && (
-              <div className="flex h-full">
-                <div className={`${selectedEntityId ? 'w-1/2 border-r border-stone-700' : 'w-full'} overflow-hidden`}>
-                  <WorldbuilderPanel
-                    campaignId={campaignId}
-                    isGM={isGM}
-                    characters={characters}
-                    onOpenEntity={(entityId) => setSelectedEntityId(entityId)}
-                  />
-                </div>
-                {selectedEntityId && (
-                  <div className="w-1/2 overflow-y-auto">
-                    <EntitySidePanel
-                      campaignId={campaignId}
-                      entityId={selectedEntityId}
-                      onClose={() => setSelectedEntityId(null)}
-                      onNavigateToEntity={(entityId) => setSelectedEntityId(entityId)}
+                {activeSection === "encyclopedia" && (
+                  <div className="flex h-full">
+                    <div className={`${selectedEntityId ? 'w-1/2 border-r border-stone-700' : 'w-full'} overflow-hidden`}>
+                      <WorldbuilderPanel
+                        worldId={selectedWorldId}
+                        isGM={isGM}
+                        characters={characters}
+                        onOpenEntity={(entityId) => setSelectedEntityId(entityId)}
+                      />
+                    </div>
+                    {selectedEntityId && (
+                      <div className="w-1/2 overflow-y-auto">
+                        <EntitySidePanel
+                          worldId={selectedWorldId}
+                          entityId={selectedEntityId}
+                          onClose={() => setSelectedEntityId(null)}
+                          onNavigateToEntity={(entityId) => setSelectedEntityId(entityId)}
+                          isGM={isGM}
+                          embedded={true}
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {activeSection === "maps" && (
+                  <div className="h-full">
+                    {editingMapId || creatingMap ? (
+                      <WorldMapEditor
+                        worldId={selectedWorldId}
+                        mapId={editingMapId || undefined}
+                        onBack={() => { setEditingMapId(null); setCreatingMap(false); }}
+                        onMapCreated={(newId) => { setCreatingMap(false); setEditingMapId(newId); }}
+                      />
+                    ) : (
+                      <WorldMapViewer
+                        worldId={selectedWorldId}
+                        isGM={isGM}
+                        onEditMap={(mapId) => setEditingMapId(mapId)}
+                        onCreateMap={() => setCreatingMap(true)}
+                        onNavigateToEntity={(entityId) => handleSelectEntity(entityId)}
+                      />
+                    )}
+                  </div>
+                )}
+
+                {activeSection === "timeline" && (
+                  <div className="h-full overflow-y-auto">
+                    <TimelineView
+                      worldId={selectedWorldId}
                       isGM={isGM}
-                      embedded={true}
+                      onSelectEntity={handleSelectEntity}
+                      selectedTimelineId={selectedTimelineId}
+                      onSelectTimeline={handleSelectTimeline}
                     />
                   </div>
                 )}
-              </div>
-            )}
 
-            {activeSection === "maps" && (
-              <div className="h-full">
-                {editingMapId || creatingMap ? (
-                  <WorldMapEditor
-                    campaignId={campaignId}
-                    mapId={editingMapId || undefined}
-                    onBack={() => { setEditingMapId(null); setCreatingMap(false); }}
-                    onMapCreated={(newId) => { setCreatingMap(false); setEditingMapId(newId); }}
-                  />
-                ) : (
-                  <WorldMapViewer
-                    campaignId={campaignId}
-                    isGM={isGM}
-                    onEditMap={(mapId) => setEditingMapId(mapId)}
-                    onCreateMap={() => setCreatingMap(true)}
-                    onNavigateToEntity={(entityId) => handleSelectEntity(entityId)}
-                  />
+                {activeSection === "calendar" && (
+                  <div className="h-full overflow-hidden">
+                    <WorldCalendar worldId={selectedWorldId} isGM={isGM} />
+                  </div>
                 )}
-              </div>
-            )}
 
-            {activeSection === "timeline" && (
-              <div className="h-full overflow-y-auto">
-                <TimelineView
-                  campaignId={campaignId}
-                  isGM={isGM}
-                  onSelectEntity={handleSelectEntity}
-                  selectedTimelineId={selectedTimelineId}
-                  onSelectTimeline={handleSelectTimeline}
-                />
-              </div>
-            )}
-
-            {activeSection === "calendar" && (
-              <div className="h-full overflow-hidden">
-                <WorldCalendar campaignId={campaignId} isGM={isGM} />
-              </div>
-            )}
-
-            {activeSection === "graph" && (
-              <div className="h-full">
-                <RelationshipGraph
-                  entities={entities}
-                  links={links}
-                  onSelectEntity={handleSelectEntity}
-                  selectedEntityId={selectedEntityId}
-                />
-              </div>
+                {activeSection === "graph" && (
+                  <div className="h-full">
+                    <RelationshipGraph
+                      entities={entities}
+                      links={links}
+                      onSelectEntity={handleSelectEntity}
+                      selectedEntityId={selectedEntityId}
+                    />
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>
@@ -6604,148 +6631,43 @@ function FloatingWorldBuilder({
 function FloatingNotesEditor({
   campaignId,
   initialNoteId,
-  position,
-  size,
-  collapsed,
-  onPositionChange,
-  onSizeChange,
-  onCollapsedChange,
   onClose,
   campaignMembers,
   onViewCharacter,
-  zIndex = 45,
+  zIndex = 10500,
   onBringToFront,
 }: {
   campaignId: string;
   initialNoteId: string | null;
-  position: { x: number; y: number };
-  size: { width: number; height: number };
-  collapsed: boolean;
-  onPositionChange: (pos: { x: number; y: number }) => void;
-  onSizeChange: (size: { width: number; height: number }) => void;
-  onCollapsedChange: (collapsed: boolean) => void;
   onClose: () => void;
   campaignMembers?: Array<{ id: string; userId: string; username: string }>;
   onViewCharacter?: (character: any) => void;
   zIndex?: number;
   onBringToFront?: () => void;
 }) {
-  const [isDragging, setIsDragging] = useState(false);
-  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
-  const resizeStartRef = useRef<{ x: number; y: number; width: number; height: number } | null>(null);
-  const posRef = useRef(position);
-  const divRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    posRef.current = position;
-  }, [position]);
-
-  const handlePointerDown = (e: React.PointerEvent) => {
-    if ((e.target as HTMLElement).closest('button')) return;
-    const el = e.currentTarget as HTMLElement;
-    el.setPointerCapture(e.pointerId);
-    setIsDragging(true);
-    setDragOffset({ x: e.clientX - posRef.current.x, y: e.clientY - posRef.current.y });
-  };
-
-  const handlePointerMove = (e: React.PointerEvent) => {
-    if (!isDragging) return;
-    const newX = e.clientX - dragOffset.x;
-    const newY = e.clientY - dragOffset.y;
-    posRef.current = { x: newX, y: newY };
-    if (divRef.current) {
-      divRef.current.style.transform = `translate(${newX}px, ${newY}px)`;
-    }
-  };
-
-  const handlePointerUp = (e: React.PointerEvent) => {
-    setIsDragging(false);
-    const el = e.currentTarget as HTMLElement;
-    if (el.hasPointerCapture(e.pointerId)) {
-      el.releasePointerCapture(e.pointerId);
-    }
-    onPositionChange(posRef.current);
-  };
-
   return (
-    <div
-      ref={divRef}
-      className="fixed pointer-events-auto"
-      style={{ left: 0, top: 0, transform: `translate(${position.x}px, ${position.y}px)`, width: `${size.width}px`, height: collapsed ? 'auto' : `${size.height}px`, zIndex, willChange: isDragging ? 'transform' : 'auto' }}
-      data-testid="floating-notes-editor"
-      onMouseDown={onBringToFront}
+    <FloatingPanel
+      open={true}
+      onClose={onClose}
+      title={<span className="text-amber-500">Notes</span>}
+      zIndex={zIndex}
+      onBringToFront={onBringToFront}
+      defaultSize={{ width: 700, height: 500 }}
+      minWidth={400}
+      minHeight={300}
     >
-      <div className="bg-stone-900/95 border border-amber-800/50 rounded-xl shadow-2xl backdrop-blur-sm overflow-hidden h-full flex flex-col">
-        <div
-          className="flex items-center justify-between px-3 py-2 cursor-move select-none bg-amber-900/30 border-b border-amber-800/30 shrink-0"
-          onPointerDown={handlePointerDown}
-          onPointerMove={handlePointerMove}
-          onPointerUp={handlePointerUp}
-        >
-          <div className="flex items-center gap-2 min-w-0">
-            <FileText className="h-4 w-4 text-amber-500 shrink-0" />
-            <span className="text-amber-400 font-bold text-sm truncate">Notes</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <button
-              onClick={() => onCollapsedChange(!collapsed)}
-              className="p-1 rounded hover:bg-stone-700 text-stone-400 hover:text-white transition-colors"
-              data-testid="floating-notes-collapse"
-            >
-              <Minus className="h-3.5 w-3.5" />
-            </button>
-            <button
-              onClick={onClose}
-              className="p-1 rounded hover:bg-stone-700 text-stone-400 hover:text-white transition-colors"
-              data-testid="floating-notes-close"
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
-          </div>
-        </div>
-        {!collapsed && (
-          <div className="flex-1 overflow-hidden min-h-0">
-            <CampaignNotesPanel
-              campaignId={campaignId}
-              onClose={onClose}
-              isOpen={true}
-              campaignMembers={campaignMembers}
-              onViewCharacter={onViewCharacter}
-              initialNoteId={initialNoteId}
-              hideCloseButton={true}
-            />
-          </div>
-        )}
+      <div className="h-full overflow-hidden" data-testid="floating-notes-editor">
+        <CampaignNotesPanel
+          campaignId={campaignId}
+          onClose={onClose}
+          isOpen={true}
+          campaignMembers={campaignMembers}
+          onViewCharacter={onViewCharacter}
+          initialNoteId={initialNoteId}
+          hideCloseButton={true}
+        />
       </div>
-      {!collapsed && (
-        <div
-          className="absolute bottom-0 right-0 w-4 h-4 cursor-nwse-resize z-50"
-          onPointerDown={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            resizeStartRef.current = { x: e.clientX, y: e.clientY, width: size.width, height: size.height };
-            const onMove = (e2: PointerEvent) => {
-              if (!resizeStartRef.current) return;
-              const dx = e2.clientX - resizeStartRef.current.x;
-              const dy = e2.clientY - resizeStartRef.current.y;
-              onSizeChange({
-                width: Math.max(400, resizeStartRef.current.width + dx),
-                height: Math.max(300, resizeStartRef.current.height + dy),
-              });
-            };
-            const onUp = () => {
-              resizeStartRef.current = null;
-              window.removeEventListener('pointermove', onMove);
-              window.removeEventListener('pointerup', onUp);
-            };
-            window.addEventListener('pointermove', onMove);
-            window.addEventListener('pointerup', onUp);
-          }}
-        >
-          <div className="absolute bottom-1 right-1 w-2 h-2 border-r-2 border-b-2 border-stone-500" />
-        </div>
-      )}
-    </div>
+    </FloatingPanel>
   );
 }
 
@@ -6994,9 +6916,6 @@ export default function Campaign() {
   // Floating notes panel state
   const [floatingNotesOpen, setFloatingNotesOpen] = useState(false);
   const [floatingNotesInitialNoteId, setFloatingNotesInitialNoteId] = useState<string | null>(null);
-  const [floatingNotesPosition, setFloatingNotesPosition] = useState({ x: 100, y: 80 });
-  const [floatingNotesSize, setFloatingNotesSize] = useState({ width: 700, height: 500 });
-  const [floatingNotesCollapsed, setFloatingNotesCollapsed] = useState(false);
 
   // Unified side panel state (campaignDefaultPanel and useEffect moved after campaign query declaration)
   type SidePanelTab = 'characters' | 'chat' | 'notes' | 'settings' | 'scene' | 'initiative' | 'world' | null;
@@ -9738,6 +9657,10 @@ export default function Campaign() {
                   variant="ghost"
                   size="icon"
                   onClick={() => {
+                    if (floatingNotesOpen) {
+                      bringToFront('notes');
+                      return;
+                    }
                     if (activeSidePanel === 'notes' && !sidePanelMinimized) {
                       setSidePanelMinimized(true);
                     } else {
@@ -9745,7 +9668,7 @@ export default function Campaign() {
                       setSidePanelMinimized(false);
                     }
                   }}
-                  className={`text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto ${activeSidePanel === 'notes' && !sidePanelMinimized ? 'text-amber-400 bg-white/10' : ''}`}
+                  className={`text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto ${(activeSidePanel === 'notes' && !sidePanelMinimized) || floatingNotesOpen ? 'text-amber-400 bg-white/10' : ''}`}
                   data-testid="button-panel-notes"
                 >
                   <BookOpen className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
@@ -11157,12 +11080,6 @@ export default function Campaign() {
         <FloatingNotesEditor
           campaignId={effectiveCampaignId}
           initialNoteId={floatingNotesInitialNoteId}
-          position={floatingNotesPosition}
-          size={floatingNotesSize}
-          collapsed={floatingNotesCollapsed}
-          onPositionChange={setFloatingNotesPosition}
-          onSizeChange={setFloatingNotesSize}
-          onCollapsedChange={setFloatingNotesCollapsed}
           onClose={() => setFloatingNotesOpen(false)}
           campaignMembers={(members as any[] || [])
             .filter((m: any) => m.userId !== user?.id)
@@ -11807,19 +11724,53 @@ export default function Campaign() {
                 {activeSidePanel === 'chat' && 'Adventure Log'}
                 {activeSidePanel === 'characters' && (isSandbox ? 'Actors' : 'Characters')}
                 {activeSidePanel === 'notes' && 'Notes'}
+                {activeSidePanel === 'world' && 'World'}
                 {activeSidePanel === 'settings' && 'Settings'}
                 {activeSidePanel === 'scene' && 'Scenes'}
                 {activeSidePanel === 'initiative' && 'Initiative'}
               </h2>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setSidePanelMinimized(true)}
-                className="h-8 w-8 text-stone-400 hover:text-white"
-                data-testid="button-minimize-panel"
-              >
-                <Minus className="h-4 w-4" />
-              </Button>
+              <div className="flex items-center gap-1">
+                {activeSidePanel === 'notes' && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => {
+                      setFloatingNotesOpen(true);
+                      setFloatingNotesInitialNoteId(null);
+                      setSidePanelMinimized(true);
+                    }}
+                    className="h-8 w-8 text-stone-400 hover:text-white"
+                    data-testid="button-popout-notes"
+                    title="Pop out as floating panel"
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                  </Button>
+                )}
+                {activeSidePanel === 'world' && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => {
+                      setFloatingWorldBuilderOpen(true);
+                      setSidePanelMinimized(true);
+                    }}
+                    className="h-8 w-8 text-stone-400 hover:text-white"
+                    data-testid="button-popout-world"
+                    title="Pop out as floating panel"
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                  </Button>
+                )}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setSidePanelMinimized(true)}
+                  className="h-8 w-8 text-stone-400 hover:text-white"
+                  data-testid="button-minimize-panel"
+                >
+                  <Minus className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
             <div className="flex-1 overflow-hidden">
               {activeSidePanel === 'chat' && effectiveCampaignId && (

@@ -2610,7 +2610,7 @@ export default function Notes() {
             <h1 className="font-display text-2xl font-bold text-amber-500 flex-1">
               {campaignId ? "Campaign Notes" : "My Notes"}
             </h1>
-            {!isEditing && !(showHomeView && !selectedFolderId && !showSharedNotes) && (
+            {!isEditing && (
               <div className="flex items-center gap-2">
                 <Button
                   variant={viewMode === "list" ? "default" : "ghost"}
@@ -2662,8 +2662,6 @@ export default function Notes() {
 
           {isEditing ? (
             currentNote?.type === "canvas" || noteMode === "edit" ? renderNoteEditor() : renderNoteReadView()
-          ) : showHomeView && !selectedFolderId && !showSharedNotes ? (
-            renderHomeView()
           ) : viewMode === "graph" ? (
             <div className="flex-1 relative">
               <NotesGraph
@@ -2672,6 +2670,8 @@ export default function Notes() {
                 onNoteClick={(noteId) => setLocation(`/notes/${noteId}`)}
               />
             </div>
+          ) : showHomeView && !selectedFolderId && !showSharedNotes ? (
+            renderHomeView()
           ) : renderNoteList()}
         </div>
       </div>
