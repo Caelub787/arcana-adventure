@@ -11080,7 +11080,11 @@ export default function Campaign() {
         <FloatingNotesEditor
           campaignId={effectiveCampaignId}
           initialNoteId={floatingNotesInitialNoteId}
-          onClose={() => setFloatingNotesOpen(false)}
+          onClose={() => {
+            setFloatingNotesOpen(false);
+            setActiveSidePanel('notes');
+            setSidePanelMinimized(false);
+          }}
           campaignMembers={(members as any[] || [])
             .filter((m: any) => m.userId !== user?.id)
             .map((m: any) => ({ id: m.id, userId: m.userId, username: m.username }))}
