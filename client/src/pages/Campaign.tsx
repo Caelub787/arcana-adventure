@@ -6375,10 +6375,12 @@ function FloatingWorldBuilder({
 }) {
   const [activeSection, setActiveSection] = useState<WorldBuilderSection>("home");
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
+  const [entityHistory, setEntityHistory] = useState<string[]>([]);
   const [editingMapId, setEditingMapId] = useState<string | null>(null);
   const [creatingMap, setCreatingMap] = useState(false);
   const [selectedTimelineId, setSelectedTimelineId] = useState<string | null>(null);
   const [homeContent, setHomeContent] = useState("");
+  const [homeContentDirty, setHomeContentDirty] = useState(false);
   const [homeEditing, setHomeEditing] = useState(false);
   const [selectedWorldId, setSelectedWorldId] = useState<string>("");
   const [showCreateWorldDialog, setShowCreateWorldDialog] = useState(false);
@@ -6413,6 +6415,7 @@ function FloatingWorldBuilder({
   useEffect(() => {
     if (selectedWorld?.homeContent !== undefined) {
       setHomeContent(selectedWorld.homeContent || "");
+      setHomeContentDirty(false);
     }
   }, [selectedWorld?.id, selectedWorld?.homeContent]);
 
@@ -6537,6 +6540,7 @@ function FloatingWorldBuilder({
       });
       queryClient.invalidateQueries({ queryKey: ['/api/worlds'] });
       setHomeEditing(false);
+      setHomeContentDirty(false);
       toast({ title: "Home content saved" });
     } catch {
       toast({ title: "Failed to save", variant: "destructive" });
@@ -6544,8 +6548,21 @@ function FloatingWorldBuilder({
   };
 
   const handleSelectEntity = (entityId: string) => {
+    if (selectedEntityId && selectedEntityId !== entityId) {
+      setEntityHistory(prev => [...prev, selectedEntityId]);
+    }
     setSelectedEntityId(entityId);
     setActiveSection("encyclopedia");
+  };
+
+  const handleEntityBack = () => {
+    if (entityHistory.length > 0) {
+      const prev = entityHistory[entityHistory.length - 1];
+      setEntityHistory(h => h.slice(0, -1));
+      setSelectedEntityId(prev);
+    } else {
+      setSelectedEntityId(null);
+    }
   };
 
   const handleSelectTimeline = (timelineId: string | null) => {
@@ -6572,10 +6589,12 @@ function FloatingWorldBuilder({
             onChange={(e) => {
               setSelectedWorldId(e.target.value);
               setSelectedEntityId(null);
+              setEntityHistory([]);
               setEditingMapId(null);
               setCreatingMap(false);
               setSelectedTimelineId(null);
               setHomeEditing(false);
+              setHomeContentDirty(false);
             }}
             className="bg-stone-800 border border-stone-600 text-stone-200 text-xs rounded px-2 py-1.5 mr-2 max-w-[160px] truncate shrink-0"
             data-testid="worldbuilder-world-selector"
@@ -6632,7 +6651,15 @@ function FloatingWorldBuilder({
               <div className="text-center py-12 text-stone-500">
                 <Globe className="h-12 w-12 mx-auto mb-3 opacity-50" />
                 <p>No worlds found.</p>
-                <p className="text-sm mt-1">Create a world in the World Builder from the main menu.</p>
+                <p className="text-sm mt-2">Get started by creating your first world.</p>
+                <Button
+                  size="sm"
+                  className="mt-4"
+                  onClick={() => setShowCreateWorldDialog(true)}
+                  data-testid="button-create-first-world"
+                >
+                  <Plus className="h-4 w-4 mr-1" /> Create World
+                </Button>
               </div>
             ) : (
               <>
@@ -6653,14 +6680,15 @@ function FloatingWorldBuilder({
                       <div className="space-y-3">
                         <textarea
                           value={homeContent}
-                          onChange={(e) => setHomeContent(e.target.value)}
+                          onChange={(e) => { setHomeContent(e.target.value); setHomeContentDirty(true); }}
                           className="w-full min-h-[300px] p-3 bg-stone-800 border border-stone-700 rounded text-stone-200 text-sm font-mono"
                           placeholder="Write your world's home page content here... (Markdown supported)"
                           data-testid="home-content-editor"
                         />
-                        <div className="flex gap-2">
+                        <div className="flex items-center gap-2">
                           <Button size="sm" onClick={saveHomeContent} data-testid="save-home-btn">Save</Button>
-                          <Button size="sm" variant="outline" onClick={() => { setHomeEditing(false); setHomeContent(selectedWorld?.homeContent || ""); }}>Cancel</Button>
+                          <Button size="sm" variant="outline" onClick={() => { setHomeEditing(false); setHomeContent(selectedWorld?.homeContent || ""); setHomeContentDirty(false); }}>Cancel</Button>
+                          {homeContentDirty && <span className="text-xs text-amber-500/70 italic">Unsaved changes</span>}
                         </div>
                       </div>
                     ) : (
@@ -6674,27 +6702,43 @@ function FloatingWorldBuilder({
                 )}
 
                 {activeSection === "encyclopedia" && (
-                  <div className="flex h-full">
-                    <div className={`${selectedEntityId ? 'w-1/2 border-r border-stone-700' : 'w-full'} overflow-hidden`}>
-                      <WorldbuilderPanel
-                        worldId={selectedWorldId}
-                        isGM={isGM}
-                        characters={characters}
-                        onOpenEntity={(entityId) => setSelectedEntityId(entityId)}
-                      />
-                    </div>
+                  <div className="flex flex-col h-full">
                     {selectedEntityId && (
-                      <div className="w-1/2 overflow-y-auto">
-                        <EntitySidePanel
-                          worldId={selectedWorldId}
-                          entityId={selectedEntityId}
-                          onClose={() => setSelectedEntityId(null)}
-                          onNavigateToEntity={(entityId) => setSelectedEntityId(entityId)}
-                          isGM={isGM}
-                          embedded={true}
-                        />
+                      <div className="flex items-center gap-2 px-3 py-1.5 border-b border-stone-700 bg-stone-800/30 shrink-0">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={handleEntityBack}
+                          className="h-7 text-stone-400 hover:text-white text-xs"
+                          data-testid="button-entity-back"
+                        >
+                          <ArrowLeft className="h-3.5 w-3.5 mr-1" />
+                          {entityHistory.length > 0 ? "Back" : "Close"}
+                        </Button>
                       </div>
                     )}
+                    <div className="flex flex-1 overflow-hidden">
+                      <div className={`${selectedEntityId ? 'w-1/2 border-r border-stone-700' : 'w-full'} overflow-hidden`}>
+                        <WorldbuilderPanel
+                          worldId={selectedWorldId}
+                          isGM={isGM}
+                          characters={characters}
+                          onOpenEntity={(entityId) => handleSelectEntity(entityId)}
+                        />
+                      </div>
+                      {selectedEntityId && (
+                        <div className="w-1/2 overflow-y-auto">
+                          <EntitySidePanel
+                            worldId={selectedWorldId}
+                            entityId={selectedEntityId}
+                            onClose={() => { setSelectedEntityId(null); setEntityHistory([]); }}
+                            onNavigateToEntity={(entityId) => handleSelectEntity(entityId)}
+                            isGM={isGM}
+                            embedded={true}
+                          />
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
 

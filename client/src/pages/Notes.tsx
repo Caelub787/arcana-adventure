@@ -1812,7 +1812,18 @@ export default function Notes() {
   const sidebarContent = (
     <div className="flex flex-col h-full">
       <div className="flex items-center justify-between p-4 border-b border-stone-800">
-        <h2 className="font-display text-lg text-stone-200">Folders</h2>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setLocation("/")}
+            className="h-7 w-7 text-stone-400 hover:text-white shrink-0"
+            data-testid="button-back-home"
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+          <h2 className="font-display text-lg text-stone-200">Folders</h2>
+        </div>
         <Button
           size="sm"
           variant="ghost"
@@ -2598,15 +2609,6 @@ export default function Notes() {
                 <Menu className="h-5 w-5" />
               </Button>
             )}
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setLocation("/")}
-              className="text-stone-400 hover:text-white"
-              data-testid="button-back-home"
-            >
-              <ArrowLeft className="h-5 w-5" />
-            </Button>
             <h1 className="font-display text-2xl font-bold text-amber-500 flex-1">
               {campaignId ? "Campaign Notes" : "My Notes"}
             </h1>
