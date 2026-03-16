@@ -1,11 +1,13 @@
 import React, { useRef, useEffect, useState, useCallback } from "react";
-import { X, FileText, Grid3X3 } from "lucide-react";
+import { X, FileText, Grid3X3, Network } from "lucide-react";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
+
+export const GRAPH_TAB_ID = "__graph__";
 
 export interface OpenNote {
   noteId: string;
   title: string;
-  type?: "markdown" | "canvas";
+  type?: "markdown" | "canvas" | "graph";
 }
 
 interface NoteTabsProps {
@@ -125,7 +127,9 @@ export function NoteTabs({
                 } transition-all duration-150`}
                 data-testid={`note-tab-${note.noteId}`}
               >
-                {note.type === "canvas" ? (
+                {note.type === "graph" ? (
+                  <Network className={`flex-shrink-0 ${compact ? 'h-3 w-3' : 'h-3.5 w-3.5'} ${isActive ? 'text-emerald-400' : 'text-stone-500'}`} />
+                ) : note.type === "canvas" ? (
                   <Grid3X3 className={`flex-shrink-0 ${compact ? 'h-3 w-3' : 'h-3.5 w-3.5'} ${isActive ? 'text-indigo-400' : 'text-stone-500'}`} />
                 ) : (
                   <FileText className={`flex-shrink-0 ${compact ? 'h-3 w-3' : 'h-3.5 w-3.5'} ${isActive ? 'text-amber-400' : 'text-stone-500'}`} />
@@ -157,7 +161,7 @@ export function useNoteTabs(initialNotes: OpenNote[] = []) {
   const [openNotes, setOpenNotes] = React.useState<OpenNote[]>(initialNotes);
   const [activeNoteId, setActiveNoteId] = React.useState<string | null>(null);
 
-  const openNote = React.useCallback((noteId: string, title: string, type?: "markdown" | "canvas") => {
+  const openNote = React.useCallback((noteId: string, title: string, type?: "markdown" | "canvas" | "graph") => {
     setOpenNotes((prev) => {
       const existing = prev.find((n) => n.noteId === noteId);
       if (existing) {

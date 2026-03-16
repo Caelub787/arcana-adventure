@@ -89,7 +89,6 @@ import {
   Link2,
   Grid3X3,
   Network,
-  List,
   Palette,
   Cloud,
   CloudDownload,
@@ -101,7 +100,7 @@ import {
 import { ReferencePicker, ReferenceInlineDisplay, NoteOnlyPicker } from "@/components/notes/ReferencePicker";
 import { CanvasEditor, CanvasData } from "@/components/notes/CanvasEditor";
 import { NotesGraph } from "@/components/notes/NotesGraph";
-import { NoteTabs, useNoteTabs, OpenNote } from "@/components/notes/NoteTabs";
+import { NoteTabs, useNoteTabs, OpenNote, GRAPH_TAB_ID } from "@/components/notes/NoteTabs";
 import { FormattingToolbar, useFormattingShortcuts, renderFormattedText, getFontClass, type NoteFont } from "@/components/notes/FormattingToolbar";
 import type { SearchableEntity } from "@/lib/api";
 
@@ -545,7 +544,6 @@ export default function Notes() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [sidebarSearchQuery, setSidebarSearchQuery] = useState("");
-  const [viewMode, setViewMode] = useState<"list" | "graph">("list");
   const [noteMode, setNoteMode] = useState<"read" | "edit">("read");
 
   const [folderDialogOpen, setFolderDialogOpen] = useState(false);
@@ -781,6 +779,12 @@ export default function Notes() {
 
   // Handle tab switching - navigate to the selected note
   const handleTabClick = (tabNoteId: string) => {
+    if (tabNoteId === GRAPH_TAB_ID) {
+      switchTab(GRAPH_TAB_ID);
+      setLocation("/notes");
+      setShowHomeView(false);
+      return;
+    }
     if (tabNoteId !== noteId) {
       setLocation(`/notes/${tabNoteId}`);
     }
@@ -791,15 +795,24 @@ export default function Notes() {
     const remainingNotes = openNotes.filter(n => n.noteId !== tabNoteId);
     closeTab(tabNoteId);
     
-    if (tabNoteId === noteId) {
+    const isActiveTab = tabNoteId === GRAPH_TAB_ID 
+      ? tabActiveNoteId === GRAPH_TAB_ID 
+      : tabNoteId === noteId;
+    
+    if (isActiveTab) {
       if (remainingNotes.length > 0) {
-        // Find previous or next tab
         const currentIdx = openNotes.findIndex(n => n.noteId === tabNoteId);
         const newActiveNote = currentIdx > 0 
           ? openNotes[currentIdx - 1] 
           : remainingNotes[0];
         if (newActiveNote) {
-          setLocation(`/notes/${newActiveNote.noteId}`);
+          if (newActiveNote.noteId === GRAPH_TAB_ID) {
+            switchTab(GRAPH_TAB_ID);
+            setLocation("/notes");
+            setShowHomeView(false);
+          } else {
+            setLocation(`/notes/${newActiveNote.noteId}`);
+          }
         } else {
           setLocation("/notes");
           setShowHomeView(true);
@@ -2612,28 +2625,24 @@ export default function Notes() {
             <h1 className="font-display text-2xl font-bold text-amber-500 flex-1">
               {campaignId ? "Campaign Notes" : "My Notes"}
             </h1>
-            {!isEditing && (
-              <div className="flex items-center gap-2">
-                <Button
-                  variant={viewMode === "list" ? "default" : "ghost"}
-                  size="icon"
-                  onClick={() => setViewMode("list")}
-                  className={viewMode === "list" ? "bg-amber-700 hover:bg-amber-600" : "text-stone-400 hover:text-white"}
-                  data-testid="button-list-view"
-                >
-                  <List className="h-5 w-5" />
-                </Button>
-                <Button
-                  variant={viewMode === "graph" ? "default" : "ghost"}
-                  size="icon"
-                  onClick={() => setViewMode("graph")}
-                  className={viewMode === "graph" ? "bg-amber-700 hover:bg-amber-600" : "text-stone-400 hover:text-white"}
-                  data-testid="button-graph-view"
-                >
-                  <Network className="h-5 w-5" />
-                </Button>
-              </div>
-            )}
+            <Button
+              variant={tabActiveNoteId === GRAPH_TAB_ID ? "default" : "ghost"}
+              size="icon"
+              onClick={() => {
+                const existing = openNotes.find(n => n.noteId === GRAPH_TAB_ID);
+                if (existing) {
+                  switchTab(GRAPH_TAB_ID);
+                } else {
+                  openNoteTab(GRAPH_TAB_ID, "Graph View", "graph");
+                }
+                setLocation("/notes");
+                setShowHomeView(false);
+              }}
+              className={tabActiveNoteId === GRAPH_TAB_ID ? "bg-amber-700 hover:bg-amber-600" : "text-stone-400 hover:text-white"}
+              data-testid="button-graph-view"
+            >
+              <Network className="h-5 w-5" />
+            </Button>
           </header>
 
           {campaignId && (
@@ -2655,7 +2664,7 @@ export default function Notes() {
           {openNotes.length > 0 && (
             <NoteTabs
               openNotes={openNotes}
-              activeNoteId={noteId || null}
+              activeNoteId={isEditing ? noteId : tabActiveNoteId}
               onTabClick={handleTabClick}
               onTabClose={handleTabClose}
               onReorder={reorderTabs}
@@ -2664,12 +2673,12 @@ export default function Notes() {
 
           {isEditing ? (
             currentNote?.type === "canvas" || noteMode === "edit" ? renderNoteEditor() : renderNoteReadView()
-          ) : viewMode === "graph" ? (
+          ) : tabActiveNoteId === GRAPH_TAB_ID ? (
             <div className="flex-1 relative">
               <NotesGraph
                 notes={sortedNotes}
                 characters={campaignCharacters}
-                onNoteClick={(noteId) => setLocation(`/notes/${noteId}`)}
+                onNoteClick={(clickedNoteId) => setLocation(`/notes/${clickedNoteId}`)}
               />
             </div>
           ) : showHomeView && !selectedFolderId && !showSharedNotes ? (

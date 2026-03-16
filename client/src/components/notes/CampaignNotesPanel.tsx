@@ -80,7 +80,6 @@ import {
   Link2,
   Grid3X3,
   Network,
-  List,
   CloudUpload,
   CloudDownload,
   ExternalLink,
@@ -93,7 +92,7 @@ import {
 import { ReferencePicker, NoteOnlyPicker } from "@/components/notes/ReferencePicker";
 import { CanvasEditor, CanvasData } from "@/components/notes/CanvasEditor";
 import { NotesGraph } from "@/components/notes/NotesGraph";
-import { NoteTabs, useNoteTabs, OpenNote } from "@/components/notes/NoteTabs";
+import { NoteTabs, useNoteTabs, OpenNote, GRAPH_TAB_ID } from "@/components/notes/NoteTabs";
 import { FormattingToolbar, useFormattingShortcuts, renderFormattedText, getFontClass, type NoteFont } from "@/components/notes/FormattingToolbar";
 import type { SearchableEntity } from "@/lib/api";
 
@@ -563,7 +562,6 @@ export function CampaignNotesPanel({
   const [showHomeView, setShowHomeView] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [sidebarSearchQuery, setSidebarSearchQuery] = useState("");
-  const [viewMode, setViewMode] = useState<"list" | "graph">("list");
   const [noteMode, setNoteMode] = useState<"read" | "edit">("read");
   const [showSidebar, setShowSidebar] = useState(window.innerWidth >= 768);
   const [sidebarWidth, setSidebarWidth] = useState(220);
@@ -661,6 +659,7 @@ export function CampaignNotesPanel({
   // Note tabs state
   const {
     openNotes,
+    activeNoteId: tabActiveNoteId,
     openNote: openNoteTab,
     closeTab,
     switchTab,
@@ -934,6 +933,12 @@ export function CampaignNotesPanel({
 
   // Handle tab switching
   const handleTabClick = (tabNoteId: string) => {
+    if (tabNoteId === GRAPH_TAB_ID) {
+      switchTab(GRAPH_TAB_ID);
+      setSelectedNoteId(null);
+      setShowHomeView(false);
+      return;
+    }
     if (tabNoteId !== selectedNoteId) {
       setSelectedNoteId(tabNoteId);
     }
@@ -944,14 +949,24 @@ export function CampaignNotesPanel({
     const remainingNotes = openNotes.filter(n => n.noteId !== tabNoteId);
     closeTab(tabNoteId);
     
-    if (tabNoteId === selectedNoteId) {
+    const isActiveTab = tabNoteId === GRAPH_TAB_ID
+      ? tabActiveNoteId === GRAPH_TAB_ID
+      : tabNoteId === selectedNoteId;
+    
+    if (isActiveTab) {
       if (remainingNotes.length > 0) {
         const currentIdx = openNotes.findIndex(n => n.noteId === tabNoteId);
         const newActiveNote = currentIdx > 0 
           ? openNotes[currentIdx - 1] 
           : remainingNotes[0];
         if (newActiveNote) {
-          setSelectedNoteId(newActiveNote.noteId);
+          if (newActiveNote.noteId === GRAPH_TAB_ID) {
+            switchTab(GRAPH_TAB_ID);
+            setSelectedNoteId(null);
+            setShowHomeView(false);
+          } else {
+            setSelectedNoteId(newActiveNote.noteId);
+          }
         } else {
           setSelectedNoteId(null);
           setShowHomeView(true);
@@ -2519,9 +2534,8 @@ export function CampaignNotesPanel({
       <NotesGraph
         notes={sortedNotes}
         characters={campaignCharacters}
-        onNoteClick={(noteId) => {
-          setSelectedNoteId(noteId);
-          setViewMode("list");
+        onNoteClick={(clickedNoteId) => {
+          setSelectedNoteId(clickedNoteId);
         }}
       />
     </div>
@@ -2546,11 +2560,27 @@ export function CampaignNotesPanel({
           <Button
             variant="ghost"
             size="icon"
-            className={`h-6 w-6 ${viewMode === "graph" ? 'bg-amber-900/50 text-amber-400' : 'text-stone-400'}`}
-            onClick={() => setViewMode(viewMode === "list" ? "graph" : "list")}
+            className={`h-6 w-6 ${tabActiveNoteId === GRAPH_TAB_ID ? 'bg-amber-900/50 text-amber-400' : 'text-stone-400'}`}
+            onClick={() => {
+              const existing = openNotes.find(n => n.noteId === GRAPH_TAB_ID);
+              if (existing) {
+                if (tabActiveNoteId === GRAPH_TAB_ID) {
+                  closeTab(GRAPH_TAB_ID);
+                  setShowHomeView(true);
+                } else {
+                  switchTab(GRAPH_TAB_ID);
+                  setSelectedNoteId(null);
+                  setShowHomeView(false);
+                }
+              } else {
+                openNoteTab(GRAPH_TAB_ID, "Graph View", "graph");
+                setSelectedNoteId(null);
+                setShowHomeView(false);
+              }
+            }}
             data-testid="panel-button-toggle-view"
           >
-            {viewMode === "list" ? <Network className="h-4 w-4" /> : <List className="h-4 w-4" />}
+            <Network className="h-4 w-4" />
           </Button>
           {!hideCloseButton && (
             <Button
@@ -2567,7 +2597,7 @@ export function CampaignNotesPanel({
       </div>
 
       <div className="flex-1 flex overflow-hidden min-h-0">
-        {viewMode === "graph" ? (
+        {tabActiveNoteId === GRAPH_TAB_ID ? (
           renderGraphView()
         ) : (
           <div className="flex h-full min-h-0 overflow-hidden w-full">
@@ -2606,7 +2636,7 @@ export function CampaignNotesPanel({
               {openNotes.length > 0 && (
                 <NoteTabs
                   openNotes={openNotes}
-                  activeNoteId={selectedNoteId}
+                  activeNoteId={selectedNoteId || tabActiveNoteId}
                   onTabClick={handleTabClick}
                   onTabClose={handleTabClose}
                   onReorder={reorderTabs}
