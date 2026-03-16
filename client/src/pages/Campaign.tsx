@@ -45,7 +45,7 @@ import { WorldCalendar } from "@/components/worldbuilding/WorldCalendar";
 import { RelationshipGraph } from "@/components/worldbuilding/RelationshipGraph";
 import { EntitySidePanel } from "@/components/worldbuilding/EntitySidePanel";
 import { useEntities, useWorldbuildingSync } from "@/lib/worldbuilding-api";
-import { Globe, Home, Calendar, Clock, MapPin, Store, Coins, Dice1, Move } from "lucide-react";
+import { Globe, Home, Calendar, Clock, MapPin, Store, Coins, Dice1, Move, Check } from "lucide-react";
 
 // Scene Settings Form Component
 function SceneSettingsForm({ scene, onUpdateScene, onCalibrateGrid }: { scene: Scene; onUpdateScene: (settings: Partial<Scene>) => void; onCalibrateGrid?: () => void }) {
@@ -6381,6 +6381,14 @@ function FloatingWorldBuilder({
   const [homeContent, setHomeContent] = useState("");
   const [homeEditing, setHomeEditing] = useState(false);
   const [selectedWorldId, setSelectedWorldId] = useState<string>("");
+  const [showCreateWorldDialog, setShowCreateWorldDialog] = useState(false);
+  const [newWorldName, setNewWorldName] = useState("");
+  const [newWorldDescription, setNewWorldDescription] = useState("");
+  const [showWorldSettingsDialog, setShowWorldSettingsDialog] = useState(false);
+  const [editWorldName, setEditWorldName] = useState("");
+  const [editWorldDescription, setEditWorldDescription] = useState("");
+  const [showDeleteWorldConfirm, setShowDeleteWorldConfirm] = useState(false);
+  const [copiedShareLink, setCopiedShareLink] = useState(false);
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
@@ -6408,6 +6416,13 @@ function FloatingWorldBuilder({
     }
   }, [selectedWorld?.id, selectedWorld?.homeContent]);
 
+  useEffect(() => {
+    if (selectedWorld) {
+      setEditWorldName(selectedWorld.name);
+      setEditWorldDescription(selectedWorld.description || "");
+    }
+  }, [selectedWorld?.id]);
+
   useWorldbuildingSync(selectedWorldId || undefined);
   const { data: entities = [] } = useEntities(selectedWorldId || undefined);
   const { data: links = [] } = useQuery<any[]>({
@@ -6419,6 +6434,97 @@ function FloatingWorldBuilder({
     },
     enabled: !!selectedWorldId,
   });
+
+  const { data: shareLink } = useQuery<any>({
+    queryKey: ['/api/worlds', selectedWorldId, 'share-link'],
+    queryFn: async () => {
+      const res = await fetch(`/api/worlds/${selectedWorldId}/share-link`, { credentials: 'include' });
+      if (!res.ok) return null;
+      return res.json();
+    },
+    enabled: !!selectedWorldId,
+  });
+
+  const createWorldMutation = useMutation({
+    mutationFn: async (data: { name: string; description?: string }) => {
+      const res = await fetch('/api/worlds', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) throw new Error('Failed to create world');
+      return res.json();
+    },
+    onSuccess: (newWorld: any) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/worlds'] });
+      setSelectedWorldId(newWorld.id);
+      setShowCreateWorldDialog(false);
+      setNewWorldName("");
+      setNewWorldDescription("");
+      toast({ title: "World created" });
+    },
+  });
+
+  const updateWorldMutation = useMutation({
+    mutationFn: async (data: { name: string; description?: string; homeContent?: string }) => {
+      const res = await fetch(`/api/worlds/${selectedWorldId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) throw new Error('Failed to update world');
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/worlds'] });
+      setShowWorldSettingsDialog(false);
+      toast({ title: "World updated" });
+    },
+  });
+
+  const deleteWorldMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/worlds/${selectedWorldId}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      if (!res.ok) throw new Error('Failed to delete world');
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/worlds'] });
+      setSelectedWorldId("");
+      setShowDeleteWorldConfirm(false);
+      setShowWorldSettingsDialog(false);
+      toast({ title: "World deleted" });
+    },
+  });
+
+  const createShareLinkMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/worlds/${selectedWorldId}/share-link`, { method: 'POST', credentials: 'include' });
+      if (!res.ok) throw new Error('Failed to create share link');
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/worlds', selectedWorldId, 'share-link'] });
+      toast({ title: "Share link created" });
+    },
+  });
+
+  const deleteShareLinkMutation = useMutation({
+    mutationFn: async (linkId: string) => {
+      const res = await fetch(`/api/worlds/${selectedWorldId}/share-link/${linkId}`, { method: 'DELETE', credentials: 'include' });
+      if (!res.ok) throw new Error('Failed to revoke share link');
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/worlds', selectedWorldId, 'share-link'] });
+      toast({ title: "Share link revoked" });
+    },
+  });
+
+  const shareLinkUrl = shareLink?.token ? `${window.location.origin}/world/${shareLink.token}` : null;
 
   const saveHomeContent = async () => {
     if (!selectedWorldId) return;
@@ -6496,6 +6602,28 @@ function FloatingWorldBuilder({
               {label}
             </button>
           ))}
+          <div className="ml-auto flex items-center gap-1 shrink-0">
+            <button
+              onClick={() => setShowCreateWorldDialog(true)}
+              className="p-1.5 rounded text-stone-400 hover:text-amber-400 hover:bg-stone-700 transition-colors"
+              title="Create new world"
+              data-testid="worldbuilder-create-world"
+            >
+              <Plus className="h-3.5 w-3.5" />
+            </button>
+            {selectedWorldId && (
+              <>
+                <button
+                  onClick={() => setShowWorldSettingsDialog(true)}
+                  className="p-1.5 rounded text-stone-400 hover:text-amber-400 hover:bg-stone-700 transition-colors"
+                  title="World settings"
+                  data-testid="worldbuilder-world-settings"
+                >
+                  <Settings className="h-3.5 w-3.5" />
+                </button>
+              </>
+            )}
+          </div>
         </div>
 
         <div className="flex-1 overflow-hidden flex">
@@ -6624,6 +6752,158 @@ function FloatingWorldBuilder({
           </div>
         </div>
       </div>
+
+      <Dialog open={showCreateWorldDialog} onOpenChange={setShowCreateWorldDialog}>
+        <DialogContent className="bg-stone-900 border-stone-700">
+          <DialogHeader>
+            <DialogTitle className="text-amber-400">Create New World</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label className="text-stone-300">Name</Label>
+              <Input
+                value={newWorldName}
+                onChange={(e) => setNewWorldName(e.target.value)}
+                placeholder="Enter world name..."
+                className="bg-stone-800 border-stone-700 text-stone-200"
+                data-testid="input-new-world-name"
+              />
+            </div>
+            <div>
+              <Label className="text-stone-300">Description (optional)</Label>
+              <Textarea
+                value={newWorldDescription}
+                onChange={(e) => setNewWorldDescription(e.target.value)}
+                placeholder="Describe your world..."
+                className="bg-stone-800 border-stone-700 text-stone-200"
+                data-testid="input-new-world-description"
+              />
+            </div>
+            <div className="flex gap-2 justify-end">
+              <Button variant="outline" onClick={() => setShowCreateWorldDialog(false)}>Cancel</Button>
+              <Button
+                onClick={() => createWorldMutation.mutate({ name: newWorldName, description: newWorldDescription || undefined })}
+                disabled={!newWorldName.trim() || createWorldMutation.isPending}
+                data-testid="button-create-world-submit"
+              >
+                {createWorldMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
+                Create
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showWorldSettingsDialog} onOpenChange={setShowWorldSettingsDialog}>
+        <DialogContent className="bg-stone-900 border-stone-700">
+          <DialogHeader>
+            <DialogTitle className="text-amber-400">World Settings</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label className="text-stone-300">Name</Label>
+              <Input
+                value={editWorldName}
+                onChange={(e) => setEditWorldName(e.target.value)}
+                className="bg-stone-800 border-stone-700 text-stone-200"
+                data-testid="input-edit-world-name"
+              />
+            </div>
+            <div>
+              <Label className="text-stone-300">Description</Label>
+              <Textarea
+                value={editWorldDescription}
+                onChange={(e) => setEditWorldDescription(e.target.value)}
+                className="bg-stone-800 border-stone-700 text-stone-200"
+                data-testid="input-edit-world-description"
+              />
+            </div>
+
+            <div className="border-t border-stone-700 pt-4">
+              <Label className="text-stone-300 mb-2 block">Share Link</Label>
+              {shareLinkUrl ? (
+                <div className="flex items-center gap-2">
+                  <Input value={shareLinkUrl} readOnly className="bg-stone-800 border-stone-700 text-stone-400 text-xs flex-1" />
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      navigator.clipboard.writeText(shareLinkUrl);
+                      setCopiedShareLink(true);
+                      setTimeout(() => setCopiedShareLink(false), 2000);
+                    }}
+                    data-testid="button-copy-share-link"
+                  >
+                    {copiedShareLink ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    onClick={() => shareLink?.id && deleteShareLinkMutation.mutate(shareLink.id)}
+                    data-testid="button-revoke-share-link"
+                  >
+                    Revoke
+                  </Button>
+                </div>
+              ) : (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => createShareLinkMutation.mutate()}
+                  disabled={createShareLinkMutation.isPending}
+                  data-testid="button-create-share-link"
+                >
+                  Generate Share Link
+                </Button>
+              )}
+            </div>
+
+            <div className="flex justify-between pt-2">
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={() => setShowDeleteWorldConfirm(true)}
+                data-testid="button-delete-world"
+              >
+                <Trash2 className="h-3 w-3 mr-1" /> Delete World
+              </Button>
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={() => setShowWorldSettingsDialog(false)}>Cancel</Button>
+                <Button
+                  onClick={() => updateWorldMutation.mutate({ name: editWorldName, description: editWorldDescription || undefined })}
+                  disabled={!editWorldName.trim() || updateWorldMutation.isPending}
+                  data-testid="button-save-world-settings"
+                >
+                  {updateWorldMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
+                  Save
+                </Button>
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={showDeleteWorldConfirm} onOpenChange={setShowDeleteWorldConfirm}>
+        <AlertDialogContent className="bg-stone-900 border-stone-700">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-red-400">Delete World</AlertDialogTitle>
+            <AlertDialogDescription className="text-stone-400">
+              Are you sure you want to delete "{selectedWorld?.name}"? This will permanently remove all entities, maps, timelines, and calendars. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="bg-stone-800 border-stone-700 text-stone-300">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => deleteWorldMutation.mutate()}
+              className="bg-red-600 hover:bg-red-700 text-white"
+              data-testid="button-confirm-delete-world"
+            >
+              {deleteWorldMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </FloatingPanel>
   );
 }
