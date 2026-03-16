@@ -2596,8 +2596,19 @@ export function CampaignNotesPanel({
         </div>
       </div>
 
+      {openNotes.length > 0 && (
+        <NoteTabs
+          openNotes={openNotes}
+          activeNoteId={selectedNoteId || tabActiveNoteId}
+          onTabClick={handleTabClick}
+          onTabClose={handleTabClose}
+          onReorder={reorderTabs}
+          compact
+        />
+      )}
+
       <div className="flex-1 flex overflow-hidden min-h-0">
-        {tabActiveNoteId === GRAPH_TAB_ID ? (
+        {tabActiveNoteId === GRAPH_TAB_ID && !selectedNoteId ? (
           renderGraphView()
         ) : (
           <div className="flex h-full min-h-0 overflow-hidden w-full">
@@ -2633,16 +2644,6 @@ export function CampaignNotesPanel({
               </>
             )}
             <div className="flex-1 min-w-0 min-h-0 flex flex-col h-full overflow-hidden">
-              {openNotes.length > 0 && (
-                <NoteTabs
-                  openNotes={openNotes}
-                  activeNoteId={selectedNoteId || tabActiveNoteId}
-                  onTabClick={handleTabClick}
-                  onTabClose={handleTabClose}
-                  onReorder={reorderTabs}
-                  compact
-                />
-              )}
               <div className="flex-1 min-h-0 overflow-hidden relative isolate flex flex-col">
                 {selectedNoteId ? (
                   currentNote?.type === "canvas" || noteMode === "edit" ? renderNoteEditor() : renderNoteReadView()

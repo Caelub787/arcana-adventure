@@ -370,8 +370,8 @@ function CampaignMapPinMarker({ pin, xPx, yPx, isRevealed, isGM, pinMoveMode, bg
   const pinRef = useRef<HTMLDivElement>(null);
 
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
+    e.stopPropagation();
     if (isGM && pinMoveMode && onPinDragEnd) {
-      e.stopPropagation();
       e.preventDefault();
       dragRef.current = { startScreenX: e.clientX, startScreenY: e.clientY, dragging: false, pointerId: e.pointerId };
       pinRef.current?.setPointerCapture(e.pointerId);

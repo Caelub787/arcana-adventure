@@ -44,8 +44,8 @@ const MAX_EDGE_LENGTH = 200;         // Distance clamping - max edge stretch
 const CENTER_GRAVITY = 0.008;        // Pull toward center for spherical shape
 const TARGET_RADIUS = 180;           // Target radius for sphere
 const DRIFT_ATTRACTION = 0.02;       // Extra attraction when nodes drift beyond target
-const DAMPING = 0.92;                // Velocity damping (never fully stops)
-const MIN_VELOCITY = 0.01;           // Minimum velocity to maintain gentle motion
+const DAMPING = 0.92;                // Velocity damping
+const MIN_VELOCITY = 0.005;          // Minimum velocity to maintain gentle motion
 const NODE_MASS = 1.5;               // Node mass for force calculations
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
 
@@ -465,11 +465,15 @@ export function NotesGraph({ notes, characters = [], onNoteClick, onCharacterCli
   const nodeElementsRef = useRef<Map<string, SVGGElement>>(new Map());
   const edgeElementsRef = useRef<Map<string, SVGLineElement>>(new Map());
 
-  // Continuous force-directed simulation - updates SVG directly, no React state
+  // Force-directed simulation - updates SVG directly, no React state
+  // Throttles to save CPU once the graph settles
   useEffect(() => {
     let frameId: number;
     let lastTime = performance.now();
     let frameCount = 0;
+    let settledFrames = 0;
+    const SETTLE_THRESHOLD = 0.5;
+    const SETTLED_SKIP = 10;
     
     const simulate = (currentTime: number) => {
       const dt = Math.min((currentTime - lastTime) / 16.67, 2);
@@ -485,6 +489,12 @@ export function NotesGraph({ notes, characters = [], onNoteClick, onCharacterCli
       }
       
       if (visibleIndices.length === 0) {
+        frameId = requestAnimationFrame(simulate);
+        return;
+      }
+
+      // Skip entire physics + render when settled to save CPU
+      if (settledFrames > 60 && frameCount % SETTLED_SKIP !== 0) {
         frameId = requestAnimationFrame(simulate);
         return;
       }
@@ -563,11 +573,20 @@ export function NotesGraph({ notes, characters = [], onNoteClick, onCharacterCli
         }
       }
       
-      // Update positions
+      // Update positions and check total kinetic energy
+      let totalEnergy = 0;
       for (const idx of visibleIndices) {
         const node = currentNodes[idx];
         node.x += node.vx * dt;
         node.y += node.vy * dt;
+        totalEnergy += node.vx * node.vx + node.vy * node.vy;
+      }
+      
+      // Track settling state for next frame's early-exit check
+      if (totalEnergy < SETTLE_THRESHOLD) {
+        settledFrames++;
+      } else {
+        settledFrames = 0;
       }
       
       // Direct SVG updates - no React re-render
