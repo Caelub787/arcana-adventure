@@ -6356,22 +6356,16 @@ function renderWorldHomeContent(content: string) {
   });
 }
 
-function FloatingWorldBuilder({
+function WorldBuilderContent({
   campaignId,
   isGM,
   characters,
-  open,
-  onClose,
-  zIndex = 10200,
-  onBringToFront,
+  compact = false,
 }: {
   campaignId: string;
   isGM: boolean;
   characters: any[];
-  open: boolean;
-  onClose: () => void;
-  zIndex?: number;
-  onBringToFront?: () => void;
+  compact?: boolean;
 }) {
   const [activeSection, setActiveSection] = useState<WorldBuilderSection>("home");
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
@@ -6569,85 +6563,72 @@ function FloatingWorldBuilder({
     setSelectedTimelineId(timelineId);
   };
 
-  if (!open) return null;
-
   return (
-    <FloatingPanel
-      open={open}
-      onClose={onClose}
-      title={<span className="text-amber-500">World Builder</span>}
-      zIndex={zIndex}
-      onBringToFront={onBringToFront}
-      defaultSize={{ width: 900, height: 650 }}
-      minWidth={600}
-      minHeight={400}
-    >
-      <div className="flex flex-col h-full" data-testid="floating-world-builder">
-        <div className="flex items-center gap-1 px-3 py-2 border-b border-stone-700 bg-stone-800/50 shrink-0 overflow-x-auto">
-          <select
-            value={selectedWorldId}
-            onChange={(e) => {
-              setSelectedWorldId(e.target.value);
-              setSelectedEntityId(null);
-              setEntityHistory([]);
-              setEditingMapId(null);
-              setCreatingMap(false);
-              setSelectedTimelineId(null);
-              setHomeEditing(false);
-              setHomeContentDirty(false);
-            }}
-            className="bg-stone-800 border border-stone-600 text-stone-200 text-xs rounded px-2 py-1.5 mr-2 max-w-[160px] truncate shrink-0"
-            data-testid="worldbuilder-world-selector"
-          >
-            {worldsLoading && <option>Loading...</option>}
-            {worlds.map((w: any) => (
-              <option key={w.id} value={w.id}>
-                {w.name}{w.campaignId === campaignId ? ' ★' : ''}
-              </option>
-            ))}
-          </select>
-          {WORLD_BUILDER_SECTIONS.map(({ key, label, icon: Icon }) => (
-            <button
-              key={key}
-              onClick={() => setActiveSection(key)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium whitespace-nowrap transition-colors ${
-                activeSection === key
-                  ? "bg-amber-600/20 text-amber-400 border border-amber-600/40"
-                  : "text-stone-400 hover:text-stone-200 hover:bg-stone-700"
-              }`}
-              data-testid={`worldbuilder-tab-${key}`}
-            >
-              <Icon className="h-3.5 w-3.5" />
-              {label}
-            </button>
+    <>
+    <div className="flex flex-col h-full" data-testid="worldbuilder-content">
+      <div className={`flex items-center gap-1 px-2 py-1.5 border-b border-stone-700 bg-stone-800/50 shrink-0 ${compact ? 'flex-wrap' : 'overflow-x-auto'}`}>
+        <select
+          value={selectedWorldId}
+          onChange={(e) => {
+            setSelectedWorldId(e.target.value);
+            setSelectedEntityId(null);
+            setEntityHistory([]);
+            setEditingMapId(null);
+            setCreatingMap(false);
+            setSelectedTimelineId(null);
+            setHomeEditing(false);
+            setHomeContentDirty(false);
+          }}
+          className="bg-stone-800 border border-stone-600 text-stone-200 text-xs rounded px-2 py-1.5 mr-1 max-w-[140px] truncate shrink-0"
+          data-testid="worldbuilder-world-selector"
+        >
+          {worldsLoading && <option>Loading...</option>}
+          {worlds.map((w: any) => (
+            <option key={w.id} value={w.id}>
+              {w.name}{w.campaignId === campaignId ? ' ★' : ''}
+            </option>
           ))}
-          <div className="ml-auto flex items-center gap-1 shrink-0">
+        </select>
+        {WORLD_BUILDER_SECTIONS.map(({ key, label, icon: Icon }) => (
+          <button
+            key={key}
+            onClick={() => setActiveSection(key)}
+            className={`flex items-center gap-1 px-2 py-1.5 rounded text-xs font-medium whitespace-nowrap transition-colors ${
+              activeSection === key
+                ? "bg-amber-600/20 text-amber-400 border border-amber-600/40"
+                : "text-stone-400 hover:text-stone-200 hover:bg-stone-700"
+            }`}
+            data-testid={`worldbuilder-tab-${key}`}
+          >
+            <Icon className="h-3.5 w-3.5" />
+            {!compact && label}
+          </button>
+        ))}
+        <div className="ml-auto flex items-center gap-1 shrink-0">
+          <button
+            onClick={() => setShowCreateWorldDialog(true)}
+            className="p-1.5 rounded text-stone-400 hover:text-amber-400 hover:bg-stone-700 transition-colors"
+            title="Create new world"
+            data-testid="worldbuilder-create-world"
+          >
+            <Plus className="h-3.5 w-3.5" />
+          </button>
+          {selectedWorldId && (
             <button
-              onClick={() => setShowCreateWorldDialog(true)}
+              onClick={() => setShowWorldSettingsDialog(true)}
               className="p-1.5 rounded text-stone-400 hover:text-amber-400 hover:bg-stone-700 transition-colors"
-              title="Create new world"
-              data-testid="worldbuilder-create-world"
+              title="World settings"
+              data-testid="worldbuilder-world-settings"
             >
-              <Plus className="h-3.5 w-3.5" />
+              <Settings className="h-3.5 w-3.5" />
             </button>
-            {selectedWorldId && (
-              <>
-                <button
-                  onClick={() => setShowWorldSettingsDialog(true)}
-                  className="p-1.5 rounded text-stone-400 hover:text-amber-400 hover:bg-stone-700 transition-colors"
-                  title="World settings"
-                  data-testid="worldbuilder-world-settings"
-                >
-                  <Settings className="h-3.5 w-3.5" />
-                </button>
-              </>
-            )}
-          </div>
+          )}
         </div>
+      </div>
 
-        <div className="flex-1 overflow-hidden flex">
-          <div className="flex-1 overflow-y-auto overflow-x-hidden">
-            {!selectedWorldId ? (
+      <div className="flex-1 overflow-hidden flex">
+        <div className="flex-1 overflow-y-auto overflow-x-hidden">
+          {!selectedWorldId ? (
               <div className="text-center py-12 text-stone-500">
                 <Globe className="h-12 w-12 mx-auto mb-3 opacity-50" />
                 <p>No worlds found.</p>
@@ -6948,6 +6929,40 @@ function FloatingWorldBuilder({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+    </>
+  );
+}
+
+function FloatingWorldBuilder({
+  campaignId,
+  isGM,
+  characters,
+  open,
+  onClose,
+  zIndex = 10200,
+  onBringToFront,
+}: {
+  campaignId: string;
+  isGM: boolean;
+  characters: any[];
+  open: boolean;
+  onClose: () => void;
+  zIndex?: number;
+  onBringToFront?: () => void;
+}) {
+  if (!open) return null;
+  return (
+    <FloatingPanel
+      open={open}
+      onClose={onClose}
+      title={<span className="text-amber-500">World Builder</span>}
+      zIndex={zIndex}
+      onBringToFront={onBringToFront}
+      defaultSize={{ width: 900, height: 650 }}
+      minWidth={600}
+      minHeight={400}
+    >
+      <WorldBuilderContent campaignId={campaignId} isGM={isGM} characters={characters} />
     </FloatingPanel>
   );
 }
@@ -12297,10 +12312,11 @@ export default function Campaign() {
               )}
               {activeSidePanel === 'world' && effectiveCampaignId && (
                 <div className="h-full overflow-hidden">
-                  <WorldbuilderPanel
+                  <WorldBuilderContent
                     campaignId={effectiveCampaignId}
                     isGM={role === 'gm'}
                     characters={characters as any[] || []}
+                    compact
                   />
                 </div>
               )}
