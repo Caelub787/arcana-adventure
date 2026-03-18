@@ -12081,6 +12081,7 @@ export default function Campaign() {
                       setFloatingNotesOpen(true);
                       setFloatingNotesInitialNoteId(null);
                       setSidePanelMinimized(true);
+                      bringToFront('notes');
                     }}
                     className="h-8 w-8 text-stone-400 hover:text-white"
                     data-testid="button-popout-notes"
