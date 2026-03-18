@@ -11267,34 +11267,41 @@ export default function Campaign() {
                 <p className="text-sm text-stone-300 whitespace-pre-wrap">{shopPin.textContent}</p>
               </div>
             )}
-            {role === 'gm' && (
-              <div className="px-3 pt-2 pb-1 border-b border-stone-700 bg-stone-800/50 flex items-center gap-2">
-                <select
-                  value={shopCharacterId}
-                  onChange={(e) => setShopCharacterId(e.target.value)}
-                  className="flex-1 bg-stone-800 border border-stone-700 text-stone-200 rounded px-2 py-1 text-xs"
-                  data-testid="select-shop-character"
-                >
-                  <option value="">Select character...</option>
-                  {(characters || []).map((c: any) => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
-                  ))}
-                </select>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="border-stone-600 text-amber-400 hover:text-amber-300 h-7 text-xs shrink-0"
-                  onClick={() => {
-                    setShopEditingPin(shopPin);
-                    setShopEditorTab('inventory');
-                    bringToFront('shop-editor');
-                  }}
-                  data-testid="button-manage-shop"
-                >
-                  <Settings className="h-3 w-3 mr-1" /> Manage
-                </Button>
-              </div>
-            )}
+            {(() => {
+              const shopCharacterOptions = role === 'gm'
+                ? (characters || [])
+                : (characters || []).filter((c: any) => c.userId === user?.id);
+              return (
+                <div className="px-3 pt-2 pb-1 border-b border-stone-700 bg-stone-800/50 flex items-center gap-2">
+                  <select
+                    value={shopCharacterId}
+                    onChange={(e) => setShopCharacterId(e.target.value)}
+                    className="flex-1 bg-stone-800 border border-stone-700 text-stone-200 rounded px-2 py-1 text-xs"
+                    data-testid="select-shop-character"
+                  >
+                    <option value="">Select character...</option>
+                    {(shopCharacterOptions as any[]).map((c: any) => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                  {role === 'gm' && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="border-stone-600 text-amber-400 hover:text-amber-300 h-7 text-xs shrink-0"
+                      onClick={() => {
+                        setShopEditingPin(shopPin);
+                        setShopEditorTab('inventory');
+                        bringToFront('shop-editor');
+                      }}
+                      data-testid="button-manage-shop"
+                    >
+                      <Settings className="h-3 w-3 mr-1" /> Manage
+                    </Button>
+                  )}
+                </div>
+              );
+            })()}
             {shopCharacterId && (() => {
               const wallet = getCharacterCurrencyTotal(shopCharacterId);
               const charName = characters?.find((c: any) => c.id === shopCharacterId)?.name || 'Character';
