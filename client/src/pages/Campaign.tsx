@@ -7233,6 +7233,7 @@ export default function Campaign() {
   const [templateSearch, setTemplateSearch] = useState('');
   const [shopImportTypeFilter, setShopImportTypeFilter] = useState('all');
   const [shopImportRarityFilter, setShopImportRarityFilter] = useState('all');
+  const [viewingShopItem, setViewingShopItem] = useState<any | null>(null);
 
   // Floating world builder state
   const [floatingWorldBuilderOpen, setFloatingWorldBuilderOpen] = useState(false);
@@ -7538,6 +7539,7 @@ export default function Campaign() {
           if (prev.find(s => s.id === actor.id)) return prev;
           return [...prev, { ...actor, type: 'actor' as const }];
         });
+        bringToFront(`sandbox-${actor.id}`);
       }
       return;
     }
@@ -8073,14 +8075,17 @@ export default function Campaign() {
     const currencyItems = itemsList.filter((i: any) => i.itemType === 'currency');
     let totalCopper = 0;
     const breakdown = { copper: 0, silver: 0, gold: 0, platinum: 0 };
+    const currencyToCopper: Record<string, number> = { copper: 1, silver: 10, gold: 100, platinum: 1000 };
     for (const item of currencyItems) {
       const qty = item.quantity || 1;
-      const val = (item.price || 0) * qty;
       const curr = (item.currency || 'copper').toLowerCase();
-      if (curr === 'copper') { breakdown.copper += val; totalCopper += val; }
-      else if (curr === 'silver') { breakdown.silver += val; totalCopper += val * 10; }
-      else if (curr === 'gold') { breakdown.gold += val; totalCopper += val * 100; }
-      else if (curr === 'platinum') { breakdown.platinum += val; totalCopper += val * 1000; }
+      const rate = currencyToCopper[curr] || 1;
+      const copperValue = qty * rate;
+      if (curr === 'copper') { breakdown.copper += qty; }
+      else if (curr === 'silver') { breakdown.silver += qty; }
+      else if (curr === 'gold') { breakdown.gold += qty; }
+      else if (curr === 'platinum') { breakdown.platinum += qty; }
+      totalCopper += copperValue;
     }
     return { ...breakdown, totalCopper };
   };
@@ -10041,7 +10046,7 @@ export default function Campaign() {
                   <Button
                     variant="ghost"
                     size="icon"
-                    onClick={() => setShowMapPinEditor(prev => !prev)}
+                    onClick={() => { setShowMapPinEditor(prev => !prev); bringToFront('map-pins'); }}
                     className={`text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto ${showMapPinEditor ? 'text-amber-400 bg-white/10' : ''}`}
                     data-testid="button-map-pins"
                   >
@@ -10659,7 +10664,7 @@ export default function Campaign() {
                               variant="ghost"
                               size="icon"
                               className="h-7 w-7 text-amber-400 hover:text-amber-300 shrink-0"
-                              onClick={() => { setShopEditingPin(pin); setShopEditorTab('inventory'); }}
+                              onClick={() => { setShopEditingPin(pin); setShopEditorTab('inventory'); bringToFront('shop-editor'); }}
                               title="Manage Shop"
                               data-testid={`button-manage-shop-${pin.id}`}
                             >
@@ -11267,6 +11272,7 @@ export default function Campaign() {
                   onClick={() => {
                     setShopEditingPin(shopPin);
                     setShopEditorTab('inventory');
+                    bringToFront('shop-editor');
                   }}
                   data-testid="button-manage-shop"
                 >
@@ -11330,15 +11336,27 @@ export default function Campaign() {
                               <p className="text-xs text-amber-400 mt-1">{getCurrencySymbol(item.currency)} {item.price} {item.currency}</p>
                               {item.quantity >= 0 && <p className="text-xs text-stone-500">In stock: {item.quantity}</p>}
                             </div>
-                            <Button
-                              size="sm"
-                              className="bg-green-700 hover:bg-green-600 h-8 text-xs shrink-0"
-                              disabled={!canAfford || outOfStock || buyItemMutation.isPending || !shopCharacterId}
-                              onClick={() => buyItemMutation.mutate({ pinId: shopPin.id, shopItemId: item.id, characterId: shopCharacterId })}
-                              data-testid={`button-buy-${item.id}`}
-                            >
-                              {buyItemMutation.isPending ? '...' : outOfStock ? 'Sold Out' : !canAfford ? 'Too Expensive' : 'Buy'}
-                            </Button>
+                            <div className="flex items-center gap-1 shrink-0">
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-8 w-8 p-0 text-stone-400 hover:text-amber-400"
+                                onClick={() => { setViewingShopItem(item); bringToFront('shop-item-detail'); }}
+                                title="View item details"
+                                data-testid={`button-view-item-${item.id}`}
+                              >
+                                <Eye className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                className="bg-green-700 hover:bg-green-600 h-8 text-xs"
+                                disabled={!canAfford || outOfStock || buyItemMutation.isPending || !shopCharacterId}
+                                onClick={() => buyItemMutation.mutate({ pinId: shopPin.id, shopItemId: item.id, characterId: shopCharacterId })}
+                                data-testid={`button-buy-${item.id}`}
+                              >
+                                {buyItemMutation.isPending ? '...' : outOfStock ? 'Sold Out' : !canAfford ? 'Too Expensive' : 'Buy'}
+                              </Button>
+                            </div>
                           </div>
                         </div>
                       );
@@ -11410,6 +11428,74 @@ export default function Campaign() {
                 </div>
               )}
             </ScrollArea>
+          </div>
+        </FloatingPanel>
+      )}
+
+      {/* Shop Item Detail Viewer */}
+      {viewingShopItem && (
+        <FloatingPanel
+          open={!!viewingShopItem}
+          onClose={() => setViewingShopItem(null)}
+          title={<span className="text-amber-500"><Package className="inline h-4 w-4 mr-1" />{viewingShopItem.name}</span>}
+          zIndex={floatingZIndices['shop-item-detail'] || 10500}
+          onBringToFront={() => bringToFront('shop-item-detail')}
+          defaultSize={{ width: 380, height: 480 }}
+          minWidth={300}
+          minHeight={250}
+        >
+          <div className="flex flex-col h-full overflow-y-auto p-4 space-y-3" data-testid="shop-item-detail">
+            {viewingShopItem.image && (
+              <div className="flex justify-center">
+                <img src={viewingShopItem.image} alt={viewingShopItem.name} className="h-24 w-24 rounded-lg object-cover border border-stone-700" />
+              </div>
+            )}
+            <div>
+              <h3 className="text-lg font-bold text-stone-100">{viewingShopItem.name}</h3>
+              {viewingShopItem.description && <p className="text-sm text-stone-400 mt-1">{viewingShopItem.description}</p>}
+            </div>
+            <div className="flex items-center gap-3 text-sm">
+              <span className="text-amber-400 font-medium">{getCurrencySymbol(viewingShopItem.currency)} {viewingShopItem.price} {viewingShopItem.currency}</span>
+              {viewingShopItem.quantity >= 0 && <span className="text-stone-500">Stock: {viewingShopItem.quantity}</span>}
+            </div>
+            {(() => {
+              const d = (viewingShopItem.itemData || {}) as Record<string, any>;
+              const details: { label: string; value: any }[] = [];
+              if (d.itemType) details.push({ label: 'Type', value: d.itemType });
+              if (viewingShopItem.itemType) details.push({ label: 'Type', value: viewingShopItem.itemType });
+              if (d.rarity) details.push({ label: 'Rarity', value: d.rarity });
+              if (d.damage) details.push({ label: 'Damage', value: `${d.damage}${d.damageType ? ` (${d.damageType})` : ''}` });
+              if (d.range) details.push({ label: 'Range', value: `${d.range} ft` });
+              if (d.mod) details.push({ label: 'Modifier', value: `+${d.mod}` });
+              if (d.attribute) details.push({ label: 'Attribute', value: d.attribute });
+              if (d.armorSlot) details.push({ label: 'Armor Slot', value: d.armorSlot });
+              if (d.armorBonus) details.push({ label: 'Armor Bonus', value: `+${d.armorBonus}` });
+              if (d.damageReduction) details.push({ label: 'Damage Reduction', value: `${d.damageReduction}${d.damageReductionType ? ` (${d.damageReductionType})` : ''}` });
+              if (d.durability) details.push({ label: 'Durability', value: d.durability });
+              if (d.itemWeight) details.push({ label: 'Weight', value: d.itemWeight });
+              if (d.size) details.push({ label: 'Size', value: d.size });
+              if (d.isHeavy) details.push({ label: 'Heavy', value: 'Yes' });
+              if (d.isContainer) details.push({ label: 'Container', value: `Capacity: ${d.carryCapacity || 0}` });
+              if (d.isDamaging) details.push({ label: 'Damaging', value: 'Yes' });
+              if (d.isDetonatable) details.push({ label: 'Detonatable', value: `${d.detonateAoeShape || 'sphere'} (${d.detonateAoeRange || 15} ft)` });
+              if (d.grantsDcBonus) details.push({ label: 'DC Bonus', value: `+${d.dcBonusValue || 0}` });
+              if (d.rationServings) details.push({ label: 'Ration Servings', value: d.rationServings });
+              const uniqueDetails = details.filter((detail, index, self) => 
+                self.findIndex(d => d.label === detail.label) === index
+              );
+              if (uniqueDetails.length === 0) return <p className="text-xs text-stone-500 italic">No additional item details available.</p>;
+              return (
+                <div className="space-y-1.5 border-t border-stone-700 pt-3">
+                  <p className="text-xs font-bold text-stone-400 uppercase tracking-wider">Item Details</p>
+                  {uniqueDetails.map((detail, i) => (
+                    <div key={i} className="flex justify-between text-sm">
+                      <span className="text-stone-400">{detail.label}</span>
+                      <span className="text-stone-200 capitalize">{detail.value}</span>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
           </div>
         </FloatingPanel>
       )}
@@ -11792,6 +11878,7 @@ export default function Campaign() {
                  setSellPercentage(pinAction.pin.defaultSellPercentage ?? 80);
                  const myChar = characters?.find((c: any) => c.userId === user?.id);
                  if (myChar) setShopCharacterId(myChar.id);
+                 bringToFront('player-shop');
                }
              }}
              onPinPlaced={(x: number, y: number) => {
@@ -12135,12 +12222,14 @@ export default function Campaign() {
                           if (prev.find(s => s.id === actor.id)) return prev;
                           return [...prev, { ...actor, type: 'actor' as const }];
                         });
+                        bringToFront(`sandbox-${actor.id}`);
                       }}
                       onOpenTemplate={(template) => {
                         setOpenSandboxSheets(prev => {
                           if (prev.find(s => s.id === template.id)) return prev;
                           return [...prev, { ...template, type: 'template' as const }];
                         });
+                        bringToFront(`sandbox-${template.id}`);
                       }}
                     />
                   ) : (
