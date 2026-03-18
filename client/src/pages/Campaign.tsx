@@ -7200,7 +7200,7 @@ export default function Campaign() {
   const [hotbarConfigSlot, setHotbarConfigSlot] = useState<number | null>(null);
 
   // Floating panel z-index management (bring to front on click)
-  const floatingZCounterRef = useRef(10100);
+  const floatingZCounterRef = useRef(10600);
   const [floatingZIndices, setFloatingZIndices] = useState<Record<string, number>>({});
   const bringToFront = useCallback((panelKey: string) => {
     floatingZCounterRef.current += 1;
@@ -10010,8 +10010,19 @@ export default function Campaign() {
                 <Button
                   variant="ghost"
                   size="icon"
-                  onClick={() => setFloatingWorldBuilderOpen(prev => !prev)}
-                  className={`text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto ${floatingWorldBuilderOpen ? 'text-amber-400 bg-white/10' : ''}`}
+                  onClick={() => {
+                    if (floatingWorldBuilderOpen) {
+                      bringToFront('worldbuilder');
+                      return;
+                    }
+                    if (activeSidePanel === 'world' && !sidePanelMinimized) {
+                      setSidePanelMinimized(true);
+                    } else {
+                      setActiveSidePanel('world');
+                      setSidePanelMinimized(false);
+                    }
+                  }}
+                  className={`text-white/50 hover:text-white hover:bg-white/10 pointer-events-auto ${(activeSidePanel === 'world' && !sidePanelMinimized) || floatingWorldBuilderOpen ? 'text-amber-400 bg-white/10' : ''}`}
                   data-testid="button-panel-world"
                 >
                   <Globe className="h-5 w-5" style={{ filter: 'drop-shadow(0 0 2px black) drop-shadow(0 0 2px black) drop-shadow(0 0 1px black)' }} />
@@ -10563,7 +10574,11 @@ export default function Campaign() {
           isGM={role === 'gm'}
           characters={characters as any[]}
           open={floatingWorldBuilderOpen}
-          onClose={() => setFloatingWorldBuilderOpen(false)}
+          onClose={() => {
+            setFloatingWorldBuilderOpen(false);
+            setActiveSidePanel('world');
+            setSidePanelMinimized(false);
+          }}
           zIndex={floatingZIndices['worldbuilder'] || 10200}
           onBringToFront={() => bringToFront('worldbuilder')}
         />
@@ -12081,6 +12096,7 @@ export default function Campaign() {
                     onClick={() => {
                       setFloatingWorldBuilderOpen(true);
                       setSidePanelMinimized(true);
+                      bringToFront('worldbuilder');
                     }}
                     className="h-8 w-8 text-stone-400 hover:text-white"
                     data-testid="button-popout-world"

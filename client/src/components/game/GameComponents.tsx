@@ -18982,7 +18982,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                     </Button>
                   )}
                   {isGM && (
-                    <Button size="sm" onClick={() => setShowAddItem(true)} data-testid="button-add-item">
+                    <Button size="sm" onClick={() => { setShowAddItem(true); bringToFront?.('add-item'); }} data-testid="button-add-item">
                       <Plus className="h-4 w-4 mr-1" /> Add Item
                     </Button>
                   )}
