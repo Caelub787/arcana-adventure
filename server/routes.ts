@@ -10955,8 +10955,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!character) return res.status(404).json({ error: "Character not found" });
 
       const isGM = await hasGmAccess(req.session.userId!, pin.campaignId, campaign.gmUserId);
-      if (character.userId !== req.session.userId! && !isGM) {
-        return res.status(403).json({ error: "Character does not belong to you" });
+      if (!isGM && character.userId !== req.session.userId!) {
+        const membership = await storage.getCampaignMembership(req.session.userId!, pin.campaignId);
+        if (!membership || membership.assignedCharacterId !== characterId) {
+          return res.status(403).json({ error: "Character does not belong to you" });
+        }
       }
 
       const shopItem = await storage.getShopItem(shopItemId);
@@ -11136,8 +11139,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!character) return res.status(404).json({ error: "Character not found" });
 
       const isGM = await hasGmAccess(req.session.userId!, pin.campaignId, campaign.gmUserId);
-      if (character.userId !== req.session.userId! && !isGM) {
-        return res.status(403).json({ error: "Character does not belong to you" });
+      if (!isGM && character.userId !== req.session.userId!) {
+        const membership = await storage.getCampaignMembership(req.session.userId!, pin.campaignId);
+        if (!membership || membership.assignedCharacterId !== characterId) {
+          return res.status(403).json({ error: "Character does not belong to you" });
+        }
       }
 
       const item = await storage.getItem(itemId);

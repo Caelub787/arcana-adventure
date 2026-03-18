@@ -11891,8 +11891,12 @@ export default function Campaign() {
                  setShopTab('buy');
                  setHaggleRoll(null);
                  setSellPercentage(pinAction.pin.defaultSellPercentage ?? 80);
-                 const myChar = characters?.find((c: any) => c.userId === user?.id);
-                 if (myChar) setShopCharacterId(myChar.id);
+                 if (role === 'gm') {
+                   const gmChar = inspectedChar || character;
+                   if (gmChar?.id) setShopCharacterId(gmChar.id);
+                 } else if (character?.id) {
+                   setShopCharacterId(character.id);
+                 }
                  bringToFront('player-shop');
                }
              }}
