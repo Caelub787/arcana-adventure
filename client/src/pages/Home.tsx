@@ -114,7 +114,7 @@ export default function Home() {
         >
           
           {/* Favorites Section (At Top) */}
-          <Card className="border-stone-800 bg-stone-950/60 backdrop-blur-sm">
+          <Card className="border-stone-800 bg-stone-900/70 backdrop-blur-sm">
             <CardHeader>
               <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-red-900/30 text-red-500">
                 <Heart className="h-6 w-6 fill-current" />
@@ -137,7 +137,7 @@ export default function Home() {
                     const isCreated = (userCampaigns.created ?? []).some((c: any) => c.id === campaign.id);
                     return (
                       <Link key={campaign.id} href={`/campaign/${campaign.id}`} data-testid={`link-campaign-${campaign.id}`}>
-                        <Card className="group cursor-pointer border-stone-800 bg-stone-950/40 backdrop-blur-sm transition-all hover:-translate-y-1 hover:border-red-900/50 hover:bg-stone-900/60">
+                        <Card className="group cursor-pointer border-stone-800 bg-stone-900/50 backdrop-blur-sm transition-all hover:-translate-y-1 hover:border-red-900/50 hover:bg-stone-800/70">
                           <CardContent className="p-4 flex items-center justify-between">
                             <div>
                               <h3 className="font-display text-stone-200 group-hover:text-amber-400 transition-colors" data-testid={`text-campaign-name-${campaign.id}`}>{campaign.name}</h3>
@@ -162,7 +162,7 @@ export default function Home() {
             
             {/* My Campaigns */}
             <Link href="/my-campaigns">
-              <Card className="group cursor-pointer border-stone-800 bg-stone-950/60 backdrop-blur-sm transition-all hover:-translate-y-1 hover:border-blue-600/50 hover:bg-stone-900/80 hover:shadow-[0_0_30px_rgba(37,99,235,0.2)]">
+              <Card className="group cursor-pointer border-stone-800 bg-stone-900/70 backdrop-blur-sm transition-all hover:-translate-y-1 hover:border-blue-600/50 hover:bg-stone-800/80">
                 <CardHeader>
                   <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-blue-900/30 text-blue-500 group-hover:bg-blue-600 group-hover:text-white transition-colors">
                     <ScrollText className="h-6 w-6 ml-1" />
@@ -177,7 +177,7 @@ export default function Home() {
 
             {/* World Builder */}
             <Link href="/worldbuilder">
-              <Card className="group cursor-pointer border-stone-800 bg-stone-950/60 backdrop-blur-sm transition-all hover:-translate-y-1 hover:border-emerald-600/50 hover:bg-stone-900/80 hover:shadow-[0_0_30px_rgba(16,185,129,0.2)]" data-testid="card-world-builder">
+              <Card className="group cursor-pointer border-stone-800 bg-stone-900/70 backdrop-blur-sm transition-all hover:-translate-y-1 hover:border-emerald-600/50 hover:bg-stone-800/80" data-testid="card-world-builder">
                 <CardHeader>
                   <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-emerald-900/30 text-emerald-500 group-hover:bg-emerald-600 group-hover:text-white transition-colors">
                     <Globe className="h-6 w-6" />
@@ -192,7 +192,7 @@ export default function Home() {
 
             {/* Notes */}
             <Link href="/notes">
-              <Card className="group cursor-pointer border-stone-800 bg-stone-950/60 backdrop-blur-sm transition-all hover:-translate-y-1 hover:border-purple-600/50 hover:bg-stone-900/80 hover:shadow-[0_0_30px_rgba(147,51,234,0.2)]" data-testid="card-notes">
+              <Card className="group cursor-pointer border-stone-800 bg-stone-900/70 backdrop-blur-sm transition-all hover:-translate-y-1 hover:border-purple-600/50 hover:bg-stone-800/80" data-testid="card-notes">
                 <CardHeader>
                   <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-purple-900/30 text-purple-500 group-hover:bg-purple-600 group-hover:text-white transition-colors">
                     <BookOpen className="h-6 w-6" />
@@ -210,7 +210,7 @@ export default function Home() {
             {/* Admin Settings - Only visible to admins */}
             {isAdmin && (
               <Link href="/admin">
-                <Card className="group cursor-pointer border-stone-800 bg-stone-950/60 backdrop-blur-sm transition-all hover:-translate-y-1 hover:border-amber-600/50 hover:bg-stone-900/80 hover:shadow-[0_0_30px_rgba(245,158,11,0.2)]" data-testid="card-admin-settings">
+                <Card className="group cursor-pointer border-stone-800 bg-stone-900/70 backdrop-blur-sm transition-all hover:-translate-y-1 hover:border-amber-600/50 hover:bg-stone-800/80" data-testid="card-admin-settings">
                   <CardHeader>
                     <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-amber-900/30 text-amber-500 group-hover:bg-amber-600 group-hover:text-white transition-colors">
                       <Shield className="h-6 w-6" />
