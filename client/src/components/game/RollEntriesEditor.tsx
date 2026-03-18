@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
-import { Plus, Dices, Pencil, Trash2, ChevronDown, ChevronUp, Save, X, ArrowUp, ArrowDown } from "lucide-react";
+import { Plus, Dices, Pencil, Trash2, ChevronDown, ChevronUp, Save, X, ArrowUp, ArrowDown, Copy } from "lucide-react";
 
 interface RollEntry {
   id: string;
@@ -847,6 +847,23 @@ export function RollEntriesEditor({ ownerType, ownerId, canEdit, onExecuteRoll, 
     deleteMutation.mutate(id);
   };
 
+  const handleDuplicate = (roll: RollEntry) => {
+    const { id, sortOrder, ...rest } = roll;
+    const newName = `${roll.name} (Copy)`;
+    const maxSort = rolls.length > 0 ? Math.max(...(rolls as RollEntry[]).map((r) => r.sortOrder ?? 0)) : -1;
+    if (isDraftMode) {
+      const newRoll = {
+        ...rest,
+        id: `draft-${Date.now()}`,
+        name: newName,
+        sortOrder: maxSort + 1,
+      };
+      onDraftRollsChange?.([...draftRollsData, newRoll as any]);
+      return;
+    }
+    createMutation.mutate({ ...rest, name: newName, sortOrder: maxSort + 1 });
+  };
+
   const allSortedRolls = [...(rolls as RollEntry[])].sort((a, b) => ((a as any).sortOrder ?? 0) - ((b as any).sortOrder ?? 0));
   const sortedRolls = canEdit ? allSortedRolls : allSortedRolls.filter(roll => {
     if (!roll.isHidden) return true;
@@ -1012,6 +1029,16 @@ export function RollEntriesEditor({ ownerType, ownerId, canEdit, onExecuteRoll, 
                           data-testid={`button-move-roll-down-${roll.id}`}
                         >
                           <ArrowDown className="w-3 h-3" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-6 w-6 p-0 border-stone-600 text-stone-300 hover:text-blue-400"
+                          onClick={() => handleDuplicate(roll)}
+                          title="Duplicate roll"
+                          data-testid={`button-duplicate-roll-${roll.id}`}
+                        >
+                          <Copy className="w-3 h-3" />
                         </Button>
                         <Button
                           size="sm"
