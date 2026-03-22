@@ -2013,9 +2013,6 @@ function SpellsView({ spells, isLoading, searchQuery, setSearchQuery, onAddSpell
                     <div className="text-xs sm:text-sm text-stone-400 flex flex-wrap gap-1 sm:gap-2">
                       <span>Range: {spell.range}</span>
                       <span>| {spell.duration}</span>
-                      {spell.damageDice && <span>| Damage: {spell.damageDice} {spell.damageType}</span>}
-                      {spell.energyCost !== undefined && <span className="text-cyan-400">| Energy: {spell.energyCost}</span>}
-                      {spell.isAoe && <span>| AoE{spell.aoeShape ? `: ${spell.aoeShape.charAt(0).toUpperCase() + spell.aoeShape.slice(1)}` : ''}{spell.aoeRange ? ` ${spell.aoeRange}ft` : ''}</span>}
                     </div>
                   </div>
                   <div className="flex gap-1 sm:gap-2 shrink-0">
@@ -6591,7 +6588,6 @@ interface SpellFormDialogProps {
   isLoading?: boolean;
 }
 
-const spellDamageTypes = ['Sharp', 'Blunt', 'Piercing', 'Flame', 'Frost', 'Storm', 'Tide', 'Stone', 'Flux', 'Light', 'Dark', 'Sound', 'Health', 'Energy'];
 const spellAttributes = ['might', 'finesse', 'wit', 'presence', 'will', 'craft'];
 
 function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: SpellFormDialogProps) {
@@ -6620,20 +6616,7 @@ function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading }:
     castingTime: string;
     range: number | string;
     duration: string;
-    damageType: string;
-    damageDice: string;
     attribute: string;
-    energyCost: number | string;
-    isAoe: boolean;
-    aoeRange: number | string;
-    aoeShape: string;
-    isAttack: boolean;
-    gainEnergy: boolean;
-    passesThroughWalls: boolean;
-    requiresSave: boolean;
-    saveAttribute: string;
-    saveDc: number | string;
-    saveSuccessEffect: string;
   }>({
     name: initialData?.name || '',
     description: initialData?.description || '',
@@ -6641,20 +6624,7 @@ function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading }:
     castingTime: normalizeCastingTime(initialData?.castingTime),
     range: initialData?.rangeNum ?? 30,
     duration: normalizeDuration(initialData?.duration),
-    damageType: initialData?.damageType || '',
-    damageDice: initialData?.damageDice || '',
     attribute: initialData?.attribute || '',
-    energyCost: initialData?.energyCost ?? 1,
-    isAoe: initialData?.isAoe || false,
-    aoeRange: initialData?.aoeRange ?? '',
-    aoeShape: initialData?.aoeShape || '',
-    isAttack: initialData?.isAttack !== false,
-    gainEnergy: initialData?.gainEnergy || false,
-    passesThroughWalls: initialData?.passesThroughWalls || false,
-    requiresSave: initialData?.requiresSave || false,
-    saveAttribute: initialData?.saveAttribute || '',
-    saveDc: initialData?.saveDc ?? '',
-    saveSuccessEffect: initialData?.saveSuccessEffect || 'half',
   });
 
   const [showSpellImageBrowser, setShowSpellImageBrowser] = useState(false);
@@ -6680,20 +6650,7 @@ function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading }:
         castingTime: normalizeCastingTime(initialData.castingTime),
         range: initialData.rangeNum ?? 30,
         duration: normalizeDuration(initialData.duration),
-        damageType: initialData.damageType || '',
-        damageDice: initialData.damageDice || '',
         attribute: initialData.attribute || '',
-        energyCost: initialData.energyCost ?? 1,
-        isAoe: initialData.isAoe || false,
-        aoeRange: initialData.aoeRange ?? '',
-        aoeShape: initialData.aoeShape || '',
-        isAttack: initialData.isAttack !== false,
-        gainEnergy: initialData.gainEnergy || false,
-        passesThroughWalls: initialData.passesThroughWalls || false,
-        requiresSave: initialData.requiresSave || false,
-        saveAttribute: initialData.saveAttribute || '',
-        saveDc: initialData.saveDc ?? '',
-        saveSuccessEffect: initialData.saveSuccessEffect || 'half',
       });
     } else {
       setFormData({
@@ -6703,20 +6660,7 @@ function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading }:
         castingTime: 'action',
         range: 30,
         duration: 'Instant',
-        damageType: '',
-        damageDice: '',
         attribute: '',
-        energyCost: 1,
-        isAoe: false,
-        aoeRange: '',
-        aoeShape: '',
-        isAttack: true,
-        gainEnergy: false,
-        passesThroughWalls: false,
-        requiresSave: false,
-        saveAttribute: '',
-        saveDc: '',
-        saveSuccessEffect: 'half',
       });
     }
     setDraftRolls([]);
@@ -6731,16 +6675,7 @@ function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading }:
       toast({ title: 'Error', description: 'Spell name is required', variant: 'destructive' });
       return;
     }
-    if (formData.isAoe && !formData.aoeShape) {
-      toast({ title: 'Error', description: 'Please select an AoE shape', variant: 'destructive' });
-      return;
-    }
     const normalizeNone = (val: string) => val === '_none' ? '' : val;
-    const optionalNum = (val: string | number): number | undefined => {
-      if (val === '' || val === undefined || val === null) return undefined;
-      const num = Number(val);
-      return isNaN(num) ? undefined : num;
-    };
     onSave({
       name: formData.name,
       description: formData.description,
@@ -6749,20 +6684,7 @@ function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading }:
       range: `${formData.range} ft`,
       rangeNum: Number(formData.range) || 30,
       duration: formData.duration,
-      damageType: normalizeNone(formData.damageType),
-      damageDice: formData.damageDice,
       attribute: normalizeNone(formData.attribute),
-      energyCost: Number(formData.energyCost) || 1,
-      isAoe: formData.isAoe,
-      aoeRange: formData.isAoe ? optionalNum(formData.aoeRange) : undefined,
-      aoeShape: formData.isAoe ? formData.aoeShape : undefined,
-      isAttack: formData.isAttack,
-      gainEnergy: formData.damageType === 'Energy' ? formData.gainEnergy : false,
-      passesThroughWalls: formData.isAoe ? formData.passesThroughWalls : false,
-      requiresSave: formData.requiresSave,
-      saveAttribute: formData.requiresSave ? normalizeNone(formData.saveAttribute) : undefined,
-      saveDc: formData.requiresSave ? optionalNum(formData.saveDc) : undefined,
-      saveSuccessEffect: formData.requiresSave ? formData.saveSuccessEffect : undefined,
     }, !initialData ? draftRolls : undefined);
   };
 
@@ -6864,17 +6786,6 @@ function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading }:
                   />
                 </div>
 
-                <div>
-                  <Label>Energy Cost</Label>
-                  <Input
-                    type="number"
-                    min="0"
-                    value={formData.energyCost}
-                    onChange={(e) => handleNumericChange('energyCost', e.target.value)}
-                    className="bg-stone-800 border-stone-700"
-                    data-testid="input-spell-energy-cost"
-                  />
-                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -6931,129 +6842,6 @@ function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading }:
                 </Select>
               </div>
 
-              <div className="space-y-3">
-                <div className="flex items-center gap-3">
-                  <Checkbox
-                    id="admin-spell-isattack"
-                    checked={formData.isAttack}
-                    onCheckedChange={(checked) => setFormData({ ...formData, isAttack: checked === true })}
-                    className="border-stone-600"
-                    data-testid="checkbox-spell-isattack"
-                  />
-                  <Label htmlFor="admin-spell-isattack" className="cursor-pointer">Attack?</Label>
-                  <span className="text-xs text-stone-500">(Attack/Damage vs Use/Effect)</span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <Checkbox
-                    id="spell-aoe"
-                    checked={formData.isAoe}
-                    onCheckedChange={(checked) => setFormData({ ...formData, isAoe: checked === true })}
-                    className="border-stone-600"
-                    data-testid="checkbox-spell-aoe"
-                  />
-                  <Label htmlFor="spell-aoe" className="cursor-pointer">Area of Effect (AoE)</Label>
-                </div>
-                {formData.isAoe && (
-                  <>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <Label>AoE Shape</Label>
-                      <Select value={formData.aoeShape || '_none'} onValueChange={(v) => setFormData({ ...formData, aoeShape: v === '_none' ? '' : v })}>
-                        <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-spell-aoe-shape">
-                          <SelectValue placeholder="Select shape" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="_none">None</SelectItem>
-                          <SelectItem value="circle">Circle</SelectItem>
-                          <SelectItem value="square">Square</SelectItem>
-                          <SelectItem value="cone">Cone</SelectItem>
-                          <SelectItem value="line">Line</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div>
-                      <Label>AoE Diameter (feet)</Label>
-                      <Input
-                        type="number"
-                        min="0"
-                        value={formData.aoeRange}
-                        onChange={(e) => handleNumericChange('aoeRange', e.target.value)}
-                        placeholder="e.g. 30 (6 squares)"
-                        className="bg-stone-800 border-stone-700"
-                        data-testid="input-spell-aoe-range"
-                      />
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3 mt-2">
-                    <Checkbox
-                      id="spell-passes-walls"
-                      checked={formData.passesThroughWalls}
-                      onCheckedChange={(checked) => setFormData({ ...formData, passesThroughWalls: checked === true })}
-                      className="border-stone-600"
-                      data-testid="checkbox-spell-passes-walls"
-                    />
-                    <Label htmlFor="spell-passes-walls" className="cursor-pointer">Passes Through Walls</Label>
-                    <span className="text-xs text-stone-500">(AoE ignores walls/doors)</span>
-                  </div>
-                  </>
-                )}
-
-                <div className="flex items-center gap-3">
-                  <Checkbox
-                    id="spell-requires-save"
-                    checked={formData.requiresSave}
-                    onCheckedChange={(checked) => setFormData({ ...formData, requiresSave: checked === true })}
-                    className="border-stone-600"
-                    data-testid="checkbox-spell-requires-save"
-                  />
-                  <Label htmlFor="spell-requires-save" className="cursor-pointer">Requires Save</Label>
-                  <span className="text-xs text-stone-500">(Targets roll to resist)</span>
-                </div>
-                {formData.requiresSave && (
-                  <div className="space-y-3 pl-4 border-l-2 border-blue-600/30">
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <Label>Save Attribute</Label>
-                        <Select value={formData.saveAttribute || '_none'} onValueChange={(v) => setFormData({ ...formData, saveAttribute: v === '_none' ? '' : v })}>
-                          <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-spell-save-attribute">
-                            <SelectValue placeholder="Select attribute" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="_none">None</SelectItem>
-                            {spellAttributes.map((attr) => (
-                              <SelectItem key={attr} value={attr}>{attr.charAt(0).toUpperCase() + attr.slice(1)}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div>
-                        <Label>Save DC</Label>
-                        <Input
-                          type="number"
-                          min="1"
-                          value={formData.saveDc}
-                          onChange={(e) => handleNumericChange('saveDc', e.target.value)}
-                          placeholder="e.g. 15"
-                          className="bg-stone-800 border-stone-700"
-                          data-testid="input-spell-save-dc"
-                        />
-                      </div>
-                    </div>
-                    <div>
-                      <Label>On Successful Save</Label>
-                      <Select value={formData.saveSuccessEffect} onValueChange={(v) => setFormData({ ...formData, saveSuccessEffect: v })}>
-                        <SelectTrigger className="bg-stone-800 border-stone-700" data-testid="select-spell-save-success">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="half">Half Damage</SelectItem>
-                          <SelectItem value="none">No Damage</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                )}
-              </div>
             </div>
           </div>
 
