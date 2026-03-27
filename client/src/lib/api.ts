@@ -3018,3 +3018,63 @@ export class NoteWebSocket {
 }
 
 export const noteWs = new NoteWebSocket();
+
+export class GlobalWebSocket {
+  private ws: WebSocket | null = null;
+  private reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
+  private messageHandlers: Set<(data: any) => void> = new Set();
+  private isConnected: boolean = false;
+
+  connect() {
+    if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
+      return;
+    }
+
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${window.location.host}/ws`;
+
+    this.ws = new WebSocket(wsUrl);
+
+    this.ws.onopen = () => {
+      this.isConnected = true;
+    };
+
+    this.ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        this.messageHandlers.forEach(handler => handler(data));
+      } catch (e) {
+        // ignore parse errors
+      }
+    };
+
+    this.ws.onclose = () => {
+      this.isConnected = false;
+      this.reconnectTimeout = setTimeout(() => {
+        this.connect();
+      }, 3000);
+    };
+
+    this.ws.onerror = () => {};
+  }
+
+  disconnect() {
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout);
+      this.reconnectTimeout = null;
+    }
+    if (this.ws) {
+      this.ws.onclose = null;
+      this.ws.close();
+      this.ws = null;
+    }
+    this.isConnected = false;
+  }
+
+  onMessage(handler: (data: any) => void) {
+    this.messageHandlers.add(handler);
+    return () => this.messageHandlers.delete(handler);
+  }
+}
+
+export const globalWs = new GlobalWebSocket();

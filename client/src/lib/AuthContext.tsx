@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { api, type User, type BanDetails } from './api';
+import { api, globalWs, type User, type BanDetails } from './api';
 import { queryClient } from './queryClient';
 
 interface AuthContextType {
@@ -32,6 +32,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       api.setBanCallback(null);
     };
   }, []);
+
+  useEffect(() => {
+    if (user) {
+      globalWs.connect();
+    } else {
+      globalWs.disconnect();
+    }
+    return () => { globalWs.disconnect(); };
+  }, [user]);
 
   const checkAuth = async () => {
     try {

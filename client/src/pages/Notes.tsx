@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useLocation, useParams } from "wouter";
 import { motion } from "framer-motion";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, Note, NoteFolder, NoteShare, UserProfile, SystemSpell, SystemSkill, SystemTrait, SystemSpecies, Item, noteWs, gameWs, NotePresence, GoogleDocInfo } from "@/lib/api";
+import { api, Note, NoteFolder, NoteShare, UserProfile, SystemSpell, SystemSkill, SystemTrait, SystemSpecies, Item, noteWs, gameWs, globalWs, NotePresence, GoogleDocInfo } from "@/lib/api";
 import { useAuth } from "@/lib/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -839,9 +839,8 @@ export default function Notes() {
     }
   }, [noteId, user]);
 
-  // Handle note_deleted events from WebSocket (campaign WS and shared note broadcasts)
   useEffect(() => {
-    const handleDeleteMessage = (data: any) => {
+    const handleNoteMessage = (data: any) => {
       if (data.type === 'note_deleted') {
         queryClient.invalidateQueries({ queryKey: ["/api/notes"] });
         queryClient.invalidateQueries({ queryKey: ["/api/notes/all"] });
@@ -850,7 +849,7 @@ export default function Notes() {
           setLocation("/notes");
         }
       }
-      if (data.type === 'note_created' || data.type === 'note_changed') {
+      if (data.type === 'note_created' || data.type === 'note_changed' || data.type === 'notes_changed') {
         queryClient.invalidateQueries({ queryKey: ["/api/notes"] });
         queryClient.invalidateQueries({ queryKey: ["/api/notes/all"] });
         queryClient.invalidateQueries({ queryKey: ["/api/notes/folders"] });
@@ -859,8 +858,9 @@ export default function Notes() {
         queryClient.invalidateQueries({ queryKey: ["/api/notes/folders"] });
       }
     };
-    const unsubscribe = gameWs.onMessage(handleDeleteMessage);
-    return () => { unsubscribe(); };
+    const unsub1 = gameWs.onMessage(handleNoteMessage);
+    const unsub2 = globalWs.onMessage(handleNoteMessage);
+    return () => { unsub1(); unsub2(); };
   }, [queryClient, noteId, setLocation]);
 
   // Handle incoming WebSocket messages for note collaboration

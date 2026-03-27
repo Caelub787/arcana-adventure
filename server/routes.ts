@@ -185,6 +185,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
   }
 
+  function sendToUser(userId: string, message: any): void {
+    const messageString = JSON.stringify(message);
+    allConnectedClients.forEach((client) => {
+      if (client.readyState === 1 && (client as any).userId === userId) {
+        client.send(messageString);
+      }
+    });
+  }
+
   /**
    * calculateFeatHpBonus - Calculate total HP bonus from character's unlocked feats
    * 
@@ -8078,6 +8087,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
+      sendToUser(recipient.id, { type: 'friend_request_received', requestId: request.id, senderId: req.session.userId });
+      
       res.status(201).json(request);
     } catch (e) {
       console.error("Failed to send friend request:", e);
@@ -8136,6 +8147,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       await storage.respondToFriendRequest(req.params.id, true);
+      sendToUser(request.senderId, { type: 'friend_request_accepted', requestId: req.params.id, recipientId: req.session.userId });
+      sendToUser(req.session.userId!, { type: 'friends_updated' });
       res.json({ success: true });
     } catch (e: any) {
       console.error("Failed to accept friend request:", e);
@@ -8156,6 +8169,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       await storage.respondToFriendRequest(req.params.id, false);
+      sendToUser(request.senderId, { type: 'friend_request_declined', requestId: req.params.id });
       res.json({ success: true });
     } catch (e: any) {
       console.error("Failed to decline friend request:", e);
@@ -8176,6 +8190,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       await storage.deleteFriendRequest(req.params.id);
+      sendToUser(request.recipientId, { type: 'friend_request_cancelled', requestId: req.params.id });
       res.json({ success: true });
     } catch (e) {
       console.error("Failed to cancel friend request:", e);
@@ -8274,6 +8289,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (folder.campaignId) {
         broadcastToCampaign(folder.campaignId, { type: 'note_folder_changed', campaignId: folder.campaignId });
       }
+      sendToUser(req.session.userId!, { type: 'note_folder_changed' });
       res.status(201).json(folder);
     } catch (e) {
       console.error("Failed to create note folder:", e);
@@ -8294,6 +8310,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (updated?.campaignId) {
         broadcastToCampaign(updated.campaignId, { type: 'note_folder_changed', campaignId: updated.campaignId });
       }
+      sendToUser(req.session.userId!, { type: 'note_folder_changed' });
       res.json(updated);
     } catch (e) {
       console.error("Failed to update note folder:", e);
@@ -8314,6 +8331,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (folder.campaignId) {
         broadcastToCampaign(folder.campaignId, { type: 'note_folder_changed', campaignId: folder.campaignId });
       }
+      sendToUser(req.session.userId!, { type: 'note_folder_changed' });
       res.json({ success: true });
     } catch (e) {
       console.error("Failed to delete note folder:", e);
@@ -8415,7 +8433,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         userId: req.session.userId!,
       });
       
-      // Broadcast to campaign members if note is in a campaign
       if (note.campaignId) {
         broadcastToCampaign(note.campaignId, {
           type: 'note_created',
@@ -8424,6 +8441,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           userId: req.session.userId,
         });
       }
+      sendToUser(req.session.userId!, { type: 'notes_changed', noteId: note.id });
       
       res.status(201).json(note);
     } catch (e) {
@@ -8459,6 +8477,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (updated?.campaignId) {
         broadcastToCampaign(updated.campaignId, { type: 'note_changed', noteId: req.params.id, campaignId: updated.campaignId });
       }
+      const noteShares = await storage.getNoteShares(req.params.id);
+      if (noteShares.length > 0) {
+        for (const share of noteShares) {
+          sendToUser(share.sharedWithId, { type: 'notes_changed', noteId: req.params.id });
+        }
+      }
+      sendToUser(req.session.userId!, { type: 'notes_changed', noteId: req.params.id });
       res.json(updated);
     } catch (e) {
       console.error("Failed to update note:", e);
@@ -8482,7 +8507,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       await storage.deleteNote(req.params.id);
       
-      // Broadcast to campaign members if note was in a campaign
       if (campaignId) {
         broadcastToCampaign(campaignId, {
           type: 'note_deleted',
@@ -8492,20 +8516,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
-      // Broadcast to shared users via their WebSocket connections
       if (shares.length > 0) {
-        const sharedUserIds = new Set(shares.map(s => s.sharedWithId));
-        const deleteMessage = JSON.stringify({
-          type: 'note_deleted',
-          noteId: req.params.id,
-          userId: req.session.userId,
-        });
-        allConnectedClients.forEach((client) => {
-          if (client.readyState === 1 && sharedUserIds.has((client as any).userId)) {
-            client.send(deleteMessage);
-          }
-        });
+        for (const share of shares) {
+          sendToUser(share.sharedWithId, { type: 'note_deleted', noteId: req.params.id });
+        }
       }
+      sendToUser(req.session.userId!, { type: 'notes_changed', noteId: req.params.id });
       
       res.json({ success: true });
     } catch (e) {
@@ -8627,6 +8643,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         sharedWithId: friendId,
         permission: permission || 'view',
       });
+      sendToUser(friendId, { type: 'notes_changed', noteId: req.params.id });
       res.status(201).json(share);
     } catch (e) {
       console.error("Failed to share note:", e);

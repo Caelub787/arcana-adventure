@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Search,
@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import {
   api,
+  globalWs,
   type UserProfile,
   type FriendRequestWithUser,
 } from "@/lib/api";
@@ -51,6 +52,17 @@ export default function FriendsPanel({ open, onOpenChange }: FriendsPanelProps) 
   const [requestMessage, setRequestMessage] = useState("");
   const [removeFriendId, setRemoveFriendId] = useState<string | null>(null);
   const [isSearching, setIsSearching] = useState(false);
+
+  useEffect(() => {
+    const unsub = globalWs.onMessage((data) => {
+      if (data.type === 'friend_request_received' || data.type === 'friend_request_accepted' || data.type === 'friend_request_declined' || data.type === 'friend_request_cancelled' || data.type === 'friends_updated') {
+        queryClient.invalidateQueries({ queryKey: ["/api/friends"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/friends/requests/incoming"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/friends/requests/outgoing"] });
+      }
+    });
+    return () => { unsub(); };
+  }, [queryClient]);
 
   const { data: friends = [], isLoading: friendsLoading } = useQuery<UserProfile[]>({
     queryKey: ["/api/friends"],

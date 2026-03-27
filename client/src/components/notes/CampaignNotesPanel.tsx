@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, Note, NoteFolder, NoteShare, UserProfile, SystemSpell, SystemSkill, SystemTrait, SystemSpecies, GoogleDocInfo, gameWs, noteWs, NotePresence } from "@/lib/api";
+import { api, Note, NoteFolder, NoteShare, UserProfile, SystemSpell, SystemSkill, SystemTrait, SystemSpecies, GoogleDocInfo, gameWs, globalWs, noteWs, NotePresence } from "@/lib/api";
 import { useAuth } from "@/lib/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -768,15 +768,12 @@ export function CampaignNotesPanel({
     }
   }, [selectedNoteId, noteTitle, updateTabTitle]);
 
-  // Subscribe to campaign WebSocket for real-time note updates
   useEffect(() => {
-    if (!campaignId || !isOpen) return;
+    if (!isOpen) return;
 
     const handleMessage = (data: any) => {
-      // Handle note creation/deletion events for this campaign
-      if (data.campaignId !== campaignId) return;
-
-      if (data.type === 'note_created' || data.type === 'note_deleted' || data.type === 'note_changed') {
+      if (data.type === 'notes_changed' || data.type === 'note_created' || data.type === 'note_deleted' || data.type === 'note_changed') {
+        if (data.campaignId && data.campaignId !== campaignId) return;
         queryClient.invalidateQueries({ queryKey: ["/api/notes"] });
         queryClient.invalidateQueries({ queryKey: ["/api/notes/all"] });
         queryClient.invalidateQueries({ queryKey: ["/api/notes/folders"] });
@@ -791,10 +788,9 @@ export function CampaignNotesPanel({
       }
     };
 
-    const unsubscribe = gameWs.onMessage(handleMessage);
-    return () => {
-      unsubscribe();
-    };
+    const unsub1 = gameWs.onMessage(handleMessage);
+    const unsub2 = globalWs.onMessage(handleMessage);
+    return () => { unsub1(); unsub2(); };
   }, [campaignId, isOpen, queryClient, selectedNoteId]);
 
   // Join/leave note rooms for live collaboration

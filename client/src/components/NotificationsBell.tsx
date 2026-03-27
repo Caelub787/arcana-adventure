@@ -1,8 +1,9 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Bell, Check, X, Trash2, CheckCheck, Loader2 } from "lucide-react";
 import {
   api,
+  globalWs,
   getNotifications,
   getUnreadNotificationCount,
   markNotificationRead,
@@ -38,6 +39,19 @@ export default function NotificationsBell() {
   const queryClient = useQueryClient();
   const [isOpen, setIsOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<"unread" | "read">("unread");
+
+  useEffect(() => {
+    const unsub = globalWs.onMessage((data) => {
+      if (data.type === 'friend_request_received' || data.type === 'friend_request_accepted' || data.type === 'friend_request_declined' || data.type === 'friend_request_cancelled' || data.type === 'friends_updated') {
+        queryClient.invalidateQueries({ queryKey: ["/api/notifications/count"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/notifications"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/friends"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/friends/requests/incoming"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/friends/requests/outgoing"] });
+      }
+    });
+    return () => { unsub(); };
+  }, [queryClient]);
 
   const { data: unreadCount = 0 } = useQuery({
     queryKey: ["/api/notifications/count"],
