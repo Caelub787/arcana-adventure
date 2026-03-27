@@ -607,7 +607,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
             // Collision detection - check if the target position would overlap with other tokens
             const allTokens = token.sceneId ? await storage.getSceneTokens(token.sceneId) : [];
             const allCharacters = await storage.getCampaignCharacters(campaignId);
-            const allSpecies = await storage.getSystemSpecies();
+            const campaignForSpecies = await storage.getCampaign(campaignId);
+            const speciesSlug = (campaignForSpecies as any)?.system || 'arcana-adventure';
+            const speciesDisplayName = speciesSlug === 'aa-v2' ? 'A.A. V2' : 'Arcana Adventure';
+            const allSpecies = await storage.getSystemSpecies(speciesDisplayName);
             const campaignSpecies = await storage.getCampaignSpecies(campaignId);
             const speciesList = [...allSpecies, ...campaignSpecies];
             
@@ -2750,7 +2753,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Get character's species hpPerLevel for the die roll
       let hpPerLevel = 5; // Default fallback
       if (character.race) {
-        const species = await storage.getSpeciesByName(character.race);
+        // Get campaign system to filter species by correct system
+        // Species table uses display names ("Arcana Adventure", "A.A. V2") not slugs
+        let speciesSystemName: string | undefined;
+        if (character.campaignId) {
+          const camp = await storage.getCampaign(character.campaignId);
+          const slug = (camp as any)?.system || 'arcana-adventure';
+          speciesSystemName = slug === 'aa-v2' ? 'A.A. V2' : 'Arcana Adventure';
+        }
+        // First check campaign species, then system species filtered by system
+        let species: any = null;
+        if (character.campaignId) {
+          const campSpecies = await storage.getCampaignSpecies(character.campaignId);
+          species = campSpecies.find(s => s.name === character.race);
+        }
+        if (!species) {
+          species = await storage.getSpeciesByName(character.race, speciesSystemName);
+        }
         if (species) {
           hpPerLevel = species.hpPerLevel || 5;
         }
@@ -3416,8 +3435,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Enrich tokens with species size for proper rendering
       // This ensures all players see correct token sizes regardless of character permissions
       // Pre-fetch species data once (not per-token) for performance
+      // Filter by campaign system to get correct species
+      const tokenCampaign = await storage.getCampaign(req.params.campaignId);
+      const tokenSystemSlug = (tokenCampaign as any)?.system || 'arcana-adventure';
+      const tokenSpeciesName = tokenSystemSlug === 'aa-v2' ? 'A.A. V2' : 'Arcana Adventure';
       const [systemSpecies, campaignSpecies] = await Promise.all([
-        storage.getSystemSpecies(),
+        storage.getSystemSpecies(tokenSpeciesName),
         storage.getCampaignSpecies(req.params.campaignId)
       ]);
       const allSpecies = [...systemSpecies, ...campaignSpecies];

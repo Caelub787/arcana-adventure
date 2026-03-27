@@ -16782,10 +16782,10 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
     enabled: !!character.id
   });
 
-  // Fetch system spell library for adding from library - cached for 5 minutes
+  // Fetch system spell library for adding from library - cached for 5 minutes, filtered by campaign system
   const { data: systemSpells = [] } = useQuery({
-    queryKey: ['system-spells'],
-    queryFn: () => api.getSystemSpells(),
+    queryKey: ['system-spells', campaignSystem],
+    queryFn: () => api.getSystemSpells(campaignSystem),
     staleTime: 5 * 60 * 1000,
   });
 
@@ -21467,6 +21467,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                 canEdit={canEditSheet}
                 characterLevel={liveCharacter.level}
                 isAAV2={isAAV2}
+                campaignSystem={campaignSystem}
               />
             )}
           </div>
@@ -21483,7 +21484,8 @@ function FeatTreeViewerGrid({
   characterId,
   canEdit,
   characterLevel = 1,
-  isAAV2 = false
+  isAAV2 = false,
+  campaignSystem
 }: { 
   treeData: FeatTreeWithData;
   characterFeats: CharacterFeat[];
@@ -21491,24 +21493,25 @@ function FeatTreeViewerGrid({
   canEdit: boolean;
   characterLevel?: number;
   isAAV2?: boolean;
+  campaignSystem?: string;
 }) {
   const queryClient = useQueryClient();
   const [selectedFeat, setSelectedFeat] = useState<Feat | null>(null);
   
-  // Query spells, traits, and skills for fallback descriptions
+  // Query spells, traits, and skills for fallback descriptions (filtered by campaign system)
   const { data: systemSpells = [] } = useQuery({
-    queryKey: ['system-spells'],
-    queryFn: () => api.getSystemSpells(),
+    queryKey: ['system-spells', campaignSystem],
+    queryFn: () => api.getSystemSpells(campaignSystem),
   });
   
   const { data: systemTraits = [] } = useQuery({
-    queryKey: ['system-traits'],
-    queryFn: () => api.getSystemTraits(),
+    queryKey: ['system-traits', campaignSystem],
+    queryFn: () => api.getSystemTraits(campaignSystem),
   });
   
   const { data: customSkills = [] } = useQuery({
-    queryKey: ['system-skills'],
-    queryFn: () => api.getSystemSkills(),
+    queryKey: ['system-skills', campaignSystem],
+    queryFn: () => api.getSystemSkills(campaignSystem),
   });
   
   // Helper to get effective feat description - uses granted spell/trait/skill description if feat has no description

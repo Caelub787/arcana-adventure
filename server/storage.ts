@@ -278,7 +278,7 @@ export interface IStorage {
   // System Species operations
   getSystemSpecies(systemName?: string): Promise<SystemSpecies[]>;
   getSystemSpeciesById(id: string): Promise<SystemSpecies | undefined>;
-  getSpeciesByName(name: string): Promise<SystemSpecies | undefined>;
+  getSpeciesByName(name: string, systemName?: string): Promise<SystemSpecies | undefined>;
   createSystemSpecies(species: InsertSystemSpecies): Promise<SystemSpecies>;
   updateSystemSpecies(id: string, data: Partial<InsertSystemSpecies>): Promise<SystemSpecies | undefined>;
   deleteSystemSpecies(id: string): Promise<void>;
@@ -2371,10 +2371,12 @@ export class DatabaseStorage implements IStorage {
     return species;
   }
 
-  async getSpeciesByName(name: string): Promise<SystemSpecies | undefined> {
+  async getSpeciesByName(name: string, systemName?: string): Promise<SystemSpecies | undefined> {
+    const conditions = [eq(systemSpecies.name, name)];
+    if (systemName) conditions.push(eq(systemSpecies.systemName, systemName));
     const [species] = await db.select()
       .from(systemSpecies)
-      .where(eq(systemSpecies.name, name))
+      .where(and(...conditions))
       .limit(1);
     return species;
   }

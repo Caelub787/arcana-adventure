@@ -8188,10 +8188,13 @@ export default function Campaign() {
   });
 
   // Load system species for default token images and character stats (only needed when campaign is loaded)
-  // Use public /api/species endpoint that all authenticated users can access
+  // Use public /api/species endpoint that all authenticated users can access - filtered by campaign system
+  // Species table uses display names ("Arcana Adventure", "A.A. V2") not slugs
+  const campaignSystemSlugForSpecies = (campaign as any)?.system || 'arcana-adventure';
+  const speciesSystemName = campaignSystemSlugForSpecies === 'aa-v2' ? 'A.A. V2' : 'Arcana Adventure';
   const { data: systemSpecies } = useQuery({
-    queryKey: ['/api/species'],
-    queryFn: () => api.getSpecies(),
+    queryKey: ['/api/species', speciesSystemName],
+    queryFn: () => api.getSpecies(speciesSystemName),
     enabled: !!effectiveCampaignId && !isNew,
     staleTime: 5 * 60 * 1000, // Species data doesn't change often, cache for 5 minutes
   });
@@ -12368,7 +12371,7 @@ export default function Campaign() {
                 <SidePanelChat 
                   campaignId={effectiveCampaignId} 
                   role={role}
-                  members={members as any[]}
+                  members={(members as any[]) || []}
                 />
               )}
               {activeSidePanel === 'characters' && effectiveCampaignId && (
@@ -12404,7 +12407,7 @@ export default function Campaign() {
                         onPlaceCharacterToken={(charId: string) => setPlacingCharacterId(charId)}
                         onChangeMap={handleChangeMap}
                         characters={characters as any[]}
-                        members={members as any[]}
+                        members={(members as any[]) || []}
                         onAddCharacter={handleAddCharacter}
                         onViewCharacter={handleViewCharacter}
                         onLevelUpAll={handleLevelUpAll}
@@ -12477,7 +12480,7 @@ export default function Campaign() {
                     onPlaceCharacterToken={(charId: string) => setPlacingCharacterId(charId)}
                     onChangeMap={handleChangeMap}
                     characters={characters as any[]}
-                    members={members as any[]}
+                    members={(members as any[]) || []}
                     onAddCharacter={handleAddCharacter}
                     onViewCharacter={handleViewCharacter}
                     onLevelUpAll={handleLevelUpAll}
