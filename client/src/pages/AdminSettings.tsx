@@ -95,6 +95,7 @@ export default function AdminSettings() {
   
   const [currentView, setCurrentView] = useState<AdminView>('dashboard');
   const [selectedSystem, setSelectedSystem] = useState('Arcana Adventure');
+  const systemSlug = selectedSystem === 'A.A. V2' ? 'aa-v2' : 'arcana-adventure';
   
   const [showAddItem, setShowAddItem] = useState(false);
   const [editingItem, setEditingItem] = useState<Item | null>(null);
@@ -134,8 +135,8 @@ export default function AdminSettings() {
 
   // Use lightweight summary endpoint for fast list loading (no images)
   const { data: systemItemSummaries = [], isLoading: itemsLoading } = useQuery({
-    queryKey: ['system-items-summary'],
-    queryFn: () => api.getSystemItemSummaries(),
+    queryKey: ['system-items-summary', systemSlug],
+    queryFn: () => api.getSystemItemSummaries(systemSlug),
     enabled: isAdmin && currentView === 'items',
     staleTime: 5 * 60 * 1000, // Cache for 5 minutes
   });
@@ -147,20 +148,20 @@ export default function AdminSettings() {
   });
 
   const { data: systemSpells = [], isLoading: spellsLoading } = useQuery({
-    queryKey: ['system-spells'],
-    queryFn: () => api.getSystemSpells(),
+    queryKey: ['system-spells', systemSlug],
+    queryFn: () => api.getSystemSpells(systemSlug),
     enabled: isAdmin && currentView === 'spells',
   });
 
   const { data: systemSkills = [], isLoading: skillsLoading } = useQuery({
-    queryKey: ['system-skills'],
-    queryFn: () => api.getSystemSkills(),
+    queryKey: ['system-skills', systemSlug],
+    queryFn: () => api.getSystemSkills(systemSlug),
     enabled: isAdmin && currentView === 'skills',
   });
 
   const { data: systemTraits = [], isLoading: traitsLoading } = useQuery({
-    queryKey: ['system-traits'],
-    queryFn: () => api.getSystemTraits(),
+    queryKey: ['system-traits', systemSlug],
+    queryFn: () => api.getSystemTraits(systemSlug),
     enabled: isAdmin && currentView === 'traits',
   });
 
@@ -190,7 +191,7 @@ export default function AdminSettings() {
 
   const createItemMutation = useMutation({
     mutationFn: async ({ item, draftRolls }: { item: Partial<Item>; draftRolls?: any[] }) => {
-      const created = await api.createSystemItem(item);
+      const created = await api.createSystemItem({ ...item, system: systemSlug });
       if (draftRolls && draftRolls.length > 0) {
         for (const roll of draftRolls) {
           const { id, ...rollData } = roll;
@@ -275,7 +276,7 @@ export default function AdminSettings() {
 
   const createSpellMutation = useMutation({
     mutationFn: async ({ spell, draftRolls }: { spell: Partial<SystemSpell>; draftRolls?: any[] }) => {
-      const created = await api.createSystemSpell(spell);
+      const created = await api.createSystemSpell({ ...spell, system: systemSlug });
       if (draftRolls && draftRolls.length > 0) {
         for (const roll of draftRolls) {
           const { id, ...rollData } = roll;
@@ -323,7 +324,7 @@ export default function AdminSettings() {
   });
 
   const createSkillMutation = useMutation({
-    mutationFn: (skill: Partial<SystemSkill>) => api.createSystemSkill(skill),
+    mutationFn: (skill: Partial<SystemSkill>) => api.createSystemSkill({ ...skill, system: systemSlug }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['system-skills'] });
       setShowAddSkill(false);
@@ -358,7 +359,7 @@ export default function AdminSettings() {
   });
 
   const createTraitMutation = useMutation({
-    mutationFn: (trait: Partial<SystemTrait>) => api.createSystemTrait(trait),
+    mutationFn: (trait: Partial<SystemTrait>) => api.createSystemTrait({ ...trait, system: systemSlug }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['system-traits'] });
       setShowAddTrait(false);
@@ -386,6 +387,29 @@ export default function AdminSettings() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['system-traits'] });
       toast({ title: 'Trait Deleted', description: 'System trait deleted successfully' });
+    },
+    onError: (error: any) => {
+      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    },
+  });
+
+  const copyItemToSystemMutation = useMutation({
+    mutationFn: ({ id, targetSystem }: { id: string; targetSystem: string }) => api.copyItemToSystem(id, targetSystem),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['system-items'] });
+      queryClient.invalidateQueries({ queryKey: ['system-items-summary'] });
+      toast({ title: 'Item Copied', description: `Item copied to ${systemSlug === 'aa-v2' ? 'Arcana Adventure' : 'A.A. V2'}` });
+    },
+    onError: (error: any) => {
+      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    },
+  });
+
+  const copySpellToSystemMutation = useMutation({
+    mutationFn: ({ id, targetSystem }: { id: string; targetSystem: string }) => api.copySpellToSystem(id, targetSystem),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['system-spells'] });
+      toast({ title: 'Spell Copied', description: `Spell copied to ${systemSlug === 'aa-v2' ? 'Arcana Adventure' : 'A.A. V2'}` });
     },
     onError: (error: any) => {
       toast({ title: 'Error', description: error.message, variant: 'destructive' });
@@ -532,7 +556,7 @@ export default function AdminSettings() {
   });
 
   const archiveAllItemsMutation = useMutation({
-    mutationFn: () => api.archiveAllSystemItems(),
+    mutationFn: () => api.archiveAllSystemItems(systemSlug),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['system-items-summary'] });
       queryClient.invalidateQueries({ queryKey: ['system-items'] });
@@ -549,7 +573,7 @@ export default function AdminSettings() {
   });
 
   const archiveAllSpellsMutation = useMutation({
-    mutationFn: () => api.archiveAllSystemSpells(),
+    mutationFn: () => api.archiveAllSystemSpells(systemSlug),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['system-spells'] });
       toast({ title: 'All Spells Archived' });
@@ -680,7 +704,7 @@ export default function AdminSettings() {
         </div>
 
         {currentView === 'dashboard' && (
-          <DashboardView onNavigate={setCurrentView} />
+          <DashboardView onNavigate={setCurrentView} systemSlug={systemSlug} />
         )}
 
         {currentView === 'items' && (
@@ -713,6 +737,11 @@ export default function AdminSettings() {
                 archiveItemMutation.mutate(id);
               }
             }}
+            onCopyToSystem={(id) => {
+              const target = systemSlug === 'aa-v2' ? 'arcana-adventure' : 'aa-v2';
+              copyItemToSystemMutation.mutate({ id, targetSystem: target });
+            }}
+            copyTargetLabel={systemSlug === 'aa-v2' ? 'Arcana Adventure' : 'A.A. V2'}
           />
         )}
 
@@ -750,6 +779,11 @@ export default function AdminSettings() {
                 archiveSpellMutation.mutate(id);
               }
             }}
+            onCopyToSystem={(id) => {
+              const target = systemSlug === 'aa-v2' ? 'arcana-adventure' : 'aa-v2';
+              copySpellToSystemMutation.mutate({ id, targetSystem: target });
+            }}
+            copyTargetLabel={systemSlug === 'aa-v2' ? 'Arcana Adventure' : 'A.A. V2'}
           />
         )}
 
@@ -857,6 +891,7 @@ export default function AdminSettings() {
               const fullItem = await api.getSystemItem(itemId);
               setEditingItem(fullItem);
             }}
+            systemSlug={systemSlug}
           />
         )}
 
@@ -864,6 +899,7 @@ export default function AdminSettings() {
           <ArchivedSpellsView 
             onNavigateBack={() => setCurrentView('spells')} 
             onEditSpell={setEditingSpell}
+            systemSlug={systemSlug}
           />
         )}
 
@@ -894,6 +930,7 @@ export default function AdminSettings() {
           onSave={(data) => createSpeciesMutation.mutate(data)}
           isLoading={createSpeciesMutation.isPending}
           featTrees={allFeatTrees}
+          systemSlug={systemSlug}
         />
 
         {editingSpecies && (
@@ -904,6 +941,7 @@ export default function AdminSettings() {
             initialData={editingSpecies}
             isLoading={updateSpeciesMutation.isPending}
             featTrees={allFeatTrees}
+            systemSlug={systemSlug}
           />
         )}
 
@@ -1025,12 +1063,12 @@ export default function AdminSettings() {
   );
 }
 
-function ArchivedItemsView({ onNavigateBack, onEditItem }: { onNavigateBack: () => void; onEditItem: (itemId: string) => void }) {
+function ArchivedItemsView({ onNavigateBack, onEditItem, systemSlug }: { onNavigateBack: () => void; onEditItem: (itemId: string) => void; systemSlug: string }) {
   const queryClient = useQueryClient();
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const { data: archivedItems = [], isLoading } = useQuery({
-    queryKey: ['admin-archived-items'],
-    queryFn: () => api.getArchivedItems(),
+    queryKey: ['admin-archived-items', systemSlug],
+    queryFn: () => api.getArchivedItems(systemSlug),
   });
   
   const restoreMutation = useMutation({
@@ -1155,12 +1193,12 @@ function ArchivedItemsView({ onNavigateBack, onEditItem }: { onNavigateBack: () 
   );
 }
 
-function ArchivedSpellsView({ onNavigateBack, onEditSpell }: { onNavigateBack: () => void; onEditSpell: (spell: any) => void }) {
+function ArchivedSpellsView({ onNavigateBack, onEditSpell, systemSlug }: { onNavigateBack: () => void; onEditSpell: (spell: any) => void; systemSlug: string }) {
   const queryClient = useQueryClient();
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const { data: archivedSpells = [], isLoading } = useQuery({
-    queryKey: ['admin-archived-spells'],
-    queryFn: () => api.getArchivedSpells(),
+    queryKey: ['admin-archived-spells', systemSlug],
+    queryFn: () => api.getArchivedSpells(systemSlug),
   });
   
   const restoreMutation = useMutation({
@@ -1286,7 +1324,7 @@ function ArchivedSpellsView({ onNavigateBack, onEditSpell }: { onNavigateBack: (
   );
 }
 
-function DashboardView({ onNavigate }: { onNavigate: (view: AdminView) => void }) {
+function DashboardView({ onNavigate, systemSlug }: { onNavigate: (view: AdminView) => void; systemSlug: string }) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
       <Card 
@@ -1401,37 +1439,41 @@ function DashboardView({ onNavigate }: { onNavigate: (view: AdminView) => void }
         </CardHeader>
       </Card>
 
-      <Card 
-        className="bg-stone-900 border-stone-700 cursor-pointer hover:border-amber-600 transition-colors"
-        onClick={() => onNavigate('feat-trees')}
-        data-testid="card-feat-trees"
-      >
-        <CardHeader>
-          <div className="h-12 w-12 rounded-lg bg-purple-700/20 flex items-center justify-center mb-2">
-            <GitBranch className="h-6 w-6 text-purple-500" />
-          </div>
-          <CardTitle className="text-purple-500">Feat Trees</CardTitle>
-          <CardDescription className="text-stone-400">
-            Create and manage feat progression trees for characters
-          </CardDescription>
-        </CardHeader>
-      </Card>
+      {systemSlug === 'arcana-adventure' && (
+        <Card 
+          className="bg-stone-900 border-stone-700 cursor-pointer hover:border-amber-600 transition-colors"
+          onClick={() => onNavigate('feat-trees')}
+          data-testid="card-feat-trees"
+        >
+          <CardHeader>
+            <div className="h-12 w-12 rounded-lg bg-purple-700/20 flex items-center justify-center mb-2">
+              <GitBranch className="h-6 w-6 text-purple-500" />
+            </div>
+            <CardTitle className="text-purple-500">Feat Trees</CardTitle>
+            <CardDescription className="text-stone-400">
+              Create and manage feat progression trees for characters
+            </CardDescription>
+          </CardHeader>
+        </Card>
+      )}
 
-      <Card 
-        className="bg-stone-900 border-stone-700 cursor-pointer hover:border-fuchsia-600 transition-colors"
-        onClick={() => onNavigate('classes')}
-        data-testid="card-classes"
-      >
-        <CardHeader>
-          <div className="h-12 w-12 rounded-lg bg-fuchsia-700/20 flex items-center justify-center mb-2">
-            <Layers className="h-6 w-6 text-fuchsia-500" />
-          </div>
-          <CardTitle className="text-fuchsia-500">Classes (A.A. V2)</CardTitle>
-          <CardDescription className="text-stone-400">
-            Create and manage character classes with skill trees for the A.A. V2 system
-          </CardDescription>
-        </CardHeader>
-      </Card>
+      {systemSlug === 'aa-v2' && (
+        <Card 
+          className="bg-stone-900 border-stone-700 cursor-pointer hover:border-fuchsia-600 transition-colors"
+          onClick={() => onNavigate('classes')}
+          data-testid="card-classes"
+        >
+          <CardHeader>
+            <div className="h-12 w-12 rounded-lg bg-fuchsia-700/20 flex items-center justify-center mb-2">
+              <Layers className="h-6 w-6 text-fuchsia-500" />
+            </div>
+            <CardTitle className="text-fuchsia-500">Classes</CardTitle>
+            <CardDescription className="text-stone-400">
+              Create and manage character classes with skill trees for the A.A. V2 system
+            </CardDescription>
+          </CardHeader>
+        </Card>
+      )}
 
       <Card 
         className="bg-stone-900 border-stone-700 cursor-pointer hover:border-stone-500 transition-colors"
@@ -1658,9 +1700,11 @@ interface ItemsViewProps {
   onDeleteItem: (id: string) => void;
   onDuplicateItem: (itemId: string) => void;
   onArchiveItem: (id: string) => void;
+  onCopyToSystem?: (id: string) => void;
+  copyTargetLabel?: string;
 }
 
-function ItemsView({ items, isLoading, searchQuery, setSearchQuery, typeFilter, setTypeFilter, onAddItem, onEditItem, onDeleteItem, onDuplicateItem, onArchiveItem }: ItemsViewProps) {
+function ItemsView({ items, isLoading, searchQuery, setSearchQuery, typeFilter, setTypeFilter, onAddItem, onEditItem, onDeleteItem, onDuplicateItem, onArchiveItem, onCopyToSystem, copyTargetLabel }: ItemsViewProps) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const queryClient = useQueryClient();
   
@@ -1777,6 +1821,11 @@ function ItemsView({ items, isLoading, searchQuery, setSearchQuery, typeFilter, 
                     </div>
                   </div>
                   <div className="flex gap-1 sm:gap-2 shrink-0">
+                    {onCopyToSystem && (
+                      <Button variant="ghost" size="icon" onClick={() => onCopyToSystem(item.id)} className="text-stone-400 hover:text-green-500 h-8 w-8 sm:h-10 sm:w-10" data-testid={`button-copy-system-${item.id}`} title={`Copy to ${copyTargetLabel || 'other system'}`}>
+                        <Send className="h-4 w-4" />
+                      </Button>
+                    )}
                     <Button variant="ghost" size="icon" onClick={() => onDuplicateItem(item.id)} className="text-stone-400 hover:text-blue-500 h-8 w-8 sm:h-10 sm:w-10" data-testid={`button-duplicate-${item.id}`} title="Duplicate item">
                       <Copy className="h-4 w-4" />
                     </Button>
@@ -1924,10 +1973,12 @@ interface SpellsViewProps {
   onEditSpell: (spell: SystemSpell) => void;
   onDeleteSpell: (id: string) => void;
   onArchiveSpell: (id: string) => void;
+  onCopyToSystem?: (id: string) => void;
+  copyTargetLabel?: string;
 }
 
 
-function SpellsView({ spells, isLoading, searchQuery, setSearchQuery, onAddSpell, onEditSpell, onDeleteSpell, onArchiveSpell }: SpellsViewProps) {
+function SpellsView({ spells, isLoading, searchQuery, setSearchQuery, onAddSpell, onEditSpell, onDeleteSpell, onArchiveSpell, onCopyToSystem, copyTargetLabel }: SpellsViewProps) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const queryClient = useQueryClient();
   
@@ -2037,6 +2088,11 @@ function SpellsView({ spells, isLoading, searchQuery, setSearchQuery, onAddSpell
                     </div>
                   </div>
                   <div className="flex gap-1 sm:gap-2 shrink-0">
+                    {onCopyToSystem && (
+                      <Button variant="ghost" size="icon" onClick={() => onCopyToSystem(spell.id)} className="text-stone-400 hover:text-green-500 h-8 w-8 sm:h-10 sm:w-10" data-testid={`button-copy-spell-${spell.id}`} title={`Copy to ${copyTargetLabel || 'other system'}`}>
+                        <Send className="h-4 w-4" />
+                      </Button>
+                    )}
                     <Button variant="ghost" size="icon" onClick={() => onEditSpell(spell)} className="text-stone-400 hover:text-blue-500 h-8 w-8 sm:h-10 sm:w-10" data-testid={`button-edit-spell-${spell.id}`}>
                       <Pencil className="h-4 w-4" />
                     </Button>
@@ -6006,6 +6062,7 @@ interface SpeciesFormDialogProps {
   initialData?: SystemSpecies;
   isLoading?: boolean;
   featTrees?: FeatTree[];
+  systemSlug?: string;
 }
 
 // Calculate size bonus based on size
@@ -6021,7 +6078,7 @@ const getSizeBonusFromSize = (size: string): number => {
   return sizeBonusMap[size] ?? 0;
 };
 
-function SpeciesFormDialog({ open, onOpenChange, onSave, initialData, isLoading, featTrees = [] }: SpeciesFormDialogProps) {
+function SpeciesFormDialog({ open, onOpenChange, onSave, initialData, isLoading, featTrees = [], systemSlug }: SpeciesFormDialogProps) {
   const [formData, setFormData] = useState<{
     name: string;
     description: string;
@@ -6038,6 +6095,9 @@ function SpeciesFormDialog({ open, onOpenChange, onSave, initialData, isLoading,
     startingEnergy: number | string;
     startingMaxEnergy: number | string;
     energyPerLevel: number | string;
+    startingMana: number | string;
+    startingMaxMana: number | string;
+    manaPerLevel: number | string;
     carryWeight: number | string;
     featTree: string;
     visionType: string;
@@ -6059,6 +6119,9 @@ function SpeciesFormDialog({ open, onOpenChange, onSave, initialData, isLoading,
     startingEnergy: initialData?.startingEnergy ?? '',
     startingMaxEnergy: initialData?.startingMaxEnergy ?? '',
     energyPerLevel: (initialData as any)?.energyPerLevel ?? '',
+    startingMana: (initialData as any)?.startingMana ?? 0,
+    startingMaxMana: (initialData as any)?.startingMaxMana ?? 0,
+    manaPerLevel: (initialData as any)?.manaPerLevel ?? 0,
     carryWeight: initialData?.carryWeight ?? '',
     featTree: initialData?.featTree || '',
     visionType: (initialData as any)?.visionType || 'normal',
@@ -6113,6 +6176,9 @@ function SpeciesFormDialog({ open, onOpenChange, onSave, initialData, isLoading,
       startingEnergy: Number(formData.startingEnergy) || 10,
       startingMaxEnergy: Number(formData.startingMaxEnergy) || 10,
       energyPerLevel: Number(formData.energyPerLevel) || 6,
+      startingMana: Number(formData.startingMana) || 0,
+      startingMaxMana: Number(formData.startingMaxMana) || 0,
+      manaPerLevel: Number(formData.manaPerLevel) || 0,
       carryWeight: Number(formData.carryWeight) || 50,
       visionType: formData.visionType || 'normal',
       dayVisionDistance: Number(formData.dayVisionDistance) || 120,
@@ -6350,6 +6416,44 @@ function SpeciesFormDialog({ open, onOpenChange, onSave, initialData, isLoading,
                   data-testid="input-species-energyperlevel"
                 />
               </div>
+
+              {systemSlug === 'aa-v2' && (
+                <>
+                  <div className="col-span-2 border-t border-stone-700 pt-3 mt-2">
+                    <Label className="text-sm font-semibold text-violet-400">Mana (A.A. V2)</Label>
+                  </div>
+                  <div>
+                    <Label>Starting Mana</Label>
+                    <Input
+                      type="number"
+                      value={formData.startingMana}
+                      onChange={(e) => handleNumericChange('startingMana', e.target.value)}
+                      className="bg-stone-800 border-stone-700"
+                      data-testid="input-species-startingmana"
+                    />
+                  </div>
+                  <div>
+                    <Label>Starting Max Mana</Label>
+                    <Input
+                      type="number"
+                      value={formData.startingMaxMana}
+                      onChange={(e) => handleNumericChange('startingMaxMana', e.target.value)}
+                      className="bg-stone-800 border-stone-700"
+                      data-testid="input-species-startingmaxmana"
+                    />
+                  </div>
+                  <div>
+                    <Label>Mana Per Level</Label>
+                    <Input
+                      type="number"
+                      value={formData.manaPerLevel}
+                      onChange={(e) => handleNumericChange('manaPerLevel', e.target.value)}
+                      className="bg-stone-800 border-stone-700"
+                      data-testid="input-species-manaperlevel"
+                    />
+                  </div>
+                </>
+              )}
 
               <div>
                 <Label>Base Carry Weight</Label>
@@ -7635,6 +7739,9 @@ function ClassesView() {
   const [editingClass, setEditingClass] = useState<any | null>(null);
   const [className, setClassName] = useState('');
   const [classDesc, setClassDesc] = useState('');
+  const [classImage, setClassImage] = useState('');
+  const [showClassImageBrowser, setShowClassImageBrowser] = useState(false);
+  const classImageInputRef = useRef<HTMLInputElement>(null);
   const [showNodeEditor, setShowNodeEditor] = useState(false);
   const [editingNode, setEditingNode] = useState<any | null>(null);
   const [connectingFrom, setConnectingFrom] = useState<string | null>(null);
@@ -7680,7 +7787,7 @@ function ClassesView() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ ...data, system: 'aa-v2' }),
+        body: JSON.stringify({ ...data, system: 'aa-v2', image: classImage || null }),
       });
       return res.json();
     },
@@ -7689,6 +7796,7 @@ function ClassesView() {
       setShowAddClass(false);
       setClassName('');
       setClassDesc('');
+      setClassImage('');
       toast({ title: "Class created" });
     },
   });
@@ -7840,9 +7948,18 @@ function ClassesView() {
               <Card key={cls.id} className="bg-stone-900 border-stone-700 hover:border-fuchsia-600 transition-colors cursor-pointer" onClick={() => setSelectedClassId(cls.id)} data-testid={`card-class-${cls.id}`}>
                 <CardHeader className="pb-2">
                   <div className="flex justify-between items-start">
-                    <CardTitle className="text-fuchsia-400">{cls.name}</CardTitle>
+                    <div className="flex items-center gap-2">
+                      {cls.image ? (
+                        <img src={cls.image} alt={cls.name} className="w-8 h-8 rounded object-cover border border-fuchsia-600" />
+                      ) : (
+                        <div className="w-8 h-8 rounded bg-fuchsia-900/40 border border-fuchsia-700 flex items-center justify-center">
+                          <Layers className="h-4 w-4 text-fuchsia-500" />
+                        </div>
+                      )}
+                      <CardTitle className="text-fuchsia-400">{cls.name}</CardTitle>
+                    </div>
                     <div className="flex gap-1">
-                      <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setEditingClass(cls); setClassName(cls.name); setClassDesc(cls.description || ''); }} data-testid={`button-edit-class-${cls.id}`}>
+                      <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setEditingClass(cls); setClassName(cls.name); setClassDesc(cls.description || ''); setClassImage(cls.image || ''); }} data-testid={`button-edit-class-${cls.id}`}>
                         <Pencil className="h-3 w-3" />
                       </Button>
                       <Button size="sm" variant="ghost" className="text-red-400" onClick={(e) => { e.stopPropagation(); deleteClassMutation.mutate(cls.id); }} data-testid={`button-delete-class-${cls.id}`}>
@@ -7857,7 +7974,7 @@ function ClassesView() {
           </div>
         )}
 
-        <Dialog open={showAddClass || !!editingClass} onOpenChange={(open) => { if (!open) { setShowAddClass(false); setEditingClass(null); setClassName(''); setClassDesc(''); } }}>
+        <Dialog open={showAddClass || !!editingClass} onOpenChange={(open) => { if (!open) { setShowAddClass(false); setEditingClass(null); setClassName(''); setClassDesc(''); setClassImage(''); } }}>
           <DialogContent className="bg-stone-900 border-stone-700">
             <DialogHeader>
               <DialogTitle className="text-fuchsia-400">{editingClass ? 'Edit Class' : 'New Class'}</DialogTitle>
@@ -7871,12 +7988,45 @@ function ClassesView() {
                 <Label className="text-stone-300">Description</Label>
                 <Textarea value={classDesc} onChange={(e) => setClassDesc(e.target.value)} className="bg-stone-800 border-stone-700" data-testid="input-class-description" />
               </div>
+              <div>
+                <Label className="text-stone-300">Class Icon</Label>
+                <div className="flex items-center gap-3 mt-1">
+                  {classImage ? (
+                    <div className="relative w-16 h-16 rounded-lg overflow-hidden border border-fuchsia-600">
+                      <img src={classImage} alt="Class icon" className="w-full h-full object-cover" />
+                      <button onClick={() => setClassImage('')} className="absolute top-0 right-0 bg-red-600 rounded-bl p-0.5">
+                        <X className="h-3 w-3 text-white" />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="w-16 h-16 rounded-lg border border-stone-700 bg-stone-800 flex items-center justify-center">
+                      <ImageIcon className="h-6 w-6 text-stone-500" />
+                    </div>
+                  )}
+                  <div className="flex flex-col gap-1">
+                    <Button size="sm" variant="outline" className="text-xs" onClick={() => setShowClassImageBrowser(true)} data-testid="button-browse-class-image">
+                      <ImageIcon className="h-3 w-3 mr-1" /> Browse
+                    </Button>
+                    <input ref={classImageInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        const reader = new FileReader();
+                        reader.onload = (ev) => setClassImage(ev.target?.result as string);
+                        reader.readAsDataURL(file);
+                      }
+                    }} />
+                    <Button size="sm" variant="outline" className="text-xs" onClick={() => classImageInputRef.current?.click()} data-testid="button-upload-class-image">
+                      <Upload className="h-3 w-3 mr-1" /> Upload
+                    </Button>
+                  </div>
+                </div>
+              </div>
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => { setShowAddClass(false); setEditingClass(null); }}>Cancel</Button>
               <Button className="bg-fuchsia-700 hover:bg-fuchsia-600" onClick={() => {
                 if (editingClass) {
-                  updateClassMutation.mutate({ id: editingClass.id, data: { name: className, description: classDesc } });
+                  updateClassMutation.mutate({ id: editingClass.id, data: { name: className, description: classDesc, image: classImage || null } });
                 } else {
                   createClassMutation.mutate({ name: className, description: classDesc });
                 }
@@ -7886,6 +8036,13 @@ function ClassesView() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        {showClassImageBrowser && (
+          <ImageBrowser
+            onSelect={(url: string) => { setClassImage(url); setShowClassImageBrowser(false); }}
+            onClose={() => setShowClassImageBrowser(false)}
+          />
+        )}
       </div>
     );
   }

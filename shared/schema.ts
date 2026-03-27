@@ -481,6 +481,7 @@ export const items = pgTable("items", {
   detonateAoeRange: integer("detonate_aoe_range").default(15),
   // Item effect toggle - when true, allows linking token effects to this weapon/item
   canApplyEffects: boolean("can_apply_effects").default(false).notNull(), // Enables item to apply token effects on hit
+  system: text("system").notNull().default("arcana-adventure"),
   isArchived: boolean("is_archived").default(false).notNull(),
 });
 
@@ -522,6 +523,9 @@ export const systemSpecies = pgTable("system_species", {
   startingEnergy: integer("starting_energy").default(10).notNull(),
   startingMaxEnergy: integer("starting_max_energy").default(10).notNull(),
   energyPerLevel: integer("energy_per_level").default(6).notNull(), // Dice size for energy level-ups (d6 by default)
+  startingMana: integer("starting_mana").default(0).notNull(),
+  startingMaxMana: integer("starting_max_mana").default(0).notNull(),
+  manaPerLevel: integer("mana_per_level").default(0).notNull(),
   carryWeight: integer("carry_weight").default(50).notNull(), // Base carry weight capacity
   featTree: text("feat_tree").default(""), // Reference to the feat tree for this species
   visionType: text("vision_type").default("normal").notNull(),
@@ -579,6 +583,7 @@ export const systemSkills = pgTable("system_skills", {
   name: text("name").notNull(),
   description: text("description"),
   parentAttribute: text("parent_attribute").notNull().default("wit"), // might, finesse, wit, presence, will, craft
+  system: text("system").notNull().default("arcana-adventure"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -618,6 +623,7 @@ export const systemTraits = pgTable("system_traits", {
   name: text("name").notNull(),
   description: text("description"),
   parentAttribute: text("parent_attribute").notNull().default("will"), // might, finesse, wit, presence, will, craft
+  system: text("system").notNull().default("arcana-adventure"),
   usesPerLongRest: integer("uses_per_long_rest").notNull().default(1),
   usesPerShortRest: integer("uses_per_short_rest").default(0), // Uses restored on short rest
   // Damage reduction/resistance/immunity
@@ -936,6 +942,7 @@ export const systemSpells = pgTable("system_spells", {
   savingThrow: text("saving_throw"),
   effects: jsonb("effects").default([]).notNull(),
   isAttack: boolean("is_attack").default(true).notNull(), // If true: Attack/Damage rolls, if false: Use/Effect rolls
+  system: text("system").notNull().default("arcana-adventure"),
   isArchived: boolean("is_archived").default(false).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });

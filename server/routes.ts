@@ -4594,7 +4594,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Lightweight summary endpoint for fast item picker loading (must be before :id route)
   app.get("/api/system-items/summary", requireAuth, async (req, res) => {
     try {
-      const summaries = await storage.getSystemItemSummaries();
+      const system = req.query.system as string | undefined;
+      const summaries = await storage.getSystemItemSummaries(system);
       console.log('[Summary] System items:', summaries.length);
       res.json(summaries);
     } catch (err) {
@@ -4632,7 +4633,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // System item routes (admin only)
   app.get("/api/admin/system-items", requireAdmin, async (req, res) => {
     try {
-      const items = await storage.getSystemItems();
+      const system = req.query.system as string | undefined;
+      const items = await storage.getSystemItems(system);
       res.json(items);
     } catch (err) {
       res.status(500).json({ error: "Failed to fetch system items" });
@@ -4733,7 +4735,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/admin/system-items/archive-all", requireAdmin, async (req, res) => {
     try {
-      await storage.archiveAllSystemItems();
+      const system = req.body.system as string | undefined;
+      await storage.archiveAllSystemItems(system);
       broadcastToAllClients({ type: 'admin_data_changed', entity: 'system-items' });
       res.json({ success: true });
     } catch (err) {
@@ -4741,9 +4744,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.post("/api/admin/system-items/:id/copy-to-system", requireAdmin, async (req, res) => {
+    try {
+      const { targetSystem } = req.body;
+      if (!targetSystem || !['arcana-adventure', 'aa-v2'].includes(targetSystem)) return res.status(400).json({ error: "Invalid targetSystem" });
+      const item = await storage.getItem(req.params.id);
+      if (!item || !item.isTemplate || item.characterId || item.campaignId) return res.status(404).json({ error: "System item not found" });
+      const { id, createdAt, ...itemData } = item as any;
+      const newItem = await storage.createItem({ ...itemData, system: targetSystem });
+      broadcastToAllClients({ type: 'admin_data_changed', entity: 'system-items' });
+      res.json(newItem);
+    } catch (err) {
+      res.status(400).json({ error: "Failed to copy item" });
+    }
+  });
+
   app.get("/api/admin/archived-items", requireAdmin, async (req, res) => {
     try {
-      const archivedItems = await storage.getArchivedSystemItems();
+      const system = req.query.system as string | undefined;
+      const archivedItems = await storage.getArchivedSystemItems(system);
       res.json(archivedItems);
     } catch (err: any) {
       console.error("Failed to fetch archived items:", err?.message || err);
@@ -4773,7 +4792,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/admin/system-spells/archive-all", requireAdmin, async (req, res) => {
     try {
-      await storage.archiveAllSystemSpells();
+      const system = req.body.system as string | undefined;
+      await storage.archiveAllSystemSpells(system);
       broadcastToAllClients({ type: 'admin_data_changed', entity: 'system-spells' });
       res.json({ success: true });
     } catch (err) {
@@ -4783,7 +4803,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/admin/archived-spells", requireAdmin, async (req, res) => {
     try {
-      const archivedSpells = await storage.getArchivedSystemSpells();
+      const system = req.query.system as string | undefined;
+      const archivedSpells = await storage.getArchivedSystemSpells(system);
       res.json(archivedSpells);
     } catch (err) {
       res.status(500).json({ error: "Failed to fetch archived spells" });
@@ -5793,7 +5814,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // System Spell routes (admin)
   app.get("/api/admin/spells", requireAdmin, async (req, res) => {
     try {
-      const spellList = await storage.getSystemSpells();
+      const system = req.query.system as string | undefined;
+      const spellList = await storage.getSystemSpells(system);
       res.json(spellList);
     } catch (err) {
       res.status(500).json({ error: "Failed to fetch spells" });
@@ -5845,10 +5867,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.post("/api/admin/spells/:id/copy-to-system", requireAdmin, async (req, res) => {
+    try {
+      const { targetSystem } = req.body;
+      if (!targetSystem || !['arcana-adventure', 'aa-v2'].includes(targetSystem)) return res.status(400).json({ error: "Invalid targetSystem" });
+      const spell = await storage.getSystemSpell(req.params.id);
+      if (!spell) return res.status(404).json({ error: "Spell not found" });
+      const { id, createdAt, ...spellData } = spell as any;
+      const newSpell = await storage.createSystemSpell({ ...spellData, system: targetSystem });
+      broadcastToAllClients({ type: 'admin_data_changed', entity: 'system-spells' });
+      res.json(newSpell);
+    } catch (err) {
+      res.status(400).json({ error: "Failed to copy spell" });
+    }
+  });
+
   // System Skills routes (admin)
   app.get("/api/admin/skills", requireAdmin, async (req, res) => {
     try {
-      const skills = await storage.getSystemSkills();
+      const system = req.query.system as string | undefined;
+      const skills = await storage.getSystemSkills(system);
       res.json(skills);
     } catch (err) {
       res.status(500).json({ error: "Failed to fetch system skills" });
@@ -6223,7 +6261,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Public system skills route (for character sheet)
   app.get("/api/skills", requireAuth, async (req, res) => {
     try {
-      const skills = await storage.getSystemSkills();
+      const system = req.query.system as string | undefined;
+      const skills = await storage.getSystemSkills(system);
       res.json(skills);
     } catch (err) {
       res.status(500).json({ error: "Failed to fetch skills" });
@@ -6339,7 +6378,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // System Traits routes (admin)
   app.get("/api/admin/traits", requireAdmin, async (req, res) => {
     try {
-      const traits = await storage.getSystemTraits();
+      const system = req.query.system as string | undefined;
+      const traits = await storage.getSystemTraits(system);
       res.json(traits);
     } catch (err) {
       res.status(500).json({ error: "Failed to fetch system traits" });
@@ -6394,7 +6434,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Public system traits route (for character sheet)
   app.get("/api/traits", requireAuth, async (req, res) => {
     try {
-      const traits = await storage.getSystemTraits();
+      const system = req.query.system as string | undefined;
+      const traits = await storage.getSystemTraits(system);
       res.json(traits);
     } catch (err) {
       res.status(500).json({ error: "Failed to fetch traits" });
@@ -6538,7 +6579,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Public spell routes (for character sheet and feat effects)
   app.get("/api/spells", requireAuth, async (req, res) => {
     try {
-      const spellList = await storage.getSystemSpells();
+      const system = req.query.system as string | undefined;
+      const spellList = await storage.getSystemSpells(system);
       res.json(spellList);
     } catch (err) {
       res.status(500).json({ error: "Failed to fetch spells" });
@@ -6548,7 +6590,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Public system items route (for feat effects item picker)
   app.get("/api/system-items", requireAuth, async (req, res) => {
     try {
-      const itemList = await storage.getSystemItems();
+      const system = req.query.system as string | undefined;
+      const itemList = await storage.getSystemItems(system);
       res.json(itemList);
     } catch (err) {
       console.error('[system-items] Error fetching system items:', err);
@@ -6580,7 +6623,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const isGM = await hasGmAccess(req.session.userId!, req.params.campaignId, campaign.gmUserId);
       const [campaignItems, systemItems] = await Promise.all([
         storage.getCampaignItemSummaries(req.params.campaignId, isGM ? req.session.userId : undefined),
-        storage.getSystemItemSummaries()
+        storage.getSystemItemSummaries(campaign.system)
       ]);
       
       console.log('[Summary] Campaign items:', campaignItems.length, ', System items:', systemItems.length);
@@ -6604,7 +6647,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const isGM = await hasGmAccess(req.session.userId!, req.params.campaignId, campaign.gmUserId);
       const [campaignItems, systemItems] = await Promise.all([
         storage.getCampaignTemplateItems(req.params.campaignId, isGM ? req.session.userId : undefined),
-        storage.getSystemItems()
+        storage.getSystemItems(campaign.system)
       ]);
       
       res.json({ campaignItems, systemItems });

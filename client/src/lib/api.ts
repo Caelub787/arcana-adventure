@@ -1056,8 +1056,9 @@ class ApiClient {
   }
 
   // Lightweight item summaries for fast picker loading (no images to avoid response size limits)
-  async getSystemItemSummaries(): Promise<{ id: string; name: string; itemType: string; rarity: string; weight: number }[]> {
-    return this.request('/system-items/summary');
+  async getSystemItemSummaries(system?: string): Promise<{ id: string; name: string; itemType: string; rarity: string; weight: number }[]> {
+    const params = system ? `?system=${encodeURIComponent(system)}` : '';
+    return this.request(`/system-items/summary${params}`);
   }
 
   async getTemplateItemSummaries(campaignId: string): Promise<{ campaignItems: { id: string; name: string; itemType: string; rarity: string; weight: number; price: number; currency: string }[], systemItems: { id: string; name: string; itemType: string; rarity: string; weight: number; price: number; currency: string }[] }> {
@@ -1070,8 +1071,9 @@ class ApiClient {
   }
 
   // Admin System Items
-  async getSystemItems(): Promise<Item[]> {
-    return this.request('/admin/system-items');
+  async getSystemItems(system?: string): Promise<Item[]> {
+    const params = system ? `?system=${encodeURIComponent(system)}` : '';
+    return this.request(`/admin/system-items${params}`);
   }
 
   // Public System Items (for notes graph and entity references)
@@ -1110,12 +1112,27 @@ class ApiClient {
     return this.request(`/admin/system-items/${id}/restore`, { method: 'POST' });
   }
 
-  async archiveAllSystemItems(): Promise<void> {
-    return this.request('/admin/system-items/archive-all', { method: 'POST' });
+  async archiveAllSystemItems(system?: string): Promise<void> {
+    return this.request('/admin/system-items/archive-all', { method: 'POST', body: system ? JSON.stringify({ system }) : undefined });
   }
 
-  async getArchivedItems(): Promise<any[]> {
-    return this.request('/admin/archived-items');
+  async copyItemToSystem(id: string, targetSystem: string): Promise<Item> {
+    return this.request(`/admin/system-items/${id}/copy-to-system`, {
+      method: 'POST',
+      body: JSON.stringify({ targetSystem }),
+    });
+  }
+
+  async copySpellToSystem(id: string, targetSystem: string): Promise<SystemSpell> {
+    return this.request(`/admin/spells/${id}/copy-to-system`, {
+      method: 'POST',
+      body: JSON.stringify({ targetSystem }),
+    });
+  }
+
+  async getArchivedItems(system?: string): Promise<any[]> {
+    const params = system ? `?system=${encodeURIComponent(system)}` : '';
+    return this.request(`/admin/archived-items${params}`);
   }
 
   async archiveSystemSpell(id: string): Promise<any> {
@@ -1126,8 +1143,8 @@ class ApiClient {
     return this.request(`/admin/system-spells/${id}/restore`, { method: 'POST' });
   }
 
-  async archiveAllSystemSpells(): Promise<void> {
-    return this.request('/admin/system-spells/archive-all', { method: 'POST' });
+  async archiveAllSystemSpells(system?: string): Promise<void> {
+    return this.request('/admin/system-spells/archive-all', { method: 'POST', body: system ? JSON.stringify({ system }) : undefined });
   }
 
   async bulkArchiveItems(ids: string[]): Promise<void> {
@@ -1154,8 +1171,9 @@ class ApiClient {
     await fetch('/api/admin/system-spells/bulk-delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids }), credentials: 'include' });
   }
 
-  async getArchivedSpells(): Promise<any[]> {
-    return this.request('/admin/archived-spells');
+  async getArchivedSpells(system?: string): Promise<any[]> {
+    const params = system ? `?system=${encodeURIComponent(system)}` : '';
+    return this.request(`/admin/archived-spells${params}`);
   }
 
   // Admin System Species
@@ -1306,8 +1324,9 @@ class ApiClient {
   }
 
   // Admin System Spells
-  async getSystemSpells(): Promise<SystemSpell[]> {
-    return this.request('/admin/spells');
+  async getSystemSpells(system?: string): Promise<SystemSpell[]> {
+    const params = system ? `?system=${encodeURIComponent(system)}` : '';
+    return this.request(`/admin/spells${params}`);
   }
 
   async getSystemSpell(id: string): Promise<SystemSpell> {
@@ -1333,8 +1352,9 @@ class ApiClient {
   }
 
   // Admin System Skills
-  async getSystemSkills(): Promise<SystemSkill[]> {
-    return this.request('/admin/skills');
+  async getSystemSkills(system?: string): Promise<SystemSkill[]> {
+    const params = system ? `?system=${encodeURIComponent(system)}` : '';
+    return this.request(`/admin/skills${params}`);
   }
 
   async getSystemSkill(id: string): Promise<SystemSkill> {
@@ -1388,8 +1408,9 @@ class ApiClient {
   }
 
   // Admin System Traits
-  async getSystemTraits(): Promise<SystemTrait[]> {
-    return this.request('/admin/traits');
+  async getSystemTraits(system?: string): Promise<SystemTrait[]> {
+    const params = system ? `?system=${encodeURIComponent(system)}` : '';
+    return this.request(`/admin/traits${params}`);
   }
 
   async getSystemTrait(id: string): Promise<SystemTrait> {

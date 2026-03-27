@@ -20394,6 +20394,9 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                           <div className="flex justify-between items-start">
                             <div className="flex-1">
                               <div className="flex items-center gap-2 mb-1">
+                                {classInfo?.image ? (
+                                  <img src={classInfo.image} alt={classInfo.name} className="w-6 h-6 rounded object-cover border border-fuchsia-600" />
+                                ) : null}
                                 <span className="text-sm font-bold text-fuchsia-300">{classInfo?.name || 'Unknown'}</span>
                                 <Badge variant="outline" className="text-[10px] h-5 px-1.5 border-fuchsia-600 text-fuchsia-300">
                                   Lv.{classLevel}
@@ -20445,9 +20448,18 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                   {availableClasses
                     .filter((c: any) => !characterClasses.some((cc: any) => cc.classId === c.id))
                     .map((cls: any) => (
-                      <button key={cls.id} className="w-full text-left p-3 rounded-lg bg-stone-800 border border-stone-700 hover:border-fuchsia-600 transition-colors" onClick={() => addCharacterClassMutation.mutate(cls.id)} data-testid={`button-select-class-${cls.id}`}>
-                        <span className="text-sm font-medium text-fuchsia-300">{cls.name}</span>
-                        {cls.description && <p className="text-xs text-stone-400 mt-0.5">{cls.description}</p>}
+                      <button key={cls.id} className="w-full text-left p-3 rounded-lg bg-stone-800 border border-stone-700 hover:border-fuchsia-600 transition-colors flex items-center gap-3" onClick={() => addCharacterClassMutation.mutate(cls.id)} data-testid={`button-select-class-${cls.id}`}>
+                        {cls.image ? (
+                          <img src={cls.image} alt={cls.name} className="w-8 h-8 rounded object-cover border border-fuchsia-600 shrink-0" />
+                        ) : (
+                          <div className="w-8 h-8 rounded bg-fuchsia-900/40 border border-fuchsia-700 flex items-center justify-center shrink-0">
+                            <Layers className="h-4 w-4 text-fuchsia-500" />
+                          </div>
+                        )}
+                        <div>
+                          <span className="text-sm font-medium text-fuchsia-300">{cls.name}</span>
+                          {cls.description && <p className="text-xs text-stone-400 mt-0.5">{cls.description}</p>}
+                        </div>
                       </button>
                     ))}
                   {availableClasses.filter((c: any) => !characterClasses.some((cc: any) => cc.classId === c.id)).length === 0 && (
@@ -21277,7 +21289,11 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
           onClose={() => setShowClassSkillTree(null)}
           title={
             <span className="text-fuchsia-400 flex items-center gap-2">
-              <Layers className="h-4 w-4" />
+              {availableClasses.find((c: any) => c.id === showClassSkillTree)?.image ? (
+                <img src={availableClasses.find((c: any) => c.id === showClassSkillTree)!.image} alt="" className="w-5 h-5 rounded object-cover border border-fuchsia-600" />
+              ) : (
+                <Layers className="h-4 w-4" />
+              )}
               {availableClasses.find((c: any) => c.id === showClassSkillTree)?.name || 'Class'} — Skill Tree
             </span>
           }
