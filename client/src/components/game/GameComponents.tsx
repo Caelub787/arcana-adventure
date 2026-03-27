@@ -20181,6 +20181,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                         ownerId={selectedSpell.id} 
                         canEdit={isGM}
                         characterCustomSkills={characterCustomSkills as any[]}
+                        campaignSystem={campaignSystem}
                       />
 
                       <div className="flex items-center gap-2 pt-4 border-t border-stone-700 mt-4">
@@ -20637,6 +20638,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
         onDelete={() => deleteItemMutation.mutate(selectedItem.id)}
         bringToFront={bringToFront}
         floatingZIndices={floatingZIndices}
+        campaignSystem={campaignSystem}
       />
 
       {/* Add/Edit Item Floating Panel */}
@@ -23267,9 +23269,10 @@ interface ItemDetailDialogProps {
   onDelete: () => void;
   bringToFront?: (panelKey: string) => void;
   floatingZIndices?: Record<string, number>;
+  campaignSystem?: string;
 }
 
-function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, items, onUpdate, onDelete, bringToFront, floatingZIndices }: ItemDetailDialogProps) {
+function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, items, onUpdate, onDelete, bringToFront, floatingZIndices, campaignSystem }: ItemDetailDialogProps) {
   const queryClient = useQueryClient();
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState<any>(null);
@@ -24305,6 +24308,7 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
               canEdit={isGM} 
               onExecuteRoll={executeRoll}
               characterCustomSkills={characterCustomSkills as any[]}
+              campaignSystem={campaignSystem}
             />
 
             <div className="flex gap-2 pt-4">

@@ -6852,6 +6852,7 @@ function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading }:
               canEdit={true}
               draftRolls={!initialData?.id ? draftRolls : undefined}
               onDraftRollsChange={!initialData?.id ? setDraftRolls : undefined}
+              campaignSystem={selectedSystem === 'A.A. V2' ? 'aa-v2' : 'arcana-adventure'}
             />
           </div>
 
@@ -7559,6 +7560,7 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
                 canEdit={true}
                 draftRolls={!initialData?.id ? draftRolls : undefined}
                 onDraftRollsChange={!initialData?.id ? setDraftRolls : undefined}
+                campaignSystem={selectedSystem === 'A.A. V2' ? 'aa-v2' : 'arcana-adventure'}
               />
             </div>
           </div>

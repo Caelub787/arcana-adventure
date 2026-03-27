@@ -58,6 +58,7 @@ interface RollEntriesEditorProps {
   draftRolls?: Partial<RollEntry>[];
   onDraftRollsChange?: (rolls: Partial<RollEntry>[]) => void;
   characterCustomSkills?: any[];
+  campaignSystem?: string;
 }
 
 const ATTRIBUTE_OPTIONS = ["might", "finesse", "wit", "presence", "will", "craft"];
@@ -353,6 +354,7 @@ function RollForm({
   saving,
   isNew,
   availableEffects = [],
+  campaignSystem,
 }: {
   form: Partial<RollEntry>;
   setForm: React.Dispatch<React.SetStateAction<Partial<RollEntry>>>;
@@ -361,6 +363,7 @@ function RollForm({
   saving: boolean;
   isNew: boolean;
   availableEffects?: any[];
+  campaignSystem?: string;
 }) {
   const prefix = isNew ? "new-roll" : `edit-roll-${form.id}`;
 
@@ -645,27 +648,29 @@ function RollForm({
         )}
       </CollapsibleSection>
 
-      <CollapsibleSection title="Mana Cost" testId={`section-${prefix}-mana-cost`}>
-        <ToggleButton
-          active={!!form.requiresMana}
-          onClick={() => setForm((f) => ({ ...f, requiresMana: !f.requiresMana }))}
-          label="Require Mana"
-          testId={`toggle-${prefix}-requiresMana`}
-        />
-        {form.requiresMana && (
-          <div className="mt-2">
-            <Label className="text-xs text-violet-400">Mana Cost</Label>
-            <Input
-              className="bg-stone-900 border-violet-700 h-7 text-xs"
-              type="number"
-              value={form.manaCost ?? ""}
-              onChange={(e) => setForm((f) => ({ ...f, manaCost: e.target.value ? parseInt(e.target.value) : undefined }))}
-              placeholder="Mana cost"
-              data-testid={`input-${prefix}-manaCost`}
-            />
-          </div>
-        )}
-      </CollapsibleSection>
+      {campaignSystem === 'aa-v2' && (
+        <CollapsibleSection title="Mana Cost" testId={`section-${prefix}-mana-cost`}>
+          <ToggleButton
+            active={!!form.requiresMana}
+            onClick={() => setForm((f) => ({ ...f, requiresMana: !f.requiresMana }))}
+            label="Require Mana"
+            testId={`toggle-${prefix}-requiresMana`}
+          />
+          {form.requiresMana && (
+            <div className="mt-2">
+              <Label className="text-xs text-violet-400">Mana Cost</Label>
+              <Input
+                className="bg-stone-900 border-violet-700 h-7 text-xs"
+                type="number"
+                value={form.manaCost ?? ""}
+                onChange={(e) => setForm((f) => ({ ...f, manaCost: e.target.value ? parseInt(e.target.value) : undefined }))}
+                placeholder="Mana cost"
+                data-testid={`input-${prefix}-manaCost`}
+              />
+            </div>
+          )}
+        </CollapsibleSection>
+      )}
 
       <CollapsibleSection title="Chat Message" testId={`section-${prefix}-chat-message`}>
         <ToggleButton
@@ -855,7 +860,7 @@ function RollForm({
   );
 }
 
-export function RollEntriesEditor({ ownerType, ownerId, canEdit, onExecuteRoll, draftRolls, onDraftRollsChange, characterCustomSkills }: RollEntriesEditorProps) {
+export function RollEntriesEditor({ ownerType, ownerId, canEdit, onExecuteRoll, draftRolls, onDraftRollsChange, characterCustomSkills, campaignSystem }: RollEntriesEditorProps) {
   const queryClient = useQueryClient();
   const [addingNew, setAddingNew] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -1041,6 +1046,7 @@ export function RollEntriesEditor({ ownerType, ownerId, canEdit, onExecuteRoll, 
             saving={isDraftMode ? false : createMutation.isPending}
             isNew
             availableEffects={availableEffects}
+            campaignSystem={campaignSystem}
           />
         </div>
       )}
@@ -1086,6 +1092,7 @@ export function RollEntriesEditor({ ownerType, ownerId, canEdit, onExecuteRoll, 
                 saving={isDraftMode ? false : updateMutation.isPending}
                 isNew={false}
                 availableEffects={availableEffects}
+                campaignSystem={campaignSystem}
               />
             ) : (
               <div>

@@ -1214,15 +1214,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
           
           let newMana: number;
           if (isGain) {
-            newMana = Math.min((character as any).mana + amount, (character as any).maxMana);
+            newMana = Math.min(character.mana + amount, character.maxMana);
           } else {
-            newMana = Math.max(0, (character as any).mana - amount);
+            newMana = Math.max(0, character.mana - amount);
           }
           
-          await storage.updateCharacter(characterId, { mana: newMana } as any);
+          await storage.updateCharacter(characterId, { mana: newMana });
           
           const actionText = isGain ? 'restored' : 'drained';
-          const chatText = `${attackerName || username} ${actionText} ${amount} mana ${isGain ? 'to' : 'from'} ${character.name} (Mana: ${(character as any).mana} → ${newMana})`;
+          const chatText = `${attackerName || username} ${actionText} ${amount} mana ${isGain ? 'to' : 'from'} ${character.name} (Mana: ${character.mana} → ${newMana})`;
           
           const chatMessage = await storage.createChatMessage({
             campaignId,
@@ -1236,7 +1236,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             type: "character_mana_update",
             characterId,
             mana: newMana,
-            previousMana: (character as any).mana,
+            previousMana: character.mana,
             amount,
             isGain,
             attackerName: attackerName || username
@@ -1247,7 +1247,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             message: chatMessage
           });
           
-          console.log(`[WebSocket] Combat mana: ${attackerName || username} ${actionText} ${amount} mana ${isGain ? 'to' : 'from'} ${character.name} (Mana: ${(character as any).mana} → ${newMana})`);
+          console.log(`[WebSocket] Combat mana: ${attackerName || username} ${actionText} ${amount} mana ${isGain ? 'to' : 'from'} ${character.name} (Mana: ${character.mana} → ${newMana})`);
         }
         
         // Handle token updates - broadcast to all
