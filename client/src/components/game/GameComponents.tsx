@@ -16139,7 +16139,6 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
     description: string;
     image: string;
     castingTime: string;
-    range: number | string;
     duration: string;
     damageType: string;
     damageDice: string;
@@ -16160,7 +16159,6 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
     description: '',
     image: '',
     castingTime: 'action',
-    range: 30,
     duration: 'Instant',
     damageType: '',
     damageDice: '',
@@ -16201,7 +16199,6 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
         description: editSpellData.description || '',
         image: editSpellData.image || '',
         castingTime: normalizeCastingTime(editSpellData.castingTime),
-        range: editSpellData.range ?? 30,
         duration: normalizeDuration(editSpellData.duration),
         damageType: editSpellData.damageType || '',
         damageDice: editSpellData.damage || editSpellData.damageDice || '',
@@ -16224,7 +16221,6 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
         description: '',
         image: '',
         castingTime: 'action',
-        range: 30,
         duration: 'Instant',
         damageType: '',
         damageDice: '',
@@ -16269,7 +16265,6 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
       description: spellFormData.description,
       image: spellFormData.image || undefined,
       castingTime: spellFormData.castingTime,
-      range: spellFormData.range ? Number(spellFormData.range) : undefined,
       duration: spellFormData.duration,
       damageType: normalizeNone(spellFormData.damageType),
       damage: spellFormData.damageDice,
