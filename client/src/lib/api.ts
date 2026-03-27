@@ -1380,8 +1380,9 @@ class ApiClient {
   }
 
   // Public skills (for character sheet)
-  async getPublicSkills(): Promise<SystemSkill[]> {
-    return this.request('/skills');
+  async getPublicSkills(system?: string): Promise<SystemSkill[]> {
+    const params = system ? `?system=${encodeURIComponent(system)}` : '';
+    return this.request(`/skills${params}`);
   }
 
   // Character Custom Skills
@@ -1436,8 +1437,9 @@ class ApiClient {
   }
 
   // Public traits (for character sheet)
-  async getPublicTraits(): Promise<SystemTrait[]> {
-    return this.request('/traits');
+  async getPublicTraits(system?: string): Promise<SystemTrait[]> {
+    const params = system ? `?system=${encodeURIComponent(system)}` : '';
+    return this.request(`/traits${params}`);
   }
 
   // Character Traits

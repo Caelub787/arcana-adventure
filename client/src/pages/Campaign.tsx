@@ -12172,6 +12172,7 @@ export default function Campaign() {
                }}
                campaignMembers={members as any[]}
                currentUserId={user?.id}
+               campaignSystem={campaign?.system}
              />
            )}
           

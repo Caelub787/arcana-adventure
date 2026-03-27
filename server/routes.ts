@@ -5299,7 +5299,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!charClass) return res.status(404).json({ error: "Character class not found" });
 
       const newLevel = charClass.classLevel + 1;
-      const totalPoints = 2 + newLevel + (2 * Math.floor(newLevel / 3));
+      const totalPoints = 3 * newLevel + 2 * Math.floor(newLevel / 3);
       const spentNodes = await storage.getCharacterClassSkills(req.params.id, charClass.classId);
       const nodes = await storage.getClassSkillNodes(charClass.classId);
       const spentPoints = spentNodes.reduce((sum, s) => {
@@ -5363,7 +5363,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const n = allNodes.find(an => an.id === s.nodeId);
         return sum + (n?.cost || 0);
       }, 0);
-      const totalPoints = 2 + charClass.classLevel + (2 * Math.floor(charClass.classLevel / 3));
+      const totalPoints = 3 * charClass.classLevel + 2 * Math.floor(charClass.classLevel / 3);
       const available = totalPoints - spentPoints;
 
       if (node.cost > available) {

@@ -242,17 +242,19 @@ function HiddenRollSkillPicker({
   requiredValue,
   onSkillChange,
   onValueChange,
+  campaignSystem,
 }: {
   prefix: string;
   selectedSkillId?: string;
   requiredValue: number;
   onSkillChange: (skillId: string | undefined) => void;
   onValueChange: (value: number) => void;
+  campaignSystem?: string;
 }) {
   const [skillSearch, setSkillSearch] = useState("");
   const { data: systemSkills = [] } = useQuery({
-    queryKey: ['system-skills'],
-    queryFn: () => api.getPublicSkills(),
+    queryKey: ['system-skills', campaignSystem],
+    queryFn: () => api.getPublicSkills(campaignSystem),
   });
 
   const filteredSkills = systemSkills.filter((s: any) =>
@@ -802,6 +804,7 @@ function RollForm({
               requiredValue={form.requiredSkillValue || 1}
               onSkillChange={(skillId) => setForm(f => ({ ...f, requiredSkillId: skillId }))}
               onValueChange={(val) => setForm(f => ({ ...f, requiredSkillValue: val }))}
+              campaignSystem={campaignSystem}
             />
           )}
         </div>
@@ -907,8 +910,8 @@ export function RollEntriesEditor({ ownerType, ownerId, canEdit, onExecuteRoll, 
   });
 
   const { data: systemSkills = [] } = useQuery({
-    queryKey: ['system-skills'],
-    queryFn: () => api.getPublicSkills(),
+    queryKey: ['system-skills', campaignSystem],
+    queryFn: () => api.getPublicSkills(campaignSystem),
   });
 
   const isDraftMode = !ownerId;

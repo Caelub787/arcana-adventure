@@ -4211,6 +4211,7 @@ interface BattleMapHotbarsProps {
   onClearTarget?: () => void;
   campaignMembers?: any[];
   currentUserId?: string;
+  campaignSystem?: string;
 }
 
 interface BattleMapHotbarSlotProps {
@@ -4249,12 +4250,13 @@ interface BattleMapHotbarSlotProps {
   onClearTarget?: () => void;
   campaignMembers?: any[];
   currentUserId?: string;
+  campaignSystem?: string;
 }
 
 // Ranged weapon categories that use ammunition
 const RANGED_WEAPON_CATEGORIES = ['bow', 'crossbow', 'sling', 'firearm'];
 
-const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHotbars, allItems, tokens, targetedTokenId, allCharacters, gridSize = 50, onEnterAoeMode, aoeTargetState, onAoeDamageRoll, sceneId, thrownItems, onRefetchThrownItems, onEnterDetonatableAoeMode, detonatableGridTarget, onClearDetonatableGridTarget, onRequestSaveRoll, onClearTarget, campaignMembers, currentUserId }: BattleMapHotbarSlotProps) {
+const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotIndex, type, color, character, allHotbars, allItems, tokens, targetedTokenId, allCharacters, gridSize = 50, onEnterAoeMode, aoeTargetState, onAoeDamageRoll, sceneId, thrownItems, onRefetchThrownItems, onEnterDetonatableAoeMode, detonatableGridTarget, onClearDetonatableGridTarget, onRequestSaveRoll, onClearTarget, campaignMembers, currentUserId, campaignSystem }: BattleMapHotbarSlotProps) {
   const queryClient = useQueryClient();
   
   // Modifier popup state
@@ -4329,8 +4331,8 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
   });
 
   const { data: systemSkillsForHotbar = [] } = useQuery({
-    queryKey: ['system-skills'],
-    queryFn: () => api.getPublicSkills(),
+    queryKey: ['system-skills', campaignSystem],
+    queryFn: () => api.getPublicSkills(campaignSystem),
   });
 
   const { data: itemRollEntries = [] } = useQuery({
@@ -8021,7 +8023,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
 }
 const BattleMapHotbarSlot = React.memo(BattleMapHotbarSlotInner);
 
-const BattleMapHotbarsInner = function BattleMapHotbars({ character, tokens, targetedTokenId, characters, gridSize, onEnterAoeMode, aoeTargetState, onAoeDamageRoll, sceneId, thrownItems, onRefetchThrownItems, onEnterDetonatableAoeMode, detonatableGridTarget, onClearDetonatableGridTarget, notesPanelOpen = false, notesPanelWidth = 0, onRequestSaveRoll, onClearTarget, campaignMembers, currentUserId }: BattleMapHotbarsProps) {
+const BattleMapHotbarsInner = function BattleMapHotbars({ character, tokens, targetedTokenId, characters, gridSize, onEnterAoeMode, aoeTargetState, onAoeDamageRoll, sceneId, thrownItems, onRefetchThrownItems, onEnterDetonatableAoeMode, detonatableGridTarget, onClearDetonatableGridTarget, notesPanelOpen = false, notesPanelWidth = 0, onRequestSaveRoll, onClearTarget, campaignMembers, currentUserId, campaignSystem }: BattleMapHotbarsProps) {
   const [activeHotbar, setActiveHotbar] = useState<string>('weapons');
   
   const { data: hotbars = [], isLoading: hotbarsLoading } = useQuery({
@@ -8239,6 +8241,7 @@ const BattleMapHotbarsInner = function BattleMapHotbars({ character, tokens, tar
                       onClearTarget={onClearTarget}
                       campaignMembers={campaignMembers}
                       currentUserId={currentUserId}
+                      campaignSystem={campaignSystem}
                     />
                   );
                 })}
@@ -15844,10 +15847,9 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
     enabled: !!character?.id,
   });
 
-  // Fetch system skills (admin-defined custom skills) - cached for 5 minutes
   const { data: systemSkills = [] } = useQuery({
-    queryKey: ['public-skills'],
-    queryFn: () => api.getPublicSkills(),
+    queryKey: ['public-skills', campaignSystem],
+    queryFn: () => api.getPublicSkills(campaignSystem),
     staleTime: 5 * 60 * 1000,
   });
 
@@ -15858,10 +15860,9 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
     enabled: !!character?.id,
   });
 
-  // Fetch system traits (admin-defined traits) - cached for 5 minutes
   const { data: systemTraits = [] } = useQuery({
-    queryKey: ['public-traits'],
-    queryFn: () => api.getPublicTraits(),
+    queryKey: ['public-traits', campaignSystem],
+    queryFn: () => api.getPublicTraits(campaignSystem),
     staleTime: 5 * 60 * 1000,
   });
 
@@ -15991,12 +15992,10 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
   const [itemTypeFilter, setItemTypeFilter] = useState("all");
   const [showAddItem, setShowAddItem] = useState(false);
   
-  // Prefetch lightweight item summaries when character sheet loads
-  // This makes "Add Item" dialog open instantly since data is already cached
   useQuery({
-    queryKey: campaignId ? ['template-items-summary', campaignId] : ['system-items-summary'],
-    queryFn: () => campaignId ? api.getTemplateItemSummaries(campaignId) : api.getSystemItemSummaries(),
-    staleTime: 10 * 60 * 1000, // Cache for 10 minutes
+    queryKey: campaignId ? ['template-items-summary', campaignId] : ['system-items-summary', campaignSystem],
+    queryFn: () => campaignId ? api.getTemplateItemSummaries(campaignId) : api.getSystemItemSummaries(campaignSystem),
+    staleTime: 10 * 60 * 1000,
   });
   const [showManageTemplates, setShowManageTemplates] = useState(false);
   const [selectedItem, setSelectedItem] = useState<any>(null);
@@ -17556,6 +17555,8 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                               maxHp: liveCharacter.maxHp,
                               energy: liveCharacter.energy,
                               maxEnergy: liveCharacter.maxEnergy,
+                              mana: liveCharacter.mana ?? 0,
+                              maxMana: liveCharacter.maxMana ?? 0,
                               race: liveCharacter.race || "Human",
                               size: liveCharacter.size || "Medium",
                               naturalArmor: liveCharacter.naturalArmor || 5,
@@ -21014,6 +21015,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
         onSave={(itemData) => createItemMutation.mutate(itemData)}
         isGM={isGM}
         campaignId={campaignId}
+        campaignSystem={campaignSystem}
         bringToFront={bringToFront}
         floatingZIndices={floatingZIndices}
       />
@@ -21396,7 +21398,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                 const charClass = characterClasses.find((cc: any) => cc.classId === cls.id);
                 const hasClass = !!charClass;
                 const classLevel = charClass?.classLevel || 0;
-                const totalPoints = hasClass ? 2 + classLevel + (2 * Math.floor(classLevel / 3)) : 0;
+                const totalPoints = hasClass ? 3 * classLevel + 2 * Math.floor(classLevel / 3) : 0;
                 const spentPoints = charClass?.spentPoints || 0;
                 const availablePoints = totalPoints - spentPoints;
                 return (
@@ -22257,7 +22259,7 @@ function ClassSkillTreeViewer({ classId, characterId, characterClass, canEdit, o
 
   const unlockedNodeIds = characterClass?.unlockedNodes || [];
   const classLevel = characterClass?.classLevel || 1;
-  const totalPoints = 2 + classLevel + (2 * Math.floor(classLevel / 3));
+  const totalPoints = 3 * classLevel + 2 * Math.floor(classLevel / 3);
   const spentPoints = characterClass?.spentPoints || 0;
   const availablePoints = totalPoints - spentPoints;
 
@@ -22421,7 +22423,7 @@ function ClassSkillTreeViewer({ classId, characterId, characterClass, canEdit, o
 }
 
 // Add Item Dialog Component
-function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId, bringToFront, floatingZIndices }: { open: boolean; onOpenChange: (open: boolean) => void; onSave: (data: any) => void; isGM: boolean; campaignId?: string; bringToFront?: (key: string) => void; floatingZIndices?: Record<string, number> }) {
+function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId, campaignSystem, bringToFront, floatingZIndices }: { open: boolean; onOpenChange: (open: boolean) => void; onSave: (data: any) => void; isGM: boolean; campaignId?: string; campaignSystem?: string; bringToFront?: (key: string) => void; floatingZIndices?: Record<string, number> }) {
   const [activeTab, setActiveTab] = useState<'templates' | 'create'>('templates');
   const [templateSearch, setTemplateSearch] = useState('');
   const [templateTypeFilter, setTemplateTypeFilter] = useState('all');
@@ -22440,12 +22442,11 @@ function AddItemDialog({ open, onOpenChange, onSave, isGM, campaignId, bringToFr
   const itemTypeOptions = ['weapon', 'armor', 'consumable', 'utility', 'container', 'currency'];
   const rarityOptions = ['common', 'uncommon', 'rare', 'epic', 'legendary'];
   
-  // Use lightweight summary endpoints for fast loading (only id, name, type, rarity, image)
   const { data: systemItemSummaries, isLoading: isLoadingSystem } = useQuery({
-    queryKey: ['system-items-summary'],
-    queryFn: () => api.getSystemItemSummaries(),
+    queryKey: ['system-items-summary', campaignSystem],
+    queryFn: () => api.getSystemItemSummaries(campaignSystem),
     enabled: !campaignId,
-    staleTime: 10 * 60 * 1000, // Cache for 10 minutes
+    staleTime: 10 * 60 * 1000,
   });
 
   const { data: templateSummaries, isLoading: isLoadingTemplate } = useQuery({
