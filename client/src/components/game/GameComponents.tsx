@@ -6799,6 +6799,16 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
     }
   };
 
+  const getCharAttrMod = (char: Record<string, unknown> | null | undefined, attrName: string): number => {
+    if (!char || !attrName) return 0;
+    const key = attrName.toLowerCase();
+    const attrMap: Record<string, string> = { might: 'might', finesse: 'finesse', wit: 'wit', presence: 'presence', will: 'will', craft: 'craft' };
+    const field = attrMap[key];
+    if (!field) return 0;
+    const val = char[field];
+    return typeof val === 'number' ? val : 0;
+  };
+
   const handleRollEntryExecution = async (rollEntry: any) => {
     console.log('[RollEntry] Executing:', rollEntry.name, 'Type:', rollEntry.rollType, 'TargetId:', targetedTokenId, 'Formula:', rollEntry.diceFormula);
     const isHealing = rollEntry.rollType === 'heal';
@@ -6817,6 +6827,9 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
           calculationBreakdown: `Requires ${rollEntry.energyCost} energy, you have ${currentEnergy}`,
         });
         return;
+      }
+      if (character?.id) {
+        gameWs.sendCombatEnergy(character.id, rollEntry.energyCost, character.name || 'Unknown', false);
       }
     }
 
@@ -6935,10 +6948,6 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
         gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', chatText, 'roll');
       }
 
-      if (rollEntry.requiresEnergy && rollEntry.energyCost > 0 && character?.id) {
-        gameWs.sendCombatEnergy(character.id, rollEntry.energyCost, character.name || 'Unknown', false);
-      }
-
       onClearTarget?.();
       setShowModifierPopup(false);
       setExtraModifier(0);
@@ -6952,7 +6961,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
       let saveDc = (rollEntry.saveDc || 10) + extraModifier;
       const dcType = rollEntry.saveDcType || 'value';
       if (dcType === 'caster' && rollEntry.saveDcAttribute && character) {
-        const casterAttrMod = (character as any)[rollEntry.saveDcAttribute.toLowerCase()] ?? 0;
+        const casterAttrMod = getCharAttrMod(character, rollEntry.saveDcAttribute);
         saveDc = 8 + casterAttrMod + extraModifier;
       }
       const itemOrSpellName = spellData?.name || itemData?.name || 'Effect';
@@ -7002,7 +7011,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
 
           let effectiveDc = saveDc;
           if (dcType === 'target' && rollEntry.saveDcAttribute && targetChar) {
-            const targetAttrMod = (targetChar as any)[rollEntry.saveDcAttribute.toLowerCase()] ?? 0;
+            const targetAttrMod = getCharAttrMod(targetChar, rollEntry.saveDcAttribute);
             effectiveDc = 8 + targetAttrMod + extraModifier;
           }
 
@@ -7050,10 +7059,6 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
             });
           }
         }
-      }
-
-      if (rollEntry.requiresEnergy && rollEntry.energyCost > 0 && character?.id) {
-        gameWs.sendCombatEnergy(character.id, rollEntry.energyCost, character.name || 'Unknown', false);
       }
 
       setPendingSaveResults(newSaveResults);
@@ -7289,10 +7294,6 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
     if (character.campaignId) {
       const chatText = `${label}: ${calculationBreakdown} = ${total}${rollEntry.damageType ? ` (${rollEntry.damageType})` : ''}`;
       gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', chatText, 'roll');
-    }
-
-    if (rollEntry.requiresEnergy && rollEntry.energyCost > 0 && character?.id) {
-      gameWs.sendCombatEnergy(character.id, rollEntry.energyCost, character.name || 'Unknown', false);
     }
 
     onClearTarget?.();
