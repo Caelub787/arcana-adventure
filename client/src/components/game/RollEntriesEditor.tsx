@@ -27,6 +27,9 @@ interface RollEntry {
   saveAttribute?: string;
   saveDc?: number;
   saveSuccessEffect?: string;
+  saveDcType?: string;
+  saveDcAttribute?: string;
+  statDirection?: string;
   gainEnergy?: boolean;
   isAttack?: boolean;
   isAoe?: boolean;
@@ -73,7 +76,20 @@ const ROLL_TYPE_COLORS: Record<string, string> = {
 
 const DAMAGE_TYPES = [
   "Sharp", "Blunt", "Piercing", "Flame", "Frost", "Storm",
-  "Tide", "Stone", "Flux", "Light", "Dark", "Sound", "Health",
+  "Tide", "Stone", "Flux", "Light", "Dark", "Sound",
+];
+
+const SAVE_SUCCESS_EFFECT_OPTIONS = [
+  { value: "half", label: "Half Damage" },
+  { value: "none", label: "No Damage" },
+  { value: "no_effect", label: "No Effect" },
+  { value: "quarter", label: "Quarter Damage" },
+];
+
+const SAVE_DC_TYPE_OPTIONS = [
+  { value: "value", label: "Save DC Value" },
+  { value: "target", label: "Target's DC" },
+  { value: "caster", label: "Caster's DC" },
 ];
 
 function emptyFormData(ownerType: string, ownerId: string): Partial<RollEntry> {
@@ -96,6 +112,9 @@ function emptyFormData(ownerType: string, ownerId: string): Partial<RollEntry> {
     saveAttribute: "",
     saveDc: undefined,
     saveSuccessEffect: "",
+    saveDcType: "value",
+    saveDcAttribute: "",
+    statDirection: "subtract",
     gainEnergy: false,
     isAttack: false,
     isAoe: false,
@@ -142,8 +161,17 @@ function getRollDetails(roll: RollEntry): string[] {
   const details: string[] = [];
   if (roll.range) details.push(`Range: ${roll.range}ft`);
   if (roll.isAoe && roll.aoeRange && roll.aoeShape) details.push(`AOE: ${roll.aoeRange}ft ${roll.aoeShape}`);
-  if (roll.requiresSave && roll.saveDc && roll.saveAttribute) {
-    details.push(`DC ${roll.saveDc} ${roll.saveAttribute.charAt(0).toUpperCase() + roll.saveAttribute.slice(1)} save`);
+  if (roll.requiresSave && roll.saveAttribute) {
+    const dcType = roll.saveDcType || 'value';
+    if (dcType === 'value' && roll.saveDc) {
+      details.push(`DC ${roll.saveDc} ${roll.saveAttribute.charAt(0).toUpperCase() + roll.saveAttribute.slice(1)} save`);
+    } else if (dcType === 'target') {
+      const dcAttr = roll.saveDcAttribute ? roll.saveDcAttribute.charAt(0).toUpperCase() + roll.saveDcAttribute.slice(1) : '?';
+      details.push(`Target's ${dcAttr} DC ${roll.saveAttribute.charAt(0).toUpperCase() + roll.saveAttribute.slice(1)} save`);
+    } else if (dcType === 'caster') {
+      const dcAttr = roll.saveDcAttribute ? roll.saveDcAttribute.charAt(0).toUpperCase() + roll.saveDcAttribute.slice(1) : '?';
+      details.push(`Caster's ${dcAttr} DC ${roll.saveAttribute.charAt(0).toUpperCase() + roll.saveAttribute.slice(1)} save`);
+    }
   }
   if (roll.requiresEnergy && roll.energyCost) {
     details.push(`Energy Cost: ${roll.energyCost}`);
@@ -422,6 +450,20 @@ function RollForm({
           </Select>
         </div>
       </div>
+      {form.applyToStat && form.applyToStat !== "none" && (
+        <div>
+          <Label className="text-xs text-stone-400">Direction</Label>
+          <Select value={form.statDirection || "subtract"} onValueChange={(v) => setForm((f) => ({ ...f, statDirection: v }))}>
+            <SelectTrigger className="bg-stone-900 border-stone-600 h-7 text-xs" data-testid={`select-${prefix}-statDirection`}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="add">Add</SelectItem>
+              <SelectItem value="subtract">Subtract</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      )}
 
       <CollapsibleSection title="Range & AOE" testId={`section-${prefix}-range-aoe`}>
         <div className="grid grid-cols-2 gap-2">
@@ -488,41 +530,80 @@ function RollForm({
           testId={`toggle-${prefix}-requiresSave`}
         />
         {form.requiresSave && (
-          <div className="grid grid-cols-2 gap-2 mt-2">
-            <div>
-              <Label className="text-xs text-stone-400">Save Attribute</Label>
-              <Select value={form.saveAttribute || "_none"} onValueChange={(v) => setForm((f) => ({ ...f, saveAttribute: v === "_none" ? "" : v }))}>
-                <SelectTrigger className="bg-stone-900 border-stone-600 h-7 text-xs" data-testid={`select-${prefix}-saveAttribute`}>
-                  <SelectValue placeholder="Select" />
-                </SelectTrigger>
-                <SelectContent>
-                  {ATTRIBUTE_OPTIONS.map((attr) => (
-                    <SelectItem key={attr} value={attr}>
-                      {attr.charAt(0).toUpperCase() + attr.slice(1)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+          <div className="space-y-2 mt-2">
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <Label className="text-xs text-stone-400">Save Attribute</Label>
+                <Select value={form.saveAttribute || "_none"} onValueChange={(v) => setForm((f) => ({ ...f, saveAttribute: v === "_none" ? "" : v }))}>
+                  <SelectTrigger className="bg-stone-900 border-stone-600 h-7 text-xs" data-testid={`select-${prefix}-saveAttribute`}>
+                    <SelectValue placeholder="Select" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ATTRIBUTE_OPTIONS.map((attr) => (
+                      <SelectItem key={attr} value={attr}>
+                        {attr.charAt(0).toUpperCase() + attr.slice(1)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-xs text-stone-400">DC Type</Label>
+                <Select value={form.saveDcType || "value"} onValueChange={(v) => setForm((f) => ({ ...f, saveDcType: v, saveDcAttribute: v === "value" ? "" : (f.saveDcAttribute || "") }))}>
+                  <SelectTrigger className="bg-stone-900 border-stone-600 h-7 text-xs" data-testid={`select-${prefix}-saveDcType`}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {SAVE_DC_TYPE_OPTIONS.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
-            <div>
-              <Label className="text-xs text-stone-400">Save DC</Label>
-              <Input
-                className="bg-stone-900 border-stone-600 h-7 text-xs"
-                type="number"
-                value={form.saveDc ?? ""}
-                onChange={(e) => setForm((f) => ({ ...f, saveDc: e.target.value ? parseInt(e.target.value) : undefined }))}
-                data-testid={`input-${prefix}-saveDc`}
-              />
-            </div>
-            <div className="col-span-2">
-              <Label className="text-xs text-stone-400">Save Success Effect</Label>
-              <Input
-                className="bg-stone-900 border-stone-600 h-7 text-xs"
-                value={form.saveSuccessEffect || ""}
-                onChange={(e) => setForm((f) => ({ ...f, saveSuccessEffect: e.target.value }))}
-                placeholder="e.g. Half damage"
-                data-testid={`input-${prefix}-saveSuccessEffect`}
-              />
+            <div className="grid grid-cols-2 gap-2">
+              {(form.saveDcType === "value" || !form.saveDcType) && (
+                <div>
+                  <Label className="text-xs text-stone-400">Save DC</Label>
+                  <Input
+                    className="bg-stone-900 border-stone-600 h-7 text-xs"
+                    type="number"
+                    value={form.saveDc ?? ""}
+                    onChange={(e) => setForm((f) => ({ ...f, saveDc: e.target.value ? parseInt(e.target.value) : undefined }))}
+                    data-testid={`input-${prefix}-saveDc`}
+                  />
+                </div>
+              )}
+              {(form.saveDcType === "target" || form.saveDcType === "caster") && (
+                <div>
+                  <Label className="text-xs text-stone-400">DC Attribute</Label>
+                  <Select value={form.saveDcAttribute || "_none"} onValueChange={(v) => setForm((f) => ({ ...f, saveDcAttribute: v === "_none" ? "" : v }))}>
+                    <SelectTrigger className="bg-stone-900 border-stone-600 h-7 text-xs" data-testid={`select-${prefix}-saveDcAttribute`}>
+                      <SelectValue placeholder="Select attribute" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {ATTRIBUTE_OPTIONS.map((attr) => (
+                        <SelectItem key={attr} value={attr}>
+                          {attr.charAt(0).toUpperCase() + attr.slice(1)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+              <div>
+                <Label className="text-xs text-stone-400">On Successful Save</Label>
+                <Select value={form.saveSuccessEffect || "half"} onValueChange={(v) => setForm((f) => ({ ...f, saveSuccessEffect: v }))}>
+                  <SelectTrigger className="bg-stone-900 border-stone-600 h-7 text-xs" data-testid={`select-${prefix}-saveSuccessEffect`}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {SAVE_SUCCESS_EFFECT_OPTIONS.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           </div>
         )}

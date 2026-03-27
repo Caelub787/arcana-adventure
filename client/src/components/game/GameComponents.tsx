@@ -6948,8 +6948,13 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
     }
 
     if (rollEntry.requiresSave) {
-      const saveDc = (rollEntry.saveDc || 10) + extraModifier;
       const saveAttr = rollEntry.saveAttribute || rollEntry.attribute || 'wit';
+      let saveDc = (rollEntry.saveDc || 10) + extraModifier;
+      const dcType = rollEntry.saveDcType || 'value';
+      if (dcType === 'caster' && rollEntry.saveDcAttribute && character) {
+        const casterAttrMod = (character as any)[rollEntry.saveDcAttribute.toLowerCase()] ?? 0;
+        saveDc = 8 + casterAttrMod + extraModifier;
+      }
       const itemOrSpellName = spellData?.name || itemData?.name || 'Effect';
       const newSaveResults: Array<{ tokenId: string; characterId: string; characterName: string; saved: boolean; saveSuccessEffect: string }> = [];
 
@@ -6995,13 +7000,19 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
           const assignedMember = campaignMembers?.find((m: any) => m.assignedCharacterId === targetChar.id);
           const ownerUserId = assignedMember?.userId || targetChar.userId;
 
+          let effectiveDc = saveDc;
+          if (dcType === 'target' && rollEntry.saveDcAttribute && targetChar) {
+            const targetAttrMod = (targetChar as any)[rollEntry.saveDcAttribute.toLowerCase()] ?? 0;
+            effectiveDc = 8 + targetAttrMod + extraModifier;
+          }
+
           try {
             const result = await onRequestSaveRoll({
               targetCharacterId: targetChar.id,
               targetUserId: ownerUserId || targetChar.userId,
               spellName: itemOrSpellName,
               saveAttribute: saveAttr,
-              saveDc: saveDc,
+              saveDc: effectiveDc,
               damage: 0,
               damageType: rollEntry.damageType || '',
               saveSuccessEffect: rollEntry.saveSuccessEffect || 'half',
@@ -7017,7 +7028,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
               saveSuccessEffect: rollEntry.saveSuccessEffect || 'half',
             });
 
-            const saveLabel = `${targetChar.name} ${saveAttr.charAt(0).toUpperCase() + saveAttr.slice(1)} Save (DC ${saveDc}) — ${result.saved ? 'SAVED!' : 'FAILED!'}`;
+            const saveLabel = `${targetChar.name} ${saveAttr.charAt(0).toUpperCase() + saveAttr.slice(1)} Save (DC ${effectiveDc}) — ${result.saved ? 'SAVED!' : 'FAILED!'}`;
             triggerRollNotification({
               type: result.saved ? 'system' : 'attack',
               dieType: 'd20' as any,
@@ -7026,7 +7037,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
               total: result.total,
               username: targetChar.name,
               characterName: targetChar.name,
-              calculationBreakdown: `d20 = ${result.roll} → Total: ${result.total} vs DC ${saveDc}`,
+              calculationBreakdown: `d20 = ${result.roll} → Total: ${result.total} vs DC ${effectiveDc}`,
               customColor: rollEntry.primaryColor || undefined,
             });
           } catch (e) {
@@ -7092,9 +7103,16 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
         let damageToApply = total;
         let saveNote = '';
         if (saveResult.saved) {
-          if (saveResult.saveSuccessEffect === 'none') {
+          const effect = saveResult.saveSuccessEffect || 'half';
+          if (effect === 'none') {
             damageToApply = 0;
-            saveNote = ' (Saved - No effect)';
+            saveNote = ' (Saved - No Damage)';
+          } else if (effect === 'no_effect') {
+            damageToApply = 0;
+            saveNote = ' (Saved - No Effect)';
+          } else if (effect === 'quarter') {
+            damageToApply = Math.floor(total / 4);
+            saveNote = ' (Saved - Quarter)';
           } else {
             damageToApply = Math.floor(total / 2);
             saveNote = ' (Saved - Half)';
@@ -7103,26 +7121,27 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
           saveNote = ' (Failed save)';
         }
 
+        const isAdding = rollEntry.statDirection === 'add' || isHealing || rollEntry.gainEnergy || false;
         if (damageToApply > 0 && saveApplyStat !== 'none') {
           if (saveApplyStat === 'energy') {
             gameWs.sendCombatEnergy(
               targetChar.id,
               damageToApply,
               character?.name || 'Unknown',
-              isHealing || rollEntry.gainEnergy || false
+              isAdding
             );
           } else if (saveApplyStat === 'hp') {
             await applyDamageToTarget(
               damageToApply,
               rollEntry.damageType || null,
               targetChar,
-              isHealing ? true : undefined
+              isAdding ? true : undefined
             );
           }
         }
         
         const statLabel = saveApplyStat === 'energy' ? 'Energy' : (saveApplyStat === 'hp' ? 'HP' : '');
-        const dmgText = saveApplyStat === 'none' ? `${damageToApply}` : (isHealing ? `+${damageToApply} ${statLabel}` : `-${damageToApply} ${statLabel}`);
+        const dmgText = saveApplyStat === 'none' ? `${damageToApply}` : (isAdding ? `+${damageToApply} ${statLabel}` : `-${damageToApply} ${statLabel}`);
         affectedNames.push(`${saveResult.characterName}: ${dmgText}${saveNote}`);
       }
 
@@ -7167,6 +7186,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
       if (tokensInAoe.length > 0) {
         const affectedNames: string[] = [];
         const aoeApplyStat = rollEntry.applyToStat || 'none';
+        const aoeIsAdding = rollEntry.statDirection === 'add' || isHealing || rollEntry.gainEnergy || false;
 
         for (const token of tokensInAoe) {
           const targetChar = allCharacters?.find((c: any) => c.id === token.characterId);
@@ -7176,14 +7196,14 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
                 targetChar.id,
                 total,
                 character?.name || 'Unknown',
-                isHealing || rollEntry.gainEnergy || false
+                aoeIsAdding
               );
             } else if (aoeApplyStat === 'hp') {
               await applyDamageToTarget(
                 total,
                 rollEntry.damageType || null,
                 targetChar,
-                isHealing ? true : undefined
+                aoeIsAdding ? true : undefined
               );
             }
             affectedNames.push(targetChar.name);
@@ -7223,6 +7243,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
     }
 
     const applyStat = rollEntry.applyToStat || 'none';
+    const singleIsAdding = rollEntry.statDirection === 'add' || isHealing || rollEntry.gainEnergy || false;
     if (targetedTokenId) {
       const targetData = getTargetData();
       if (targetData) {
@@ -7232,17 +7253,17 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
             targetData.characterId,
             total,
             character?.name || 'Unknown',
-            isHealing || rollEntry.gainEnergy || false
+            singleIsAdding
           );
-          const energyAction = (isHealing || rollEntry.gainEnergy) ? '+' : '-';
+          const energyAction = singleIsAdding ? '+' : '-';
           label = `${itemOrSpellName} - ${rollEntry.name} → ${displayName} (${energyAction}${total} Energy)`;
         } else if (applyStat === 'hp' && targetData.characterId) {
-          label = `${itemOrSpellName} - ${rollEntry.name} → ${displayName} (${isHealing ? '+' : '-'}${total} HP)`;
+          label = `${itemOrSpellName} - ${rollEntry.name} → ${displayName} (${singleIsAdding ? '+' : '-'}${total} HP)`;
           applyDamageToTarget(
             total,
             rollEntry.damageType || null,
             targetData.character,
-            isHealing ? true : undefined,
+            singleIsAdding ? true : undefined,
             targetData.characterId
           ).catch(err => console.error('Failed to apply damage:', err));
         } else {
@@ -19759,34 +19780,6 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                         <div className="grid grid-cols-2 gap-3">
                           <div>
                             <div className="flex items-center gap-2">
-                              <Label>Range (feet)</Label>
-                              {!isGM && (
-                                <TooltipProvider>
-                                  <Tooltip>
-                                    <TooltipTrigger>
-                                      <Lock className="h-3 w-3 text-amber-600" />
-                                    </TooltipTrigger>
-                                    <TooltipContent>
-                                      <p>Only GMs can edit this field</p>
-                                    </TooltipContent>
-                                  </Tooltip>
-                                </TooltipProvider>
-                              )}
-                            </div>
-                            <Input
-                              type="number"
-                              min="0"
-                              value={spellFormData.range}
-                              onChange={(e) => handleSpellNumericChange('range', e.target.value)}
-                              placeholder="30"
-                              className={`bg-stone-800 ${isGM ? 'border-amber-700' : 'border-stone-700'}`}
-                              disabled={!isGM}
-                              data-testid="input-spell-range"
-                            />
-                          </div>
-
-                          <div>
-                            <div className="flex items-center gap-2">
                               <Label>Energy Cost</Label>
                               {!isGM && (
                                 <TooltipProvider>
@@ -20031,6 +20024,8 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                               <SelectContent>
                                 <SelectItem value="half">Half Damage</SelectItem>
                                 <SelectItem value="none">No Damage</SelectItem>
+                                <SelectItem value="no_effect">No Effect</SelectItem>
+                                <SelectItem value="quarter">Quarter Damage</SelectItem>
                               </SelectContent>
                             </Select>
                           </div>
