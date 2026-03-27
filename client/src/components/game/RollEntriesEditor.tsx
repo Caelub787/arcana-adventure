@@ -48,6 +48,8 @@ interface RollEntry {
   isHidden?: boolean;
   requiredSkillId?: string;
   requiredSkillValue?: number;
+  hasDcCheck?: boolean;
+  dcToSucceed?: number;
 }
 
 interface RollEntriesEditorProps {
@@ -136,6 +138,8 @@ function emptyFormData(ownerType: string, ownerId: string): Partial<RollEntry> {
     isHidden: false,
     requiredSkillId: undefined,
     requiredSkillValue: 1,
+    hasDcCheck: false,
+    dcToSucceed: undefined,
   };
 }
 
@@ -189,6 +193,9 @@ function getRollDetails(roll: RollEntry): string[] {
                     roll.effectTriggerCondition === 'fail' ? 'on fail' : 'always';
     const count = (roll.tokenEffectIds || []).length;
     details.push(`Applies ${count} effect${count !== 1 ? 's' : ''} (${trigger})`);
+  }
+  if (roll.hasDcCheck && roll.dcToSucceed) {
+    details.push(`DC ${roll.dcToSucceed} to succeed`);
   }
   if (roll.isHidden) {
     details.push(`Hidden (requires skill lvl ${roll.requiredSkillValue || 1}+)`);
@@ -747,6 +754,31 @@ function RollForm({
                 )}
               </div>
             </div>
+          </div>
+        )}
+      </CollapsibleSection>
+
+      <CollapsibleSection title="DC to Succeed" testId={`section-${prefix}-dc-check`}>
+        <ToggleButton
+          active={!!form.hasDcCheck}
+          onClick={() => setForm((f) => ({ ...f, hasDcCheck: !f.hasDcCheck }))}
+          label="Enable DC Check"
+          testId={`toggle-${prefix}-hasDcCheck`}
+        />
+        {form.hasDcCheck && (
+          <div className="mt-2">
+            <Label className="text-xs text-stone-400">DC Value</Label>
+            <Input
+              className="bg-stone-900 border-stone-600 h-7 text-xs"
+              type="number"
+              value={form.dcToSucceed ?? ""}
+              onChange={(e) => setForm((f) => ({ ...f, dcToSucceed: e.target.value ? parseInt(e.target.value) : undefined }))}
+              placeholder="e.g. 15"
+              data-testid={`input-${prefix}-dcToSucceed`}
+            />
+            <p className="text-[10px] text-stone-500 italic mt-1">
+              Roll must meet or exceed this DC to succeed. Result shown in chat and roll notification.
+            </p>
           </div>
         )}
       </CollapsibleSection>

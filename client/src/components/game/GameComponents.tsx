@@ -15950,17 +15950,21 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
     const fullFormula = formulaParts.join('');
     const result = rollDice(fullFormula);
     
+    const dcCheck = rollEntry.hasDcCheck && rollEntry.dcToSucceed;
+    const dcSuccess = dcCheck ? result.total >= rollEntry.dcToSucceed : null;
+    
     const breakdown = [
       rollEntry.diceFormula,
       rollEntry.mod ? `Mod: ${rollEntry.mod > 0 ? '+' : ''}${rollEntry.mod}` : null,
       rollEntry.attribute ? `${rollEntry.attribute.charAt(0).toUpperCase() + rollEntry.attribute.slice(1)}: ${attrMod >= 0 ? '+' : ''}${attrMod}` : null,
       rollEntry.damageType ? `Type: ${rollEntry.damageType}` : null,
+      dcCheck ? `DC ${rollEntry.dcToSucceed}: ${dcSuccess ? 'SUCCESS' : 'FAILED'}` : null,
     ].filter(Boolean).join(' | ');
     
     triggerRollNotification({
       type: rollEntry.rollType === 'heal' ? 'heal' : rollEntry.rollType === 'attack' ? 'attack' : 'damage',
       dieType: 'd20',
-      label: `${selectedSpell.name} - ${rollEntry.name}`,
+      label: `${selectedSpell.name} - ${rollEntry.name}${dcCheck ? (dcSuccess ? ' - SUCCESS' : ' - FAILED') : ''}`,
       result: result.total,
       modifier: (rollEntry.mod || 0) + attrMod,
       total: result.total,
@@ -15970,7 +15974,12 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
       isHealing: rollEntry.rollType === 'heal',
     });
     
-    if (character?.campaignId) {
+    if (dcCheck && character?.campaignId) {
+      const dcMsg = dcSuccess 
+        ? `${selectedSpell.name} - ${rollEntry.name} SUCCEEDED! (Rolled ${result.total} vs DC ${rollEntry.dcToSucceed})`
+        : `${selectedSpell.name} - ${rollEntry.name} FAILED (Rolled ${result.total} vs DC ${rollEntry.dcToSucceed})`;
+      gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', dcMsg, 'roll');
+    } else if (character?.campaignId) {
       const chatText = `${selectedSpell.name} - ${rollEntry.name}: ${breakdown} = ${result.total}`;
       gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', chatText, 'roll');
     }
@@ -24131,18 +24140,22 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
     const fullFormula = formulaParts.join('');
     const result = rollDice(fullFormula);
     
+    const dcCheck = rollEntry.hasDcCheck && rollEntry.dcToSucceed;
+    const dcSuccess = dcCheck ? result.total >= rollEntry.dcToSucceed : null;
+    
     const breakdown = [
       rollEntry.diceFormula,
       rollEntry.mod ? `Mod: ${rollEntry.mod > 0 ? '+' : ''}${rollEntry.mod}` : null,
       rollEntry.attribute ? `${rollEntry.attribute.charAt(0).toUpperCase() + rollEntry.attribute.slice(1)}: ${attrMod >= 0 ? '+' : ''}${attrMod}` : null,
       rollEntry.damageType ? `Type: ${rollEntry.damageType}` : null,
       energyCost > 0 ? `Energy: -${energyCost}` : null,
+      dcCheck ? `DC ${rollEntry.dcToSucceed}: ${dcSuccess ? 'SUCCESS' : 'FAILED'}` : null,
     ].filter(Boolean).join(' | ');
     
     triggerRollNotification({
       type: rollEntry.rollType === 'heal' ? 'heal' : rollEntry.rollType === 'attack' ? 'attack' : 'damage',
       dieType: 'd20',
-      label: `${item.name} - ${rollEntry.name}`,
+      label: `${item.name} - ${rollEntry.name}${dcCheck ? (dcSuccess ? ' - SUCCESS' : ' - FAILED') : ''}`,
       result: result.total,
       modifier: (rollEntry.mod || 0) + attrMod,
       total: result.total,
@@ -24151,6 +24164,13 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
       calculationBreakdown: breakdown,
       isHealing: rollEntry.rollType === 'heal',
     });
+
+    if (dcCheck && character?.campaignId) {
+      const dcMsg = dcSuccess 
+        ? `${item.name} - ${rollEntry.name} SUCCEEDED! (Rolled ${result.total} vs DC ${rollEntry.dcToSucceed})`
+        : `${item.name} - ${rollEntry.name} FAILED (Rolled ${result.total} vs DC ${rollEntry.dcToSucceed})`;
+      gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', dcMsg, 'roll');
+    }
 
     if (rollEntry.applyToStat && rollEntry.applyToStat !== 'none' && character?.id) {
       const isHeal = rollEntry.rollType === 'heal';

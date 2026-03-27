@@ -1312,6 +1312,8 @@ export const rollEntries = pgTable("roll_entries", {
   isHidden: boolean("is_hidden").default(false),
   requiredSkillId: varchar("required_skill_id"),
   requiredSkillValue: integer("required_skill_value").default(1),
+  hasDcCheck: boolean("has_dc_check").default(false),
+  dcToSucceed: integer("dc_to_succeed"),
 });
 
 export const insertRollEntrySchema = createInsertSchema(rollEntries).omit({

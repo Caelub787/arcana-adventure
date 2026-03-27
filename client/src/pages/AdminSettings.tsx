@@ -4925,6 +4925,7 @@ function FeatTreesView({ systemSlug }: { systemSlug: string }) {
           onOpenChange={setShowAddTree}
           onSave={(data) => createTreeMutation.mutate(data)}
           isLoading={createTreeMutation.isPending}
+          isAAV2={isAAV2}
         />
 
         {editingTree && (
@@ -4934,6 +4935,7 @@ function FeatTreesView({ systemSlug }: { systemSlug: string }) {
             onSave={(data) => updateTreeMutation.mutate({ id: editingTree.id, data })}
             initialData={editingTree}
             isLoading={updateTreeMutation.isPending}
+            isAAV2={isAAV2}
           />
         )}
       </Card>
@@ -4985,6 +4987,7 @@ function FeatTreesView({ systemSlug }: { systemSlug: string }) {
           onSave={(data) => updateTreeMutation.mutate({ id: editingTree.id, data })}
           initialData={editingTree}
           isLoading={updateTreeMutation.isPending}
+          isAAV2={isAAV2}
         />
       )}
 
@@ -5030,9 +5033,10 @@ interface FeatTreeFormDialogProps {
   onSave: (data: Partial<FeatTree>) => void;
   initialData?: FeatTree | null;
   isLoading?: boolean;
+  isAAV2?: boolean;
 }
 
-function FeatTreeFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: FeatTreeFormDialogProps) {
+function FeatTreeFormDialog({ open, onOpenChange, onSave, initialData, isLoading, isAAV2 }: FeatTreeFormDialogProps) {
   const [formData, setFormData] = useState({
     name: initialData?.name || '',
     description: initialData?.description || '',
@@ -5066,7 +5070,7 @@ function FeatTreeFormDialog({ open, onOpenChange, onSave, initialData, isLoading
       <DialogContent className="bg-stone-900 border-stone-700 max-w-md">
         <DialogHeader>
           <DialogTitle className="text-purple-500">
-            {initialData ? 'Edit Feat Tree' : 'Create Feat Tree'}
+            {initialData ? `Edit ${isAAV2 ? 'Skill Tree' : 'Feat Tree'}` : `Create ${isAAV2 ? 'Skill Tree' : 'Feat Tree'}`}
           </DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
@@ -6911,21 +6915,6 @@ function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading, c
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label>Range (feet)</Label>
-                  <Input
-                    type="number"
-                    min="0"
-                    value={formData.range}
-                    onChange={(e) => handleNumericChange('range', e.target.value)}
-                    placeholder="30"
-                    className="bg-stone-800 border-stone-700"
-                    data-testid="input-spell-range"
-                  />
-                </div>
-
-              </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -7379,20 +7368,6 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading, ca
                 </>
               )}
 
-              {(formData.itemType === 'consumable' || formData.itemType === 'ammunition') && (
-                <>
-                  <div>
-                    <Label>Range (ft)</Label>
-                    <Input
-                      type="number"
-                      value={formData.range}
-                      onChange={(e) => handleItemNumericChange('range', e.target.value)}
-                      className="bg-stone-800 border-stone-700"
-                      data-testid="input-range"
-                    />
-                  </div>
-                </>
-              )}
 
               {formData.itemType === 'consumable' && (
                 <div className="col-span-2 space-y-4">
