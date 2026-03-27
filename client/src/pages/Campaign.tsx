@@ -13207,8 +13207,7 @@ export default function Campaign() {
 
       {dcSavePrompt && (() => {
         const targetChar = (characters as any[])?.find((c: any) => c.id === dcSavePrompt.targetCharacterId);
-        const attrValue = targetChar?.[dcSavePrompt.saveAttribute] || 10;
-        const attrMod = Math.floor((attrValue - 10) / 2);
+        const attrMod = targetChar?.[dcSavePrompt.saveAttribute] || 0;
 
         const handleDcSaveRoll = () => {
           let roll1 = Math.floor(Math.random() * 20) + 1;
@@ -13298,7 +13297,7 @@ export default function Campaign() {
                 )}
                 <div className="flex justify-between text-sm">
                   <span className="text-stone-400">On Success:</span>
-                  <span className="text-green-400 font-bold">{dcSavePrompt.saveSuccessEffect === 'none' ? 'No Damage' : 'Half Damage'}</span>
+                  <span className="text-green-400 font-bold">{dcSavePrompt.saveSuccessEffect === 'none' || dcSavePrompt.saveSuccessEffect === 'no_effect' ? 'No Damage' : dcSavePrompt.saveSuccessEffect === 'quarter' ? 'Quarter Damage' : 'Half Damage'}</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-stone-400">Your Modifier:</span>

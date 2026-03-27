@@ -5803,7 +5803,8 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
         // If item has a save requirement, request save roll for this target first
         let saved = false;
         if (hasSave) {
-          const assignedMember = campaignMembers?.find((m: any) => m.assignedCharacterId === targetChar.id);
+          const assignedMembers = campaignMembers?.filter((m: any) => m.assignedCharacterId === targetChar.id) || [];
+          const assignedMember = assignedMembers.find((m: any) => m.role === 'player') || assignedMembers[0];
           const ownerUserId = assignedMember?.userId || targetChar.userId;
           
           try {
@@ -6231,7 +6232,8 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
               await new Promise(resolve => setTimeout(resolve, 800));
             }
             
-            const assignedMemberAoe = campaignMembers?.find((m: any) => m.assignedCharacterId === targetChar.id);
+            const assignedMembersAoe = campaignMembers?.filter((m: any) => m.assignedCharacterId === targetChar.id) || [];
+            const assignedMemberAoe = assignedMembersAoe.find((m: any) => m.role === 'player') || assignedMembersAoe[0];
             const ownerUserId = assignedMemberAoe?.userId || targetChar.userId;
             const isAssignedToMe = !!(ownerUserId && ownerUserId === currentUserId);
             const isAssignedToOther = !!(ownerUserId && ownerUserId !== currentUserId);
@@ -6305,9 +6307,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
               continue;
             }
             
-            // NPC auto-roll save
-            const attrValue = targetChar[saveAttr] || 10;
-            const attrMod = Math.floor((attrValue - 10) / 2);
+            const attrMod = targetChar[saveAttr] || 0;
             const saveRoll = rollDice('1d20');
             const saveTotal = saveRoll.result + attrMod;
             const saveSuccess = saveTotal >= saveDc;
@@ -6479,7 +6479,8 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
       if (targetChar) {
         const saveAttr = spellData.saveAttribute || spellData.attribute || 'wit';
         const saveSuccessEffect = spellData.saveSuccessEffect || 'half';
-        const assignedMember = campaignMembers?.find((m: any) => m.assignedCharacterId === targetChar.id);
+        const assignedMembers = campaignMembers?.filter((m: any) => m.assignedCharacterId === targetChar.id) || [];
+        const assignedMember = assignedMembers.find((m: any) => m.role === 'player') || assignedMembers[0];
         const ownerUserId = assignedMember?.userId || targetChar.userId;
         const isAssignedToMe = !!(ownerUserId && ownerUserId === currentUserId);
         const isAssignedToOther = !!(ownerUserId && ownerUserId !== currentUserId);
@@ -6662,9 +6663,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
           return;
         }
         
-        // NPC target: STEP 1 - Roll save
-        const attrValue = targetChar[saveAttr] || 10;
-        const attrMod = Math.floor((attrValue - 10) / 2);
+        const attrMod = targetChar[saveAttr] || 0;
         const saveRoll = rollDice('1d20');
         const saveTotal = saveRoll.result + attrMod;
         const saveSuccess = saveTotal >= singleTargetDc;
@@ -6993,7 +6992,8 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
 
       for (const { token, targetChar } of targetsToSave) {
         if (onRequestSaveRoll) {
-          const assignedMember = campaignMembers?.find((m: any) => m.assignedCharacterId === targetChar.id);
+          const assignedMembers = campaignMembers?.filter((m: any) => m.assignedCharacterId === targetChar.id) || [];
+          const assignedMember = assignedMembers.find((m: any) => m.role === 'player') || assignedMembers[0];
           const ownerUserId = assignedMember?.userId || targetChar.userId;
 
           let effectiveDc = saveDc;
@@ -15807,8 +15807,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
     
     let attrMod = 0;
     if (rollEntry.attribute && character) {
-      const attrValue = character[rollEntry.attribute] || 0;
-      attrMod = Math.floor((attrValue - 10) / 2);
+      attrMod = character[rollEntry.attribute] || 0;
       if (attrMod !== 0) {
         formulaParts.push(attrMod > 0 ? `+${attrMod}` : `${attrMod}`);
       }
@@ -23289,8 +23288,7 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
     
     let attrMod = 0;
     if (rollEntry.attribute && character) {
-      const attrValue = character[rollEntry.attribute] || 0;
-      attrMod = Math.floor((attrValue - 10) / 2);
+      attrMod = character[rollEntry.attribute] || 0;
       if (attrMod !== 0) {
         formulaParts.push(attrMod > 0 ? `+${attrMod}` : `${attrMod}`);
       }
