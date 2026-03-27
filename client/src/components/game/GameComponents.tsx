@@ -4236,13 +4236,6 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
   const [hasAdvantage, setHasAdvantage] = useState(false);
   const [hasDisadvantage, setHasDisadvantage] = useState(false);
   const [showModifiers, setShowModifiers] = useState(false);
-  const [pendingSaveResults, setPendingSaveResults] = useState<Array<{
-    tokenId: string;
-    characterId: string;
-    characterName: string;
-    saved: boolean;
-    saveSuccessEffect: string;
-  }>>([]);
 
   const [showInfoPanel, setShowInfoPanel] = useState(false);
   const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -6777,6 +6770,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
 
   const handleRollEntryExecution = async (rollEntry: any) => {
     console.log('[RollEntry] Executing:', rollEntry.name, 'Type:', rollEntry.rollType, 'TargetId:', targetedTokenId, 'Formula:', rollEntry.diceFormula);
+    setShowModifierPopup(false);
     const isHealing = rollEntry.rollType === 'heal';
     const isAttackRoll = rollEntry.rollType === 'attack';
 
@@ -7062,7 +7056,103 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
           }
       }
 
-      setPendingSaveResults(newSaveResults);
+      if (rollEntry.diceFormula && newSaveResults.length > 0) {
+        const { result: dmgResult, dieType: dmgDieType } = rollDice(rollEntry.diceFormula);
+        const rollMod = rollEntry.mod || 0;
+        let attrMod = 0;
+        if (rollEntry.attribute && character) {
+          attrMod = getAttributeModifier(rollEntry.attribute);
+        }
+        const totalMod = rollMod + attrMod + extraModifier;
+        const dmgTotal = dmgResult + totalMod;
+
+        const modParts: string[] = [];
+        if (rollMod !== 0) modParts.push(`Mod (${rollMod >= 0 ? '+' : ''}${rollMod})`);
+        if (attrMod !== 0) {
+          const attrName = rollEntry.attribute.charAt(0).toUpperCase() + rollEntry.attribute.slice(1);
+          modParts.push(`${attrName} (${attrMod >= 0 ? '+' : ''}${attrMod})`);
+        }
+        if (extraModifier !== 0) modParts.push(`Extra (${extraModifier >= 0 ? '+' : ''}${extraModifier})`);
+
+        const calculationBreakdown = modParts.length > 0
+          ? `${rollEntry.diceFormula} = ${dmgResult} + ${modParts.join(' + ')}`
+          : `${rollEntry.diceFormula} = ${dmgResult}`;
+
+        const affectedNames: string[] = [];
+        const saveApplyStat = rollEntry.applyToStat || 'none';
+
+        for (const saveResult of newSaveResults) {
+          const targetChar = allCharacters?.find((c: any) => c.id === saveResult.characterId);
+          if (!targetChar) continue;
+
+          let damageToApply = dmgTotal;
+          let saveNote = '';
+          if (saveResult.saved) {
+            const effect = saveResult.saveSuccessEffect || 'half';
+            if (effect === 'none') {
+              damageToApply = 0;
+              saveNote = ' (Saved - No Damage)';
+            } else if (effect === 'no_effect') {
+              damageToApply = 0;
+              saveNote = ' (Saved - No Effect)';
+            } else if (effect === 'quarter') {
+              damageToApply = Math.floor(dmgTotal / 4);
+              saveNote = ' (Saved - Quarter)';
+            } else {
+              damageToApply = Math.floor(dmgTotal / 2);
+              saveNote = ' (Saved - Half)';
+            }
+          } else {
+            saveNote = ' (Failed save)';
+          }
+
+          const isAdding = rollEntry.statDirection ? rollEntry.statDirection === 'add' : (isHealing || rollEntry.gainEnergy || false);
+          if (damageToApply > 0 && saveApplyStat !== 'none') {
+            if (saveApplyStat === 'energy') {
+              gameWs.sendCombatEnergy(
+                targetChar.id,
+                damageToApply,
+                character?.name || 'Unknown',
+                isAdding
+              );
+            } else if (saveApplyStat === 'hp') {
+              await applyDamageToTarget(
+                damageToApply,
+                rollEntry.damageType || null,
+                targetChar,
+                isAdding ? true : undefined
+              );
+            }
+          }
+
+          const statLabel = saveApplyStat === 'energy' ? 'Energy' : (saveApplyStat === 'hp' ? 'HP' : '');
+          const dmgText = saveApplyStat === 'none' ? `${damageToApply}` : (isAdding ? `+${damageToApply} ${statLabel}` : `-${damageToApply} ${statLabel}`);
+          affectedNames.push(`${saveResult.characterName}: ${dmgText}${saveNote}`);
+        }
+
+        const saveLabel = `${itemOrSpellName} - ${rollEntry.name} → ${affectedNames.join(', ')}`;
+
+        triggerRollNotification({
+          type: isHealing ? 'heal' : 'damage',
+          dieType: dmgDieType as any,
+          label: saveLabel,
+          result: dmgResult,
+          modifier: totalMod,
+          total: dmgTotal,
+          username: character?.name || 'Unknown',
+          characterName: character?.name,
+          calculationBreakdown,
+          isHealing,
+          customColor: rollEntry.primaryColor || undefined,
+        });
+
+        if (character.campaignId) {
+          const chatText = `${saveLabel}: ${calculationBreakdown} = ${dmgTotal}${rollEntry.damageType ? ` (${rollEntry.damageType})` : ''}`;
+          gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', chatText, 'roll');
+        }
+      }
+
+      onClearTarget?.();
       setExtraModifier(0);
       setHasAdvantage(false);
       setHasDisadvantage(false);
@@ -7097,89 +7187,6 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
     const itemOrSpellName = spellData?.name || itemData?.name || 'Roll';
     let label = `${itemOrSpellName} - ${rollEntry.name}`;
     let finalTotal = total;
-
-    if (pendingSaveResults.length > 0) {
-      const affectedNames: string[] = [];
-      const saveApplyStat = rollEntry.applyToStat || 'none';
-      
-      for (const saveResult of pendingSaveResults) {
-        const targetChar = allCharacters?.find((c: any) => c.id === saveResult.characterId);
-        if (!targetChar) continue;
-
-        let damageToApply = total;
-        let saveNote = '';
-        if (saveResult.saved) {
-          const effect = saveResult.saveSuccessEffect || 'half';
-          if (effect === 'none') {
-            damageToApply = 0;
-            saveNote = ' (Saved - No Damage)';
-          } else if (effect === 'no_effect') {
-            damageToApply = 0;
-            saveNote = ' (Saved - No Effect)';
-          } else if (effect === 'quarter') {
-            damageToApply = Math.floor(total / 4);
-            saveNote = ' (Saved - Quarter)';
-          } else {
-            damageToApply = Math.floor(total / 2);
-            saveNote = ' (Saved - Half)';
-          }
-        } else {
-          saveNote = ' (Failed save)';
-        }
-
-        const isAdding = rollEntry.statDirection ? rollEntry.statDirection === 'add' : (isHealing || rollEntry.gainEnergy || false);
-        if (damageToApply > 0 && saveApplyStat !== 'none') {
-          if (saveApplyStat === 'energy') {
-            gameWs.sendCombatEnergy(
-              targetChar.id,
-              damageToApply,
-              character?.name || 'Unknown',
-              isAdding
-            );
-          } else if (saveApplyStat === 'hp') {
-            await applyDamageToTarget(
-              damageToApply,
-              rollEntry.damageType || null,
-              targetChar,
-              isAdding ? true : undefined
-            );
-          }
-        }
-        
-        const statLabel = saveApplyStat === 'energy' ? 'Energy' : (saveApplyStat === 'hp' ? 'HP' : '');
-        const dmgText = saveApplyStat === 'none' ? `${damageToApply}` : (isAdding ? `+${damageToApply} ${statLabel}` : `-${damageToApply} ${statLabel}`);
-        affectedNames.push(`${saveResult.characterName}: ${dmgText}${saveNote}`);
-      }
-
-      const saveLabel = `${itemOrSpellName} - ${rollEntry.name} → ${affectedNames.join(', ')}`;
-
-      triggerRollNotification({
-        type: isHealing ? 'heal' : 'damage',
-        dieType: dieType as any,
-        label: saveLabel,
-        result,
-        modifier: totalMod,
-        total,
-        username: character?.name || 'Unknown',
-        characterName: character?.name,
-        calculationBreakdown,
-        isHealing,
-        customColor: rollEntry.primaryColor || undefined,
-      });
-
-      if (character.campaignId) {
-        const chatText = `${saveLabel}: ${calculationBreakdown} = ${total}${rollEntry.damageType ? ` (${rollEntry.damageType})` : ''}`;
-        gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', chatText, 'roll');
-      }
-
-      setPendingSaveResults([]);
-      onClearTarget?.();
-      setShowModifierPopup(false);
-      setExtraModifier(0);
-      setHasAdvantage(false);
-      setHasDisadvantage(false);
-      return;
-    }
 
     if (rollEntry.isAoe && aoeTargetState?.active && aoeTargetState?.locked) {
       const casterToken = tokens.find((t: any) => t.id === aoeTargetState.casterTokenId);
@@ -7534,7 +7541,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
       {/* Roll Selector Panel */}
       {showModifierPopup && ReactDOM.createPortal(
         <>
-        <div className="fixed inset-0 z-[99999] bg-black/30" onClick={() => { setShowModifierPopup(false); setPendingSaveResults([]); }} />
+        <div className="fixed inset-0 z-[99999] bg-black/30" onClick={() => { setShowModifierPopup(false); }} />
         <div 
           className="fixed z-[100000] w-80 bg-stone-900 border border-amber-700/50 text-stone-200 p-5 rounded-xl shadow-2xl cursor-move select-none"
           style={{ 
@@ -7548,24 +7555,11 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
             <h3 className="text-amber-500 text-lg font-semibold">
               {isTraitClickable ? traitData?.name : isSkillClickable ? hotbar?.skillName : spellData?.name || itemData?.name || 'Roll'}
             </h3>
-            <button onClick={() => { setShowModifierPopup(false); setPendingSaveResults([]); }} className="text-stone-400 hover:text-stone-200">
+            <button onClick={() => { setShowModifierPopup(false); }} className="text-stone-400 hover:text-stone-200">
               <X className="h-4 w-4" />
             </button>
           </div>
 
-          {pendingSaveResults.length > 0 && (
-            <div className="mb-3 p-2 rounded-lg border border-purple-700/50 bg-purple-900/20">
-              <p className="text-xs text-purple-400 uppercase tracking-wider mb-1">Save Results</p>
-              {pendingSaveResults.map((sr, i) => (
-                <div key={i} className={`text-xs flex items-center gap-1 ${sr.saved ? 'text-green-400' : 'text-red-400'}`}>
-                  <span>{sr.saved ? '✓' : '✗'}</span>
-                  <span>{sr.characterName}: {sr.saved ? 'Saved' : 'Failed'}</span>
-                  <span className="text-stone-500">({sr.saveSuccessEffect === 'none' ? 'no dmg' : 'half dmg'})</span>
-                </div>
-              ))}
-              <p className="text-[10px] text-purple-300 mt-1 italic">Roll damage to apply with save modifiers</p>
-            </div>
-          )}
 
           {isDetonatableClickable && itemData && (
             <div className="space-y-2 mb-3">
