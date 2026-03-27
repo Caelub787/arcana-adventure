@@ -1,11 +1,13 @@
 export interface AoeTargetState {
   active: boolean;
   spell: any;
-  detonatableItem?: any; // For detonatable item AOE targeting
+  detonatableItem?: any;
   casterTokenId: string;
   center: { x: number; y: number };
   locked: boolean;
-  width?: number; // Width in feet for line/cone AOE (default 5ft = 1 grid cell)
+  width?: number;
+  pendingRollEntry?: any;
+  confirmed?: boolean;
 }
 
 export interface WallSegment {
