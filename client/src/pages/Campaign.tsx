@@ -9117,6 +9117,36 @@ export default function Campaign() {
             }
           );
         }
+
+        if (data.type === 'character_mana_update') {
+          const { characterId, mana } = data;
+          setCharacter((prev: any) => {
+            if (prev && prev.id === characterId) {
+              return { ...prev, mana };
+            }
+            return prev;
+          });
+          setInspectedChar((prev: any) => {
+            if (prev && prev.id === characterId) {
+              return { ...prev, mana };
+            }
+            return prev;
+          });
+          queryClientRef.current.setQueryData(
+            [`/api/campaigns/${effectiveCampaignIdRef.current}/characters`],
+            (oldData: any[] | undefined) => {
+              if (!oldData) return oldData;
+              return oldData.map((c: any) => c.id === characterId ? { ...c, mana } : c);
+            }
+          );
+          queryClientRef.current.setQueryData(
+            [`/api/characters/${characterId}`],
+            (oldData: any | undefined) => {
+              if (!oldData) return oldData;
+              return { ...oldData, mana };
+            }
+          );
+        }
         
         // Handle token CRUD - real-time token updates
         // Only apply updates if the token belongs to the current scene (or is legacy with null sceneId)
@@ -9805,7 +9835,7 @@ export default function Campaign() {
                   </SelectTrigger>
                   <SelectContent className="bg-stone-800 border-stone-700">
                     <SelectItem value="arcana-adventure" className="text-stone-200">Arcana Adventure</SelectItem>
-                    <SelectItem value="sandbox" className="text-stone-200">Sandbox</SelectItem>
+                    <SelectItem value="aa-v2" className="text-stone-200">A.A. V2</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -11936,6 +11966,7 @@ export default function Campaign() {
                setPinMoveMode(false);
                toast({ title: 'Pin moved', description: 'Click Save to save the new position' });
              }}
+             campaignSystem={(campaign as any)?.system}
            />
            
            {/* Battlemap Dice Overlay for 3D dice rolling */}
@@ -12151,6 +12182,7 @@ export default function Campaign() {
                 allSpecies={[...(systemSpecies || []), ...campaignSpeciesList]}
                 bringToFront={bringToFront}
                 floatingZIndices={floatingZIndices}
+                campaignSystem={(campaign as any)?.system}
               />
             )}
           </DialogContent>
@@ -12189,6 +12221,7 @@ export default function Campaign() {
               allSpecies={[...(systemSpecies || []), ...campaignSpeciesList]}
               bringToFront={bringToFront}
               floatingZIndices={floatingZIndices}
+              campaignSystem={(campaign as any)?.system}
             />
           </FloatingPanel>
         ))

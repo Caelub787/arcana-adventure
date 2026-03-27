@@ -672,7 +672,7 @@ export default function AdminSettings() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="Arcana Adventure">Arcana Adventure</SelectItem>
-                <SelectItem value="Sandbox">Sandbox</SelectItem>
+                <SelectItem value="A.A. V2">A.A. V2</SelectItem>
               </SelectContent>
             </Select>
           </div>

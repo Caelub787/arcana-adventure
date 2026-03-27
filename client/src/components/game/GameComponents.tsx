@@ -348,6 +348,7 @@ interface BattleMapProps {
   onPinClick?: (pin: any) => void;
   onPinPlaced?: (x: number, y: number) => void;
   onPinDragEnd?: (pinId: string, x: number, y: number) => void;
+  campaignSystem?: string;
 }
 
 function CampaignMapPinMarker({ pin, xPx, yPx, isRevealed, isGM, pinMoveMode, bgImageDimensions, containerRef, zoomRef, panRef, onPinClick, onPinDragEnd, onRevealToggle }: {
@@ -483,7 +484,7 @@ function CampaignMapPinMarker({ pin, xPx, yPx, isRevealed, isGM, pinMoveMode, bg
 }
 
 
-export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClick, onTokenTripleClick, onDeleteToken, role, gridSize, backgroundImage, scene, onViewChange, characters = [], allSpecies = [], selectionMode = 'select', targetedTokenId, selectedTokenId, aoeTargetState, onAoeMouseMove, onAoeClick, otherPlayersAoe, myPermissions, tokenActiveEffects, allTokenEffects, onApplyEffect, onRemoveEffect, onToggleInvisibility, currentTurnCharacterId, otherPlayersTargeting, activeBeacons, onBeacon, otherPlayersViewports, thrownItems = [], onRefetchThrownItems, onDeleteThrownItem, detonatableGridTarget, onGridTargetClick, notesPanelOpen = false, notesPanelWidth = 0, onNotesClick, inCombat = false, fogToolActive: fogToolActiveProp, onFogToolActiveChange, onDropCharacterOnMap, onMapClickToPlace, placingCharacterId, currentUserId, assignedCharacterId, onTokenLongPress, gridCalibrationMode, onGridCalibrationConfirm, onGridCalibrationCancel, cameraTarget, onCameraTargetReached, mapPins = [], pinPlaceMode = false, pinMoveMode = false, onPinClick, onPinPlaced, onPinDragEnd }: BattleMapProps) {
+export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClick, onTokenTripleClick, onDeleteToken, role, gridSize, backgroundImage, scene, onViewChange, characters = [], allSpecies = [], selectionMode = 'select', targetedTokenId, selectedTokenId, aoeTargetState, onAoeMouseMove, onAoeClick, otherPlayersAoe, myPermissions, tokenActiveEffects, allTokenEffects, onApplyEffect, onRemoveEffect, onToggleInvisibility, currentTurnCharacterId, otherPlayersTargeting, activeBeacons, onBeacon, otherPlayersViewports, thrownItems = [], onRefetchThrownItems, onDeleteThrownItem, detonatableGridTarget, onGridTargetClick, notesPanelOpen = false, notesPanelWidth = 0, onNotesClick, inCombat = false, fogToolActive: fogToolActiveProp, onFogToolActiveChange, onDropCharacterOnMap, onMapClickToPlace, placingCharacterId, currentUserId, assignedCharacterId, onTokenLongPress, gridCalibrationMode, onGridCalibrationConfirm, onGridCalibrationCancel, cameraTarget, onCameraTargetReached, mapPins = [], pinPlaceMode = false, pinMoveMode = false, onPinClick, onPinPlaced, onPinDragEnd, campaignSystem }: BattleMapProps) {
   // Derive isGM from role prop
   const isGM = role === 'gm';
   
@@ -2399,6 +2400,7 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
           const tokenImage = (token as any).tokenImage || character?.portrait || tokenSpeciesData?.defaultImage || token.image;
           const hpPercent = character ? (character.hp / character.maxHp) * 100 : null;
           const energyPercent = character ? (character.energy / character.maxEnergy) * 100 : null;
+          const manaPercent = (character && campaignSystem === 'aa-v2' && (character.maxMana ?? 0) > 0) ? ((character.mana ?? 0) / (character.maxMana ?? 1)) * 100 : null;
           const effectiveGridSize = gridSize;
           
           // Check if user can drag this token:
@@ -2765,10 +2767,19 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
               
               {/* Energy Bar - Only show if token is linked to a character and user has view/edit permission */}
               {character && energyPercent !== null && (role === 'gm' || ['view', 'edit'].includes(myPermissions?.permissions?.[character.id])) && (
-                <div className="absolute bottom-0.5 left-0.5 right-0.5 h-1.5 bg-black/50 rounded-full overflow-hidden border border-black/80 z-[2]">
+                <div className={`absolute ${manaPercent !== null ? 'bottom-3' : 'bottom-0.5'} left-0.5 right-0.5 h-1.5 bg-black/50 rounded-full overflow-hidden border border-black/80 z-[2]`}>
                   <div 
                     className="h-full transition-all duration-700 ease-in-out bg-cyan-500"
                     style={{ width: `${Math.max(0, Math.min(100, energyPercent))}%` }}
+                  />
+                </div>
+              )}
+              
+              {character && manaPercent !== null && (role === 'gm' || ['view', 'edit'].includes(myPermissions?.permissions?.[character.id])) && (
+                <div className="absolute bottom-0.5 left-0.5 right-0.5 h-1.5 bg-black/50 rounded-full overflow-hidden border border-black/80 z-[2]">
+                  <div 
+                    className="h-full transition-all duration-700 ease-in-out bg-violet-500"
+                    style={{ width: `${Math.max(0, Math.min(100, manaPercent))}%` }}
                   />
                 </div>
               )}
@@ -5943,31 +5954,40 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
     }
     
     
-    // Check energy cost - validate and deduct before casting (only for non-AoE attack rolls)
+    // Validate energy and mana costs before deducting either
     const energyCost = spellData.energyCost || 0;
     const currentEnergy = character.energy || 0;
+    const spellManaCost1 = (spellData as any).manaCost || 0;
+    const currentMana1 = (character as any).mana ?? 0;
     
     if (energyCost > 0 && currentEnergy < energyCost) {
       triggerRollNotification({
-        type: 'system',
-        label: `Not Enough Energy!`,
-        result: 0,
-        total: 0,
-        username: character.name || 'Unknown',
-        characterName: character.name,
+        type: 'system', label: `Not Enough Energy!`, result: 0, total: 0,
+        username: character.name || 'Unknown', characterName: character.name,
         calculationBreakdown: `${spellData.name} requires ${energyCost} energy but you only have ${currentEnergy}.`,
       });
       return null;
     }
+    if (spellManaCost1 > 0 && currentMana1 < spellManaCost1) {
+      triggerRollNotification({
+        type: 'system', label: `Not Enough Mana!`, result: 0, total: 0,
+        username: character.name || 'Unknown', characterName: character.name,
+        calculationBreakdown: `${spellData.name} requires ${spellManaCost1} mana but you only have ${currentMana1}.`,
+      });
+      return null;
+    }
     
-    // Deduct energy cost
     if (energyCost > 0) {
       try {
         await api.updateCharacter(character.id, { energy: currentEnergy - energyCost });
         queryClient.invalidateQueries({ queryKey: ['character', character.id] });
-      } catch (err) {
-        console.error('Failed to deduct energy:', err);
-      }
+      } catch (err) { console.error('Failed to deduct energy:', err); }
+    }
+    if (spellManaCost1 > 0 && character.id) {
+      try {
+        await api.updateCharacter(character.id, { mana: currentMana1 - spellManaCost1 } as any);
+        queryClient.invalidateQueries({ queryKey: ['character', character.id] });
+      } catch (err) { console.error('Failed to deduct mana:', err); }
     }
     
     const attrName = spellData.attribute || 'wit';
@@ -6123,14 +6143,21 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
     if (!hasAoeCheck && (spellData.requiresSave || spellData.saveSuccessEffect)) {
       const energyCost = spellData.energyCost || 0;
       const currentEnergy = character.energy || 0;
+      const saveManaCost = (spellData as any).manaCost || 0;
+      const saveMana = (character as any).mana ?? 0;
       if (energyCost > 0 && currentEnergy < energyCost) {
         triggerRollNotification({
-          type: 'system',
-          label: `Not Enough Energy!`,
-          result: 0, total: 0,
-          username: character.name || 'Unknown',
-          characterName: character.name,
+          type: 'system', label: `Not Enough Energy!`, result: 0, total: 0,
+          username: character.name || 'Unknown', characterName: character.name,
           calculationBreakdown: `${spellData.name} requires ${energyCost} energy but you only have ${currentEnergy}.`,
+        });
+        return;
+      }
+      if (saveManaCost > 0 && saveMana < saveManaCost) {
+        triggerRollNotification({
+          type: 'system', label: `Not Enough Mana!`, result: 0, total: 0,
+          username: character.name || 'Unknown', characterName: character.name,
+          calculationBreakdown: `${spellData.name} requires ${saveManaCost} mana but you only have ${saveMana}.`,
         });
         return;
       }
@@ -6138,9 +6165,13 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
         try {
           await api.updateCharacter(character.id, { energy: currentEnergy - energyCost });
           queryClient.invalidateQueries({ queryKey: ['character', character.id] });
-        } catch (err) {
-          console.error('Failed to deduct energy:', err);
-        }
+        } catch (err) { console.error('Failed to deduct energy:', err); }
+      }
+      if (saveManaCost > 0 && character.id) {
+        try {
+          await api.updateCharacter(character.id, { mana: saveMana - saveManaCost } as any);
+          queryClient.invalidateQueries({ queryKey: ['character', character.id] });
+        } catch (err) { console.error('Failed to deduct mana:', err); }
       }
     }
     
@@ -6153,15 +6184,21 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
     if (hasAoe && aoeTargetState?.active && aoeTargetState?.locked && tokens) {
       const energyCost = spellData.energyCost || 0;
       const currentEnergy = character.energy || 0;
+      const aoeManaCost = (spellData as any).manaCost || 0;
+      const aoeMana = (character as any).mana ?? 0;
       if (energyCost > 0 && currentEnergy < energyCost) {
         triggerRollNotification({
-          type: 'system',
-          label: `Not Enough Energy!`,
-          result: 0,
-          total: 0,
-          username: character.name || 'Unknown',
-          characterName: character.name,
+          type: 'system', label: `Not Enough Energy!`, result: 0, total: 0,
+          username: character.name || 'Unknown', characterName: character.name,
           calculationBreakdown: `${spellData.name} requires ${energyCost} energy but you only have ${currentEnergy}.`,
+        });
+        return;
+      }
+      if (aoeManaCost > 0 && aoeMana < aoeManaCost) {
+        triggerRollNotification({
+          type: 'system', label: `Not Enough Mana!`, result: 0, total: 0,
+          username: character.name || 'Unknown', characterName: character.name,
+          calculationBreakdown: `${spellData.name} requires ${aoeManaCost} mana but you only have ${aoeMana}.`,
         });
         return;
       }
@@ -6169,9 +6206,13 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
         try {
           await api.updateCharacter(character.id, { energy: currentEnergy - energyCost });
           queryClient.invalidateQueries({ queryKey: ['character', character.id] });
-        } catch (err) {
-          console.error('Failed to deduct energy:', err);
-        }
+        } catch (err) { console.error('Failed to deduct energy:', err); }
+      }
+      if (aoeManaCost > 0 && character.id) {
+        try {
+          await api.updateCharacter(character.id, { mana: aoeMana - aoeManaCost } as any);
+          queryClient.invalidateQueries({ queryKey: ['character', character.id] });
+        } catch (err) { console.error('Failed to deduct mana:', err); }
       }
       const casterToken = tokens.find((t: any) => t.id === aoeTargetState.casterTokenId);
       const cachedWalls = queryClient.getQueryData(['scene-walls', sceneId]) as any[] || [];
@@ -6801,6 +6842,25 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
       }
     }
 
+    if (rollEntry.requiresMana && rollEntry.manaCost > 0) {
+      const currentMana = (character as any)?.mana ?? 0;
+      if (currentMana < rollEntry.manaCost) {
+        triggerRollNotification({
+          type: 'system',
+          label: `${spellData?.name || itemData?.name || 'Roll'} - ${rollEntry.name}: Not enough mana!`,
+          result: 0,
+          total: 0,
+          username: character?.name || 'Unknown',
+          characterName: character?.name,
+          calculationBreakdown: `Requires ${rollEntry.manaCost} mana, you have ${currentMana}`,
+        });
+        return;
+      }
+      if (character?.id) {
+        gameWs.sendCombatMana(character.id, rollEntry.manaCost, character.name || 'Unknown', false);
+      }
+    }
+
     if (!rollEntry.diceFormula && !isAttackRoll) return;
 
     if (targetedTokenId && rollEntry.range) {
@@ -7394,6 +7454,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
           return displayRange ? <p className="text-sm">Range: {displayRange}ft</p> : null;
         })()}
         <p className="text-sm text-cyan-400">Energy: {energyCost}</p>
+        {(spellData as any).manaCost > 0 && <p className="text-sm text-violet-400">Mana: {(spellData as any).manaCost}</p>}
         <p className="text-xs text-stone-400 mt-1">Click to open roll panel</p>
       </>
     );
@@ -7622,6 +7683,9 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
                 }
                 if (roll.requiresEnergy && roll.energyCost) {
                   stats.push(`${roll.energyCost} Energy`);
+                }
+                if (roll.requiresMana && roll.manaCost) {
+                  stats.push(`${roll.manaCost} Mana`);
                 }
                 if (roll.range) {
                   stats.push(`${roll.range}ft`);
@@ -7886,6 +7950,12 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
                     <div className="bg-stone-800 rounded p-2">
                       <span className="text-stone-500 block">Energy Cost</span>
                       <span className="text-stone-200">{spellData.energyCost}</span>
+                    </div>
+                  )}
+                  {(spellData as any).manaCost > 0 && (
+                    <div className="bg-stone-800 rounded p-2">
+                      <span className="text-violet-400 block">Mana Cost</span>
+                      <span className="text-stone-200">{(spellData as any).manaCost}</span>
                     </div>
                   )}
                   {spellData.attribute && (
@@ -13532,31 +13602,39 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
   const handleSpellAttackRoll = async () => {
     if (!spellData) return;
     
-    // Check and deduct energy cost
     const energyCost = spellData.energyCost || 0;
     const currentEnergy = character.energy || 0;
+    const hotbarManaCost = (spellData as any).manaCost || 0;
+    const hotbarMana = (character as any).mana ?? 0;
     
     if (energyCost > 0 && currentEnergy < energyCost) {
       triggerRollNotification({
-        type: 'system',
-        label: `Not Enough Energy!`,
-        result: 0,
-        total: 0,
-        username: character.name || 'Unknown',
-        characterName: character.name,
+        type: 'system', label: `Not Enough Energy!`, result: 0, total: 0,
+        username: character.name || 'Unknown', characterName: character.name,
         calculationBreakdown: `${spellData.name} requires ${energyCost} energy but you only have ${currentEnergy}.`,
       });
       return;
     }
+    if (hotbarManaCost > 0 && hotbarMana < hotbarManaCost) {
+      triggerRollNotification({
+        type: 'system', label: `Not Enough Mana!`, result: 0, total: 0,
+        username: character.name || 'Unknown', characterName: character.name,
+        calculationBreakdown: `${spellData.name} requires ${hotbarManaCost} mana but you only have ${hotbarMana}.`,
+      });
+      return;
+    }
     
-    // Deduct energy cost
     if (energyCost > 0) {
       try {
         await api.updateCharacter(character.id, { energy: currentEnergy - energyCost });
         queryClient.invalidateQueries({ queryKey: ['character', character.id] });
-      } catch (err) {
-        console.error('Failed to deduct energy:', err);
-      }
+      } catch (err) { console.error('Failed to deduct energy:', err); }
+    }
+    if (hotbarManaCost > 0 && character.id) {
+      try {
+        await api.updateCharacter(character.id, { mana: hotbarMana - hotbarManaCost } as any);
+        queryClient.invalidateQueries({ queryKey: ['character', character.id] });
+      } catch (err) { console.error('Failed to deduct mana:', err); }
     }
     
     const attrName = spellData.attribute || 'wit';
@@ -14729,6 +14807,7 @@ interface CharacterSheetProps {
   allSpecies?: (SystemSpecies | CampaignSpecies)[];
   bringToFront?: (panelKey: string) => void;
   floatingZIndices?: Record<string, number>;
+  campaignSystem?: string;
 }
 
 // Custom Skill Form for adding new skills to a character
@@ -15470,7 +15549,8 @@ function TraitEditForm({
   );
 }
 
-export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, accessLevel = 'view', onUpdate, onClose, defaultTab = "overview", campaignId, sceneId, isTemplate = false, allSpecies: passedSpecies, bringToFront, floatingZIndices }: CharacterSheetProps) {
+export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, accessLevel = 'view', onUpdate, onClose, defaultTab = "overview", campaignId, sceneId, isTemplate = false, allSpecies: passedSpecies, bringToFront, floatingZIndices, campaignSystem }: CharacterSheetProps) {
+  const isAAV2 = campaignSystem === 'aa-v2';
   // Name-only mode: user only has 'name' access (token name only, no stats)
   // They can see name and portrait but not stats, inventory, or abilities
   const isViewOnly = accessLevel === 'name' && !isGM && !isOwner;
@@ -17457,6 +17537,45 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                     </div>
                   </div>
                 </div>
+
+                {isAAV2 && (
+                <div className="bg-gradient-to-r from-violet-900/40 to-purple-900/40 rounded-lg p-3 border border-violet-700/50">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <div className="flex justify-between items-center">
+                        <Label className="text-xs text-stone-300 flex items-center gap-1">
+                          <Sparkles className="h-3 w-3 text-violet-400" />
+                          Mana
+                        </Label>
+                        {editingOverview ? (
+                          <div className="flex items-center gap-1">
+                            <Input
+                              type="number"
+                              value={liveCharacter.mana ?? 0}
+                              onChange={(e) => onUpdate?.({ mana: parseInt(e.target.value) || 0 })}
+                              className="w-14 h-6 text-xs bg-stone-800 border-stone-700 text-center"
+                              data-testid="input-mana"
+                            />
+                            <span className="text-xs text-stone-500">/</span>
+                            <Input
+                              type="number"
+                              value={liveCharacter.maxMana ?? 0}
+                              onChange={(e) => onUpdate?.({ maxMana: parseInt(e.target.value) || 0 })}
+                              className="w-14 h-6 text-xs bg-stone-800 border-stone-700 text-center"
+                              data-testid="input-max-mana"
+                            />
+                          </div>
+                        ) : (
+                          <span className="text-xs font-bold" data-testid="text-mana">
+                            {liveCharacter.mana ?? 0} / {liveCharacter.maxMana ?? 0}
+                          </span>
+                        )}
+                      </div>
+                      {!editingOverview && <Progress value={Math.min(100, (liveCharacter.maxMana ?? 0) > 0 ? Math.round(((liveCharacter.mana ?? 0) / (liveCharacter.maxMana ?? 0)) * 100) : 0)} className="h-2 [&>div]:bg-violet-500" data-testid="progress-mana" />}
+                    </div>
+                  </div>
+                </div>
+                )}
 
                 {/* Defense Class (DC) Display */}
                 <div className="bg-gradient-to-r from-cyan-900/40 to-blue-900/40 rounded-lg p-3 border border-cyan-700/50">
@@ -19569,6 +19688,34 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                               data-testid="input-spell-energy-cost"
                             />
                           </div>
+                          {isAAV2 && (
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <Label className="text-violet-300">Mana Cost</Label>
+                              {!isGM && (
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger>
+                                      <Lock className="h-3 w-3 text-amber-600" />
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      <p>Only GMs can edit this field</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                              )}
+                            </div>
+                            <Input
+                              type="number"
+                              min="0"
+                              value={(spellFormData as any).manaCost || 0}
+                              onChange={(e) => handleSpellNumericChange('manaCost', e.target.value)}
+                              className={`bg-stone-800 ${isGM ? 'border-violet-700' : 'border-stone-700'}`}
+                              disabled={!isGM}
+                              data-testid="input-spell-mana-cost"
+                            />
+                          </div>
+                          )}
                         </div>
 
                         <div className="grid grid-cols-2 gap-3">
@@ -23236,6 +23383,20 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
       return;
     }
 
+    const manaCostExec = rollEntry.requiresMana ? (rollEntry.manaCost || 0) : 0;
+    const currentManaExec = (character as any)?.mana ?? 0;
+    if (manaCostExec > 0 && currentManaExec < manaCostExec) {
+      triggerRollNotification({
+        type: 'system',
+        label: `Not Enough Mana!`,
+        result: 0, total: 0,
+        username: character?.name || 'Unknown',
+        characterName: character?.name,
+        calculationBreakdown: `${item.name} - ${rollEntry.name} requires ${manaCostExec} mana but you only have ${currentManaExec}.`,
+      });
+      return;
+    }
+
     if (rollEntry.noRoll) {
       if (energyCost > 0 && character?.id) {
         try {
@@ -23243,6 +23404,14 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
           queryClient.invalidateQueries({ queryKey: ['character', character.id] });
         } catch (err) {
           console.error('Failed to deduct energy:', err);
+        }
+      }
+      if (manaCostExec > 0 && character?.id) {
+        try {
+          await api.updateCharacter(character.id, { mana: currentManaExec - manaCostExec } as any);
+          queryClient.invalidateQueries({ queryKey: ['character', character.id] });
+        } catch (err) {
+          console.error('Failed to deduct mana:', err);
         }
       }
 
@@ -23294,6 +23463,14 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
         queryClient.invalidateQueries({ queryKey: ['character', character.id] });
       } catch (err) {
         console.error('Failed to deduct energy:', err);
+      }
+    }
+    if (manaCostExec > 0 && character?.id) {
+      try {
+        await api.updateCharacter(character.id, { mana: currentManaExec - manaCostExec } as any);
+        queryClient.invalidateQueries({ queryKey: ['character', character.id] });
+      } catch (err) {
+        console.error('Failed to deduct mana:', err);
       }
     }
     

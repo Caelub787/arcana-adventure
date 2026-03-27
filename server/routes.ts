@@ -1192,6 +1192,64 @@ export async function registerRoutes(app: Express): Promise<Server> {
           console.log(`[WebSocket] Combat energy: ${attackerName || username} ${actionText} ${amount} energy ${isGain ? 'to' : 'from'} ${character.name} (Energy: ${character.energy} → ${newEnergy})`);
         }
         
+        if (message.type === "apply_combat_mana") {
+          const { campaignId, characterId, amount, attackerName, isGain } = message;
+          
+          const userCampaign = (ws as any).campaigns.get(campaignId);
+          if (!userCampaign) {
+            ws.send(JSON.stringify({ type: "error", message: "Not authorized - You have not joined this campaign" }));
+            return;
+          }
+          
+          const character = await storage.getCharacter(characterId);
+          if (!character) {
+            ws.send(JSON.stringify({ type: "error", message: "Character not found" }));
+            return;
+          }
+          
+          if (character.campaignId !== campaignId) {
+            ws.send(JSON.stringify({ type: "error", message: "Character does not belong to this campaign" }));
+            return;
+          }
+          
+          let newMana: number;
+          if (isGain) {
+            newMana = Math.min((character as any).mana + amount, (character as any).maxMana);
+          } else {
+            newMana = Math.max(0, (character as any).mana - amount);
+          }
+          
+          await storage.updateCharacter(characterId, { mana: newMana } as any);
+          
+          const actionText = isGain ? 'restored' : 'drained';
+          const chatText = `${attackerName || username} ${actionText} ${amount} mana ${isGain ? 'to' : 'from'} ${character.name} (Mana: ${(character as any).mana} → ${newMana})`;
+          
+          const chatMessage = await storage.createChatMessage({
+            campaignId,
+            userId: authenticatedUserId,
+            sender: username,
+            text: chatText,
+            type: "roll"
+          });
+          
+          broadcastToCampaign(campaignId, {
+            type: "character_mana_update",
+            characterId,
+            mana: newMana,
+            previousMana: (character as any).mana,
+            amount,
+            isGain,
+            attackerName: attackerName || username
+          });
+          
+          broadcastToCampaign(campaignId, {
+            type: "chat_message",
+            message: chatMessage
+          });
+          
+          console.log(`[WebSocket] Combat mana: ${attackerName || username} ${actionText} ${amount} mana ${isGain ? 'to' : 'from'} ${character.name} (Mana: ${(character as any).mana} → ${newMana})`);
+        }
+        
         // Handle token updates - broadcast to all
         if (message.type === "token_created" || message.type === "token_deleted" || message.type === "token_updated") {
           const { campaignId } = message;

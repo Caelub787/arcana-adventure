@@ -2525,6 +2525,35 @@ export class GameWebSocket {
     this.send(message);
   }
   
+  sendCombatMana(
+    characterId: string, 
+    amount: number, 
+    attackerName?: string,
+    isGain?: boolean
+  ) {
+    if (!this.campaignId) {
+      console.error('Cannot send combat mana: not connected to a campaign');
+      return;
+    }
+    
+    const message = { 
+      type: 'apply_combat_mana', 
+      campaignId: this.campaignId, 
+      characterId,
+      amount,
+      attackerName,
+      isGain: isGain || false
+    };
+    
+    if (!this.joinedCampaign) {
+      console.log('WebSocket: Queueing combat mana until campaign join is confirmed');
+      this.pendingMessages.push(message);
+      return;
+    }
+    
+    this.send(message);
+  }
+  
   // Send AoE targeting state - broadcasts to all campaign members
   // so everyone can see each other's AoE placement
   sendAoeTargeting(
