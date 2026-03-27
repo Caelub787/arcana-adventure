@@ -847,6 +847,7 @@ export default function Notes() {
         queryClient.invalidateQueries({ queryKey: ["/api/notes/folders"] });
         if (data.noteId === noteId) {
           setLocation("/notes");
+          setShowHomeView(true);
         }
       }
       if (data.type === 'note_created' || data.type === 'note_changed' || data.type === 'notes_changed') {
@@ -1146,14 +1147,16 @@ export default function Notes() {
 
   const deleteNoteMutation = useMutation({
     mutationFn: (id: string) => api.deleteNote(id),
-    onSuccess: () => {
+    onSuccess: (_data, deletedId) => {
       queryClient.invalidateQueries({ queryKey: ["/api/notes"] });
       queryClient.invalidateQueries({ queryKey: ["/api/notes/all"] });
       queryClient.invalidateQueries({ queryKey: ["/api/notes/folders"] });
       setDeleteNoteDialogOpen(false);
       setNoteToDelete(null);
-      if (noteId) {
+      closeTab(deletedId);
+      if (noteId === deletedId) {
         setLocation("/notes");
+        setShowHomeView(true);
       }
       toast({ title: "Note deleted" });
     },

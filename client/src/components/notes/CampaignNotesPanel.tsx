@@ -1096,14 +1096,16 @@ export function CampaignNotesPanel({
 
   const deleteNoteMutation = useMutation({
     mutationFn: (id: string) => api.deleteNote(id),
-    onSuccess: () => {
+    onSuccess: (_data, deletedId) => {
       queryClient.refetchQueries({ queryKey: ["/api/notes"] });
       queryClient.refetchQueries({ queryKey: ["/api/notes/all"] });
       queryClient.refetchQueries({ queryKey: ["/api/notes/folders"] });
       setDeleteNoteDialogOpen(false);
       setNoteToDelete(null);
-      if (selectedNoteId) {
+      closeTab(deletedId);
+      if (selectedNoteId === deletedId) {
         setSelectedNoteId(null);
+        setShowHomeView(true);
       }
       toast({ title: "Note deleted" });
     },
