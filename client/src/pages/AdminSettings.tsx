@@ -3788,20 +3788,20 @@ function FeatTreesView({ systemSlug }: { systemSlug: string }) {
     queryFn: () => api.getFeatTemplates(),
   });
 
-  // Query spells, traits, and skills for fallback descriptions
+  // Query spells, traits, and skills for fallback descriptions (filtered by system)
   const { data: systemSpellsForFeats = [] } = useQuery({
-    queryKey: ['system-spells'],
-    queryFn: () => api.getSystemSpells(),
+    queryKey: ['system-spells', systemSlug],
+    queryFn: () => api.getSystemSpells(systemSlug),
   });
   
   const { data: systemTraitsForFeats = [] } = useQuery({
-    queryKey: ['system-traits'],
-    queryFn: () => api.getSystemTraits(),
+    queryKey: ['system-traits', systemSlug],
+    queryFn: () => api.getSystemTraits(systemSlug),
   });
   
   const { data: customSkillsForFeats = [] } = useQuery({
-    queryKey: ['system-skills'],
-    queryFn: () => api.getSystemSkills(),
+    queryKey: ['system-skills', systemSlug],
+    queryFn: () => api.getSystemSkills(systemSlug),
   });
   
   // Helper to get effective feat description - uses granted spell/trait/skill description if feat has no description
@@ -5011,6 +5011,7 @@ function FeatTreesView({ systemSlug }: { systemSlug: string }) {
           setFeatToSaveAsTemplate(feat);
           setShowSaveAsTemplate(true);
         }}
+        systemSlug={systemSlug}
       />
 
       <SaveAsTemplateDialog
@@ -5217,6 +5218,7 @@ interface FeatFormDialogProps {
   isLoading?: boolean;
   featTemplates?: FeatTemplate[];
   onSaveAsTemplate?: (feat: Partial<Feat>) => void;
+  systemSlug?: string;
 }
 
 const SKILLS_LIST = [
@@ -5248,7 +5250,7 @@ const ATTRIBUTES_LIST = [
   { key: 'will', name: 'Will' },
 ];
 
-function FeatFormDialog({ open, onOpenChange, onSave, initialData, isLoading, featTemplates = [], onSaveAsTemplate }: FeatFormDialogProps) {
+function FeatFormDialog({ open, onOpenChange, onSave, initialData, isLoading, featTemplates = [], onSaveAsTemplate, systemSlug }: FeatFormDialogProps) {
   const [showTemplateSelector, setShowTemplateSelector] = useState(false);
   const [formData, setFormData] = useState({
     name: initialData?.name || '',
@@ -5280,30 +5282,31 @@ function FeatFormDialog({ open, onOpenChange, onSave, initialData, isLoading, fe
   const [showTraitPicker, setShowTraitPicker] = useState(false);
   const [pickerSearch, setPickerSearch] = useState('');
 
-  // Query system spells for spell_grant dropdown
+  // Query system spells for spell_grant dropdown (filtered by system)
   const { data: systemSpells = [] } = useQuery({
-    queryKey: ['admin-spells'],
-    queryFn: () => api.getSystemSpells(),
+    queryKey: ['admin-spells', systemSlug],
+    queryFn: () => api.getSystemSpells(systemSlug),
     enabled: open,
   });
 
-  // Query custom skills for skill_grant dropdown
+  // Query custom skills for skill_grant dropdown (filtered by system)
   const { data: customSkills = [] } = useQuery({
-    queryKey: ['admin-skills'],
-    queryFn: () => api.getSystemSkills(),
+    queryKey: ['admin-skills', systemSlug],
+    queryFn: () => api.getSystemSkills(systemSlug),
     enabled: open,
   });
 
-  // Query system items for item_grant dropdown
+  // Query system items for item_grant dropdown (filtered by system)
   const { data: systemItems = [] } = useQuery<any[]>({
-    queryKey: ['/api/system-items'],
+    queryKey: ['/api/system-items', systemSlug],
+    queryFn: () => fetch(`/api/system-items${systemSlug ? `?system=${systemSlug}` : ''}`).then(r => r.json()),
     enabled: open,
   });
 
-  // Query system traits for trait_grant dropdown
+  // Query system traits for trait_grant dropdown (filtered by system)
   const { data: systemTraitsForDropdown = [] } = useQuery({
-    queryKey: ['admin-traits'],
-    queryFn: () => api.getSystemTraits(),
+    queryKey: ['admin-traits', systemSlug],
+    queryFn: () => api.getSystemTraits(systemSlug),
     enabled: open,
   });
 
