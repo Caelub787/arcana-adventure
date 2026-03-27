@@ -5365,6 +5365,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
               charUpdates[field] = ((char as any)[field] || 0) + Number(effect.value);
             }
           }
+        } else if (effect.type === 'skill_bonus' && effect.target && effect.value) {
+          const skillFields = ['skillAgility','skillArcana','skillCharisma','skillConcentration','skillDeception','skillHistory','skillIntimidation','skillInvestigation','skillMedicine','skillPerception','skillSleightOfHand','skillStealth','skillStrength','skillWisdom','skillCulture'];
+          const field = skillFields.find(f => f.toLowerCase() === `skill${effect.target}`.toLowerCase());
+          if (field) {
+            const char = await storage.getCharacter(req.params.id);
+            if (char) {
+              charUpdates[field] = ((char as any)[field] || 0) + Number(effect.value);
+            }
+          }
         }
       }
       if (Object.keys(charUpdates).length > 0) {

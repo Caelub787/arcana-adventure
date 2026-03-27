@@ -912,6 +912,7 @@ export default function AdminSettings() {
           onSave={(data, draftRolls) => createItemMutation.mutate({ item: data, draftRolls })}
           initialData={duplicatingItem ? { ...duplicatingItem, name: `${duplicatingItem.name} (Copy)` } : undefined}
           isLoading={createItemMutation.isPending}
+          campaignSystem={systemSlug}
         />
 
         {editingItem && (
@@ -921,6 +922,7 @@ export default function AdminSettings() {
             onSave={(data, _draftRolls) => updateItemMutation.mutate({ id: editingItem.id, data })}
             initialData={editingItem}
             isLoading={updateItemMutation.isPending}
+            campaignSystem={systemSlug}
           />
         )}
 
@@ -950,6 +952,7 @@ export default function AdminSettings() {
           onOpenChange={setShowAddSpell}
           onSave={(data, draftRolls) => createSpellMutation.mutate({ spell: data, draftRolls })}
           isLoading={createSpellMutation.isPending}
+          campaignSystem={systemSlug}
         />
 
         {editingSpell && (
@@ -959,6 +962,7 @@ export default function AdminSettings() {
             onSave={(data, _draftRolls) => updateSpellMutation.mutate({ id: editingSpell.id, data })}
             initialData={editingSpell}
             isLoading={updateSpellMutation.isPending}
+            campaignSystem={systemSlug}
           />
         )}
 
@@ -6711,11 +6715,12 @@ interface SpellFormDialogProps {
   onSave: (data: Partial<SystemSpell>, draftRolls?: any[]) => void;
   initialData?: SystemSpell;
   isLoading?: boolean;
+  campaignSystem?: string;
 }
 
 const spellAttributes = ['might', 'finesse', 'wit', 'presence', 'will', 'craft'];
 
-function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: SpellFormDialogProps) {
+function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading, campaignSystem }: SpellFormDialogProps) {
   const [draftRolls, setDraftRolls] = useState<any[]>([]);
 
   // Normalize castingTime to new action format
@@ -6977,7 +6982,7 @@ function SpellFormDialog({ open, onOpenChange, onSave, initialData, isLoading }:
               canEdit={true}
               draftRolls={!initialData?.id ? draftRolls : undefined}
               onDraftRollsChange={!initialData?.id ? setDraftRolls : undefined}
-              campaignSystem={selectedSystem === 'A.A. V2' ? 'aa-v2' : 'arcana-adventure'}
+              campaignSystem={campaignSystem || 'arcana-adventure'}
             />
           </div>
 
@@ -7025,9 +7030,10 @@ interface ItemFormDialogProps {
   onSave: (data: Partial<Item>, draftRolls?: any[]) => void;
   initialData?: Item;
   isLoading?: boolean;
+  campaignSystem?: string;
 }
 
-function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: ItemFormDialogProps) {
+function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading, campaignSystem }: ItemFormDialogProps) {
   const [draftRolls, setDraftRolls] = useState<any[]>([]);
 
   const [formData, setFormData] = useState<{
@@ -7685,7 +7691,7 @@ function ItemFormDialog({ open, onOpenChange, onSave, initialData, isLoading }: 
                 canEdit={true}
                 draftRolls={!initialData?.id ? draftRolls : undefined}
                 onDraftRollsChange={!initialData?.id ? setDraftRolls : undefined}
-                campaignSystem={selectedSystem === 'A.A. V2' ? 'aa-v2' : 'arcana-adventure'}
+                campaignSystem={campaignSystem || 'arcana-adventure'}
               />
             </div>
           </div>

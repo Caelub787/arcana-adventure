@@ -17307,7 +17307,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
       )}
       <Tabs defaultValue={defaultTab} className="w-full flex-1 min-h-0 flex flex-col overflow-hidden">
         {/* Icon-based tabs matching battlemap sidebar - icons on mobile, icons+text on desktop */}
-        <TabsList className={`grid w-full bg-stone-950 border-b border-stone-700 shrink-0 h-auto p-1 gap-0.5 sm:gap-1 ${isAAV2 ? 'grid-cols-8' : 'grid-cols-7'}`}>
+        <TabsList className="grid w-full bg-stone-950 border-b border-stone-700 shrink-0 h-auto p-1 gap-0.5 sm:gap-1 grid-cols-7">
           {tabConfig.map(({ value, icon: Icon, color, label }) => (
             <TabsTrigger 
               key={value}
@@ -21239,7 +21239,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
           title={
             <span className="text-fuchsia-400 flex items-center gap-2">
               <Layers className="h-4 w-4" />
-              All Classes
+              Class Manager
             </span>
           }
           defaultSize={{ width: Math.min(500, window.innerWidth - 40), height: Math.min(600, window.innerHeight - 40) }}
@@ -21255,37 +21255,94 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
               availableClasses.map((cls: any) => {
                 const charClass = characterClasses.find((cc: any) => cc.classId === cls.id);
                 const hasClass = !!charClass;
+                const classLevel = charClass?.classLevel || 0;
+                const totalPoints = hasClass ? 2 + classLevel + (2 * Math.floor(classLevel / 3)) : 0;
+                const spentPoints = charClass?.spentPoints || 0;
+                const availablePoints = totalPoints - spentPoints;
                 return (
-                  <button
+                  <div
                     key={cls.id}
-                    className={`w-full text-left p-3 rounded-lg border transition-colors flex items-center gap-3 ${
+                    className={`w-full text-left p-3 rounded-lg border transition-colors ${
                       hasClass 
-                        ? 'bg-fuchsia-900/30 border-fuchsia-600 hover:border-fuchsia-400' 
-                        : 'bg-stone-800 border-stone-700 hover:border-fuchsia-600'
+                        ? 'bg-fuchsia-900/30 border-fuchsia-600' 
+                        : 'bg-stone-800 border-stone-700'
                     }`}
-                    onClick={() => { setShowClassSkillTree(cls.id); }}
                     data-testid={`class-browser-${cls.id}`}
                   >
-                    {cls.image ? (
-                      <img src={cls.image} alt={cls.name} className="w-10 h-10 rounded-lg object-cover border border-fuchsia-600 shrink-0" />
-                    ) : (
-                      <div className="w-10 h-10 rounded-lg bg-fuchsia-900/40 border border-fuchsia-700 flex items-center justify-center shrink-0">
-                        <Layers className="h-5 w-5 text-fuchsia-500" />
-                      </div>
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium text-fuchsia-300">{cls.name}</span>
+                    <div className="flex items-center gap-3">
+                      {cls.image ? (
+                        <img src={cls.image} alt={cls.name} className="w-10 h-10 rounded-lg object-cover border border-fuchsia-600 shrink-0" />
+                      ) : (
+                        <div className="w-10 h-10 rounded-lg bg-fuchsia-900/40 border border-fuchsia-700 flex items-center justify-center shrink-0">
+                          <Layers className="h-5 w-5 text-fuchsia-500" />
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium text-fuchsia-300">{cls.name}</span>
+                          {hasClass && (
+                            <Badge variant="outline" className="text-[9px] h-4 px-1 border-fuchsia-600 text-fuchsia-300">
+                              Lv.{classLevel}
+                            </Badge>
+                          )}
+                        </div>
+                        {cls.description && <p className="text-[11px] text-stone-400 mt-0.5 truncate">{cls.description}</p>}
                         {hasClass && (
-                          <Badge variant="outline" className="text-[9px] h-4 px-1 border-fuchsia-600 text-fuchsia-300">
-                            Lv.{charClass.classLevel}
-                          </Badge>
+                          <div className="flex items-center gap-2 mt-1">
+                            <span className="text-[10px] text-stone-500">Points: {availablePoints}/{totalPoints}</span>
+                            <span className="text-[10px] text-stone-600">({spentPoints} spent)</span>
+                          </div>
                         )}
                       </div>
-                      {cls.description && <p className="text-[11px] text-stone-400 mt-0.5 truncate">{cls.description}</p>}
+                      <div className="flex items-center gap-1 shrink-0">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 w-7 p-0 text-fuchsia-400 hover:text-fuchsia-300 hover:bg-fuchsia-900/30"
+                          onClick={() => setShowClassSkillTree(cls.id)}
+                          data-testid={`class-tree-${cls.id}`}
+                        >
+                          <GitBranch className="h-4 w-4" />
+                        </Button>
+                        {isGM && hasClass && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 w-7 p-0 text-green-400 hover:text-green-300 hover:bg-green-900/30"
+                            onClick={() => levelUpClassMutation.mutate(charClass.id)}
+                            disabled={levelUpClassMutation.isPending}
+                            data-testid={`class-levelup-${cls.id}`}
+                          >
+                            <TrendingUp className="h-4 w-4" />
+                          </Button>
+                        )}
+                        {isGM && !hasClass && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 w-7 p-0 text-green-400 hover:text-green-300 hover:bg-green-900/30"
+                            onClick={() => addCharacterClassMutation.mutate(cls.id)}
+                            disabled={addCharacterClassMutation.isPending}
+                            data-testid={`class-add-${cls.id}`}
+                          >
+                            <Plus className="h-4 w-4" />
+                          </Button>
+                        )}
+                        {isGM && hasClass && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 w-7 p-0 text-red-400 hover:text-red-300 hover:bg-red-900/30"
+                            onClick={() => removeCharacterClassMutation.mutate(charClass.id)}
+                            disabled={removeCharacterClassMutation.isPending}
+                            data-testid={`class-remove-${cls.id}`}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
+                      </div>
                     </div>
-                    <ChevronRight className="h-4 w-4 text-stone-500 shrink-0" />
-                  </button>
+                  </div>
                 );
               })
             )}
