@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertUserSchema, insertCampaignSchema, insertCharacterSchema, insertTokenSchema, insertChatMessageSchema, insertSceneSchema, insertHotbarSchema, insertItemSchema, insertSpellSchema, initiativeEntries, insertTokenEffectSchema, insertTokenActiveEffectSchema, rollEntries, insertRollEntrySchema, items, sceneVisionZones, insertEntitySchema, insertEntityLinkSchema, insertWorldMapSchema, insertWorldMapPinSchema, insertWorldCalendarSchema, insertWorldTimelineEventSchema, insertWorldTimelineSchema, insertWorldSchema, insertWorldCalendarSyncSchema, insertCampaignMapPinSchema, insertShopItemSchema } from "@shared/schema";
+import { insertUserSchema, insertCampaignSchema, insertCharacterSchema, insertTokenSchema, insertChatMessageSchema, insertSceneSchema, insertHotbarSchema, insertItemSchema, insertSpellSchema, initiativeEntries, insertTokenEffectSchema, insertTokenActiveEffectSchema, rollEntries, insertRollEntrySchema, items, sceneVisionZones, insertEntitySchema, insertEntityLinkSchema, insertWorldMapSchema, insertWorldMapPinSchema, insertWorldCalendarSchema, insertWorldTimelineEventSchema, insertWorldTimelineSchema, insertWorldSchema, insertWorldCalendarSyncSchema, insertCampaignMapPinSchema, insertShopItemSchema, campaigns, characters } from "@shared/schema";
 import bcrypt from "bcryptjs";
 import { WebSocketServer } from "ws";
 import { sendPasswordResetEmail } from "./email";
@@ -1835,6 +1835,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
    */
   function validateCharacterUpdate(updates: Partial<any>, isGM: boolean, canEditSheet: boolean): void {
     // GM-only fields that regular editors cannot change
+    const serverOnlyFields = ['classSkillPoints'];
+    for (const f of serverOnlyFields) {
+      delete updates[f];
+    }
     const gmOnlyFields = [
       'gmNotes', 'speciesId', 'race', 'size', 'speed', 'naturalArmor', 
       'isTemplate', 'campaignId', 'userId', 'folderId'
@@ -5358,15 +5362,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      const allNodes = await storage.getClassSkillNodes(req.params.classId);
-      const spentPoints = existingSkills.reduce((sum, s) => {
-        const n = allNodes.find(an => an.id === s.nodeId);
-        return sum + (n?.cost || 0);
-      }, 0);
-      const totalPoints = 3 * charClass.classLevel + 2 * Math.floor(charClass.classLevel / 3);
-      const available = totalPoints - spentPoints;
+      const character = await storage.getCharacter(req.params.id);
+      if (!character) return res.status(404).json({ error: "Character not found" });
 
-      if (node.cost > available) {
+      const globalPoints = character.classSkillPoints || 0;
+      if (node.cost > globalPoints) {
         return res.status(400).json({ error: "Not enough class points" });
       }
 
@@ -5376,9 +5376,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         nodeId: req.params.nodeId,
       });
 
-      const newSpent = spentPoints + node.cost;
-      const newAvailable = totalPoints - newSpent;
-      await storage.updateCharacterClass(charClass.id, { classPoints: newAvailable });
+      await storage.updateCharacter(req.params.id, {
+        classSkillPoints: globalPoints - node.cost,
+      });
+
+      const allNodes = await storage.getClassSkillNodes(req.params.classId);
+      const existingSkillsAfter = await storage.getCharacterClassSkills(req.params.id, req.params.classId);
+      const spentInClass = existingSkillsAfter.reduce((sum, s) => {
+        const n = allNodes.find(an => an.id === s.nodeId);
+        return sum + (n?.cost || 0);
+      }, 0);
+      const perClassTotal = 3 * charClass.classLevel + 2 * Math.floor(charClass.classLevel / 3);
+      await storage.updateCharacterClass(charClass.id, { classPoints: perClassTotal - spentInClass });
 
       const effects = (node.effects as any[]) || [];
       const charUpdates: Record<string, any> = {};
@@ -5430,7 +5439,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      res.json({ success: true, pointsRemaining: newAvailable });
+      res.json({ success: true, pointsRemaining: globalPoints - node.cost });
     } catch (err) {
       console.error("Unlock node error:", err);
       res.status(400).json({ error: "Failed to unlock node" });
@@ -11905,6 +11914,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ error: "Failed to reset haggle roll" });
     }
   });
+
+  (async () => {
+    try {
+      const { eq, and, isNull } = await import('drizzle-orm');
+      const aaV2CampaignRows = await db.select({ id: campaigns.id }).from(campaigns).where(eq(campaigns.system, 'aa-v2'));
+      const campaignIds = aaV2CampaignRows.map(c => c.id);
+      if (campaignIds.length === 0) {
+        console.log('[AA V2 Fix] No AA V2 campaigns found');
+        return;
+      }
+      for (const campId of campaignIds) {
+        const chars = await storage.getCampaignCharacters(campId);
+        for (const char of chars) {
+          if (char.isTemplate) continue;
+          const level = char.level || 1;
+          let expectedTotal = 0;
+          for (let lvl = 1; lvl <= level; lvl++) {
+            expectedTotal += (lvl % 3 === 0) ? 5 : 3;
+          }
+          const charClasses = await storage.getCharacterClasses(char.id);
+          let totalSpent = 0;
+          for (const cc of charClasses) {
+            const skills = await storage.getCharacterClassSkills(char.id, cc.classId);
+            const nodes = await storage.getClassSkillNodes(cc.classId);
+            for (const s of skills) {
+              const node = nodes.find(n => n.id === s.nodeId);
+              totalSpent += node?.cost || 0;
+            }
+          }
+          const correctPoints = Math.max(0, expectedTotal - totalSpent);
+          if ((char.classSkillPoints || 0) !== correctPoints) {
+            await storage.updateCharacter(char.id, { classSkillPoints: correctPoints });
+            console.log(`[AA V2 Fix] ${char.name}: classSkillPoints ${char.classSkillPoints || 0} -> ${correctPoints}`);
+          }
+        }
+      }
+      console.log('[AA V2 Fix] Class points correction complete');
+    } catch (err) {
+      console.error('[AA V2 Fix] Error correcting class points:', err);
+    }
+  })();
 
   return httpServer;
 }

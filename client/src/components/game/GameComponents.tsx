@@ -8428,7 +8428,7 @@ function AddCharacterDialog({ open, onOpenChange, onAddCharacter, campaignId, ca
       maxMana: selectedSpecies.startingMaxMana || 0,
       bonusHpFromLevelUps: 0,
       lastLevelUpRolled: 1,
-      // Default attributes (range -2 to 5, default 0)
+      classSkillPoints: campaignSystem === 'aa-v2' ? 3 : 0,
       might: 0,
       finesse: 0,
       wit: 0,
@@ -21398,9 +21398,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                 const charClass = characterClasses.find((cc: any) => cc.classId === cls.id);
                 const hasClass = !!charClass;
                 const classLevel = charClass?.classLevel || 0;
-                const totalPoints = hasClass ? 3 * classLevel + 2 * Math.floor(classLevel / 3) : 0;
-                const spentPoints = charClass?.spentPoints || 0;
-                const availablePoints = totalPoints - spentPoints;
+                const globalAvailablePoints = liveCharacter.classSkillPoints || 0;
                 return (
                   <div
                     key={cls.id}
@@ -21431,8 +21429,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                         {cls.description && <p className="text-[11px] text-stone-400 mt-0.5 truncate">{cls.description}</p>}
                         {hasClass && (
                           <div className="flex items-center gap-2 mt-1">
-                            <span className="text-[10px] text-stone-500">Points: {availablePoints}/{totalPoints}</span>
-                            <span className="text-[10px] text-stone-600">({spentPoints} spent)</span>
+                            <span className="text-[10px] text-stone-500">Class Points Available: {globalAvailablePoints}</span>
                           </div>
                         )}
                       </div>
@@ -21519,9 +21516,11 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
               characterId={liveCharacter.id}
               characterClass={characterClasses.find((cc: any) => cc.classId === showClassSkillTree)}
               canEdit={canEditSheet}
+              globalClassPoints={liveCharacter.classSkillPoints || 0}
               onNodeUnlocked={() => {
                 queryClient.invalidateQueries({ queryKey: ['character-classes', character?.id] });
                 queryClient.invalidateQueries({ queryKey: ['/api/characters', character?.id] });
+                queryClient.invalidateQueries({ queryKey: [`/api/characters/${character?.id}`] });
               }}
             />
           </div>
@@ -22211,12 +22210,13 @@ const classViewerTierStyles: Record<number, { border: string; bg: string; glow: 
   3: { border: 'border-amber-500', bg: 'bg-gradient-to-br from-amber-900/90 to-stone-900/90', glow: 'shadow-[0_0_20px_rgba(245,158,11,0.5)]', unlocked: 'border-green-500 bg-gradient-to-br from-green-900/80 to-amber-900/40 shadow-[0_0_15px_rgba(34,197,94,0.4)]' },
 };
 
-function ClassSkillTreeViewer({ classId, characterId, characterClass, canEdit, onNodeUnlocked }: {
+function ClassSkillTreeViewer({ classId, characterId, characterClass, canEdit, onNodeUnlocked, globalClassPoints }: {
   classId: string;
   characterId: string;
   characterClass: any;
   canEdit: boolean;
   onNodeUnlocked: () => void;
+  globalClassPoints: number;
 }) {
   const queryClient = useQueryClient();
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -22258,10 +22258,7 @@ function ClassSkillTreeViewer({ classId, characterId, characterClass, canEdit, o
   });
 
   const unlockedNodeIds = characterClass?.unlockedNodes || [];
-  const classLevel = characterClass?.classLevel || 1;
-  const totalPoints = 3 * classLevel + 2 * Math.floor(classLevel / 3);
-  const spentPoints = characterClass?.spentPoints || 0;
-  const availablePoints = totalPoints - spentPoints;
+  const availablePoints = globalClassPoints;
 
   const isNodeUnlockable = useCallback((node: any) => {
     if (unlockedNodeIds.includes(node.id)) return false;
@@ -22300,12 +22297,10 @@ function ClassSkillTreeViewer({ classId, characterId, characterClass, canEdit, o
       <div className="flex items-center justify-between px-3 py-2 border-b border-stone-700 shrink-0">
         <div className="flex items-center gap-2 text-xs">
           <span className={`font-medium ${availablePoints > 0 ? 'text-green-400' : 'text-stone-400'}`}>
-            {availablePoints} / {totalPoints} points
+            {availablePoints} class points available
           </span>
           <span className="text-stone-500">|</span>
-          <span className="text-stone-400">Level {classLevel}</span>
-          <span className="text-stone-500">|</span>
-          <span className="text-fuchsia-400">{unlockedNodeIds.length} skills</span>
+          <span className="text-fuchsia-400">{unlockedNodeIds.length} skills unlocked</span>
         </div>
         <div className="flex items-center gap-1 bg-stone-800 rounded px-2 py-0.5">
           <Button variant="ghost" size="sm" className="h-5 w-5 p-0" onClick={() => setZoom(z => Math.max(0.3, z - 0.1))}>
