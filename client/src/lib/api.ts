@@ -61,6 +61,8 @@ export interface Character {
   maxHp: number;
   energy: number;
   maxEnergy: number;
+  mana: number;
+  maxMana: number;
   race: string;
   size: string;
   sizeBonus: number;

@@ -5957,8 +5957,8 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
     // Validate energy and mana costs before deducting either
     const energyCost = spellData.energyCost || 0;
     const currentEnergy = character.energy || 0;
-    const spellManaCost1 = (spellData as any).manaCost || 0;
-    const currentMana1 = (character as any).mana ?? 0;
+    const spellManaCost1 = spellData.manaCost || 0;
+    const currentMana1 = character.mana ?? 0;
     
     if (energyCost > 0 && currentEnergy < energyCost) {
       triggerRollNotification({
@@ -5985,7 +5985,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
     }
     if (spellManaCost1 > 0 && character.id) {
       try {
-        await api.updateCharacter(character.id, { mana: currentMana1 - spellManaCost1 } as any);
+        await api.updateCharacter(character.id, { mana: currentMana1 - spellManaCost1 });
         queryClient.invalidateQueries({ queryKey: ['character', character.id] });
       } catch (err) { console.error('Failed to deduct mana:', err); }
     }
@@ -6143,8 +6143,8 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
     if (!hasAoeCheck && (spellData.requiresSave || spellData.saveSuccessEffect)) {
       const energyCost = spellData.energyCost || 0;
       const currentEnergy = character.energy || 0;
-      const saveManaCost = (spellData as any).manaCost || 0;
-      const saveMana = (character as any).mana ?? 0;
+      const saveManaCost = spellData.manaCost || 0;
+      const saveMana = character.mana ?? 0;
       if (energyCost > 0 && currentEnergy < energyCost) {
         triggerRollNotification({
           type: 'system', label: `Not Enough Energy!`, result: 0, total: 0,
@@ -6169,7 +6169,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
       }
       if (saveManaCost > 0 && character.id) {
         try {
-          await api.updateCharacter(character.id, { mana: saveMana - saveManaCost } as any);
+          await api.updateCharacter(character.id, { mana: saveMana - saveManaCost });
           queryClient.invalidateQueries({ queryKey: ['character', character.id] });
         } catch (err) { console.error('Failed to deduct mana:', err); }
       }
@@ -6184,8 +6184,8 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
     if (hasAoe && aoeTargetState?.active && aoeTargetState?.locked && tokens) {
       const energyCost = spellData.energyCost || 0;
       const currentEnergy = character.energy || 0;
-      const aoeManaCost = (spellData as any).manaCost || 0;
-      const aoeMana = (character as any).mana ?? 0;
+      const aoeManaCost = spellData.manaCost || 0;
+      const aoeMana = character.mana ?? 0;
       if (energyCost > 0 && currentEnergy < energyCost) {
         triggerRollNotification({
           type: 'system', label: `Not Enough Energy!`, result: 0, total: 0,
@@ -6210,7 +6210,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
       }
       if (aoeManaCost > 0 && character.id) {
         try {
-          await api.updateCharacter(character.id, { mana: aoeMana - aoeManaCost } as any);
+          await api.updateCharacter(character.id, { mana: aoeMana - aoeManaCost });
           queryClient.invalidateQueries({ queryKey: ['character', character.id] });
         } catch (err) { console.error('Failed to deduct mana:', err); }
       }
@@ -6843,7 +6843,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
     }
 
     if (rollEntry.requiresMana && rollEntry.manaCost > 0) {
-      const currentMana = (character as any)?.mana ?? 0;
+      const currentMana = character?.mana ?? 0;
       if (currentMana < rollEntry.manaCost) {
         triggerRollNotification({
           type: 'system',
@@ -7454,7 +7454,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
           return displayRange ? <p className="text-sm">Range: {displayRange}ft</p> : null;
         })()}
         <p className="text-sm text-cyan-400">Energy: {energyCost}</p>
-        {(spellData as any).manaCost > 0 && <p className="text-sm text-violet-400">Mana: {(spellData as any).manaCost}</p>}
+        {spellData.manaCost > 0 && <p className="text-sm text-violet-400">Mana: {spellData.manaCost}</p>}
         <p className="text-xs text-stone-400 mt-1">Click to open roll panel</p>
       </>
     );
@@ -7952,10 +7952,10 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
                       <span className="text-stone-200">{spellData.energyCost}</span>
                     </div>
                   )}
-                  {(spellData as any).manaCost > 0 && (
+                  {spellData.manaCost > 0 && (
                     <div className="bg-stone-800 rounded p-2">
                       <span className="text-violet-400 block">Mana Cost</span>
-                      <span className="text-stone-200">{(spellData as any).manaCost}</span>
+                      <span className="text-stone-200">{spellData.manaCost}</span>
                     </div>
                   )}
                   {spellData.attribute && (
@@ -13604,8 +13604,8 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
     
     const energyCost = spellData.energyCost || 0;
     const currentEnergy = character.energy || 0;
-    const hotbarManaCost = (spellData as any).manaCost || 0;
-    const hotbarMana = (character as any).mana ?? 0;
+    const hotbarManaCost = spellData.manaCost || 0;
+    const hotbarMana = character.mana ?? 0;
     
     if (energyCost > 0 && currentEnergy < energyCost) {
       triggerRollNotification({
@@ -13632,7 +13632,7 @@ function HotbarSlot({ type, slotNumber, hotbar, character, canEdit, onDrop, onRe
     }
     if (hotbarManaCost > 0 && character.id) {
       try {
-        await api.updateCharacter(character.id, { mana: hotbarMana - hotbarManaCost } as any);
+        await api.updateCharacter(character.id, { mana: hotbarMana - hotbarManaCost });
         queryClient.invalidateQueries({ queryKey: ['character', character.id] });
       } catch (err) { console.error('Failed to deduct mana:', err); }
     }
@@ -19708,7 +19708,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                             <Input
                               type="number"
                               min="0"
-                              value={(spellFormData as any).manaCost || 0}
+                              value={spellFormData.manaCost || 0}
                               onChange={(e) => handleSpellNumericChange('manaCost', e.target.value)}
                               className={`bg-stone-800 ${isGM ? 'border-violet-700' : 'border-stone-700'}`}
                               disabled={!isGM}
@@ -23384,7 +23384,7 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
     }
 
     const manaCostExec = rollEntry.requiresMana ? (rollEntry.manaCost || 0) : 0;
-    const currentManaExec = (character as any)?.mana ?? 0;
+    const currentManaExec = character?.mana ?? 0;
     if (manaCostExec > 0 && currentManaExec < manaCostExec) {
       triggerRollNotification({
         type: 'system',
@@ -23408,7 +23408,7 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
       }
       if (manaCostExec > 0 && character?.id) {
         try {
-          await api.updateCharacter(character.id, { mana: currentManaExec - manaCostExec } as any);
+          await api.updateCharacter(character.id, { mana: currentManaExec - manaCostExec });
           queryClient.invalidateQueries({ queryKey: ['character', character.id] });
         } catch (err) {
           console.error('Failed to deduct mana:', err);
@@ -23467,7 +23467,7 @@ function ItemDetailDialog({ item, open, onOpenChange, isGM, isOwner, character, 
     }
     if (manaCostExec > 0 && character?.id) {
       try {
-        await api.updateCharacter(character.id, { mana: currentManaExec - manaCostExec } as any);
+        await api.updateCharacter(character.id, { mana: currentManaExec - manaCostExec });
         queryClient.invalidateQueries({ queryKey: ['character', character.id] });
       } catch (err) {
         console.error('Failed to deduct mana:', err);

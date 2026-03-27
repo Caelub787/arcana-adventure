@@ -37,6 +37,8 @@ interface RollEntry {
   primaryColor?: string | null;
   requiresEnergy?: boolean;
   energyCost?: number;
+  requiresMana?: boolean;
+  manaCost?: number;
   noRoll?: boolean;
   enableChatMessage?: boolean;
   chatMessage?: string;
@@ -122,6 +124,8 @@ function emptyFormData(ownerType: string, ownerId: string): Partial<RollEntry> {
     primaryColor: null,
     requiresEnergy: false,
     energyCost: undefined,
+    requiresMana: false,
+    manaCost: undefined,
     noRoll: false,
     enableChatMessage: false,
     chatMessage: "",
@@ -175,6 +179,9 @@ function getRollDetails(roll: RollEntry): string[] {
   }
   if (roll.requiresEnergy && roll.energyCost) {
     details.push(`Energy Cost: ${roll.energyCost}`);
+  }
+  if (roll.requiresMana && roll.manaCost) {
+    details.push(`Mana Cost: ${roll.manaCost}`);
   }
   if (roll.applyTokenEffects) {
     const trigger = roll.effectTriggerCondition === 'success' ? 'on success' : 
@@ -633,6 +640,28 @@ function RollForm({
               onChange={(e) => setForm((f) => ({ ...f, energyCost: e.target.value ? parseInt(e.target.value) : undefined }))}
               placeholder="Energy cost"
               data-testid={`input-${prefix}-energyCost`}
+            />
+          </div>
+        )}
+      </CollapsibleSection>
+
+      <CollapsibleSection title="Mana Cost" testId={`section-${prefix}-mana-cost`}>
+        <ToggleButton
+          active={!!form.requiresMana}
+          onClick={() => setForm((f) => ({ ...f, requiresMana: !f.requiresMana }))}
+          label="Require Mana"
+          testId={`toggle-${prefix}-requiresMana`}
+        />
+        {form.requiresMana && (
+          <div className="mt-2">
+            <Label className="text-xs text-violet-400">Mana Cost</Label>
+            <Input
+              className="bg-stone-900 border-violet-700 h-7 text-xs"
+              type="number"
+              value={form.manaCost ?? ""}
+              onChange={(e) => setForm((f) => ({ ...f, manaCost: e.target.value ? parseInt(e.target.value) : undefined }))}
+              placeholder="Mana cost"
+              data-testid={`input-${prefix}-manaCost`}
             />
           </div>
         )}
@@ -1169,6 +1198,7 @@ export function RollEntriesEditor({ ownerType, ownerId, canEdit, onExecuteRoll, 
                     {roll.passesThroughWalls && <p className="text-[10px] text-stone-400">🔮 Passes through walls</p>}
                     {roll.noRoll && <span className="text-[10px] text-purple-400">No Roll</span>}
                     {roll.requiresEnergy && roll.energyCost && <span className="text-[10px] text-cyan-400">⚡ {roll.energyCost} Energy</span>}
+                    {roll.requiresMana && roll.manaCost && <span className="text-[10px] text-violet-400">✦ {roll.manaCost} Mana</span>}
                     {roll.enableChatMessage && <span className="text-[10px] text-emerald-400">💬 Chat Message</span>}
                     {roll.applyTokenEffects && (
                       <p className="text-[10px] text-violet-400">

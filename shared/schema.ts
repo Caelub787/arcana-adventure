@@ -1818,6 +1818,7 @@ export const characterClasses = pgTable("character_classes", {
   characterId: varchar("character_id").notNull().references(() => characters.id, { onDelete: "cascade" }),
   classId: varchar("class_id").notNull().references(() => classes.id, { onDelete: "cascade" }),
   classLevel: integer("class_level").notNull().default(1),
+  classPoints: integer("class_points").notNull().default(0),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => ({
   uniqueCharacterClass: uniqueIndex("character_classes_char_class_unique").on(
