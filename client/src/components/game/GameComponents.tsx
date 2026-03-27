@@ -7007,6 +7007,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
             });
 
             const saveLabel = `${targetChar.name} ${saveAttr.charAt(0).toUpperCase() + saveAttr.slice(1)} Save (DC ${effectiveDc}) — ${result.saved ? 'SAVED!' : 'FAILED!'}`;
+            const saveBrkdown = `d20 = ${result.roll} → Total: ${result.total} vs DC ${effectiveDc}`;
             triggerRollNotification({
               type: result.saved ? 'system' : 'attack',
               dieType: 'd20' as any,
@@ -7015,9 +7016,12 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
               total: result.total,
               username: targetChar.name,
               characterName: targetChar.name,
-              calculationBreakdown: `d20 = ${result.roll} → Total: ${result.total} vs DC ${effectiveDc}`,
+              calculationBreakdown: saveBrkdown,
               customColor: rollEntry.primaryColor || undefined,
             });
+            if (character.campaignId) {
+              gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', `${saveLabel}: ${saveBrkdown}`, 'roll');
+            }
           } catch (e) {
             newSaveResults.push({
               tokenId: token.id,
@@ -7042,6 +7046,7 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
             });
 
             const saveLabel = `${targetChar.name} ${saveAttr.charAt(0).toUpperCase() + saveAttr.slice(1)} Save (DC ${effectiveDc}) — ${autoSaved ? 'SAVED!' : 'FAILED!'}`;
+            const autoSaveBrkdown = `d20 = ${autoRoll} + ${saveAttr} (${attrMod >= 0 ? '+' : ''}${attrMod}) = ${autoTotal} vs DC ${effectiveDc}`;
             triggerRollNotification({
               type: autoSaved ? 'system' : 'attack',
               dieType: 'd20' as any,
@@ -7050,13 +7055,17 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
               total: autoTotal,
               username: targetChar.name,
               characterName: targetChar.name,
-              calculationBreakdown: `d20 = ${autoRoll} + ${saveAttr} (${attrMod >= 0 ? '+' : ''}${attrMod}) = ${autoTotal} vs DC ${effectiveDc}`,
+              calculationBreakdown: autoSaveBrkdown,
               customColor: rollEntry.primaryColor || undefined,
             });
+            if (character.campaignId) {
+              gameWs.sendChatMessage(character.userId || '', character.name || 'Unknown', `${saveLabel}: ${autoSaveBrkdown}`, 'roll');
+            }
           }
       }
 
       if (rollEntry.diceFormula && newSaveResults.length > 0) {
+        await new Promise(resolve => setTimeout(resolve, 1500));
         const { result: dmgResult, dieType: dmgDieType } = rollDice(rollEntry.diceFormula);
         const rollMod = rollEntry.mod || 0;
         let attrMod = 0;
