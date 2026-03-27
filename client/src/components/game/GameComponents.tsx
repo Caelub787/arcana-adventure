@@ -7357,7 +7357,11 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
         <p className="font-bold">{spellData.name}</p>
         {(spellData.damageDice || spellData.damage) && <p className="text-sm">Damage: {spellData.damageDice || spellData.damage}{spellData.mod ? ` +${spellData.mod}` : ''} {spellData.damageType || ''}</p>}
         {spellData.attribute && <p className="text-sm">{spellData.isAttack !== false ? 'Attack' : 'Attribute'}: {spellData.attribute}</p>}
-        {spellData.rangeNum && <p className="text-sm">Range: {spellData.rangeNum}ft</p>}
+        {(() => {
+          const rollRange = spellRollEntries.find((r: any) => r.range)?.range;
+          const displayRange = rollRange || spellData.rangeNum;
+          return displayRange ? <p className="text-sm">Range: {displayRange}ft</p> : null;
+        })()}
         <p className="text-sm text-cyan-400">Energy: {energyCost}</p>
         <p className="text-xs text-stone-400 mt-1">Click to open roll panel</p>
       </>
@@ -7872,12 +7876,16 @@ const BattleMapHotbarSlotInner = function BattleMapHotbarSlot({ hotbar, slotInde
                       <span className="text-stone-200 capitalize">{spellData.attribute}</span>
                     </div>
                   )}
-                  {spellData.rangeNum && (
-                    <div className="bg-stone-800 rounded p-2">
-                      <span className="text-stone-500 block">Range</span>
-                      <span className="text-stone-200">{spellData.rangeNum}ft</span>
-                    </div>
-                  )}
+                  {(() => {
+                    const rollRange = spellRollEntries.find((r: any) => r.range)?.range;
+                    const displayRange = rollRange || spellData.rangeNum;
+                    return displayRange ? (
+                      <div className="bg-stone-800 rounded p-2">
+                        <span className="text-stone-500 block">Range</span>
+                        <span className="text-stone-200">{displayRange}ft</span>
+                      </div>
+                    ) : null;
+                  })()}
                   {spellData.castingTime && (
                     <div className="bg-stone-800 rounded p-2">
                       <span className="text-stone-500 block">Casting Time</span>
@@ -16261,7 +16269,7 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
       description: spellFormData.description,
       image: spellFormData.image || undefined,
       castingTime: spellFormData.castingTime,
-      range: Number(spellFormData.range) || 30,
+      range: spellFormData.range ? Number(spellFormData.range) : undefined,
       duration: spellFormData.duration,
       damageType: normalizeNone(spellFormData.damageType),
       damage: spellFormData.damageDice,
