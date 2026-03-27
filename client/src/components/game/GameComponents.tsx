@@ -2739,7 +2739,14 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                 <div 
                   className="absolute left-1/2 -translate-x-1/2 font-display text-white pointer-events-none text-center leading-tight"
                   style={{ 
-                    bottom: character && hpPercent !== null ? 18 : 2,
+                    bottom: (() => {
+                      if (!character) return 2;
+                      let visibleBars = 0;
+                      if (hpPercent !== null && (character.showHpBar ?? true)) visibleBars++;
+                      if (energyPercent !== null && (character.showEnergyBar ?? true)) visibleBars++;
+                      if (manaPercent !== null && (character.showManaBar ?? true)) visibleBars++;
+                      return visibleBars > 0 ? 2 + visibleBars * 8 : 2;
+                    })(),
                     fontSize: Math.max(8, Math.min(11, tokenSize / 5.5)),
                     textShadow: '1px 1px 0 #000, -1px 1px 0 #000, 1px -1px 0 #000, -1px -1px 0 #000, 0 1px 0 #000, 0 -1px 0 #000, 1px 0 0 #000, -1px 0 0 #000',
                     maxWidth: tokenSize * 1.2,
@@ -2753,37 +2760,47 @@ export function BattleMap({ tokens, onMoveToken, onTokenClick, onTokenDoubleClic
                 </div>
               )}
               
-              {/* HP Bar - Only show if token is linked to a character and user has view/edit permission and showHpBar is true */}
-              {character && hpPercent !== null && (character.showHpBar ?? true) && (role === 'gm' || ['view', 'edit'].includes(myPermissions?.permissions?.[character.id])) && (
-                <div className="absolute bottom-[9px] left-0.5 right-0.5 h-1.5 bg-black/50 rounded-full overflow-hidden border border-black/80 z-[2]">
-                  <div 
-                    className={`h-full transition-all duration-700 ease-in-out ${
-                      hpPercent > 60 ? 'bg-green-500' : hpPercent > 30 ? 'bg-yellow-500' : 'bg-red-500'
-                    }`}
-                    style={{ width: `${Math.max(0, Math.min(100, hpPercent))}%` }}
-                  />
-                </div>
-              )}
-              
-              {/* Energy Bar - Only show if token is linked to a character and user has view/edit permission and showEnergyBar is true */}
-              {character && energyPercent !== null && (character.showEnergyBar ?? true) && (role === 'gm' || ['view', 'edit'].includes(myPermissions?.permissions?.[character.id])) && (
-                <div className={`absolute ${(manaPercent !== null && (character.showManaBar ?? true)) ? 'bottom-3' : 'bottom-0.5'} left-0.5 right-0.5 h-1.5 bg-black/50 rounded-full overflow-hidden border border-black/80 z-[2]`}>
-                  <div 
-                    className="h-full transition-all duration-700 ease-in-out bg-cyan-500"
-                    style={{ width: `${Math.max(0, Math.min(100, energyPercent))}%` }}
-                  />
-                </div>
-              )}
-              
-              {/* Mana Bar - purple/pink color, respects showManaBar toggle */}
-              {character && manaPercent !== null && (character.showManaBar ?? true) && (role === 'gm' || ['view', 'edit'].includes(myPermissions?.permissions?.[character.id])) && (
-                <div className="absolute bottom-0.5 left-0.5 right-0.5 h-1.5 bg-black/50 rounded-full overflow-hidden border border-black/80 z-[2]">
-                  <div 
-                    className="h-full transition-all duration-700 ease-in-out bg-fuchsia-500"
-                    style={{ width: `${Math.max(0, Math.min(100, manaPercent))}%` }}
-                  />
-                </div>
-              )}
+              {/* Token Resource Bars - HP, Energy, Mana stacked from bottom */}
+              {(() => {
+                const showMana = character && manaPercent !== null && (character.showManaBar ?? true) && (role === 'gm' || ['view', 'edit'].includes(myPermissions?.permissions?.[character.id]));
+                const showEnergy = character && energyPercent !== null && (character.showEnergyBar ?? true) && (role === 'gm' || ['view', 'edit'].includes(myPermissions?.permissions?.[character.id]));
+                const showHp = character && hpPercent !== null && (character.showHpBar ?? true) && (role === 'gm' || ['view', 'edit'].includes(myPermissions?.permissions?.[character.id]));
+                let barIndex = 0;
+                const barPositions = ['bottom-0.5', 'bottom-[9px]', 'bottom-[17px]'];
+                const manaPos = showMana ? barPositions[barIndex++] : '';
+                const energyPos = showEnergy ? barPositions[barIndex++] : '';
+                const hpPos = showHp ? barPositions[barIndex++] : '';
+                return (
+                  <>
+                    {showHp && (
+                      <div className={`absolute ${hpPos} left-0.5 right-0.5 h-1.5 bg-black/50 rounded-full overflow-hidden border border-black/80 z-[2]`}>
+                        <div 
+                          className={`h-full transition-all duration-700 ease-in-out ${
+                            hpPercent! > 60 ? 'bg-green-500' : hpPercent! > 30 ? 'bg-yellow-500' : 'bg-red-500'
+                          }`}
+                          style={{ width: `${Math.max(0, Math.min(100, hpPercent!))}%` }}
+                        />
+                      </div>
+                    )}
+                    {showEnergy && (
+                      <div className={`absolute ${energyPos} left-0.5 right-0.5 h-1.5 bg-black/50 rounded-full overflow-hidden border border-black/80 z-[2]`}>
+                        <div 
+                          className="h-full transition-all duration-700 ease-in-out bg-cyan-500"
+                          style={{ width: `${Math.max(0, Math.min(100, energyPercent!))}%` }}
+                        />
+                      </div>
+                    )}
+                    {showMana && (
+                      <div className={`absolute ${manaPos} left-0.5 right-0.5 h-1.5 bg-black/50 rounded-full overflow-hidden border border-black/80 z-[2]`}>
+                        <div 
+                          className="h-full transition-all duration-700 ease-in-out bg-fuchsia-500"
+                          style={{ width: `${Math.max(0, Math.min(100, manaPercent!))}%` }}
+                        />
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
               
               {/* Active Effects Display - Show on right side INSIDE the token */}
               {tokenActiveEffects && tokenActiveEffects[token.id] && tokenActiveEffects[token.id].length > 0 && (

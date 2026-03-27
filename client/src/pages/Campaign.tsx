@@ -8686,12 +8686,23 @@ export default function Campaign() {
   // Update character mutation
   const updateCharacterMutation = useMutation({
     mutationFn: ({ id, data }: { id: string; data: any }) => api.updateCharacter(id, data),
+    onMutate: async ({ id, data }) => {
+      await queryClient.cancelQueries({ queryKey: [`/api/campaigns/${effectiveCampaignId}/characters`] });
+      const previousCharacters = queryClient.getQueryData([`/api/campaigns/${effectiveCampaignId}/characters`]);
+      queryClient.setQueryData([`/api/campaigns/${effectiveCampaignId}/characters`], (old: any) => {
+        if (!old) return old;
+        return old.map((c: any) => c.id === id ? { ...c, ...data } : c);
+      });
+      return { previousCharacters };
+    },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: [`/api/campaigns/${effectiveCampaignId}/characters`] });
-      toast({ title: "Success", description: "Character updated successfully", duration: 1000 });
       gameWs.sendCharacterUpdate(variables.id);
     },
-    onError: (error: any) => {
+    onError: (error: any, _, context) => {
+      if (context?.previousCharacters) {
+        queryClient.setQueryData([`/api/campaigns/${effectiveCampaignId}/characters`], context.previousCharacters);
+      }
       toast({ title: "Error", description: error.message || "Failed to update character", variant: "destructive" });
     },
   });
