@@ -8408,7 +8408,7 @@ function AddCharacterDialog({ open, onOpenChange, onAddCharacter, campaignId, ca
     onAddCharacter({
       name: name.trim(),
       level: 1,
-      class: "", // Required field, kept for backwards compatibility
+      class: "",
       race: selectedSpecies.name,
       size: selectedSpecies.size || "Medium",
       naturalArmor: selectedSpecies.naturalArmor || 5,
@@ -8417,12 +8417,12 @@ function AddCharacterDialog({ open, onOpenChange, onAddCharacter, campaignId, ca
       flySpeed: selectedSpecies.flySpeed || 0,
       featTree: selectedSpecies.featTree || "",
       portrait: selectedSpecies.defaultImage || null,
-      // HP/Energy from selected species
       hp: selectedSpecies.startingHp || 10,
       maxHp: selectedSpecies.startingMaxHp || 10,
       energy: selectedSpecies.startingEnergy || 10,
       maxEnergy: selectedSpecies.startingMaxEnergy || 10,
-      // Bonus HP tracking for level-up system
+      mana: selectedSpecies.startingMana || 0,
+      maxMana: selectedSpecies.startingMaxMana || 0,
       bonusHpFromLevelUps: 0,
       lastLevelUpRolled: 1,
       // Default attributes (range -2 to 5, default 0)
@@ -15816,11 +15816,11 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
     skillWisdom: character?.skillWisdom || 0
   });
   
-  // Fetch species from database (only if not passed as prop)
+  const speciesSystemName = campaignSystem === 'aa-v2' ? 'A.A. V2' : 'Arcana Adventure';
   const { data: fetchedSpecies = [] } = useQuery({
-    queryKey: ['species'],
-    queryFn: () => api.getSpecies('Arcana Adventure'),
-    enabled: !passedSpecies, // Only fetch if species not provided via props
+    queryKey: ['species', speciesSystemName],
+    queryFn: () => api.getSpecies(speciesSystemName),
+    enabled: !passedSpecies,
   });
   
   // Use passed species (includes campaign species) or fall back to fetched system species
@@ -17727,12 +17727,15 @@ export function CharacterSheet({ character, isGM, isOwner, isAdmin = false, acce
                         <div className="space-y-1">
                           <div className="text-[10px] text-stone-500 flex items-center justify-between" data-testid="text-energy-breakdown">
                             <span>
-                              Base: {currentSpecies?.startingMaxEnergy || 10} | +{liveCharacter.bonusEnergyFromLevelUps || 0}
+                              Base: {currentSpecies?.startingMaxEnergy || 10}
+                              {!isAAV2 && <> | +{liveCharacter.bonusEnergyFromLevelUps || 0}</>}
                               {featBonuses.energy > 0 && <span className="text-purple-400"> | Feats: +{featBonuses.energy}</span>}
                             </span>
-                            <span className="text-stone-400">
-                              ({calculateEnergyDiceCount(liveCharacter.level || 1)}d6)
-                            </span>
+                            {!isAAV2 && (
+                              <span className="text-stone-400">
+                                ({calculateEnergyDiceCount(liveCharacter.level || 1)}d6)
+                              </span>
+                            )}
                           </div>
                           {canLevelUpEnergy && canEdit && (
                             <Button
@@ -21638,7 +21641,7 @@ function FeatTreeViewerGrid({
   const NODE_WIDTH = 160;
   const NODE_HEIGHT = 100;
   const CELL_SIZE = 100;
-  const WORLD_SIZE = 20000;
+  const WORLD_SIZE = 6000;
   const WORLD_OFFSET = WORLD_SIZE / 2;
   
   const unlockedFeatIds = new Set(characterFeats.map(cf => cf.featId));
@@ -21692,8 +21695,11 @@ function FeatTreeViewerGrid({
     return prereqConnections.some((conn: FeatConnection) => unlockedFeatIds.has(conn.fromFeatId));
   };
   
-  const featById = new Map<string, Feat>();
-  feats.forEach((f: Feat) => featById.set(f.id, f));
+  const featById = useMemo(() => {
+    const map = new Map<string, Feat>();
+    feats.forEach((f: Feat) => map.set(f.id, f));
+    return map;
+  }, [feats]);
   
   // Initialize view on mount
   useEffect(() => {
@@ -21980,7 +21986,9 @@ function FeatTreeViewerGrid({
           {/* Connection lines */}
           <svg 
             className="absolute pointer-events-none"
-            style={{ width: WORLD_SIZE, height: WORLD_SIZE }}
+            width={WORLD_SIZE}
+            height={WORLD_SIZE}
+            style={{ overflow: 'visible' }}
           >
             {connections.map((conn: FeatConnection) => {
               const from = featById.get(conn.fromFeatId);
@@ -22033,7 +22041,7 @@ function FeatTreeViewerGrid({
             return (
               <div
                 key={feat.id}
-                className={`absolute rounded-xl border-2 cursor-pointer transition-all ${nodeStyle}`}
+                className={`absolute rounded-xl border-2 cursor-pointer transition-colors ${nodeStyle}`}
                 style={{
                   left: WORLD_OFFSET + feat.gridX * CELL_SIZE,
                   top: WORLD_OFFSET + feat.gridY * CELL_SIZE,
@@ -22192,8 +22200,8 @@ export function LazyItemImage({ itemId, itemType }: { itemId: string; itemType: 
 const CLASS_VIEWER_CELL = 100;
 const CLASS_VIEWER_NODE_W = 160;
 const CLASS_VIEWER_NODE_H = 100;
-const CLASS_VIEWER_SIZE = 20000;
-const CLASS_VIEWER_OFFSET = 10000;
+const CLASS_VIEWER_SIZE = 6000;
+const CLASS_VIEWER_OFFSET = 3000;
 
 const classViewerTierStyles: Record<number, { border: string; bg: string; glow: string; unlocked: string }> = {
   1: { border: 'border-fuchsia-600', bg: 'bg-gradient-to-br from-fuchsia-900/90 to-stone-900/90', glow: 'shadow-[0_0_10px_rgba(217,70,239,0.3)]', unlocked: 'border-green-500 bg-gradient-to-br from-green-900/80 to-fuchsia-900/40 shadow-[0_0_15px_rgba(34,197,94,0.4)]' },
